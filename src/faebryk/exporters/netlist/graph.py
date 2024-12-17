@@ -106,28 +106,28 @@ class can_represent_kicad_footprint_via_attached_component(
 
 def add_or_get_nets(*interfaces: F.Electrical):
     to_check = set(interfaces)
-    bus_reprs = {}
+    net_reprs = {}
     while to_check:
         interface = to_check.pop()
         ifs = interface.get_connected()
-        bus_reprs[interface] = ifs
+        net_reprs[interface] = ifs
         to_check.difference_update(ifs.keys())
     nets_out = set()
 
-    for _, connected_mifs in bus_reprs.items():
-        nets = {
+    for _, connected_mifs in net_reprs.items():
+        nets_on_net = {
             p[0]
             for mif in connected_mifs
             if (p := mif.get_parent()) is not None and isinstance(p[0], F.Net)
         }
-        if not nets:
+        if not nets_on_net:
             net = F.Net()
             net.part_of.connect(interface)
-            nets = {net}
-        if len(nets) > 1:
-            raise KeyErrorAmbiguous(list(nets), "Multiple nets interconnected")
+            nets_on_net = {net}
+        if len(nets_on_net) > 1:
+            raise KeyErrorAmbiguous(list(nets_on_net), "Multiple nets interconnected")
 
-        nets_out.update(nets)
+        nets_out.update(nets_on_net)
 
     return nets_out
 
@@ -152,15 +152,14 @@ def attach_nets_and_kicad_info(G: Graph):
             continue
         fp.add(can_represent_kicad_footprint_via_attached_component(n, G))
 
-    nets = []
     mifs = [
         mif.net
         for fp in node_fps.values()
         for mif in fp.get_children(direct_only=True, types=F.Pad)
     ]
-    nets.extend(add_or_get_nets(*mifs))
+    nets = add_or_get_nets(*mifs)
 
-    generate_net_names(nets)
+    generate_net_names(list(nets))
 
 
 @dataclass
