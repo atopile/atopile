@@ -659,7 +659,6 @@ class C_footprint:
         die_length: Optional[float] = None
         options: Optional[C_options] = None
         primitives: Optional[C_gr] = None
-        uuid: UUID = field(default_factory=gen_uuid)
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
 
@@ -831,6 +830,7 @@ class C_kicad_pcb_file(SEXP_File):
                     name: str = field(**sexp_field(positional=True))
 
                 net: Optional[C_net] = None
+                uuid: UUID = field(default_factory=gen_uuid)
 
             uuid: UUID = field(**sexp_field(order=-15))
             at: C_xyr = field(**sexp_field(order=-10))
