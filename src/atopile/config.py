@@ -457,6 +457,7 @@ class BuildContext:
 
 
 _project_context: Optional[ProjectContext] = None
+_build_context: Optional[BuildContext] = None
 
 
 def set_project_context(project_context: ProjectContext) -> None:
@@ -474,3 +475,20 @@ def get_project_context() -> ProjectContext:
     if _project_context is None:
         raise ValueError("Project context not set")
     return _project_context
+
+
+def set_build_context(build_context: BuildContext) -> None:
+    """
+    Set the build context for the current process.
+    """
+    global _build_context
+    _build_context = build_context
+
+
+def get_build_context() -> BuildContext:
+    """
+    Get the build context for the current process.
+    """
+    if _build_context is None:
+        raise ValueError("Build context not set")
+    return _build_context

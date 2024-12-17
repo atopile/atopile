@@ -5,6 +5,7 @@ from typing import override
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.picker.picker import has_part_picked_remove
 
 
 class has_explicit_part(Module.TraitT.decless()):
@@ -12,6 +13,7 @@ class has_explicit_part(Module.TraitT.decless()):
     partno: str
     supplier_id: str
     supplier_partno: str
+    kicad_identifier: str
     pinmap: dict[str, F.Electrical | None] | None
 
     @classmethod
@@ -42,6 +44,15 @@ class has_explicit_part(Module.TraitT.decless()):
         out.pinmap = pinmap
         return out
 
+    @classmethod
+    def from_kicad_library(
+        cls, kicad_identifier: str, pinmap: dict[str, F.Electrical | None] | None = None
+    ):
+        out = cls()
+        out.kicad_identifier = kicad_identifier
+        out.pinmap = pinmap
+        return out
+
     @override
     def on_obj_set(self):
         # TODO later get rid oof this when we deprecate using DescriptiveProperties
@@ -64,5 +75,16 @@ class has_explicit_part(Module.TraitT.decless()):
 
         if self.pinmap:
             obj.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
+
+        if hasattr(self, "kicad_identifier"):
+            if not obj.has_trait(F.can_attach_to_footprint):
+                raise ValueError(
+                    f"Need to either supply pinmap or have F.can_attach_to_footprint "
+                    f"for module {obj}"
+                )
+            obj.get_trait(F.can_attach_to_footprint).attach(
+                F.KicadFootprint.from_library(self.kicad_identifier)
+            )
+            obj.add(has_part_picked_remove())
 
         obj.add(F.has_descriptive_properties_defined(properties))

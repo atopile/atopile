@@ -47,10 +47,12 @@ def _nets_same(
     return pcb_pads == nl_pads
 
 
-def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
-    fp_lib_table = C_kicad_fp_lib_table_file.loads(fp_lib_path)
+def _get_footprint(identifier: str, fp_lib_path: Path | None = None) -> C_footprint:
     lib_id, fp_name = identifier.split(":")
     try:
+        if fp_lib_path is None:
+            raise KeyErrorNotFound
+        fp_lib_table = C_kicad_fp_lib_table_file.loads(fp_lib_path)
         lib = find(fp_lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
         dir_path = Path(lib.uri.replace("${KIPRJMOD}", str(fp_lib_path.parent)))
     except KeyErrorNotFound:
