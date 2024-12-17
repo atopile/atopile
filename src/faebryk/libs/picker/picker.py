@@ -230,14 +230,6 @@ def pick_module_by_params(
     return option
 
 
-def _get_mif_top_level_modules(mif: ModuleInterface) -> set[Module]:
-    return Module.get_children_modules(mif, types=Module, direct_only=True) | {
-        m
-        for nmif in mif.get_children(direct_only=True, types=ModuleInterface)
-        for m in _get_mif_top_level_modules(nmif)
-    }
-
-
 class PickerProgress:
     def __init__(self, tree: Tree[Module]):
         self.tree = tree
@@ -271,7 +263,7 @@ def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
     if module.has_trait(has_part_picked):
         return tree
 
-    if module.has_trait(F.has_picker) and not module.has_trait(skip_self_pick):
+    if module.has_trait(F.is_pickable) and not module.has_trait(skip_self_pick):
         merge_tree = Tree()
         tree[module] = merge_tree
 
@@ -309,7 +301,7 @@ def check_missing_picks(module: Module):
         and not m.has_trait(skip_self_pick)
         # no parent with picker
         and not try_or(
-            lambda: m.get_parent_with_trait(F.has_picker),
+            lambda: m.get_parent_with_trait(F.is_pickable),
             default=False,
             catch=KeyErrorNotFound,
         ),
@@ -330,26 +322,21 @@ def check_missing_picks(module: Module):
 
 
 def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
+    from faebryk.libs.picker.api.common import api_filter_by_module_params_and_attach
+    from faebryk.libs.picker.api.picker_lib import api_get_candidates
+
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
         names = sorted(p.get_full_name(types=True) for p in pickable_modules)
         logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
 
-    candidates = tree.copy()
+    candidates = api_get_candidates(tree, solver)
 
     # TODO implement order (by heuristic)
-
-    while candidates:
-        module, subtree = candidates.popitem()
-        try:
-            module.get_trait(F.has_picker).pick(solver)
-            progress.advance(module)
-        except PickError:
-            if not subtree:
-                raise
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Could not pick {module}, descending into {subtree}")
-            candidates.update(subtree)
+    sorted_candidates = sorted(candidates.items(), key=lambda x: len(x[1]))
+    for module, parts in sorted_candidates:
+        api_filter_by_module_params_and_attach(module, parts, solver)
+        progress.advance(module)
 
     if LOG_PICK_SOLVE:
         logger.info("Done picking")
@@ -357,6 +344,19 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
+    from faebryk.libs.picker.api.api import ApiNotConfiguredError
+    from faebryk.libs.picker.api.picker_lib import add_api_pickers
+
+    modules = module.get_children_modules(types=Module)
+    # TODO currently slow
+    # CachePicker.add_to_modules(modules, prio=-20)
+
+    try:
+        for n in modules:
+            add_api_pickers(n)
+    except ApiNotConfiguredError:
+        logger.warning("API not configured. Skipping API pickers.")
+
     pick_tree = get_pick_tree(module)
     if LOG_PICK_SOLVE:
         logger.info(f"Pick tree:\n{pick_tree.pretty()}")
@@ -367,6 +367,7 @@ def pick_part_recursively(module: Module, solver: Solver):
     try:
         with pp.context():
             pick_topologically(pick_tree, solver, pp)
+    # FIXME: This does not get called anymore
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
         for m, sube in failed_parts.items():

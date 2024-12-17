@@ -5,21 +5,17 @@ import functools
 import json
 import logging
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import requests
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
 from faebryk.core.module import Module
-from faebryk.core.solver.solver import Solver
-from faebryk.libs.picker.api.common import check_compatible_parameters, try_attach
 
 # TODO: replace with API-specific data model
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component
-from faebryk.libs.picker.jlcpcb.mappings import (
-    try_get_param_mapping,
-)
-from faebryk.libs.picker.picker import PickError
+if TYPE_CHECKING:
+    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     ConfigFlagString,
@@ -55,34 +51,6 @@ class ApiHTTPError(ApiError):
         return f"{super().__str__()}: {status_code} {detail}"
 
 
-def api_filter_by_module_params_and_attach(
-    cmp: Module, parts: list[Component], solver: Solver
-):
-    """
-    Find a component with matching parameters
-    """
-    mapping = try_get_param_mapping(cmp)
-
-    # FIXME: should take the desired qty and respect it
-    tried = []
-
-    def parts_gen():
-        for part in parts:
-            if check_compatible_parameters(cmp, part, mapping, solver):
-                tried.append(part)
-                yield part
-
-    try:
-        try_attach(cmp, parts_gen(), mapping, qty=1)
-    except PickError as ex:
-        raise PickError(
-            f"No components found that match {cmp.pretty_params(solver)} "
-            f"in {len(tried)} param-matching parts, "
-            f"of {len(parts)} total parts",
-            cmp,
-        ) from ex
-
-
 def get_package_candidates(module: Module) -> list["PackageCandidate"]:
     import faebryk.library._F as F
 
@@ -103,10 +71,11 @@ class PackageCandidate:
 
 
 @dataclass_json
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
     package_candidates: list[PackageCandidate]
     qty: int
+    endpoint: str | None = None
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
@@ -127,49 +96,56 @@ def SerializableField():
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class ResistorParams(BaseParams):
+    endpoint: str = "resistors"
     resistance: ApiParamT = SerializableField()
     max_power: ApiParamT = SerializableField()
     max_voltage: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class CapacitorParams(BaseParams):
+    endpoint: str = "capacitors"
     capacitance: ApiParamT = SerializableField()
     max_voltage: ApiParamT = SerializableField()
     temperature_coefficient: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class InductorParams(BaseParams):
+    endpoint: str = "inductors"
     inductance: ApiParamT = SerializableField()
     self_resonant_frequency: ApiParamT = SerializableField()
     max_current: ApiParamT = SerializableField()
     dc_resistance: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class DiodeParams(BaseParams):
+    endpoint: str = "diodes"
     forward_voltage: ApiParamT = SerializableField()
     reverse_working_voltage: ApiParamT = SerializableField()
     reverse_leakage_current: ApiParamT = SerializableField()
     max_current: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class TVSParams(DiodeParams):
+    endpoint: str = "tvs"
     reverse_breakdown_voltage: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class LEDParams(DiodeParams):
+    endpoint: str = "leds"
     max_brightness: ApiParamT = SerializableField()
     color: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class LDOParams(BaseParams):
+    endpoint: str = "ldos"
     max_input_voltage: ApiParamT = SerializableField()
     output_voltage: ApiParamT = SerializableField()
     quiescent_current: ApiParamT = SerializableField()
@@ -180,8 +156,9 @@ class LDOParams(BaseParams):
     output_current: ApiParamT = SerializableField()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class MOSFETParams(BaseParams):
+    endpoint: str = "mosfets"
     channel_type: ApiParamT = SerializableField()
     # saturation_type: ApiParamT = SerializableField()  # TODO
     gate_source_threshold_voltage: ApiParamT = SerializableField()
@@ -221,9 +198,10 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
-        logger.debug(
-            f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
+            )
 
         return response
 
@@ -247,54 +225,37 @@ class ApiClient:
         return response
 
     @staticmethod
-    def ComponentFromResponse(kw: dict) -> Component:
+    def ComponentFromResponse(kw: dict) -> "Component":
+        from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+
         # TODO very ugly fix
         kw["extra"] = json.dumps(kw["extra"])
         return Component(**kw)
 
     @functools.lru_cache(maxsize=None)
-    def fetch_part_by_lcsc(self, lcsc: int) -> list[Component]:
+    def fetch_part_by_lcsc(self, lcsc: int) -> list["Component"]:
         response = self._get(f"/v0/component/lcsc/{lcsc}")
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]
 
     @functools.lru_cache(maxsize=None)
-    def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list[Component]:
+    def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list["Component"]:
         response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]
 
-    def query_parts(self, method: str, params: BaseParams) -> list[Component]:
+    def query_parts(self, method: str, params: BaseParams) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
+        print(params)
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]
 
-    def fetch_resistors(self, params: ResistorParams) -> list[Component]:
-        return self.query_parts("resistors", params)
-
-    def fetch_capacitors(self, params: CapacitorParams) -> list[Component]:
-        return self.query_parts("capacitors", params)
-
-    def fetch_inductors(self, params: InductorParams) -> list[Component]:
-        return self.query_parts("inductors", params)
-
-    def fetch_tvs(self, params: TVSParams) -> list[Component]:
-        return self.query_parts("tvs", params)
-
-    def fetch_diodes(self, params: DiodeParams) -> list[Component]:
-        return self.query_parts("diodes", params)
-
-    def fetch_leds(self, params: LEDParams) -> list[Component]:
-        return self.query_parts("leds", params)
-
-    def fetch_mosfets(self, params: MOSFETParams) -> list[Component]:
-        return self.query_parts("mosfets", params)
-
-    def fetch_ldos(self, params: LDOParams) -> list[Component]:
-        return self.query_parts("ldos", params)
+    def fetch_parts(self, params: BaseParams) -> list["Component"]:
+        assert params.endpoint
+        return self.query_parts(params.endpoint, params)
 
 
 @functools.lru_cache

@@ -10,24 +10,32 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.pickers import add_example_pickers
+from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 class App(Module):
     led: F.PoweredLED
-    battery: F.Battery
+    battery: F.ButtonCell
 
     def __preinit__(self) -> None:
         self.led.power.connect(self.battery.power)
 
         # Parametrize
-        self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+        self.led.led.color.constrain_subset(F.LED.Color.RED)
         self.led.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)
+        self.battery.voltage.alias_is(L.Single(3 * P.V))
+        self.battery.add(
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={
+                    "1": self.battery.power.lv,
+                    "2": self.battery.power.hv,
+                },
+            )
+        )
