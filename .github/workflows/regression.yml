@@ -1,11 +1,15 @@
-name: pytest
+name: regression
 
 on:
   push:
+    branches: [main]  # Adjust this if your default branch has a different name
+  pull_request:
+  workflow_dispatch:  # Add manual trigger capability
 
 jobs:
-  pytest:
-    runs-on: blacksmith-8vcpu-ubuntu-2204
+  regression:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    if: ${{ contains(github.event.pull_request.labels.*.name, 'regression-required') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -32,8 +36,11 @@ jobs:
     - name: Run pytest
       id: pytest
       continue-on-error: true
+      # Regular tests are run as part of the pytest workflow
       run: |
-        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow and not regression" --timeout=300
+        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
+      env:
+        GH_TOKEN: ${{ github.token }}
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'
