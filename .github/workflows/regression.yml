@@ -16,7 +16,7 @@ jobs:
     - name: Check if regression tests should run
       run: |
         if [[ "${{ github.ref }}" != "refs/heads/main" ]] && [[ "${{ contains(env.LABELS, 'regression-required') }}" != "true" ]]; then
-          exit 78
+          exit 78  # Magic exit code to skip the job
         fi
     - name: Checkout code
       uses: actions/checkout@v4
