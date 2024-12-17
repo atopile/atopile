@@ -9,7 +9,6 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -44,7 +43,3 @@ class App(Module):
         # TODO
         # Construct
         # special.get_trait(F.has_construction_dependency).construct()
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)

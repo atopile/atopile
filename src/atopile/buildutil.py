@@ -44,8 +44,6 @@ from faebryk.libs.exceptions import (
     downgrade,
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
-from faebryk.libs.picker.api.api import ApiNotConfiguredError
-from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 
 logger = logging.getLogger(__name__)
@@ -65,15 +63,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     run_checks(app, G)
 
     # Pickers ------------------------------------------------------------------
-    modules = app.get_children_modules(types=Module)
-    # TODO currently slow
-    # CachePicker.add_to_modules(modules, prio=-20)
-
-    try:
-        for n in modules:
-            add_api_pickers(n)
-    except ApiNotConfiguredError:
-        logger.warning("API not configured. Skipping API pickers.")
 
     # Included here for use on the examples
 

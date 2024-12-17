@@ -2,38 +2,29 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from abc import ABC, abstractmethod
-from collections import defaultdict
+from dataclasses import fields
 from textwrap import indent
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
-import faebryk.library._F as F
+import more_itertools
+
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
     And,
-    ConstrainableExpression,
     Is,
     Parameter,
-    Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.libs.e_series import E_SERIES, e_series_intersect
+from faebryk.libs.picker.api.api import BaseParams, get_package_candidates
+from faebryk.libs.picker.jlcpcb.mappings import try_get_param_mapping
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
     LCSC_PinmapException,
-    attach,
     get_raw,
 )
 from faebryk.libs.picker.picker import (
     PickError,
-    has_part_picked,
-    has_part_picked_defined,
 )
-from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval_Disjoint,
-    Quantity_Singleton,
-)
-from faebryk.libs.units import to_si_str
 from faebryk.libs.util import cast_assert
 
 if TYPE_CHECKING:
@@ -44,116 +35,6 @@ logger = logging.getLogger(__name__)
 type SIvalue = str
 
 
-class StaticPartPicker(F.has_multi_picker.Picker, ABC):
-    def __init__(
-        self,
-        *,
-        mfr: str | None = None,
-        mfr_pn: str | None = None,
-        lcsc_pn: str | None = None,
-    ) -> None:
-        super().__init__()
-        self.mfr = mfr
-        self.mfr_pn = mfr_pn
-        self.lcsc_pn = lcsc_pn
-
-    def _friendly_description(self) -> str:
-        desc = []
-        if self.mfr:
-            desc.append(f"mfr={self.mfr}")
-        if self.mfr_pn:
-            desc.append(f"mfr_pn={self.mfr_pn}")
-        if self.lcsc_pn:
-            desc.append(f"lcsc_pn={self.lcsc_pn}")
-        return ", ".join(desc) or "<no params>"
-
-    @abstractmethod
-    def _find_parts(self, module: Module) -> list["Component"]:
-        pass
-
-    def pick(self, module: Module):
-        parts = self._find_parts(module)
-
-        if len(parts) > 1:
-            raise PickError(
-                f"Multiple parts found for {self._friendly_description()}", module
-            )
-
-        if len(parts) < 1:
-            raise PickError(
-                f"Could not find part for {self._friendly_description()}", module
-            )
-
-        (part,) = parts
-        try:
-            part.attach(module, [])
-        except ValueError as e:
-            raise PickError(
-                f"Could not attach part for {self._friendly_description()}", module
-            ) from e
-
-
-def _build_compatible_constraint(
-    target: Module, source: Module
-) -> ConstrainableExpression:
-    assert type(target) is type(source)
-
-    # Override module parameters with picked component parameters
-    module_params: dict[str, tuple[Parameter, Parameter]] = (
-        target.zip_children_by_name_with(source, sub_type=Parameter)
-    )
-
-    # sort by type to avoid merge conflicts
-    predicates: list[Predicate] = []
-    it = module_params.values()
-    for p, value in it:
-        predicates.append(Is(p, value))
-
-    return And(*predicates)
-
-
-def _get_compatible_modules(
-    module: Module, cache: list[Module], solver: Solver
-) -> Iterable[Module]:
-    compatible_constraints = [_build_compatible_constraint(module, m) for m in cache]
-    if not compatible_constraints:
-        return
-    solve_result = solver.assert_any_predicate(
-        list(zip(compatible_constraints, cache)), lock=True
-    )
-    for _, m in solve_result.true_predicates:
-        yield m
-
-
-class CachePicker(F.has_multi_picker.Picker):
-    def __init__(self):
-        super().__init__()
-        self.cache = defaultdict[type[Module], set[Module]](set)
-
-    def pick(self, module: Module, solver: Solver):
-        mcache = [m for m in self.cache[type(module)] if m.has_trait(has_part_picked)]
-        for m in _get_compatible_modules(module, mcache, solver):
-            logger.debug(f"Found compatible part in cache: {module} with {m}")
-            module.add(
-                F.has_descriptive_properties_defined(
-                    m.get_trait(F.has_descriptive_properties).get_properties()
-                )
-            )
-            part = m.get_trait(has_part_picked).get_part()
-            attach(module, part.partno)
-            module.add(has_part_picked_defined(part))
-            return
-
-        self.cache[type(module)].add(module)
-        raise PickError(f"No compatible part found in cache for {module}", module)
-
-    @staticmethod
-    def add_to_modules(modules: Iterable[Module], prio: int = 0):
-        picker = CachePicker()
-        for m in modules:
-            m.add(F.has_multi_picker(prio, picker))
-
-
 class PickerUnboundedParameterError(Exception):
     pass
 
@@ -162,25 +43,44 @@ class PickerESeriesIntersectionError(Exception):
     pass
 
 
-def generate_si_values(
-    value: Quantity_Interval_Disjoint, e_series: E_SERIES | None = None
-) -> list[SIvalue]:
-    if value.is_unbounded():
-        raise PickerUnboundedParameterError(value)
+def api_filter_by_module_params_and_attach(
+    cmp: Module, parts: list["Component"], solver: Solver
+):
+    """
+    Find a component with matching parameters
+    """
+    mapping = try_get_param_mapping(cmp)
 
-    intersection = e_series_intersect(value, e_series)
-    if intersection.is_empty():
-        raise PickerESeriesIntersectionError(f"No intersection with E-series: {value}")
-    si_unit = value.units
+    # FIXME: should take the desired qty and respect it
+    tried = []
 
-    si_vals = [
-        to_si_str(Quantity_Singleton.cast(r).get_value(), si_unit)
-        .replace("µ", "u")
-        .replace("inf", "∞")
-        for r in intersection
-    ]
+    def parts_gen():
+        for part in parts:
+            if check_compatible_parameters(cmp, part, mapping, solver):
+                tried.append(part)
+                yield part
 
-    return si_vals
+    try:
+        try_attach(cmp, parts_gen(), mapping, qty=1)
+    except PickError as ex:
+        param_mappings = [
+            (
+                p.partno,
+                [
+                    f"{m.param_name}: {lit}"
+                    for m, lit in p.get_literal_for_mappings(mapping).items()
+                ],
+            )
+            for p, _ in zip(parts, range(10))
+        ]
+        raise PickError(
+            f"No parts found that are compatible with design for module:"
+            f"\n{cmp.pretty_params(solver)} "
+            f"\nin {len(tried)} candidate parts, "
+            f"of {len(parts)} total parts:"
+            f"\n{'\n'.join(f'{p}: {lits}' for p, lits in param_mappings)}",
+            cmp,
+        ) from ex
 
 
 def try_attach(
@@ -288,3 +188,28 @@ def check_compatible_parameters(
         )
 
     return True
+
+
+def find_component_by_params[T: BaseParams](
+    api_method: Callable[[T], list["Component"]],
+    param_cls: type[T],
+    cmp: Module,
+    solver: Solver,
+    qty: int,
+) -> list["Component"]:
+    """
+    Find a component with matching parameters
+    """
+
+    fps = get_package_candidates(cmp)
+    generic_field_names = {f.name for f in fields(param_cls)}
+    _, known_params = more_itertools.partition(
+        lambda p: p.get_name() in generic_field_names, cmp.get_parameters()
+    )
+    cmp_params = {
+        p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
+    }
+
+    parts = api_method(param_cls(package_candidates=fps, qty=qty, **cmp_params))  # type: ignore
+
+    return parts

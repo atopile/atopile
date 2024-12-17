@@ -15,8 +15,8 @@ from atopile.errors import UserException
 from faebryk.libs.logging import setup_basic_logging
 from faebryk.libs.picker.api.api import Component
 from faebryk.libs.picker.api.picker_lib import (
-    find_component_by_lcsc_id,
-    find_component_by_mfr,
+    _find_component_by_lcsc_id,
+    _find_component_by_mfr,
 )
 from faebryk.libs.picker.lcsc import download_easyeda_info
 from faebryk.libs.pycodegen import (
@@ -173,11 +173,11 @@ def find_part(lcsc_id: str | None, mfr: str | None, mfr_pn: str | None) -> Compo
     Raises ValueError if no valid query was given.
     """
     if lcsc_id:
-        part = find_component_by_lcsc_id(lcsc_id)
+        part = _find_component_by_lcsc_id(lcsc_id)
 
     elif mfr_pn:
         try:
-            part = find_component_by_mfr(mfr or "", mfr_pn)
+            part = _find_component_by_mfr(mfr or "", mfr_pn)
         except KeyErrorNotFound as e:
             raise NoPartFound(mfr_pn) from e
         except KeyErrorAmbiguous as e:
