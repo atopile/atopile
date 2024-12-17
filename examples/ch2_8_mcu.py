@@ -13,7 +13,6 @@ from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
@@ -36,6 +35,9 @@ class App(Module):
         self.mcu.rp2040.pinmux.enable(self.mcu.rp2040.gpio[25])
 
         self._set_layout()
+
+        # TODO remove when we have a fuse picker
+        self.usb_power.fuse.add(F.has_explicit_part.by_supplier("C914087"))
 
     def _set_layout(self):
         LT = F.has_pcb_position.layer_type
@@ -64,7 +66,3 @@ class App(Module):
             ]
         )
         self.add(F.has_pcb_layout_defined(layout))
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)

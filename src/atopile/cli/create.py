@@ -371,8 +371,8 @@ def component(
     """Create a new component."""
     import faebryk.libs.picker.lcsc as lcsc_
     from faebryk.libs.picker.api.picker_lib import (
+        _extract_numeric_id,
         client,
-        extract_numeric_id,
     )
     from faebryk.libs.picker.jlcpcb.jlcpcb import Component
     from faebryk.libs.pycodegen import format_and_write, sanitize_name
@@ -402,7 +402,7 @@ def component(
             assert search_term is not None
 
         try:
-            lcsc_id = extract_numeric_id(search_term)
+            lcsc_id = _extract_numeric_id(search_term)
         except ValueError:
             lcsc_id = None
 

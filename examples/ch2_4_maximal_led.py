@@ -13,7 +13,6 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
@@ -36,6 +35,18 @@ class App(Module):
             self.power_in.lv.connect(self.power_switched.lv)
             self.power_in.connect_shallow(self.power_switched)
 
+            self.switch.add(
+                F.has_explicit_part.by_supplier(
+                    "C318884",
+                    pinmap={
+                        "1": self.switch.unnamed[0],
+                        "2": self.switch.unnamed[0],
+                        "3": self.switch.unnamed[1],
+                        "4": self.switch.unnamed[1],
+                    },
+                )
+            )
+
     led: F.PoweredLED
     battery: F.Battery
     power_button: PowerButton
@@ -52,10 +63,6 @@ class App(Module):
         self.led.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)
 
 
 # PCB layout etc ---------------------------------------------------------------

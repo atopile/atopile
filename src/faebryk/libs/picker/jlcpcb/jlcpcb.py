@@ -125,7 +125,7 @@ class Component(Model):
     manufacturer_id = IntField()
     manufacturer_name = CharField(max_length=255, optional=True)
     basic = IntField()
-    description = CharField(max_length=255)
+    description = CharField(max_length=511)
     datasheet = CharField(max_length=255)
     stock = IntField()
     price = JSONField()

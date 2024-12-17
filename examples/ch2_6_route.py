@@ -12,7 +12,6 @@ from faebryk.core.module import Module
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.exporters.pcb.routing.util import Path
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 from faebryk.libs.util import times
@@ -164,7 +163,3 @@ class App(Module):
     pcb_routing_strategy = L.f_field(F.has_pcb_routing_strategy_greedy_direct_line)(
         F.has_pcb_routing_strategy_greedy_direct_line.Topology.STAR
     )
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)

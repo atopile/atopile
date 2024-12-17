@@ -54,6 +54,3 @@ class USB2_0_ESD_Protection(Module):
         self.usb[0].usb_if.buspower.voltage.constrain_subset(
             L.Range(4.75 * P.V, 5.25 * P.V)
         )
-
-        # TODO remove if adding any child modules
-        has_part_picked_remove.mark_no_pick_needed(self)

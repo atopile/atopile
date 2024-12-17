@@ -370,7 +370,6 @@ class PCB:
                 at=at,
                 pads=[
                     C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
-                        uuid=gen_uuid(mark=""),
                         net=C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad.C_net(
                             number=pcb_nets[pads[p.name].name][0].number,
                             name=pads[p.name].name,

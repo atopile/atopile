@@ -40,12 +40,9 @@ def setup_basic_logging(
         logging.basicConfig(level=logging.INFO, handlers=handlers)
 
     if PLOG:
-        from faebryk.library.has_multi_picker import logger as plog
+        from faebryk.libs.picker.picker import logger as plog
 
         plog.setLevel(logging.DEBUG)
-        from faebryk.libs.picker.picker import logger as rlog
-
-        rlog.setLevel(logging.DEBUG)
     if JLOG:
         from faebryk.libs.picker.jlcpcb.jlcpcb import logger as jlog
 
