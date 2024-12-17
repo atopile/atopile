@@ -152,7 +152,6 @@ class InductorParams(BaseParams):
 @dataclass(frozen=True)
 class DiodeParams(BaseParams):
     forward_voltage: ApiParamT = SerializableField()
-    current: ApiParamT = SerializableField()
     reverse_working_voltage: ApiParamT = SerializableField()
     reverse_leakage_current: ApiParamT = SerializableField()
     max_current: ApiParamT = SerializableField()
@@ -165,7 +164,6 @@ class TVSParams(DiodeParams):
 
 @dataclass(frozen=True)
 class LEDParams(DiodeParams):
-    brightness: ApiParamT = SerializableField()
     max_brightness: ApiParamT = SerializableField()
     color: ApiParamT = SerializableField()
 
@@ -176,7 +174,7 @@ class LDOParams(BaseParams):
     output_voltage: ApiParamT = SerializableField()
     quiescent_current: ApiParamT = SerializableField()
     dropout_voltage: ApiParamT = SerializableField()
-    psrr: ApiParamT = SerializableField()
+    # psrr: ApiParamT = SerializableField()  # TODO
     output_polarity: ApiParamT = SerializableField()
     output_type: ApiParamT = SerializableField()
     output_current: ApiParamT = SerializableField()
@@ -185,7 +183,7 @@ class LDOParams(BaseParams):
 @dataclass(frozen=True)
 class MOSFETParams(BaseParams):
     channel_type: ApiParamT = SerializableField()
-    saturation_type: ApiParamT = SerializableField()
+    # saturation_type: ApiParamT = SerializableField()  # TODO
     gate_source_threshold_voltage: ApiParamT = SerializableField()
     max_drain_source_voltage: ApiParamT = SerializableField()
     max_continuous_drain_current: ApiParamT = SerializableField()
