@@ -36,6 +36,9 @@ class App(Module):
 
         self._set_layout()
 
+        # TODO remove when we have a fuse picker
+        self.usb_power.fuse.add(F.has_explicit_part.by_supplier("C914087"))
+
     def _set_layout(self):
         LT = F.has_pcb_position.layer_type
         Point = F.has_pcb_position.Point

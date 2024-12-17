@@ -29,6 +29,7 @@ class App(Module):
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
+        # TODO remove when we have a battery picker
         self.battery.voltage.alias_is(L.Single(3 * P.V))
         self.battery.add(
             F.has_explicit_part.by_supplier(
