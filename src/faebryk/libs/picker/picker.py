@@ -279,7 +279,10 @@ def check_missing_picks(module: Module):
         # not specialized
         most_special=True,
         # leaf == no children
-        f_filter=lambda m: not m.get_children_modules(types=Module)
+        f_filter=lambda m: not m.get_children_modules(
+            types=Module, f_filter=lambda x: not isinstance(x, F.Footprint)
+        )
+        and not isinstance(m, F.Footprint)
         # no parent with part picked
         and not try_or(
             lambda: m.get_parent_with_trait(has_part_picked),
@@ -297,16 +300,16 @@ def check_missing_picks(module: Module):
     )
 
     if missing:
-        no_fp, fp = map(
-            list, partition(lambda m: not m.has_trait(F.has_footprint), missing)
+        no_fp, with_fp = map(
+            list, partition(lambda m: m.has_trait(F.has_footprint), missing)
         )
 
-        if fp:
-            logger.warning(f"No pickers for {fp}")
+        if with_fp:
+            logger.warning(f"No pickers for {with_fp}")
         if no_fp:
             logger.warning(
                 f"No pickers and no footprint for {no_fp}."
-                "Attention: These modules will not apperar in netlist or pcb."
+                "\nAttention: These modules will not apperar in netlist or pcb."
             )
 
 
@@ -333,18 +336,12 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
-    from faebryk.libs.picker.api.api import ApiNotConfiguredError
     from faebryk.libs.picker.api.picker_lib import add_api_pickers
 
     modules = module.get_children_modules(types=Module, include_root=True)
-    # TODO currently slow
-    # CachePicker.add_to_modules(modules, prio=-20)
 
-    try:
-        for n in modules:
-            add_api_pickers(n)
-    except ApiNotConfiguredError:
-        logger.warning("API not configured. Skipping API pickers.")
+    for n in modules:
+        add_api_pickers(n)
 
     pick_tree = get_pick_tree(module)
     if LOG_PICK_SOLVE:

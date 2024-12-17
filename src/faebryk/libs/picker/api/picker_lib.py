@@ -52,8 +52,7 @@ def _find_by_lcsc_id(module: Module, solver: Solver):
     lcsc_pn = properties["LCSC"]
 
     parts = client.fetch_part_by_lcsc(_extract_numeric_id(lcsc_pn))
-    assert len(parts) == 1
-    part = parts[0]
+    (part,) = parts
 
     if part.stock < qty:
         logger.warning(
