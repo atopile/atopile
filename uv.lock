@@ -120,7 +120,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev47+g13cd13d1.d20241217"
+version = "0.3.1.dev49+g526a0d43.d20241217"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -268,7 +268,7 @@ dev = [
     { name = "pytest-asyncio", specifier = "!=0.23.3" },
     { name = "pytest-benchmark", specifier = ">=5.1.0,<6.0.0" },
     { name = "pytest-datafiles" },
-    { name = "pytest-history", editable = "../pytest-history" },
+    { name = "pytest-history", git = "https://github.com/atopile/pytest-history.git" },
     { name = "pytest-html" },
     { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "pytest-xdist", specifier = "~=3.6.1" },
@@ -1830,27 +1830,13 @@ wheels = [
 
 [[package]]
 name = "pytest-history"
-version = "0.1.dev15+gdab9b77.d20241217"
-source = { editable = "../pytest-history" }
+version = "0.1.dev15+g79dad9c"
+source = { git = "https://github.com/atopile/pytest-history.git#79dad9ceba2f2c82869a1b42253dcddd71bb3c19" }
 dependencies = [
     { name = "pytest" },
     { name = "rich" },
     { name = "supabase" },
     { name = "typer" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "pytest", specifier = ">=7.4.3" },
-    { name = "rich", specifier = ">=13.9.4" },
-    { name = "supabase", specifier = ">=2.6.0" },
-    { name = "typer", specifier = ">=0.15.1" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "coverage", specifier = ">=7.6.1" },
-    { name = "ruff", specifier = ">=0.8.3" },
 ]
 
 [[package]]
