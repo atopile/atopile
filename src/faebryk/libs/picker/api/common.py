@@ -271,9 +271,7 @@ def check_compatible_parameters(
 
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
-    anded = And(
-        *(m_param.operation_is_superset(c_range) for m_param, c_range in param_mapping)
-    )
+    anded = And(*(Is(m_param, c_range) for m_param, c_range in param_mapping))
 
     if LOG_PICK_SOLVE:
         logger.info(f"Solving for module: {module}")

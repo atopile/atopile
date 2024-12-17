@@ -37,7 +37,6 @@ from faebryk.core.solver.utils import (
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     make_lit,
-    no_other_constrains,
     remove_predicate,
     try_extract_all_literals,
     try_extract_boolset,
@@ -511,16 +510,6 @@ def fold_is(
             for p in expr.get_operatable_operands(ConstrainableExpression):
                 Not(p).constrain()
 
-    if not literal_operands:
-        # TODO shouldn't this be the case for all predicates?
-        # A is B | A or B unconstrained -> True
-        if no_other_constrains(expr.operands[0], expr):
-            alias_is_literal_and_check_predicate_eval(expr, True, mutator)
-            return
-        if no_other_constrains(expr.operands[1], expr):
-            alias_is_literal_and_check_predicate_eval(expr, True, mutator)
-            return
-
 
 def fold_subset(
     expr: IsSubset,
@@ -533,7 +522,7 @@ def fold_subset(
     ```
     A ss A -> True
     A is B, A ss B | B non(ex)literal -> repr(B, A)
-    A as ([X]) -> A is ([X])
+    A ss ([X]) -> A is ([X])
     # predicates
     P ss! True -> P!
     P ss! False -> ¬!P
@@ -547,7 +536,7 @@ def fold_subset(
 
     A, B = expr.operands
 
-    # A as ([X]) -> A is ([X])
+    # A ss ([X]) -> A is ([X])
     b_is = try_extract_literal(B, allow_subset=False)
     if b_is is not None and b_is.is_single_element():
         new_is = mutator._mutate(expr, Is(mutator.get_copy(A), b_is))

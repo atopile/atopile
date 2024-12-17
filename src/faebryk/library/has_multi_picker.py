@@ -70,11 +70,13 @@ class has_multi_picker(F.has_picker.impl()):
 
         for i, k in enumerate(picker_types):
             v = lookup[k]
+            picker = picker_factory(v)
+            logger.debug(f"Adding type picker for {module.get_full_name()}: {picker}")
             module.add(
                 has_multi_picker(
                     # most specific first
                     prio + i,
-                    picker_factory(v),
+                    picker,
                 )
             )
 
