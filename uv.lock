@@ -67,7 +67,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev37+g41d0007a.d20241213"
+version = "0.3.1.dev41+g742c62f4.d20241216"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -139,6 +139,7 @@ dev = [
     { name = "pytest-benchmark" },
     { name = "pytest-datafiles" },
     { name = "pytest-html" },
+    { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "viztracer" },
 ]
@@ -172,7 +173,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.1.4" },
     { name = "patool", specifier = ">=2.3.0,<2.4.0" },
     { name = "pint", specifier = ">=0.24.4,<1.0.0" },
-    { name = "psutil", specifier = "~=6.0.0" },
+    { name = "psutil", specifier = ">=6.0.0,<7.0.0" },
     { name = "pygls", specifier = ">=1.3.0" },
     { name = "quart", specifier = ">=0.19.9" },
     { name = "quart-cors", specifier = ">=0.7.0" },
@@ -214,6 +215,7 @@ dev = [
     { name = "pytest-benchmark", specifier = ">=5.1.0,<6.0.0" },
     { name = "pytest-datafiles" },
     { name = "pytest-html" },
+    { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "pytest-xdist", specifier = "~=3.6.1" },
     { name = "viztracer", specifier = ">=1.0.0,<2.0.0" },
 ]
@@ -1649,6 +1651,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a6/85/8c969f8bec4e559f8f2b958a15229a35495f5b4ce499f6b865eac54b878d/pytest_metadata-3.1.1.tar.gz", hash = "sha256:d2a29b0355fbc03f168aa96d41ff88b1a3b44a3b02acbe491801c98a048017c8", size = 9952 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/3e/43/7e7b2ec865caa92f67b8f0e9231a798d102724ca4c0e1f414316be1c1ef2/pytest_metadata-3.1.1-py3-none-any.whl", hash = "sha256:c8e0844db684ee1c798cfa38908d20d67d0463ecb6137c72e91f418558dd5f4b", size = 11428 },
+]
+
+[[package]]
+name = "pytest-timeout"
+version = "2.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/93/0d/04719abc7a4bdb3a7a1f968f24b0f5253d698c9cc94975330e9d3145befb/pytest-timeout-2.3.1.tar.gz", hash = "sha256:12397729125c6ecbdaca01035b9e5239d4db97352320af155b3f5de1ba5165d9", size = 17697 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/27/14af9ef8321f5edc7527e47def2a21d8118c6f329a9342cc61387a0c0599/pytest_timeout-2.3.1-py3-none-any.whl", hash = "sha256:68188cb703edfc6a18fad98dc25a3c61e9f24d644b0b70f33af545219fc7813e", size = 14148 },
 ]
 
 [[package]]

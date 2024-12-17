@@ -1,12 +1,23 @@
-name: pytest
+name: regression
 
 on:
   push:
+    branches: [main]  # Adjust this if your default branch has a different name
+  pull_request:
+    types: [labeled]
+  workflow_dispatch:  # Add manual trigger capability
 
 jobs:
-  pytest:
-    runs-on: blacksmith-8vcpu-ubuntu-2204
+  regression:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
     steps:
+    # Untrusted action -> specific githash
+    - uses: snnaplab/get-labels-action@f426df40304808ace3b5282d4f036515f7609576
+    - name: Check if regression tests should run
+      run: |
+        if [[ "${{ github.ref }}" != "refs/heads/main" ]] && [[ "${{ contains(env.LABELS, 'regression-required') }}" != "true" ]]; then
+          exit 78
+        fi
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -32,8 +43,9 @@ jobs:
     - name: Run pytest
       id: pytest
       continue-on-error: true
+      # Regular tests are run as part of the pytest workflow
       run: |
-        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow and not regression" --timeout=300
+        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'
