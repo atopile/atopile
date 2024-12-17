@@ -74,8 +74,9 @@ def api_filter_by_module_params_and_attach(
             for p, _ in zip(parts, range(10))
         ]
         raise PickError(
-            f"No components found that match \n{cmp.pretty_params(solver)} "
-            f"\nin {len(tried)} param-matching parts, "
+            f"No parts found that are compatible with design for module:"
+            f"\n{cmp.pretty_params(solver)} "
+            f"\nin {len(tried)} candidate parts, "
             f"of {len(parts)} total parts:"
             f"\n{'\n'.join(f'{p}: {lits}' for p, lits in param_mappings)}",
             cmp,
