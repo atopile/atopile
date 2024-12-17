@@ -316,27 +316,6 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
 
-    # should be eager, in the sense that, if the outcome is known, the callable is
-    # called immediately, without storing an expression
-    # we must force a value (at the end of solving at the least)
-    def if_then_else(
-        self,
-        if_true: Callable[[], Any],
-        if_false: Callable[[], Any],
-        preference: bool | None = None,
-    ) -> None:
-        IfThenElse(self, if_true, if_false, preference)
-
-    # def assert_true(
-    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
-    # ) -> None:
-    #     self.if_then_else(lambda: None, error, True)
-
-    # def assert_false(
-    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
-    # ) -> None:
-    #     self.if_then_else(error, lambda: None, False)
-
     # TODO
     # def switch_case(
     #    self,
@@ -513,6 +492,7 @@ class Expression(ParameterOperatable):
         self.operatable_operands: set[ParameterOperatable] = {
             op for op in operands if isinstance(op, ParameterOperatable)
         }
+        self.non_operands: list[Any] = []
 
     def __preinit__(self):
         for op in self.operatable_operands:
@@ -739,6 +719,17 @@ class ConstrainableExpression(Expression):
     def constrain(self):
         self.constrained = True
         return self
+
+    # should be eager, in the sense that, if the outcome is known, the callable is
+    # called immediately, without storing an expression
+    # we must force a value (at the end of solving at the least)
+    def if_then_else(
+        self,
+        if_true: Callable[[], Any],
+        if_false: Callable[[], Any],
+        preference: bool | None = None,
+    ):
+        return IfThenElse(self, if_true, if_false, preference)
 
 
 @abstract
@@ -1067,12 +1058,45 @@ class Implies(Logic):
 
 
 class IfThenElse(Expression):
-    def __init__(self, condition, if_true, if_false, preference: bool | None = None):
+    def __init__(
+        self,
+        condition: ConstrainableExpression,
+        if_true: Callable[[], None] | None = None,
+        if_false: Callable[[], None] | None = None,
+        preference: bool | None = None,
+    ):
         # FIXME domain
         super().__init__(None, condition)
-        self.preference = preference
-        self.if_true = if_true
-        self.if_false = if_false
+
+        # TODO a bit hacky
+        self.non_operands = [
+            if_true or (lambda: None),
+            if_false or (lambda: None),
+            preference,
+        ]
+
+        # TODO actually implement this
+        if preference is not None:
+            if preference:
+                condition.constrain()
+                if if_true:
+                    if_true()
+            else:
+                condition.operation_not().constrain()
+                if if_false:
+                    if_false()
+
+    @property
+    def if_true(self) -> Callable[[], None]:
+        return self.non_operands[0]
+
+    @property
+    def if_false(self) -> Callable[[], None]:
+        return self.non_operands[1]
+
+    @property
+    def preference(self) -> bool | None:
+        return self.non_operands[2]
 
 
 class Setic(Expression):

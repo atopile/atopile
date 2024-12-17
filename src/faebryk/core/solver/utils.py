@@ -545,6 +545,7 @@ class Mutator:
 
         new_operands = [self.get_copy(op) for op in operands]
         new_expr = expression_factory(*new_operands)
+        new_expr.non_operands = expr.non_operands
 
         for op in new_operands:
             if isinstance(op, ParameterOperatable):
