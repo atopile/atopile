@@ -23,7 +23,7 @@ class App(Module):
 
         # Parametrize
         self.lowpass.cutoff_frequency.constrain_subset(
-            L.Range.from_center_rel(200 * P.Hz, 0.05)
+            L.Range.from_center_rel(10 * P.MHz, 0.05)
         )
         self.lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
 
