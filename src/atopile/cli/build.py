@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Annotated
 
 import typer
 
-from atopile.config import BuildContext
+from atopile.config import BuildContext, set_build_context
 
 if TYPE_CHECKING:
     from faebryk.core.module import Module
@@ -44,6 +44,7 @@ def build(
     with ExceptionAccumulator() as accumulator:
         for build_ctx in build_ctxs:
             logger.info("Building %s", build_ctx.name)
+            set_build_context(build_ctx)
             with accumulator.collect(), log_user_errors(logger):
                 match build_ctx.build_type:
                     case BuildType.ATO:

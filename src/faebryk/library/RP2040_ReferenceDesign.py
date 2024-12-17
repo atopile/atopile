@@ -39,11 +39,9 @@ class RP2040_ReferenceDesign(Module):
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
 
-            self.switch.attach_to_footprint.attach(
-                # TODO this is not nice
-                F.KicadFootprint(
+            self.switch.add(
+                F.has_explicit_part.from_kicad_library(
                     "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-                    pin_names=["1", "2"],
                 )
             )
 

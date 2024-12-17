@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
+from faebryk.exporters.pcb.kicad.pcb import _get_footprint
 from faebryk.libs.library import L
 from faebryk.libs.util import times
 
@@ -17,6 +18,19 @@ class KicadFootprint(F.Footprint):
     @classmethod
     def with_simple_names(cls, kicad_identifier: str, pin_cnt: int):
         return cls(kicad_identifier, [str(i + 1) for i in range(pin_cnt)])
+
+    @classmethod
+    def from_library(cls, kicad_identifier: str):
+        # TODO this is ugly
+        try:
+            from atopile.config import get_build_context
+
+            ctx = get_build_context()
+            fp_lib_path = ctx.paths.layout.parent / "fp-lib-table"
+        except Exception:
+            fp_lib_path = None
+        fp = _get_footprint(kicad_identifier, fp_lib_path)
+        return cls(kicad_identifier, pin_names=[p.name for p in fp.pads])
 
     @L.rt_field
     def pins(self):
