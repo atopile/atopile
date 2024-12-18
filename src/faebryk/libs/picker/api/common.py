@@ -25,7 +25,7 @@ from faebryk.libs.picker.lcsc import (
 from faebryk.libs.picker.picker import (
     PickError,
 )
-from faebryk.libs.util import cast_assert, not_none, once
+from faebryk.libs.util import cast_assert, not_none
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
@@ -214,21 +214,12 @@ def pick_atomically(candidates: list[tuple[Module, "Component"]], solver: Solver
         )
         for module, part in candidates
     ]
-    ok = check_compatible_parameters(module_candidate_params, solver)
-    if not ok:
+    if not check_compatible_parameters(module_candidate_params, solver):
         return False
     for m, part, mapping in module_candidate_params:
         try_attach(m, [part], mapping, qty=1)
 
     return True
-
-
-@once
-def cached_api_call[T: BaseParams](
-    api_method: Callable[[T], list["Component"]],
-    param: T,
-):
-    return api_method(param)
 
 
 def find_component_by_params[T: BaseParams](
@@ -251,8 +242,7 @@ def find_component_by_params[T: BaseParams](
         p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
     }
 
-    parts = cached_api_call(
-        api_method,
+    parts = api_method(
         param_cls(package_candidates=fps, qty=qty, **cmp_params),  # type: ignore
     )
 

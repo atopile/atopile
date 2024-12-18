@@ -21,6 +21,7 @@ from faebryk.libs.util import (
     ConfigFlagString,
     Serializable,
     SerializableJSONEncoder,
+    once,
 )
 
 logger = logging.getLogger(__name__)
@@ -232,14 +233,14 @@ class ApiClient:
         kw["extra"] = json.dumps(kw["extra"])
         return Component(**kw)
 
-    @functools.lru_cache(maxsize=None)
+    @once
     def fetch_part_by_lcsc(self, lcsc: int) -> list["Component"]:
         response = self._get(f"/v0/component/lcsc/{lcsc}")
         return [
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]
 
-    @functools.lru_cache(maxsize=None)
+    @once
     def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list["Component"]:
         response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
         return [
@@ -252,6 +253,7 @@ class ApiClient:
             self.ComponentFromResponse(part) for part in response.json()["components"]
         ]
 
+    @once
     def fetch_parts(self, params: BaseParams) -> list["Component"]:
         assert params.endpoint
         return self.query_parts(params.endpoint, params)
