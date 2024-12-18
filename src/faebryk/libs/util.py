@@ -32,6 +32,7 @@ from typing import (
     Any,
     Callable,
     Concatenate,
+    Generator,
     Hashable,
     Iterable,
     Iterator,
@@ -1011,18 +1012,49 @@ class Tree[T](dict[T, "Tree[T]"]):
         out = ""
         next_levels = [self]
         while next_levels:
-            if any(next_levels):
-                out += indent("\n|\nv\n", " " * 12)
             for next_level in next_levels:
-                for p, _ in next_level.items():
-                    out += f"{p!r}"
+                out += " | ".join(f"{p!r}" for p in next_level.keys())
             next_levels = [
                 children
                 for next_level in next_levels
                 for _, children in next_level.items()
             ]
+            if any(next_levels):
+                out += indent("\n↓\n", " " * 12)
 
         return out
+
+    def copy(self) -> "Tree[T]":
+        return Tree({k: v.copy() for k, v in self.items()})
+
+    def flat(self) -> set[T]:
+        return {n for level in self.iter_by_depth() for n in level}
+
+    def leaves(self) -> Generator[T, None, None]:
+        for child, child_tree in self.items():
+            if not child_tree:
+                yield child
+            else:
+                yield from child_tree.leaves()
+
+    def get_subtree(self, node: T) -> "Tree[T]":
+        """
+        If not acyclic, will return the highest subtree containing the node.
+        """
+        trees = [self]
+        while trees:
+            tree = find_or(
+                trees,
+                lambda t: node in not_none(t),
+                default=None,
+                default_multi=lambda x: x[0],
+            )
+            if tree is not None:
+                return tree[node]
+
+            trees = [child for tree in trees for child in tree.values()]
+
+        raise KeyErrorNotFound(f"Node {node} not found in tree")
 
 
 # zip iterators, but if one iterators stops producing, the rest continue

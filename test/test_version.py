@@ -63,9 +63,9 @@ def test_match_tilde(version):
 
 
 def test_match_multiple(version):
-    assert match(">=1.2.0 <1.3.0", version)
-    assert match(">=1.2.0 <1.2.3", version) is False
-    assert match(">=1.2.0 <1.2.4", version)
+    assert match(">=1.2.0, <1.3.0", version)
+    assert match(">=1.2.0, <1.2.3", version) is False
+    assert match(">=1.2.0, <1.2.4", version)
 
 
 def test_match_union(version):

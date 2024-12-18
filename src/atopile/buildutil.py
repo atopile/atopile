@@ -10,7 +10,6 @@ from atopile import layout
 from atopile.config import BuildContext
 from atopile.errors import UserException
 from atopile.front_end import DeprecatedException
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -97,10 +96,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     except ApiNotConfiguredError:
         logger.warning("API not configured. Skipping API pickers.")
 
-    # Included here for use on the examples
-
-    pickable_modules = GraphFunctions(G).nodes_with_trait(F.has_picker)
-    logger.info(f"Picking parts for {len(pickable_modules)} modules")
     try:
         pick_part_recursively(app, solver)
     except PickError as ex:

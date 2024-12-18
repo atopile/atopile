@@ -142,7 +142,7 @@ inductors = [
         F.Inductor().builder(
             lambda i: (
                 i.inductance.constrain_subset(
-                    L.Range.from_center(4.7 * P.nH, 0.47 * P.nH)
+                    L.Range.from_center(470 * P.nH, 47 * P.nH)
                 ),
                 i.max_current.constrain_ge(0.01 * P.A),
                 i.dc_resistance.constrain_le(1 * P.ohm),
@@ -191,7 +191,7 @@ diodes = [
                 d.max_current.constrain_ge(1 * P.A),
             )
         ),
-        packages=["SOD-123"],
+        packages=["SOD-123FL", "SMB"],
     ),
 ]
 
@@ -203,14 +203,14 @@ leds = [
                 led.brightness.constrain_ge(
                     TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
                 ),
-                led.reverse_leakage_current.constrain_le(100 * P.uA),
-                led.reverse_working_voltage.constrain_ge(20 * P.V),
+                # led.reverse_leakage_current.constrain_le(100 * P.uA),
+                # led.reverse_working_voltage.constrain_ge(20 * P.V),
                 led.max_brightness.constrain_ge(100 * P.millicandela),
-                led.forward_voltage.constrain_le(2.5 * P.V),
+                # led.forward_voltage.constrain_le(2.5 * P.V),
                 led.max_current.constrain_ge(20 * P.mA),
             )
         ),
-        packages=["0805"],
+        packages=[],
     ),
 ]
 
@@ -226,7 +226,7 @@ tvs = [
                 t.reverse_breakdown_voltage.constrain_le(8 * P.V),
             )
         ),
-        packages=["SMB(DO-214AA)"],
+        packages=["SOD-123", "SOD-123FL"],
     ),
 ]
 

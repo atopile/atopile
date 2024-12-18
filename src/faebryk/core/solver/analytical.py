@@ -34,6 +34,7 @@ from faebryk.core.solver.utils import (
     is_replacable,
     is_replacable_by_literal,
     merge_parameters,
+    no_other_constrains,
     remove_predicate,
     try_extract_all_literals,
     try_extract_literal,
@@ -542,16 +543,24 @@ def remove_empty_graphs(mutator: Mutator):
         p
         for p in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
         if p.constrained
+        # TODO consider marking predicates as irrelevant or something
         # Ignore Is!!(P!!, True)
         and not (
             isinstance(p, Is)
             and p._solver_evaluates_to_true
-            and BoolSet(True) in p.get_literal_operands().values()
-            and all(
-                isinstance(inner, ConstrainableExpression)
-                and inner.constrained
-                and inner._solver_evaluates_to_true
-                for inner in p.get_operatable_operands()
+            and (
+                # Is!!(P!!, True)
+                (
+                    BoolSet(True) in p.get_literal_operands().values()
+                    and all(
+                        isinstance(inner, ConstrainableExpression)
+                        and inner.constrained
+                        and inner._solver_evaluates_to_true
+                        for inner in p.get_operatable_operands()
+                    )
+                )
+                # Is!!(A, A)
+                or p.operands[0] is p.operands[1]
             )
         )
     ]
@@ -597,6 +606,29 @@ def predicate_literal_deduce(mutator: Mutator):
                 mutator.mark_predicate_true(
                     cast_assert(ConstrainableExpression, mutator.mutate_expression(p))
                 )
+
+
+def predicate_unconstrained_operands_deduce(mutator: Mutator):
+    """
+    A op! B | A or B unconstrained -> A op!! B
+    """
+
+    preds = GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+    for p in preds:
+        if not p.constrained:
+            continue
+        if mutator.is_predicate_true(p):
+            continue
+
+        if any(ParameterOperatable.is_literal(o) for o in p.operands):
+            continue
+
+        if no_other_constrains(p.operands[0], p, unfulfilled_only=True):
+            alias_is_literal_and_check_predicate_eval(p, True, mutator)
+            return
+        if no_other_constrains(p.operands[1], p, unfulfilled_only=True):
+            alias_is_literal_and_check_predicate_eval(p, True, mutator)
+            return
 
 
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
