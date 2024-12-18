@@ -621,7 +621,7 @@ wheels = [
 [[package]]
 name = "easyeda2kicad"
 version = "0.8.0"
-source = { git = "https://github.com/atopile/easyeda2kicad.py.git#6ffc919558e192d87da6eb4d7ce1f1519751c2cf" }
+source = { git = "https://github.com/atopile/easyeda2kicad.py.git#261e4ee478c1fdf008c92e20c8b29327f78266a4" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
