@@ -3,7 +3,8 @@ name: regression
 on:
   push:
     branches: [main]  # Adjust this if your default branch has a different name
-  pull_request:
+  pull_request_target:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:  # Add manual trigger capability
 
 jobs:
