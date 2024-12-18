@@ -5,8 +5,10 @@ import logging
 
 import faebryk.library._F as F
 import faebryk.libs.picker.api.picker_lib as picker_lib
+from atopile.errors import UserException
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError
 from faebryk.libs.picker.api.common import StaticPartPicker
 from faebryk.libs.picker.jlcpcb.jlcpcb import Component
