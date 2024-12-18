@@ -345,9 +345,8 @@ class Component(Model):
             p = getattr(module, name.param_name)
             assert isinstance(p, Parameter)
             if value is None:
-                p.constrain_superset(p.domain.unbounded(p))
-            else:
-                p.alias_is(value)
+                value = p.domain.unbounded(p)
+            p.alias_is(value)
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(

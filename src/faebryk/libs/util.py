@@ -773,7 +773,6 @@ class LazyMixin:
 
 class Lazy(LazyMixin):
     def __init_subclass__(cls) -> None:
-        print("SUBCLASS", cls)
         super().__init_subclass__()
         lazy_construct(cls)
 
