@@ -120,7 +120,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev50+gba6f63fb.d20241217"
+version = "0.3.1.dev52+g4d5ce269.d20241218"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -621,7 +621,7 @@ wheels = [
 [[package]]
 name = "easyeda2kicad"
 version = "0.8.0"
-source = { git = "https://github.com/atopile/easyeda2kicad.py.git#25602b4a2ca3fc937c2b6fb856a3e86388e828fa" }
+source = { git = "https://github.com/atopile/easyeda2kicad.py.git#6ffc919558e192d87da6eb4d7ce1f1519751c2cf" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
