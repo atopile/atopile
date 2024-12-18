@@ -14,16 +14,9 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
-from faebryk.core.solver.solver import Solver
 from faebryk.core.trait import TraitNotFound
 from faebryk.libs.exceptions import DeprecatedException, downgrade
-from faebryk.libs.picker.picker import (
-    DescriptiveProperties,
-    Part,
-    PickerOption,
-    Supplier,
-    has_part_picked_defined,
-)
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import has_attr_or_property, write_only_property
 
 log = logging.getLogger(__name__)
@@ -94,33 +87,7 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         return False
 
 
-class CornerStore(Supplier):
-    def attach(self, module: L.Module, part: PickerOption):
-        assert isinstance(part.part, LocalPart)
-        # Ensures the footprint etc... is attached
-        # TODO: consider where the footprint logic should live
-        module.get_trait(F.has_footprint).get_footprint()
-
-        # TODO: consider converting all the attached params as "alias_is"
-        # This would mean that we're stating that all the params ARE
-        # the values provided in the design, rather than just having to
-        # fall within it
-
-
-_corner_store = CornerStore()
-
-
-class LocalPart(Part):
-    def __init__(self, partno: str) -> None:
-        super().__init__(partno=partno, supplier=_corner_store)
-
-
 class Component(L.Module):
-    class _Picker(F.has_multi_picker.Picker):
-        def pick(self, module: L.Module, solver: Solver):
-            part = LocalPart(getattr(module, "mpn"))
-            module.add(has_part_picked_defined(part))
-
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap = {}
@@ -132,13 +99,6 @@ class Component(L.Module):
     @L.rt_field
     def has_designator_prefix(self):
         return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
-
-    @L.rt_field
-    def has_backup_pick(self):
-        return F.has_multi_picker(
-            100,  # Super low-prio
-            self._Picker(),
-        )
 
     def add_pin(self, name: str) -> F.Electrical:
         if _is_int(name):

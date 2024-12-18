@@ -19,7 +19,6 @@ from faebryk.exporters.pcb.layout.heuristic_pulls import (
 )
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -82,7 +81,3 @@ class App(Module):
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self
         )
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)
