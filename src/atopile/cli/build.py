@@ -36,12 +36,12 @@ def build(
     from atopile.cli.common import create_build_contexts
     from atopile.config import BuildType
     from faebryk.library import _F as F
-    from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
+    from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.picker import lcsc
 
     build_ctxs = create_build_contexts(entry, build, target, option, standalone)
 
-    with ExceptionAccumulator() as accumulator:
+    with accumulate() as accumulator:
         for build_ctx in build_ctxs:
             logger.info("Building %s", build_ctx.name)
             with accumulator.collect(), log_user_errors(logger):

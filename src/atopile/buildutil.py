@@ -4,10 +4,14 @@ import time
 from copy import deepcopy
 from typing import Callable, Optional
 
+from more_itertools import first
+
 from atopile import layout
 from atopile.config import BuildContext
+from atopile.errors import UserException
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
+from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
@@ -21,6 +25,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_pick_and_place,
     export_step,
 )
+from faebryk.exporters.pcb.kicad.pcb import _get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -37,14 +42,17 @@ from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_netlist,
     apply_routing,
+    ensure_footprint_lib,
 )
 from faebryk.libs.exceptions import (
-    ExceptionAccumulator,
     UserResourceException,
+    accumulate,
     downgrade,
+    iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -57,18 +65,38 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     build_paths = build_ctx.paths
 
     logger.info("Resolving dynamic parameters")
-    resolve_dynamic_parameters(G)
+    try:
+        resolve_dynamic_parameters(G)
+    except KeyErrorAmbiguous:
+        try:
+            resolve_dynamic_parameters(G)
+        except KeyErrorAmbiguous as ex:
+            raise UserException(
+                "Unfortunately, there's a compiler bug at the moment that means that "
+                "this sometimes fails. Try again, and it'll probably work."
+            ) from ex
 
     logger.info("Running checks")
     run_checks(app, G)
 
+    # Pre-pick project checks - things to look at before time is spend ---------
+    # Make sure the footprint libraries we're looking for exist
+    consolidate_footprints(build_ctx, app)
+
     # Pickers ------------------------------------------------------------------
 
-    # Included here for use on the examples
+    try:
+        pick_part_recursively(app, solver)
+    except PickError as ex:
+        raise UserException("Failed to pick all parts. Cannot continue.") from ex
 
-    pick_part_recursively(app, solver)
+    # Check all the solutions are valid ----------------------------------------
+    # FIXME: this is a hack to force rechecking of the graph
+    # after we've shoved in user data
+    some_param = first(app.get_children(False, types=(Parameter)))
+    solver.inspect_get_known_supersets(some_param)
 
-    # Load PCB ----------------------------------------------------------------
+    # Load PCB -----------------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
     original_pcb = deepcopy(pcb)
 
@@ -96,8 +124,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
-
-    consolidate_footprints(build_ctx)
     apply_netlist(build_paths, False)
 
     # FIXME: we've got to reload the pcb after applying the netlist
@@ -146,7 +172,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Make the noise
     built_targets = []
-    with ExceptionAccumulator() as accumulator:
+    with accumulate() as accumulator:
         for target_name in targets:
             logger.info(f"Building '{target_name}' for '{build_ctx.name}' config")
             with accumulator.collect():
@@ -240,7 +266,7 @@ def generate_variable_report(build_ctx: BuildContext, app: Module) -> None:
     export_parameters_to_file(app, build_ctx.paths.output_base / "variables.md")
 
 
-def consolidate_footprints(build_ctx: BuildContext) -> None:
+def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
     """
     Consolidate all the project's footprints into a single directory.
 
@@ -248,19 +274,42 @@ def consolidate_footprints(build_ctx: BuildContext) -> None:
     If there's an entry named "lib" pointing at "build/footprints/footprints.pretty"
     then copy all footprints we can find there
     """
-    if build_ctx.paths.fp_lib_table.exists():
+    fp_ids_to_check = []
+    for fp_t in app.get_children(False, types=(F.has_footprint)):
+        fp = fp_t.get_footprint()
+        if isinstance(fp, F.KicadFootprint):
+            fp_ids_to_check.append(fp.kicad_identifier)
+
+    try:
         fptable = C_kicad_fp_lib_table_file.loads(build_ctx.paths.fp_lib_table)
-    else:
-        # no fp-lib-table, no worries
-        return
+    except FileNotFoundError:
+        fptable = C_kicad_fp_lib_table_file.skeleton()
 
     # TODO: @windows might need to check backslashes
-    if not any(
+    lib_in_fptable = any(
         lib.name == "lib" and lib.uri.endswith("build/footprints/footprints.pretty")
         for lib in fptable.fp_lib_table.libs
-    ):
+    )
+    lib_prefix_on_ids = any(fp_id.startswith("lib:") for fp_id in fp_ids_to_check)
+    if not lib_in_fptable and not lib_prefix_on_ids:
         # no "lib" entry pointing to the footprints dir, this project isn't broken
         return
+    elif lib_prefix_on_ids and not lib_in_fptable:
+        # we need to add a lib entry pointing to the footprints dir
+        ensure_footprint_lib(
+            build_ctx.paths,
+            "lib",
+            build_ctx.paths.build / "footprints" / "footprints.pretty",
+            fptable,
+        )
+    elif lib_in_fptable and not lib_prefix_on_ids:
+        # We could probably just remove the lib entry
+        # but let's be conservative for now
+        logging.info(
+            "It seems like this project is using a legacy footprint consolidation "
+            "unnecessarily. You can likley remove the 'lib' entry from the "
+            "fp-lib-table file."
+        )
 
     fp_target = build_ctx.paths.build / "footprints" / "footprints.pretty"
     fp_target_step = build_ctx.paths.build / "footprints" / "footprints.3dshapes"
@@ -292,3 +341,8 @@ def consolidate_footprints(build_ctx: BuildContext) -> None:
         raise DeprecatedException(
             "This project uses a deprecated footprint consolidation mechanism."
         )
+
+    # Finally, check that we have all the footprints we know we will need
+    for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
+        with err_collector():
+            _get_footprint(fp_id, build_ctx.paths.fp_lib_table)

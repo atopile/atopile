@@ -30,8 +30,8 @@ import faebryk.libs.exceptions
 # **********************************************************
 
 _line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-_error_accumulators: dict[Path, faebryk.libs.exceptions.ExceptionAccumulator] = (
-    defaultdict(faebryk.libs.exceptions.ExceptionAccumulator)
+_error_accumulators: dict[Path, faebryk.libs.exceptions.accumulate] = defaultdict(
+    faebryk.libs.exceptions.accumulate
 )
 
 

@@ -6,7 +6,7 @@ from atopile.errors import (
     UserException,
 )
 from faebryk.libs.exceptions import (
-    ExceptionAccumulator,
+    accumulate,
     downgrade,
     iter_through_errors,
 )
@@ -14,14 +14,11 @@ from faebryk.libs.exceptions import (
 
 def test_ExceptionAccumulator():
     with pytest.raises(UserException):
-        with ExceptionAccumulator() as error_collector:
+        with accumulate() as error_collector:
             with error_collector.collect():
                 raise UserException("test error")
 
-            # FIXME: damn... I don't like that the type-checker/linter
-            # doesn't realise the error is supressed
-            with error_collector():
-                raise UserException("test error 2")
+            raise UserException("test error 2")
 
 
 def test_iter_through_errors():
