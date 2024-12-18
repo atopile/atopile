@@ -989,23 +989,24 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         return KeyOptMap.empty()
 
-    def _get_mif(self, name: str, ctx: ParserRuleContext) -> L.ModuleInterface | None:
-        if (
-            has_attr_or_property(self._current_node, name)
-            or name in self._current_node.runtime
-        ):
-            ref = Ref.from_one(name)
-            # TODO: consider type-checking this
-            mif = self._get_referenced_node(ref, ctx)
-            if isinstance(mif, L.ModuleInterface):
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        f'"{name}" already exists, skipping.'
-                        " In the future this will be an error."
-                    )
-            else:
-                raise errors.UserTypeError.from_ctx(ctx, f'"{name}" already exists.')
-            return mif
+    def _try_get_mif(
+        self, name: str, ctx: ParserRuleContext
+    ) -> L.ModuleInterface | None:
+        try:
+            mif = self.get_node_attr(self._current_node, name)
+        except AttributeError:
+            return None
+
+        if isinstance(mif, L.ModuleInterface):
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    f'"{name}" already exists, skipping.'
+                    " In the future this will be an error."
+                )
+        else:
+            raise errors.UserTypeError.from_ctx(ctx, f'"{name}" already exists.')
+
+        return mif
 
     def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
         if ctx.name():
@@ -1017,7 +1018,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if mif := self._get_mif(name, ctx):
+        if mif := self._try_get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
@@ -1031,7 +1032,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
-        if mif := self._get_mif(name, ctx):
+        if mif := self._try_get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         mif = self._current_node.add(F.Electrical(), name=name)
