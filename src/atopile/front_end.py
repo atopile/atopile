@@ -24,7 +24,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
-from atopile._shim import GlobalShims, has_ato_attrs, shim_map
+from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
@@ -842,8 +842,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
             # HACK: promised_supers is falsey a hack way to check
             # that we're only looking at the top-node w/ promised supers
-            if not promised_supers and block_type.COMPONENT():
-                new_node.add(has_ato_attrs())
+            if not promised_supers and (block_type.COMPONENT() or block_type.MODULE()):
+                new_node.add(has_ato_cmp_attrs())
 
             return new_node, supers_
 
@@ -1020,7 +1020,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         if mif := self._get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        if shims_t := self._current_node.try_get_trait(has_ato_attrs):
+        if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
             mif = shims_t.add_pin(name)
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 

@@ -87,7 +87,7 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         return False
 
 
-class has_ato_attrs(L.Module.TraitT.decless()):
+class has_ato_cmp_attrs(L.Module.TraitT.decless()):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap = {}
@@ -168,7 +168,7 @@ class GlobalShims(L.Module):
     def footprint(self, value: str):
         self.add(
             has_local_kicad_footprint_named_defined(
-                value, self.get_trait(has_ato_attrs).pinmap
+                value, self.get_trait(has_ato_cmp_attrs).pinmap
             )
         )
 
