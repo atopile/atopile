@@ -25,7 +25,7 @@ from faebryk.libs.picker.lcsc import (
 from faebryk.libs.picker.picker import (
     PickError,
 )
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import cast_assert, not_none
 
 if TYPE_CHECKING:
     from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
@@ -56,7 +56,7 @@ def api_filter_by_module_params_and_attach(
 
     def parts_gen():
         for part in parts:
-            if check_compatible_parameters(cmp, part, mapping, solver):
+            if check_compatible_parameters([(cmp, part, mapping)], solver):
                 tried.append(part)
                 yield part
 
@@ -128,21 +128,21 @@ def try_attach(
     )
 
 
-def check_compatible_parameters(
+def get_compatible_parameters(
     module: Module, c: "Component", mapping: list["MappingParameterDB"], solver: Solver
-) -> bool:
+):
     """
     Check if the parameters of a component are compatible with the module
     """
     # Nothing to check
     if not mapping:
-        return True
+        return {}
 
     # shortcut because solving slow
     try:
         get_raw(c.partno)
     except LCSC_NoDataException:
-        return False
+        return None
 
     range_mapping = c.get_literal_for_mappings(mapping)
 
@@ -167,25 +167,61 @@ def check_compatible_parameters(
             #        f"Known superset {known_superset} is not a superset of {c_range}"
             #        f" for part C{c.lcsc}"
             #    )
-            return False
+            return None
 
+    return param_mapping
+
+
+def check_compatible_parameters(
+    module_candidates: list[tuple[Module, "Component", list["MappingParameterDB"]]],
+    solver: Solver,
+) -> bool:
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
-    anded = And(*(Is(m_param, c_range) for m_param, c_range in param_mapping))
+
+    mappings = [
+        get_compatible_parameters(module, c, mapping, solver)
+        for module, c, mapping in module_candidates
+    ]
+
+    if any(m is None for m in mappings):
+        return False
 
     if LOG_PICK_SOLVE:
-        logger.info(f"Solving for module: {module}")
+        logger.info(
+            f"Solving for modules:"
+            f" {[m.get_full_name(types=True) for m, _, _ in module_candidates]}"
+        )
+
+    anded = And(
+        *(
+            Is(m_param, c_range)
+            for param_mapping in mappings
+            for m_param, c_range in not_none(param_mapping)
+        )
+    )
     result = solver.assert_any_predicate([(anded, None)], lock=False)
+
     if not result.true_predicates:
         return False
 
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(
-            f"Found part {c.lcsc:8} "
-            f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
-            f"Price: ${c.get_price(1):2.4f}, "
-            f"{c.description:15},"
+    return True
+
+
+def pick_atomically(candidates: list[tuple[Module, "Component"]], solver: Solver):
+    module_candidate_params = [
+        (
+            module,
+            part,
+            try_get_param_mapping(module),
         )
+        for module, part in candidates
+    ]
+    ok = check_compatible_parameters(module_candidate_params, solver)
+    if not ok:
+        return False
+    for m, part, mapping in module_candidate_params:
+        try_attach(m, [part], mapping, qty=1)
 
     return True
 
