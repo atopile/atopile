@@ -51,17 +51,17 @@ class ApiHTTPError(ApiError):
         return f"{super().__str__()}: {status_code} {detail}"
 
 
-def get_package_candidates(module: Module) -> list["PackageCandidate"]:
+def get_package_candidates(module: Module) -> frozenset["PackageCandidate"]:
     import faebryk.library._F as F
 
     if module.has_trait(F.has_package_requirement):
-        return [
+        return frozenset(
             PackageCandidate(package)
             for package in module.get_trait(
                 F.has_package_requirement
             ).get_package_candidates()
-        ]
-    return []
+        )
+    return frozenset()
 
 
 @dataclass_json
@@ -73,7 +73,7 @@ class PackageCandidate:
 @dataclass_json
 @dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
-    package_candidates: list[PackageCandidate]
+    package_candidates: frozenset[PackageCandidate]
     qty: int
     endpoint: str | None = None
 

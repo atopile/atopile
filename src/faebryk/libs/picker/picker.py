@@ -3,6 +3,7 @@
 
 import logging
 import pprint
+import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -328,10 +329,20 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     # TODO implement backtracking
 
     logger.info("Getting part candidates for modules")
+    candidates_now = time.time()
     candidates = api_get_candidates(tree, solver)
+    logger.info(f"Got candidates in {time.time() - candidates_now:.3f}s")
+
+    now = time.time()
 
     # heuristic: order by candidates count
     sorted_candidates = sorted(candidates.items(), key=lambda x: len(x[1]))
+
+    if LOG_PICK_SOLVE:
+        logger.info(
+            "Candidates: \n\t"
+            f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in sorted_candidates)}"
+        )
 
     # heuristic: pick all single part modules in one go
     single_part_modules = [
@@ -357,6 +368,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     if ok:
         for m, _ in sorted_candidates:
             progress.advance(m)
+        logger.info(f"Fast-Picked parts in {time.time() - now:.3f}s")
         return
 
     logger.warning("Could not pick all parts atomically, picking one by one (slow)")
@@ -368,6 +380,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
     if LOG_PICK_SOLVE:
         logger.info("Done picking")
+    logger.info(f"Picked parts in {time.time() - now:.3f}s")
 
 
 # TODO should be a Picker
