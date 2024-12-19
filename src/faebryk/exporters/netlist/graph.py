@@ -10,6 +10,7 @@ from typing import Generator, Iterable
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.libs.library import L
@@ -105,29 +106,23 @@ class can_represent_kicad_footprint_via_attached_component(
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
-    to_check = set(interfaces)
-    net_reprs = {}
-    while to_check:
-        interface = to_check.pop()
-        ifs = interface.get_connected()
-        net_reprs[interface] = ifs
-        to_check.difference_update(ifs.keys())
+    buses = ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
 
-    for _, connected_mifs in net_reprs.items():
-        nets_on_net = {
-            p[0]
+    for bus_repr, connected_mifs in buses.items():
+        nets_on_bus = {
+            net
             for mif in connected_mifs
-            if (p := mif.get_parent()) is not None and isinstance(p[0], F.Net)
+            if (net := F.Net.from_part_of_mif(mif)) is not None
         }
-        if not nets_on_net:
+        if not nets_on_bus:
             net = F.Net()
-            net.part_of.connect(interface)
-            nets_on_net = {net}
-        if len(nets_on_net) > 1:
-            raise KeyErrorAmbiguous(list(nets_on_net), "Multiple nets interconnected")
+            net.part_of.connect(bus_repr)
+            nets_on_bus = {net}
+        if len(nets_on_bus) > 1:
+            raise KeyErrorAmbiguous(list(nets_on_bus), "Multiple nets interconnected")
 
-        nets_out.update(nets_on_net)
+        nets_out |= nets_on_bus
 
     return nets_out
 
