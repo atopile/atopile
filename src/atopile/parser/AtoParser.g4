@@ -28,7 +28,8 @@ simple_stmt
 
 compound_stmt: blockdef;
 
-blockdef: blocktype name ('from' name_or_attr)? ':' block;
+blockdef: blocktype name blockdef_super? ':' block;
+blockdef_super: 'from' name_or_attr;
 blocktype: ('component' | 'module' | 'interface');
 block: simple_stmts | NEWLINE INDENT stmt+ DEDENT;
 

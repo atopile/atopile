@@ -1,7 +1,7 @@
 import pytest
 
 import atopile.parse
-from atopile.front_end import AtoParserVisitor, PhysicalValuesMixin
+from atopile.front_end import Bob
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -10,13 +10,6 @@ def _parser(src: str):
     input = atopile.parse.InputStream(src)
     input.name = "test"
     return atopile.parse.make_parser(input)
-
-
-@pytest.fixture
-def visitor():
-    class Visitor(PhysicalValuesMixin, AtoParserVisitor): ...
-
-    return Visitor()
 
 
 @pytest.mark.parametrize(
@@ -33,8 +26,9 @@ def visitor():
         ("3300 +/- 50mV", L.Range(3.25 * P.V, 3.35 * P.V)),
     ],
 )
-def test_literals(src: str, qty, visitor: AtoParserVisitor):
+def test_literals(src: str, qty):
     ast = _parser(src).literal_physical()
+    visitor = Bob()
     computed = visitor.visit(ast)
 
     # FIXME: don't use str comparison

@@ -39,6 +39,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#blockdef_super.
+    def visitBlockdef_super(self, ctx:AtoParser.Blockdef_superContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#blocktype.
     def visitBlocktype(self, ctx:AtoParser.BlocktypeContext):
         return self.visitChildren(ctx)
