@@ -1224,39 +1224,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             name = self.visitName(ctx.name())
             operands = [self.visitBound(b) for b in ctx.bound()]
             if name == "min":
-                if len(operands) != 1:
-                    raise errors.UserNotImplementedError.from_ctx(
-                        ctx, "Min can only take one operand"
-                    )
-                if not isinstance(operands[0], fab_param.Parameter):
-                    raise errors.UserNotImplementedError.from_ctx(
-                        ctx, "Min can only take numeric parameters"
-                    )
-                if not isinstance(operands[0].domain, fab_param.Numbers):
-                    raise errors.UserNotImplementedError.from_ctx(
-                        ctx, "Min can only take numeric parameters"
-                    )
-                P = fab_param.Parameter(units=operands[0].units)
-                P.constrain_subset(operands[0])
-                P.constrain_le(operands[0])
-                return P
+                return fab_param.Min(*operands)
             elif name == "max":
-                if len(operands) != 1:
-                    raise errors.UserNotImplementedError.from_ctx(
-                        ctx, "Min can only take one operand"
-                    )
-                if not isinstance(operands[0], fab_param.Parameter):
-                    raise errors.UserNotImplementedError.from_ctx(
-                        ctx, "Min can only take numeric parameters"
-                    )
-                if not isinstance(operands[0].domain, fab_param.Numbers):
-                    raise errors.UserNotImplementedError.from_ctx(
-                        ctx, "Max can only take numeric parameters"
-                    )
-                P = fab_param.Parameter(units=operands[0].units)
-                P.constrain_subset(operands[0])
-                P.constrain_ge(operands[0])
-                return P
+                return fab_param.Max(*operands)
             else:
                 raise errors.UserNotImplementedError.from_ctx(
                     ctx, f"Unknown function {name}"

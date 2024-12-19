@@ -14,6 +14,7 @@ from faebryk.core.parameter import (
     Arithmetic,
     Is,
     IsSubset,
+    Max,
     Multiply,
     Not,
     Or,
@@ -200,6 +201,33 @@ def test_alias_classes():
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(G, context)
     # TODO actually test something
+
+
+def test_min_max_single():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(10 * P.V)
+
+
+@pytest.mark.xfail(reason="TODO")
+def test_min_max_multi():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+    p3 = Parameter(units=P.V)
+    p3.alias_is(L.Range(4 * P.V, 15 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0, p3))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(15 * P.V)
 
 
 def test_solve_realworld():
