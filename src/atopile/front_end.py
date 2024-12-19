@@ -930,11 +930,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         assigned_name: str = assigned_ref[-1]
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
-
-        if len(assigned_ref) > 1:
-            target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
-        else:
-            target = self._current_node
+        target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
 
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
@@ -960,7 +956,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         value = self.visit(assignable_ctx)
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
             assert isinstance(value.units, UnitType)
-            param = self._ensure_param(target, assigned_name, value.units, ctx)
+            if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+                if not provided_unit.is_compatible_with(value.units):
+                    raise errors.UserIncompatibleUnitError.from_ctx(
+                        ctx,
+                        f"Implied units {value.units} are incompatible"
+                        f" with explicit units {provided_unit}.",
+                    )
+                param = self._ensure_param(target, assigned_name, provided_unit, ctx)
+            else:
+                param = self._get_or_promise_param(target, assigned_name, ctx)
             self._param_assignments[param] = (value, ctx)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
@@ -1271,10 +1276,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def visitAtom(self, ctx: ap.AtomContext) -> fab_param.ParameterOperatable:
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
-            if len(ref) > 1:
-                target = self._get_referenced_node(Ref(ref[:-1]), ctx)
-            else:
-                target = self._current_node
+            target = self._get_referenced_node(Ref(ref[:-1]), ctx)
             return self._get_or_promise_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
@@ -1298,7 +1300,28 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        raise NotImplementedError
+        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
+        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
+        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
+        else:
+            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+
+        value = self.visitCum_assignable(ctx.cum_assignable())
+
+        # HACK: we have no way to check by what operator
+        # the param is dynamically resolved
+        # For now we assume any dynamic trait is sufficient
+        if ctx.cum_operator().ADD_ASSIGN():
+            assignee.alias_is(value)
+        elif ctx.cum_operator().SUB_ASSIGN():
+            assignee.alias_is(-value)
+        else:
+            # Syntax should protect from this
+            raise ValueError(f"Unhandled set assignment operator {ctx}")
+
+        with downgrade(DeprecatedException):
+            raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
         return KeyOptMap.empty()
 
     def visitSet_assign_stmt(self, ctx: ap.Set_assign_stmtContext):
@@ -1308,8 +1331,50 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        raise NotImplementedError
+        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
+        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
+        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
+        else:
+            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+
+        value = self.visitCum_assignable(ctx.cum_assignable())
+
+        if ctx.OR_ASSIGN():
+            assignee.constrain_superset(value)
+        elif ctx.AND_ASSIGN():
+            assignee.constrain_subset(value)
+        else:
+            # Syntax should protect from this
+            raise ValueError(f"Unhandled set assignment operator {ctx}")
+
+        with downgrade(DeprecatedException):
+            if ctx.OR_ASSIGN():
+                subset = ctx.cum_assignable().getText()
+                superset = ctx.name_or_attr().getText()
+            else:
+                subset = ctx.name_or_attr().getText()
+                superset = ctx.cum_assignable().getText()
+            raise DeprecatedException(
+                f"Set assignment of {assignee} is deprecated."
+                f' Use "assert {subset} within {superset} "instead.'
+            )
         return KeyOptMap.empty()
+
+    def _try_get_unit_from_type_info(
+        self, ctx: ap.Type_infoContext | None
+    ) -> UnitType | None:
+        if ctx is None:
+            return None
+        unit_ctx: ap.Name_or_attrContext = ctx.name_or_attr()
+        # TODO: @v0.4.0: remove this shim
+        unit_ref = self.visitName_or_attr(unit_ctx)
+        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
+            unit = _declaration_domain_to_unit[unit_ref[0]]
+            # TODO: consider deprecating this
+        else:
+            unit = self._get_unit_from_ctx(ctx.name_or_attr())
+        return unit
 
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
         """Handle declaration statements."""
@@ -1320,18 +1385,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             )
 
         assigned_name = assigned_value_ref[0]
-        unit_ctx: ap.Name_or_attrContext = ctx.type_info().name_or_attr()
-        # TODO: @v0.4.0: remove this shim
-        unit_ref = self.visitName_or_attr(unit_ctx)
-        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
-            unit = _declaration_domain_to_unit[unit_ref[0]]
-            with downgrade(DeprecatedException):
-                raise DeprecatedException(
-                    f"Declaration of {assigned_name} with unit {unit} is deprecated."
-                    " Use the unit directly instead."
-                )
-        else:
-            unit = self._get_unit_from_ctx(ctx.type_info().name_or_attr())
+        unit = self._try_get_unit_from_type_info(ctx.type_info())
+        assert unit is not None, "Type info should be enforced by the parser"
 
         param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
         if param in self._param_assignments:
