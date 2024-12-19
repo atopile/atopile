@@ -963,9 +963,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                         f"Implied units {value.units} are incompatible"
                         f" with explicit units {provided_unit}.",
                     )
-                param = self._ensure_param(target, assigned_name, provided_unit, ctx)
-            else:
-                param = self._get_or_promise_param(target, assigned_name, ctx)
+            param = self._ensure_param(target, assigned_name, value.units, ctx)
             self._param_assignments[param] = (value, ctx)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
