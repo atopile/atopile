@@ -53,9 +53,7 @@ def api_filter_by_module_params_and_attach(
 
     def parts_gen():
         for part in parts:
-            print(part.lcsc_display)
             if check_compatible_parameters(cmp, part, mapping, solver):
-                print(f"tried: {part.lcsc_display}")
                 tried.append(part)
                 yield part
 
@@ -137,7 +135,6 @@ def check_compatible_parameters(
     try:
         get_raw(c.lcsc_display)
     except LCSC_NoDataException:
-        print(f"No data for {c.lcsc_display}")
         return False
 
     param_mapping = [
