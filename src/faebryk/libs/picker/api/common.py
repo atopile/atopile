@@ -94,7 +94,7 @@ def try_attach(
     failures = []
     for c in parts:
         try:
-            c.attach(module, mapping, qty)
+            c.attach(module, qty)
             return
         except (ValueError, Component.ParseError) as e:
             if LOG_PICK_SOLVE:
@@ -143,15 +143,16 @@ def check_compatible_parameters(
         print(f"No data for {c.lcsc_display}")
         return False
 
-    range_mapping = c.get_literal_for_mappings(mapping)
-
     param_mapping = [
         (
-            (p := cast_assert(Parameter, getattr(module, m.name))),
+            (p := cast_assert(Parameter, getattr(module, name))),
             c_range if c_range is not None else p.domain.unbounded(p),
         )
-        for m, c_range in range_mapping.items()
+        for name, c_range in c.attribute_literals.items()
     ]
+
+    print(c.attribute_literals)
+    print(param_mapping)
 
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver
@@ -159,6 +160,8 @@ def check_compatible_parameters(
         # TODO other loglevel
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
         known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
+        print(f"{known_superset=}")
+        print(f"{c_range=}")
         if not known_superset.is_superset_of(c_range):
             print(f"Known superset {known_superset} is not a superset of {c_range}")
             # TODO reenable

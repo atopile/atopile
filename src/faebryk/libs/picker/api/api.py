@@ -13,14 +13,11 @@ from dataclasses_json import dataclass_json
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter, ParameterOperatable
+from faebryk.core.parameter import Parameter
 from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_Part
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.picker.mappings import AttributeMapping
 from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked_defined
-from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.units import quantity
 from faebryk.libs.util import (
     ConfigFlagString,
     Serializable,
@@ -204,7 +201,7 @@ class Component:
     is_preferred: int
     stock: int
     price: list[ComponentPrice]
-    attributes: dict[str, str | float]
+    attributes: dict[str, dict]  # FIXME: more specific
 
     @property
     def lcsc_display(self) -> str:
@@ -231,8 +228,6 @@ class Component:
         else:
             handling_fee = EXTENDED_HANDLING_FEE
 
-        print(self.price)
-
         unit_price = float("inf")
         try:
             for p in self.price:
@@ -244,43 +239,18 @@ class Component:
 
         return unit_price * qty + handling_fee
 
-    def get_literal(
-        self, attribute_mapping: AttributeMapping
-    ) -> ParameterOperatable.Literal:
-        value = self.attributes[attribute_mapping.name]
-
-        if value is None:
-            return None
-
-        if attribute_mapping.transform_fn:
-            if not isinstance(value, str):
-                raise ValueError(f"Expected string value for {attribute_mapping.name}")
-
-            return attribute_mapping.transform_fn(value)
-
-        if attribute_mapping.tolerance_name:
-            tolerance = self.attributes[attribute_mapping.tolerance_name]
-
-            if not isinstance(value, float):
-                raise ValueError(f"Expected float value for {attribute_mapping.name}")
-
-            if not isinstance(tolerance, float):
-                raise ValueError(f"Expected float value for {attribute_mapping.name}")
-
-            return Quantity_Interval.from_center_rel(
-                quantity(value, unit=attribute_mapping.unit), tolerance
+    @functools.cached_property
+    def attribute_literals(self) -> dict[str, P_Set]:
+        print(self.attributes)
+        print(self.attributes["resistance"])
+        print(
+            P_Set.deserialize(
+                self.attributes["resistance"],
             )
+        )
+        return {k: P_Set.deserialize(v) for k, v in self.attributes.items()}
 
-        return Quantity_Singleton(quantity(value, unit=attribute_mapping.unit))
-
-    def get_literal_for_mappings(
-        self, mapping: list[AttributeMapping]
-    ) -> dict[AttributeMapping, ParameterOperatable.Literal | None]:
-        return {m: self.get_literal(m) for m in mapping}
-
-    def attach(self, module: Module, mapping: list[AttributeMapping], qty: int = 1):
-        params = self.get_literal_for_mappings(mapping)
-
+    def attach(self, module: Module, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
 
         module.add(
@@ -300,8 +270,8 @@ class Component:
 
         module.add(has_part_picked_defined(JLCPCB_Part(self.lcsc_display)))
 
-        for m, literal in params.items():
-            p = getattr(module, m.name)
+        for name, literal in self.attribute_literals.items():
+            p = getattr(module, name)
             assert isinstance(p, Parameter)
             if literal is None:
                 literal = p.domain.unbounded(p)
@@ -311,7 +281,7 @@ class Component:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Attached component {self.lcsc_display} to module {module}: \n"
-                f"{indent(str(params), ' '*4)}\n--->\n"
+                f"{indent(str(self.attributes), ' '*4)}\n--->\n"
                 f"{indent(module.pretty_params(), ' '*4)}"
             )
 
@@ -367,16 +337,16 @@ class ApiClient:
     @functools.lru_cache(maxsize=None)
     def fetch_part_by_lcsc(self, lcsc: int) -> list["Component"]:
         response = self._get(f"/v0/component/lcsc/{lcsc}")
-        return [Component.from_dict(part) for part in response.json()["components"]]
+        return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
     @functools.lru_cache(maxsize=None)
     def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list["Component"]:
         response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
-        return [Component.from_dict(part) for part in response.json()["components"]]
+        return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
     def query_parts(self, method: str, params: BaseParams) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
-        return [Component.from_dict(part) for part in response.json()["components"]]
+        return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
     def fetch_parts(self, params: BaseParams) -> list["Component"]:
         assert params.endpoint
