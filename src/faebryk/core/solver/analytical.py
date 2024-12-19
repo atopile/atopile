@@ -26,6 +26,7 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
     FullyAssociative,
     Mutator,
+    SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
@@ -102,9 +103,10 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
 def remove_unconstrained(mutator: Mutator):
     """
-    Remove all parameteroperables that are not involved in any constrained predicates
+    Remove all expressions that are not involved in any constrained predicates
+    Note: Not possible for Parameters, want to keep those around for REPR
     """
-    objs = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    objs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for obj in objs:
         if get_constrained_expressions_involved_in(obj):
             continue
@@ -366,6 +368,18 @@ def compress_associative(mutator: Mutator):
         )
 
 
+def empty_set(mutator: Mutator):
+    """
+    A is {} -> False
+    """
+    for e in GraphFunctions(mutator.G).nodes_of_type(Is):
+        lits = cast(dict[int, SolverLiteral], e.get_literal_operands())
+        if not lits:
+            continue
+        if any(lit.is_empty() for lit in lits.values()):
+            alias_is_literal_and_check_predicate_eval(e, False, mutator)
+
+
 def fold_literals(mutator: Mutator):
     """
     Tries to do operations on literals or fold expressions.
@@ -582,7 +596,11 @@ def remove_empty_graphs(mutator: Mutator):
     if predicates:
         return
 
-    mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))
+    # TODO implementing graph removal has to be more explicit
+    # for now at least remove expressions
+    mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(Expression))
+    # If there are no predicates, the graph can be removed
+    # mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))
 
 
 def predicate_literal_deduce(mutator: Mutator):

@@ -542,6 +542,7 @@ def fold_subset(
     A ss A -> True
     A is B, A ss B | B non(ex)literal -> repr(B, A)
     A ss ([X]) -> A is ([X])
+    A ss {} -> A is {}
     # predicates
     P ss! True -> P!
     P ss! False -> ¬!P
@@ -549,15 +550,16 @@ def fold_subset(
     # literals
     X ss Y -> True / False
 
-    # TODO A ss B, B ss/is C -> A ss C (transitive)
+    A ss! B, B ss!/is! C -> A ss! C in transitive_subset
     ```
     """
 
     A, B = expr.operands
 
     # A ss ([X]) -> A is ([X])
+    # A ss {} -> A is {}
     b_is = try_extract_literal(B, allow_subset=False)
-    if b_is is not None and b_is.is_single_element():
+    if b_is is not None and (b_is.is_single_element() or b_is.is_empty()):
         new_is = mutator._mutate(expr, Is(mutator.get_copy(A), b_is))
         if expr.constrained:
             new_is.constrain()
@@ -625,13 +627,19 @@ def fold_ge(
     X >= Y -> [True] / [False] / [True, False]
     A >=! X | |X| > 1 -> A >=! X.max()
     X >=! A | |X| > 1 -> X.min() >=! A
+    # uncorrelated
+    A >= B{I|X} -> A >= X.max()
+    B{I|X} >= A -> X.min() >= A
     ```
     """
     left, right = expr.operands
     literal_operands = cast(Sequence[CanonicalNumber], literal_operands)
+    # A >= A
     if if_operands_same_make_true(expr, mutator):
         return
 
+    # X >= Y
+    # A{I|X} >= B{I|Y}
     lits = try_extract_all_literals(expr, lit_type=Quantity_Interval_Disjoint)
     if lits:
         a, b = lits
@@ -660,6 +668,8 @@ def fold_ge(
     # FIXME: only allowed if A uncorrelated B
     # if_operands_same_make_true covers some of this only
 
+    # TODO makes stuff slow for some reason
+    return
     # A >= B{I|X} -> A >= X.max()
     # B{I|X} >= A -> X.min() >= A
     left_lit, right_lit = map(try_extract_literal, (left, right))

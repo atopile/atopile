@@ -57,7 +57,9 @@ from faebryk.libs.util import (
     KeyErrorAmbiguous,
     cast_assert,
     groupby,
+    indented_container,
     not_none,
+    once,
     partition,
     unique_ref,
 )
@@ -100,7 +102,7 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
 
     def __str__(self):
-        return f"{super().__str__()}: Literals: {self.literals}"
+        return f"{super().__str__()}\n" f"Literals: {self.literals}"
 
 
 CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
@@ -122,6 +124,8 @@ CanonicalOperation = (
     | CanonicalSeticOperation
     | CanonicalPredicate
 )
+
+SolverOperatable = ParameterOperatable | SolverLiteral
 
 
 def make_lit(val):
@@ -372,7 +376,7 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
 
 
 def make_if_doesnt_exist[T: Expression](
-    expr_factory: type[T], *operands: ParameterOperatable | SolverLiteral
+    expr_factory: type[T], *operands: SolverOperatable
 ) -> T:
     non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
     assert non_lits
@@ -465,14 +469,17 @@ class Mutator:
     def __init__(
         self,
         G: Graph,
+        print_context: ParameterOperatable.ReprContext,
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self.G = G
         self.repr_map = repr_map or {}
         self.removed = set()
         self.copied = set()
+        self.print_context = print_context
 
         self._old_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
+        self._new_ops = []
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
         return po in self.repr_map
@@ -604,9 +611,23 @@ class Mutator:
 
         assert False
 
+    def create_expression[T: Expression](
+        self,
+        expr_factory: type[T],
+        *operands: SolverOperatable,
+        check_exists: bool = True,
+    ) -> T:
+        if check_exists:
+            expr = make_if_doesnt_exist(expr_factory, *operands)
+        else:
+            expr = expr_factory(*operands)  # type: ignore
+        self._new_ops.append(expr)
+        return expr
+
     def remove(self, *po: ParameterOperatable):
-        if any(p in self.repr_map for p in po):
-            raise ValueError("Object already in repr_map")
+        assert not any(p in self.repr_map for p in po), "Object already in repr_map"
+        root_pos = [p for p in po if p.get_parent() is not None]
+        assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.removed.update(po)
 
     def is_removed(self, po: ParameterOperatable) -> bool:
@@ -631,12 +652,33 @@ class Mutator:
         for o in other_param_op:
             self.get_copy(o)
 
-    @property
+    @once
     def dirty(self) -> bool:
+        non_registered_new_ops = (
+            GraphFunctions(self.G)
+            .nodes_of_type(ParameterOperatable)
+            .difference(self._new_ops, self._old_ops)
+        )
+        # TODO throw
+        if non_registered_new_ops:
+            compact = (
+                op.compact_repr(self.print_context) for op in non_registered_new_ops
+            )
+            if S_LOG:
+                logger.warning(
+                    f"Mutator {self.G} has non-registered new ops: "
+                    f"{indented_container(compact)}."
+                )
+
+        return bool(self.needs_copy or self._new_ops or non_registered_new_ops)
+
+    @property
+    def needs_copy(self) -> bool:
+        # optimization: if just new_ops, no need to copy
         return bool(self.removed or self.repr_map)
 
     def close(self) -> tuple[REPR_MAP, bool]:
-        if not self.dirty:
+        if not self.needs_copy:
             return {
                 po: po
                 for po in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
@@ -659,9 +701,10 @@ class Mutator:
 
 
 class Mutators:
-    def __init__(self, *graphs: Graph):
-        self.mutators = [Mutator(g) for g in graphs]
+    def __init__(self, *graphs: Graph, print_context: ParameterOperatable.ReprContext):
+        self.mutators = [Mutator(g, print_context=print_context) for g in graphs]
         self.result_repr_map = {}
+        self.print_context = print_context
 
     def close(self) -> tuple[Mutator.REPR_MAP, list[Graph], bool]:
         if VERBOSE_TABLE:
@@ -680,7 +723,7 @@ class Mutators:
                         f"Mutator added \n    {'\n    '.join(repr(o) for o in added)}"
                     )
 
-        if not any(m.dirty for m in self.mutators):
+        if not any(m.dirty() for m in self.mutators):
             return {}, [], False
 
         repr_map = {}
@@ -688,7 +731,7 @@ class Mutators:
             repr_map.update(m.close()[0])
         graphs = get_graphs(repr_map.values())
 
-        assert not (set(m.G for m in self.mutators if m.dirty) & set(graphs))
+        assert not (set(m.G for m in self.mutators if m.needs_copy) & set(graphs))
         self.result_repr_map = repr_map
 
         return repr_map, graphs, True
@@ -700,20 +743,9 @@ class Mutators:
     def __iter__(self) -> Iterator[Mutator]:
         return iter(self.mutators)
 
-    def debug_print(self, context_old: ParameterOperatable.ReprContext):
-        if not self.result_repr_map:
-            return
-
-        if getattr(sys, "gettrace", lambda: None)():
-            log = print
-        else:
-            log = logger.debug
-            if not logger.isEnabledFor(logging.DEBUG):
-                return
-
-        table = Table(title="Mutations", show_lines=True)
-        table.add_column("Before")
-        table.add_column("After")
+    @once
+    def get_new_print_context(self) -> ParameterOperatable.ReprContext:
+        context_old = self.print_context
 
         context_new = ParameterOperatable.ReprContext()
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
@@ -725,6 +757,27 @@ class Mutators:
                 d_mapping = context_new.variable_mapping.mapping.get(d, None)
                 if d_mapping is None or d_mapping > s_mapping:
                     context_new.variable_mapping.mapping[d] = s_mapping
+
+        return context_new
+
+    def debug_print(self):
+        if not self.result_repr_map:
+            return
+
+        if getattr(sys, "gettrace", lambda: None)():
+            log = print
+        else:
+            log = logger.debug
+            if not logger.isEnabledFor(logging.DEBUG):
+                return
+
+        context_old = self.print_context
+        context_new = self.get_new_print_context()
+
+        table = Table(title="Mutations", show_lines=True)
+        table.add_column("Before")
+        table.add_column("After")
+
         graphs = get_graphs(self.result_repr_map.values())
 
         new_operatables = {
@@ -836,14 +889,21 @@ class Mutators:
         for original_obj in repr_maps[0].keys():
             chain_end = original_obj
             chain_interrupted = False
+            i = 0
             for m in repr_maps:
                 # CONSIDER: I think we can assert this
                 assert isinstance(chain_end, ParameterOperatable)
                 if chain_end not in m:
-                    logger.debug(f"chain_end {original_obj} -> {chain_end} interrupted")
+                    assert (
+                        original_obj.get_parent() is None
+                    ), "should never remove root parameters"
+                    logger.debug(
+                        f"chain_end {original_obj} -> {chain_end} interrupted at {i}"
+                    )
                     chain_interrupted = True
                     break
                 chain_end = m[chain_end]
+                i += 1
             if not chain_interrupted:
                 concatenated[original_obj] = chain_end
         return concatenated
@@ -872,6 +932,9 @@ class Mutators:
 
         def __contains__(self, param: ParameterOperatable) -> bool:
             return param in self.repr_map
+
+        def __repr__(self) -> str:
+            return f"ReprMap({self.repr_map})"
 
     @staticmethod
     def create_concat_repr_map(*repr_maps: Mutator.REPR_MAP) -> ReprMap:
