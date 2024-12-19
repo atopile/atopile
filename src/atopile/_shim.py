@@ -17,7 +17,7 @@ from atopile import address
 from faebryk.core.trait import TraitImpl, TraitNotFound
 from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.util import cast_assert, write_only_property
+from faebryk.libs.util import write_only_property
 
 log = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class has_ato_cmp_attrs(L.Module.TraitT.decless()):
         self.pinmap = {}
 
     def on_obj_set(self):
-        self.module = cast_assert(L.Module, self.obj)
+        self.module = self.get_obj(L.Module)
         self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
         self.module.add(
             F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
