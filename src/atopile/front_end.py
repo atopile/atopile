@@ -394,20 +394,13 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         context = Context(file_path=file_path, scope_ctx=ctx, refs={})
         for ref, (item, item_ctx) in surveyor.visit(ctx):
             if ref in context.refs:
-                ex = errors.UserKeyError.from_ctx(item_ctx, f'"{ref}" already declared')
-                # Downgrade the error if we're just importing
-                # the same thing multiple times
-                first_of_dup = context.refs[ref]
-                if (
-                    isinstance(first_of_dup, Context.ImportPlaceholder)
-                    and isinstance(item, Context.ImportPlaceholder)
-                    and first_of_dup.ref == item.ref
-                    and first_of_dup.from_path == item.from_path
-                ):
+                # Downgrade the error in case we're shadowing things
                     with downgrade(errors.UserKeyError):
-                        raise ex
-                else:
-                    raise ex
+                    raise errors.UserKeyError.from_ctx(
+                        item_ctx,
+                        f'"{ref}" already declared. Shadowing original.'
+                        " In the future this may be an error",
+                    )
             context.refs[ref] = item
         return context
 
