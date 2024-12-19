@@ -543,9 +543,13 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         def _format_interval(r: Numeric_Interval[NumericT]) -> str:
             if r._min == r._max:
                 return f"[{self._format_number(r._min)}]"
-            center, rel = r.as_center_rel()
-            if rel < 1:
-                return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+            try:
+                center, rel = r.as_center_rel()
+                if rel < 1:
+                    return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+            except ZeroDivisionError:
+                pass
+
             return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
 
         out = ", ".join(_format_interval(r) for r in self._intervals.intervals)

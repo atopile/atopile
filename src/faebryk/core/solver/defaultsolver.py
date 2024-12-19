@@ -17,6 +17,7 @@ from faebryk.core.solver.analytical import (
     compress_associative,
     convert_inequality_with_literal_to_subset,
     convert_operable_aliased_to_single_into_literal,
+    empty_set,
     fold_literals,
     merge_intersect_subsets,
     predicate_literal_deduce,
@@ -128,6 +129,7 @@ class DefaultSolver(Solver):
                 "Predicate unconstrained operands deduce",
                 predicate_unconstrained_operands_deduce,
             ),
+            ("Empty set", empty_set),
             ("Transitive subset", transitive_subset),
             ("Remove empty graphs", remove_empty_graphs),
         ]
@@ -153,7 +155,7 @@ class DefaultSolver(Solver):
                     f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
                     f" G:{len(graphs)}"
                 )
-            mutators = Mutators(*graphs)
+            mutators = Mutators(*graphs, print_context=print_context_)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
             # TODO remove
@@ -162,13 +164,13 @@ class DefaultSolver(Solver):
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} "
                     f"G:{len(graphs)}"
                 )
-                print_context_ = mutators.debug_print(print_context_)
+                print_context_ = mutators.debug_print()
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
 
         any_dirty = True
         iterno = -1
-        total_repr_map: Mutator.REPR_MAP = {}
+        total_repr_map = Mutators.ReprMap({})
         graphs = [g]
 
         # subset specific
@@ -208,10 +210,13 @@ class DefaultSolver(Solver):
 
             any_dirty = any(iteration_dirty.values())
 
-            total_repr_map = Mutators.concat_repr_maps(
-                *([total_repr_map] if total_repr_map else []),
+            total_repr_map = Mutators.create_concat_repr_map(
+                *([total_repr_map.repr_map] if iterno > 0 else []),
                 *iteration_repr_maps.values(),
             )
+
+            if not any_dirty:
+                continue
 
             # subset -------------------------------------------------------------------
             if iterno == 0:
@@ -225,14 +230,13 @@ class DefaultSolver(Solver):
 
             # check which subset literals have changed for our old paramops
             subset_dirty = False
-            total_repr_map_obj = Mutators.create_concat_repr_map(total_repr_map)
             param_ops_subset_literals = {
                 po: lit
                 for po, lit in param_ops_subset_literals.items()
-                if po in total_repr_map_obj
+                if po in total_repr_map
             }
             for po in param_ops_subset_literals:
-                new_subset_literal = total_repr_map_obj.try_get_literal(
+                new_subset_literal = total_repr_map.try_get_literal(
                     po, allow_subset=True
                 )
                 if new_subset_literal != param_ops_subset_literals[po]:
@@ -263,8 +267,8 @@ class DefaultSolver(Solver):
                 graphs = algo_graphs
                 iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
 
-            total_repr_map = Mutators.concat_repr_maps(
-                *([total_repr_map] if total_repr_map else []),
+            total_repr_map = Mutators.create_concat_repr_map(
+                total_repr_map.repr_map,
                 *iteration_repr_maps.values(),
             )
             # --------------------------------------------------------------------------
@@ -277,7 +281,7 @@ class DefaultSolver(Solver):
                 f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
                 f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
-        return Mutators.create_concat_repr_map(total_repr_map), print_context_
+        return total_repr_map, print_context_
 
     @override
     def get_any_single(
