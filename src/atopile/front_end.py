@@ -344,7 +344,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
         self._traceback_stack = StackList[ParserRuleContext]()
-        self._traceback_map = FuncDict[ap.BlockContext, list[ParserRuleContext]]()
         # TODO: add tracebacks if we keep this
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
@@ -407,16 +406,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
         try:
             return self._init_node(context.scope_ctx, ref)
-        except* errors.UserException as ex:
-            for e in ex.exceptions:
-                assert isinstance(e, errors.UserException)
-                if e.traceback is None:
-                    ctx = e.origin
-                    while ctx is not None:
-                        if traceback := self._traceback_map.get(ctx):
-                            e.traceback = traceback
-                            break
-                        ctx = ctx.parentCtx
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -1227,6 +1216,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise errors.UserException.from_ctx(
                     tol_ctx,
                     "Can't calculate tolerance percentage of a nominal value of zero",
+                    traceback=self._traceback_stack,
                 )
 
             # Calculate tolerance value from percentage/ppm
