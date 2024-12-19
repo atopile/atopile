@@ -10,6 +10,7 @@ from typing import Generator, Iterable
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import T2Netlist
 from faebryk.libs.library import L
@@ -104,19 +105,26 @@ class can_represent_kicad_footprint_via_attached_component(
         )
 
 
-def add_or_get_net(interface: F.Electrical):
-    nets = {
-        p[0]
-        for mif in interface.get_connected()
-        if (p := mif.get_parent()) is not None and isinstance(p[0], F.Net)
-    }
-    if not nets:
-        net = F.Net()
-        net.part_of.connect(interface)
-        return net
-    if len(nets) > 1:
-        raise KeyErrorAmbiguous(list(nets), "Multiple nets interconnected")
-    return next(iter(nets))
+def add_or_get_nets(*interfaces: F.Electrical):
+    buses = ModuleInterface._group_into_buses(interfaces)
+    nets_out = set()
+
+    for bus_repr, connected_mifs in buses.items():
+        nets_on_bus = {
+            net
+            for mif in connected_mifs
+            if (net := F.Net.from_part_of_mif(mif)) is not None
+        }
+        if not nets_on_bus:
+            net = F.Net()
+            net.part_of.connect(bus_repr)
+            nets_on_bus = {net}
+        if len(nets_on_bus) > 1:
+            raise KeyErrorAmbiguous(list(nets_on_bus), "Multiple nets interconnected")
+
+        nets_out |= nets_on_bus
+
+    return nets_out
 
 
 def attach_nets_and_kicad_info(G: Graph):
@@ -139,12 +147,14 @@ def attach_nets_and_kicad_info(G: Graph):
             continue
         fp.add(can_represent_kicad_footprint_via_attached_component(n, G))
 
-    nets = []
-    for fp in node_fps.values():
-        for mif in fp.get_children(direct_only=True, types=F.Pad):
-            nets.append(add_or_get_net(mif.net))
+    mifs = [
+        mif.net
+        for fp in node_fps.values()
+        for mif in fp.get_children(direct_only=True, types=F.Pad)
+    ]
+    nets = add_or_get_nets(*mifs)
 
-    generate_net_names(nets)
+    generate_net_names(list(nets))
 
 
 @dataclass
