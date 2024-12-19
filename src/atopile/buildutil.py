@@ -93,8 +93,12 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     # Check all the solutions are valid ----------------------------------------
     # FIXME: this is a hack to force rechecking of the graph
     # after we've shoved in user data
-    some_param = first(app.get_children(False, types=(Parameter)))
-    solver.inspect_get_known_supersets(some_param)
+    try:
+        some_param = first(app.get_children(False, types=(Parameter)))
+    except ValueError:
+        pass
+    else:
+        solver.inspect_get_known_supersets(some_param)
 
     # Load PCB -----------------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
