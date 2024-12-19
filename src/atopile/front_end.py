@@ -395,7 +395,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         for ref, (item, item_ctx) in surveyor.visit(ctx):
             if ref in context.refs:
                 # Downgrade the error in case we're shadowing things
-                    with downgrade(errors.UserKeyError):
+                with downgrade(errors.UserKeyError):
                     raise errors.UserKeyError.from_ctx(
                         item_ctx,
                         f'"{ref}" already declared. Shadowing original.'
@@ -464,9 +464,17 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         self._scopes = FuncDict[ParserRuleContext, Context]()
         self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
+        self._traceback_stack = StackList[ParserRuleContext]()
+        self._traceback_map = FuncDict[ap.BlockContext, list[ParserRuleContext]]()
+        # TODO: add tracebacks if we keep this
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
-            fab_param.Parameter, tuple[Range | Single | None, ParserRuleContext | None]
+            fab_param.Parameter,
+            tuple[
+                Range | Single | None,
+                ParserRuleContext | None,
+                list[ParserRuleContext] | None,
+            ],
         ]()
         self.search_paths: list[os.PathLike] = []
 
@@ -520,6 +528,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             )
         try:
             return self._init_node(context.scope_ctx, ref)
+        except *errors.UserException as ex:
+            for e in ex.exceptions:
+                assert isinstance(e, errors.UserException)
+                if e.traceback is None:
+                    ctx = e.origin
+                    while ctx is not None:
+                        if traceback := self._traceback_map.get(ctx):
+                            e.traceback = traceback
+                            break
+                        ctx = ctx.parentCtx
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -529,7 +547,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
-            for param, (value, ctx) in self._param_assignments.items():
+            for param, (value, ctx, traceback) in self._param_assignments.items():
                 with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
                         ex = errors.UserKeyError.from_ctx(
@@ -543,6 +561,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                                     ctx,
                                     "Parameter declared but never assigned."
                                     " In the future this will be an error.",
+                                    traceback=traceback,
                                 )
                             continue
 
@@ -765,8 +784,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def _new_node(
         self,
         item: ap.BlockdefContext | Type[L.Node],
-        promised_supers: list[ap.BlockdefContext] | None = None,
-    ) -> tuple[L.Node, list[ap.BlockdefContext]]:
+        promised_supers: list[ap.BlockdefContext],
+        from_ctxs: list[ParserRuleContext],
+    ) -> tuple[L.Node, list[ap.BlockdefContext], list[ParserRuleContext]]:
         """
         Kind of analogous to __new__ in Python, except that it's a factory
 
@@ -778,9 +798,6 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         isn't already known, attaching the __atopile_src_ctx__ attribute to the new
         class.
         """
-        if promised_supers is None:
-            promised_supers = []
-
         if isinstance(item, type) and issubclass(item, L.Node):
             super_class = item
             for super_ctx in promised_supers:
@@ -807,7 +824,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(), promised_supers
+            return super_class(), promised_supers, from_ctxs
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -831,27 +848,41 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             # Descend into building the superclass. We've got no information
             # on when the super-chain will be resolved, so we need to promise
             # that this current blockdef will be visited as part of the init
-            new_node, supers_ = self._new_node(base_class, [item] + promised_supers)
+            new_node, supers_, from_ctxs_ = self._new_node(
+                base_class,
+                promised_supers=[item] + promised_supers,
+                from_ctxs=from_ctxs + [super_ctx] if super_ctx else from_ctxs,
+            )
 
             # HACK: promised_supers is falsey a hack way to check
             # that we're only looking at the top-node w/ promised supers
             if not promised_supers and (block_type.COMPONENT() or block_type.MODULE()):
                 new_node.add(has_ato_cmp_attrs())
 
-            return new_node, supers_
+            return new_node, supers_, from_ctxs_
 
         # This should never happen
         raise ValueError(f"Unknown item type {item}")
 
     def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
-        new_node, promised_supers = self._new_node(
-            self._get_referenced_class(stmt_ctx, ref)
+        new_node, promised_supers, from_ctxs = self._new_node(
+            self._get_referenced_class(stmt_ctx, ref),
+            promised_supers=[],
+            from_ctxs=[stmt_ctx],
         )
 
-        with self._node_stack.enter(new_node):
-            for super_ctx in promised_supers:
-                self.visitBlock(super_ctx.block())
+        backup_ctx_stack = self._traceback_stack.copy()
+        self._traceback_stack.extend(from_ctxs)
+        try:
+            with self._node_stack.enter(new_node):
+                for super_ctx in promised_supers:
+                    self.visitBlock(super_ctx.block())
+                    self._traceback_stack.pop()
+        finally:
+            # Guarentee that we're gonna end up
+            # with the original context stack
+            self._traceback_stack = backup_ctx_stack
 
         new_node.add(from_dsl(stmt_ctx))
         return new_node
@@ -957,7 +988,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                         f" with explicit units {provided_unit}.",
                     )
             param = self._ensure_param(target, assigned_name, value.units, ctx)
-            self._param_assignments[param] = (value, ctx)
+            self._param_assignments[param] = (value, ctx, self._traceback_stack)
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
@@ -1358,7 +1389,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     "because it's already defined",
                 )
         else:
-            self._param_assignments[param] = (None, ctx)
+            self._param_assignments[param] = (None, ctx, self._traceback_stack)
 
         return KeyOptMap.empty()
 
