@@ -241,14 +241,6 @@ class Component:
 
     @functools.cached_property
     def attribute_literals(self) -> dict[str, P_Set | None]:
-        print(self.attributes)
-        print(self.attributes["resistance"])
-        print(
-            P_Set.deserialize(
-                self.attributes["resistance"],
-            )
-        )
-
         def deserialize(k, v):
             if v is None:
                 return None
