@@ -99,127 +99,6 @@ class BasicsMixin:
         raise errors.UserException.from_ctx(ctx, f"Expected a boolean value, got {raw}")
 
 
-class PhysicalValuesMixin:
-    @staticmethod
-    def _get_unit_from_ctx(ctx: ParserRuleContext) -> UnitType:
-        """Return a pint unit from a context."""
-        unit_str = ctx.getText()
-        try:
-            return P.Unit(unit_str)
-        except UndefinedUnitError as ex:
-            raise errors.UserUnknownUnitError.from_ctx(
-                ctx, f"Unknown unit '{unit_str}'"
-            ) from ex
-
-    def visitLiteral_physical(
-        self, ctx: ap.Literal_physicalContext
-    ) -> Quantity_Singleton | Quantity_Interval:
-        """Yield a physical value from a physical context."""
-        if ctx.quantity():
-            qty = self.visitQuantity(ctx.quantity())
-            value = Single(qty)
-        elif ctx.bilateral_quantity():
-            value = self.visitBilateral_quantity(ctx.bilateral_quantity())
-        elif ctx.bound_quantity():
-            value = self.visitBound_quantity(ctx.bound_quantity())
-        else:
-            # this should be protected because it shouldn't be parseable
-            raise ValueError
-        return value
-
-    def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
-        """Yield a physical value from an implicit quantity context."""
-        raw: str = ctx.NUMBER().getText()
-        if raw.startswith("0x"):
-            value = int(raw, 16)
-        else:
-            value = float(raw)
-
-        # Ignore the positive unary operator
-        if ctx.MINUS():
-            value = -value
-
-        if unit_ctx := ctx.name():
-            unit = self._get_unit_from_ctx(unit_ctx)
-        else:
-            unit = dimensionless
-
-        return Quantity(value, unit)  # type: ignore
-
-    def visitBilateral_quantity(
-        self, ctx: ap.Bilateral_quantityContext
-    ) -> Quantity_Interval:
-        """Yield a physical value from a bilateral quantity context."""
-        nominal_qty = self.visitQuantity(ctx.quantity())
-
-        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
-        tol_num = float(tol_ctx.NUMBER().getText())
-
-        # Handle proportional tolerances
-        if tol_ctx.PERCENT():
-            tol_divider = 100
-        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
-            tol_divider = 1e6
-        else:
-            tol_divider = None
-
-        if tol_divider:
-            if nominal_qty == 0:
-                raise errors.UserException.from_ctx(
-                    tol_ctx,
-                    "Can't calculate tolerance percentage of a nominal value of zero",
-                )
-
-            # Calculate tolerance value from percentage/ppm
-            tol_value = tol_num / tol_divider
-            return Range.from_center_rel(nominal_qty, tol_value)
-
-        # Ensure the tolerance has a unit
-        if tol_name := tol_ctx.name():
-            # In this case there's a named unit on the tolerance itself
-            tol_qty = tol_num * self._get_unit_from_ctx(tol_name)
-        elif nominal_qty.unitless:
-            tol_qty = tol_num * dimensionless
-        else:
-            tol_qty = tol_num * nominal_qty.units
-
-        # Ensure units on the nominal quantity
-        if nominal_qty.unitless:
-            nominal_qty = nominal_qty * tol_qty.units
-
-        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
-        if not nominal_qty.is_compatible_with(tol_qty):
-            raise errors.UserTypeError.from_ctx(
-                tol_name,
-                f"Tolerance unit '{tol_qty.units}' is not dimensionally"
-                f" compatible with nominal unit '{nominal_qty.units}'",
-            )
-
-        return Range.from_center(nominal_qty, tol_qty)
-
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
-        """Yield a physical value from a bound quantity context."""
-
-        start, end = map(self.visitQuantity, ctx.quantity())
-
-        # If only one of them has a unit, take the unit from the one which does
-        if start.unitless and not end.unitless:
-            start = start * end.units
-        elif not start.unitless and end.unitless:
-            end = end * start.units
-
-        elif not start.is_compatible_with(end):
-            # If they've both got units, let the RangedValue handle
-            # the dimensional compatibility
-            raise errors.UserTypeError.from_ctx(
-                ctx,
-                f"Tolerance unit '{end.units}' is not dimensionally"
-                f" compatible with nominal unit '{start.units}'",
-            )
-
-        return Range(start, end)
-
-
 class NOTHING:
     """A sentinel object to represent a "nothing" return value."""
 
@@ -445,7 +324,7 @@ _declaration_domain_to_unit = {
 }
 
 
-class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
+class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
     of Fixham Harbour (in earlier episodes, he was based in Bobsville). Recognizable
@@ -528,7 +407,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             )
         try:
             return self._init_node(context.scope_ctx, ref)
-        except *errors.UserException as ex:
+        except* errors.UserException as ex:
             for e in ex.exceptions:
                 assert isinstance(e, errors.UserException)
                 if e.traceback is None:
@@ -1280,10 +1159,124 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         raise ValueError(f"Unhandled atom type {ctx}")
 
+    @staticmethod
+    def _get_unit_from_ctx(ctx: ParserRuleContext) -> UnitType:
+        """Return a pint unit from a context."""
+        unit_str = ctx.getText()
+        try:
+            return P.Unit(unit_str)
+        except UndefinedUnitError as ex:
+            raise errors.UserUnknownUnitError.from_ctx(
+                ctx, f"Unknown unit '{unit_str}'"
+            ) from ex
+
     def visitLiteral_physical(
         self, ctx: ap.Literal_physicalContext
     ) -> Quantity_Singleton | Quantity_Interval:
-        return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
+        """Yield a physical value from a physical context."""
+        if ctx.quantity():
+            qty = self.visitQuantity(ctx.quantity())
+            value = Single(qty)
+        elif ctx.bilateral_quantity():
+            value = self.visitBilateral_quantity(ctx.bilateral_quantity())
+        elif ctx.bound_quantity():
+            value = self.visitBound_quantity(ctx.bound_quantity())
+        else:
+            # this should be protected because it shouldn't be parseable
+            raise ValueError
+        return value
+
+    def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
+        """Yield a physical value from an implicit quantity context."""
+        raw: str = ctx.NUMBER().getText()
+        if raw.startswith("0x"):
+            value = int(raw, 16)
+        else:
+            value = float(raw)
+
+        # Ignore the positive unary operator
+        if ctx.MINUS():
+            value = -value
+
+        if unit_ctx := ctx.name():
+            unit = self._get_unit_from_ctx(unit_ctx)
+        else:
+            unit = dimensionless
+
+        return Quantity(value, unit)  # type: ignore
+
+    def visitBilateral_quantity(
+        self, ctx: ap.Bilateral_quantityContext
+    ) -> Quantity_Interval:
+        """Yield a physical value from a bilateral quantity context."""
+        nominal_qty = self.visitQuantity(ctx.quantity())
+
+        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
+        tol_num = float(tol_ctx.NUMBER().getText())
+
+        # Handle proportional tolerances
+        if tol_ctx.PERCENT():
+            tol_divider = 100
+        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
+            tol_divider = 1e6
+        else:
+            tol_divider = None
+
+        if tol_divider:
+            if nominal_qty == 0:
+                raise errors.UserException.from_ctx(
+                    tol_ctx,
+                    "Can't calculate tolerance percentage of a nominal value of zero",
+                )
+
+            # Calculate tolerance value from percentage/ppm
+            tol_value = tol_num / tol_divider
+            return Range.from_center_rel(nominal_qty, tol_value)
+
+        # Ensure the tolerance has a unit
+        if tol_name := tol_ctx.name():
+            # In this case there's a named unit on the tolerance itself
+            tol_qty = tol_num * self._get_unit_from_ctx(tol_name)
+        elif nominal_qty.unitless:
+            tol_qty = tol_num * dimensionless
+        else:
+            tol_qty = tol_num * nominal_qty.units
+
+        # Ensure units on the nominal quantity
+        if nominal_qty.unitless:
+            nominal_qty = nominal_qty * tol_qty.units
+
+        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
+        if not nominal_qty.is_compatible_with(tol_qty):
+            raise errors.UserTypeError.from_ctx(
+                tol_name,
+                f"Tolerance unit '{tol_qty.units}' is not dimensionally"
+                f" compatible with nominal unit '{nominal_qty.units}'",
+            )
+
+        return Range.from_center(nominal_qty, tol_qty)
+
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
+        """Yield a physical value from a bound quantity context."""
+
+        start, end = map(self.visitQuantity, ctx.quantity())
+
+        # If only one of them has a unit, take the unit from the one which does
+        if start.unitless and not end.unitless:
+            start = start * end.units
+        elif not start.unitless and end.unitless:
+            end = end * start.units
+
+        elif not start.is_compatible_with(end):
+            # If they've both got units, let the RangedValue handle
+            # the dimensional compatibility
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Tolerance unit '{end.units}' is not dimensionally"
+                f" compatible with nominal unit '{start.units}'",
+            )
+
+        return Range(start, end)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
