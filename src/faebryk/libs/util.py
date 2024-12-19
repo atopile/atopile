@@ -1161,8 +1161,12 @@ class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
             self._keys[hashed_key].append(key)
             self._values[hashed_key].append(value)
 
-    def __contains__(self, item: T):
-        return item in self._keys[self._hasher(item)]
+    def __contains__(self, item: object):
+        try:
+            hashed = self._hasher(item)  # type: ignore
+        except TypeError:
+            return False
+        return item in self._keys[hashed]
 
     def keys(self) -> Iterator[T]:
         yield from chain.from_iterable(self._keys.values())

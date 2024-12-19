@@ -405,7 +405,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
             )
         try:
-            return self._init_node(context.scope_ctx, ref)
+            return self._init_node(
+                self._get_referenced_class(context.scope_ctx, ref), None
+            )
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -743,12 +745,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # This should never happen
         raise ValueError(f"Unknown item type {item}")
 
-    def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
+    def _init_node(
+        self,
+        node_type: ap.BlockdefContext | Type[L.Node],
+        stmt_ctx: ParserRuleContext | None,
+    ) -> L.Node:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
         new_node, promised_supers, from_ctxs = self._new_node(
-            self._get_referenced_class(stmt_ctx, ref),
+            node_type,
             promised_supers=[],
-            from_ctxs=[stmt_ctx],
+            from_ctxs=[stmt_ctx] if stmt_ctx is not None else [],
         )
 
         backup_ctx_stack = self._traceback_stack.copy()
@@ -763,7 +769,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # with the original context stack
             self._traceback_stack = backup_ctx_stack
 
-        new_node.add(from_dsl(stmt_ctx))
+        if stmt_ctx is not None:
+            new_node.add(from_dsl(stmt_ctx))
         return new_node
 
     def _get_or_promise_param(
@@ -851,7 +858,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
 
             try:
-                new_node = self._init_node(ctx, ref)
+                new_node = self._init_node(self._get_referenced_class(ctx, ref), ctx)
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name)
@@ -1034,18 +1041,19 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise ValueError(f"Unhandled connectable type {ctx}")
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
-        from_, to = map(self.visitName_or_attr, ctx.name_or_attr())
-        node = self._get_referenced_node(from_, ctx)
-        if not isinstance(node, L.Module):
+        from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
+        from_node = self._get_referenced_node(from_ref, ctx)
+        if not isinstance(from_node, L.Module):
             raise errors.UserTypeError.from_ctx(
                 ctx,
-                f"Can't specialize {node}",
+                f"Can't specialize {from_node}",
                 traceback=self._traceback_stack,
             )
 
-        narrow = self._init_node(ctx, to)
-        assert isinstance(narrow, L.Module)
-        node.specialize(narrow)
+        # TODO: consider extending this w/ the ability to specialize to an instance
+        specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref), ctx)
+        assert isinstance(specialized_node, L.Module)
+        from_node.specialize(specialized_node)
         return KeyOptMap.empty()
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):

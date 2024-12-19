@@ -242,7 +242,7 @@ def test_import_ato(bob: Bob, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "module,count", [("A", 1), ("B", 2), ("C", 3), ("D", 4), ("E", 5)]
+    "module,count", [("A", 0), ("B", 1), ("C", 2), ("D", 3), ("E", 4)]
 )
 def test_traceback(bob: Bob, module: str, count: int):
     text = dedent(
