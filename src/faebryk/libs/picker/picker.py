@@ -3,6 +3,7 @@
 
 import logging
 import pprint
+import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -314,7 +315,10 @@ def check_missing_picks(module: Module):
 
 
 def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
-    from faebryk.libs.picker.api.common import api_filter_by_module_params_and_attach
+    from faebryk.libs.picker.api.common import (
+        api_filter_by_module_params_and_attach,
+        pick_atomically,
+    )
     from faebryk.libs.picker.api.picker_lib import api_get_candidates
 
     if LOG_PICK_SOLVE:
@@ -322,16 +326,61 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
         names = sorted(p.get_full_name(types=True) for p in pickable_modules)
         logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
 
-    candidates = api_get_candidates(tree, solver)
+    # TODO implement backtracking
 
-    # TODO implement order (by heuristic)
+    logger.info("Getting part candidates for modules")
+    candidates_now = time.time()
+    candidates = api_get_candidates(tree, solver)
+    logger.info(f"Got candidates in {time.time() - candidates_now:.3f}s")
+
+    now = time.time()
+
+    # heuristic: order by candidates count
     sorted_candidates = sorted(candidates.items(), key=lambda x: len(x[1]))
+
+    if LOG_PICK_SOLVE:
+        logger.info(
+            "Candidates: \n\t"
+            f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in sorted_candidates)}"
+        )
+
+    # heuristic: pick all single part modules in one go
+    single_part_modules = [
+        (module, parts[0]) for module, parts in sorted_candidates if len(parts) == 1
+    ]
+
+    ok = pick_atomically(single_part_modules, solver)
+    if not ok:
+        raise PickError(
+            f"Could not find compatible parts for single-candidate modules: "
+            f"{single_part_modules}",
+            single_part_modules[0][0],  # TODO
+        )
+    for m, _ in single_part_modules:
+        progress.advance(m)
+
+    sorted_candidates = [
+        (module, parts) for module, parts in sorted_candidates if len(parts) != 1
+    ]
+
+    # heuristic: try pick first candidate for rest
+    ok = pick_atomically([(m, p[0]) for m, p in sorted_candidates], solver)
+    if ok:
+        for m, _ in sorted_candidates:
+            progress.advance(m)
+        logger.info(f"Fast-Picked parts in {time.time() - now:.3f}s")
+        return
+
+    logger.warning("Could not pick all parts atomically, picking one by one (slow)")
+    #
+
     for module, parts in sorted_candidates:
         api_filter_by_module_params_and_attach(module, parts, solver)
         progress.advance(module)
 
     if LOG_PICK_SOLVE:
         logger.info("Done picking")
+    logger.info(f"Picked parts in {time.time() - now:.3f}s")
 
 
 # TODO should be a Picker

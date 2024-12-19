@@ -6,7 +6,7 @@ import pytest
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, Component
+from atopile.front_end import Bob, has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
@@ -38,7 +38,6 @@ def test_empty_module_build(bob: Bob):
     assert isinstance(node, bob.modules[":A"])
 
 
-@pytest.mark.skip
 def test_simple_module_build(bob: Bob):
     text = dedent(
         """
@@ -55,7 +54,6 @@ def test_simple_module_build(bob: Bob):
     # TODO: check value
 
 
-@pytest.mark.skip
 def test_arithmetic(bob: Bob):
     text = dedent(
         """
@@ -88,7 +86,7 @@ def test_simple_new(bob: Bob):
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert isinstance(child, Component)
+    assert child.has_trait(has_ato_cmp_attrs)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)

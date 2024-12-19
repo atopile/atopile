@@ -14,25 +14,19 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
+from faebryk.core.trait import TraitImpl, TraitNotFound
 from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.util import has_attr_or_property, write_only_property
+from faebryk.libs.util import cast_assert, write_only_property
 
 log = logging.getLogger(__name__)
 
 
-def _alias_is(lh, rh):
-    try:
-        return lh.alias_is(rh)
-    except AttributeError:
-        return lh.merge(rh)
-
-
-shim_map: dict[address.AddrStr, tuple[Type[L.Module], str]] = {}
+shim_map: dict[address.AddrStr, tuple[Type[L.Node], str]] = {}
 
 
 def _register_shim(addr: str | address.AddrStr, preferred: str):
-    def _wrapper(cls: Type[L.Module]):
+    def _wrapper[T: Type[L.Node]](cls: T) -> T:
         shim_map[address.AddrStr(addr)] = cls, preferred
         return cls
 
@@ -47,7 +41,7 @@ def _is_int(name: str) -> bool:
     return True
 
 
-class _has_kicad_footprint_name_defined(F.has_footprint_impl):
+class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
     """
     This trait defers footprint creation until it's needed,
     which means we can construct the underlying pin map
@@ -81,7 +75,7 @@ class _has_kicad_footprint_name_defined(F.has_footprint_impl):
             return fp
 
     def handle_duplicate(
-        self, old: "_has_kicad_footprint_name_defined", _: fab_param.Node
+        self, old: "has_local_kicad_footprint_named_defined", _: fab_param.Node
     ) -> bool:
         if old._try_get_footprint():
             raise RuntimeError("Too late to set footprint")
@@ -93,18 +87,17 @@ class _has_kicad_footprint_name_defined(F.has_footprint_impl):
         return False
 
 
-class Component(L.Module):
+class has_ato_cmp_attrs(L.Module.TraitT.decless()):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap = {}
 
-    @L.rt_field
-    def attach_to_footprint(self):
-        return F.can_attach_to_footprint_via_pinmap(self.pinmap)
-
-    @L.rt_field
-    def has_designator_prefix(self):
-        return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
+    def on_obj_set(self):
+        self.module = cast_assert(L.Module, self.obj)
+        self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
+        self.module.add(
+            F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
+        )
 
     def add_pin(self, name: str) -> F.Electrical:
         if _is_int(name):
@@ -112,22 +105,43 @@ class Component(L.Module):
         else:
             py_name = name
 
-        # TODO: @v0.4: remove this
-        if has_attr_or_property(self, py_name):
-            log.warning(
-                f"Pin {name} already exists, skipping."
-                " In the future this will be an error."
-            )
-            mif = getattr(self, py_name)
-        elif py_name in self.runtime:
-            mif = self.runtime[py_name]
-        else:
-            mif = self.add(F.Electrical(), name=py_name)
+        mif = self.module.add(F.Electrical(), name=py_name)
 
         self.pinmap[name] = mif
         return mif
 
+    def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
+        # Don't replace the existing ato trait on addition
+        return False
+
+
+# FIXME: this would ideally be some kinda of mixin,
+# however, we can't have multiple bases for Nodes
+class GlobalShims(L.Module):
     @write_only_property
+    def lcsc_id(self, value: str):
+        # handles duplicates gracefully
+        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+
+    @write_only_property
+    def manufacturer(self, value: str):
+        # handles duplicates gracefully
+        self.add(
+            F.has_descriptive_properties_defined(
+                {DescriptiveProperties.manufacturer: value}
+            )
+        )
+
+    @property
+    def mpn(self) -> str:
+        try:
+            return self.get_trait(F.has_descriptive_properties).get_properties()[
+                DescriptiveProperties.partno
+            ]
+        except (TraitNotFound, KeyError):
+            raise AttributeError(name="mpn", obj=self)
+
+    @mpn.setter
     def mpn(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -143,41 +157,20 @@ class Component(L.Module):
                 )
 
     @write_only_property
-    def footprint(self, value: str):
-        self.add(_has_kicad_footprint_name_defined(value, self.pinmap))
-
-
-# FIXME: this would ideally be some kinda of mixin,
-# however, we can't have multiple bases for Nodes
-class ModuleShims(L.Module):
-    @write_only_property
-    def lcsc_id(self, value: str):
-        # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-
-    @write_only_property
-    def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
-
-    @write_only_property
-    def mpn(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
-    @write_only_property
     def designator_prefix(self, value: str):
         self.add(F.has_designator_prefix_defined(value))
 
     @write_only_property
     def package(self, value: str):
         self.add(F.has_package_requirement(value))
+
+    @write_only_property
+    def footprint(self, value: str):
+        self.add(
+            has_local_kicad_footprint_named_defined(
+                value, self.get_trait(has_ato_cmp_attrs).pinmap
+            )
+        )
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
@@ -193,17 +186,13 @@ class _ShimResistor(F.Resistor):
 
     @value.setter
     def value(self, value: L.Range):
-        _alias_is(self.resistance, value)
+        self.resistance.constrain_subset(value)
 
     @write_only_property
     def footprint(self, value: str):
         if value.startswith("R"):
             value = value[1:]
-        self.package = value
-
-    @write_only_property
-    def package(self, value: str):
-        self.add(F.has_package_requirement(value))
+        GlobalShims.package.fset(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -238,17 +227,13 @@ class _ShimCapacitor(F.Capacitor):
 
     @value.setter
     def value(self, value: L.Range):
-        _alias_is(self.capacitance, value)
+        self.capacitance.constrain_subset(value)
 
     @write_only_property
     def footprint(self, value: str):
         if value.startswith("C"):
             value = value[1:]
-        self.package = value
-
-    @write_only_property
-    def package(self, value: str):
-        self.add(F.has_package_requirement(value))
+        GlobalShims.package.fset(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -272,6 +257,27 @@ class _ShimCapacitor(F.Capacitor):
             return trait.power
         else:
             return self.add(self.has_power()).power
+
+
+@_register_shim("generics/inductors.ato:Inductor", "import Inductor")
+class _ShimInductor(F.Inductor):
+    """Temporary shim to translate inductors."""
+
+    @property
+    def p1(self) -> F.Electrical:
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        return self.unnamed[1]
+
+    @property
+    def _1(self) -> F.Electrical:
+        return self.unnamed[0]
+
+    @property
+    def _2(self) -> F.Electrical:
+        return self.unnamed[1]
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")

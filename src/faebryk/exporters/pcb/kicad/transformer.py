@@ -397,7 +397,7 @@ class PCB_Transformer:
         content = [geo for geo in get_all_geos(fp) if geo.layer in layers]
 
         if not content:
-            logger.warn(
+            logger.warning(
                 f"fp:{fp.name}|{fp.propertys['Reference'].value} has no silk outline"
             )
             return None

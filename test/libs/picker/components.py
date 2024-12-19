@@ -94,6 +94,16 @@ resistors = [
         ),
         packages=["0603"],
     ),
+    ComponentTestCase(
+        F.Resistor().builder(
+            lambda r: (
+                r.resistance.constrain_subset(
+                    L.Range.from_center_rel(3 * P.mohm, 0.01)
+                ),
+            )
+        ),
+        packages=["0805"],
+    ),
 ]
 
 capacitors = [

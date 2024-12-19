@@ -24,7 +24,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
-from atopile._shim import Component, ModuleShims, shim_map
+from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
@@ -32,7 +32,7 @@ from atopile.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import NodeException
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import (
-    ExceptionAccumulator,
+    accumulate,
     downgrade,
     iter_through_errors,
     log_user_errors,
@@ -469,7 +469,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def __init__(self) -> None:
         super().__init__()
         self._scopes = FuncDict[ParserRuleContext, Context]()
-        self._python_classes = FuncDict[ap.BlockdefContext, Type[Component]]()
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
@@ -533,7 +533,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             self._finish()
 
     def _finish(self):
-        with ExceptionAccumulator(
+        with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
             for param, (value, ctx) in self._param_assignments.items():
@@ -818,19 +818,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
+            block_type = item.blocktype()
             if super_ctx := item.name_or_attr():
                 super_ref = self.visitName_or_attr(super_ctx)
                 # Create a base node to build off
                 base_class = self._get_referenced_class(item, super_ref)
-
             else:
                 # Create a shell of base-node to build off
-                block_type = item.blocktype()
                 assert isinstance(block_type, ap.BlocktypeContext)
                 if block_type.INTERFACE():
                     base_class = L.ModuleInterface
                 elif block_type.COMPONENT():
-                    base_class = Component
+                    base_class = L.Module
                 elif block_type.MODULE():
                     base_class = L.Module
                 else:
@@ -839,7 +838,14 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             # Descend into building the superclass. We've got no information
             # on when the super-chain will be resolved, so we need to promise
             # that this current blockdef will be visited as part of the init
-            return self._new_node(base_class, [item] + promised_supers)
+            new_node, supers_ = self._new_node(base_class, [item] + promised_supers)
+
+            # HACK: promised_supers is falsey a hack way to check
+            # that we're only looking at the top-node w/ promised supers
+            if not promised_supers and (block_type.COMPONENT() or block_type.MODULE()):
+                new_node.add(has_ato_cmp_attrs())
+
+            return new_node, supers_
 
         # This should never happen
         raise ValueError(f"Unknown item type {item}")
@@ -963,11 +969,12 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 setattr(target, assigned_name, value)
             elif (
                 # If ModuleShims has a settable property, use it
-                hasattr(ModuleShims, assigned_name)
-                and isinstance(getattr(ModuleShims, assigned_name), property)
-                and getattr(ModuleShims, assigned_name).fset
+                hasattr(GlobalShims, assigned_name)
+                and isinstance(getattr(GlobalShims, assigned_name), property)
+                and getattr(GlobalShims, assigned_name).fset
             ):
-                prop = cast_assert(property, getattr(ModuleShims, assigned_name))
+                prop = cast_assert(property, getattr(GlobalShims, assigned_name))
+                assert prop.fset is not None
                 prop.fset(target, value)
             else:
                 with downgrade(errors.UserException):
@@ -982,6 +989,24 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         return KeyOptMap.empty()
 
+    def _get_mif(self, name: str, ctx: ParserRuleContext) -> L.ModuleInterface | None:
+        if (
+            has_attr_or_property(self._current_node, name)
+            or name in self._current_node.runtime
+        ):
+            ref = Ref.from_one(name)
+            # TODO: consider type-checking this
+            mif = self._get_referenced_node(ref, ctx)
+            if isinstance(mif, L.ModuleInterface):
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        f'"{name}" already exists, skipping.'
+                        " In the future this will be an error."
+                    )
+            else:
+                raise errors.UserTypeError.from_ctx(ctx, f'"{name}" already exists.')
+            return mif
+
     def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
         if ctx.name():
             name = self.visitName(ctx.name())
@@ -992,32 +1017,24 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if not isinstance(self._current_node, Component):
-            raise errors.UserTypeError.from_ctx(
-                ctx, f"Can't declare pins on components of type {self._current_node}"
-            )
+        if mif := self._get_mif(name, ctx):
+            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        mif = self._current_node.add_pin(name)
-        return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+        if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
+            mif = shims_t.add_pin(name)
+            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+
+        raise errors.UserTypeError.from_ctx(
+            ctx, f"Can't declare pins on components of type {self._current_node}"
+        )
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
-        if (
-            has_attr_or_property(self._current_node, name)
-            or name in self._current_node.runtime
-        ):
-            ref = Ref.from_one(name)
-            # TODO: consider type-checking this
-            mif = self._get_referenced_node(ref, ctx)
-            with downgrade(DeprecatedException):
-                raise DeprecatedException(
-                    f"Signal {name} already exists, skipping."
-                    " In the future this will be an error."
-                )
-        else:
-            mif = self._current_node.add(F.Electrical(), name=name)
+        if mif := self._get_mif(name, ctx):
+            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
+        mif = self._current_node.add(F.Electrical(), name=name)
         return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
     @classmethod

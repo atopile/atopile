@@ -47,7 +47,7 @@ dependencies = [
     "deprecated~=1.2.14",
     "more-itertools>=10.4,<10.6",
     "psutil>=6.0.0,<7.0.0",
-    "antlr4-python3-runtime==4.13.2",  # Strict version because the generated (but versioned) files must match
+    "antlr4-python3-runtime==4.13.2",                                      # Strict version because the generated (but versioned) files must match
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
     "cattrs>=23.2.3",
@@ -56,10 +56,8 @@ dependencies = [
     "fake-useragent>=1.4.0",
     "fastapi>=0.109.0",
     "gitpython>=3.1.41",
-    "igraph>=0.11.3",
     "jinja2>=3.1.3",
     "natsort>=8.4.0",
-    "networkx>=3.2.1",
     "packaging>=23.2",
     "pandas>=2.1.4",
     "pygls>=1.3.0",
@@ -155,6 +153,9 @@ markers = [
     "not_in_ci: marks tests that should not be run in CI",
     "regression: marks tests that are used for deeper regression testing. May be slow and flaky.",
 ]
+history-url = "https://ynesgbuoxmszjrkzazxz.supabase.co"
+# anon key, so safe for public repo
+history-key = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZXNnYnVveG1zempya3phenh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQzNzg5NDYsImV4cCI6MjA0OTk1NDk0Nn0.6KxEoSHTgyV4jKnnLAG5-Y9tWfHOzpl0qnA_NPzGUBo"
 
 
 [tool.ruff]
