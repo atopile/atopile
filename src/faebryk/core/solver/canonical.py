@@ -21,6 +21,8 @@ from faebryk.core.parameter import (
     IsSuperset,
     LessOrEqual,
     LessThan,
+    Max,
+    Min,
     Multiply,
     Not,
     Numbers,
@@ -32,6 +34,7 @@ from faebryk.core.parameter import (
     Sin,
     Sqrt,
     Subtract,
+    Union,
     Xor,
 )
 from faebryk.core.solver.utils import (
@@ -146,6 +149,8 @@ def convert_to_canonical_operations(mutator: Mutator):
     floor/ceil -> round(x -/+ 0.5)
     cos(x) -> sin(x + pi/2)
     sqrt(x) -> x^-0.5
+    min(x) -> p, p ss x, p le x
+    max(x) -> p, p ss x, p ge x
     ```
     """
 
@@ -226,6 +231,17 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+        if isinstance(e, (Min, Max)):
+            p = Parameter(units=e.units)
+            union = Union(*[mutator.get_copy(o) for o in e.operands])
+            p.constrain_subset(union)
+            if isinstance(e, Min):
+                p.constrain_le(union)
+            else:
+                p.constrain_ge(union)
+            mutator._mutate(e, p)
+            continue
+
         if type(e) not in lookup:
             continue
         Target, Converter = lookup[type(e)]

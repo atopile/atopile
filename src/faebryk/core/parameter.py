@@ -114,6 +114,18 @@ class ParameterOperatable(Node):
     def operation_abs(self):
         return Abs(self)
 
+    def operation_min(self):
+        return Min(self)
+
+    def operation_max(self):
+        return Max(self)
+
+    def operation_integrate(self, variable: "Parameter"):
+        return Integrate(self, variable)
+
+    def operation_differentiate(self, variable: "Parameter"):
+        return Differentiate(self, variable)
+
     def operation_negate(self):
         return Multiply(self, quantity(-1))
 
@@ -993,6 +1005,62 @@ class Ceil(Arithmetic):
     def __init__(self, operand):
         super().__init__(operand)
         self.units = operand.units
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Min(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="min",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        self.units = assert_compatible_units(operands)
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Max(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="max",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        self.units = assert_compatible_units(operands)
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Integrate(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="∫",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+        # TODO units
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Differentiate(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="d",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+        # TODO units
 
     def has_implicit_constraint(self) -> bool:
         return False

@@ -371,6 +371,20 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
     return lit
 
 
+def make_if_doesnt_exist[T: Expression](
+    expr_factory: type[T], *operands: ParameterOperatable | SolverLiteral
+) -> T:
+    non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
+    assert non_lits
+    candidates = [
+        expr for expr in non_lits[0].get_operations() if isinstance(expr, expr_factory)
+    ]
+    for c in candidates:
+        if c.operands == operands:
+            return c
+    return expr_factory(*operands)  # type: ignore #TODO
+
+
 def remove_predicate(
     pred: ConstrainableExpression,
     representative: ConstrainableExpression,

@@ -277,6 +277,13 @@ def merge_intersect_subsets(mutator: Mutator):
     -> A subset (L1 & L2)
     """
 
+    # TODO use Intersection/Union expr
+    # A ss B, A ss C -> A ss (B & C)
+    # and then use literal folding
+    # should also work for others:
+    #   A < B, A < C -> A < (B | C)
+    # Got to consider when to Intersect/Union is more useful than the associative
+
     params = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
 
     for param in ParameterOperatable.sort_by_depth(params, ascending=True):
