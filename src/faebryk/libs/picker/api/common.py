@@ -4,7 +4,7 @@
 import logging
 from dataclasses import fields
 from textwrap import indent
-from typing import TYPE_CHECKING, Callable, Iterable
+from typing import Callable, Iterable
 
 import more_itertools
 
@@ -15,20 +15,17 @@ from faebryk.core.parameter import (
     Parameter,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.libs.picker.api.api import BaseParams, get_package_candidates
-from faebryk.libs.picker.jlcpcb.mappings import try_get_param_mapping
+from faebryk.libs.picker.api.api import BaseParams, Component, get_package_candidates
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
     LCSC_PinmapException,
     get_raw,
 )
+from faebryk.libs.picker.mappings import AttributeMapping, try_get_param_mapping
 from faebryk.libs.picker.picker import (
     PickError,
 )
 from faebryk.libs.util import cast_assert
-
-if TYPE_CHECKING:
-    from faebryk.libs.picker.jlcpcb.jlcpcb import Component, MappingParameterDB
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +41,7 @@ class PickerESeriesIntersectionError(Exception):
 
 
 def api_filter_by_module_params_and_attach(
-    cmp: Module, parts: list["Component"], solver: Solver
+    cmp: Module, parts: list[Component], solver: Solver
 ):
     """
     Find a component with matching parameters
@@ -56,7 +53,9 @@ def api_filter_by_module_params_and_attach(
 
     def parts_gen():
         for part in parts:
+            print(part.lcsc_display)
             if check_compatible_parameters(cmp, part, mapping, solver):
+                print(f"tried: {part.lcsc_display}")
                 tried.append(part)
                 yield part
 
@@ -65,9 +64,9 @@ def api_filter_by_module_params_and_attach(
     except PickError as ex:
         param_mappings = [
             (
-                p.partno,
+                p.lcsc_display,
                 [
-                    f"{m.param_name}: {lit}"
+                    f"{m.name}: {lit}"
                     for m, lit in p.get_literal_for_mappings(mapping).items()
                 ],
             )
@@ -85,13 +84,12 @@ def api_filter_by_module_params_and_attach(
 
 def try_attach(
     module: Module,
-    parts: Iterable["Component"],
-    mapping: list["MappingParameterDB"],
+    parts: Iterable[Component],
+    mapping: list[AttributeMapping],
     qty: int,
 ):
     # TODO remove ignore_exceptions
     # was used to handle TBDs
-    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 
     failures = []
     for c in parts:
@@ -129,7 +127,7 @@ def try_attach(
 
 
 def check_compatible_parameters(
-    module: Module, c: "Component", mapping: list["MappingParameterDB"], solver: Solver
+    module: Module, c: "Component", mapping: list[AttributeMapping], solver: Solver
 ) -> bool:
     """
     Check if the parameters of a component are compatible with the module
@@ -140,15 +138,16 @@ def check_compatible_parameters(
 
     # shortcut because solving slow
     try:
-        get_raw(c.partno)
+        get_raw(c.lcsc_display)
     except LCSC_NoDataException:
+        print(f"No data for {c.lcsc_display}")
         return False
 
     range_mapping = c.get_literal_for_mappings(mapping)
 
     param_mapping = [
         (
-            (p := cast_assert(Parameter, getattr(module, m.param_name))),
+            (p := cast_assert(Parameter, getattr(module, m.name))),
             c_range if c_range is not None else p.domain.unbounded(p),
         )
         for m, c_range in range_mapping.items()
@@ -161,6 +160,7 @@ def check_compatible_parameters(
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
         known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
         if not known_superset.is_superset_of(c_range):
+            print(f"Known superset {known_superset} is not a superset of {c_range}")
             # TODO reenable
             # if LOG_PICK_SOLVE:
             #    logger.warning(
@@ -182,7 +182,7 @@ def check_compatible_parameters(
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(
             f"Found part {c.lcsc:8} "
-            f"Basic: {bool(c.basic)}, Preferred: {bool(c.preferred)}, "
+            f"Basic: {bool(c.is_basic)}, Preferred: {bool(c.is_preferred)}, "
             f"Price: ${c.get_price(1):2.4f}, "
             f"{c.description:15},"
         )

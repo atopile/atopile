@@ -5,18 +5,22 @@ import functools
 import json
 import logging
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from textwrap import indent
 
 import requests
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
 
+import faebryk.library._F as F
 from faebryk.core.module import Module
-
-# TODO: replace with API-specific data model
-if TYPE_CHECKING:
-    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+from faebryk.core.parameter import Parameter, ParameterOperatable
+from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_Part
+from faebryk.libs.picker.lcsc import attach as lcsc_attach
+from faebryk.libs.picker.mappings import AttributeMapping
+from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked_defined
+from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
 from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.units import quantity
 from faebryk.libs.util import (
     ConfigFlagString,
     Serializable,
@@ -179,6 +183,142 @@ class ManufacturerPartParams:
     qty: int
 
 
+@dataclass_json
+@dataclass
+class ComponentPrice:
+    qTo: int | None
+    price: float
+    qFrom: int | None
+
+
+@dataclass_json
+@dataclass
+class Component:
+    lcsc: int
+    manufacturer_name: str
+    part_number: str
+    package: str
+    datasheet_url: str
+    description: str
+    is_basic: int
+    is_preferred: int
+    stock: int
+    price: list[ComponentPrice]
+    attributes: dict[str, str | float]
+
+    @property
+    def lcsc_display(self) -> str:
+        return f"C{self.lcsc}"
+
+    def get_price(self, qty: int = 1) -> float:
+        """
+        Get the price for qty of the component including handling fees
+
+        For handling fees and component price classifications, see:
+        https://jlcpcb.com/help/article/pcb-assembly-faqs
+        """
+        BASIC_HANDLING_FEE = 0
+        PREFERRED_HANDLING_FEE = 0
+        EXTENDED_HANDLING_FEE = 3
+
+        if qty < 1:
+            raise ValueError("Quantity must be greater than 0")
+
+        if self.is_basic:
+            handling_fee = BASIC_HANDLING_FEE
+        elif self.is_preferred:
+            handling_fee = PREFERRED_HANDLING_FEE
+        else:
+            handling_fee = EXTENDED_HANDLING_FEE
+
+        print(self.price)
+
+        unit_price = float("inf")
+        try:
+            for p in self.price:
+                if p.qTo is None or qty < p.qTo:
+                    unit_price = float(p.price)
+            unit_price = float(self.price[-1].price)
+        except LookupError:
+            pass
+
+        return unit_price * qty + handling_fee
+
+    def get_literal(
+        self, attribute_mapping: AttributeMapping
+    ) -> ParameterOperatable.Literal:
+        value = self.attributes[attribute_mapping.name]
+
+        if value is None:
+            return None
+
+        if attribute_mapping.transform_fn:
+            if not isinstance(value, str):
+                raise ValueError(f"Expected string value for {attribute_mapping.name}")
+
+            return attribute_mapping.transform_fn(value)
+
+        if attribute_mapping.tolerance_name:
+            tolerance = self.attributes[attribute_mapping.tolerance_name]
+
+            if not isinstance(value, float):
+                raise ValueError(f"Expected float value for {attribute_mapping.name}")
+
+            if not isinstance(tolerance, float):
+                raise ValueError(f"Expected float value for {attribute_mapping.name}")
+
+            return Quantity_Interval.from_center_rel(
+                quantity(value, unit=attribute_mapping.unit), tolerance
+            )
+
+        return Quantity_Singleton(quantity(value, unit=attribute_mapping.unit))
+
+    def get_literal_for_mappings(
+        self, mapping: list[AttributeMapping]
+    ) -> dict[AttributeMapping, ParameterOperatable.Literal | None]:
+        return {m: self.get_literal(m) for m in mapping}
+
+    def attach(self, module: Module, mapping: list[AttributeMapping], qty: int = 1):
+        params = self.get_literal_for_mappings(mapping)
+
+        lcsc_attach(module, self.lcsc_display)
+
+        module.add(
+            F.has_descriptive_properties_defined(
+                {
+                    DescriptiveProperties.partno: self.part_number,
+                    DescriptiveProperties.manufacturer: self.manufacturer_name,
+                    DescriptiveProperties.datasheet: self.datasheet_url,
+                    "JLCPCB stock": str(self.stock),
+                    "JLCPCB price": f"{self.get_price(qty):.4f}",
+                    "JLCPCB description": self.description,
+                    "JLCPCB Basic": str(bool(self.is_basic)),
+                    "JLCPCB Preferred": str(bool(self.is_preferred)),
+                },
+            )
+        )
+
+        module.add(has_part_picked_defined(JLCPCB_Part(self.lcsc_display)))
+
+        for m, literal in params.items():
+            p = getattr(module, m.name)
+            assert isinstance(p, Parameter)
+            if literal is None:
+                literal = p.domain.unbounded(p)
+
+            p.alias_is(literal)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Attached component {self.lcsc_display} to module {module}: \n"
+                f"{indent(str(params), ' '*4)}\n--->\n"
+                f"{indent(module.pretty_params(), ' '*4)}"
+            )
+
+    class ParseError(Exception):
+        pass
+
+
 class ApiClient:
     @dataclass
     class Config:
@@ -224,33 +364,19 @@ class ApiClient:
 
         return response
 
-    @staticmethod
-    def ComponentFromResponse(kw: dict) -> "Component":
-        from faebryk.libs.picker.jlcpcb.jlcpcb import Component
-
-        # TODO very ugly fix
-        kw["extra"] = json.dumps(kw["extra"])
-        return Component(**kw)
-
     @functools.lru_cache(maxsize=None)
     def fetch_part_by_lcsc(self, lcsc: int) -> list["Component"]:
         response = self._get(f"/v0/component/lcsc/{lcsc}")
-        return [
-            self.ComponentFromResponse(part) for part in response.json()["components"]
-        ]
+        return [Component.from_dict(part) for part in response.json()["components"]]
 
     @functools.lru_cache(maxsize=None)
     def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list["Component"]:
         response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
-        return [
-            self.ComponentFromResponse(part) for part in response.json()["components"]
-        ]
+        return [Component.from_dict(part) for part in response.json()["components"]]
 
     def query_parts(self, method: str, params: BaseParams) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
-        return [
-            self.ComponentFromResponse(part) for part in response.json()["components"]
-        ]
+        return [Component.from_dict(part) for part in response.json()["components"]]
 
     def fetch_parts(self, params: BaseParams) -> list["Component"]:
         assert params.endpoint

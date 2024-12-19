@@ -10,6 +10,7 @@ from faebryk.core.solver.solver import Solver
 from faebryk.libs.picker.api.api import (
     BaseParams,
     CapacitorParams,
+    Component,
     DiodeParams,
     InductorParams,
     LDOParams,
@@ -25,7 +26,6 @@ from faebryk.libs.picker.api.api import (
 from faebryk.libs.picker.api.common import (
     find_component_by_params,
 )
-from faebryk.libs.picker.jlcpcb.jlcpcb import Component
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
 from faebryk.libs.util import Tree
 
