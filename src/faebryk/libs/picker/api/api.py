@@ -240,7 +240,7 @@ class Component:
         return unit_price * qty + handling_fee
 
     @functools.cached_property
-    def attribute_literals(self) -> dict[str, P_Set]:
+    def attribute_literals(self) -> dict[str, P_Set | None]:
         print(self.attributes)
         print(self.attributes["resistance"])
         print(
@@ -248,7 +248,13 @@ class Component:
                 self.attributes["resistance"],
             )
         )
-        return {k: P_Set.deserialize(v) for k, v in self.attributes.items()}
+
+        def deserialize(k, v):
+            if v is None:
+                return None
+            return P_Set.deserialize(v)
+
+        return {k: deserialize(k, v) for k, v in self.attributes.items()}
 
     def attach(self, module: Module, qty: int = 1):
         lcsc_attach(module, self.lcsc_display)
