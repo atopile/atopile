@@ -40,7 +40,6 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
-    make_if_doesnt_exist,
     make_lit,
     remove_predicate,
     try_extract_all_literals,
@@ -180,7 +179,9 @@ def fold_add(
         return
 
     # Careful, modifying old graph, but should be ok
-    factored_operands = [Multiply(n, m) for n, m in new_factors.items()]
+    factored_operands = [
+        mutator.create_expression(Multiply, n, m) for n, m in new_factors.items()
+    ]
 
     new_operands = [
         *factored_operands,
@@ -200,7 +201,7 @@ def fold_add(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0])
+        alias_is_literal(new_expr, new_operands[0], mutator)
 
 
 def fold_multiply(
@@ -253,7 +254,7 @@ def fold_multiply(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0])
+        alias_is_literal(new_expr, new_operands[0], mutator)
 
 
 def fold_pow(
@@ -279,7 +280,7 @@ def fold_pow(
     base, exp = map(try_extract_numeric_literal, expr.operands)
     # All literals
     if base is not None and exp is not None:
-        alias_is_literal(expr, base**exp)
+        alias_is_literal(expr, base**exp, mutator)
         return
 
     if exp is not None:
@@ -289,16 +290,16 @@ def fold_pow(
 
         # in python 0**0 is also 1
         if exp == 0:
-            alias_is_literal(expr, 1)
+            alias_is_literal(expr, 1, mutator)
             return
 
     if base is not None:
         if base == 0:
-            alias_is_literal(expr, 0)
+            alias_is_literal(expr, 0, mutator)
             # FIXME: exp >! 0
             return
         if base == 1:
-            alias_is_literal(expr, 1)
+            alias_is_literal(expr, 1, mutator)
             return
 
 
@@ -461,7 +462,7 @@ def fold_not(
                             for n in parent_nots:
                                 n.constrain()
                         else:
-                            Not(mutator.get_copy(inner_op)).constrain()
+                            mutator.create_expression(Not, inner_op).constrain()
 
 
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:
@@ -527,7 +528,7 @@ def fold_is(
         # P is! False -> ¬!P
         if BoolSet(False) in literal_operands:
             for p in expr.get_operatable_operands(ConstrainableExpression):
-                Not(p).constrain()
+                mutator.create_expression(Not, p).constrain()
 
 
 def fold_subset(
@@ -610,7 +611,7 @@ def fold_subset(
         # P ss! False -> ¬!P
         if B == BoolSet(False):
             assert isinstance(A, ConstrainableExpression)
-            Not(A).constrain()
+            mutator.create_expression(Not, A).constrain()
 
 
 def fold_ge(
@@ -676,13 +677,17 @@ def fold_ge(
     # TODO check if exists
     if left_lit is not None:
         assert isinstance(left_lit, Quantity_Interval_Disjoint)
-        p = make_if_doesnt_exist(GreaterOrEqual, make_lit(left_lit.min_elem), right)
+        p = mutator.create_expression(
+            GreaterOrEqual, make_lit(left_lit.min_elem), right
+        )
         if expr.constrained:
             p.constrain()
         return
     if right_lit is not None:
         assert isinstance(right_lit, Quantity_Interval_Disjoint)
-        p = make_if_doesnt_exist(GreaterOrEqual, left, make_lit(right_lit.max_elem))
+        p = mutator.create_expression(
+            GreaterOrEqual, left, make_lit(right_lit.max_elem)
+        )
         if expr.constrained:
             p.constrain()
         return

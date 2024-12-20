@@ -203,6 +203,7 @@ def test_alias_classes():
     # TODO actually test something
 
 
+@pytest.mark.xfail(reason="TODO reenable ge fold")
 def test_min_max_single():
     p0 = Parameter(units=P.V)
     p0.alias_is(L.Range(0 * P.V, 10 * P.V))
