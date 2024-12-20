@@ -12,8 +12,12 @@ from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
-
 NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
+
+# math.isclose default is 1e-9
+# numpy default is 1e-5
+# empirically we need <= 1e-8
+EPSILON_REL = 1e-6
 
 
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -60,7 +64,12 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
-        return self._min >= other._min and self._max <= other._max
+        return (
+            (self._min >= other._min)
+            or math.isclose(self._min, other._min, rel_tol=EPSILON_REL)
+            and (self._max <= other._max)
+            or math.isclose(self._max, other._max, rel_tol=EPSILON_REL)
+        )
 
     def op_add_interval(
         self, other: "Numeric_Interval[NumericT]"
@@ -159,7 +168,7 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         min_ = max(self._min, other._min)
         max_ = min(self._max, other._max)
-        if min_ <= max_:
+        if min_ <= max_ or math.isclose(min_, max_, rel_tol=EPSILON_REL):
             return Numeric_Interval_Disjoint(Numeric_Interval(min_, max_))
         return Numeric_Set_Empty()
 
@@ -191,13 +200,19 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         if not isinstance(other, Numeric_Interval):
             return False
-        return self._min == other._min and self._max == other._max
+        return math.isclose(self._min, other._min) and math.isclose(
+            self._max, other._max
+        )
 
     def __contains__(self, item: NumericT) -> bool:
         """
         Set checks if a number is in a interval.
         """
-        return self._min <= item <= self._max
+        return (
+            self._min <= item <= self._max
+            or math.isclose(self._min, item, rel_tol=EPSILON_REL)
+            or math.isclose(self._max, item, rel_tol=EPSILON_REL)
+        )
 
     def __hash__(self) -> int:
         return hash((self._min, self._max))
@@ -374,20 +389,28 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             if not intersect.is_empty():
                 result.append(intersect)
 
-            if rs.max_elem < ro.min_elem:
+            if rs.max_elem < ro.min_elem or math.isclose(
+                rs.max_elem, ro.min_elem, rel_tol=EPSILON_REL
+            ):
                 # no remaining element in other list can intersect with rs
                 s += 1
-            elif ro.max_elem < rs.min_elem:
+            elif ro.max_elem < rs.min_elem or math.isclose(
+                ro.max_elem, rs.min_elem, rel_tol=EPSILON_REL
+            ):
                 # no remaining element in self list can intersect with ro
                 o += 1
-            elif rs.max_elem < ro.max_elem:
+            elif rs.max_elem < ro.max_elem or math.isclose(
+                rs.max_elem, ro.max_elem, rel_tol=EPSILON_REL
+            ):
                 # rs ends before ro, so move to next in self list
                 s += 1
-            elif ro.max_elem < rs.max_elem:
+            elif ro.max_elem < rs.max_elem or math.isclose(
+                ro.max_elem, rs.max_elem, rel_tol=EPSILON_REL
+            ):
                 # ro ends before rs, so move to next in other list
                 o += 1
             else:
-                # rs and ro end on same number, so move to next in both lists
+                # rs and ro end on approximately same number, move to next in both lists
                 s += 1
                 o += 1
 
@@ -439,18 +462,26 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     def op_ge_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
-        if self.min_elem >= other.max_elem:
+        if self.min_elem >= other.max_elem or math.isclose(
+            self.min_elem, other.max_elem, rel_tol=EPSILON_REL
+        ):
             return BoolSet(True)
-        if self.max_elem < other.min_elem:
+        if self.max_elem < other.min_elem or math.isclose(
+            self.max_elem, other.min_elem, rel_tol=EPSILON_REL
+        ):
             return BoolSet(False)
         return BoolSet(True, False)
 
     def op_le_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
-        if self.max_elem <= other.min_elem:
+        if self.max_elem <= other.min_elem or math.isclose(
+            self.max_elem, other.min_elem, rel_tol=EPSILON_REL
+        ):
             return BoolSet(True)
-        if self.min_elem > other.max_elem:
+        if self.min_elem > other.max_elem or math.isclose(
+            self.min_elem, other.max_elem, rel_tol=EPSILON_REL
+        ):
             return BoolSet(False)
         return BoolSet(True, False)
 
@@ -467,7 +498,10 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
         if len(self.intervals) != len(value.intervals):
             return False
         for r1, r2 in zip(self.intervals, value.intervals):
-            if r1 != r2:
+            if r1 != r2 and not (
+                math.isclose(r1.min_elem, r2.min_elem, rel_tol=EPSILON_REL)
+                and math.isclose(r1.max_elem, r2.max_elem, rel_tol=EPSILON_REL)
+            ):
                 return False
         return True
 
