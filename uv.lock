@@ -108,7 +108,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev75+g22792052.d20241220"
+version = "0.3.1.dev76+g186f8544.d20241220"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -120,7 +120,6 @@ dependencies = [
     { name = "deepdiff" },
     { name = "deprecated" },
     { name = "easyeda2kicad" },
-    { name = "eseries" },
     { name = "fake-useragent" },
     { name = "fastapi" },
     { name = "freetype-py" },
@@ -194,7 +193,6 @@ requires-dist = [
     { name = "deepdiff", specifier = ">=6.7.1" },
     { name = "deprecated", specifier = "~=1.2.14" },
     { name = "easyeda2kicad", git = "https://github.com/atopile/easyeda2kicad.py.git" },
-    { name = "eseries", specifier = ">=1.2.1" },
     { name = "fake-useragent", specifier = ">=1.4.0" },
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "freetype-py", specifier = ">=2.4,<2.6" },
@@ -587,43 +585,12 @@ wheels = [
 ]
 
 [[package]]
-name = "docopt"
-version = "0.6.2"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a2/55/8f8cab2afd404cf578136ef2cc5dfb50baa1761b68c9da1fb1e4eed343c9/docopt-0.6.2.tar.gz", hash = "sha256:49b3a825280bd66b3aa83585ef59c4a8c82f2c8a522dbe754a8bc8d08c85c491", size = 25901 }
-
-[[package]]
-name = "docopt-subcommands"
-version = "4.0.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "docopt" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/59/9f/90aa411d8d599b7e5c5d68742a03922242d576b770837a7517309fde14c6/docopt_subcommands-4.0.0.tar.gz", hash = "sha256:e511c33f96474d754333617009443b1641c24e7614d051f8c0d5746670d2243a", size = 8100 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/20/e3/493d0a477e0b15a77d1e92d97a4447bde79280082b507bb57f3e68e4e064/docopt_subcommands-4.0.0-py2.py3-none-any.whl", hash = "sha256:5cbad12756b8429b8d5069306881fe87d3f135c71d8e85088deb64a13229e908", size = 7367 },
-]
-
-[[package]]
 name = "easyeda2kicad"
 version = "0.8.0"
 source = { git = "https://github.com/atopile/easyeda2kicad.py.git#261e4ee478c1fdf008c92e20c8b29327f78266a4" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
-]
-
-[[package]]
-name = "eseries"
-version = "1.2.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "docopt-subcommands" },
-    { name = "future" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/55/34/58ab83a079a0ac5f6883710d84b3095350da5073a4aca0e1d056b57efb6f/eseries-1.2.1.tar.gz", hash = "sha256:06122b18141a28ae7758bb42391b163bc42039fd7b91d3633631c0c8fa300e36", size = 14811 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/6c/bf1eb2d4727a32c83d2bbb57c623bebc448c59dbaf15287c4b62b9ffc295/eseries-1.2.1-py3-none-any.whl", hash = "sha256:6368216bb4876685a7c58a90d79ea523096b866e531240abc2aa7d6878629377", size = 11048 },
 ]
 
 [[package]]
@@ -760,15 +727,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/ab/42/0595b3dbffc2e82d7fe658c12d5a5bafcd7516c6bf2d1d1feb5387caa9c1/frozenlist-1.5.0-cp313-cp313-win32.whl", hash = "sha256:31a9ac2b38ab9b5a8933b693db4939764ad3f299fcaa931a3e605bc3460e693c", size = 44914 },
     { url = "https://files.pythonhosted.org/packages/17/c4/b7db1206a3fea44bf3b838ca61deb6f74424a8a5db1dd53ecb21da669be6/frozenlist-1.5.0-cp313-cp313-win_amd64.whl", hash = "sha256:11aabdd62b8b9c4b84081a3c246506d1cddd2dd93ff0ad53ede5defec7886b28", size = 51167 },
     { url = "https://files.pythonhosted.org/packages/c6/c8/a5be5b7550c10858fcf9b0ea054baccab474da77d37f1e828ce043a3a5d4/frozenlist-1.5.0-py3-none-any.whl", hash = "sha256:d994863bba198a4a518b467bb971c56e1db3f180a25c6cf7bb1949c267f748c3", size = 11901 },
-]
-
-[[package]]
-name = "future"
-version = "1.0.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a7/b2/4140c69c6a66432916b26158687e821ba631a4c9273c474343badf84d3ba/future-1.0.0.tar.gz", hash = "sha256:bd2968309307861edae1458a4f8a4f3598c03be43b97521076aebf5d94c07b05", size = 1228490 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/da/71/ae30dadffc90b9006d77af76b393cb9dfbfc9629f339fc1574a1c52e6806/future-1.0.0-py3-none-any.whl", hash = "sha256:929292d34f5872e70396626ef385ec22355a1fae8ad29e1a734c3e43f9fbc216", size = 491326 },
 ]
 
 [[package]]

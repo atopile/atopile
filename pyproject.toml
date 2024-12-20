@@ -51,7 +51,6 @@ dependencies = [
     "case-converter>=1.1.0",
     "cattrs>=23.2.3",
     "DeepDiff>=6.7.1",
-    "eseries>=1.2.1",
     "fake-useragent>=1.4.0",
     "fastapi>=0.109.0",
     "gitpython>=3.1.41",
