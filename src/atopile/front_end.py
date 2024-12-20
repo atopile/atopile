@@ -318,6 +318,19 @@ def ato_error_converter():
         if from_dsl_ := ex.node.try_get_trait(from_dsl):
             raise errors.UserException.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
         else:
+raise ex
+
+
+@contextmanager
+def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleContext]):
+    try:
+        yield
+    except errors.UserException as ex:
+        if ex.origin is None:
+            ex.origin = ctx
+            # only attach traceback if we're also setting the origin
+            if ex.traceback is None:
+                ex.traceback = traceback
             raise ex
 
 
@@ -918,8 +931,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ):
                 prop = cast_assert(property, getattr(GlobalShims, assigned_name))
                 assert prop.fset is not None
+                with (
+                    downgrade(DeprecatedException),
+                    self._supressor_visitAssign_stmt,
+                    _attach_ctx_to_ex(ctx, self.get_traceback()),
+                ):
                 prop.fset(target, value)
             else:
+                # Strictly, these are two classes of errors that could use independent
+                # suppression, but we'll just suppress them both collectively for now
                 with downgrade(errors.UserException), self._supressor_visitAssign_stmt:
                     raise errors.UserException.from_ctx(
                         ctx,
