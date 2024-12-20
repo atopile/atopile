@@ -101,6 +101,7 @@ class ElectricPower(F.Power):
         fuse.trip_current.constrain_subset(
             self.max_node_current_consumption * L.Range.from_center_rel(1.0, 0.1)
         )
+        # TODO maybe better bus_consumption
         fused_power.max_node_current_consumption.constrain_le(fuse.trip_current)
 
         if attach_to is not None:
