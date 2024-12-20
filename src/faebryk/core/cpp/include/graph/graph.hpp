@@ -69,14 +69,13 @@ class Node {
     class Type {
       private:
         nb::handle type;
-        bool hack_cache_is_moduleinterface;
-        // std::optional<std::vector<nb::type_object>> mro{};
+        std::unordered_set<uint64_t> mro_ids{};
 
       public:
         Type(nb::handle type);
         bool operator==(const Type &other) const;
         std::string get_name();
-        // TODO these are weird
+        // Needed because ModuleInterface is not a C++ class atm
         bool is_moduleinterface();
         static nb::type_object get_moduleinterface_type();
 

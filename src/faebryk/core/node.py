@@ -186,6 +186,8 @@ class Node(CNode):
     specialized_: list["Node"]
 
     _init: bool = False
+    _mro: list[type] = []
+    _mro_ids: set[int] = set()
 
     class _Skipped(Exception):
         pass
@@ -522,6 +524,10 @@ class Node(CNode):
     def __init_subclass__(cls, *, init: bool = True) -> None:
         cls._init = init
         post_init_decorator(cls)
+        Node_mro = CNode.mro()
+        cls_mro = cls.mro()
+        cls._mro = cls_mro[: -len(Node_mro)]
+        cls._mro_ids = {id(c) for c in cls._mro}
 
     def _handle_add_gif(self, name: str, gif: GraphInterface):
         gif.node = self
