@@ -315,11 +315,11 @@ def check_missing_picks(module: Module):
 
 
 def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
-    from faebryk.libs.picker.api.common import (
-        api_filter_by_module_params_and_attach,
+    from faebryk.libs.picker.api.picker_lib import (
+        api_get_candidates,
+        filter_by_module_params_and_attach,
         pick_atomically,
     )
-    from faebryk.libs.picker.api.picker_lib import api_get_candidates
 
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
@@ -375,7 +375,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     #
 
     for module, parts in sorted_candidates:
-        api_filter_by_module_params_and_attach(module, parts, solver)
+        filter_by_module_params_and_attach(module, parts, solver)
         progress.advance(module)
 
     if LOG_PICK_SOLVE:
