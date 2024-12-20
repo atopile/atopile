@@ -7,7 +7,6 @@ import pytest
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
@@ -23,13 +22,13 @@ def test_fused_power():
     power_out = F.ElectricPower()
 
     power_in.voltage.constrain_subset(10 * P.V)
-    power_in.max_node_current_consumption.constrain_subset(500 * P.mA)
+    power_in.max_current.constrain_subset(500 * P.mA)
 
     power_in_fused = power_in.fused()
     power_in_fused.connect(power_out)
 
     fuse = next(iter(power_in_fused.get_children(direct_only=False, types=F.Fuse)))
-    resolve_dynamic_parameters(fuse.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(fuse.get_graph())
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(fuse.trip_current).is_subset_of(
@@ -38,7 +37,7 @@ def test_fused_power():
     assert solver.inspect_get_known_supersets(power_out.voltage).is_subset_of(
         L.Single(10 * P.V)
     )
-    cur = solver.inspect_get_known_supersets(power_out.max_node_current_consumption)
+    cur = solver.inspect_get_known_supersets(power_out.max_current)
     assert isinstance(cur, Quantity_Interval_Disjoint)
     assert (cur <= L.Single(500 * P.mA)) == BoolSet(True)
 
@@ -54,7 +53,7 @@ def test_voltage_propagation():
     for p1, p2 in pairwise(powers):
         p1.connect(p2)
 
-    resolve_dynamic_parameters(powers[0].get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(powers[0].get_graph())
     assert (
         DefaultSolver()
         .inspect_get_known_supersets(powers[-1].voltage)
@@ -87,13 +86,13 @@ def test_current_consumption_sum_zero():
     p1.connect(p2)
     p2.connect(p3)
 
-    p1.max_node_current_consumption.alias_is(100 * P.mA)
-    p2.max_node_current_consumption.alias_is(200 * P.mA)
-    p3.max_node_current_consumption.alias_is(-300 * P.mA)
+    p1.max_current.alias_is(100 * P.mA)
+    p2.max_current.alias_is(200 * P.mA)
+    p3.max_current.alias_is(-300 * P.mA)
 
     p1.bus_max_current_consumption_sum.constrain_le(0 * P.mA)
 
-    resolve_dynamic_parameters(p1.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
     out = solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
     assert out.is_subset_of(L.Single(0 * P.mA))
@@ -117,13 +116,13 @@ def test_current_consumption_sum_negative():
     p1.connect(p2)
     p2.connect(p3)
 
-    p1.max_node_current_consumption.alias_is(300 * P.mA)
-    p2.max_node_current_consumption.alias_is(200 * P.mA)
-    p3.max_node_current_consumption.alias_is(-300 * P.mA)
+    p1.max_current.alias_is(300 * P.mA)
+    p2.max_current.alias_is(200 * P.mA)
+    p3.max_current.alias_is(-300 * P.mA)
 
     p1.bus_max_current_consumption_sum.constrain_le(0 * P.mA)
 
-    resolve_dynamic_parameters(p1.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
 
     with pytest.raises(Contradiction):

@@ -37,7 +37,6 @@ from faebryk.libs.app.designators import (
     attach_random_designators,
     override_names_with_designators,
 )
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_netlist,
@@ -66,10 +65,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     logger.info("Resolving dynamic parameters")
     try:
-        resolve_dynamic_parameters(G)
+        F.is_bus_parameter.resolve_bus_parameters(G)
     except KeyErrorAmbiguous:
         try:
-            resolve_dynamic_parameters(G)
+            F.is_bus_parameter.resolve_bus_parameters(G)
         except KeyErrorAmbiguous as ex:
             raise UserException(
                 "Unfortunately, there's a compiler bug at the moment that means that "
