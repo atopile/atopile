@@ -353,6 +353,6 @@ class ApiClient:
         return self.query_parts(params.endpoint, params)
 
 
-@functools.lru_cache
+@once
 def get_api_client() -> ApiClient:
     return ApiClient()
