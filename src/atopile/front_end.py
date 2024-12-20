@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import (
     Any,
     Iterable,
+    Sequence,
     Type,
     cast,
 )
@@ -97,127 +98,6 @@ class BasicsMixin:
             return False
 
         raise errors.UserException.from_ctx(ctx, f"Expected a boolean value, got {raw}")
-
-
-class PhysicalValuesMixin:
-    @staticmethod
-    def _get_unit_from_ctx(ctx: ParserRuleContext) -> UnitType:
-        """Return a pint unit from a context."""
-        unit_str = ctx.getText()
-        try:
-            return P.Unit(unit_str)
-        except UndefinedUnitError as ex:
-            raise errors.UserUnknownUnitError.from_ctx(
-                ctx, f"Unknown unit '{unit_str}'"
-            ) from ex
-
-    def visitLiteral_physical(
-        self, ctx: ap.Literal_physicalContext
-    ) -> Quantity_Singleton | Quantity_Interval:
-        """Yield a physical value from a physical context."""
-        if ctx.quantity():
-            qty = self.visitQuantity(ctx.quantity())
-            value = Single(qty)
-        elif ctx.bilateral_quantity():
-            value = self.visitBilateral_quantity(ctx.bilateral_quantity())
-        elif ctx.bound_quantity():
-            value = self.visitBound_quantity(ctx.bound_quantity())
-        else:
-            # this should be protected because it shouldn't be parseable
-            raise ValueError
-        return value
-
-    def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
-        """Yield a physical value from an implicit quantity context."""
-        raw: str = ctx.NUMBER().getText()
-        if raw.startswith("0x"):
-            value = int(raw, 16)
-        else:
-            value = float(raw)
-
-        # Ignore the positive unary operator
-        if ctx.MINUS():
-            value = -value
-
-        if unit_ctx := ctx.name():
-            unit = self._get_unit_from_ctx(unit_ctx)
-        else:
-            unit = dimensionless
-
-        return Quantity(value, unit)  # type: ignore
-
-    def visitBilateral_quantity(
-        self, ctx: ap.Bilateral_quantityContext
-    ) -> Quantity_Interval:
-        """Yield a physical value from a bilateral quantity context."""
-        nominal_qty = self.visitQuantity(ctx.quantity())
-
-        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
-        tol_num = float(tol_ctx.NUMBER().getText())
-
-        # Handle proportional tolerances
-        if tol_ctx.PERCENT():
-            tol_divider = 100
-        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
-            tol_divider = 1e6
-        else:
-            tol_divider = None
-
-        if tol_divider:
-            if nominal_qty == 0:
-                raise errors.UserException.from_ctx(
-                    tol_ctx,
-                    "Can't calculate tolerance percentage of a nominal value of zero",
-                )
-
-            # Calculate tolerance value from percentage/ppm
-            tol_value = tol_num / tol_divider
-            return Range.from_center_rel(nominal_qty, tol_value)
-
-        # Ensure the tolerance has a unit
-        if tol_name := tol_ctx.name():
-            # In this case there's a named unit on the tolerance itself
-            tol_qty = tol_num * self._get_unit_from_ctx(tol_name)
-        elif nominal_qty.unitless:
-            tol_qty = tol_num * dimensionless
-        else:
-            tol_qty = tol_num * nominal_qty.units
-
-        # Ensure units on the nominal quantity
-        if nominal_qty.unitless:
-            nominal_qty = nominal_qty * tol_qty.units
-
-        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
-        if not nominal_qty.is_compatible_with(tol_qty):
-            raise errors.UserTypeError.from_ctx(
-                tol_name,
-                f"Tolerance unit '{tol_qty.units}' is not dimensionally"
-                f" compatible with nominal unit '{nominal_qty.units}'",
-            )
-
-        return Range.from_center(nominal_qty, tol_qty)
-
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
-        """Yield a physical value from a bound quantity context."""
-
-        start, end = map(self.visitQuantity, ctx.quantity())
-
-        # If only one of them has a unit, take the unit from the one which does
-        if start.unitless and not end.unitless:
-            start = start * end.units
-        elif not start.unitless and end.unitless:
-            end = end * start.units
-
-        elif not start.is_compatible_with(end):
-            # If they've both got units, let the RangedValue handle
-            # the dimensional compatibility
-            raise errors.UserTypeError.from_ctx(
-                ctx,
-                f"Tolerance unit '{end.units}' is not dimensionally"
-                f" compatible with nominal unit '{start.units}'",
-            )
-
-        return Range(start, end)
 
 
 class NOTHING:
@@ -394,20 +274,13 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         context = Context(file_path=file_path, scope_ctx=ctx, refs={})
         for ref, (item, item_ctx) in surveyor.visit(ctx):
             if ref in context.refs:
-                ex = errors.UserKeyError.from_ctx(item_ctx, f'"{ref}" already declared')
-                # Downgrade the error if we're just importing
-                # the same thing multiple times
-                first_of_dup = context.refs[ref]
-                if (
-                    isinstance(first_of_dup, Context.ImportPlaceholder)
-                    and isinstance(item, Context.ImportPlaceholder)
-                    and first_of_dup.ref == item.ref
-                    and first_of_dup.from_path == item.from_path
-                ):
-                    with downgrade(errors.UserKeyError):
-                        raise ex
-                else:
-                    raise ex
+                # Downgrade the error in case we're shadowing things
+                with downgrade(errors.UserKeyError):
+                    raise errors.UserKeyError.from_ctx(
+                        item_ctx,
+                        f'"{ref}" already declared. Shadowing original.'
+                        " In the future this may be an error",
+                    )
             context.refs[ref] = item
         return context
 
@@ -452,7 +325,7 @@ _declaration_domain_to_unit = {
 }
 
 
-class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
+class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
     of Fixham Harbour (in earlier episodes, he was based in Bobsville). Recognizable
@@ -471,9 +344,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         self._scopes = FuncDict[ParserRuleContext, Context]()
         self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
+        self._traceback_stack = StackList[ParserRuleContext]()
+        # TODO: add tracebacks if we keep this
         self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
         self._param_assignments = FuncDict[
-            fab_param.Parameter, tuple[Range | Single | None, ParserRuleContext | None]
+            fab_param.Parameter,
+            tuple[
+                Range | Single | None,
+                ParserRuleContext | None,
+                Sequence[ParserRuleContext] | None,
+            ],
         ]()
         self.search_paths: list[os.PathLike] = []
 
@@ -526,7 +406,13 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
             )
         try:
-            return self._init_node(context.scope_ctx, ref)
+            class_ = self._get_referenced_class(context.scope_ctx, ref)
+            if not isinstance(class_, ap.BlockdefContext):
+                raise errors.UserNotImplementedError(
+                    "Can't initialize a fabll directly like this"
+                )
+            with self._traceback_stack.enter(class_.name()):
+                return self._init_node(class_)
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -536,11 +422,13 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
-            for param, (value, ctx) in self._param_assignments.items():
+            for param, (value, ctx, traceback) in self._param_assignments.items():
                 with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
                     if value is None:
                         ex = errors.UserKeyError.from_ctx(
-                            ctx, f"Parameter {param} never assigned"
+                            ctx,
+                            f"Parameter {param} never assigned",
+                            traceback=traceback,
                         )
                         if param in self._promised_params:
                             raise ex
@@ -550,6 +438,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                                     ctx,
                                     "Parameter declared but never assigned."
                                     " In the future this will be an error.",
+                                    traceback=traceback,
                                 )
                             continue
 
@@ -564,7 +453,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     try:
                         param.constrain_subset(value)
                     except UnitCompatibilityError as ex:
-                        raise errors.UserTypeError.from_ctx(ctx, str(ex)) from ex
+                        raise errors.UserTypeError.from_ctx(
+                            ctx, str(ex), traceback=traceback
+                        ) from ex
 
             for param, ctxs in self._promised_params.items():
                 for ctx in ctxs:
@@ -576,6 +467,11 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     @property
     def _current_node(self) -> L.Node:
         return self._node_stack[-1]
+
+    def get_traceback(self) -> Sequence[ParserRuleContext]:
+        """Return the current traceback, with sequential duplicates removed"""
+        # Use dict ordering guarantees and key uniqueness to remove duplicates
+        return list(dict.fromkeys(self._traceback_stack).keys())
 
     @staticmethod
     def _sanitise_path(path: os.PathLike) -> Path:
@@ -757,7 +653,9 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     msg = f"{pretty_name} has no attribute '{name}'"
                 else:
                     msg = f"No attribute '{name}'"
-                raise errors.UserKeyError.from_ctx(ctx, msg) from ex
+                raise errors.UserKeyError.from_ctx(
+                    ctx, msg, traceback=self.get_traceback()
+                ) from ex
 
         return node
 
@@ -772,7 +670,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def _new_node(
         self,
         item: ap.BlockdefContext | Type[L.Node],
-        promised_supers: list[ap.BlockdefContext] | None = None,
+        promised_supers: list[ap.BlockdefContext],
     ) -> tuple[L.Node, list[ap.BlockdefContext]]:
         """
         Kind of analogous to __new__ in Python, except that it's a factory
@@ -785,9 +683,6 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         isn't already known, attaching the __atopile_src_ctx__ attribute to the new
         class.
         """
-        if promised_supers is None:
-            promised_supers = []
-
         if isinstance(item, type) and issubclass(item, L.Node):
             super_class = item
             for super_ctx in promised_supers:
@@ -819,8 +714,8 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
             block_type = item.blocktype()
-            if super_ctx := item.name_or_attr():
-                super_ref = self.visitName_or_attr(super_ctx)
+            if super_ctx := item.blockdef_super():
+                super_ref = self.visitName_or_attr(super_ctx.name_or_attr())
                 # Create a base node to build off
                 base_class = self._get_referenced_class(item, super_ref)
             else:
@@ -838,29 +733,38 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             # Descend into building the superclass. We've got no information
             # on when the super-chain will be resolved, so we need to promise
             # that this current blockdef will be visited as part of the init
-            new_node, supers_ = self._new_node(base_class, [item] + promised_supers)
+            result = self._new_node(
+                base_class,
+                promised_supers=[item] + promised_supers,
+            )
 
             # HACK: promised_supers is falsey a hack way to check
             # that we're only looking at the top-node w/ promised supers
             if not promised_supers and (block_type.COMPONENT() or block_type.MODULE()):
-                new_node.add(has_ato_cmp_attrs())
+                result[0].add(has_ato_cmp_attrs())
 
-            return new_node, supers_
+            return result
 
         # This should never happen
         raise ValueError(f"Unknown item type {item}")
 
-    def _init_node(self, stmt_ctx: ParserRuleContext, ref: Ref) -> L.Node:
+    def _init_node(
+        self,
+        node_type: ap.BlockdefContext | Type[L.Node],
+    ) -> L.Node:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
         new_node, promised_supers = self._new_node(
-            self._get_referenced_class(stmt_ctx, ref)
+            node_type,
+            promised_supers=[],
         )
 
         with self._node_stack.enter(new_node):
             for super_ctx in promised_supers:
-                self.visitBlock(super_ctx.block())
+                # TODO: this would be better if we had the
+                # "from xyz" super in the traceback too
+                with self._traceback_stack.enter(super_ctx.name()):
+                    self.visitBlock(super_ctx.block())
 
-        new_node.add(from_dsl(stmt_ctx))
         return new_node
 
     def _get_or_promise_param(
@@ -880,6 +784,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 src_ctx,
                 f'Parameter "{name}" not found and'
                 " forward-declared params are not yet implemented",
+                traceback=self.get_traceback(),
             ) from ex
 
         assert isinstance(node, fab_param.Parameter)
@@ -909,6 +814,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     src_ctx,
                     f"Cannot assign a parameter to {name} on {node} because it's"
                     f" type is {param.__class__.__name__}",
+                    traceback=self.get_traceback(),
                 )
 
         if not param.units.is_compatible_with(unit):
@@ -916,6 +822,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                 src_ctx,
                 f"Given units {unit} are incompatible"
                 f" with existing units {param.units}.",
+                traceback=self.get_traceback(),
             )
 
         return param
@@ -930,24 +837,24 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         assigned_name: str = assigned_ref[-1]
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
-
-        if len(assigned_ref) > 1:
-            target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
-        else:
-            target = self._current_node
+        target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
 
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
             if len(assigned_ref) > 1:
                 raise errors.UserSyntaxError.from_ctx(
-                    ctx, f"Can't declare fields in a nested object {assigned_ref}"
+                    ctx,
+                    f"Can't declare fields in a nested object {assigned_ref}",
+                    traceback=self.get_traceback(),
                 )
 
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
 
             try:
-                new_node = self._init_node(ctx, ref)
+                with self._traceback_stack.enter(new_stmt_ctx):
+                    new_node = self._init_node(self._get_referenced_class(ctx, ref))
+                new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name)
@@ -960,8 +867,16 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         value = self.visit(assignable_ctx)
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
             assert isinstance(value.units, UnitType)
+            if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+                if not provided_unit.is_compatible_with(value.units):
+                    raise errors.UserIncompatibleUnitError.from_ctx(
+                        ctx,
+                        f"Implied units {value.units} are incompatible"
+                        f" with explicit units {provided_unit}.",
+                        traceback=self.get_traceback(),
+                    )
             param = self._ensure_param(target, assigned_name, value.units, ctx)
-            self._param_assignments[param] = (value, ctx)
+            self._param_assignments[param] = (value, ctx, self.get_traceback())
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
@@ -982,6 +897,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                         ctx,
                         f'Ignoring assignment of "{value}" to "{assigned_name}" '
                         f'on "{target}"',
+                        traceback=self.get_traceback(),
                     )
 
         else:
@@ -989,23 +905,28 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         return KeyOptMap.empty()
 
-    def _get_mif(self, name: str, ctx: ParserRuleContext) -> L.ModuleInterface | None:
-        if (
-            has_attr_or_property(self._current_node, name)
-            or name in self._current_node.runtime
-        ):
-            ref = Ref.from_one(name)
-            # TODO: consider type-checking this
-            mif = self._get_referenced_node(ref, ctx)
-            if isinstance(mif, L.ModuleInterface):
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        f'"{name}" already exists, skipping.'
-                        " In the future this will be an error."
-                    )
-            else:
-                raise errors.UserTypeError.from_ctx(ctx, f'"{name}" already exists.')
-            return mif
+    def _try_get_mif(
+        self, name: str, ctx: ParserRuleContext
+    ) -> L.ModuleInterface | None:
+        try:
+            mif = self.get_node_attr(self._current_node, name)
+        except AttributeError:
+            return None
+
+        if isinstance(mif, L.ModuleInterface):
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    f'"{name}" already exists, skipping.'
+                    " In the future this will be an error."
+                )
+        else:
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f'"{name}" already exists.',
+                traceback=self.get_traceback(),
+            )
+
+        return mif
 
     def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
         if ctx.name():
@@ -1017,7 +938,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
         else:
             raise ValueError(f"Unhandled pin name type {ctx}")
 
-        if mif := self._get_mif(name, ctx):
+        if mif := self._try_get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
@@ -1025,20 +946,23 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         raise errors.UserTypeError.from_ctx(
-            ctx, f"Can't declare pins on components of type {self._current_node}"
+            ctx,
+            f"Can't declare pins on components of type {self._current_node}",
+            traceback=self.get_traceback(),
         )
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
-        if mif := self._get_mif(name, ctx):
+        if mif := self._try_get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         mif = self._current_node.add(F.Electrical(), name=name)
         return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-    @classmethod
-    def _connect(cls, a: L.ModuleInterface, b: L.ModuleInterface, nested: bool = False):
+    def _connect(
+        self, a: L.ModuleInterface, b: L.ModuleInterface, ctx: ParserRuleContext | None
+    ):
         """
         FIXME: In ato, we allowed duck-typing of connectables
         We need to reconcile this with the strong typing
@@ -1066,16 +990,18 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                         raise
 
                 try:
-                    cls._connect(c_a, c_b, nested=True)
+                    self._connect(c_a, c_b, None)
                 except NodeException:
                     raise top_ex
 
             else:
-                if not nested:
+                if ctx is not None:
                     with downgrade(DeprecatedException):
-                        raise DeprecatedException(
+                        raise DeprecatedException.from_ctx(
+                            ctx,
                             f"Connected {a} to {b} by duck-typing."
-                            " They should be of the same type."
+                            " They should be of the same type.",
+                            traceback=self.get_traceback(),
                         )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
@@ -1087,7 +1013,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             SkipPriorFailedException,
         ):
             with err_cltr(), log_user_errors():
-                self._connect(a, b)
+                self._connect(a, b, ctx)
 
         return KeyOptMap.empty()
 
@@ -1111,14 +1037,21 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
             raise ValueError(f"Unhandled connectable type {ctx}")
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
-        from_, to = map(self.visitName_or_attr, ctx.name_or_attr())
-        node = self._get_referenced_node(from_, ctx)
-        if not isinstance(node, L.Module):
-            raise errors.UserTypeError.from_ctx(ctx, f"Can't retype {node}")
+        from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
+        from_node = self._get_referenced_node(from_ref, ctx)
+        if not isinstance(from_node, L.Module):
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't specialize {from_node}",
+                traceback=self.get_traceback(),
+            )
 
-        narrow = self._init_node(ctx, to)
-        assert isinstance(narrow, L.Module)
-        node.specialize(narrow)
+        # TODO: consider extending this w/ the ability to specialize to an instance
+        with self._traceback_stack.enter(ctx):
+            specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref))
+        from_node.add(specialized_node)
+        assert isinstance(specialized_node, L.Module)
+        from_node.specialize(specialized_node)
         return KeyOptMap.empty()
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):
@@ -1240,10 +1173,7 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
     def visitAtom(self, ctx: ap.AtomContext) -> fab_param.ParameterOperatable:
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
-            if len(ref) > 1:
-                target = self._get_referenced_node(Ref(ref[:-1]), ctx)
-            else:
-                target = self._current_node
+            target = self._get_referenced_node(Ref(ref[:-1]), ctx)
             return self._get_or_promise_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
@@ -1255,10 +1185,128 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         raise ValueError(f"Unhandled atom type {ctx}")
 
+    def _get_unit_from_ctx(self, ctx: ParserRuleContext) -> UnitType:
+        """Return a pint unit from a context."""
+        unit_str = ctx.getText()
+        try:
+            return P.Unit(unit_str)
+        except UndefinedUnitError as ex:
+            raise errors.UserUnknownUnitError.from_ctx(
+                ctx,
+                f"Unknown unit '{unit_str}'",
+                traceback=self.get_traceback(),
+            ) from ex
+
     def visitLiteral_physical(
         self, ctx: ap.Literal_physicalContext
     ) -> Quantity_Singleton | Quantity_Interval:
-        return PhysicalValuesMixin.visitLiteral_physical(self, ctx)
+        """Yield a physical value from a physical context."""
+        if ctx.quantity():
+            qty = self.visitQuantity(ctx.quantity())
+            value = Single(qty)
+        elif ctx.bilateral_quantity():
+            value = self.visitBilateral_quantity(ctx.bilateral_quantity())
+        elif ctx.bound_quantity():
+            value = self.visitBound_quantity(ctx.bound_quantity())
+        else:
+            # this should be protected because it shouldn't be parseable
+            raise ValueError
+        return value
+
+    def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
+        """Yield a physical value from an implicit quantity context."""
+        raw: str = ctx.NUMBER().getText()
+        if raw.startswith("0x"):
+            value = int(raw, 16)
+        else:
+            value = float(raw)
+
+        # Ignore the positive unary operator
+        if ctx.MINUS():
+            value = -value
+
+        if unit_ctx := ctx.name():
+            unit = self._get_unit_from_ctx(unit_ctx)
+        else:
+            unit = dimensionless
+
+        return Quantity(value, unit)  # type: ignore
+
+    def visitBilateral_quantity(
+        self, ctx: ap.Bilateral_quantityContext
+    ) -> Quantity_Interval:
+        """Yield a physical value from a bilateral quantity context."""
+        nominal_qty = self.visitQuantity(ctx.quantity())
+
+        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
+        tol_num = float(tol_ctx.NUMBER().getText())
+
+        # Handle proportional tolerances
+        if tol_ctx.PERCENT():
+            tol_divider = 100
+        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
+            tol_divider = 1e6
+        else:
+            tol_divider = None
+
+        if tol_divider:
+            if nominal_qty == 0:
+                raise errors.UserException.from_ctx(
+                    tol_ctx,
+                    "Can't calculate tolerance percentage of a nominal value of zero",
+                    traceback=self.get_traceback(),
+                )
+
+            # Calculate tolerance value from percentage/ppm
+            tol_value = tol_num / tol_divider
+            return Range.from_center_rel(nominal_qty, tol_value)
+
+        # Ensure the tolerance has a unit
+        if tol_name := tol_ctx.name():
+            # In this case there's a named unit on the tolerance itself
+            tol_qty = tol_num * self._get_unit_from_ctx(tol_name)
+        elif nominal_qty.unitless:
+            tol_qty = tol_num * dimensionless
+        else:
+            tol_qty = tol_num * nominal_qty.units
+
+        # Ensure units on the nominal quantity
+        if nominal_qty.unitless:
+            nominal_qty = nominal_qty * tol_qty.units
+
+        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
+        if not nominal_qty.is_compatible_with(tol_qty):
+            raise errors.UserTypeError.from_ctx(
+                tol_name,
+                f"Tolerance unit '{tol_qty.units}' is not dimensionally"
+                f" compatible with nominal unit '{nominal_qty.units}'",
+                traceback=self.get_traceback(),
+            )
+
+        return Range.from_center(nominal_qty, tol_qty)
+
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
+        """Yield a physical value from a bound quantity context."""
+
+        start, end = map(self.visitQuantity, ctx.quantity())
+
+        # If only one of them has a unit, take the unit from the one which does
+        if start.unitless and not end.unitless:
+            start = start * end.units
+        elif not start.unitless and end.unitless:
+            end = end * start.units
+
+        elif not start.is_compatible_with(end):
+            # If they've both got units, let the RangedValue handle
+            # the dimensional compatibility
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Tolerance unit '{end.units}' is not dimensionally"
+                f" compatible with nominal unit '{start.units}'",
+                traceback=self.get_traceback(),
+            )
+
+        return Range(start, end)
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
@@ -1267,7 +1315,28 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        raise NotImplementedError
+        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
+        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
+        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
+        else:
+            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+
+        value = self.visitCum_assignable(ctx.cum_assignable())
+
+        # HACK: we have no way to check by what operator
+        # the param is dynamically resolved
+        # For now we assume any dynamic trait is sufficient
+        if ctx.cum_operator().ADD_ASSIGN():
+            assignee.alias_is(value)
+        elif ctx.cum_operator().SUB_ASSIGN():
+            assignee.alias_is(-value)
+        else:
+            # Syntax should protect from this
+            raise ValueError(f"Unhandled set assignment operator {ctx}")
+
+        with downgrade(DeprecatedException):
+            raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
         return KeyOptMap.empty()
 
     def visitSet_assign_stmt(self, ctx: ap.Set_assign_stmtContext):
@@ -1277,30 +1346,64 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        raise NotImplementedError
+        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
+        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
+        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
+        else:
+            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+
+        value = self.visitCum_assignable(ctx.cum_assignable())
+
+        if ctx.OR_ASSIGN():
+            assignee.constrain_superset(value)
+        elif ctx.AND_ASSIGN():
+            assignee.constrain_subset(value)
+        else:
+            # Syntax should protect from this
+            raise ValueError(f"Unhandled set assignment operator {ctx}")
+
+        with downgrade(DeprecatedException):
+            if ctx.OR_ASSIGN():
+                subset = ctx.cum_assignable().getText()
+                superset = ctx.name_or_attr().getText()
+            else:
+                subset = ctx.name_or_attr().getText()
+                superset = ctx.cum_assignable().getText()
+            raise DeprecatedException(
+                f"Set assignment of {assignee} is deprecated."
+                f' Use "assert {subset} within {superset} "instead.'
+            )
         return KeyOptMap.empty()
+
+    def _try_get_unit_from_type_info(
+        self, ctx: ap.Type_infoContext | None
+    ) -> UnitType | None:
+        if ctx is None:
+            return None
+        unit_ctx: ap.Name_or_attrContext = ctx.name_or_attr()
+        # TODO: @v0.4.0: remove this shim
+        unit_ref = self.visitName_or_attr(unit_ctx)
+        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
+            unit = _declaration_domain_to_unit[unit_ref[0]]
+            # TODO: consider deprecating this
+        else:
+            unit = self._get_unit_from_ctx(ctx.name_or_attr())
+        return unit
 
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
         """Handle declaration statements."""
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
         if len(assigned_value_ref) > 1:
             raise errors.UserSyntaxError.from_ctx(
-                ctx, f"Can't declare fields in a nested object {assigned_value_ref}"
+                ctx,
+                f"Can't declare fields in a nested object {assigned_value_ref}",
+                traceback=self.get_traceback(),
             )
 
         assigned_name = assigned_value_ref[0]
-        unit_ctx: ap.Name_or_attrContext = ctx.type_info().name_or_attr()
-        # TODO: @v0.4.0: remove this shim
-        unit_ref = self.visitName_or_attr(unit_ctx)
-        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
-            unit = _declaration_domain_to_unit[unit_ref[0]]
-            with downgrade(DeprecatedException):
-                raise DeprecatedException(
-                    f"Declaration of {assigned_name} with unit {unit} is deprecated."
-                    " Use the unit directly instead."
-                )
-        else:
-            unit = self._get_unit_from_ctx(ctx.type_info().name_or_attr())
+        unit = self._try_get_unit_from_type_info(ctx.type_info())
+        assert unit is not None, "Type info should be enforced by the parser"
 
         param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
         if param in self._param_assignments:
@@ -1309,9 +1412,10 @@ class Bob(BasicsMixin, PhysicalValuesMixin, SequenceMixin, AtoParserVisitor):  #
                     ctx,
                     f"Ignoring declaration of {assigned_name} "
                     "because it's already defined",
+                    traceback=self.get_traceback(),
                 )
         else:
-            self._param_assignments[param] = (None, ctx)
+            self._param_assignments[param] = (None, ctx, self.get_traceback())
 
         return KeyOptMap.empty()
 
