@@ -25,7 +25,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
@@ -240,7 +239,7 @@ def test_solve_realworld():
 
 def test_solve_realworld_bigger():
     app = F.RP2040_ReferenceDesign()
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
 
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(app.get_graph())

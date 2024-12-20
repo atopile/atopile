@@ -8,7 +8,6 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +45,4 @@ class I2C(ModuleInterface):
         return L.Range(I2C.SpeedMode.low_speed.value, mode.value)
 
     def __preinit__(self) -> None:
-        self.frequency.add(
-            F.is_dynamic_by_connections(lambda mif: cast_assert(I2C, mif).frequency)
-        )
+        self.frequency.add(F.is_bus_parameter())
