@@ -130,6 +130,27 @@ std::string Node::get_type_name() {
     return util::get_type_name(this);
 }
 
+Node::Type Node::get_type() {
+    if (!this->type) {
+        throw std::runtime_error("Node has no py_handle");
+    }
+    return *this->type;
+}
+
+bool Node::isinstance(nb::type_object type) {
+    if (!this->type) {
+        return false;
+    }
+    return this->get_type().is_subclass(type);
+}
+
+bool Node::isinstance(std::vector<nb::type_object> types) {
+    if (!this->type) {
+        return false;
+    }
+    return this->get_type().is_subclass(types);
+}
+
 std::optional<nb::object> Node::get_py_handle() {
     return this->py_handle;
 }
@@ -187,14 +208,8 @@ Node::get_children(bool direct_only, std::optional<std::vector<nb::type_object>>
     } else {
         for (auto node : children) {
             // filter by type
-            if (types) {
-                auto handle = node->get_py_handle();
-                if (!handle) {
-                    continue;
-                }
-                if (!pyutil::isinstance(*handle, *types)) {
-                    continue;
-                }
+            if (types && !node->isinstance(*types)) {
+                continue;
             }
 
             // filter by function
@@ -217,38 +232,6 @@ Node::get_children(bool direct_only, std::optional<std::vector<nb::type_object>>
     }
 
     return children_filtered;
-}
-
-Node::Type Node::get_type() {
-    if (!this->type) {
-        throw std::runtime_error("Node has no py_handle");
-    }
-    return *this->type;
-}
-
-Node::Type::Type(nb::handle type)
-  : type(type) {
-    // TODO can be done in a nicer way
-    this->hack_cache_is_moduleinterface =
-        pyutil::issubclass(this->type, this->get_moduleinterface_type());
-}
-
-bool Node::Type::operator==(const Type &other) const {
-    // TODO not sure this is ok
-    return this->type.ptr() == other.type.ptr();
-}
-
-std::string Node::Type::get_name() {
-    return pyutil::get_name(this->type);
-}
-
-bool Node::Type::is_moduleinterface() {
-    return this->hack_cache_is_moduleinterface;
-}
-
-nb::type_object Node::Type::get_moduleinterface_type() {
-    // TODO can be done in a nicer way
-    return nb::module_::import_("faebryk.core.moduleinterface").attr("ModuleInterface");
 }
 
 std::unordered_set<Node_ref> Node::bfs_node(std::function<bool(Path)> filter) {
