@@ -36,7 +36,6 @@ from faebryk.libs.exceptions import (
     accumulate,
     downgrade,
     iter_through_errors,
-    log_user_errors,
 )
 from faebryk.libs.library.L import Range, Single
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Singleton
@@ -135,7 +134,7 @@ class SequenceMixin:
                 errors._BaseBaseUserException,
                 SkipPriorFailedException,
             ):
-                with err_cltr(), log_user_errors():
+                with err_cltr():
                     # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
                     child_result = cast(AtoParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
@@ -219,7 +218,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
             # Standard library imports are special, and don't require a from path
             imports = []
             for collector, name_or_attr in iter_through_errors(ctx.name_or_attr()):
-                with collector(), log_user_errors():
+                with collector():
                     ref = self.visitName_or_attr(name_or_attr)
                     if len(ref) > 1:
                         raise errors.UserKeyError.from_ctx(
@@ -423,7 +422,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
             for param, (value, ctx, traceback) in self._param_assignments.items():
-                with ex_acc.collect(), ato_error_converter(), log_user_errors(logger):
+                with ex_acc.collect(), ato_error_converter():
                     if value is None:
                         ex = errors.UserKeyError.from_ctx(
                             ctx,
@@ -1012,7 +1011,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             errors._BaseBaseUserException,
             SkipPriorFailedException,
         ):
-            with err_cltr(), log_user_errors():
+            with err_cltr():
                 self._connect(a, b, ctx)
 
         return KeyOptMap.empty()
