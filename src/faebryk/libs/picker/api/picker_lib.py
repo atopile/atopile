@@ -11,7 +11,7 @@ import more_itertools
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import And, Is, Parameter
+from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.picker.api.api import get_api_client, get_package_candidates
 from faebryk.libs.picker.api.models import (
@@ -33,7 +33,6 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.mappings import AttributeMapping, try_get_param_mapping
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
 from faebryk.libs.util import Tree, cast_assert, not_none
 
@@ -202,14 +201,12 @@ def filter_by_module_params_and_attach(
     """
     Find a component with matching parameters
     """
-    mapping = try_get_param_mapping(cmp)
-
     # FIXME: should take the desired qty and respect it
     tried = []
 
     def parts_gen():
         for part in parts:
-            if check_compatible_parameters([(cmp, part, mapping)], solver):
+            if check_compatible_parameters([(cmp, part)], solver):
                 tried.append(part)
                 yield part
 
@@ -273,20 +270,20 @@ def try_attach(module: Module, parts: Iterable[Component], qty: int):
 
 
 def get_compatible_parameters(
-    module: Module, c: "Component", mapping: list[AttributeMapping], solver: Solver
-):
+    module: Module, c: "Component", solver: Solver
+) -> dict[Parameter, ParameterOperatable.Literal]:
     """
     Check if the parameters of a component are compatible with the module
     """
     # Nothing to check
-    if not mapping:
+    if not c.attribute_literals:
         return {}
 
     # shortcut because solving slow
     try:
         get_raw(c.lcsc_display)
     except LCSC_NoDataException:
-        return None
+        return {}
 
     param_mapping = [
         (
@@ -308,34 +305,30 @@ def get_compatible_parameters(
                     f"Known superset {known_superset} is not a superset of {c_range}"
                     f" for part C{c.lcsc}"
                 )
-            return None
+            return {}
 
-    return param_mapping
+    return {p: c_range for p, c_range in param_mapping}
 
 
 def check_compatible_parameters(
-    module_candidates: list[tuple[Module, "Component", list[AttributeMapping]]],
-    solver: Solver,
+    module_candidates: list[tuple[Module, Component]], solver: Solver
 ):
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
 
-    mappings = [
-        get_compatible_parameters(module, c, mapping, solver)
-        for module, c, mapping in module_candidates
-    ]
+    mappings = [get_compatible_parameters(m, c, solver) for m, c in module_candidates]
 
     if any(m is None for m in mappings):
         return False
 
     if LOG_PICK_SOLVE:
-        logger.info(f"Solving for modules:" f" {[m for m, _, _ in module_candidates]}")
+        logger.info(f"Solving for modules:" f" {[m for m, _ in module_candidates]}")
 
     anded = And(
         *(
             Is(m_param, c_range)
             for param_mapping in mappings
-            for m_param, c_range in not_none(param_mapping)
+            for m_param, c_range in not_none(param_mapping).items()
         )
     )
     result = solver.assert_any_predicate([(anded, None)], lock=False)
@@ -346,13 +339,11 @@ def check_compatible_parameters(
     return True
 
 
-def pick_atomically(candidates: list[tuple[Module, "Component"]], solver: Solver):
-    module_candidate_params = [
-        (module, part, try_get_param_mapping(module)) for module, part in candidates
-    ]
+def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
+    module_candidate_params = [(module, part) for module, part in candidates]
     if not check_compatible_parameters(module_candidate_params, solver):
         return False
-    for m, part, mapping in module_candidate_params:
+    for m, part in module_candidate_params:
         try_attach(m, [part], qty=1)
 
     return True
