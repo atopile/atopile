@@ -5,7 +5,6 @@ import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import cast_assert
 
 
 class UART_Base(ModuleInterface):
@@ -21,6 +20,4 @@ class UART_Base(ModuleInterface):
         )
 
     def __preinit__(self) -> None:
-        self.baud.add(
-            F.is_dynamic_by_connections(lambda mif: cast_assert(UART_Base, mif).baud)
-        )
+        self.baud.add(F.is_bus_parameter())

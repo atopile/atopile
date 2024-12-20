@@ -27,23 +27,15 @@ class App(Module):
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
-        self.led.led.add(F.has_descriptive_properties_defined({"LCSC": "C965802"}))
+        self.led.led.add(F.has_explicit_part.by_supplier("C965802"))
         self.led.current_limiting_resistor.add(
-            F.has_descriptive_properties_defined({"LCSC": "C159037"})
+            F.has_explicit_part.by_supplier("C159037")
         )
 
         buttoncell = self.battery.specialize(F.ButtonCell())
-        buttoncell.add(F.has_descriptive_properties_defined({"LCSC": "C5239862"}))
         buttoncell.add(
-            F.can_attach_to_footprint_via_pinmap(
-                {
-                    "1": self.battery.power.lv,
-                    "2": self.battery.power.hv,
-                }
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={"1": self.battery.power.lv, "2": self.battery.power.hv},
             )
         )
-
-        # Here is the hack: Disables param matching for LCSC & MFR picks
-        from faebryk.libs.picker.jlcpcb.mappings import _MAPPINGS_BY_TYPE
-
-        _MAPPINGS_BY_TYPE.clear()

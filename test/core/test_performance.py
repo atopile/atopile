@@ -16,7 +16,6 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.test.times import Times
@@ -252,7 +251,7 @@ class TestPerformance(unittest.TestCase):
             app = t()  # noqa: F841
             timings.add(f"{t.__name__}: construct")
 
-            resolve_dynamic_parameters(app.get_graph())
+            F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
             timings.add(f"{t.__name__}: resolve")
 
         logger.info(f"\n{timings}")
@@ -296,7 +295,7 @@ def test_complex_module_full():
     app = App()
     timings.add("construct")
 
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
@@ -319,7 +318,7 @@ def test_very_complex_module_full():
     app = F.RP2040_ReferenceDesign()
     timings.add("construct")
 
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
@@ -344,7 +343,7 @@ def test_complex_module_comp_count():
     app = App()
     timings.add("construct")
 
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     timings.add("resolve bus params")
 
     solver = DefaultSolver()

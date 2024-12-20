@@ -25,6 +25,7 @@ from faebryk.library.has_single_electric_reference import has_single_electric_re
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.can_be_surge_protected import can_be_surge_protected
+from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.Signal import Signal
 from faebryk.library.has_footprint import has_footprint
@@ -49,7 +50,6 @@ from faebryk.library.is_optional import is_optional
 from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
-from faebryk.library.is_dynamic import is_dynamic
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
@@ -76,7 +76,6 @@ from faebryk.library.has_simple_value_representation_based_on_params_chain impor
 from faebryk.library.has_simple_value_representation_defined import has_simple_value_representation_defined
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_single_connection_impl import has_single_connection_impl
-from faebryk.library.is_dynamic_by_connections import is_dynamic_by_connections
 from faebryk.library.is_representable_by_single_value_defined import is_representable_by_single_value_defined
 from faebryk.library.PJ398SM import PJ398SM
 from faebryk.library.RJ45_Receptacle import RJ45_Receptacle

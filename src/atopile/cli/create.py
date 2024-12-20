@@ -370,11 +370,8 @@ def component(
 ):
     """Create a new component."""
     import faebryk.libs.picker.lcsc as lcsc_
-    from faebryk.libs.picker.api.picker_lib import (
-        _extract_numeric_id,
-        client,
-    )
-    from faebryk.libs.picker.jlcpcb.jlcpcb import Component
+    from faebryk.libs.picker.api.models import Component
+    from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
     from faebryk.libs.pycodegen import format_and_write, sanitize_name
     from faebryk.tools.libadd import Template
 
@@ -431,13 +428,18 @@ def component(
 
         for component in components:
             component_table.add_row(
-                component.mfr_name, component.mfr, component.description
+                component.manufacturer_name,
+                component.part_number,
+                component.description,
             )
 
         rich.print(component_table)
 
         choices = [
-            {"name": f"{component.mfr_name} {component.mfr}", "value": component}
+            {
+                "name": f"{component.manufacturer_name} {component.part_number}",
+                "value": component,
+            }
             for component in components
         ] + [{"name": "Search again...", "value": None}]
 
@@ -467,7 +469,7 @@ def component(
         name = questionary.text(
             "Enter the name of the component",
             default=caseconverter.pascalcase(
-                sanitize_name(component.mfr_name + " " + component.mfr)
+                sanitize_name(component.manufacturer_name + " " + component.part_number)
             ),
         ).unsafe_ask()
 

@@ -88,16 +88,16 @@ class LCSC_NoDataException(LCSCException): ...
 class LCSC_PinmapException(LCSCException): ...
 
 
-def get_raw(partno: str):
+def get_raw(lcsc_id: str):
     api = EasyedaApi()
 
     cache_base = cache_base_path()
     cache_base.mkdir(parents=True, exist_ok=True)
 
-    comp_path = cache_base.joinpath(partno)
+    comp_path = cache_base.joinpath(lcsc_id)
     if not comp_path.exists():
-        logger.debug(f"Did not find component {partno} in cache, downloading...")
-        cad_data = api.get_cad_data_of_component(lcsc_id=partno)
+        logger.debug(f"Did not find component {lcsc_id} in cache, downloading...")
+        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
         serialized = json.dumps(cad_data)
         comp_path.write_text(serialized)
 
@@ -106,15 +106,15 @@ def get_raw(partno: str):
     # API returned no data
     if not data:
         raise LCSC_NoDataException(
-            partno, f"Failed to fetch data from EasyEDA API for part {partno}"
+            lcsc_id, f"Failed to fetch data from EasyEDA API for part {lcsc_id}"
         )
 
     return data
 
 
-def download_easyeda_info(partno: str, get_model: bool = True):
+def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     # easyeda api access & caching --------------------------------------------
-    data = get_raw(partno)
+    data = get_raw(lcsc_id)
 
     easyeda_footprint = EasyedaFootprintImporter(
         easyeda_cp_cad_data=data
@@ -202,12 +202,12 @@ def get_datasheet_url(part: EeSymbol):
         return None
     # make requests act like curl
     lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
-    partno = part.info.lcsc_id
+    lcsc_id = part.info.lcsc_id
     # find _{partno}.pdf in html
-    match = re.search(f'href="(https://[^"]+_{partno}.pdf)"', lcsc_site.text)
+    match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
     if match:
         pdfurl = match.group(1)
-        logger.debug(f"Found datasheet for {partno} at {pdfurl}")
+        logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
         return pdfurl
     else:
         return None

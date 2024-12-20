@@ -38,7 +38,6 @@ dependencies = [
     "dataclasses-json>=0.6.7,<0.7.0",
     "patool>=2.3.0,<2.4.0",
     "requests>=2.32.3,<3.0.0",
-    "tortoise-orm>=0.21.3,<0.22.0",
     "rich>=13.7.1,<14.0.0",
     "isort>=5.6.4,<5.14.0",
     "typer>=0.12,<0.16",
@@ -47,12 +46,11 @@ dependencies = [
     "deprecated~=1.2.14",
     "more-itertools>=10.4,<10.6",
     "psutil>=6.0.0,<7.0.0",
-    "antlr4-python3-runtime==4.13.2",                                      # Strict version because the generated (but versioned) files must match
+    "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
     "cattrs>=23.2.3",
     "DeepDiff>=6.7.1",
-    "eseries>=1.2.1",
     "fake-useragent>=1.4.0",
     "fastapi>=0.109.0",
     "gitpython>=3.1.41",
