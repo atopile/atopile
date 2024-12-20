@@ -161,12 +161,11 @@ def get_compatible_parameters(
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
         known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
         if not known_superset.is_superset_of(c_range):
-            # TODO reenable
-            # if LOG_PICK_SOLVE:
-            #    logger.warning(
-            #        f"Known superset {known_superset} is not a superset of {c_range}"
-            #        f" for part C{c.lcsc}"
-            #    )
+            if LOG_PICK_SOLVE:
+                logger.warning(
+                    f"Known superset {known_superset} is not a superset of {c_range}"
+                    f" for part C{c.lcsc}"
+                )
             return None
 
     return param_mapping

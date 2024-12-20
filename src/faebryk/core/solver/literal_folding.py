@@ -40,7 +40,6 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
-    make_if_doesnt_exist,
     make_lit,
     remove_predicate,
     try_extract_all_literals,
@@ -180,7 +179,9 @@ def fold_add(
         return
 
     # Careful, modifying old graph, but should be ok
-    factored_operands = [Multiply(n, m) for n, m in new_factors.items()]
+    factored_operands = [
+        mutator.create_expression(Multiply, n, m) for n, m in new_factors.items()
+    ]
 
     new_operands = [
         *factored_operands,
@@ -200,7 +201,7 @@ def fold_add(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0])
+        alias_is_literal(new_expr, new_operands[0], mutator)
 
 
 def fold_multiply(
@@ -253,7 +254,7 @@ def fold_multiply(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0])
+        alias_is_literal(new_expr, new_operands[0], mutator)
 
 
 def fold_pow(
@@ -279,7 +280,7 @@ def fold_pow(
     base, exp = map(try_extract_numeric_literal, expr.operands)
     # All literals
     if base is not None and exp is not None:
-        alias_is_literal(expr, base**exp)
+        alias_is_literal(expr, base**exp, mutator)
         return
 
     if exp is not None:
@@ -289,16 +290,16 @@ def fold_pow(
 
         # in python 0**0 is also 1
         if exp == 0:
-            alias_is_literal(expr, 1)
+            alias_is_literal(expr, 1, mutator)
             return
 
     if base is not None:
         if base == 0:
-            alias_is_literal(expr, 0)
+            alias_is_literal(expr, 0, mutator)
             # FIXME: exp >! 0
             return
         if base == 1:
-            alias_is_literal(expr, 1)
+            alias_is_literal(expr, 1, mutator)
             return
 
 
@@ -461,7 +462,7 @@ def fold_not(
                             for n in parent_nots:
                                 n.constrain()
                         else:
-                            Not(mutator.get_copy(inner_op)).constrain()
+                            mutator.create_expression(Not, inner_op).constrain()
 
 
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:
@@ -527,7 +528,7 @@ def fold_is(
         # P is! False -> ¬!P
         if BoolSet(False) in literal_operands:
             for p in expr.get_operatable_operands(ConstrainableExpression):
-                Not(p).constrain()
+                mutator.create_expression(Not, p).constrain()
 
 
 def fold_subset(
@@ -542,6 +543,7 @@ def fold_subset(
     A ss A -> True
     A is B, A ss B | B non(ex)literal -> repr(B, A)
     A ss ([X]) -> A is ([X])
+    A ss {} -> A is {}
     # predicates
     P ss! True -> P!
     P ss! False -> ¬!P
@@ -549,15 +551,16 @@ def fold_subset(
     # literals
     X ss Y -> True / False
 
-    # TODO A ss B, B ss/is C -> A ss C (transitive)
+    A ss! B, B ss!/is! C -> A ss! C in transitive_subset
     ```
     """
 
     A, B = expr.operands
 
     # A ss ([X]) -> A is ([X])
+    # A ss {} -> A is {}
     b_is = try_extract_literal(B, allow_subset=False)
-    if b_is is not None and b_is.is_single_element():
+    if b_is is not None and (b_is.is_single_element() or b_is.is_empty()):
         new_is = mutator._mutate(expr, Is(mutator.get_copy(A), b_is))
         if expr.constrained:
             new_is.constrain()
@@ -608,7 +611,7 @@ def fold_subset(
         # P ss! False -> ¬!P
         if B == BoolSet(False):
             assert isinstance(A, ConstrainableExpression)
-            Not(A).constrain()
+            mutator.create_expression(Not, A).constrain()
 
 
 def fold_ge(
@@ -625,13 +628,19 @@ def fold_ge(
     X >= Y -> [True] / [False] / [True, False]
     A >=! X | |X| > 1 -> A >=! X.max()
     X >=! A | |X| > 1 -> X.min() >=! A
+    # uncorrelated
+    A >= B{I|X} -> A >= X.max()
+    B{I|X} >= A -> X.min() >= A
     ```
     """
     left, right = expr.operands
     literal_operands = cast(Sequence[CanonicalNumber], literal_operands)
+    # A >= A
     if if_operands_same_make_true(expr, mutator):
         return
 
+    # X >= Y
+    # A{I|X} >= B{I|Y}
     lits = try_extract_all_literals(expr, lit_type=Quantity_Interval_Disjoint)
     if lits:
         a, b = lits
@@ -660,19 +669,25 @@ def fold_ge(
     # FIXME: only allowed if A uncorrelated B
     # if_operands_same_make_true covers some of this only
 
+    # TODO makes stuff slow for some reason
+    return
     # A >= B{I|X} -> A >= X.max()
     # B{I|X} >= A -> X.min() >= A
     left_lit, right_lit = map(try_extract_literal, (left, right))
     # TODO check if exists
     if left_lit is not None:
         assert isinstance(left_lit, Quantity_Interval_Disjoint)
-        p = make_if_doesnt_exist(GreaterOrEqual, make_lit(left_lit.min_elem), right)
+        p = mutator.create_expression(
+            GreaterOrEqual, make_lit(left_lit.min_elem), right
+        )
         if expr.constrained:
             p.constrain()
         return
     if right_lit is not None:
         assert isinstance(right_lit, Quantity_Interval_Disjoint)
-        p = make_if_doesnt_exist(GreaterOrEqual, left, make_lit(right_lit.max_elem))
+        p = mutator.create_expression(
+            GreaterOrEqual, left, make_lit(right_lit.max_elem)
+        )
         if expr.constrained:
             p.constrain()
         return

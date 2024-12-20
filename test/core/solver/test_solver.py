@@ -203,6 +203,7 @@ def test_alias_classes():
     # TODO actually test something
 
 
+@pytest.mark.xfail(reason="TODO reenable ge fold")
 def test_min_max_single():
     p0 = Parameter(units=P.V)
     p0.alias_is(L.Range(0 * P.V, 10 * P.V))
@@ -596,6 +597,24 @@ def test_congruence_filter():
     solver = DefaultSolver()
     result, context = solver.phase_1_simplify_analytically(x.get_graph())
     assert result.repr_map[y1] is result.repr_map[y2]
+
+
+def test_inspect_enum_simple():
+    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+
+    A.constrain_subset(F.LED.Color.EMERALD)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == F.LED.Color.EMERALD
+
+
+def test_inspect_enum_led():
+    led = F.LED()
+
+    led.color.constrain_subset(F.LED.Color.EMERALD)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(led.color) == F.LED.Color.EMERALD
 
 
 def test_simple_pick():
