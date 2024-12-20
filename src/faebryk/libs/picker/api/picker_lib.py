@@ -109,7 +109,7 @@ TYPE_SPECIFIC_LOOKUP: dict[type[Module], type[BaseParams]] = {
 }  # type: ignore
 
 
-def _find_module_by_api(module: Module, solver: Solver) -> list[Component]:
+def _find_module(module: Module, solver: Solver) -> list[Component]:
     assert module.has_trait(F.is_pickable)
     # Error can propagate through,
     # because we expect all pickable modules to be attachable
@@ -148,7 +148,7 @@ def _find_module_by_api(module: Module, solver: Solver) -> list[Component]:
     return filtered_candidates
 
 
-def api_get_candidates(
+def get_candidates(
     modules: Tree[Module], solver: Solver
 ) -> dict[Module, list[Component]]:
     candidates = modules.copy()
@@ -158,7 +158,7 @@ def api_get_candidates(
     while candidates:
         # TODO use parallel (endpoint)
         # TODO deduplicate parts with same literals
-        new_parts = {m: _find_module_by_api(m, solver) for m in modules}
+        new_parts = {m: _find_module(m, solver) for m in modules}
         parts.update({m: p for m, p in new_parts.items() if p})
         empty = {m for m, p in new_parts.items() if not p}
         for m in parts:
@@ -178,7 +178,7 @@ def api_get_candidates(
     return {}
 
 
-def add_api_pickers(module: Module) -> None:
+def add_pickers(module: Module) -> None:
     # Generic pickers
     if module.has_trait(F.has_descriptive_properties):
         props = module.get_trait(F.has_descriptive_properties).get_properties()
