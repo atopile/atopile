@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import (
     Any,
     Iterable,
+    Sequence,
     Type,
     cast,
 )
@@ -351,7 +352,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             tuple[
                 Range | Single | None,
                 ParserRuleContext | None,
-                list[ParserRuleContext] | None,
+                Sequence[ParserRuleContext] | None,
             ],
         ]()
         self.search_paths: list[os.PathLike] = []
@@ -405,9 +406,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
             )
         try:
-            return self._init_node(
-                self._get_referenced_class(context.scope_ctx, ref), None
-            )
+            class_ = self._get_referenced_class(context.scope_ctx, ref)
+            if not isinstance(class_, ap.BlockdefContext):
+                raise errors.UserNotImplementedError(
+                    "Can't initialize a fabll directly like this"
+                )
+            with self._traceback_stack.enter(class_.name()):
+                return self._init_node(class_)
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -462,6 +467,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     @property
     def _current_node(self) -> L.Node:
         return self._node_stack[-1]
+
+    def get_traceback(self) -> Sequence[ParserRuleContext]:
+        """Return the current traceback, with sequential duplicates removed"""
+        # Use dict ordering guarantees and key uniqueness to remove duplicates
+        return list(dict.fromkeys(self._traceback_stack).keys())
 
     @staticmethod
     def _sanitise_path(path: os.PathLike) -> Path:
@@ -644,7 +654,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 else:
                     msg = f"No attribute '{name}'"
                 raise errors.UserKeyError.from_ctx(
-                    ctx, msg, traceback=self._traceback_stack
+                    ctx, msg, traceback=self.get_traceback()
                 ) from ex
 
         return node
@@ -661,8 +671,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self,
         item: ap.BlockdefContext | Type[L.Node],
         promised_supers: list[ap.BlockdefContext],
-        from_ctxs: list[ParserRuleContext],
-    ) -> tuple[L.Node, list[ap.BlockdefContext], list[ParserRuleContext]]:
+    ) -> tuple[L.Node, list[ap.BlockdefContext]]:
         """
         Kind of analogous to __new__ in Python, except that it's a factory
 
@@ -700,7 +709,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(), promised_supers, from_ctxs
+            return super_class(), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -724,15 +733,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Descend into building the superclass. We've got no information
             # on when the super-chain will be resolved, so we need to promise
             # that this current blockdef will be visited as part of the init
-            if super_ctx:
-                from_ctxs_ = from_ctxs + [super_ctx]
-            else:
-                from_ctxs_ = from_ctxs
-
             result = self._new_node(
                 base_class,
                 promised_supers=[item] + promised_supers,
-                from_ctxs=from_ctxs_,
             )
 
             # HACK: promised_supers is falsey a hack way to check
@@ -748,29 +751,20 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _init_node(
         self,
         node_type: ap.BlockdefContext | Type[L.Node],
-        stmt_ctx: ParserRuleContext | None,
     ) -> L.Node:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
-        new_node, promised_supers, from_ctxs = self._new_node(
+        new_node, promised_supers = self._new_node(
             node_type,
             promised_supers=[],
-            from_ctxs=[stmt_ctx] if stmt_ctx is not None else [],
         )
 
-        backup_ctx_stack = self._traceback_stack.copy()
-        self._traceback_stack.extend(from_ctxs)
-        try:
-            with self._node_stack.enter(new_node):
-                for super_ctx in promised_supers:
+        with self._node_stack.enter(new_node):
+            for super_ctx in promised_supers:
+                # TODO: this would be better if we had the
+                # "from xyz" super in the traceback too
+                with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
-                    self._traceback_stack.pop()
-        finally:
-            # Guarentee that we're gonna end up
-            # with the original context stack
-            self._traceback_stack = backup_ctx_stack
 
-        if stmt_ctx is not None:
-            new_node.add(from_dsl(stmt_ctx))
         return new_node
 
     def _get_or_promise_param(
@@ -790,7 +784,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 src_ctx,
                 f'Parameter "{name}" not found and'
                 " forward-declared params are not yet implemented",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             ) from ex
 
         assert isinstance(node, fab_param.Parameter)
@@ -820,7 +814,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     src_ctx,
                     f"Cannot assign a parameter to {name} on {node} because it's"
                     f" type is {param.__class__.__name__}",
-                    traceback=self._traceback_stack,
+                    traceback=self.get_traceback(),
                 )
 
         if not param.units.is_compatible_with(unit):
@@ -828,7 +822,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 src_ctx,
                 f"Given units {unit} are incompatible"
                 f" with existing units {param.units}.",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             )
 
         return param
@@ -851,14 +845,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise errors.UserSyntaxError.from_ctx(
                     ctx,
                     f"Can't declare fields in a nested object {assigned_ref}",
-                    traceback=self._traceback_stack,
+                    traceback=self.get_traceback(),
                 )
 
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
 
             try:
-                new_node = self._init_node(self._get_referenced_class(ctx, ref), ctx)
+                with self._traceback_stack.enter(new_stmt_ctx):
+                    new_node = self._init_node(self._get_referenced_class(ctx, ref))
+                new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name)
@@ -877,10 +873,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         ctx,
                         f"Implied units {value.units} are incompatible"
                         f" with explicit units {provided_unit}.",
-                        traceback=self._traceback_stack,
+                        traceback=self.get_traceback(),
                     )
             param = self._ensure_param(target, assigned_name, value.units, ctx)
-            self._param_assignments[param] = (value, ctx, self._traceback_stack)
+            self._param_assignments[param] = (value, ctx, self.get_traceback())
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
@@ -901,7 +897,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         ctx,
                         f'Ignoring assignment of "{value}" to "{assigned_name}" '
                         f'on "{target}"',
-                        traceback=self._traceback_stack,
+                        traceback=self.get_traceback(),
                     )
 
         else:
@@ -927,7 +923,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserTypeError.from_ctx(
                 ctx,
                 f'"{name}" already exists.',
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             )
 
         return mif
@@ -952,7 +948,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         raise errors.UserTypeError.from_ctx(
             ctx,
             f"Can't declare pins on components of type {self._current_node}",
-            traceback=self._traceback_stack,
+            traceback=self.get_traceback(),
         )
 
     def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
@@ -1005,7 +1001,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             ctx,
                             f"Connected {a} to {b} by duck-typing."
                             " They should be of the same type.",
-                            traceback=self._traceback_stack,
+                            traceback=self.get_traceback(),
                         )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
@@ -1047,11 +1043,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserTypeError.from_ctx(
                 ctx,
                 f"Can't specialize {from_node}",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             )
 
         # TODO: consider extending this w/ the ability to specialize to an instance
-        specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref), ctx)
+        with self._traceback_stack.enter(ctx):
+            specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref))
+        from_node.add(specialized_node)
         assert isinstance(specialized_node, L.Module)
         from_node.specialize(specialized_node)
         return KeyOptMap.empty()
@@ -1196,7 +1194,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserUnknownUnitError.from_ctx(
                 ctx,
                 f"Unknown unit '{unit_str}'",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             ) from ex
 
     def visitLiteral_physical(
@@ -1256,7 +1254,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise errors.UserException.from_ctx(
                     tol_ctx,
                     "Can't calculate tolerance percentage of a nominal value of zero",
-                    traceback=self._traceback_stack,
+                    traceback=self.get_traceback(),
                 )
 
             # Calculate tolerance value from percentage/ppm
@@ -1282,7 +1280,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 tol_name,
                 f"Tolerance unit '{tol_qty.units}' is not dimensionally"
                 f" compatible with nominal unit '{nominal_qty.units}'",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             )
 
         return Range.from_center(nominal_qty, tol_qty)
@@ -1305,7 +1303,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 ctx,
                 f"Tolerance unit '{end.units}' is not dimensionally"
                 f" compatible with nominal unit '{start.units}'",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             )
 
         return Range(start, end)
@@ -1400,7 +1398,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserSyntaxError.from_ctx(
                 ctx,
                 f"Can't declare fields in a nested object {assigned_value_ref}",
-                traceback=self._traceback_stack,
+                traceback=self.get_traceback(),
             )
 
         assigned_name = assigned_value_ref[0]
@@ -1414,10 +1412,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     ctx,
                     f"Ignoring declaration of {assigned_name} "
                     "because it's already defined",
-                    traceback=self._traceback_stack,
+                    traceback=self.get_traceback(),
                 )
         else:
-            self._param_assignments[param] = (None, ctx, self._traceback_stack)
+            self._param_assignments[param] = (None, ctx, self.get_traceback())
 
         return KeyOptMap.empty()
 

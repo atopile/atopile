@@ -242,7 +242,7 @@ def test_import_ato(bob: Bob, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "module,count", [("A", 0), ("B", 1), ("C", 2), ("D", 3), ("E", 4)]
+    "module,count", [("A", 1), ("B", 3), ("C", 5), ("D", 6), ("E", 6)]
 )
 def test_traceback(bob: Bob, module: str, count: int):
     text = dedent(
@@ -265,6 +265,7 @@ def test_traceback(bob: Bob, module: str, count: int):
     )
 
     tree = parse_text_as_file(text)
+
     with pytest.raises(errors.UserKeyError) as e:
         bob.build_ast(tree, Ref([module]))
 

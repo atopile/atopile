@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Sequence
 
 from antlr4 import ParserRuleContext
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -33,7 +34,7 @@ def _render_ctx(ctx: ParserRuleContext) -> list[ConsoleRenderable]:
             start_line=lexer.start_line,
             indent_guides=True,
             highlight_lines=lexer.ctx_lines,
-        )
+        ),
     ]
 
 
@@ -48,7 +49,7 @@ class _BaseUserException(_BaseBaseUserException):
         self,
         *args,
         origin: ParserRuleContext | None = None,
-        traceback: list[ParserRuleContext] | None = None,
+        traceback: Sequence[ParserRuleContext | None] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
@@ -61,7 +62,7 @@ class _BaseUserException(_BaseBaseUserException):
         origin: ParserRuleContext | None,
         message: str,
         *args,
-        traceback: list[ParserRuleContext] | None = None,
+        traceback: Sequence[ParserRuleContext | None] | None = None,
         **kwargs,
     ) -> "_BaseUserException":
         """Create an error from a context."""
@@ -82,8 +83,9 @@ class _BaseUserException(_BaseBaseUserException):
             renderables += [Text(self.title, style="bold")]
         renderables += [Text(self.message)]
 
-        for ctx in (self.traceback or []):
-            renderables += _render_ctx(ctx)
+        for ctx in self.traceback or []:
+            if ctx is not None:
+                renderables += _render_ctx(ctx)
 
         if self.origin:
             renderables += [Text("Code causing the error: ", style="bold")]
