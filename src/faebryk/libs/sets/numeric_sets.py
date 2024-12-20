@@ -387,24 +387,16 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             if not intersect.is_empty():
                 result.append(intersect)
 
-            if rs.max_elem < ro.min_elem or math.isclose(
-                rs.max_elem, ro.min_elem, rel_tol=EPSILON_REL
-            ):
+            if rs.max_elem < ro.min_elem:
                 # no remaining element in other list can intersect with rs
                 s += 1
-            elif ro.max_elem < rs.min_elem or math.isclose(
-                ro.max_elem, rs.min_elem, rel_tol=EPSILON_REL
-            ):
+            elif ro.max_elem < rs.min_elem:
                 # no remaining element in self list can intersect with ro
                 o += 1
-            elif rs.max_elem < ro.max_elem or math.isclose(
-                rs.max_elem, ro.max_elem, rel_tol=EPSILON_REL
-            ):
+            elif rs.max_elem < ro.max_elem:
                 # rs ends before ro, so move to next in self list
                 s += 1
-            elif ro.max_elem < rs.max_elem or math.isclose(
-                ro.max_elem, rs.max_elem, rel_tol=EPSILON_REL
-            ):
+            elif ro.max_elem < rs.max_elem:
                 # ro ends before rs, so move to next in other list
                 o += 1
             else:
@@ -460,26 +452,18 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     def op_ge_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
-        if self.min_elem >= other.max_elem or math.isclose(
-            self.min_elem, other.max_elem, rel_tol=EPSILON_REL
-        ):
+        if self.min_elem >= other.max_elem:
             return BoolSet(True)
-        if self.max_elem < other.min_elem or math.isclose(
-            self.max_elem, other.min_elem, rel_tol=EPSILON_REL
-        ):
+        if self.max_elem < other.min_elem:
             return BoolSet(False)
         return BoolSet(True, False)
 
     def op_le_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
-        if self.max_elem <= other.min_elem or math.isclose(
-            self.max_elem, other.min_elem, rel_tol=EPSILON_REL
-        ):
+        if self.max_elem <= other.min_elem:
             return BoolSet(True)
-        if self.min_elem > other.max_elem or math.isclose(
-            self.min_elem, other.max_elem, rel_tol=EPSILON_REL
-        ):
+        if self.min_elem > other.max_elem:
             return BoolSet(False)
         return BoolSet(True, False)
 
