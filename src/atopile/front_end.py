@@ -397,9 +397,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if ctx_ is None:
                     return None
 
-            return address.AddrStr.from_parts(
-                self._scopes[ctx_].file_path, ".".join(ref)
-            )
+            return address.AddrStr.from_parts(self._scopes[ctx_].file_path, str(ref))
 
         return {
             addr: cls
@@ -552,7 +550,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         from_path = self._sanitise_path(candidate_from_path)
 
         # TODO: @v0.4: remove this shimming
-        import_addr = address.AddrStr.from_parts(str(from_path), ".".join(item.ref))
+        import_addr = address.AddrStr.from_parts(str(from_path), str(item.ref))
         for shim_addr, (shim_cls, preferred) in shim_map.items():
             if import_addr.endswith(shim_addr):
                 with downgrade(DeprecatedException), self._supressor_import_item:
@@ -671,9 +669,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if name in self._failed_nodes.get(node, set()):
                     raise SkipPriorFailedException() from ex
                 # Wah wah wah - we don't know what this is
-                pretty_name = ".".join(ref[:i])
-                if pretty_name:
-                    msg = f"{pretty_name} has no attribute '{name}'"
+                if ref[:i]:
+                    msg = f"{ref[:i]} has no attribute '{name}'"
                 else:
                     msg = f"No attribute '{name}'"
                 raise errors.UserKeyError.from_ctx(
@@ -1098,7 +1095,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref))
         from_node.add(specialized_node)
         assert isinstance(specialized_node, L.Module)
-        from_node.specialize(specialized_node)
+
+        try:
+            from_node.specialize(specialized_node)
+        except* L.Module.InvalidSpecializationError as ex:
+            raise errors.UserException.from_ctx(
+                ctx,
+                f"Can't specialize {from_ref} with {to_ref}:\n"
+                + "\n".join(f" - {e.message}" for e in ex.exceptions),
+                traceback=self.get_traceback(),
+            ) from ex
         return KeyOptMap.empty()
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):
