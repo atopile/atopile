@@ -80,6 +80,7 @@ class P_Set[T](Serializable, Protocol):
         from faebryk.libs.sets.quantity_sets import (
             Quantity_Interval,
             Quantity_Interval_Disjoint,
+            Quantity_Set_Discrete,
         )
 
         types = [
@@ -89,6 +90,7 @@ class P_Set[T](Serializable, Protocol):
             EnumSet,
             Quantity_Interval,
             Quantity_Interval_Disjoint,
+            Quantity_Set_Discrete,
         ]
         cls_ = next((t for t in types if t.__name__ == data["type"]), None)
         if cls_ is None:

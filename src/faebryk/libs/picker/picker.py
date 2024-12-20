@@ -315,11 +315,11 @@ def check_missing_picks(module: Module):
 
 
 def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
-    from faebryk.libs.picker.api.common import (
-        api_filter_by_module_params_and_attach,
+    from faebryk.libs.picker.api.picker_lib import (
+        filter_by_module_params_and_attach,
+        get_candidates,
         pick_atomically,
     )
-    from faebryk.libs.picker.api.picker_lib import api_get_candidates
 
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
@@ -330,7 +330,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
     logger.info("Getting part candidates for modules")
     candidates_now = time.time()
-    candidates = api_get_candidates(tree, solver)
+    candidates = get_candidates(tree, solver)
     logger.info(f"Got candidates in {time.time() - candidates_now:.3f}s")
 
     now = time.time()
@@ -375,7 +375,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     #
 
     for module, parts in sorted_candidates:
-        api_filter_by_module_params_and_attach(module, parts, solver)
+        filter_by_module_params_and_attach(module, parts, solver)
         progress.advance(module)
 
     if LOG_PICK_SOLVE:
@@ -385,12 +385,12 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
-    from faebryk.libs.picker.api.picker_lib import add_api_pickers
+    from faebryk.libs.picker.api.picker_lib import add_pickers
 
     modules = module.get_children_modules(types=Module, include_root=True)
 
     for n in modules:
-        add_api_pickers(n)
+        add_pickers(n)
 
     pick_tree = get_pick_tree(module)
     if LOG_PICK_SOLVE:
