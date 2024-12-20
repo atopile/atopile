@@ -9,10 +9,11 @@ from faebryk.libs.exceptions import (
     accumulate,
     downgrade,
     iter_through_errors,
+    suppress_after_count,
 )
 
 
-def test_ExceptionAccumulator():
+def test_accumulate():
     with pytest.raises(UserException):
         with accumulate() as error_collector:
             with error_collector.collect():
@@ -70,3 +71,20 @@ def test_downgrade_decorator_with_default():
     a = foo()
     assert a == 2
     logger.log.assert_called_once()
+
+
+def test_suppress_after_count():
+    logger = MagicMock()
+    supressor = suppress_after_count(
+        3, ValueError, supression_warning="test warning", logger=logger
+    )
+    for _ in range(3):
+        with pytest.raises(ValueError), supressor:
+            raise ValueError()
+
+    logger.warning.assert_not_called()
+
+    with supressor:
+        raise ValueError()
+
+    logger.warning.assert_called_once()
