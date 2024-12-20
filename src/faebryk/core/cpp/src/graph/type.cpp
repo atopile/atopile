@@ -17,7 +17,9 @@ nb::type_object Node::Type::get_moduleinterface_type() {
 
 Node::Type::Type(nb::handle type)
   : type(type)
-  , mro_ids(nb::cast<std::unordered_set<uint64_t>>(type.attr("_mro_ids"))) {
+  , mro_ids(nb::hasattr(type, "_mro_ids")
+                ? nb::cast<std::unordered_set<uint64_t>>(type.attr("_mro_ids"))
+                : std::unordered_set<uint64_t>()) {
     // Needed because of Node not having it's own id in mro_ids
     this->mro_ids.insert((uint64_t)this->type.ptr());
 }

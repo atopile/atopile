@@ -33,6 +33,7 @@ from faebryk.libs.util import (
     find,
     in_debug_session,
     not_none,
+    once,
     post_init_decorator,
     times,
     zip_dicts_by_key,
@@ -260,6 +261,7 @@ class Node(CNode):
         return constr
 
     @classmethod
+    @once
     def __faebryk_fields__(cls) -> tuple[dict[str, Any], dict[str, Any]]:
         def all_vars(cls):
             return {k: v for c in reversed(cls.__mro__) for k, v in vars(c).items()}
@@ -371,7 +373,7 @@ class Node(CNode):
 
         return dict(fabfields), dict(nonfabfields)
 
-    def _setup_fields(self, cls):
+    def _setup_fields(self):
         clsfields, _ = self.__faebryk_fields__()
         LL_Types = (Node, GraphInterface)
 
@@ -478,20 +480,8 @@ class Node(CNode):
         return out
 
     def _setup(self, *args, **kwargs) -> None:
-        cls = type(self)
-        # print(f"Called Node init {cls.__qualname__:<20} {'-' * 80}")
-
-        # check if accidentally added a node instance instead of field
-        node_instances = [
-            (name, f)
-            for name, f in vars(cls).items()
-            if isinstance(f, Node) and not name.startswith("_")
-        ]
-        if node_instances:
-            raise FieldError(f"Node instances not allowed: {node_instances}")
-
         # Construct Fields
-        _, _ = self._setup_fields(cls)
+        _, _ = self._setup_fields()
 
         # Call 2-stage constructors
 
@@ -528,6 +518,15 @@ class Node(CNode):
         cls_mro = cls.mro()
         cls._mro = cls_mro[: -len(Node_mro)]
         cls._mro_ids = {id(c) for c in cls._mro}
+
+        # check if accidentally added a node instance instead of field
+        node_instances = [
+            (name, f)
+            for name, f in vars(cls).items()
+            if isinstance(f, Node) and not name.startswith("_")
+        ]
+        if node_instances:
+            raise FieldError(f"Node instances not allowed: {node_instances}")
 
     def _handle_add_gif(self, name: str, gif: GraphInterface):
         gif.node = self
