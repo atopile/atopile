@@ -69,15 +69,18 @@ class Node {
     class Type {
       private:
         nb::handle type;
-        bool hack_cache_is_moduleinterface;
+        std::unordered_set<uint64_t> mro_ids{};
 
       public:
         Type(nb::handle type);
         bool operator==(const Type &other) const;
         std::string get_name();
-        // TODO these are weird
+        // Needed because ModuleInterface is not a C++ class atm
         bool is_moduleinterface();
         static nb::type_object get_moduleinterface_type();
+
+        bool is_subclass(nb::type_object type);
+        bool is_subclass(std::vector<nb::type_object> types);
     };
 
   private:
@@ -121,6 +124,9 @@ class Node {
 
     void setter_no_include_parents_in_full_name(bool no_include_parents_in_full_name);
     bool getter_no_include_parents_in_full_name() const;
+
+    bool isinstance(nb::type_object type);
+    bool isinstance(std::vector<nb::type_object> types);
 
   private:
     std::unordered_set<Node_ref> get_children_all(bool include_root);
