@@ -63,12 +63,14 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
     Similar to `contextlib.suppress`, but does something with the exception.
     """
 
+    _exceptions: tuple[Type[T], ...]
+
     def __init__(
         self,
         *exceptions: Type[T] | tuple[Type[T]],
         default=None,
     ):
-        self._exceptions = exceptions
+        super().__init__(*exceptions)  # type: ignore - more precisely typed here than std
         self.default = default
 
     @abstractmethod
@@ -76,8 +78,12 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
         self,
         exc: T,
         original_exinfo: tuple[Type[T], T, Traceback],
-    ):
-        """Do something with the exception."""
+    ) -> bool | None:
+        """
+        Do something with the exception.
+        Return True if the exception should be raised.
+        """
+        # return boolean flipped to make default behavior to suppress
 
     # The following methods are copied and modified from contextlib.suppress
     # type errors are reproduced faithfully
@@ -95,12 +101,12 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
         if exctype is None:
             return
         if issubclass(exctype, self._exceptions):
-            self.nom_nom_nom(excinst, (exctype, excinst, exctb))  # type: ignore
-            return True
+            return not self.nom_nom_nom(excinst, (exctype, excinst, exctb))  # type: ignore
         if issubclass(exctype, BaseExceptionGroup):
             excinst = cast(BaseExceptionGroup, excinst)
             match, rest = excinst.split(self._exceptions)  # type: ignore
-            self.nom_nom_nom(match, (exctype, match, exctb))  # type: ignore
+            if self.nom_nom_nom(match, (exctype, match, exctb)):  # type: ignore
+                return False
             if rest is None:
                 return True
             raise rest
@@ -220,6 +226,31 @@ class downgrade[T: Exception](Pacman):
 
         for e in exceptions:
             self.logger.log(self.to_level, e, exc_info=exc)
+
+
+class suppress_after_count[T: Exception](Pacman):
+    def __init__(
+        self,
+        limit: int,
+        *exceptions: Type[T],
+        default: bool = False,
+        supression_warning: str | None = None,
+        logger: logging.Logger = logger,
+    ):
+        super().__init__(*exceptions, default=default)
+        self.limit = limit
+        self.counter = 0
+        self.supression_warning = supression_warning
+        self.logger = logger
+
+    def nom_nom_nom(self, exc: T, original_exinfo):
+        self.counter += 1
+
+        if self.counter == self.limit + 1 and self.supression_warning is not None:
+            self.logger.warning(self.supression_warning)
+
+        if self.counter <= self.limit:
+            return True
 
 
 def iter_through_errors[T](
