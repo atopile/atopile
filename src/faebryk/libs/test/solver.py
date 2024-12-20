@@ -10,7 +10,7 @@ from faebryk.libs.sets.sets import BoolSet
 
 def solves_to(stmt: ParameterOperatable, result: bool, solver: Solver):
     def assert_eq(x: ParameterOperatable):
-        assert solver.inspect_known_values(x) == BoolSet(result)
+        assert solver.inspect_get_known_supersets(x) == BoolSet(result)
 
     stmt.inspect_add_on_solution(assert_eq)
 

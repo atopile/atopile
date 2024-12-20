@@ -47,5 +47,7 @@ class I2C(ModuleInterface):
 
     def __preinit__(self) -> None:
         self.frequency.add(
-            F.is_dynamic_by_connections(lambda mif: cast_assert(I2C, mif).frequency)
+            F.is_dynamic_by_connections_alias(
+                lambda mif: cast_assert(I2C, mif).frequency
+            )
         )

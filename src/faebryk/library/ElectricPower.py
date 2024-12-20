@@ -66,10 +66,20 @@ class ElectricPower(F.Power):
         soft_set=L.Range(0 * P.V, 1000 * P.V),
         tolerance_guess=5 * P.percent,
     )
-    max_current = L.p_field(units=P.A)
+    max_node_current_consumption = L.p_field(
+        units=P.A,
+        domain=L.Domains.Numbers.REAL(),
+    )
     """
     Only for this particular power interface
     Does not propagate to connections
+    """
+    bus_max_current_consumption_sum = L.p_field(
+        units=P.A, domain=L.Domains.Numbers.REAL()
+    )
+    """
+    Summed current for all connected power interfaces
+    Only available after resolve_dynamic_parameters
     """
 
     surge_protected: can_be_surge_protected_power
@@ -89,9 +99,9 @@ class ElectricPower(F.Power):
         self.connect_shallow(fused_power)
 
         fuse.trip_current.constrain_subset(
-            self.max_current * L.Range.from_center_rel(1.0, 0.1)
+            self.max_node_current_consumption * L.Range.from_center_rel(1.0, 0.1)
         )
-        fused_power.max_current.constrain_le(fuse.trip_current)
+        fused_power.max_node_current_consumption.constrain_le(fuse.trip_current)
 
         if attach_to is not None:
             attach_to.add(fused_power)
@@ -104,7 +114,17 @@ class ElectricPower(F.Power):
         #    self.hv.potential - self.lv.potential
         # )
         self.voltage.add(
-            F.is_dynamic_by_connections(
+            F.is_dynamic_by_connections_alias(
                 lambda mif: cast_assert(ElectricPower, mif).voltage
+            )
+        )
+        self.bus_max_current_consumption_sum.add(
+            F.is_dynamic_by_connections_sum(
+                target_key=lambda mif: cast_assert(
+                    ElectricPower, mif
+                ).bus_max_current_consumption_sum,
+                source_key=lambda mif: cast_assert(
+                    ElectricPower, mif
+                ).max_node_current_consumption,
             )
         )

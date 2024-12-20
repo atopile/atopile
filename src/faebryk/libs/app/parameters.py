@@ -16,10 +16,15 @@ from faebryk.libs.util import find, groupby
 
 logger = logging.getLogger(__name__)
 
+MIF_TRAIT = F.is_dynamic_by_connections_alias | F.is_dynamic_by_connections_sum
+
 
 def resolve_dynamic_parameters(graph: Graph):
     other_dynamic_params, connection_dynamic_params = partition(
-        lambda param_trait: isinstance(param_trait[1], F.is_dynamic_by_connections),
+        lambda param_trait: isinstance(
+            param_trait[1],
+            MIF_TRAIT,
+        ),
         [
             (param, trait)
             for param, trait in GraphFunctions(graph).nodes_with_trait(F.is_dynamic)
@@ -32,15 +37,12 @@ def resolve_dynamic_parameters(graph: Graph):
 
     # connection
     _resolve_dynamic_parameters_connection(
-        cast(
-            list[tuple[Parameter, F.is_dynamic_by_connections]],
-            connection_dynamic_params,
-        )
+        cast(list[tuple[Parameter, MIF_TRAIT]], connection_dynamic_params)
     )
 
 
 def _resolve_dynamic_parameters_connection(
-    params: Iterable[tuple[Parameter, F.is_dynamic_by_connections]],
+    params: Iterable[tuple[Parameter, MIF_TRAIT]],
 ):
     times = Times()
 
@@ -51,9 +53,7 @@ def _resolve_dynamic_parameters_connection(
     # find for all busses a mif that represents it, and puts its dynamic params here
     # we use the that connected mifs are the same type and thus have the same params
     # TODO: limitation: specialization (need to subgroup by type) (see exception)
-    param_bus_representatives: set[tuple[Parameter, F.is_dynamic_by_connections]] = (
-        set()
-    )
+    param_bus_representatives: set[tuple[Parameter, MIF_TRAIT]] = set()
 
     while params_grouped_by_mif:
         bus_representative_mif, bus_representative_params = (

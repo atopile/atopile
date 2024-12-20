@@ -22,5 +22,7 @@ class UART_Base(ModuleInterface):
 
     def __preinit__(self) -> None:
         self.baud.add(
-            F.is_dynamic_by_connections(lambda mif: cast_assert(UART_Base, mif).baud)
+            F.is_dynamic_by_connections_alias(
+                lambda mif: cast_assert(UART_Base, mif).baud
+            )
         )
