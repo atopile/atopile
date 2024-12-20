@@ -198,9 +198,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         if not isinstance(other, Numeric_Interval):
             return False
-        return math.isclose(self._min, other._min) and math.isclose(
-            self._max, other._max
-        )
+
+        return math.isclose(
+            self._min, other._min, rel_tol=EPSILON_REL
+        ) and math.isclose(self._max, other._max, rel_tol=EPSILON_REL)
 
     def __contains__(self, item: NumericT) -> bool:
         """
@@ -480,10 +481,7 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
         if len(self.intervals) != len(value.intervals):
             return False
         for r1, r2 in zip(self.intervals, value.intervals):
-            if r1 != r2 and not (
-                math.isclose(r1.min_elem, r2.min_elem, rel_tol=EPSILON_REL)
-                and math.isclose(r1.max_elem, r2.max_elem, rel_tol=EPSILON_REL)
-            ):
+            if r1 != r2:
                 return False
         return True
 
