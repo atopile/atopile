@@ -5,8 +5,9 @@ import pytest
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
+from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, Component
+from atopile.front_end import Bob, has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
@@ -38,7 +39,6 @@ def test_empty_module_build(bob: Bob):
     assert isinstance(node, bob.modules[":A"])
 
 
-@pytest.mark.skip
 def test_simple_module_build(bob: Bob):
     text = dedent(
         """
@@ -55,7 +55,6 @@ def test_simple_module_build(bob: Bob):
     # TODO: check value
 
 
-@pytest.mark.skip
 def test_arithmetic(bob: Bob):
     text = dedent(
         """
@@ -88,7 +87,7 @@ def test_simple_new(bob: Bob):
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert isinstance(child, Component)
+    assert child.has_trait(has_ato_cmp_attrs)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
@@ -240,3 +239,35 @@ def test_import_ato(bob: Bob, tmp_path):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
+
+
+@pytest.mark.parametrize(
+    "module,count", [("A", 1), ("B", 3), ("C", 5), ("D", 6), ("E", 6)]
+)
+def test_traceback(bob: Bob, module: str, count: int):
+    text = dedent(
+        """
+        module A:
+            doesnt_exit ~ notta_connectable
+
+        module B:
+            a = new A
+
+        module C:
+            b = new B
+
+        module D from C:
+            pass
+
+        module E from D:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    with pytest.raises(errors.UserKeyError) as e:
+        bob.build_ast(tree, Ref([module]))
+
+    assert e.value.traceback is not None
+    assert len(e.value.traceback) == count

@@ -58,8 +58,6 @@ class Numeric_Interval(Numeric_Set[NumericT]):
 
     def as_center_rel(self) -> tuple[NumericT, float]:
         center = (self._min + self._max) / 2
-        if isinstance(self._min, int):
-            center = int(center)
         rel = (self._max - self._min) / 2 / center
         return center, rel  # type: ignore
 

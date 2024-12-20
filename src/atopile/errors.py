@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any
+from typing import Sequence
 
 from antlr4 import ParserRuleContext
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -8,6 +8,34 @@ from rich.text import Text
 
 from atopile.parse_utils import PygmentsLexerShim, get_src_info_from_ctx
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
+
+
+def _render_ctx(ctx: ParserRuleContext) -> list[ConsoleRenderable]:
+    lexer = PygmentsLexerShim.from_ctx(ctx, 1, 1)
+    (src_path, src_line, src_col, _, _) = get_src_info_from_ctx(ctx)
+
+    # Make the path relative to the current working directory, if possible
+    try:
+        src_path = Path(src_path).relative_to(Path.cwd())
+    except ValueError:
+        pass
+    source_info = str(src_path)
+    if src_line := src_line:
+        source_info += f":{src_line}"
+    if src_col := src_col:
+        source_info += f":{src_col}"
+
+    return [
+        Text("Source: ", style="bold") + Text(source_info, style="magenta"),
+        Syntax(
+            lexer.get_code(),
+            lexer,
+            line_numbers=True,
+            start_line=lexer.start_line,
+            indent_guides=True,
+            highlight_lines=lexer.ctx_lines,
+        ),
+    ]
 
 
 class _BaseUserException(_BaseBaseUserException):
@@ -20,11 +48,13 @@ class _BaseUserException(_BaseBaseUserException):
     def __init__(
         self,
         *args,
-        origin: Any | None = None,
+        origin: ParserRuleContext | None = None,
+        traceback: Sequence[ParserRuleContext | None] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.origin = origin
+        self.traceback = traceback
 
     @classmethod
     def from_ctx(
@@ -32,10 +62,12 @@ class _BaseUserException(_BaseBaseUserException):
         origin: ParserRuleContext | None,
         message: str,
         *args,
+        traceback: Sequence[ParserRuleContext | None] | None = None,
         **kwargs,
     ) -> "_BaseUserException":
         """Create an error from a context."""
-        self = cls(message, *args, origin=origin, **kwargs)
+
+        self = cls(message, *args, origin=origin, traceback=traceback, **kwargs)
         return self
 
     def get_frozen(self) -> tuple:
@@ -51,36 +83,13 @@ class _BaseUserException(_BaseBaseUserException):
             renderables += [Text(self.title, style="bold")]
         renderables += [Text(self.message)]
 
+        for ctx in self.traceback or []:
+            if ctx is not None:
+                renderables += _render_ctx(ctx)
+
         if self.origin:
-            (src_path, src_line, src_col, _, _) = get_src_info_from_ctx(self.origin)
-
-            # Make the path relative to the current working directory, if possible
-            try:
-                src_path = Path(src_path).relative_to(Path.cwd())
-            except ValueError:
-                pass
-            source_info = str(src_path)
-            if src_line := src_line:
-                source_info += f":{src_line}"
-            if src_col := src_col:
-                source_info += f":{src_col}"
-
-            renderables += [
-                Text("Source: ", style="bold") + Text(source_info, style="magenta"),
-            ]
-
-            if isinstance(self.origin, ParserRuleContext):
-                lexer = PygmentsLexerShim.from_ctx(self.origin, 1, 1)
-                renderables += [
-                    Syntax(
-                        lexer.get_code(),
-                        lexer,  # type: ignore  # The PygmentsLexerShim is pygments.Lexer-y enough
-                        line_numbers=True,
-                        start_line=lexer.start_line,
-                        indent_guides=True,
-                        highlight_lines=lexer.ctx_lines,
-                    )
-                ]
+            renderables += [Text("Code causing the error: ", style="bold")]
+            renderables += _render_ctx(self.origin)
 
         return renderables
 

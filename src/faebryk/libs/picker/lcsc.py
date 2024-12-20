@@ -165,7 +165,7 @@ def download_easyeda_info(partno: str, get_model: bool = True):
         if not model_path.exists() and not EXPORT_NON_EXISTING_MODELS:
             ki_footprint.output.model_3d = None
     else:
-        logger.warn(f"No 3D model for {name}")
+        logger.warning(f"No 3D model for {name}")
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
@@ -213,22 +213,29 @@ def get_datasheet_url(part: EeSymbol):
         return None
 
 
-def attach(component: Module, partno: str, get_model: bool = True):
+def check_attachable(component: Module):
+    if not component.has_trait(F.has_footprint):
+        if not component.has_trait(F.can_attach_to_footprint):
+            if not component.has_trait(F.has_pin_association_heuristic):
+                raise LCSC_PinmapException(
+                    "",
+                    f"Need either F.can_attach_to_footprint or "
+                    "F.has_pin_association_heuristic"
+                    f" for {component}",
+                )
+
+
+def attach(
+    component: Module, partno: str, get_model: bool = True, check_only: bool = False
+):
     ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol = (
         download_easyeda_info(partno, get_model=get_model)
     )
 
     # symbol
+    # TODO maybe check it?
     if not component.has_trait(F.has_footprint):
         if not component.has_trait(F.can_attach_to_footprint):
-            if not component.has_trait(F.has_pin_association_heuristic):
-                raise LCSCException(
-                    partno,
-                    f"Need either F.can_attach_to_footprint or "
-                    "F.has_pin_association_heuristic"
-                    f" for {component} with partno {partno}",
-                )
-
             # TODO make this a trait
             pins = [
                 (pin.settings.spice_pin_number, pin.name.text)
@@ -241,10 +248,15 @@ def attach(component: Module, partno: str, get_model: bool = True):
                 )
             except F.has_pin_association_heuristic.PinMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+            if check_only:
+                return
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
             sym = F.Symbol.with_component(component, pinmap)
             sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
+
+        if check_only:
+            return
 
         # footprint
         fp = F.KicadFootprint(
@@ -252,6 +264,9 @@ def attach(component: Module, partno: str, get_model: bool = True):
             [p.number for p in easyeda_footprint.pads],
         )
         component.get_trait(F.can_attach_to_footprint).attach(fp)
+
+    if check_only:
+        return
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 

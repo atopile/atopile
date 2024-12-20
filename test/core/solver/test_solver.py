@@ -14,6 +14,7 @@ from faebryk.core.parameter import (
     Arithmetic,
     Is,
     IsSubset,
+    Max,
     Multiply,
     Not,
     Or,
@@ -200,6 +201,34 @@ def test_alias_classes():
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(G, context)
     # TODO actually test something
+
+
+@pytest.mark.xfail(reason="TODO reenable ge fold")
+def test_min_max_single():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(10 * P.V)
+
+
+@pytest.mark.xfail(reason="TODO")
+def test_min_max_multi():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+    p3 = Parameter(units=P.V)
+    p3.alias_is(L.Range(4 * P.V, 15 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0, p3))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(15 * P.V)
 
 
 def test_solve_realworld():
@@ -568,6 +597,24 @@ def test_congruence_filter():
     solver = DefaultSolver()
     result, context = solver.phase_1_simplify_analytically(x.get_graph())
     assert result.repr_map[y1] is result.repr_map[y2]
+
+
+def test_inspect_enum_simple():
+    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+
+    A.constrain_subset(F.LED.Color.EMERALD)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == F.LED.Color.EMERALD
+
+
+def test_inspect_enum_led():
+    led = F.LED()
+
+    led.color.constrain_subset(F.LED.Color.EMERALD)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(led.color) == F.LED.Color.EMERALD
 
 
 def test_simple_pick():

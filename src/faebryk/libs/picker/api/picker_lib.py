@@ -26,6 +26,12 @@ from faebryk.libs.picker.api.api import (
 from faebryk.libs.picker.api.common import (
     find_component_by_params,
 )
+from faebryk.libs.picker.lcsc import (
+    LCSC_NoDataException,
+    LCSC_PinmapException,
+    attach,
+    check_attachable,
+)
 from faebryk.libs.picker.picker import DescriptiveProperties, PickError
 from faebryk.libs.util import Tree
 
@@ -94,6 +100,9 @@ TYPE_SPECIFIC_LOOKUP: dict[type[Module], type[BaseParams]] = {
 
 def _find_module_by_api(module: Module, solver: Solver) -> list[Component]:
     assert module.has_trait(F.is_pickable)
+    # Error can propagate through,
+    # because we expect all pickable modules to be attachable
+    check_attachable(module)
 
     if module.has_trait(F.has_descriptive_properties):
         props = module.get_trait(F.has_descriptive_properties).get_properties()
@@ -103,7 +112,29 @@ def _find_module_by_api(module: Module, solver: Solver) -> list[Component]:
             return _find_by_mfr(module, solver)
 
     params_t = TYPE_SPECIFIC_LOOKUP[type(module)]
-    return find_component_by_params(client.fetch_parts, params_t, module, solver, qty)
+    candidates = find_component_by_params(
+        client.fetch_parts, params_t, module, solver, qty
+    )
+
+    # Filter parts with weird pinmaps
+    it = iter(candidates)
+    filtered_candidates = []
+    for c in it:
+        try:
+            attach(module, c.lcsc_display, check_only=True, get_model=False)
+            filtered_candidates.append(c)
+            # If we found one that's ok, just continue since likely enough
+            filtered_candidates.extend(it)
+            break
+        except LCSC_NoDataException:
+            if len(candidates) == 1:
+                raise
+        except LCSC_PinmapException:
+            # if all filtered by pinmap something is fishy
+            if not filtered_candidates and candidates[-1] is c:
+                raise
+
+    return filtered_candidates
 
 
 def api_get_candidates(
@@ -115,6 +146,7 @@ def api_get_candidates(
 
     while candidates:
         # TODO use parallel (endpoint)
+        # TODO deduplicate parts with same literals
         new_parts = {m: _find_module_by_api(m, solver) for m in modules}
         parts.update({m: p for m, p in new_parts.items() if p})
         empty = {m for m, p in new_parts.items() if not p}

@@ -22,6 +22,7 @@ from faebryk.libs.util import (
     ConfigFlagString,
     Serializable,
     SerializableJSONEncoder,
+    once,
 )
 
 logger = logging.getLogger(__name__)
@@ -52,17 +53,17 @@ class ApiHTTPError(ApiError):
         return f"{super().__str__()}: {status_code} {detail}"
 
 
-def get_package_candidates(module: Module) -> list["PackageCandidate"]:
+def get_package_candidates(module: Module) -> frozenset["PackageCandidate"]:
     import faebryk.library._F as F
 
     if module.has_trait(F.has_package_requirement):
-        return [
+        return frozenset(
             PackageCandidate(package)
             for package in module.get_trait(
                 F.has_package_requirement
             ).get_package_candidates()
-        ]
-    return []
+        )
+    return frozenset()
 
 
 @dataclass_json
@@ -74,7 +75,7 @@ class PackageCandidate:
 @dataclass_json
 @dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
-    package_candidates: list[PackageCandidate]
+    package_candidates: frozenset[PackageCandidate]
     qty: int
     endpoint: str | None = None
 
@@ -332,12 +333,12 @@ class ApiClient:
 
         return response
 
-    @functools.lru_cache(maxsize=None)
+    @once
     def fetch_part_by_lcsc(self, lcsc: int) -> list["Component"]:
         response = self._get(f"/v0/component/lcsc/{lcsc}")
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
-    @functools.lru_cache(maxsize=None)
+    @once
     def fetch_part_by_mfr(self, mfr: str, mfr_pn: str) -> list["Component"]:
         response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
@@ -346,6 +347,7 @@ class ApiClient:
         response = self._post(f"/v0/query/{method}", params.serialize())
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
+    @once
     def fetch_parts(self, params: BaseParams) -> list["Component"]:
         assert params.endpoint
         return self.query_parts(params.endpoint, params)

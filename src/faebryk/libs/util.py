@@ -773,7 +773,6 @@ class LazyMixin:
 
 class Lazy(LazyMixin):
     def __init_subclass__(cls) -> None:
-        print("SUBCLASS", cls)
         super().__init_subclass__()
         lazy_construct(cls)
 
@@ -1162,8 +1161,12 @@ class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
             self._keys[hashed_key].append(key)
             self._values[hashed_key].append(value)
 
-    def __contains__(self, item: T):
-        return item in self._keys[self._hasher(item)]
+    def __contains__(self, item: object):
+        try:
+            hashed = self._hasher(item)  # type: ignore
+        except TypeError:
+            return False
+        return item in self._keys[hashed]
 
     def keys(self) -> Iterator[T]:
         yield from chain.from_iterable(self._keys.values())
@@ -1778,3 +1781,24 @@ class SerializableEnum[E: Enum](Serializable):
         return self.enum.__name__ == other.enum.__name__ and {
             e.name: e.value for e in self.enum
         } == {e.name: e.value for e in other.enum}
+
+
+def indented_container(
+    obj: Iterable | dict,
+    indent_level: int = 1,
+    recursive: bool = False,
+    use_repr: bool = True,
+) -> str:
+    kvs = obj.items() if isinstance(obj, dict) else enumerate(obj)
+
+    def format_v(v: Any) -> str:
+        if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
+            return repr(v) if use_repr else str(v)
+        return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
+
+    ind = "\n" + "  " * indent_level
+    inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
+    if kvs:
+        inside = f"{ind}{inside}\n"
+
+    return f"{{{inside}}}"

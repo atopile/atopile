@@ -111,7 +111,7 @@ class LDO(Module):
             mapping={
                 self.power_in.hv: ["Vin", "Vi", "in"],
                 self.power_out.hv: ["Vout", "Vo", "out", "output"],
-                self.power_in.lv: ["GND", "V-"],
+                self.power_in.lv: ["GND", "V-", "ADJ/GND"],
                 self.enable.enable.signal: ["EN", "Enable"],
             },
             accept_prefix=False,
