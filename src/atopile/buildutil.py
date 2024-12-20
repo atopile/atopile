@@ -51,6 +51,7 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +64,14 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     build_paths = build_ctx.paths
 
     logger.info("Resolving bus parameters")
-    F.is_bus_parameter.resolve_bus_parameters(G)
+    try:
+        F.is_bus_parameter.resolve_bus_parameters(G)
+    # FIXME: this is a hack around a compiler bug
+    except KeyErrorAmbiguous as ex:
+        raise UserException(
+            "Unfortunately, there's a compiler bug at the moment that means that "
+            "this sometimes fails. Try again, and it'll probably work."
+        ) from ex
 
     logger.info("Running checks")
     run_checks(app, G)
