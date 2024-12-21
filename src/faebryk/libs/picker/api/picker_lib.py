@@ -67,42 +67,6 @@ def _extract_numeric_id(lcsc_id: str) -> int:
     return int(match[1])
 
 
-def _find_by_lcsc_id(module: Module, solver: Solver):
-    """
-    Find a part by LCSC part number
-    """
-    properties = module.get_trait(F.has_descriptive_properties).get_properties()
-    lcsc_pn = properties["LCSC"]
-
-    parts = client.fetch_part_by_lcsc(_extract_numeric_id(lcsc_pn))
-    (part,) = parts
-
-    if part.stock < qty:
-        logger.warning(
-            f"Part for {repr(module)} with LCSC part number {lcsc_pn}"
-            " has insufficient stock",
-        )
-    return [part]
-
-
-def _find_by_mfr(module: Module, solver: Solver):
-    """
-    Find a part by manufacturer and manufacturer part number
-    """
-    properties = module.get_trait(F.has_descriptive_properties).get_properties()
-
-    if DescriptiveProperties.manufacturer not in properties:
-        raise PickError("Module does not have a manufacturer", module)
-
-    mfr = properties[DescriptiveProperties.manufacturer]
-    mfr_pn = properties[DescriptiveProperties.partno]
-
-    parts = client.fetch_part_by_mfr(mfr, mfr_pn)
-    assert parts
-
-    return parts
-
-
 TYPE_SPECIFIC_LOOKUP: dict[type[Module], type[BaseParams]] = {
     F.Resistor: ResistorParams,
     F.Capacitor: CapacitorParams,
