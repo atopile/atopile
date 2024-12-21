@@ -126,8 +126,12 @@ def _prepare_query(
     if module.has_trait(F.has_descriptive_properties):
         props = module.get_trait(F.has_descriptive_properties).get_properties()
         if "LCSC" in props:
-            return LCSCParams(lcsc=_extract_numeric_id(props["LCSC"]))
-        if DescriptiveProperties.partno in props:
+            return LCSCParams(lcsc=_extract_numeric_id(props["LCSC"]), quantity=qty)
+
+        elif DescriptiveProperties.partno in props:
+            if DescriptiveProperties.manufacturer not in props:
+                raise PickError("Module does not have a manufacturer", module)
+
             return ManufacturerPartParams(
                 manufacturer_name=props[DescriptiveProperties.manufacturer],
                 part_number=props[DescriptiveProperties.partno],

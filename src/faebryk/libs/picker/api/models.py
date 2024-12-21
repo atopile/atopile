@@ -31,7 +31,7 @@ class PackageCandidate:
 @dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
     package_candidates: frozenset[PackageCandidate]
-    qty: int
+    quantity: int
     endpoint: str | None = None
 
     def serialize(self) -> dict:
@@ -128,6 +128,7 @@ class MOSFETParams(BaseParams):
 @dataclass(frozen=True)
 class LCSCParams(Serializable):
     lcsc: int
+    quantity: int
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
