@@ -951,16 +951,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         ########## Handle Regular Assignments ##########
         value = self.visit(assignable_ctx)
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            assert isinstance(value.units, UnitType)
+            unit = HasUnit.get_units(value)
             if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
-                if not provided_unit.is_compatible_with(value.units):
+                if not provided_unit.is_compatible_with(unit):
                     raise errors.UserIncompatibleUnitError.from_ctx(
                         ctx,
-                        f"Implied units {value.units} are incompatible"
+                        f"Implied units {unit} are incompatible"
                         f" with explicit units {provided_unit}.",
                         traceback=self.get_traceback(),
                     )
-            param = self._ensure_param(target, assigned_name, value.units, ctx)
+            param = self._ensure_param(target, assigned_name, unit, ctx)
             self._param_assignments[param] = (value, ctx, self.get_traceback())
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
