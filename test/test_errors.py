@@ -71,9 +71,12 @@ def test_build_error_logging(build_name: str):
     assert f'raise ValueError("{build_name}")' in process.stdout
 
     # exiting cleanly
-    assert process.stdout.strip().endswith(
-        "Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! \nhttps://discord.gg/mjtxARsr9V 👋"  # noqa: E501  # pre-existing
+    expected_ending = (
+        "Unfortunately errors ^^^ stopped the build. If you need a"
+        " hand jump on Discord! https://discord.gg/mjtxARsr9V 👋"
     )
+    actual_ending = process.stdout.strip().replace("\n", "")
+    assert actual_ending.endswith(expected_ending)
 
     # exception groups are unwrapped
     assert "ExceptionGroup" not in process.stdout
