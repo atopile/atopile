@@ -5,35 +5,29 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING
 
 import psutil
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.exporters.pcb.kicad.pcb import PCB
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
-from faebryk.libs.app.kicad_netlist import write_netlist
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
+    C_kicad_netlist_file,
     C_kicad_pcb_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import ConfigFlag
+from faebryk.libs.util import not_none, once
 
 if TYPE_CHECKING:
     from atopile.config import BuildPaths
 
 logger = logging.getLogger(__name__)
-
-PCBNEW_AUTO = ConfigFlag(
-    "PCBNEW_AUTO",
-    default=False,
-    descr="Automatically open pcbnew when applying netlist",
-)
 
 
 def apply_layouts(app: Module):
@@ -73,47 +67,6 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
             apply_route_in_pcb(route, transformer)
 
 
-def apply_design(
-    build_paths: "BuildPaths",
-    app: Module,
-    G: Graph,
-    transform: Callable[[PCB_Transformer], Any] | None = None,
-):
-    F.is_bus_parameter.resolve_bus_parameters(G)
-
-    logger.info(f"Writing netlist to {build_paths.netlist}")
-    changed = write_netlist(G, build_paths.netlist, use_kicad_designators=True)
-    apply_netlist(build_paths, changed)
-
-    logger.info("Load PCB")
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
-
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-
-    logger.info("Transform PCB")
-    if transform:
-        transform(transformer)
-
-    # set layout
-    apply_layouts(app)
-    transformer.move_footprints()
-    apply_routing(app, transformer)
-
-    logger.info(f"Writing pcbfile {build_paths.layout}")
-    pcb.dumps(build_paths.layout)
-
-    print("Reopen PCB in kicad")
-    if PCBNEW_AUTO:
-        try:
-            open_pcb(build_paths.layout)
-        except FileNotFoundError:
-            print(f"PCB location: {build_paths.layout}")
-        except RuntimeError as e:
-            print(f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter")
-    else:
-        print(f"PCB location: {build_paths.layout}")
-
-
 def ensure_footprint_lib(
     build_paths: "BuildPaths",
     lib_name: str,
@@ -137,7 +90,7 @@ def ensure_footprint_lib(
         )
         # check if not going up outside the project directory
         # relative_to raises a ValueError if it has to walk up to make a relative path
-        fppath.relative_to(build_paths.root)
+        fppath.relative_to(not_none(build_paths.root))
     except ValueError:
         relative = False
         with downgrade(UserResourceException):
@@ -184,15 +137,16 @@ def include_footprints(build_paths: "BuildPaths"):
     )
 
 
+@once
 def find_pcbnew() -> os.PathLike:
     """Figure out what to call for the pcbnew CLI."""
     if sys.platform.startswith("linux"):
-        return "pcbnew"
+        return Path("pcbnew")
 
     if sys.platform.startswith("darwin"):
         base = Path("/Applications/KiCad/")
     elif sys.platform.startswith("win"):
-        base = Path(os.getenv("ProgramFiles")) / "KiCad"
+        base = Path(not_none(os.getenv("ProgramFiles"))) / "KiCad"
     else:
         raise NotImplementedError(f"Unsupported platform: {sys.platform}")
 
@@ -217,23 +171,32 @@ def open_pcb(pcb_path: os.PathLike):
     subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
 
 
-def apply_netlist(build_paths: "BuildPaths", netlist_has_changed: bool = True):
-    from faebryk.exporters.pcb.kicad.pcb import PCB
-
-    include_footprints(build_paths)
-
-    # Set netlist path in gui menu
-    if not build_paths.kicad_project.exists():
+def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
+    """
+    Set netlist path in gui menu
+    """
+    if not project_path.exists():
         project = C_kicad_project_file()
     else:
-        project = C_kicad_project_file.loads(build_paths.kicad_project)
+        project = C_kicad_project_file.loads(project_path)
     project.pcbnew.last_paths.netlist = str(
-        build_paths.netlist.resolve().relative_to(
-            build_paths.layout.parent.resolve(), walk_up=True
-        )
+        netlist_path.resolve().relative_to(project_path.parent.resolve(), walk_up=True)
     )
-    project.dumps(build_paths.kicad_project)
+    project.dumps(project_path)
+
+
+def apply_netlist(
+    build_paths: "BuildPaths",
+    files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None,
+):
+    include_footprints(build_paths)
+
+    set_kicad_netlist_path_in_project(build_paths.kicad_project, build_paths.netlist)
 
     # Import netlist into pcb
-    logger.info(f"Apply netlist to {build_paths.layout}")
-    PCB.apply_netlist(build_paths.layout, build_paths.netlist)
+    if files:
+        pcb, netlist = files
+        PCB.apply_netlist(pcb, netlist, build_paths.layout.parent / "fp-lib-table")
+    else:
+        logger.info(f"Apply netlist to {build_paths.layout}")
+        PCB.apply_netlist_to_file(build_paths.layout, build_paths.netlist)

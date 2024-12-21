@@ -2,9 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import os
 from pathlib import Path
+from typing import Sequence
 
-from faebryk.libs.exceptions import UserResourceException, iter_through_errors
+from faebryk.libs.exceptions import (
+    UserResourceException,
+    accumulate,
+    iter_through_errors,
+)
 from faebryk.libs.kicad.fileformats import (
     C_footprint,
     C_kicad_fp_lib_table_file,
@@ -48,27 +54,44 @@ def _nets_same(
     return pcb_pads == nl_pads
 
 
+class LibNotInTable(Exception):
+    def __init__(self, *args: object, lib_id: str, lib_table_path: Path) -> None:
+        super().__init__(*args)
+        self.lib_id = lib_id
+        self.lib_table_path = lib_table_path
+
+
+def _find_footprint(
+    lib_tables: Sequence[os.PathLike], lib_id: str
+) -> C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib:
+    lib_tables = [Path(lib_table) for lib_table in lib_tables]
+
+    err_accumulator = accumulate(LibNotInTable, FileNotFoundError)
+
+    for lib_table_path in lib_tables:
+        with err_accumulator.collect():
+            lib_table = C_kicad_fp_lib_table_file.loads(lib_table_path)
+            try:
+                return find(lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
+            except KeyErrorNotFound as ex:
+                raise LibNotInTable(
+                    lib_id=lib_id, lib_table_path=lib_table_path
+                ) from ex
+
+    if ex := err_accumulator.get_exception():
+        raise ex
+
+    raise ValueError("No footprint libraries provided")
+
+
 def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
-    fp_lib_table = C_kicad_fp_lib_table_file.loads(fp_lib_path)
     lib_id, fp_name = identifier.split(":")
-    try:
-        lib = find(fp_lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
-    except KeyErrorNotFound:
-        # non-local lib, search in kicad global lib
-        global_fp_lib_table = C_kicad_fp_lib_table_file.loads(GLOBAL_FP_LIB_PATH)
-        try:
-            lib = find(
-                global_fp_lib_table.fp_lib_table.libs, lambda x: x.name == lib_id
-            )
-        except KeyErrorNotFound as ex:
-            raise UserResourceException(
-                f'Library "{lib_id}" not listed in fp-lib-table {fp_lib_path}'
-            ) from ex
-        dir_path = Path(
-            lib.uri.replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
+    lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
+    dir_path = Path(
+        lib.uri.replace("${KIPRJMOD}", str(fp_lib_path.parent)).replace(
+            "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
         )
-    else:
-        dir_path = Path(lib.uri.replace("${KIPRJMOD}", str(fp_lib_path.parent)))
+    )
 
     path = dir_path / f"{fp_name}.kicad_mod"
     try:
@@ -109,14 +132,21 @@ def _sort_by_address_prefix(
 
 class PCB:
     @staticmethod
-    def apply_netlist(pcb_path: Path, netlist_path: Path):
-        from faebryk.exporters.pcb.kicad.transformer import gen_uuid
-
-        fp_lib_path = pcb_path.parent / "fp-lib-table"
-
+    def apply_netlist_to_file(pcb_path: Path, netlist_path: Path):
         pcb = C_kicad_pcb_file.loads(pcb_path)
-
         netlist = C_kicad_netlist_file.loads(netlist_path)
+        fp_lib_path = pcb_path.parent / "fp-lib-table"
+        PCB.apply_netlist(pcb, netlist, fp_lib_path)
+        logger.debug(f"Save PCB: {pcb_path}")
+        pcb.dumps(pcb_path)
+
+    @staticmethod
+    def apply_netlist(
+        pcb: C_kicad_pcb_file,
+        netlist: C_kicad_netlist_file,
+        fp_lib_path: Path,
+    ):
+        from faebryk.exporters.pcb.kicad.transformer import gen_uuid
 
         # footprint properties
         def fill_fp_property(
@@ -416,7 +446,3 @@ class PCB:
                 )
 
                 pcb.kicad_pcb.footprints.append(pcb_comp)
-
-        # ---
-        logger.debug(f"Save PCB: {pcb_path}")
-        pcb.dumps(pcb_path)
