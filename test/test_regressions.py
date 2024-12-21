@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 from pathlib import Path
@@ -23,8 +22,7 @@ EXAMPLES_DIR = repo_root / "examples"
     list(EXAMPLES_DIR.glob("*.py")),
     ids=lambda p: p.stem,
 )
-def test_fabll_example(example: Path, tmp_path: Path, caplog: pytest.LogCaptureFixture):
-    caplog.set_level(logging.INFO)
+def test_fabll_example(example: Path, tmp_path: Path):
     assert example.exists()
 
     example_copy = tmp_path / example.name
@@ -35,7 +33,8 @@ def test_fabll_example(example: Path, tmp_path: Path, caplog: pytest.LogCaptureF
         [sys.executable, "-m", "atopile", "build", "--standalone", f"{example}:App"],
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
         cwd=tmp_path,
-        stdout_level=logging.INFO,
+        stdout=print,
+        stderr=print,
     )
 
 
@@ -67,16 +66,15 @@ class BuildError(Exception):
         "https://github.com/atopile/bq24045dsqr",
     ],
 )
-def test_projects(repo: str, tmp_path: Path, caplog: pytest.LogCaptureFixture):
-    caplog.set_level(logging.INFO)
-
+def test_projects(repo: str, tmp_path: Path):
     # Clone the repository
     # Using gh to use user credentials if run locally
     try:
         run_live(
             ["gh", "repo", "clone", repo, "project", "--", "--depth", "1"],
             cwd=tmp_path,
-            stdout_level=logging.INFO,
+            stdout=print,
+            stderr=print,
         )
     except CalledProcessError as ex:
         raise CloneError from ex
@@ -87,7 +85,8 @@ def test_projects(repo: str, tmp_path: Path, caplog: pytest.LogCaptureFixture):
             [sys.executable, "-m", "atopile", "-v", "install"],
             env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
             cwd=tmp_path / "project",
-            stdout_level=logging.INFO,
+            stdout=print,
+            stderr=print,
         )
     except CalledProcessError as ex:
         # Translate the error message to clearly distinguish from clone errors
@@ -99,7 +98,8 @@ def test_projects(repo: str, tmp_path: Path, caplog: pytest.LogCaptureFixture):
             [sys.executable, "-m", "atopile", "-v", "build"],
             env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
             cwd=tmp_path / "project",
-            stdout_level=logging.INFO,
+            stdout=print,
+            stderr=print,
         )
     except CalledProcessError as ex:
         # Translate the error message to clearly distinguish from clone errors
