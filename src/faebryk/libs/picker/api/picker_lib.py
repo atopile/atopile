@@ -40,7 +40,7 @@ from faebryk.libs.picker.lcsc import (
     get_raw,
 )
 from faebryk.libs.picker.picker import DescriptiveProperties, MultiPickError, PickError
-from faebryk.libs.util import Tree, cast_assert, not_none
+from faebryk.libs.util import Tree, cast_assert, groupby, not_none
 
 logger = logging.getLogger(__name__)
 client = get_api_client()
@@ -140,20 +140,23 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
 def _find_modules(
     modules: Tree[Module], solver: Solver
 ) -> dict[Module, list[Component]]:
+    params = {m: _prepare_query(m, solver) for m in modules}
+    grouped = groupby(params.items(), lambda p: p[1])
+    queries = list(grouped.keys())
     try:
-        results = client.fetch_parts_multiple(
-            [_prepare_query(m, solver) for m in modules]
-        )
+        results = client.fetch_parts_multiple(queries)
     except ApiHTTPError as e:
         if e.response.status_code == 404:
             raise MultiPickError("Failed to fetch one or more parts", modules) from e
         raise e
 
-    assert len(results) == len(modules)
+    assert len(results) == len(queries)
 
-    return dict(
-        zip(modules, (_process_candidates(m, r) for m, r in zip(modules, results)))
-    )
+    return {
+        m: _process_candidates(m, r)
+        for ms, r in zip(grouped.values(), results)
+        for m, _ in ms
+    }
 
 
 def get_candidates(
