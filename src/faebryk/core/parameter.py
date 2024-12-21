@@ -42,6 +42,7 @@ from faebryk.libs.util import (
     abstract,
     cast_assert,
     find,
+    once,
     unique,
 )
 
@@ -514,6 +515,25 @@ class Expression(ParameterOperatable):
                 continue
             self.operates_on.connect(op.operated_on)
 
+    @once
+    def get_uncorrelatable_literals(self) -> list[ParameterOperatable.Literal]:
+        return [
+            lit
+            for lit in self.operands
+            # TODO we should just use the canonical lits, for now just no support
+            # for non-canonical lits
+            if not isinstance(lit, ParameterOperatable)
+            and (
+                not isinstance(lit, P_Set)
+                or not (lit.is_single_element() or lit.is_empty())
+            )
+        ]
+
+    @once
+    def get_sorted_operands(self) -> list[ParameterOperatable]:
+        return sorted(self.operands, key=hash)
+
+    @once
     def is_congruent_to(self, other: "Expression") -> bool:
         if self == other:
             return True
@@ -522,22 +542,7 @@ class Expression(ParameterOperatable):
         if len(self.operands) != len(other.operands):
             return False
 
-        def get_uncorrelatable_literals(
-            e: "Expression",
-        ) -> list[ParameterOperatable.Literal]:
-            return [
-                lit
-                for lit in e.operands
-                # TODO we should just use the canonical lits, for now just no support
-                # for non-canonical lits
-                if not isinstance(lit, ParameterOperatable)
-                and (
-                    not isinstance(lit, P_Set)
-                    or not (lit.is_single_element() or lit.is_empty())
-                )
-            ]
-
-        if get_uncorrelatable_literals(self) or get_uncorrelatable_literals(other):
+        if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
             return False
 
         if self.operands == other.operands:
@@ -546,8 +551,8 @@ class Expression(ParameterOperatable):
             # fucking genius
             # lit hash is stable
             # paramop hash only same with same id
-            left = sorted(self.operands, key=hash)
-            right = sorted(other.operands, key=hash)
+            left = self.get_sorted_operands()
+            right = other.get_sorted_operands()
             if left == right:
                 return True
 
