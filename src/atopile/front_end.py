@@ -114,7 +114,7 @@ class DeprecatedException(errors.UserException):
     """
 
     def get_frozen(self) -> tuple:
-        # FIXME: this is a bit of a hack to make the logger de-dup these for us
+        # TODO: this is a bit of a hack to make the logger de-dup these for us
         return errors._BaseBaseUserException.get_frozen(self)
 
 
@@ -283,6 +283,20 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
             return super().visitChildren(ctx)
         return KeyOptMap.empty()
 
+    # TODO: @v0.4: remove this shimming
+    @staticmethod
+    def _find_shim(file_path: Path | None, ref: Ref) -> tuple[Type[L.Node], str] | None:
+        if file_path is None:
+            return None
+
+        import_addr = address.AddrStr.from_parts(file_path, str(Ref(ref)))
+
+        for shim_addr in shim_map:
+            if import_addr.endswith(shim_addr):
+                return shim_map[shim_addr]
+
+        return None
+
     @classmethod
     def survey(
         cls, file_path: Path | None, ctx: ap.BlockdefContext | ap.File_inputContext
@@ -290,15 +304,40 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         surveyor = cls()
         context = Context(file_path=file_path, scope_ctx=ctx, refs={})
         for ref, (item, item_ctx) in surveyor.visit(ctx):
+            assert isinstance(item_ctx, ParserRuleContext)
             if ref in context.refs:
                 # Downgrade the error in case we're shadowing things
+                # Not limiting the number of times we show this warning
+                # because they're pretty important and Wendy is well cached
                 with downgrade(errors.UserKeyError):
                     raise errors.UserKeyError.from_ctx(
                         item_ctx,
                         f'"{ref}" already declared. Shadowing original.'
                         " In the future this may be an error",
                     )
-            context.refs[ref] = item
+
+            # TODO: @v0.4: remove this shimming
+            if shim := cls._find_shim(context.file_path, ref):
+                shim_cls, preferred = shim
+
+                if hasattr(item_ctx, "name"):
+                    dep_ctx = item_ctx.name()  # type: ignore
+                elif hasattr(item_ctx, "name_or_attr"):
+                    dep_ctx = item_ctx.name_or_attr()  # type: ignore
+                else:
+                    dep_ctx = item_ctx
+
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException.from_ctx(
+                        dep_ctx,
+                        "Is deprecated and will be removed in a future"
+                        f" version. Use {preferred} instead.",
+                    )
+
+                context.refs[ref] = shim_cls
+            else:
+                context.refs[ref] = item
+
         return context
 
 
@@ -319,6 +358,19 @@ def ato_error_converter():
             raise errors.UserException.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
         else:
             raise ex
+
+
+@contextmanager
+def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleContext]):
+    try:
+        yield
+    except errors.UserException as ex:
+        if ex.origin is None:
+            ex.origin = ctx
+            # only attach traceback if we're also setting the origin
+            if ex.traceback is None:
+                ex.traceback = traceback
+        raise ex
 
 
 _declaration_domain_to_unit = {
@@ -398,7 +450,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     return None
 
             return address.AddrStr.from_parts(
-                self._scopes[ctx_].file_path, ".".join(ref)
+                self._scopes[ctx_].file_path, str(Ref(ref))
             )
 
         return {
@@ -525,14 +577,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return search_paths
 
-    # TODO: @v0.4 remove this deprecated import form
-    _supressor_import_item = suppress_after_count(
-        3,
-        DeprecatedException,
-        logger=logger,
-        supression_warning="Supressing futher deprecation warnings",
-    )
-
     def _import_item(
         self, context: Context, item: Context.ImportPlaceholder
     ) -> Type[L.Node] | ap.BlockdefContext:
@@ -550,19 +594,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
 
         from_path = self._sanitise_path(candidate_from_path)
-
-        # TODO: @v0.4: remove this shimming
-        import_addr = address.AddrStr.from_parts(str(from_path), ".".join(item.ref))
-        for shim_addr, (shim_cls, preferred) in shim_map.items():
-            if import_addr.endswith(shim_addr):
-                with downgrade(DeprecatedException), self._supressor_import_item:
-                    raise DeprecatedException.from_ctx(
-                        item.original_ctx,
-                        f"{item.from_path} is deprecated and will be"
-                        f" removed in a future version. Use {preferred} instead.",
-                    )
-                return shim_cls
-
         if from_path.suffix == ".py":
             try:
                 node = import_from_path(from_path)
@@ -671,9 +702,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if name in self._failed_nodes.get(node, set()):
                     raise SkipPriorFailedException() from ex
                 # Wah wah wah - we don't know what this is
-                pretty_name = ".".join(ref[:i])
-                if pretty_name:
-                    msg = f"{pretty_name} has no attribute '{name}'"
+                if ref[:i]:
+                    msg = f"{Ref(ref[:i])} has no attribute '{name}'"
                 else:
                     msg = f"No attribute '{name}'"
                 raise errors.UserKeyError.from_ctx(
@@ -855,7 +885,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     # TODO: @v0.4 remove this deprecated import form
     _supressor_visitAssign_stmt = suppress_after_count(
-        3,
+        5,
         errors.UserException,
         logger=logger,
         supression_warning="Supressing futher warnings of this type",
@@ -921,8 +951,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ):
                 prop = cast_assert(property, getattr(GlobalShims, assigned_name))
                 assert prop.fset is not None
-                prop.fset(target, value)
+                with (
+                    downgrade(DeprecatedException),
+                    self._supressor_visitAssign_stmt,
+                    _attach_ctx_to_ex(ctx, self.get_traceback()),
+                ):
+                    prop.fset(target, value)
             else:
+                # Strictly, these are two classes of errors that could use independent
+                # suppression, but we'll just suppress them both collectively for now
                 with downgrade(errors.UserException), self._supressor_visitAssign_stmt:
                     raise errors.UserException.from_ctx(
                         ctx,
@@ -1098,7 +1135,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref))
         from_node.add(specialized_node)
         assert isinstance(specialized_node, L.Module)
-        from_node.specialize(specialized_node)
+
+        try:
+            from_node.specialize(specialized_node)
+        except* L.Module.InvalidSpecializationError as ex:
+            raise errors.UserException.from_ctx(
+                ctx,
+                f"Can't specialize {from_ref} with {to_ref}:\n"
+                + "\n".join(f" - {e.message}" for e in ex.exceptions),
+                traceback=self.get_traceback(),
+            ) from ex
         return KeyOptMap.empty()
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):

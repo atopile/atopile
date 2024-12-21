@@ -67,10 +67,10 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
 
     def __init__(
         self,
-        *exceptions: Type[T] | tuple[Type[T]],
+        *exceptions: Type[T],
         default=None,
     ):
-        super().__init__(*exceptions)  # type: ignore - more precisely typed here than std
+        self._exceptions = exceptions
         self.default = default
 
     @abstractmethod
