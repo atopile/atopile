@@ -294,3 +294,7 @@ class _ShimPower(F.ElectricPower):
     @property
     def gnd(self) -> F.Electrical:
         return self.lv
+
+    @property
+    def current(self):
+        return self.max_current
