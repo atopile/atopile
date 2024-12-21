@@ -226,7 +226,7 @@ tvs = [
                 t.reverse_breakdown_voltage.constrain_le(8 * P.V),
             )
         ),
-        packages=["SOD-123", "SOD-123FL"],
+        packages=["SOD-123", "SOD-123FL", "SOT-23-6", "SMA", "SMB", "SMC"],
     ),
 ]
 
