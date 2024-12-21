@@ -280,6 +280,19 @@ class _ShimInductor(F.Inductor):
         return self.unnamed[1]
 
 
+@_register_shim("generics/leds.ato:LED", "import LED")
+class _ShimLED(F.LED):
+    """Temporary shim to translate LEDs."""
+
+    @property
+    def v_f(self):
+        return self.forward_voltage
+
+    @property
+    def i_max(self):
+        return self.max_current
+
+
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
 class _ShimPower(F.ElectricPower):
     """Temporary shim to translate `value` to `power`."""
