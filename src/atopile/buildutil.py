@@ -262,7 +262,9 @@ def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
 @muster.register("variable-report")
 def generate_variable_report(build_ctx: BuildContext, app: Module) -> None:
     """Generate a report of all the variable values in the design."""
-    export_parameters_to_file(app, build_ctx.paths.output_base / "variables.md")
+    export_parameters_to_file(
+        app, build_ctx.paths.output_base.with_suffix(".variables.md")
+    )
 
 
 def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
