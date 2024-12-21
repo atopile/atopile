@@ -15,7 +15,7 @@ class Ref(tuple[str]):
 
     def add_name(self, name: str | int) -> "Ref":
         """Return a new Ref with the given name."""
-        return Ref((*self, name))
+        return Ref((*self, str(name)))
 
     def __str__(self) -> str:
         return ".".join(map(str, self))
@@ -28,7 +28,7 @@ class Ref(tuple[str]):
     @classmethod
     def from_one(cls, name: str | int) -> "Ref":
         """Return a Ref with a single item."""
-        return cls((name,))
+        return cls((str(name),))
 
 
 class KeyOptItem[V](tuple[Ref | None, V]):
