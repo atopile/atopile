@@ -228,12 +228,16 @@ def check_attachable(component: Module):
 def attach(
     component: Module, partno: str, get_model: bool = True, check_only: bool = False
 ):
-    ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol = (
-        download_easyeda_info(partno, get_model=get_model)
+    if component.has_trait(F.has_footprint) and check_only:
+        # Nothing to see here, move along. If an explicit manual
+        # footprint is there, honor it.
+        return
+
+    _, _, easyeda_footprint, _, easyeda_symbol = download_easyeda_info(
+        partno, get_model=get_model
     )
 
-    # symbol
-    # TODO maybe check it?
+    # TODO maybe check the symbol matches, even if a footprint is already attached?
     if not component.has_trait(F.has_footprint):
         if not component.has_trait(F.can_attach_to_footprint):
             # TODO make this a trait
@@ -248,8 +252,10 @@ def attach(
                 )
             except F.has_pin_association_heuristic.PinMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+
             if check_only:
                 return
+
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
             sym = F.Symbol.with_component(component, pinmap)
