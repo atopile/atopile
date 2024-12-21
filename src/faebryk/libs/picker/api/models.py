@@ -31,7 +31,7 @@ class PackageCandidate:
 @dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
     package_candidates: frozenset[PackageCandidate]
-    quantity: int
+    qty: int
     endpoint: str | None = None
 
     def serialize(self) -> dict:
