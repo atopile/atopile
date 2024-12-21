@@ -25,7 +25,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_pick_and_place,
     export_step,
 )
-from faebryk.exporters.pcb.kicad.pcb import _get_footprint
+from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, _get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -344,6 +344,27 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
         )
 
     # Finally, check that we have all the footprints we know we will need
-    for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
-        with err_collector():
-            _get_footprint(fp_id, build_ctx.paths.fp_lib_table)
+    try:
+        for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
+            with err_collector():
+                _get_footprint(fp_id, build_ctx.paths.fp_lib_table)
+    except* (FileNotFoundError, LibNotInTable) as ex:
+
+        def _make_user_resource_exception(e: Exception) -> UserResourceException:
+            if isinstance(e, FileNotFoundError):
+                return UserResourceException(
+                    f"Footprint library {e.filename} doesn't exist"
+                )
+            elif isinstance(e, LibNotInTable):
+                return UserResourceException(
+                    f"Footprint library {e.lib_id} not found in {e.lib_table_path}"
+                )
+            assert False, "How'd we get here?"
+
+        raise ex.derive(
+            [
+                _make_user_resource_exception(e)
+                for e in ex.exceptions
+                if isinstance(e, (FileNotFoundError, LibNotInTable))
+            ]
+        ) from ex
