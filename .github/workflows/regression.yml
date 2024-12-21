@@ -15,58 +15,60 @@ jobs:
         (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       }}
     steps:
+      # FIXME: remove this once we're done debugging
       - run: echo "Event " ${{ github.event_name }}
       - run: echo "Event labels " ${{ github.event.pull_request.labels }}
       - run: echo "run for pull_request " ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'regression-required')) }}
       - run: echo "run else " ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-    # - name: Checkout code
-    #   uses: actions/checkout@v4
 
-    # # Required due to a bug in the checkout action
-    # # https://github.com/actions/checkout/issues/1471
-    # - run: git fetch --prune --unshallow --tags
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # - name: Install uv
-    #   uses: useblacksmith/setup-uv@v4
-    #   with:
-    #     version: 0.5.5
-    #     enable-cache: true
-    #     cache-dependency-glob: "uv.lock"
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
 
-    # - name: "Set up Python"
-    #   uses: useblacksmith/setup-python@v6
-    #   with:
-    #     python-version-file: "pyproject.toml"
+      - name: Install uv
+        uses: useblacksmith/setup-uv@v4
+        with:
+          version: 0.5.5
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
-    # - name: Setup cmake
-    #   uses: jwlawson/actions-setup-cmake@v2
+      - name: "Set up Python"
+        uses: useblacksmith/setup-python@v6
+        with:
+          python-version-file: "pyproject.toml"
 
-    # - name: Run pytest
-    #   id: pytest
-    #   continue-on-error: true
-    #   # Regular tests are run as part of the pytest workflow
-    #   run: |
-    #     uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
-    #   env:
-    #     GH_TOKEN: ${{ github.token }}
-    #     PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
-    #     PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
+      - name: Setup cmake
+        uses: jwlawson/actions-setup-cmake@v2
 
-    # - name: Upload all test logs
-    #   if: steps.pytest.outcome == 'failure'
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: test-logs
-    #     path: artifacts/**/*.log
-    #     if-no-files-found: warn
+      - name: Run pytest
+        id: pytest
+        continue-on-error: true
+        # Regular tests are run as part of the pytest workflow
+        run: |
+          uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
+          PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
 
-    # - name: Upload all test report
-    #   if: steps.pytest.outcome == 'failure'
-    #   uses: actions/upload-artifact@v4
-    #   with:
-    #     name: test-report
-    #     path: artifacts/test-report.html
+      - name: Upload all test logs
+        if: steps.pytest.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: artifacts/**/*.log
+          if-no-files-found: warn
 
-    # - name: Check pytest status
-    #   if: steps.pytest.outcome == 'failure'
-    #   run: exit 1
+      - name: Upload all test report
+        if: steps.pytest.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: artifacts/test-report.html
+
+      - name: Check pytest status
+        if: steps.pytest.outcome == 'failure'
+        run: exit 1
