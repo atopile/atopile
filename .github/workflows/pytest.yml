@@ -35,7 +35,7 @@ jobs:
       run: |
         uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow and not regression" --timeout=300
       env:
-        COLUMNS: 300  # rich console width will be pulled from this
+        COLUMNS: 150  # rich console width will be pulled from this
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'

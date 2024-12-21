@@ -44,7 +44,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
         PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
-        COLUMNS: 300  # rich console width will be pulled from this
+        COLUMNS: 150  # rich console width will be pulled from this
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'
