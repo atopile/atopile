@@ -1070,6 +1070,11 @@ def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
+    # short-cut so we don't end up with a bunch of useless warnings
+    # when just checking for debugpy in the import statement
+    if "debugpy" not in sys.modules:
+        return False
+
     try:
         import debugpy
 
