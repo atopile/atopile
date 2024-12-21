@@ -5,7 +5,7 @@ import logging
 import re
 from dataclasses import fields
 from textwrap import indent
-from typing import Callable, Iterable
+from typing import Iterable
 
 import more_itertools
 
@@ -20,8 +20,10 @@ from faebryk.libs.picker.api.models import (
     Component,
     DiodeParams,
     InductorParams,
+    LCSCParams,
     LDOParams,
     LEDParams,
+    ManufacturerPartParams,
     MOSFETParams,
     ResistorParams,
     TVSParams,
@@ -109,7 +111,9 @@ TYPE_SPECIFIC_LOOKUP: dict[type[Module], type[BaseParams]] = {
 }  # type: ignore
 
 
-def _find_module(module: Module, solver: Solver) -> list[Component]:
+def _prepare_query(
+    module: Module, solver: Solver
+) -> BaseParams | LCSCParams | ManufacturerPartParams:
     assert module.has_trait(F.is_pickable)
     # Error can propagate through,
     # because we expect all pickable modules to be attachable
@@ -118,15 +122,28 @@ def _find_module(module: Module, solver: Solver) -> list[Component]:
     if module.has_trait(F.has_descriptive_properties):
         props = module.get_trait(F.has_descriptive_properties).get_properties()
         if "LCSC" in props:
-            return _find_by_lcsc_id(module, solver)
+            return LCSCParams(lcsc=_extract_numeric_id(props["LCSC"]))
         if DescriptiveProperties.partno in props:
-            return _find_by_mfr(module, solver)
+            return ManufacturerPartParams(
+                manufacturer_name=props[DescriptiveProperties.manufacturer],
+                part_number=props[DescriptiveProperties.partno],
+                quantity=qty,
+            )
 
     params_t = TYPE_SPECIFIC_LOOKUP[type(module)]
-    candidates = find_component_by_params(
-        client.fetch_parts, params_t, module, solver, qty
-    )
 
+    fps = get_package_candidates(module)
+    generic_field_names = {f.name for f in fields(params_t)}
+    _, known_params = more_itertools.partition(
+        lambda p: p.get_name() in generic_field_names, module.get_parameters()
+    )
+    cmp_params = {
+        p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
+    }
+    return params_t(package_candidates=fps, qty=qty, **cmp_params)  # type: ignore
+
+
+def _process_candidates(module: Module, candidates: list[Component]) -> list[Component]:
     # Filter parts with weird pinmaps
     it = iter(candidates)
     filtered_candidates = []
@@ -148,6 +165,18 @@ def _find_module(module: Module, solver: Solver) -> list[Component]:
     return filtered_candidates
 
 
+def _find_modules(
+    modules: Tree[Module], solver: Solver
+) -> dict[Module, list[Component]]:
+    results = client.fetch_parts_multiple([_prepare_query(m, solver) for m in modules])
+
+    assert len(results) == len(modules)
+
+    return dict(
+        zip(modules, (_process_candidates(m, r) for m, r in zip(modules, results)))
+    )
+
+
 def get_candidates(
     modules: Tree[Module], solver: Solver
 ) -> dict[Module, list[Component]]:
@@ -156,9 +185,8 @@ def get_candidates(
     empty = set()
 
     while candidates:
-        # TODO use parallel (endpoint)
         # TODO deduplicate parts with same literals
-        new_parts = {m: _find_module(m, solver) for m in modules}
+        new_parts = _find_modules(modules, solver)
         parts.update({m: p for m, p in new_parts.items() if p})
         empty = {m for m, p in new_parts.items() if not p}
         for m in parts:
@@ -347,30 +375,3 @@ def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
         try_attach(m, [part], qty=1)
 
     return True
-
-
-def find_component_by_params[T: BaseParams](
-    api_method: Callable[[T], list["Component"]],
-    param_cls: type[T],
-    cmp: Module,
-    solver: Solver,
-    qty: int,
-) -> list["Component"]:
-    """
-    Find a component with matching parameters
-    """
-
-    fps = get_package_candidates(cmp)
-    generic_field_names = {f.name for f in fields(param_cls)}
-    _, known_params = more_itertools.partition(
-        lambda p: p.get_name() in generic_field_names, cmp.get_parameters()
-    )
-    cmp_params = {
-        p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
-    }
-
-    parts = api_method(
-        param_cls(package_candidates=fps, qty=qty, **cmp_params),  # type: ignore
-    )
-
-    return parts

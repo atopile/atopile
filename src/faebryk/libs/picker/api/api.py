@@ -8,7 +8,13 @@ from dataclasses import dataclass
 import requests
 
 from faebryk.core.module import Module
-from faebryk.libs.picker.api.models import BaseParams, Component, PackageCandidate
+from faebryk.libs.picker.api.models import (
+    BaseParams,
+    Component,
+    LCSCParams,
+    ManufacturerPartParams,
+    PackageCandidate,
+)
 from faebryk.libs.util import ConfigFlagString, once
 
 logger = logging.getLogger(__name__)
@@ -115,6 +121,20 @@ class ApiClient:
     def fetch_parts(self, params: BaseParams) -> list["Component"]:
         assert params.endpoint
         return self.query_parts(params.endpoint, params)
+
+    def fetch_parts_multiple(
+        self, params: list[BaseParams | LCSCParams | ManufacturerPartParams]
+    ) -> list[list["Component"]]:
+        response = self._post("/v0/query", {"queries": [p.serialize() for p in params]})
+        results = [
+            [Component.from_dict(part) for part in result["components"]]  # type: ignore
+            for result in response.json()["results"]
+        ]
+
+        if len(results) != len(params):
+            raise ApiError(f"Expected {len(params)} results, got {len(results)}")
+
+        return results
 
 
 @once

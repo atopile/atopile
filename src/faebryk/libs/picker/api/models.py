@@ -124,16 +124,32 @@ class MOSFETParams(BaseParams):
     on_resistance: ApiParamT = SerializableField()
 
 
+@dataclass_json
 @dataclass(frozen=True)
-class LCSCParams:
+class LCSCParams(Serializable):
     lcsc: int
 
+    def serialize(self) -> dict:
+        return self.to_dict()  # type: ignore
 
+    @classmethod
+    def deserialize(cls, data: dict) -> "LCSCParams":
+        return cls(**data)
+
+
+@dataclass_json
 @dataclass(frozen=True)
-class ManufacturerPartParams:
+class ManufacturerPartParams(Serializable):
     manufacturer_name: str
-    mfr: str
-    qty: int
+    part_number: str
+    quantity: int
+
+    def serialize(self) -> dict:
+        return self.to_dict()  # type: ignore
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "ManufacturerPartParams":
+        return cls(**data)
 
 
 @dataclass_json
