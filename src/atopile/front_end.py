@@ -51,6 +51,7 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.library.L import Range, Single
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
+from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import (
     HasUnit,
     P,
@@ -226,7 +227,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
     def visitImport_stmt(
         self, ctx: ap.Import_stmtContext
-    ) -> KeyOptMap[Context.ImportPlaceholder]:
+    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Import_stmtContext]]:
         if from_path := ctx.string():
             lazy_imports = [
                 Context.ImportPlaceholder(
@@ -273,7 +274,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
     def visitDep_import_stmt(
         self, ctx: ap.Dep_import_stmtContext
-    ) -> KeyOptMap[Context.ImportPlaceholder]:
+    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Dep_import_stmtContext]]:
         lazy_import = Context.ImportPlaceholder(
             ref=self.visitName_or_attr(ctx.name_or_attr()),
             from_path=self.visitString(ctx.string()),
@@ -289,14 +290,23 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
             )
         return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptMap:
+    def visitBlockdef(
+        self, ctx: ap.BlockdefContext
+    ) -> KeyOptMap[tuple[ap.BlockdefContext, ap.BlockdefContext]]:
         ref = Ref.from_one(self.visitName(ctx.name()))
         return KeyOptMap.from_kv(ref, (ctx, ctx))
 
-    def visitSimple_stmt(self, ctx: ap.Simple_stmtContext | Any) -> KeyOptMap:
+    def visitSimple_stmt(
+        self, ctx: ap.Simple_stmtContext | Any
+    ) -> (
+        KeyOptMap[
+            tuple[Context.ImportPlaceholder | ap.BlockdefContext, ParserRuleContext]
+        ]
+        | type[NOTHING]
+    ):
         if ctx.import_stmt() or ctx.dep_import_stmt():
             return super().visitChildren(ctx)
-        return KeyOptMap.empty()
+        return NOTHING
 
     # TODO: @v0.4: remove this shimming
     @staticmethod
@@ -915,7 +925,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         suppression_warning="Suppressing further warnings of this type",
     )
 
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
+    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
 
@@ -946,7 +956,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise
 
             self._current_node.add(new_node, name=assigned_name)
-            return KeyOptMap.empty()
+            return NOTHING
 
         ########## Handle Regular Assignments ##########
         value = self.visit(assignable_ctx)
@@ -995,7 +1005,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
 
-        return KeyOptMap.empty()
+        return NOTHING
 
     # TODO: @v0.4 remove this deprecated import form
     _suppression_try_get_mif = suppress_after_count(
@@ -1028,7 +1038,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return mif
 
-    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
+    def visitPindef_stmt(
+        self, ctx: ap.Pindef_stmtContext
+    ) -> KeyOptMap[L.ModuleInterface]:
         if ctx.name():
             name = self.visitName(ctx.name())
         elif ctx.totally_an_integer():
@@ -1051,7 +1063,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             traceback=self.get_traceback(),
         )
 
-    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
+    def visitSignaldef_stmt(
+        self, ctx: ap.Signaldef_stmtContext
+    ) -> KeyOptMap[L.ModuleInterface]:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
         if mif := self._try_get_mif(name, ctx):
@@ -1112,7 +1126,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             traceback=self.get_traceback(),
                         )
 
-    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
+    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
         """Connect interfaces together"""
         connectables = [self.visitConnectable(c) for c in ctx.connectable()]
         for err_cltr, (a, b) in iter_through_errors(
@@ -1123,7 +1137,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             with err_cltr():
                 self._connect(a, b, ctx)
 
-        return KeyOptMap.empty()
+        return NOTHING
 
     def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
         """Return the address of the connectable object."""
@@ -1144,7 +1158,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise ValueError(f"Unhandled connectable type {ctx}")
 
-    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
+    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
         from_node = self._get_referenced_node(from_ref, ctx)
         if not isinstance(from_node, L.Module):
@@ -1169,29 +1183,40 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 + "\n".join(f" - {e.message}" for e in ex.exceptions),
                 traceback=self.get_traceback(),
             ) from ex
-        return KeyOptMap.empty()
+        return NOTHING
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):
         """Do nothing. Handled in Surveyor."""
-        return KeyOptMap.empty()
+        return NOTHING
 
-    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> KeyOptMap:
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext):
         """Do nothing. Handled in Surveyor."""
-        return KeyOptMap.empty()
+        return NOTHING
 
-    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> KeyOptMap:
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext):
         """Do nothing. Handled in Surveyor."""
-        return KeyOptMap.empty()
+        return NOTHING
 
-    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
+    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext):
         comparisons = [c for _, c in self.visitComparison(ctx.comparison())]
         for cmp in comparisons:
-            assert isinstance(cmp, ConstrainableExpression)
-            cmp.constrain()
-        return KeyOptMap.empty()
+            if isinstance(cmp, BoolSet):
+                if not cmp:
+                    raise errors.UserAssertionError.from_ctx(
+                        ctx,
+                        "Assertion failed",
+                        traceback=self.get_traceback(),
+                    )
+            elif isinstance(cmp, ConstrainableExpression):
+                cmp.constrain()
+            else:
+                raise ValueError(f"Unhandled comparison type {type(cmp)}")
+        return NOTHING
 
     # Returns fab_param.ConstrainableExpression or BoolSet
-    def visitComparison(self, ctx: ap.ComparisonContext) -> KeyOptMap:
+    def visitComparison(
+        self, ctx: ap.ComparisonContext
+    ) -> KeyOptMap[ConstrainableExpression | BoolSet]:
         exprs = [
             self.visitArithmetic_expression(c)
             for c in [ctx.arithmetic_expression()]
@@ -1466,7 +1491,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         with downgrade(DeprecatedException), self._suppressor_visitCum_assign_stmt:
             raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
-        return KeyOptMap.empty()
+        return NOTHING
 
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_visitSet_assign_stmt = suppress_after_count(
@@ -1511,7 +1536,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 f"Set assignment of {assignee} is deprecated."
                 f' Use "assert {subset} within {superset} "instead.'
             )
-        return KeyOptMap.empty()
+        return NOTHING
 
     def _try_get_unit_from_type_info(
         self, ctx: ap.Type_infoContext | None
@@ -1536,7 +1561,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         suppression_warning="Suppressing further warnings of this type",
     )
 
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext):
         """Handle declaration statements."""
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
         if len(assigned_value_ref) > 1:
@@ -1562,10 +1587,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             self._param_assignments[param] = (None, ctx, self.get_traceback())
 
-        return KeyOptMap.empty()
+        return NOTHING
 
-    def visitPass_stmt(self, ctx: ap.Pass_stmtContext) -> KeyOptMap:
-        return KeyOptMap.empty()
+    def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
+        return NOTHING
 
 
 bob = Bob()

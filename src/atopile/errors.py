@@ -198,3 +198,9 @@ class UserPythonConstructionError(UserPythonModuleError):
     """
     Raised when a Python module couldn't be constructed.
     """
+
+
+class UserAssertionError(UserException):
+    """
+    Raised when an assertion fails.
+    """
