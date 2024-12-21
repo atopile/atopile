@@ -10,7 +10,7 @@ on:
 jobs:
   regression:
     runs-on: blacksmith-4vcpu-ubuntu-2204
-    if: ${{ contains(github.event.pull_request.labels.*.name, 'regression-required') || github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ (contains(github.event.pull_request.labels.*.name, 'regression-required') && github.event_name == 'pull_request_target') || (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch' }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
