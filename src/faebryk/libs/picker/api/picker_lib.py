@@ -13,7 +13,11 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.libs.picker.api.api import get_api_client, get_package_candidates
+from faebryk.libs.picker.api.api import (
+    ApiHTTPError,
+    get_api_client,
+    get_package_candidates,
+)
 from faebryk.libs.picker.api.models import (
     BaseParams,
     CapacitorParams,
@@ -168,7 +172,12 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
 def _find_modules(
     modules: Tree[Module], solver: Solver
 ) -> dict[Module, list[Component]]:
-    results = client.fetch_parts_multiple([_prepare_query(m, solver) for m in modules])
+    try:
+        results = client.fetch_parts_multiple(
+            [_prepare_query(m, solver) for m in modules]
+        )
+    except ApiHTTPError as e:
+        raise PickError(f"Failed to fetch one or more parts: {e}") from e
 
     assert len(results) == len(modules)
 

@@ -25,6 +25,7 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.libs.picker.api.api import ApiHTTPError
 from faebryk.libs.util import (
     ConfigFlag,
     KeyErrorNotFound,
@@ -81,6 +82,16 @@ class PickError(Exception):
 
     def __repr__(self):
         return f"{type(self).__name__}({self.module}, {self.message})"
+
+
+class MultiPickError(PickError):
+    def __init__(self, message: str, modules: Iterable[Module]):
+        first_module = next(iter(modules))
+        super().__init__(message, first_module)
+        self.modules = modules
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.modules}, {self.message})"
 
 
 class PickErrorNotImplemented(PickError):
@@ -330,7 +341,14 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
     logger.info("Getting part candidates for modules")
     candidates_now = time.time()
-    candidates = get_candidates(tree, solver)
+    try:
+        candidates = get_candidates(tree, solver)
+    except ApiHTTPError as e:
+        if e.response.status_code == 404:
+            raise MultiPickError(
+                "Failed to get candidates for one or more modules", tree
+            ) from e
+        raise e
     logger.info(f"Got candidates in {time.time() - candidates_now:.3f}s")
 
     now = time.time()
