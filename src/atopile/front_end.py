@@ -289,7 +289,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         if file_path is None:
             return None
 
-        import_addr = address.AddrStr.from_parts(file_path, str(ref))
+        import_addr = address.AddrStr.from_parts(file_path, str(Ref(ref)))
 
         for shim_addr in shim_map:
             if import_addr.endswith(shim_addr):
@@ -449,7 +449,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if ctx_ is None:
                     return None
 
-            return address.AddrStr.from_parts(self._scopes[ctx_].file_path, str(ref))
+            return address.AddrStr.from_parts(
+                self._scopes[ctx_].file_path, str(Ref(ref))
+            )
 
         return {
             addr: cls
@@ -701,7 +703,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     raise SkipPriorFailedException() from ex
                 # Wah wah wah - we don't know what this is
                 if ref[:i]:
-                    msg = f"{ref[:i]} has no attribute '{name}'"
+                    msg = f"{Ref(ref[:i])} has no attribute '{name}'"
                 else:
                     msg = f"No attribute '{name}'"
                 raise errors.UserKeyError.from_ctx(
