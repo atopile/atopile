@@ -39,7 +39,7 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.picker import DescriptiveProperties, PickError
+from faebryk.libs.picker.picker import DescriptiveProperties, MultiPickError, PickError
 from faebryk.libs.util import Tree, cast_assert, not_none
 
 logger = logging.getLogger(__name__)
@@ -177,7 +177,9 @@ def _find_modules(
             [_prepare_query(m, solver) for m in modules]
         )
     except ApiHTTPError as e:
-        raise PickError(f"Failed to fetch one or more parts: {e}") from e
+        if e.response.status_code == 404:
+            raise MultiPickError("Failed to fetch one or more parts", modules) from e
+        raise e
 
     assert len(results) == len(modules)
 
