@@ -621,6 +621,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
             node = context.refs[item.ref]
 
+            if isinstance(node, Context.ImportPlaceholder):
+                raise errors.UserTypeError.from_ctx(
+                    item.original_ctx,
+                    "Importing a import is not supported",
+                )
+
             assert (
                 isinstance(node, type)
                 and issubclass(node, L.Node)
