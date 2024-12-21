@@ -42,6 +42,7 @@ from faebryk.libs.app.pcb import (
     apply_netlist,
     apply_routing,
     ensure_footprint_lib,
+    open_pcb,
 )
 from faebryk.libs.exceptions import (
     UserResourceException,
@@ -51,9 +52,15 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
+
+PCBNEW_AUTO = ConfigFlag(
+    "PCBNEW_AUTO",
+    default=False,
+    descr="Automatically open pcbnew when applying netlist",
+)
 
 
 def build(build_ctx: BuildContext, app: Module) -> None:
@@ -88,48 +95,30 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         raise UserException("Failed to pick all parts. Cannot continue.") from ex
 
     # Check all the solutions are valid ----------------------------------------
-    # FIXME: this is a hack to force rechecking of the graph
-    # after we've shoved in user data
+    # FIXME: this is a hack to check for contradictions in-case no parts had pickers
     try:
-        some_param = first(app.get_children(False, types=(Parameter)))
+        some_param = first(app.get_children(False, types=Parameter))
     except ValueError:
         pass
     else:
-        solver.inspect_get_known_supersets(some_param)
+        solver.inspect_get_known_supersets(some_param, force_update=False)
 
     # Load PCB -----------------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(build_paths.layout)
     original_pcb = deepcopy(pcb)
 
     # Write Netlist ------------------------------------------------------------
-    logger.info(f"Writing netlist to {build_paths.netlist}")
-
-    netlist_path = build_paths.netlist
-
     known_designators = PCB_Transformer.load_designators(G, pcb.kicad_pcb)
     attach_designators(known_designators)
     attach_random_designators(G)
     override_names_with_designators(G)
-
-    logger.info("Creating Nets and attach kicad info")
     attach_nets_and_kicad_info(G)
-
-    logger.info("Making faebryk netlist")
     t2 = make_t2_netlist_from_graph(G)
-    logger.info("Making kicad netlist")
-    netlist = from_faebryk_t2_netlist(t2).dumps()
-
-    logger.info("Writing Experiment netlist to {}".format(netlist_path.resolve()))
-    netlist_path.parent.mkdir(parents=True, exist_ok=True)
-    netlist_path.write_text(netlist, encoding="utf-8")
+    netlist = from_faebryk_t2_netlist(t2)
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
-    apply_netlist(build_paths, False)
-
-    # FIXME: we've got to reload the pcb after applying the netlist
-    # because it mutates the file on disk
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+    apply_netlist(build_paths, files=(pcb, netlist))
 
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
 
@@ -154,6 +143,15 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
         logger.info(f"Updating layout {build_paths.layout}")
         pcb.dumps(build_paths.layout)
+        if PCBNEW_AUTO:
+            try:
+                open_pcb(build_paths.layout)
+            except FileNotFoundError:
+                pass
+            except RuntimeError as e:
+                logger.info(
+                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
+                )
 
     # Build targets -----------------------------------------------------------
     logger.info("Building targets")
