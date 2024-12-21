@@ -46,7 +46,44 @@ def test_downgrade_context():
     with downgrade(ValueError, logger=logger):
         raise ValueError()
 
+    with pytest.raises(TypeError):
+        with downgrade(ValueError, logger=logger):
+            raise TypeError()
+
     logger.log.assert_called_once()
+
+
+def test_downgrade_context_custom_exception():
+    logger = MagicMock()
+
+    class CustomException(Exception):
+        pass
+
+    with downgrade(CustomException, logger=logger):
+        raise CustomException()
+
+    with pytest.raises(Exception):
+        with downgrade(CustomException, logger=logger):
+            raise Exception()
+
+    logger.log.assert_called_once()
+
+
+def test_downgrade_context_multiple_exceptions():
+    logger = MagicMock()
+    with downgrade(ValueError, TypeError, logger=logger):
+        raise ValueError()
+
+    logger.log.assert_called_once()
+
+    with pytest.raises(Exception):
+        with downgrade(ValueError, TypeError, logger=logger):
+            raise Exception()
+
+    logger.log.assert_called_once()
+
+    with downgrade(ValueError, TypeError, logger=logger):
+        raise TypeError()
 
 
 def test_downgrade_decorator():

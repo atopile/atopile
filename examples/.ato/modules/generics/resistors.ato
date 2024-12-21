@@ -1,0 +1,2 @@
+component Resistor:
+    """This is here purely for testing, and is always shimmed"""
