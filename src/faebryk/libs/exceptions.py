@@ -67,10 +67,10 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
 
     def __init__(
         self,
-        *exceptions: Type[T] | tuple[Type[T]],
+        *exceptions: Type[T],
         default=None,
     ):
-        super().__init__(*exceptions)  # type: ignore - more precisely typed here than std
+        self._exceptions = exceptions
         self.default = default
 
     @abstractmethod
@@ -88,7 +88,7 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
     # The following methods are copied and modified from contextlib.suppress
     # type errors are reproduced faithfully
 
-    def __exit__(self, exctype, excinst, exctb):  # type: ignore
+    def _will_be__exit__(self, exctype, excinst, exctb):  # type: ignore  # Faithfully reproduce type error
         # Unlike isinstance and issubclass, CPython exception handling
         # currently only looks at the concrete type hierarchy (ignoring
         # the instance and subclass checking hooks). While Guido considers
@@ -134,6 +134,15 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
             return self.default
 
         return inner
+
+
+# HACK: this is attached outside the class definition because
+# linters/type-checkers are typically smart enough to know about,
+# contextlib.supress, but key off it's __exit__ method
+# By attaching it here, we don't have static analysis complaining
+# that code is unreachable when using Pacman and it's subclasses
+# to downgrade exceptions
+Pacman.__exit__ = Pacman._will_be__exit__  # type: ignore
 
 
 class accumulate:

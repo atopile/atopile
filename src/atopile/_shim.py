@@ -15,7 +15,6 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
 from faebryk.core.trait import TraitImpl, TraitNotFound
-from faebryk.libs.exceptions import DeprecatedException, downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import write_only_property
 
@@ -151,10 +150,11 @@ class GlobalShims(L.Module):
         # TODO: @v0.4: remove this - mpn != lcsc id
         if re.match(r"C[0-9]+", value):
             self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-            with downgrade(DeprecatedException):
-                raise DeprecatedException(
-                    "mpn is deprecated for assignment of LCSC IDs, use lcsc_id instead"
-                )
+            from atopile.front_end import DeprecatedException
+
+            raise DeprecatedException(
+                "mpn is deprecated for assignment of LCSC IDs, use lcsc_id instead"
+            )
 
     @write_only_property
     def designator_prefix(self, value: str):

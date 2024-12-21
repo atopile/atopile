@@ -63,17 +63,15 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     build_ctx.ensure_paths()
     build_paths = build_ctx.paths
 
-    logger.info("Resolving dynamic parameters")
+    logger.info("Resolving bus parameters")
     try:
         F.is_bus_parameter.resolve_bus_parameters(G)
-    except KeyErrorAmbiguous:
-        try:
-            F.is_bus_parameter.resolve_bus_parameters(G)
-        except KeyErrorAmbiguous as ex:
-            raise UserException(
-                "Unfortunately, there's a compiler bug at the moment that means that "
-                "this sometimes fails. Try again, and it'll probably work."
-            ) from ex
+    # FIXME: this is a hack around a compiler bug
+    except KeyErrorAmbiguous as ex:
+        raise UserException(
+            "Unfortunately, there's a compiler bug at the moment that means that "
+            "this sometimes fails. Try again, and it'll probably work."
+        ) from ex
 
     logger.info("Running checks")
     run_checks(app, G)
