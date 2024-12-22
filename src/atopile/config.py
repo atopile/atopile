@@ -23,6 +23,7 @@ from ruamel.yaml import YAML
 import atopile.errors
 import atopile.version
 from atopile import address
+from faebryk.libs.util import cast_assert
 
 log = logging.getLogger(__name__)
 yaml = YAML()
@@ -70,6 +71,7 @@ class ProjectBuildConfig:
     exclude_targets: list[str] = Factory(list)
     fail_on_drcs: bool = False
     dont_solve_equations: bool = False
+    keep_picked_parts: bool = False
 
 
 @define
@@ -117,7 +119,7 @@ class ProjectConfig:
     ato_version: str = "0.1.0"
     paths: ProjectPaths = Factory(ProjectPaths)
     builds: dict[str, ProjectBuildConfig] = Factory(dict)
-    dependencies: list[str | Dependency] = Factory(list)
+    dependencies: list[Dependency] = Factory(list)
     services: ProjectServicesConfig = Factory(ProjectServicesConfig)
 
     @classmethod
@@ -179,7 +181,7 @@ class ProjectConfig:
         )
 
         delta = Delta(diff)
-        return original + delta
+        return cast_assert(dict, original + delta)
 
     def save_changes(self, location: Optional[Path] = None) -> None:
         """
@@ -237,7 +239,7 @@ def get_project_dir_from_path(path: Path) -> Path:
     )
 
 
-_loaded_configs: dict[Path, str] = {}
+_loaded_configs: dict[Path, ProjectConfig] = {}
 
 
 def get_project_config_from_path(path: Path) -> ProjectConfig:
@@ -251,7 +253,7 @@ def get_project_config_from_path(path: Path) -> ProjectConfig:
     return _loaded_configs[project_config_file]
 
 
-def get_project_config_from_addr(addr: str) -> ProjectConfig:
+def get_project_config_from_addr(addr: address.AddrStr) -> ProjectConfig:
     """
     Get the project config from an address.
     """
@@ -374,6 +376,7 @@ class BuildContext:
     exclude_targets: list[str]
     fail_on_drcs: bool
     dont_solve_equations: bool
+    keep_picked_parts: bool
 
     paths: BuildPaths
 
@@ -423,6 +426,7 @@ class BuildContext:
             exclude_targets=build_config.exclude_targets,
             fail_on_drcs=build_config.fail_on_drcs,
             dont_solve_equations=build_config.dont_solve_equations,
+            keep_picked_parts=build_config.keep_picked_parts,
             paths=BuildPaths(
                 root=project_context.project_path,
                 layout=layout_path,

@@ -100,7 +100,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         solver.inspect_get_known_supersets(first(parameters), force_update=True)
 
     # Pickers ------------------------------------------------------------------
-    if False:
+    if build_ctx.keep_picked_parts:
         load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
