@@ -119,7 +119,7 @@ class ProjectConfig:
     ato_version: str = "0.1.0"
     paths: ProjectPaths = Factory(ProjectPaths)
     builds: dict[str, ProjectBuildConfig] = Factory(dict)
-    dependencies: list[Dependency] = Factory(list)
+    dependencies: list[str | Dependency] = Factory(list)
     services: ProjectServicesConfig = Factory(ProjectServicesConfig)
 
     @classmethod
