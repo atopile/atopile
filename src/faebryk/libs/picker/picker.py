@@ -420,4 +420,4 @@ def pick_part_recursively(module: Module, solver: Solver):
                 f"Could not find pick for {m}:\n {sube.message}\n"
                 f"Params:\n{indent(m.pretty_params(solver), prefix=' '*4)}"
             )
-        raise e
+        raise

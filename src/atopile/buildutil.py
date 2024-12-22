@@ -8,7 +8,7 @@ from more_itertools import first
 
 from atopile import layout
 from atopile.config import BuildContext
-from atopile.errors import UserException
+from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
@@ -88,11 +88,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     consolidate_footprints(build_ctx, app)
 
     # Pickers ------------------------------------------------------------------
-
     try:
         pick_part_recursively(app, solver)
     except PickError as ex:
-        raise UserException("Failed to pick all parts. Cannot continue.") from ex
+        raise UserPickError.from_pick_error(ex) from ex
 
     # Check all the solutions are valid ----------------------------------------
     # FIXME: this is a hack to check for contradictions in-case no parts had pickers

@@ -24,12 +24,13 @@ class UserException(Exception):
 
     def __init__(
         self,
+        message: str = "",
         *args,
         title: str | None = None,
         **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
-        self.message = args[0] if args else ""
+        super().__init__(message, *args, **kwargs)
+        self.message = message
         self._title = title
 
     @property

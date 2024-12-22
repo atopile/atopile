@@ -41,6 +41,7 @@ from faebryk.libs.picker.lcsc import (
     get_raw,
 )
 from faebryk.libs.picker.picker import DescriptiveProperties, MultiPickError, PickError
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Tree, cast_assert, groupby, not_none
 
 logger = logging.getLogger(__name__)
@@ -308,15 +309,14 @@ def get_compatible_parameters(
             " module/component in your design."
         )
 
-    param_mapping = [
-        (
-            (p := cast_assert(Parameter, getattr(module, name))),
-            c_range
-            if (c_range := c.attribute_literals[name]) is not None
-            else p.domain.unbounded(p),
-        )
-        for name in have_attr
-    ]
+    def _map_param(name: str) -> tuple[Parameter, P_Set]:
+        p = cast_assert(Parameter, getattr(module, name))
+        c_range = c.attribute_literals[name]
+        if c_range is None:
+            c_range = p.domain.unbounded(p)
+        return p, c_range
+
+    param_mapping = [_map_param(name) for name in have_attr]
 
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver
