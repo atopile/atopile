@@ -3,7 +3,7 @@ from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 
 def test_ref_from_one():
     assert Ref.from_one("foo") == ("foo",)
-    assert Ref.from_one(42) == (42,)
+    assert Ref.from_one(42) == ("42",)
 
 
 def test_ref_add_name():
