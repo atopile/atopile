@@ -12,7 +12,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
-from faebryk.exporters.netlist.netlist import T2Netlist
+from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
 from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, try_or
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class can_represent_kicad_footprint(F.Footprint.TraitT):
-    kicad_footprint = T2Netlist.Component
+    kicad_footprint = FBRKNetlist.Component
 
     @abstractmethod
     def get_name_and_value(self) -> tuple[str, str]: ...
