@@ -228,17 +228,21 @@ def check_attachable(component: Module):
 def attach(
     component: Module, partno: str, get_model: bool = True, check_only: bool = False
 ):
-    if component.has_trait(F.has_footprint) and check_only:
-        # Nothing to see here, move along. If an explicit manual
-        # footprint is there, honor it.
-        return
-
-    _, _, easyeda_footprint, _, easyeda_symbol = download_easyeda_info(
-        partno, get_model=get_model
-    )
+    try:
+        _, _, easyeda_footprint, _, easyeda_symbol = download_easyeda_info(
+            partno, get_model=get_model
+        )
+    except LCSC_NoDataException:
+        if component.has_trait(F.has_footprint):
+            easyeda_symbol = None
+            easyeda_footprint = None
+        else:
+            raise
 
     # TODO maybe check the symbol matches, even if a footprint is already attached?
     if not component.has_trait(F.has_footprint):
+        assert easyeda_symbol is not None
+        assert easyeda_footprint is not None
         if not component.has_trait(F.can_attach_to_footprint):
             # TODO make this a trait
             pins = [
@@ -276,9 +280,10 @@ def attach(
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 
-    datasheet = get_datasheet_url(easyeda_symbol)
-    if datasheet:
-        component.add(F.has_datasheet_defined(datasheet))
+    if easyeda_symbol is not None:
+        datasheet = get_datasheet_url(easyeda_symbol)
+        if datasheet:
+            component.add(F.has_datasheet_defined(datasheet))
 
     # model done by kicad (in fp)
 
