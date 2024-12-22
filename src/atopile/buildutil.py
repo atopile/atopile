@@ -44,6 +44,7 @@ from faebryk.libs.app.pcb import (
     ensure_footprint_lib,
     open_pcb,
 )
+from faebryk.libs.app.picking import load_descriptive_properties
 from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
@@ -99,6 +100,8 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         solver.inspect_get_known_supersets(first(parameters), force_update=True)
 
     # Pickers ------------------------------------------------------------------
+    if False:
+        load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
     except PickError as ex:
