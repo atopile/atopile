@@ -165,7 +165,7 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
         if not model_path.exists() and not EXPORT_NON_EXISTING_MODELS:
             ki_footprint.output.model_3d = None
     else:
-        logger.warning(f"No 3D model for {name}")
+        logger.warning(f"No 3D model for '{name}'")
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")

@@ -178,7 +178,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
                 muster.targets[target_name](build_ctx, app)
             built_targets.append(target_name)
 
-    logger.info(f"Built '{', '.join(built_targets)}' for '{build_ctx.name}' config")
+    logger.info(
+        f"Built {', '.join(f'\'{target}\'' for target in built_targets)} "
+        f"for '{build_ctx.name}' config"
+    )
 
 
 TargetType = Callable[[BuildContext, Module], None]
@@ -306,10 +309,10 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
     elif lib_in_fptable and not lib_prefix_on_ids:
         # We could probably just remove the lib entry
         # but let's be conservative for now
-        logging.info(
+        logger.info(
             "It seems like this project is using a legacy footprint consolidation "
-            "unnecessarily. You can likley remove the 'lib' entry from the "
-            "fp-lib-table file."
+            "unnecessarily. You can probably remove the 'lib' entry from the "
+            "'fp-lib-table' file."
         )
 
     fp_target = build_ctx.paths.build / "footprints" / "footprints.pretty"
@@ -327,7 +330,7 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
-            logger.debug("Footprint %s already exists in the target directory", fp)
+            logger.debug("Footprint '%s' already exists in the target directory", fp)
 
     # Post-process all the footprints in the target directory
     for fp in fp_target.glob("**/*.kicad_mod"):

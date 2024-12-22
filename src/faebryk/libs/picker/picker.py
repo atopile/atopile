@@ -341,7 +341,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     logger.info("Getting part candidates for modules")
     candidates_now = time.time()
     candidates = get_candidates(tree, solver)
-    logger.info(f"Got candidates in {time.time() - candidates_now:.3f}s")
+    logger.info(f"Got candidates in {time.time() - candidates_now:.3f} seconds")
 
     now = time.time()
 
@@ -378,7 +378,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     if ok:
         for m, _ in sorted_candidates:
             progress.advance(m)
-        logger.info(f"Fast-Picked parts in {time.time() - now:.3f}s")
+        logger.info(f"Fast-picked parts in {time.time() - now:.3f} seconds")
         return
 
     logger.warning("Could not pick all parts atomically, picking one by one (slow)")
