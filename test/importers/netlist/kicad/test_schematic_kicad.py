@@ -21,7 +21,7 @@ class TestImportSchematicKicad(unittest.TestCase):
                 return f.read()
 
         from faebryk.exporters.netlist.kicad.netlist_kicad import (
-            from_faebryk_t2_netlist,
+            faebryk_netlist_to_kicad,
         )
         from faebryk.exporters.project.faebryk.project_faebryk import from_t1_netlist
         from faebryk.importers.netlist.kicad.netlist_kicad import (
@@ -38,7 +38,7 @@ class TestImportSchematicKicad(unittest.TestCase):
 
         pprint.pprint(t2, indent=4)
 
-        netlist = from_faebryk_t2_netlist(t2)
+        netlist = faebryk_netlist_to_kicad(t2)
         assert netlist is not None
         print("-" * 80)
         import pprint
