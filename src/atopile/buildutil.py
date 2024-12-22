@@ -15,8 +15,8 @@ from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
-from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
+from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
+from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
@@ -33,8 +33,8 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 from faebryk.library import _F as F
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.designators import (
-    attach_designators,
     attach_random_designators,
+    load_designators,
     override_names_with_designators,
 )
 from faebryk.libs.app.pcb import (
@@ -44,6 +44,7 @@ from faebryk.libs.app.pcb import (
     ensure_footprint_lib,
     open_pcb,
 )
+from faebryk.libs.app.picking import load_descriptive_properties
 from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
@@ -87,40 +88,39 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     # Make sure the footprint libraries we're looking for exist
     consolidate_footprints(build_ctx, app)
 
-    # Pickers ------------------------------------------------------------------
+    # Load PCB / cached --------------------------------------------------------
+    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+    transformer = PCB_Transformer(pcb.kicad_pcb, G, app, cleanup=False)
+    load_designators(G, attach=True)
 
+    # Pre-run solver -----------------------------------------------------------
+    parameters = app.get_children(False, types=Parameter)
+    if parameters:
+        logger.info("Simplifying parameter graph")
+        solver.inspect_get_known_supersets(first(parameters), force_update=True)
+
+    # Pickers ------------------------------------------------------------------
+    if build_ctx.keep_picked_parts:
+        load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
     except PickError as ex:
         raise UserException("Failed to pick all parts. Cannot continue.") from ex
 
-    # Check all the solutions are valid ----------------------------------------
-    # FIXME: this is a hack to check for contradictions in-case no parts had pickers
-    try:
-        some_param = first(app.get_children(False, types=Parameter))
-    except ValueError:
-        pass
-    else:
-        solver.inspect_get_known_supersets(some_param, force_update=False)
-
-    # Load PCB -----------------------------------------------------------------
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
-    original_pcb = deepcopy(pcb)
-
     # Write Netlist ------------------------------------------------------------
-    known_designators = PCB_Transformer.load_designators(G, pcb.kicad_pcb)
-    attach_designators(known_designators)
     attach_random_designators(G)
     override_names_with_designators(G)
     attach_nets_and_kicad_info(G)
-    t2 = make_t2_netlist_from_graph(G)
-    netlist = from_faebryk_t2_netlist(t2)
+    netlist = faebryk_netlist_to_kicad(make_fbrk_netlist_from_graph(G))
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
+    original_pcb = deepcopy(pcb)
     apply_netlist(build_paths, files=(pcb, netlist))
 
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
+    transformer.cleanup()
+    # Re-attach because picking might have added new footprints
+    transformer.attach(check_unattached=True)
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
         logger.info("Transforming PCB")
@@ -308,7 +308,7 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
         # but let's be conservative for now
         logging.info(
             "It seems like this project is using a legacy footprint consolidation "
-            "unnecessarily. You can likley remove the 'lib' entry from the "
+            "unnecessarily. You can likely remove the 'lib' entry from the "
             "fp-lib-table file."
         )
 
