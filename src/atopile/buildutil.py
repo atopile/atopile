@@ -308,7 +308,7 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
         # but let's be conservative for now
         logging.info(
             "It seems like this project is using a legacy footprint consolidation "
-            "unnecessarily. You can likeley remove the 'lib' entry from the "
+            "unnecessarily. You can likely remove the 'lib' entry from the "
             "fp-lib-table file."
         )
 
