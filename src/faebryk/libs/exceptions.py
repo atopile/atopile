@@ -24,12 +24,13 @@ class UserException(Exception):
 
     def __init__(
         self,
+        message: str = "",
         *args,
         title: str | None = None,
         **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
-        self.message = args[0] if args else ""
+        super().__init__(message, *args, **kwargs)
+        self.message = message
         self._title = title
 
     @property
@@ -243,13 +244,13 @@ class suppress_after_count[T: Exception](Pacman):
         limit: int,
         *exceptions: Type[T],
         default: bool = False,
-        supression_warning: str | None = None,
+        suppression_warning: str | None = None,
         logger: logging.Logger = logger,
     ):
         super().__init__(*exceptions, default=default)
         self.limit = limit
         self.counter = 0
-        self.supression_warning = supression_warning
+        self.supression_warning = suppression_warning
         self.logger = logger
 
     def nom_nom_nom(self, exc: T, original_exinfo):

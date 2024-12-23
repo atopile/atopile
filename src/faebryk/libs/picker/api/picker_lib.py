@@ -13,6 +13,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.api.api import (
     ApiHTTPError,
     get_api_client,
@@ -40,6 +41,7 @@ from faebryk.libs.picker.lcsc import (
     get_raw,
 )
 from faebryk.libs.picker.picker import DescriptiveProperties, MultiPickError, PickError
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Tree, cast_assert, groupby, not_none
 
 logger = logging.getLogger(__name__)
@@ -295,13 +297,26 @@ def get_compatible_parameters(
     except LCSC_NoDataException:
         return None
 
-    param_mapping = [
-        (
-            (p := cast_assert(Parameter, getattr(module, name))),
-            c_range if c_range is not None else p.domain.unbounded(p),
+    no_attr, have_attr = more_itertools.partition(
+        lambda x: hasattr(module, x), c.attribute_literals.keys()
+    )
+
+    with downgrade(UserException):
+        raise UserException(
+            f"Module {module.get_full_name()} is missing attributes"
+            f" {', '.join(no_attr)}. "
+            "This likely means you could use a more precise"
+            " module/component in your design."
         )
-        for name, c_range in c.attribute_literals.items()
-    ]
+
+    def _map_param(name: str) -> tuple[Parameter, P_Set]:
+        p = cast_assert(Parameter, getattr(module, name))
+        c_range = c.attribute_literals[name]
+        if c_range is None:
+            c_range = p.domain.unbounded(p)
+        return p, c_range
+
+    param_mapping = [_map_param(name) for name in have_attr]
 
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver

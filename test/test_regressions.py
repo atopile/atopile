@@ -53,20 +53,28 @@ class BuildError(Exception):
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    "repo",
+    "repo, env",
     [
-        "https://github.com/atopile/spin-servo-drive",
-        "https://github.com/atopile/esp32-s3",
-        "https://github.com/atopile/nonos",
-        "https://github.com/atopile/cell-sim",
-        "https://github.com/atopile/rp2040",
-        "https://github.com/atopile/tca9548apwr",
-        "https://github.com/atopile/nau7802",
-        "https://github.com/atopile/lv2842xlvddcr",
-        "https://github.com/atopile/bq24045dsqr",
+        ("https://github.com/atopile/spin-servo-drive", {}),
+        ("https://github.com/atopile/esp32-s3", {}),
+        ("https://github.com/atopile/nonos", {}),
+        (
+            "https://github.com/atopile/cell-sim",
+            {
+                # TODO: @lazy-mifs remove this
+                "FBRK_MAX_PATHS": "1e7",
+                "FBRK_MAX_PATHS_NO_WEAK": "1e6",
+                "FBRK_MAX_PATHS_NO_NEW_WEAK": "1e5",
+            },
+        ),
+        ("https://github.com/atopile/rp2040", {}),
+        ("https://github.com/atopile/tca9548apwr", {}),
+        ("https://github.com/atopile/nau7802", {}),
+        ("https://github.com/atopile/lv2842xlvddcr", {}),
+        ("https://github.com/atopile/bq24045dsqr", {}),
     ],
 )
-def test_projects(repo: str, tmp_path: Path):
+def test_projects(repo: str, env: dict[str, str], tmp_path: Path):
     # Clone the repository
     # Using gh to use user credentials if run locally
     try:
@@ -83,7 +91,7 @@ def test_projects(repo: str, tmp_path: Path):
     try:
         run_live(
             [sys.executable, "-m", "atopile", "-v", "install"],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+            env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
             cwd=tmp_path / "project",
             stdout=print,
             stderr=print,
@@ -96,7 +104,7 @@ def test_projects(repo: str, tmp_path: Path):
     try:
         run_live(
             [sys.executable, "-m", "atopile", "-v", "build"],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+            env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
             cwd=tmp_path / "project",
             stdout=print,
             stderr=print,

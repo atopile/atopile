@@ -112,16 +112,16 @@ def test_downgrade_decorator_with_default():
 
 def test_suppress_after_count():
     logger = MagicMock()
-    supressor = suppress_after_count(
-        3, ValueError, supression_warning="test warning", logger=logger
+    suppressor = suppress_after_count(
+        3, ValueError, suppression_warning="test warning", logger=logger
     )
     for _ in range(3):
-        with pytest.raises(ValueError), supressor:
+        with pytest.raises(ValueError), suppressor:
             raise ValueError()
 
     logger.warning.assert_not_called()
 
-    with supressor:
+    with suppressor:
         raise ValueError()
 
     logger.warning.assert_called_once()

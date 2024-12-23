@@ -922,7 +922,9 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         super().__init__(name, default, descr)
 
     def _convert(self, raw_val: str) -> int:
-        return int(raw_val)
+        if raw_val.startswith("0x"):
+            return int(raw_val, 16)
+        return int(float(raw_val))
 
     def __int__(self) -> int:
         return self.get()
@@ -1073,6 +1075,11 @@ def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
+    # short-cut so we don't end up with a bunch of useless warnings
+    # when just checking for debugpy in the import statement
+    if "debugpy" not in sys.modules:
+        return False
+
     try:
         import debugpy
 

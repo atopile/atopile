@@ -174,14 +174,14 @@ class GlobalShims(L.Module):
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
-class _ShimResistor(F.Resistor):
+class ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     @property
-    def value(self) -> L.Range:
+    def value(self):
         return self.resistance
 
     @value.setter
@@ -212,7 +212,7 @@ class _ShimResistor(F.Resistor):
 
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class _ShimCapacitor(F.Capacitor):
+class ShimCapacitor(F.Capacitor):
     """Temporary shim to translate `value` to `capacitance`."""
 
     def __init__(self, *args, **kwargs):
@@ -222,7 +222,7 @@ class _ShimCapacitor(F.Capacitor):
         power: F.ElectricPower
 
     @property
-    def value(self) -> L.Range:
+    def value(self):
         return self.capacitance
 
     @value.setter
@@ -260,7 +260,7 @@ class _ShimCapacitor(F.Capacitor):
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
-class _ShimInductor(F.Inductor):
+class ShimInductor(F.Inductor):
     """Temporary shim to translate inductors."""
 
     @property
@@ -280,8 +280,31 @@ class _ShimInductor(F.Inductor):
         return self.unnamed[1]
 
 
+@_register_shim("generics/leds.ato:LED", "import LED")
+class ShimLED(F.LED):
+    """Temporary shim to translate LEDs."""
+
+    @property
+    def v_f(self):
+        return self.forward_voltage
+
+    @property
+    def i_max(self):
+        return self.max_current
+
+
+@_register_shim(
+    "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
+)
+class ShimCapacitorElectrolytic(F.Capacitor):
+    """Temporary shim to translate capacitors."""
+
+    anode: F.Electrical
+    cathode: F.Electrical
+
+
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
-class _ShimPower(F.ElectricPower):
+class ShimPower(F.ElectricPower):
     """Temporary shim to translate `value` to `power`."""
 
     def __init__(self, *args, **kwargs):
@@ -294,3 +317,7 @@ class _ShimPower(F.ElectricPower):
     @property
     def gnd(self) -> F.Electrical:
         return self.lv
+
+    @property
+    def current(self):
+        return self.max_current
