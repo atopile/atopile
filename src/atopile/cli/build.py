@@ -43,7 +43,7 @@ def build(
 
     with accumulate() as accumulator:
         for build_ctx in build_ctxs:
-            logger.info("Building %s", build_ctx.name)
+            logger.info("Building '%s'", build_ctx.name)
             with accumulator.collect(), log_user_errors(logger):
                 match build_ctx.build_type:
                     case BuildType.ATO:

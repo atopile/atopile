@@ -234,7 +234,7 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
-            self.logger.log(self.to_level, e, exc_info=exc)
+            self.logger.log(self.to_level, str(e), exc_info=e)
 
 
 class suppress_after_count[T: Exception](Pacman):

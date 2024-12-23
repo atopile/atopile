@@ -11,7 +11,6 @@ from rich.theme import Theme
 from faebryk.libs.util import ConfigFlag
 
 PLOG = ConfigFlag("PLOG", descr="Enable picker debug log")
-JLOG = ConfigFlag("JLOG", descr="Enable jlcpcb picker debug log")
 FLOG_FMT = ConfigFlag("LOG_FMT", descr="Enable (old) log formatting")
 
 
@@ -43,10 +42,6 @@ def setup_basic_logging(
         from faebryk.libs.picker.picker import logger as plog
 
         plog.setLevel(logging.DEBUG)
-    if JLOG:
-        from faebryk.libs.picker.jlcpcb.jlcpcb import logger as jlog
-
-        jlog.setLevel(logging.DEBUG)
 
 
 class NodeHighlighter(RegexHighlighter):

@@ -144,6 +144,9 @@ class KeyErrorAmbiguous[T](KeyError):
         super().__init__(*args)
         self.duplicates = duplicates
 
+    def __str__(self):
+        return f"KeyErrorAmbiguous: {self.duplicates}"
+
 
 def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
     if needle is None:
@@ -1551,10 +1554,13 @@ def hash_string(string: str) -> str:
 
 
 def get_module_from_path(
-    file_path: os.PathLike, attr: str | None = None
+    file_path: os.PathLike, attr: str | None = None, allow_ambiguous: bool = False
 ) -> ModuleType | None:
     """
     Return a module based on a file path if already imported, or return None.
+
+    If allow_ambiguous is True, and there are multiple modules with the same file path,
+    return the first one.
     """
     sanitized_file_path = Path(file_path).expanduser().resolve().absolute()
 
@@ -1569,6 +1575,11 @@ def get_module_from_path(
         module = find(sys.modules.values(), _needle)
     except KeyErrorNotFound:
         return None
+    except KeyErrorAmbiguous as e:
+        if allow_ambiguous:
+            module = e.duplicates[0]
+        else:
+            raise
 
     if attr is None:
         return module

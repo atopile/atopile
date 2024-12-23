@@ -17,6 +17,7 @@ from more_itertools import first
 import faebryk.library._F as F
 import faebryk.libs.exceptions
 from atopile import config, errors, front_end
+from atopile.address import AddressError
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.util import (
@@ -52,10 +53,20 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                 with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
                     ctx = config.BuildContext.from_config_name(cfg, build_name)
 
+                    try:
+                        entry_section = ctx.entry.entry_section
+                    except AddressError:
+                        # skip builds with no entry, e.g. generics
+                        # config validation happens before this point
+                        continue
+
                     # Check if the module is a known python module
                     if (
                         class_ := get_module_from_path(
-                            ctx.entry.file_path, ctx.entry.entry_section
+                            ctx.entry.file_path,
+                            entry_section,
+                            # we might have duplicates from different builds
+                            allow_ambiguous=True,
                         )
                     ) is not None:
                         # we only bother to index things we've imported,
