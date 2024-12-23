@@ -970,7 +970,7 @@ class PCB_Transformer:
             match coord[3]:
                 case F.has_pcb_position.layer_type.NONE:
                     logger.warning(
-                        f"Assigning default layer for component {module}({fp.name})"
+                        f"Assigning default layer for component '{module}({fp.name})'"
                     )
                     layer = layer_names[F.has_pcb_position.layer_type.TOP_LAYER]
                 case _:
