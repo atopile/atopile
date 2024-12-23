@@ -30,8 +30,9 @@ nav:
 - Development:
   - development.md
   - roadmap.md
-- API Reference:
-  - api/index.md
+  - API Reference:
+    - api/cli.md
+    - api/solver.md
 - Packages: https://packages.atopile.io
 - Example Projects:
   - spin.md
@@ -44,14 +45,15 @@ plugins:
 - mkdocstrings:
     handlers:
       python:
+        paths: [src]
         options:
           extensions:
           - griffe_typingdoc
           show_root_heading: true
           show_if_no_docstring: true
           preload_modules:
-          - httpx
-          - starlette
+          - faebryk
+          - atopile
           inherited_members: true
           members_order: source
           separate_signature: true
@@ -63,7 +65,6 @@ plugins:
           signature_crossrefs: true
           show_symbol_type_heading: true
           show_symbol_type_toc: true
-          docstring_style: google
 
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
