@@ -19,6 +19,7 @@ from faebryk.libs.kicad.fileformats import (
     gen_uuid,
 )
 from faebryk.libs.sexp.dataclass_sexp import SEXP_File, sexp_field
+from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +124,23 @@ class C_rect_v5:
 class C_kicad_footprint_file_v5(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
+        @dataclass(kw_only=True)
+        class C_model_v5(C_footprint.C_model):
+            # V5 offset is called at in some older versions
+            # TODO consider implementing sexp_field(alt_name="at") instead or union
+            at: Optional[C_footprint.C_model.C_offset] = None
+            offset: Optional[C_footprint.C_model.C_offset] = None
+
+            def convert_to_new(self) -> C_footprint.C_model:
+                if not self.at and not self.offset:
+                    raise ValueError("Either at or offset must be provided")
+                return C_footprint.C_model(
+                    path=self.path,
+                    offset=not_none(self.at or self.offset),
+                    scale=self.scale,
+                    rotate=self.rotate,
+                )
+
         descr: Optional[str] = None
         tags: list[str] = field(default_factory=list)
         tedit: Optional[str] = None
@@ -139,6 +157,7 @@ class C_kicad_footprint_file_v5(SEXP_File):
         fp_rects: list[C_rect_v5] = field(
             **sexp_field(multidict=True), default_factory=list
         )
+        model: C_model_v5 | None = None
 
         def convert_to_new(self) -> C_kicad_footprint_file.C_footprint_in_file:
             propertys: dict[str, C_footprint.C_property] = {
@@ -187,7 +206,7 @@ class C_kicad_footprint_file_v5(SEXP_File):
                 fp_texts=texts,
                 fp_poly=self.fp_poly,
                 pads=self.pads,
-                model=self.model,
+                model=[self.model.convert_to_new()] if self.model else [],
             )
 
     module: C_footprint_in_file
