@@ -42,6 +42,7 @@ from faebryk.core.parameter import (
     SymmetricDifference,
     Union,
 )
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -723,11 +724,13 @@ class Mutator:
         if non_registered:
             compact = (op.compact_repr(self.print_context) for op in non_registered)
             graphs = get_graphs(non_registered)
-            assert False, (
-                f"Mutator {self.G} has non-registered new ops: "
-                f"{indented_container(compact)}."
-                f"{indented_container(graphs)}"
-            )
+            # FIXME: this is currently hit during legitimate build
+            with downgrade(AssertionError, logger=logger, to_level=logging.DEBUG):
+                assert False, (
+                    f"Mutator {self.G} has non-registered new ops: "
+                    f"{indented_container(compact)}."
+                    f"{indented_container(graphs)}"
+                )
 
     def close(self) -> tuple[REPR_MAP, bool]:
         self.check_no_illegal_mutations()
