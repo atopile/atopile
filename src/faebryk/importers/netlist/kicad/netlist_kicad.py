@@ -3,15 +3,15 @@
 
 from pathlib import Path
 
-from faebryk.exporters.netlist.netlist import T2Netlist
+from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.kicad.fileformats import C_kicad_netlist_file
 
 
-def to_faebryk_t2_netlist(kicad_netlist: str | Path | list) -> T2Netlist:
+def to_faebryk_t2_netlist(kicad_netlist: str | Path | list) -> FBRKNetlist:
     netlist = C_kicad_netlist_file.loads(kicad_netlist)
 
-    components: dict[str, T2Netlist.Component] = {
-        comp.ref: T2Netlist.Component(
+    components: dict[str, FBRKNetlist.Component] = {
+        comp.ref: FBRKNetlist.Component(
             name=comp.ref,
             value=comp.value,
             properties={"footprint": comp.footprint}
@@ -20,14 +20,14 @@ def to_faebryk_t2_netlist(kicad_netlist: str | Path | list) -> T2Netlist:
         for comp in netlist.export.components.comps
     }
 
-    t2_netlist = T2Netlist(
+    t2_netlist = FBRKNetlist(
         nets=[
-            T2Netlist.Net(
+            FBRKNetlist.Net(
                 properties={
                     "name": net.name,
                 },
                 vertices=[
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=components[node.ref],
                         pin=node.pin,
                     )

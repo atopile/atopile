@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 HORIZONTAL_SPACING = 10
 VERTICAL_SPACING = -5  # negative is upwards
 
+NO_LCSC_DISPLAY = "No LCSC number"
+
 
 def _nets_same(
     pcb_net: tuple[
@@ -332,7 +334,7 @@ class PCB:
                 fp=pcb_comp,
                 property_name="LCSC",
                 layer="User.9",
-                value=get_property_value(nl_comp, "LCSC", "No LCSC number"),
+                value=get_property_value(nl_comp, "LCSC", NO_LCSC_DISPLAY),
                 uuid=get_property_uuid(pcb_comp, "LCSC"),
             )
 
@@ -395,7 +397,7 @@ class PCB:
                     fp=footprint,
                     property_name="LCSC",
                     layer="User.9",
-                    value=get_property_value(comp, "LCSC", "No LCSC number"),
+                    value=get_property_value(comp, "LCSC", NO_LCSC_DISPLAY),
                     uuid=get_property_uuid(comp, "LCSC"),
                 )
 

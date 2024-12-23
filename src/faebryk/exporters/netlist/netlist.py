@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class T2Netlist:
+class FBRKNetlist:
     @dataclass(frozen=True)
     class Component:
         name: str
@@ -25,7 +25,7 @@ class T2Netlist:
     class Net:
         @dataclass(frozen=True)
         class Vertex:
-            component: "T2Netlist.Component"
+            component: "FBRKNetlist.Component"
             pin: str
 
         properties: dict[str, str]
@@ -35,17 +35,17 @@ class T2Netlist:
     comps: list[Component]
 
 
-def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
+def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 
     nets = GraphFunctions(G).nodes_of_type(F.Net)
 
-    t2_nets = [
-        T2Netlist.Net(
+    fbrk_nets = [
+        FBRKNetlist.Net(
             properties={"name": net.get_trait(F.has_overriden_name).get_name()},
             vertices=sorted(
                 [
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=t.get_kicad_obj(),
                         pin=t.get_pin_name(mif),
                     )
@@ -65,10 +65,10 @@ def make_t2_netlist_from_graph(G: Graph) -> T2Netlist:
 
     not_found = [
         vertex.component
-        for net in t2_nets
+        for net in fbrk_nets
         for vertex in net.vertices
         if vertex.component.name not in {c.name for c in comps}
     ]
     assert not not_found, f"Could not match: {not_found}"
 
-    return T2Netlist(nets=t2_nets, comps=list(comps))
+    return FBRKNetlist(nets=fbrk_nets, comps=list(comps))

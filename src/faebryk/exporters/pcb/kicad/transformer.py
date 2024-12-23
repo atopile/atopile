@@ -12,8 +12,8 @@ from itertools import pairwise
 from typing import Any, Callable, Iterable, List, Optional, Sequence, TypeVar
 
 import numpy as np
+from deprecated import deprecated
 from shapely import Polygon
-from typing_extensions import deprecated
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
@@ -48,8 +48,6 @@ from faebryk.libs.kicad.fileformats import (
 from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
-    FuncDict,
-    FuncSet,
     KeyErrorNotFound,
     cast_assert,
     find,
@@ -226,25 +224,26 @@ class PCB_Transformer:
         )
         self.font = FONT
 
-        self.cleanup()
+        if cleanup:
+            self.cleanup()
         self.attach()
 
-    def attach(self):
-        unattached_nodes = FuncSet()
-        for fp, node in self.map_footprints(self.graph, self.pcb):
-            if fp is None:
-                unattached_nodes.add(node)
-            else:
-                self.bind_footprint(fp, node)
+    def attach(self, check_unattached: bool = False):
+        for node, fp in PCB_Transformer.map_footprints(self.graph, self.pcb).items():
+            self.bind_footprint(fp, node)
 
-        attached = {
-            n: t.get_fp()
-            for n, t in GraphFunctions(self.graph).nodes_with_trait(
-                PCB_Transformer.has_linked_kicad_footprint
+        if check_unattached:
+            self.check_unattached()
+
+    def check_unattached(self):
+        unattached_nodes = {
+            node
+            for node, trait in GraphFunctions(self.graph).nodes_with_trait(
+                F.has_footprint
             )
+            if not trait.get_footprint().has_trait(F.has_kicad_footprint)
+            and not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
         }
-        logger.debug(f"Attached: {pprint.pformat(attached)}")
-
         if unattached_nodes:
             logger.error(f"Unattached: {pprint.pformat(unattached_nodes)}")
             raise UserException(
@@ -256,22 +255,14 @@ class PCB_Transformer:
         # fp_name = g_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
         # fp.propertys["atopile_address"] = node.get_full_name()
 
-    @classmethod
-    def map_footprints(cls, graph: Graph, pcb: PCB) -> list[tuple[Footprint, Node]]:
+    @staticmethod
+    def map_footprints(graph: Graph, pcb: PCB) -> dict[Node, Footprint]:
         """
         Attach as many nodes <> footprints as possible, and
         return the set of nodes that were missing footprints.
         """
-        # First, make a list of all the nodes with footprints in the graph
-        # (eg. things that should have a matching footprint in the layout)
-        nodes_with_kicad_footprints = FuncSet(
-            node
-            for node, fpt in GraphFunctions(graph).nodes_with_trait(F.has_footprint)
-            if fpt.get_footprint().has_trait(F.has_kicad_footprint)
-        )
-
         # Now, try to map between the footprints and the layout
-        footprint_map: list[tuple[Footprint, Node]] = []
+        footprint_map: dict[Node, Footprint] = {}
         fps_by_atopile_addr = {
             f.propertys["atopile_address"].value: f
             for f in pcb.footprints
@@ -279,11 +270,13 @@ class PCB_Transformer:
         }
         fps_by_path = {f.path: f for f in pcb.footprints if f.path is not None}
 
-        for node in nodes_with_kicad_footprints:
+        # Also try nodes without footprints, because they might get them later
+        nodes = GraphFunctions(graph).nodes_of_type(Module)
+        for node in nodes:
             atopile_addr = node.get_full_name()
             hashed_addr = hash_string(atopile_addr)
             if fp := fps_by_atopile_addr.get(atopile_addr):
-                footprint_map.append((fp, node))
+                footprint_map[node] = fp
             # TODO: @v0.4 remove this, it's a fallback for v0.2 designs
             elif fp := fps_by_path.get(f"/{hashed_addr}/{hashed_addr}"):
                 with downgrade(DeprecatedException):
@@ -291,35 +284,17 @@ class PCB_Transformer:
                         f"{fp.name} is linked using v0.2 mechanism, "
                         "please save the design to update."
                     )
-                footprint_map.append((fp, node))
-            else:
-                footprint_map.append((None, node))
+                footprint_map[node] = fp
 
         return footprint_map
 
-    @classmethod
-    def load_designators(cls, graph: Graph, pcb: PCB) -> FuncDict[Node, str]:
-        fp_map = cls.map_footprints(graph, pcb)
-
-        def _get_reference(fp: Footprint):
-            try:
-                return fp.propertys["Reference"].value
-            except KeyError:
-                return None
-
-        known_designators = FuncDict(
-            [(node, _get_reference(fp)) for fp, node in fp_map if fp and fp.name]
-        )
-
-        return known_designators
-
     def bind_footprint(self, fp: Footprint, node: Node):
-        g_fp = node.get_trait(F.has_footprint).get_footprint()
-
-        g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
-        # TODO: should this be removed?
         node.add(self.has_linked_kicad_footprint_defined(fp, self))
+        if not node.has_trait(F.has_footprint):
+            return
 
+        g_fp = node.get_trait(F.has_footprint).get_footprint()
+        g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
         for fpad in g_fp.get_children(direct_only=True, types=ModuleInterface):
             pads = [

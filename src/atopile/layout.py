@@ -11,7 +11,6 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from types import ModuleType
 
 from more_itertools import first
 
@@ -39,11 +38,11 @@ def _generate_uuid_from_string(path: str) -> str:
     return str(uuid.UUID(bytes=hashed_path))
 
 
-def _index_module_layouts() -> FuncDict[type[Module] | ModuleType, set[Path]]:
+def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
     """Find, tag and return a set of all the modules with layouts."""
     directory = config.get_project_context().project_path
 
-    entries: FuncDict[type[Module] | ModuleType, set[Path]] = FuncDict()
+    entries: FuncDict[type[Module], set[Path]] = FuncDict()
     ato_modules = front_end.bob.modules
 
     for filepath in directory.glob("**/ato.yaml"):
@@ -72,6 +71,7 @@ def _index_module_layouts() -> FuncDict[type[Module] | ModuleType, set[Path]]:
                     ) is not None:
                         # we only bother to index things we've imported,
                         # otherwise we can be sure they weren't used
+                        assert isinstance(class_, type)
                         entries.setdefault(class_, set()).add(ctx.paths.layout)
 
                     # Check if the module is a known ato module
@@ -81,7 +81,7 @@ def _index_module_layouts() -> FuncDict[type[Module] | ModuleType, set[Path]]:
     return entries
 
 
-def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
+def generate_module_map(build_ctx: "config.BuildContext", app: Module) -> None:
     """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
     module_map = {}
 
@@ -90,7 +90,8 @@ def generate_module_map(build_ctx: config.BuildContext, app: Module) -> None:
     for module, trait in GraphFunctions(app.get_graph()).nodes_with_trait(
         F.has_reference_layout
     ):
-        module_layouts.setdefault(module, set()).update(trait.paths)
+        assert isinstance(module, Module)
+        module_layouts.setdefault(type(module), set()).update(trait.paths)
 
     for module_instance in app.get_children_modules(types=Module):
         try:
