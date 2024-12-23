@@ -30,6 +30,9 @@ nav:
 - Development:
   - development.md
   - roadmap.md
+  - API Reference:
+    - api/cli.md
+    - api/solver.md
 - Packages: https://packages.atopile.io
 - Example Projects:
   - spin.md
@@ -39,6 +42,30 @@ nav:
 plugins:
 - blog
 - search
+- mkdocstrings:
+    handlers:
+      python:
+        paths: [src]
+        options:
+          extensions:
+          - griffe_typingdoc
+          show_root_heading: true
+          show_if_no_docstring: true
+          preload_modules:
+          - faebryk
+          - atopile
+          inherited_members: true
+          members_order: source
+          separate_signature: true
+          unwrap_annotated: true
+          filters:
+          - '!^_'
+          merge_init_into_class: true
+          docstring_section_style: spacy
+          signature_crossrefs: true
+          show_symbol_type_heading: true
+          show_symbol_type_toc: true
+
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
 
