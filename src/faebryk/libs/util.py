@@ -919,6 +919,8 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         super().__init__(name, default, descr)
 
     def _convert(self, raw_val: str) -> int:
+        if raw_val.startswith("0x"):
+            return int(raw_val, 16)
         return int(float(raw_val))
 
     def __int__(self) -> int:

@@ -22,6 +22,9 @@ def build(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
+    keep_picked_parts: Annotated[
+        bool | None, typer.Option("--keep-picked-parts", envvar="ATO_KEEP_PICKED_PARTS")
+    ] = None,
     standalone: Annotated[bool, typer.Option("--standalone", hidden=True)] = False,
 ):
     """
@@ -40,6 +43,10 @@ def build(
     from faebryk.libs.picker import lcsc
 
     build_ctxs = create_build_contexts(entry, build, target, option, standalone)
+
+    for build_ctx in build_ctxs:
+        if keep_picked_parts is not None:
+            build_ctx.keep_picked_parts = keep_picked_parts
 
     with accumulate() as accumulator:
         for build_ctx in build_ctxs:
