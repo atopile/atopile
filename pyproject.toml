@@ -141,6 +141,7 @@ addopts = [
     "--html=artifacts/test-report.html",
     "--self-contained-html",
     "--numprocesses=auto",
+    "-m", "not regression",
 ]
 filterwarnings = ["ignore:.*:DeprecationWarning"]
 testpaths = ["test"]
@@ -149,7 +150,7 @@ asyncio_default_fixture_loop_scope = "function"
 log_file_format = "%(asctime)s %(levelname)s %(name)s %(message)s"
 # log_file_level = "DEBUG"  # <-- you can set this in a PR if you want to debug tests in CI
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "slow: marks tests as slow",
     "not_in_ci: marks tests that should not be run in CI",
     "regression: marks tests that are used for deeper regression testing. May be slow and flaky.",
 ]
