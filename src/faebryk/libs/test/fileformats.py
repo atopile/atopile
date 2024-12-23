@@ -8,9 +8,20 @@ import faebryk
 
 logger = logging.getLogger(__name__)
 
+_RESOURCES_SUFFIX = "test/common/resources"
 
-ROOT_PATH = Path(faebryk.__file__).parent.parent.parent
-RESOURCES_PATH = ROOT_PATH / "test/common/resources"
+
+def ROOT_PATH() -> Path:
+    editable_root = Path(faebryk.__file__).parent.parent.parent
+    if (editable_root / _RESOURCES_SUFFIX).exists():
+        return editable_root
+    cwd_root = Path.cwd()
+    if (cwd_root / _RESOURCES_SUFFIX).exists():
+        return cwd_root
+    raise FileNotFoundError("Could not find root directory")
+
+
+RESOURCES_PATH = ROOT_PATH() / _RESOURCES_SUFFIX
 FILEFORMATS_PATH = RESOURCES_PATH / "fileformats/kicad"
 
 
