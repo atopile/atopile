@@ -11,7 +11,7 @@ import json
 import logging
 import uuid
 from pathlib import Path
-from typing import Type
+from types import ModuleType
 
 from more_itertools import first
 
@@ -38,11 +38,11 @@ def _generate_uuid_from_string(path: str) -> str:
     return str(uuid.UUID(bytes=hashed_path))
 
 
-def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
+def _index_module_layouts() -> FuncDict[type[Module] | ModuleType, set[Path]]:
     """Find, tag and return a set of all the modules with layouts."""
     directory = config.get_project_context().project_path
 
-    entries: FuncDict[Module, set[Path]] = FuncDict()
+    entries: FuncDict[type[Module] | ModuleType, set[Path]] = FuncDict()
     ato_modules = front_end.bob.modules
 
     for filepath in directory.glob("**/ato.yaml"):
@@ -56,7 +56,10 @@ def _index_module_layouts() -> FuncDict[Type[Module], set[Path]]:
                     # Check if the module is a known python module
                     if (
                         class_ := get_module_from_path(
-                            ctx.entry.file_path, ctx.entry.entry_section
+                            ctx.entry.file_path,
+                            ctx.entry.entry_section,
+                            # we might have duplicates from different builds
+                            allow_ambiguous=True,
                         )
                     ) is not None:
                         # we only bother to index things we've imported,
