@@ -986,7 +986,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 prop = cast_assert(property, getattr(GlobalShims, assigned_name))
                 assert prop.fset is not None
                 with (
-                    downgrade(DeprecatedException),
+                    downgrade(DeprecatedException, errors.UserNotImplementedError),
                     self._suppressor_visitAssign_stmt,
                     _attach_ctx_to_ex(ctx, self.get_traceback()),
                 ):
