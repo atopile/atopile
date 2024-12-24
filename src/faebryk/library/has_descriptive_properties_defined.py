@@ -31,10 +31,10 @@ class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
             return super().handle_duplicate(old, node)
 
         old.properties.update(self.properties)
+        old._handle_prop_set()
         return False
 
-    def on_obj_set(self):
-        super().on_obj_set()
+    def _handle_prop_set(self):
         obj = self.get_obj(type=Module)
 
         # TODO: deprecate using DescriptiveProperties directly and then get rid of this
@@ -56,3 +56,7 @@ class has_descriptive_properties_defined(F.has_descriptive_properties.impl()):
                     supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
                 )
             )
+
+    def on_obj_set(self):
+        super().on_obj_set()
+        self._handle_prop_set()
