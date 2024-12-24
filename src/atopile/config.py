@@ -380,6 +380,8 @@ class BuildContext:
 
     paths: BuildPaths
 
+    frozen: bool = False
+
     @property
     def build_type(self) -> BuildType:
         """

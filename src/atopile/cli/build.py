@@ -22,8 +22,13 @@ def build(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
-    keep_picked_parts: Annotated[
-        bool | None, typer.Option("--keep-picked-parts", envvar="ATO_KEEP_PICKED_PARTS")
+    frozen: Annotated[
+        bool | None,
+        typer.Option(
+            "--frozen",
+            help="PCB must be rebuilt without changes. Useful in CI",
+            envvar="ATO_FROZEN",
+        ),
     ] = None,
     standalone: Annotated[bool, typer.Option("--standalone", hidden=True)] = False,
 ):
@@ -45,8 +50,10 @@ def build(
     build_ctxs = create_build_contexts(entry, build, target, option, standalone)
 
     for build_ctx in build_ctxs:
-        if keep_picked_parts is not None:
-            build_ctx.keep_picked_parts = keep_picked_parts
+        if frozen is not None:
+            build_ctx.frozen = frozen
+            if frozen:
+                build_ctx.keep_picked_parts = True
 
     with accumulate() as accumulator:
         for build_ctx in build_ctxs:
