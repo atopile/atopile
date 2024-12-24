@@ -1797,3 +1797,14 @@ def indented_container(
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}}}"
+
+
+def try_relative_to(
+    target: os.PathLike, root: os.PathLike | None = None, walk_up: bool = False
+) -> Path:
+    target = Path(target)
+    root = Path(root) if root is not None else Path.cwd()
+    try:
+        return target.relative_to(root, walk_up=walk_up)
+    except FileNotFoundError:
+        return target
