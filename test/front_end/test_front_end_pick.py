@@ -25,7 +25,7 @@ def repo_root() -> Path:
     return repo_root
 
 
-def test_ato_pick(bob: Bob, repo_root: Path):
+def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
 
     text = dedent(
@@ -48,6 +48,38 @@ def test_ato_pick(bob: Bob, repo_root: Path):
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
     assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0805"]
+
+    pick_part_recursively(r1, DefaultSolver())
+
+    assert r1.has_trait(F.has_part_picked)
+
+
+def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
+    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+
+    text = dedent(
+        """
+        from "generics/capacitors.ato" import Capacitor
+
+        module A:
+            r1 = new BypassCap100nF
+
+        component BypassCap from Capacitor:
+            footprint = "R0402"
+
+        component BypassCap100nF from BypassCap:
+            value = 100nF +/- 20%
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["A"]))
+
+    assert isinstance(node, L.Module)
+
+    r1 = Bob.get_node_attr(node, "r1")
+    assert isinstance(r1, F.Capacitor)
+    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0402"]
 
     pick_part_recursively(r1, DefaultSolver())
 

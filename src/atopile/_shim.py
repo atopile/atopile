@@ -15,6 +15,7 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
 from faebryk.core.trait import TraitImpl, TraitNotFound
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import write_only_property
 
@@ -173,6 +174,22 @@ class GlobalShims(L.Module):
         )
 
 
+def _handle_footprint_shim(module: L.Module, value: str):
+    from atopile.front_end import DeprecatedException
+
+    if value.startswith(("R", "C")):
+        value = value[1:]
+        with downgrade(DeprecatedException):
+            raise DeprecatedException(
+                "footprint is deprecated for assignment of package"
+                f"Use: `package = '{value}'`"
+            )
+        GlobalShims.package.fset(module, value)
+        return
+
+    GlobalShims.footprint.fset(module, value)
+
+
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
 class ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
@@ -190,9 +207,7 @@ class ShimResistor(F.Resistor):
 
     @write_only_property
     def footprint(self, value: str):
-        if value.startswith("R"):
-            value = value[1:]
-        GlobalShims.package.fset(self, value)
+        _handle_footprint_shim(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -231,9 +246,7 @@ class ShimCapacitor(F.Capacitor):
 
     @write_only_property
     def footprint(self, value: str):
-        if value.startswith("C"):
-            value = value[1:]
-        GlobalShims.package.fset(self, value)
+        _handle_footprint_shim(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -301,6 +314,8 @@ class ShimCapacitorElectrolytic(F.Capacitor):
 
     anode: F.Electrical
     cathode: F.Electrical
+
+    pickable = None
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
