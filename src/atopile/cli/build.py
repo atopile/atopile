@@ -64,10 +64,9 @@ def build(
                         app = _init_ato_app(build_ctx)
                     case BuildType.PYTHON:
                         app = _init_python_app(build_ctx)
+                        app.add(F.is_app_root())
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
-
-                app.add(F.is_app_root())
 
                 # TODO: these should be drawn from the buildcontext like everything else
                 lcsc.BUILD_FOLDER = build_ctx.paths.build

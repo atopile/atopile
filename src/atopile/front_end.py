@@ -6,6 +6,7 @@ import itertools
 import logging
 import operator
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import chain
@@ -496,7 +497,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     "Can't initialize a fabll directly like this"
                 )
             with self._traceback_stack.enter(class_.name()):
-                return self._init_node(class_)
+                with self._init_node(class_) as node:
+                    node.add(F.is_app_root())
+                return node
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -835,15 +838,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # This should never happen
         raise ValueError(f"Unknown item type {item}")
 
+    @contextmanager
     def _init_node(
-        self,
-        node_type: ap.BlockdefContext | Type[L.Node],
-    ) -> L.Node:
+        self, node_type: ap.BlockdefContext | Type[L.Node]
+    ) -> Generator[L.Node, None, None]:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
         new_node, promised_supers = self._new_node(
             node_type,
             promised_supers=[],
         )
+
+        yield new_node
 
         with self._node_stack.enter(new_node):
             for super_ctx in promised_supers:
@@ -851,8 +856,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 # "from xyz" super in the traceback too
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
-
-        return new_node
 
     def _get_or_promise_param(
         self, node: L.Node, name: str, src_ctx: ParserRuleContext
@@ -948,14 +951,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
-                    new_node = self._init_node(self._get_referenced_class(ctx, ref))
-                new_node.add(from_dsl(ctx))
+                    with self._init_node(
+                        self._get_referenced_class(ctx, ref)
+                    ) as new_node:
+                        self._current_node.add(new_node, name=assigned_name)
+                        new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name)
                 raise
 
-            self._current_node.add(new_node, name=assigned_name)
             return NOTHING
 
         ########## Handle Regular Assignments ##########
@@ -1170,8 +1175,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # TODO: consider extending this w/ the ability to specialize to an instance
         with self._traceback_stack.enter(ctx):
-            specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref))
-        from_node.add(specialized_node)
+            with self._init_node(
+                self._get_referenced_class(ctx, to_ref)
+            ) as specialized_node:
+                from_node.add(specialized_node)
         assert isinstance(specialized_node, L.Module)
 
         try:
