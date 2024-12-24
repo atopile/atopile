@@ -4,5 +4,5 @@
 from faebryk.core.module import Module
 
 
-class is_pickable(Module.TraitT.decless()):
+class is_pickable(Module.TraitT):
     pass
