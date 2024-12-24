@@ -14,7 +14,9 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
+from atopile.errors import UserNotImplementedError
 from faebryk.core.trait import TraitImpl, TraitNotFound
+from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import write_only_property
 
@@ -142,6 +144,14 @@ class GlobalShims(L.Module):
 
     @mpn.setter
     def mpn(self, value: str):
+        from atopile.front_end import DeprecatedException
+
+        if value.lower() == "dnp":
+            raise DeprecatedException(
+                f"`mpn = {value}` is deprecated. "
+                "Use `exclude_from_bom = True` instead."
+            )
+
         # handles duplicates gracefully
         self.add(
             F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
@@ -150,7 +160,6 @@ class GlobalShims(L.Module):
         # TODO: @v0.4: remove this - mpn != lcsc id
         if re.match(r"C[0-9]+", value):
             self.add(F.has_descriptive_properties_defined({"LCSC": value}))
-            from atopile.front_end import DeprecatedException
 
             raise DeprecatedException(
                 "mpn is deprecated for assignment of LCSC IDs, use lcsc_id instead"
@@ -172,6 +181,33 @@ class GlobalShims(L.Module):
             )
         )
 
+    # TODO: do not place
+    # See: https://github.com/atopile/atopile/pull/424/files#diff-63194bff2019ade91098b68b1c47e10ce94fb03258923f8c77f66fc5707a0c96
+    @write_only_property
+    def exclude_from_bom(self, value: bool):
+        raise UserNotImplementedError(
+            "`exclude_from_bom` is not yet implemented. "
+            "This should not currently affect your design, "
+            "however may throw spurious warnings.\n"
+            "See: https://github.com/atopile/atopile/issues/755"
+        )
+
+
+def _handle_footprint_shim(module: L.Module, value: str):
+    from atopile.front_end import DeprecatedException
+
+    if value.startswith(("R", "C")):
+        value = value[1:]
+        with downgrade(DeprecatedException):
+            raise DeprecatedException(
+                "footprint is deprecated for assignment of package"
+                f"Use: `package = '{value}'`"
+            )
+        GlobalShims.package.fset(module, value)
+        return
+
+    GlobalShims.footprint.fset(module, value)
+
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
 class ShimResistor(F.Resistor):
@@ -190,9 +226,7 @@ class ShimResistor(F.Resistor):
 
     @write_only_property
     def footprint(self, value: str):
-        if value.startswith("R"):
-            value = value[1:]
-        GlobalShims.package.fset(self, value)
+        _handle_footprint_shim(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -231,9 +265,7 @@ class ShimCapacitor(F.Capacitor):
 
     @write_only_property
     def footprint(self, value: str):
-        if value.startswith("C"):
-            value = value[1:]
-        GlobalShims.package.fset(self, value)
+        _handle_footprint_shim(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -301,6 +333,8 @@ class ShimCapacitorElectrolytic(F.Capacitor):
 
     anode: F.Electrical
     cathode: F.Electrical
+
+    pickable = None
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")

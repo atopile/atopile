@@ -10,6 +10,7 @@ from faebryk.libs.kicad.fileformats_common import C_kicad_footprint_file_header
 from faebryk.libs.kicad.fileformats_v5 import C_kicad_footprint_file_v5
 from faebryk.libs.kicad.fileformats_v6 import C_kicad_footprint_file_v6
 from faebryk.libs.sexp.dataclass_sexp import DecodeError, loads
+from faebryk.libs.util import try_relative_to
 
 logger = logging.getLogger(__name__)
 
@@ -34,5 +35,6 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
 
     # Nothing succeeded in loading the file
     raise UserResourceException(
-        f'Footprint "{path.name}" is not a valid KiCad footprint file'
+        f'Footprint "{try_relative_to(path.resolve())}" is not a'
+        " valid KiCad footprint file"
     ) from acc.get_exception()

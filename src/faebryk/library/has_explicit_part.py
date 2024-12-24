@@ -44,25 +44,20 @@ class has_explicit_part(Module.TraitT.decless()):
 
     @override
     def on_obj_set(self):
-        # TODO later get rid oof this when we deprecate using DescriptiveProperties
-        # directly
-
-        from faebryk.libs.picker.picker import DescriptiveProperties
-
         super().on_obj_set()
         obj = self.get_obj(type=Module)
 
-        properties = {}
-
         if hasattr(self, "mfr"):
             assert self.partno
-            properties[DescriptiveProperties.manufacturer] = self.mfr
-            properties[DescriptiveProperties.partno] = self.partno
+            obj.add(F.is_pickable_by_part_number(self.mfr, self.partno))
         if hasattr(self, "supplier_partno"):
             assert self.supplier_id == "lcsc"
-            properties["LCSC"] = self.supplier_partno
+            obj.add(
+                F.is_pickable_by_supplier_id(
+                    self.supplier_partno,
+                    supplier=F.is_pickable_by_supplier_id.Supplier.LCSC,
+                )
+            )
 
         if self.pinmap:
             obj.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
-
-        obj.add(F.has_descriptive_properties_defined(properties))

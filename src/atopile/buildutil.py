@@ -2,6 +2,7 @@ import logging
 import shutil
 import time
 from copy import deepcopy
+from pathlib import Path
 from typing import Callable, Optional
 
 from more_itertools import first
@@ -132,7 +133,34 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     apply_routing(app, transformer)
 
     if pcb == original_pcb:
-        logger.info(f"No changes to layout. Not writing {build_paths.layout}")
+        if build_ctx.frozen:
+            logger.info("No changes to layout. Passed --frozen check.")
+        else:
+            logger.info(f"No changes to layout. Not writing {build_paths.layout}")
+    elif build_ctx.frozen:
+        original_path = build_ctx.paths.output_base.with_suffix(".original.kicad_pcb")
+        updated_path = build_ctx.paths.output_base.with_suffix(".updated.kicad_pcb")
+        original_pcb.dumps(original_path)
+        pcb.dumps(updated_path)
+
+        # TODO: make this a real util
+        def _try_relative(path: Path) -> Path:
+            try:
+                return path.relative_to(Path.cwd(), walk_up=True)
+            except ValueError:
+                return path
+
+        original_relative = _try_relative(original_path)
+        updated_relative = _try_relative(updated_path)
+
+        raise UserException(
+            "Built as frozen, but layout changed. \n"
+            f"Original layout: {original_relative}\n"
+            f"Updated layout: {updated_relative}\n"
+            "You can see the changes by running:\n"
+            f'diff --color "{original_relative}" "{updated_relative}"',
+            title="Frozen failed",
+        )
     else:
         backup_file = build_paths.output_base.with_suffix(
             f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"

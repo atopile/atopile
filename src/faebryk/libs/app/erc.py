@@ -9,7 +9,6 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.libs.picker.picker import has_part_picked
 from faebryk.libs.units import P
 from faebryk.libs.util import groupby
 
@@ -128,8 +127,8 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
         # TODO make prettier
         if (
-            comp.has_trait(has_part_picked)
-            and comp.get_trait(has_part_picked).get_part().partno == "REMOVE"
+            comp.has_trait(F.has_part_picked)
+            and comp.get_trait(F.has_part_picked).removed
         ):
             continue
         if comp.unnamed[0].is_connected_to(comp.unnamed[1]):

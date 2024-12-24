@@ -34,6 +34,8 @@ class Inductor(Module):
         tolerance_guess=10 * P.percent,
     )
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Inductor)
+
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(*self.unnamed)

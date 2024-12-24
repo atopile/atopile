@@ -15,7 +15,7 @@ from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked_defined
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Serializable, SerializableJSONEncoder
 
@@ -240,7 +240,7 @@ class Component:
             )
         )
 
-        module.add(has_part_picked_defined(LCSC_Part(self.lcsc_display)))
+        module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
 
         for name, literal in self.attribute_literals.items():
             if not hasattr(module, name):

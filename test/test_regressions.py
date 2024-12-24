@@ -103,7 +103,7 @@ def test_projects(repo: str, env: dict[str, str], tmp_path: Path):
     # Generically "build" the project
     try:
         run_live(
-            [sys.executable, "-m", "atopile", "-v", "build"],
+            [sys.executable, "-m", "atopile", "-v", "build", "--frozen"],
             env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
             cwd=tmp_path / "project",
             stdout=print,
