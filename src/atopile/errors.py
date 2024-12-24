@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Sequence
 
 from antlr4 import ParserRuleContext
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
@@ -84,7 +85,7 @@ class _BaseUserException(_BaseBaseUserException):
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
-        renderables += [Text(self.message)]
+        renderables += [Markdown(self.message)]
 
         for ctx in self.traceback or []:
             if ctx is not None:
