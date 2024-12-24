@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ class USB2_0_ESD_Protection(Module):
     vbus_esd_protection = L.p_field(domain=L.Domains.BOOL())
     data_esd_protection = L.p_field(domain=L.Domains.BOOL())
 
-    no_pick: has_part_picked_remove
+    no_pick: F.has_part_removed
 
     # ----------------------------------------
     #                 traits

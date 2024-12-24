@@ -40,9 +40,16 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.picker import DescriptiveProperties, MultiPickError, PickError
+from faebryk.libs.picker.picker import MultiPickError, PickError
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import Tree, cast_assert, groupby, not_none
+from faebryk.libs.util import (
+    Tree,
+    cast_assert,
+    groupby,
+    indented_container,
+    not_none,
+    partition,
+)
 
 logger = logging.getLogger(__name__)
 client = get_api_client()
@@ -69,16 +76,16 @@ def _extract_numeric_id(lcsc_id: str) -> int:
     return int(match[1])
 
 
-TYPE_SPECIFIC_LOOKUP: dict[type[Module], type[BaseParams]] = {
-    F.Resistor: ResistorParams,
-    F.Capacitor: CapacitorParams,
-    F.Inductor: InductorParams,
-    F.TVS: TVSParams,
-    F.LED: LEDParams,
-    F.Diode: DiodeParams,
-    F.LDO: LDOParams,
-    F.MOSFET: MOSFETParams,
-}  # type: ignore
+TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
+    F.is_pickable_by_type.Type.Resistor: ResistorParams,
+    F.is_pickable_by_type.Type.Capacitor: CapacitorParams,
+    F.is_pickable_by_type.Type.Inductor: InductorParams,
+    F.is_pickable_by_type.Type.TVS: TVSParams,
+    F.is_pickable_by_type.Type.LED: LEDParams,
+    F.is_pickable_by_type.Type.Diode: DiodeParams,
+    F.is_pickable_by_type.Type.LDO: LDOParams,
+    F.is_pickable_by_type.Type.MOSFET: MOSFETParams,
+}
 
 
 def _prepare_query(
@@ -89,32 +96,35 @@ def _prepare_query(
     # because we expect all pickable modules to be attachable
     check_attachable(module)
 
-    if module.has_trait(F.has_descriptive_properties):
-        props = module.get_trait(F.has_descriptive_properties).get_properties()
-        if "LCSC" in props:
-            return LCSCParams(lcsc=_extract_numeric_id(props["LCSC"]), quantity=qty)
-
-        elif DescriptiveProperties.partno in props:
-            if DescriptiveProperties.manufacturer not in props:
-                raise PickError("Module does not have a manufacturer", module)
-
-            return ManufacturerPartParams(
-                manufacturer_name=props[DescriptiveProperties.manufacturer],
-                part_number=props[DescriptiveProperties.partno],
-                quantity=qty,
+    if trait := module.try_get_trait(F.is_pickable_by_part_number):
+        return ManufacturerPartParams(
+            manufacturer_name=trait.get_manufacturer(),
+            part_number=trait.get_partno(),
+            quantity=qty,
+        )
+    elif trait := module.try_get_trait(F.is_pickable_by_supplier_id):
+        if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC:
+            return LCSCParams(
+                lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
+    elif trait := module.try_get_trait(F.is_pickable_by_type):
+        pick_type = trait.get_pick_type()
+        params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
 
-    params_t = TYPE_SPECIFIC_LOOKUP[type(module)]
+        fps = get_package_candidates(module)
+        generic_field_names = {f.name for f in fields(params_t)}
+        _, known_params = more_itertools.partition(
+            lambda p: p.get_name() in generic_field_names, module.get_parameters()
+        )
+        cmp_params = {
+            p.get_name(): p.get_last_known_deduced_superset(solver)
+            for p in known_params
+        }
+        return params_t(package_candidates=fps, qty=qty, **cmp_params)  # type: ignore
 
-    fps = get_package_candidates(module)
-    generic_field_names = {f.name for f in fields(params_t)}
-    _, known_params = more_itertools.partition(
-        lambda p: p.get_name() in generic_field_names, module.get_parameters()
+    raise NotImplementedError(
+        f"Unsupported pickable trait: {module.get_trait(F.is_pickable)}"
     )
-    cmp_params = {
-        p.get_name(): p.get_last_known_deduced_superset(solver) for p in known_params
-    }
-    return params_t(package_candidates=fps, qty=qty, **cmp_params)  # type: ignore
 
 
 def _process_candidates(module: Module, candidates: list[Component]) -> list[Component]:
@@ -188,23 +198,6 @@ def get_candidates(
 
     # should fail earlier
     return {}
-
-
-def add_pickers(module: Module) -> None:
-    # Generic pickers
-    if module.has_trait(F.has_descriptive_properties):
-        props = module.get_trait(F.has_descriptive_properties).get_properties()
-        if "LCSC" in props:
-            logger.debug(f"Adding LCSC picker for {module.get_full_name()}")
-            module.add(F.is_pickable())
-            return
-        if DescriptiveProperties.partno in props:
-            logger.debug(f"Adding MFR picker for {module.get_full_name()}")
-            module.add(F.is_pickable())
-            return
-
-    if type(module) in TYPE_SPECIFIC_LOOKUP:
-        module.add(F.is_pickable())
 
 
 def filter_by_module_params_and_attach(
@@ -297,17 +290,19 @@ def get_compatible_parameters(
     except LCSC_NoDataException:
         return None
 
-    no_attr, have_attr = more_itertools.partition(
+    no_attr, have_attr = partition(
         lambda x: hasattr(module, x), c.attribute_literals.keys()
     )
+    no_attr, have_attr = list(no_attr), list(have_attr)
 
-    with downgrade(UserException):
-        raise UserException(
-            f"Module {module.get_full_name()} is missing attributes"
-            f" {', '.join(no_attr)}. "
-            "This likely means you could use a more precise"
-            " module/component in your design."
-        )
+    if no_attr:
+        with downgrade(UserException):
+            raise UserException(
+                f"Module {module.get_full_name()} is missing attributes"
+                f" {indented_container(no_attr)}. "
+                "This likely means you could use a more precise"
+                " module/component in your design."
+            )
 
     def _map_param(name: str) -> tuple[Parameter, P_Set]:
         p = cast_assert(Parameter, getattr(module, name))

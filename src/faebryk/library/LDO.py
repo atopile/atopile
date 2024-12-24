@@ -63,6 +63,8 @@ class LDO(Module):
     power_in: F.ElectricPower
     power_out = L.d_field(lambda: F.ElectricPower().make_source())
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.LDO)
+
     def __preinit__(self):
         self.max_input_voltage.constrain_ge(self.power_in.voltage)
         self.power_out.voltage.constrain_subset(self.output_voltage)

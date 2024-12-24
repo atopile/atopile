@@ -29,6 +29,7 @@ from faebryk.libs.util import (
     ConfigFlag,
     KeyErrorNotFound,
     Tree,
+    indented_container,
     not_none,
     partition,
     try_or,
@@ -141,45 +142,10 @@ class PickErrorParams(PickError):
         super().__init__(message, module)
 
 
-class has_part_picked(Module.TraitT):
-    @abstractmethod
-    def get_part(self) -> Part: ...
-
-
-class has_part_picked_defined(has_part_picked.impl()):
-    def __init__(self, part: Part):
-        super().__init__()
-        self.part = part
-
-    def get_part(self) -> Part:
-        return self.part
-
-
-class has_part_picked_remove(has_part_picked.impl()):
-    class RemovePart(Part):
-        class NoSupplier(Supplier):
-            def attach(self, module: Module, part: PickerOption):
-                pass
-
-        def __init__(self):
-            super().__init__("REMOVE", self.NoSupplier())
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.part = self.RemovePart()
-
-    def get_part(self) -> Part:
-        return self.part
-
-
-class skip_self_pick(Module.TraitT.decless()):
-    """Indicates that a node exists only to contain children, and shouldn't itself be picked"""  # noqa: E501  # pre-existing
-
-
 def pick_module_by_params(
     module: Module, solver: Solver, options: Iterable[PickerOption]
 ):
-    if module.has_trait(has_part_picked):
+    if module.has_trait(F.has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")
         return
 
@@ -224,7 +190,7 @@ def pick_module_by_params(
         module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
 
     option.part.supplier.attach(module, option)
-    module.add(has_part_picked_defined(option.part))
+    module.add(F.has_part_picked(option.part))
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option
@@ -260,10 +226,10 @@ def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
     tree = Tree()
     merge_tree = tree
 
-    if module.has_trait(has_part_picked):
+    if module.has_trait(F.has_part_picked):
         return tree
 
-    if module.has_trait(F.is_pickable) and not module.has_trait(skip_self_pick):
+    if module.has_trait(F.is_pickable):
         merge_tree = Tree()
         tree[module] = merge_tree
 
@@ -296,12 +262,10 @@ def check_missing_picks(module: Module):
         and not isinstance(m, F.Footprint)
         # no parent with part picked
         and not try_or(
-            lambda: m.get_parent_with_trait(has_part_picked),
+            lambda: m.get_parent_with_trait(F.has_part_picked),
             default=False,
             catch=KeyErrorNotFound,
         )
-        # not skip self pick
-        and not m.has_trait(skip_self_pick)
         # no parent with picker
         and not try_or(
             lambda: m.get_parent_with_trait(F.is_pickable),
@@ -316,11 +280,11 @@ def check_missing_picks(module: Module):
         )
 
         if with_fp:
-            logger.warning(f"No pickers for {with_fp}")
+            logger.warning(f"No pickers for {indented_container(with_fp)}")
         if no_fp:
             logger.warning(
-                f"No pickers and no footprint for {no_fp}."
-                "\nAttention: These modules will not apperar in netlist or pcb."
+                f"No pickers and no footprint for {indented_container(no_fp)}."
+                "\nATTENTION: These modules will not apperar in netlist or pcb."
             )
 
 
@@ -395,13 +359,6 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
-    from faebryk.libs.picker.api.picker_lib import add_pickers
-
-    modules = module.get_children_modules(types=Module, include_root=True)
-
-    for n in modules:
-        add_pickers(n)
-
     pick_tree = get_pick_tree(module)
     if LOG_PICK_SOLVE:
         logger.info(f"Pick tree:\n{pick_tree.pretty()}")

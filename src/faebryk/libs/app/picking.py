@@ -7,7 +7,6 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.pcb.kicad.pcb import NO_LCSC_DISPLAY
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.libs.picker.picker import has_part_picked
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,7 @@ def load_descriptive_properties(G: Graph):
     )
 
     for node, trait in nodes:
-        if node.has_trait(has_part_picked):
+        if node.has_trait(F.has_part_picked):
             continue
         if (
             node.has_trait(F.has_descriptive_properties)

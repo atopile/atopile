@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.parameter import Add, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import skip_self_pick
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
 
@@ -30,7 +29,8 @@ class MultiCapacitor(F.Capacitor):
         super().__init__()
         self._count = count
 
-    skip_self: skip_self_pick
+    # Not pickable
+    pickable = None
 
     @L.rt_field
     def capacitors(self) -> list[F.Capacitor]:
