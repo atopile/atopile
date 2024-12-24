@@ -23,9 +23,9 @@ from rich.table import Table
 from atopile import config, errors
 from atopile.cli.common import configure_project_context
 from atopile.cli.install import do_install
-from atopile.utils import robustly_rm_dir
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError
+from faebryk.libs.util import robustly_rm_dir
 
 # Set up logging
 log = logging.getLogger(__name__)
@@ -118,6 +118,8 @@ def project(
             )
             name = None
 
+    assert name is not None
+
     if (
         not repo
         and not questionary.confirm(
@@ -127,6 +129,7 @@ def project(
         repo = PROJECT_TEMPLATE
 
     # Get a repo
+    repo_obj: git.Repo | None = None
     for _ in stuck_user_helper_generator:
         if not repo:
             make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
@@ -154,6 +157,8 @@ def project(
             rich.print(":rocket: What's the [cyan]repo's URL?[/]")
             repo = questionary.text("").unsafe_ask()
 
+        assert repo is not None
+
         # Try download the repo from the user-provided URL
         if Path(name).exists():
             raise click.ClickException(
@@ -175,8 +180,11 @@ def project(
             )
             repo = None
 
+    assert repo_obj is not None
+    assert repo_obj.working_tree_dir is not None
+
     # Configure the project
-    do_configure(name, repo_obj.working_tree_dir, debug=False)
+    do_configure(name, str(repo_obj.working_tree_dir), debug=False)
 
     # Commit the configured project
     # force the add, because we're potentially
@@ -193,7 +201,7 @@ def project(
     # If this repo's remote it PROJECT_TEMPLATE, cleanup the git history
     if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
         try:
-            robustly_rm_dir(repo_obj.git_dir)
+            robustly_rm_dir(Path(repo_obj.git_dir))
         except (PermissionError, OSError) as ex:
             with downgrade():
                 raise errors.UserException(
