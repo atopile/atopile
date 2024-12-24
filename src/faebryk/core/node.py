@@ -27,6 +27,7 @@ from faebryk.core.graphinterface import (
 from faebryk.core.link import LinkNamedParent, LinkSibling
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
+    KeyErrorAmbiguous,
     KeyErrorNotFound,
     Tree,
     cast_assert,
@@ -619,6 +620,8 @@ class Node(CNode):
             and (cast(TraitImpl, impl).is_implemented() or not only_implemented),
         )
 
+        if len(out) > 1:
+            raise KeyErrorAmbiguous(duplicates=list(out))
         assert len(out) <= 1
         return cast_assert(trait, next(iter(out))) if out else None
 
@@ -632,7 +635,10 @@ class Node(CNode):
         return self._find_trait_impl(trait, only_implemented=True)
 
     def has_trait(self, trait: type["Trait | TraitImpl"]) -> bool:
-        return self.try_get_trait(trait) is not None
+        try:
+            return self.try_get_trait(trait) is not None
+        except KeyErrorAmbiguous:
+            return True
 
     def get_trait[V: "Trait | TraitImpl"](self, trait: Type[V]) -> V:
         from faebryk.core.trait import Trait, TraitNotFound

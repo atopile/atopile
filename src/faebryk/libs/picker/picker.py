@@ -27,6 +27,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.util import (
     ConfigFlag,
+    KeyErrorAmbiguous,
     KeyErrorNotFound,
     Tree,
     indented_container,
@@ -268,9 +269,13 @@ def check_missing_picks(module: Module):
         )
         # no parent with picker
         and not try_or(
-            lambda: m.get_parent_with_trait(F.is_pickable),
-            default=False,
-            catch=KeyErrorNotFound,
+            lambda: try_or(
+                lambda: m.get_parent_with_trait(F.is_pickable),
+                default=False,
+                catch=KeyErrorNotFound,
+            ),
+            default=True,
+            catch=KeyErrorAmbiguous,
         ),
     )
 
