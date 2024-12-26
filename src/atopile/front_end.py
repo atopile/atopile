@@ -1099,8 +1099,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         by the connect method
         """
         try:
+            # Try a proper connection
             a.connect(b)
         except NodeException as top_ex:
+            # If that fails, try connecting via duck-typing
             for name, (c_a, c_b) in a.zip_children_by_name_with(
                 b, L.ModuleInterface
             ).items():
@@ -1122,7 +1124,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     raise top_ex
 
             else:
-                if ctx is not None:
+                # If we connect everything via name (and tried in the first place)
+                # then we're good to go! We just need to tell everyone to probably not
+                # do that in the future - and we're off!
+                if ctx is not None:  # Check that this is the top-level _connect call
                     with downgrade(DeprecatedException), self._suppression_connect:
                         raise DeprecatedException.from_ctx(
                             ctx,
