@@ -1126,8 +1126,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with downgrade(DeprecatedException), self._suppression_connect:
                         raise DeprecatedException.from_ctx(
                             ctx,
-                            f"Connected `{a.get_full_name()}` to `{b.get_full_name()}`"
-                            " by duck-typing. They should be of the same type.",
+                            f"Connected `{a}` to `{b}` by duck-typing."
+                            "They should be of the same type.",
                             traceback=self.get_traceback(),
                         )
 
