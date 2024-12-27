@@ -58,7 +58,6 @@ class UserException(Exception):
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
         renderables: list[ConsoleRenderable] = []
-        print("self.markdown: ", self.markdown)
         if self.title:
             renderables += [Text(self.title, style="bold")]
         renderables += [
