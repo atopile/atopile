@@ -192,7 +192,7 @@ def get_candidates(
             subtree = candidates.pop(m)
             if not subtree:
                 raise PickError(
-                    f"No candidates found for {m}:\n{m.pretty_params(solver)}", m
+                    f"No candidates found for `{m}`:\n{m.pretty_params(solver)}", m
                 )
             candidates.update(subtree)
 
@@ -246,15 +246,15 @@ def try_attach(module: Module, parts: Iterable[Component], qty: int):
             return
         except (ValueError, Component.ParseError) as e:
             if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to {module}: {e}")
+                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
             failures.append((c, e))
         except LCSC_NoDataException as e:
             if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to {module}: {e}")
+                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
             failures.append((c, e))
         except LCSC_PinmapException as e:
             if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to {module}: {e}")
+                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
             failures.append((c, e))
 
     if failures:
@@ -263,7 +263,7 @@ def try_attach(module: Module, parts: Iterable[Component], qty: int):
         )
 
         raise PickError(
-            f"Failed to attach any components to module {module}: {len(failures)}"
+            f"Failed to attach any components to module `{module}`: {len(failures)}"
             f" {fail_str}",
             module,
         )
@@ -298,7 +298,7 @@ def get_compatible_parameters(
     if no_attr:
         with downgrade(UserException):
             raise UserException(
-                f"Module {module.get_full_name()} is missing attributes"
+                f"Module `{module}` is missing attributes"
                 f" {indented_container(no_attr)}. "
                 "This likely means you could use a more precise"
                 " module/component in your design."

@@ -35,6 +35,7 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
 
     # Nothing succeeded in loading the file
     raise UserResourceException(
-        f'Footprint "{try_relative_to(path.resolve())}" is not a'
-        " valid KiCad footprint file"
+        f"Footprint {try_relative_to(path.resolve())} is not"
+        " a valid KiCad footprint file",
+        markdown=False,
     ) from acc.get_exception()
