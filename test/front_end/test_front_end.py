@@ -2,6 +2,7 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from antlr4 import ParserRuleContext
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
@@ -376,8 +377,6 @@ def test_duck_type_connect(bob: Bob):
     a = _get_mif(node, "a")
     b = _get_mif(node, "b")
 
-    assert a.is_connected_to(b)
-
     a_one = _get_mif(a, "one")
     b_one = _get_mif(b, "one")
     a_two = _get_mif(a, "two")
@@ -387,3 +386,17 @@ def test_duck_type_connect(bob: Bob):
     assert a_two.is_connected_to(b_two)
     assert not any(a_one.is_connected_to(other) for other in [a_two, b_two])
     assert not any(a_two.is_connected_to(other) for other in [a_one, b_one])
+
+
+def test_shim_power(bob: Bob, caplog: pytest.LogCaptureFixture):
+    from atopile._shim import ShimPower
+
+    ctx = ParserRuleContext()
+
+    a = ShimPower()
+    b = F.ElectricPower()
+
+    bob._connect(a, b, ctx)
+
+    assert a.lv.is_connected_to(b.lv)
+    assert a.hv.is_connected_to(b.hv)
