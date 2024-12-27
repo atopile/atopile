@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Sequence
 
 from antlr4 import ParserRuleContext
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.highlighter import ReprHighlighter
 from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
@@ -54,11 +55,13 @@ class _BaseUserException(_BaseBaseUserException):
         *args,
         origin: ParserRuleContext | None = None,
         traceback: Sequence[ParserRuleContext | None] | None = None,
+        markdown: bool = True,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.origin = origin
         self.traceback = traceback
+        self.markdown = markdown
 
     @classmethod
     def from_ctx[T](
@@ -85,7 +88,11 @@ class _BaseUserException(_BaseBaseUserException):
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
-        renderables += [Markdown(self.message)]
+        renderables += [
+            Markdown(self.message)
+            if self.markdown
+            else ReprHighlighter()(Text(self.message))
+        ]
 
         for ctx in self.traceback or []:
             if ctx is not None:

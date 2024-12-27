@@ -4,6 +4,10 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Callable, Iterable, Self, Type, cast
 
+from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.highlighter import ReprHighlighter
+from rich.markdown import Markdown
+from rich.text import Text
 from rich.traceback import Traceback
 
 from .titlecase import titlecase
@@ -27,11 +31,13 @@ class UserException(Exception):
         message: str = "",
         *args,
         title: str | None = None,
+        markdown: bool = True,
         **kwargs,
     ) -> None:
         super().__init__(message, *args, **kwargs)
         self.message = message
         self._title = title
+        self.markdown = markdown
 
     @property
     def title(self):
@@ -47,6 +53,19 @@ class UserException(Exception):
         Return a frozen version of this error.
         """
         return (self.__class__, self.message, self._title)
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[ConsoleRenderable]:
+        renderables: list[ConsoleRenderable] = []
+        print("self.markdown: ", self.markdown)
+        if self.title:
+            renderables += [Text(self.title, style="bold")]
+        renderables += [
+            Markdown(self.message) if self.markdown else ReprHighlighter()(self.message)
+        ]
+
+        return renderables
 
 
 class DeprecatedException(UserException):

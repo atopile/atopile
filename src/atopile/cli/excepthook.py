@@ -36,7 +36,9 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
     else:
         with contextlib.suppress(Exception):
             telemetry.telemetry_data.crash += 1
-        logger.exception("Uncaught compiler exception", exc_info=exc_value)
+        logger.exception(
+            "Uncaught compiler exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
