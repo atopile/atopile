@@ -5,10 +5,11 @@ from functools import wraps
 from typing import Callable, Iterable, Self, Type, cast
 
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
-from rich.highlighter import ReprHighlighter
 from rich.markdown import Markdown
 from rich.text import Text
 from rich.traceback import Traceback
+
+from faebryk.libs.logging import ReprHighlighter
 
 from .titlecase import titlecase
 
@@ -60,6 +61,7 @@ class UserException(Exception):
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
+
         renderables += [
             Markdown(self.message) if self.markdown else ReprHighlighter()(self.message)
         ]
