@@ -21,6 +21,9 @@ from . import console
 
 _logged_exceptions: set[tuple[type[Exception], tuple]] = set()
 
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 class LogHandler(RichHandler):
     """

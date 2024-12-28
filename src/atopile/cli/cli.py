@@ -12,6 +12,7 @@ import typer
 from atopile import telemetry
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger, handler
+from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
@@ -76,10 +77,6 @@ def cli(
         logger.info("Starting debugpy on port %s", debug_port)
         debugpy.wait_for_client()
 
-    # Initialize telemetry
-    if ctx.invoked_subcommand:
-        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
-
     # set the log level
     if verbose == 1:
         handler.hide_traceback_types = ()
@@ -89,6 +86,12 @@ def cli(
     elif verbose >= 3:
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
+
+    if ctx.invoked_subcommand:
+        check_for_update()
+
+        # Initialize telemetry
+        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
     if not non_interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
