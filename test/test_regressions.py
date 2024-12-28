@@ -1,11 +1,13 @@
 import os
+import shutil
 import sys
 from pathlib import Path
 from subprocess import CalledProcessError
 
+import pathvalidate
 import pytest
 
-from faebryk.libs.util import run_live
+from faebryk.libs.util import robustly_rm_dir, run_live
 
 repo_root = Path.cwd()
 while not (repo_root / "pyproject.toml").exists():
@@ -74,7 +76,9 @@ class BuildError(Exception):
         ("https://github.com/atopile/bq24045dsqr", {}),
     ],
 )
-def test_projects(repo: str, env: dict[str, str], tmp_path: Path):
+def test_projects(
+    repo: str, env: dict[str, str], tmp_path: Path, request: pytest.FixtureRequest
+):
     # Clone the repository
     # Using gh to use user credentials if run locally
     try:
@@ -87,12 +91,14 @@ def test_projects(repo: str, env: dict[str, str], tmp_path: Path):
     except CalledProcessError as ex:
         raise CloneError from ex
 
+    prj_path = tmp_path / "project"
+
     # Generically "install" the project
     try:
         run_live(
             [sys.executable, "-m", "atopile", "-v", "install"],
             env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
-            cwd=tmp_path / "project",
+            cwd=prj_path,
             stdout=print,
             stderr=print,
         )
@@ -105,10 +111,20 @@ def test_projects(repo: str, env: dict[str, str], tmp_path: Path):
         run_live(
             [sys.executable, "-m", "atopile", "-v", "build", "--frozen"],
             env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
-            cwd=tmp_path / "project",
+            cwd=prj_path,
             stdout=print,
             stderr=print,
         )
     except CalledProcessError as ex:
+        artifact_path = (
+            repo_root
+            / "artifacts"
+            / pathvalidate.sanitize_filename(str(request.node.name))
+        )
+        if artifact_path.exists():
+            robustly_rm_dir(artifact_path)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(prj_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
+
         # Translate the error message to clearly distinguish from clone errors
         raise BuildError from ex

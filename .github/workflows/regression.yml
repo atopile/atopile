@@ -71,14 +71,17 @@ jobs:
         PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
         COLUMNS: 150  # rich console width will be pulled from this
 
-    - name: Upload all test logs
+    - name: Upload all test artifacts
       if: steps.pytest.outcome == 'failure'
       uses: actions/upload-artifact@v4
       with:
-        name: test-logs
-        path: artifacts/**/*.log
+        name: test-artifacts
+        path: artifacts/**
         if-no-files-found: warn
 
+    # Upload the report as a separate artifact
+    # to make it easier to find since it's typically
+    # the first place we look for the failure
     - name: Upload all test report
       if: steps.pytest.outcome == 'failure'
       uses: actions/upload-artifact@v4

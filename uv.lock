@@ -108,7 +108,7 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev80+g15c7ef3b.d20241222"
+version = "0.3.1.dev93+g105d402a.d20241224"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
@@ -171,6 +171,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "nanobind" },
+    { name = "pathvalidate" },
     { name = "pre-commit" },
     { name = "pyinstrument" },
     { name = "pytest" },
@@ -246,6 +247,7 @@ dev = [
     { name = "mkdocs-material" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=0.27.0" },
     { name = "nanobind", specifier = ">=2.2,<3.0" },
+    { name = "pathvalidate", specifier = ">=3.2.1" },
     { name = "pre-commit", specifier = ">=2.20,<4.0" },
     { name = "pyinstrument", specifier = "~=4.7.1" },
     { name = "pytest", specifier = ">=7.1.3,<9.0.0" },
@@ -1455,6 +1457,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ca/bc/f35b8446f4531a7cb215605d100cd88b7ac6f44ab3fc94870c120ab3adbf/pathspec-0.12.1.tar.gz", hash = "sha256:a482d51503a1ab33b1c67a6c3813a26953dbdc71c31dacaef9a838c4e29f5712", size = 51043 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cc/20/ff623b09d963f88bfde16306a54e12ee5ea43e9b597108672ff3a408aad6/pathspec-0.12.1-py3-none-any.whl", hash = "sha256:a0d503e138a4c123b27490a4f7beda6a01c6f288df0e4a8b79c7eb0dc7b4cc08", size = 31191 },
+]
+
+[[package]]
+name = "pathvalidate"
+version = "3.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/b4/8c/8713d8dcd8e357b9358695b441ee974580a8addfaea4f01437df07577052/pathvalidate-3.2.1.tar.gz", hash = "sha256:f5d07b1e2374187040612a1fcd2bcb2919f8db180df254c9581bb90bf903377d", size = 59263 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d3/5e/76a9d08b4b4e4583f269cb9f64de267f9aeae0dacef23307f53a14211716/pathvalidate-3.2.1-py3-none-any.whl", hash = "sha256:9a6255eb8f63c9e2135b9be97a5ce08f10230128c4ae7b3e935378b82b22c4c9", size = 23833 },
 ]
 
 [[package]]
