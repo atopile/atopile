@@ -11,7 +11,6 @@ from semver import Version
 from atopile import errors
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 DISTRIBUTION_NAME = "atopile"
 UPGRADE_DOCS_URL = "https://atopile.io/#installation"
@@ -83,6 +82,7 @@ def get_latest_atopile_version() -> Version | None:
         response.raise_for_status()
         version_str = response.json()["info"]["version"]
     except (KeyError, requests.exceptions.RequestException):
+        log.debug("Failed to get latest version")
         return None
 
     return parse(version_str)
@@ -192,7 +192,6 @@ def check_for_update() -> None:
     installed_version_clean = clean_version(installed_version)
 
     if latest_version is None:
-        log.debug("Failed to get latest version")
         return
 
     if installed_version < latest_version:
