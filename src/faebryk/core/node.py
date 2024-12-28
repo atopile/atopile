@@ -562,7 +562,7 @@ class Node(CNode):
     # printing -------------------------------------------------------------------------
 
     def __str__(self) -> str:
-        return f"<{self.get_full_name(types=True)}>"
+        return self.get_full_name()
 
     def pretty_params(self, solver: "Solver | None" = None) -> str:
         from faebryk.core.parameter import Parameter
@@ -778,3 +778,8 @@ class Node(CNode):
     @staticmethod
     def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
         return {n.get_name(): n for n in nodes}
+
+    def __rich_repr__(self):
+        yield self.get_full_name()
+
+    __rich_repr__.angular = True

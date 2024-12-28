@@ -247,7 +247,7 @@ class PCB_Transformer:
         if unattached_nodes:
             logger.error(f"Unattached: {pprint.pformat(unattached_nodes)}")
             raise UserException(
-                f"Failed to attach {len(unattached_nodes)} nodes to footprints"
+                f"Failed to attach {len(unattached_nodes)} node(s) to footprints"
             )
 
         # TODO: check other properties:
@@ -945,7 +945,8 @@ class PCB_Transformer:
             match coord[3]:
                 case F.has_pcb_position.layer_type.NONE:
                     logger.warning(
-                        f"Assigning default layer for component '{module}({fp.name})'"
+                        f"Assigning default layer for component `{module}({fp.name})`",
+                        extra={"markdown": True},
                     )
                     layer = layer_names[F.has_pcb_position.layer_type.TOP_LAYER]
                 case _:

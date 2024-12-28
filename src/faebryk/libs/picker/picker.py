@@ -200,7 +200,7 @@ def pick_module_by_params(
 class PickerProgress:
     def __init__(self, tree: Tree[Module]):
         self.tree = tree
-        self.progress = Progress(disable=bool(NO_PROGRESS_BAR))
+        self.progress = Progress(disable=bool(NO_PROGRESS_BAR), transient=True)
         leaves = list(tree.leaves())
         count = len(leaves)
 

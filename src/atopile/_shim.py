@@ -162,7 +162,7 @@ class GlobalShims(L.Module):
             self.add(F.has_descriptive_properties_defined({"LCSC": value}))
 
             raise DeprecatedException(
-                "mpn is deprecated for assignment of LCSC IDs, use lcsc_id instead"
+                "`mpn` is deprecated for assignment of LCSC IDs. Use `lcsc_id` instead."
             )
 
     @write_only_property
@@ -200,7 +200,7 @@ def _handle_footprint_shim(module: L.Module, value: str):
         value = value[1:]
         with downgrade(DeprecatedException):
             raise DeprecatedException(
-                "footprint is deprecated for assignment of package"
+                "`footprint` is deprecated for assignment of package. "
                 f"Use: `package = '{value}'`"
             )
         GlobalShims.package.fset(module, value)

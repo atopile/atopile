@@ -6,6 +6,7 @@ import itertools
 import logging
 import operator
 import os
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from itertools import chain
@@ -257,7 +258,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                         getattr(F, name), (L.Module, L.ModuleInterface)
                     ):
                         raise errors.UserKeyError.from_ctx(
-                            ctx, f'Unknown standard library module: "{name}"'
+                            ctx, f"Unknown standard library module: '{name}'"
                         )
 
                     imports.append(KeyOptItem.from_kv(ref, (getattr(F, name), ctx)))
@@ -283,9 +284,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         with downgrade(DeprecatedException), self._suppressor_visitDep_import_stmt:
             raise DeprecatedException.from_ctx(
                 ctx,
-                '"import <something> from <path>" is deprecated and'
-                ' will be removed in a future version. Use "from'
-                f' {ctx.string().getText()} import {ctx.name_or_attr().getText()}"'
+                "`import <something> from <path>` is deprecated and"
+                " will be removed in a future version. Use "
+                f"`from {ctx.string().getText()} import {ctx.name_or_attr().getText()}`"
                 " instead.",
             )
         return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
@@ -337,7 +338,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 with downgrade(errors.UserKeyError):
                     raise errors.UserKeyError.from_ctx(
                         item_ctx,
-                        f'"{ref}" already declared. Shadowing original.'
+                        f"`{ref}` already declared. Shadowing original."
                         " In the future this may be an error",
                     )
 
@@ -355,8 +356,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 with downgrade(DeprecatedException):
                     raise DeprecatedException.from_ctx(
                         dep_ctx,
-                        "Is deprecated and will be removed in a future"
-                        f" version. Use {preferred} instead.",
+                        f"`{ref}` is deprecated and will be removed in a future"
+                        f" version. Use `{preferred}` instead.",
                     )
 
                 context.refs[ref] = shim_cls
@@ -487,7 +488,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _build(self, context: Context, ref: Ref) -> L.Node:
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
-                context.scope_ctx, f'No declaration of "{ref}" in {context.file_path}'
+                context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
             )
         try:
             class_ = self._get_referenced_class(context.scope_ctx, ref)
@@ -496,7 +497,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     "Can't initialize a fabll directly like this"
                 )
             with self._traceback_stack.enter(class_.name()):
-                return self._init_node(class_)
+                with self._init_node(class_) as node:
+                    node.add(F.is_app_root())
+                return node
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
@@ -519,7 +522,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     if value is None:
                         ex = errors.UserKeyError.from_ctx(
                             ctx,
-                            f"Parameter {param} never assigned",
+                            f"Parameter `{param}` never assigned",
                             traceback=traceback,
                         )
                         if param in self._promised_params:
@@ -531,7 +534,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             ):
                                 raise DeprecatedException.from_ctx(
                                     ctx,
-                                    "Parameter declared but never assigned."
+                                    f"Parameter `{param}` declared but never assigned."
                                     " In the future this will be an error.",
                                     traceback=traceback,
                                 )
@@ -556,7 +559,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 for ctx in ctxs:
                     with ex_acc.collect():
                         raise errors.UserKeyError.from_ctx(
-                            ctx, f"Attribute {param} referenced, but never assigned"
+                            ctx, f"Attribute `{param}` referenced, but never assigned"
                         )
 
     @property
@@ -635,7 +638,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     node = getattr(node, ref)
                 except AttributeError as ex:
                     raise errors.UserKeyError.from_ctx(
-                        item.original_ctx, f"No attribute '{ref}' found on {node}"
+                        item.original_ctx, f"No attribute `{ref}` found on {node}"
                     ) from ex
 
             assert isinstance(node, type) and issubclass(node, L.Node)
@@ -645,7 +648,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             context = self._index_file(from_path)
             if item.ref not in context.refs:
                 raise errors.UserKeyError.from_ctx(
-                    item.original_ctx, f"No declaration of {item.ref} in {from_path}"
+                    item.original_ctx, f"No declaration of `{item.ref}` in {from_path}"
                 )
             node = context.refs[item.ref]
 
@@ -681,13 +684,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if isinstance(ctx, ap.BlockdefContext):
                 return ctx
             else:
-                raise ValueError(f"Can't get class {ref} from {ctx}")
+                raise ValueError(f"Can't get class `{ref}` from {ctx}")
 
         # Ascend the tree until we find a scope that has the ref within it
         ctx_ = ctx
         while ctx_ not in self._scopes:
             if ctx_.parentCtx is None:
-                raise ValueError(f"No scope found for {ref}")
+                raise ValueError(f"No scope found for `{ref}`")
             ctx_ = ctx_.parentCtx
 
         context = self._scopes[ctx_]
@@ -696,7 +699,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # eg. if we have part of a ref resolved
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
-                ctx, f"No class or block definition found for {ref}"
+                ctx, f"No class or block definition found for `{ref}`"
             )
 
         item = context.refs[ref]
@@ -737,9 +740,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     raise SkipPriorFailedException() from ex
                 # Wah wah wah - we don't know what this is
                 if ref[:i]:
-                    msg = f"{Ref(ref[:i])} has no attribute '{name}'"
+                    msg = f"`{Ref(ref[:i])}` has no attribute `{name}`"
                 else:
-                    msg = f"No attribute '{name}'"
+                    msg = f"No attribute `{name}`"
                 raise errors.UserKeyError.from_ctx(
                     ctx, msg, traceback=self.get_traceback()
                 ) from ex
@@ -815,7 +818,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 elif block_type.MODULE():
                     base_class = L.Module
                 else:
-                    raise ValueError(f"Unknown block type {block_type.getText()}")
+                    raise ValueError(f"Unknown block type `{block_type.getText()}`")
 
             # Descend into building the superclass. We've got no information
             # on when the super-chain will be resolved, so we need to promise
@@ -833,17 +836,19 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return result
 
         # This should never happen
-        raise ValueError(f"Unknown item type {item}")
+        raise ValueError(f"Unknown item type `{item}`")
 
+    @contextmanager
     def _init_node(
-        self,
-        node_type: ap.BlockdefContext | Type[L.Node],
-    ) -> L.Node:
+        self, node_type: ap.BlockdefContext | Type[L.Node]
+    ) -> Generator[L.Node, None, None]:
         """Kind of analogous to __init__ in Python, except that it's a factory"""
         new_node, promised_supers = self._new_node(
             node_type,
             promised_supers=[],
         )
+
+        yield new_node
 
         with self._node_stack.enter(new_node):
             for super_ctx in promised_supers:
@@ -851,8 +856,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 # "from xyz" super in the traceback too
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
-
-        return new_node
 
     def _get_or_promise_param(
         self, node: L.Node, name: str, src_ctx: ParserRuleContext
@@ -869,7 +872,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Wah wah wah - we don't know what this is
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
-                f'Parameter "{name}" not found and'
+                f"Parameter `{name}` not found and"
                 " forward-declared params are not yet implemented",
                 traceback=self.get_traceback(),
             ) from ex
@@ -899,16 +902,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if not isinstance(param, Parameter):
                 raise errors.UserTypeError.from_ctx(
                     src_ctx,
-                    f"Cannot assign a parameter to {name} on {node} because it's"
-                    f" type is {param.__class__.__name__}",
+                    f"Cannot assign a parameter to `{name}` on `{node}` because its"
+                    f" type is `{param.__class__.__name__}`",
                     traceback=self.get_traceback(),
                 )
 
         if not param.units.is_compatible_with(unit):
             raise errors.UserIncompatibleUnitError.from_ctx(
                 src_ctx,
-                f"Given units {unit} are incompatible"
-                f" with existing units {param.units}.",
+                f"Given units ({unit}) are incompatible"
+                f" with existing units ({param.units}).",
                 traceback=self.get_traceback(),
             )
 
@@ -939,7 +942,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if len(assigned_ref) > 1:
                 raise errors.UserSyntaxError.from_ctx(
                     ctx,
-                    f"Can't declare fields in a nested object {assigned_ref}",
+                    f"Can't declare fields in a nested object `{assigned_ref}`",
                     traceback=self.get_traceback(),
                 )
 
@@ -948,14 +951,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
-                    new_node = self._init_node(self._get_referenced_class(ctx, ref))
-                new_node.add(from_dsl(ctx))
+                    with self._init_node(
+                        self._get_referenced_class(ctx, ref)
+                    ) as new_node:
+                        self._current_node.add(new_node, name=assigned_name)
+                        new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name)
                 raise
 
-            self._current_node.add(new_node, name=assigned_name)
             return NOTHING
 
         ########## Handle Regular Assignments ##########
@@ -966,8 +971,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if not provided_unit.is_compatible_with(unit):
                     raise errors.UserIncompatibleUnitError.from_ctx(
                         ctx,
-                        f"Implied units {unit} are incompatible"
-                        f" with explicit units {provided_unit}.",
+                        f"Implied units ({unit}) are incompatible"
+                        f" with explicit units ({provided_unit}).",
                         traceback=self.get_traceback(),
                     )
             param = self._ensure_param(target, assigned_name, unit, ctx)
@@ -997,13 +1002,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with downgrade(errors.UserException), self._suppressor_visitAssign_stmt:
                     raise errors.UserException.from_ctx(
                         ctx,
-                        f'Ignoring assignment of "{value}" to "{assigned_name}" '
-                        f'on "{target}"',
+                        f"Ignoring assignment of `{value}` to `{assigned_name}` "
+                        f"on `{target}`",
                         traceback=self.get_traceback(),
                     )
 
         else:
-            raise ValueError(f"Unhandled assignable type {assignable_ctx.getText()}")
+            raise ValueError(f"Unhandled assignable type `{assignable_ctx.getText()}`")
 
         return NOTHING
 
@@ -1026,13 +1031,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if isinstance(mif, L.ModuleInterface):
             with downgrade(DeprecatedException), self._suppression_try_get_mif:
                 raise DeprecatedException(
-                    f'"{name}" already exists, skipping.'
+                    f"`{name}` already exists; skipping."
                     " In the future this will be an error."
                 )
         else:
             raise errors.UserTypeError.from_ctx(
                 ctx,
-                f'"{name}" already exists.',
+                f"`{name}` already exists.",
                 traceback=self.get_traceback(),
             )
 
@@ -1048,7 +1053,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         elif ctx.string():
             name = self.visitString(ctx.string())
         else:
-            raise ValueError(f"Unhandled pin name type {ctx}")
+            raise ValueError(f"Unhandled pin name type `{ctx}`")
 
         if mif := self._try_get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
@@ -1121,8 +1126,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with downgrade(DeprecatedException), self._suppression_connect:
                         raise DeprecatedException.from_ctx(
                             ctx,
-                            f"Connected {a} to {b} by duck-typing."
-                            " They should be of the same type.",
+                            f"Connected `{a}` to `{b}` by duck-typing."
+                            "They should be of the same type.",
                             traceback=self.get_traceback(),
                         )
 
@@ -1156,7 +1161,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             assert isinstance(node, L.ModuleInterface)
             return node
         else:
-            raise ValueError(f"Unhandled connectable type {ctx}")
+            raise ValueError(f"Unhandled connectable type `{ctx}`")
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
@@ -1164,14 +1169,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if not isinstance(from_node, L.Module):
             raise errors.UserTypeError.from_ctx(
                 ctx,
-                f"Can't specialize {from_node}",
+                f"Can't specialize `{from_node}`",
                 traceback=self.get_traceback(),
             )
 
         # TODO: consider extending this w/ the ability to specialize to an instance
         with self._traceback_stack.enter(ctx):
-            specialized_node = self._init_node(self._get_referenced_class(ctx, to_ref))
-        from_node.add(specialized_node)
+            with self._init_node(
+                self._get_referenced_class(ctx, to_ref)
+            ) as specialized_node:
+                from_node.add(specialized_node)
         assert isinstance(specialized_node, L.Module)
 
         try:
@@ -1179,7 +1186,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         except* L.Module.InvalidSpecializationError as ex:
             raise errors.UserException.from_ctx(
                 ctx,
-                f"Can't specialize {from_ref} with {to_ref}:\n"
+                f"Can't specialize `{from_ref}` with `{to_ref}`:\n"
                 + "\n".join(f" - {e.message}" for e in ex.exceptions),
                 traceback=self.get_traceback(),
             ) from ex
@@ -1241,7 +1248,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     op = IsSubset
                 case _:
                     # We shouldn't be able to get here with parseable input
-                    raise ValueError(f"Unhandled operator {op_str}")
+                    raise ValueError(f"Unhandled operator `{op_str}`")
 
             # TODO: should we be reducing here to a series of ANDs?
             predicates.append(op(lh, rh))
@@ -1308,7 +1315,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 return Max(*operands)
             else:
                 raise errors.UserNotImplementedError.from_ctx(
-                    ctx, f"Unknown function {name}"
+                    ctx, f"Unknown function `{name}`"
                 )
         else:
             return self.visitBound(ctx.bound(0))
@@ -1329,7 +1336,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             assert isinstance(group_ctx, ap.Arithmetic_groupContext)
             return self.visitArithmetic_expression(group_ctx.arithmetic_expression())
 
-        raise ValueError(f"Unhandled atom type {ctx}")
+        raise ValueError(f"Unhandled atom type `{ctx}`")
 
     def _get_unit_from_ctx(self, ctx: ParserRuleContext) -> UnitType:
         """Return a pint unit from a context."""
@@ -1339,7 +1346,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         except UndefinedUnitError as ex:
             raise errors.UserUnknownUnitError.from_ctx(
                 ctx,
-                f"Unknown unit '{unit_str}'",
+                f"Unknown unit `{unit_str}`",
                 traceback=self.get_traceback(),
             ) from ex
 
@@ -1424,8 +1431,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if not nominal_qty.is_compatible_with(tol_qty):
             raise errors.UserTypeError.from_ctx(
                 tol_name,
-                f"Tolerance unit '{HasUnit.get_units(tol_qty)}' is not dimensionally"
-                f" compatible with nominal unit '{nominal_qty.units}'",
+                f"Tolerance unit ({HasUnit.get_units(tol_qty)}) is not dimensionally"
+                f" compatible with nominal unit ({nominal_qty.units})",
                 traceback=self.get_traceback(),
             )
 
@@ -1447,8 +1454,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # the dimensional compatibility
             raise errors.UserTypeError.from_ctx(
                 ctx,
-                f"Tolerance unit '{end.units}' is not dimensionally"
-                f" compatible with nominal unit '{start.units}'",
+                f"Tolerance unit ({end.units}) is not dimensionally"
+                f" compatible with nominal unit ({start.units})",
                 traceback=self.get_traceback(),
             )
 
@@ -1533,8 +1540,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 subset = ctx.name_or_attr().getText()
                 superset = ctx.cum_assignable().getText()
             raise DeprecatedException(
-                f"Set assignment of {assignee} is deprecated."
-                f' Use "assert {subset} within {superset} "instead.'
+                f"Set assignment of `{assignee}` is deprecated."
+                f' Use "assert `{subset}` within `{superset}` "instead.'
             )
         return NOTHING
 
@@ -1567,7 +1574,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if len(assigned_value_ref) > 1:
             raise errors.UserSyntaxError.from_ctx(
                 ctx,
-                f"Can't declare fields in a nested object {assigned_value_ref}",
+                f"Can't declare fields in a nested object `{assigned_value_ref}`",
                 traceback=self.get_traceback(),
             )
 
@@ -1580,7 +1587,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
                 raise errors.UserKeyError.from_ctx(
                     ctx,
-                    f"Ignoring declaration of {assigned_name} "
+                    f"Ignoring declaration of `{assigned_name}` "
                     "because it's already defined",
                     traceback=self.get_traceback(),
                 )
