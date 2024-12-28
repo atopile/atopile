@@ -77,12 +77,6 @@ def cli(
         logger.info("Starting debugpy on port %s", debug_port)
         debugpy.wait_for_client()
 
-    if ctx.invoked_subcommand:
-        check_for_update()
-
-        # Initialize telemetry
-        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
-
     # set the log level
     if verbose == 1:
         handler.hide_traceback_types = ()
@@ -92,6 +86,12 @@ def cli(
     elif verbose >= 3:
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
+
+    if ctx.invoked_subcommand:
+        check_for_update()
+
+        # Initialize telemetry
+        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
     if not non_interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
