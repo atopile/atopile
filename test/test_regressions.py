@@ -124,7 +124,7 @@ def test_projects(
         if artifact_path.exists():
             robustly_rm_dir(artifact_path)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(prj_path, artifact_path)
+        shutil.copytree(prj_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
 
         # Translate the error message to clearly distinguish from clone errors
         raise BuildError from ex
