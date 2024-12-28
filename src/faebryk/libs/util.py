@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import select
+import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -1797,6 +1799,18 @@ def indented_container(
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}}}"
+
+
+def robustly_rm_dir(path: os.PathLike) -> None:
+    """Remove a directory and all its contents."""
+
+    path = Path(path)
+
+    def remove_readonly(func, path, excinfo):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(path, onexc=remove_readonly)
 
 
 def try_relative_to(
