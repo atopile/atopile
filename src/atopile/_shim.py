@@ -286,8 +286,7 @@ class ShimCapacitor(_CommonCap):
     power: F.ElectricPower
 
     def __preinit__(self) -> None:
-        self.power.hv.connect(self._1)
-        self.power.lv.connect(self._2)
+        self.power.hv.connect_via(self, self.power.lv)
 
     @L.rt_field
     def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
@@ -311,8 +310,8 @@ class ShimCapacitorElectrolytic(_CommonCap):
     power: F.ElectricPower
 
     def __preinit__(self) -> None:
-        self.power.hv.connect(self._1)
-        self.power.lv.connect(self._2)
+        self.power.hv.connect(self.anode)
+        self.power.lv.connect(self.cathode)
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
@@ -334,6 +333,13 @@ class ShimInductor(F.Inductor):
     @property
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
+
+    @L.rt_field
+    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
+        trait = has_ato_cmp_attrs()
+        trait.pinmap["1"] = self.p1
+        trait.pinmap["2"] = self.p2
+        return trait
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")
