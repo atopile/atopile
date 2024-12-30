@@ -400,3 +400,4 @@ def test_shim_power(bob: Bob, caplog: pytest.LogCaptureFixture):
 
     assert a.lv.is_connected_to(b.lv)
     assert a.hv.is_connected_to(b.hv)
+    assert not a.lv.is_connected_to(b.hv)

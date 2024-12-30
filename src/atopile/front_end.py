@@ -828,11 +828,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 promised_supers=[item] + promised_supers,
             )
 
-            # HACK: promised_supers is falsey a hack way to check
-            # that we're only looking at the top-node w/ promised supers
-            if not promised_supers and (block_type.COMPONENT() or block_type.MODULE()):
-                result[0].add(has_ato_cmp_attrs())
-
             return result
 
         # This should never happen
@@ -847,6 +842,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             node_type,
             promised_supers=[],
         )
+
+        # Shim on component and module classes defined in ato
+        # Do not shim fabll modules, or interfaces
+        if isinstance(node_type, ap.BlockdefContext):
+            if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
+                # Some shims add the trait themselves
+                if not new_node.has_trait(has_ato_cmp_attrs):
+                    new_node.add(has_ato_cmp_attrs())
 
         yield new_node
 
