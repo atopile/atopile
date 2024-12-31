@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import re
 from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
@@ -128,7 +129,7 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets_and_kicad_info(G: Graph):
+def attach_nets_and_kicad_info(G: Graph) -> set[F.Net]:
     # group comps & fps
     node_fps = {
         n: t.get_footprint()
@@ -155,7 +156,7 @@ def attach_nets_and_kicad_info(G: Graph):
     ]
     nets = add_or_get_nets(*mifs)
 
-    generate_net_names(list(nets))
+    return nets
 
 
 @dataclass
@@ -185,24 +186,45 @@ def _conflicts(
             yield [net for net, _ in items]
 
 
-def _shit_name(name: str | None) -> bool:
+def _name_shittiness(name: str | None) -> float:
+    """Caesar says 👎"""
+
+    # These are completely shit names that
+    # have no business existing
     if name is None:
-        return True
+        return 0
 
-    # By the time we're here, we have a bunch of pads with the name net attached
     if name == "net":
-        return True
+        # By the time we're here, we have a bunch
+        # of pads with the name net attached
+        return 0
 
-    if name in {"p1", "p2"}:
-        return True
+    if name == "":
+        return 0
 
     if name.startswith("unnamed"):
-        return True
+        return 0
 
-    return False
+    if re.match(r"^(_\d+|p\d+)$", name):
+        return 0
+
+    # Here are some shitty patterns, that are
+    # fine as a backup, but should be avoided
+
+    # Anything that starts with an underscore
+    # is probably a temporary name
+    if name.startswith("_"):
+        return 0.2
+
+    # Anything with a trailing number is
+    # generally less interesting
+    if re.match(r".*\d+$", name):
+        return 0.5
+
+    return 1
 
 
-def generate_net_names(nets: list[F.Net]) -> None:
+def attach_net_names(nets: Iterable[F.Net]) -> None:
     """
     Generate good net names, assuming that we're passed all the nets in a design
     """
@@ -248,15 +270,13 @@ def generate_net_names(nets: list[F.Net]) -> None:
             lower_name = name.lower()
             case_insensitive_map[lower_name] = name
 
-            if _shit_name(lower_name):
-                # Skip ranking shitty names
-                continue
-
             if mif.get_parent_of_type(L.ModuleInterface):
                 # Give interfaces on the same level a fighting chance
                 depth -= 1
 
-            implicit_name_candidates[case_insensitive_map[lower_name]] += _decay(depth)
+            implicit_name_candidates[case_insensitive_map[lower_name]] += _decay(
+                depth
+            ) * _name_shittiness(lower_name)
 
         # Check required names
         if net_required_names:

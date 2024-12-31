@@ -380,6 +380,7 @@ class BuildContext:
 
     paths: BuildPaths
 
+    keep_net_names: bool = False
     frozen: bool = False
 
     @property

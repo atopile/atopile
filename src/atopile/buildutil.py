@@ -15,7 +15,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
-from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
+from faebryk.exporters.netlist.graph import attach_net_names, attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
 from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
@@ -43,6 +43,7 @@ from faebryk.libs.app.pcb import (
     apply_netlist,
     apply_routing,
     ensure_footprint_lib,
+    load_nets,
     open_pcb,
 )
 from faebryk.libs.app.picking import load_descriptive_properties
@@ -108,10 +109,17 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
 
+    # Re-attach because picking might have added new footprints
+    # Many nodes gain their footprints from picking, meaning we'll gather more now
+    transformer.attach(check_unattached=True)
+
     # Write Netlist ------------------------------------------------------------
     attach_random_designators(G)
     override_names_with_designators(G)
-    attach_nets_and_kicad_info(G)
+    nets = attach_nets_and_kicad_info(G)
+    if build_ctx.keep_net_names:
+        load_nets(G, attach=True)
+    attach_net_names(nets)
     netlist = faebryk_netlist_to_kicad(make_fbrk_netlist_from_graph(G))
 
     # Update PCB --------------------------------------------------------------
@@ -120,8 +128,6 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     apply_netlist(build_paths, files=(pcb, netlist))
 
     transformer.cleanup()
-    # Re-attach because picking might have added new footprints
-    transformer.attach(check_unattached=True)
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
         logger.info("Transforming PCB")

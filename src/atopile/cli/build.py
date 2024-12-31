@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Annotated
 
 import typer
 
+from atopile import errors
 from atopile.config import BuildContext
 
 if TYPE_CHECKING:
@@ -25,12 +26,13 @@ def build(
     frozen: Annotated[
         bool | None,
         typer.Option(
-            "--frozen",
             help="PCB must be rebuilt without changes. Useful in CI",
             envvar="ATO_FROZEN",
         ),
     ] = None,
-    standalone: Annotated[bool, typer.Option("--standalone", hidden=True)] = False,
+    keep_picked_parts: bool | None = None,
+    keep_net_names: bool | None = None,
+    standalone: bool = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -50,10 +52,28 @@ def build(
     build_ctxs = create_build_contexts(entry, build, target, option, standalone)
 
     for build_ctx in build_ctxs:
+        if keep_picked_parts is not None:
+            build_ctx.keep_picked_parts = keep_picked_parts
+
+        if keep_net_names is not None:
+            build_ctx.keep_net_names = keep_net_names
+
         if frozen is not None:
             build_ctx.frozen = frozen
             if frozen:
+                if keep_picked_parts is False:  # is, ignores None
+                    raise errors.UserBadParameterError(
+                        "`--keep-picked-parts` conflict with `--frozen`"
+                    )
+
                 build_ctx.keep_picked_parts = True
+
+                if keep_net_names is False:  # is, ignores None
+                    raise errors.UserBadParameterError(
+                        "`--keep-net-names` conflict with `--frozen`"
+                    )
+
+                build_ctx.keep_net_names = True
 
     with accumulate() as accumulator:
         for build_ctx in build_ctxs:

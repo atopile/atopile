@@ -42,7 +42,7 @@ class Net(Module):
         return n
 
     @classmethod
-    def from_part_of_mif(cls, mif: F.Electrical):
+    def from_part_of_mif(cls, mif: F.Electrical) -> "Net | None":
         parent = mif.get_parent()
         if parent is None:
             return None
