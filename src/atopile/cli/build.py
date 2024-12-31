@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Annotated
 
 import typer
 
+from atopile import errors
 from atopile.config import BuildContext
 
 if TYPE_CHECKING:
@@ -61,12 +62,16 @@ def build(
             build_ctx.frozen = frozen
             if frozen:
                 if keep_picked_parts is False:  # is, ignores None
-                    raise ValueError("--keep-picked-parts conflict with --frozen")
+                    raise errors.UserBadParameterError(
+                        "--keep-picked-parts conflict with --frozen"
+                    )
 
                 build_ctx.keep_picked_parts = True
 
                 if keep_net_names is False:  # is, ignores None
-                    raise ValueError("--keep-net-names conflict with --frozen")
+                    raise errors.UserBadParameterError(
+                        "--keep-net-names conflict with --frozen"
+                    )
 
                 build_ctx.keep_net_names = True
 
