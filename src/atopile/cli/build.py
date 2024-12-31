@@ -63,14 +63,14 @@ def build(
             if frozen:
                 if keep_picked_parts is False:  # is, ignores None
                     raise errors.UserBadParameterError(
-                        "--keep-picked-parts conflict with --frozen"
+                        "`--keep-picked-parts` conflict with `--frozen`"
                     )
 
                 build_ctx.keep_picked_parts = True
 
                 if keep_net_names is False:  # is, ignores None
                     raise errors.UserBadParameterError(
-                        "--keep-net-names conflict with --frozen"
+                        "`--keep-net-names` conflict with `--frozen`"
                     )
 
                 build_ctx.keep_net_names = True
