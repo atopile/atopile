@@ -91,7 +91,7 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
 class has_ato_cmp_attrs(L.Module.TraitT.decless()):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
-        self.pinmap = {}
+        self.pinmap: dict[str, F.Electrical | None] = {}
 
     def on_obj_set(self):
         self.module = self.get_obj(L.Module)
@@ -213,9 +213,6 @@ def _handle_footprint_shim(module: L.Module, value: str):
 class ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
     @property
     def value(self):
         return self.resistance
@@ -244,17 +241,15 @@ class ShimResistor(F.Resistor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
+    @L.rt_field
+    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
+        trait = has_ato_cmp_attrs()
+        trait.pinmap["1"] = self.p1
+        trait.pinmap["2"] = self.p2
+        return trait
 
-@_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class ShimCapacitor(F.Capacitor):
-    """Temporary shim to translate `value` to `capacitance`."""
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    class has_power(L.ModuleInterface.TraitT.decless()):
-        power: F.ElectricPower
-
+class _CommonCap(F.Capacitor):
     @property
     def value(self):
         return self.capacitance
@@ -283,12 +278,40 @@ class ShimCapacitor(F.Capacitor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
-    @property
-    def power(self) -> F.ElectricPower:
-        if trait := self.try_get_trait(self.has_power):
-            return trait.power
-        else:
-            return self.add(self.has_power()).power
+
+@_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
+class ShimCapacitor(_CommonCap):
+    """Temporary shim to translate `value` to `capacitance`."""
+
+    power: F.ElectricPower
+
+    def __preinit__(self) -> None:
+        self.power.hv.connect_via(self, self.power.lv)
+
+    @L.rt_field
+    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
+        trait = has_ato_cmp_attrs()
+        trait.pinmap["1"] = self.p1
+        trait.pinmap["2"] = self.p2
+        return trait
+
+
+@_register_shim(
+    "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
+)
+class ShimCapacitorElectrolytic(_CommonCap):
+    """Temporary shim to translate capacitors."""
+
+    anode: F.Electrical
+    cathode: F.Electrical
+
+    pickable = None
+
+    power: F.ElectricPower
+
+    def __preinit__(self) -> None:
+        self.power.hv.connect(self.anode)
+        self.power.lv.connect(self.cathode)
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
@@ -311,6 +334,13 @@ class ShimInductor(F.Inductor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
+    @L.rt_field
+    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
+        trait = has_ato_cmp_attrs()
+        trait.pinmap["1"] = self.p1
+        trait.pinmap["2"] = self.p2
+        return trait
+
 
 @_register_shim("generics/leds.ato:LED", "import LED")
 class ShimLED(F.LED):
@@ -325,24 +355,9 @@ class ShimLED(F.LED):
         return self.max_current
 
 
-@_register_shim(
-    "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
-)
-class ShimCapacitorElectrolytic(F.Capacitor):
-    """Temporary shim to translate capacitors."""
-
-    anode: F.Electrical
-    cathode: F.Electrical
-
-    pickable = None
-
-
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
 class ShimPower(F.ElectricPower):
     """Temporary shim to translate `value` to `power`."""
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
 
     @property
     def vcc(self) -> F.Electrical:
