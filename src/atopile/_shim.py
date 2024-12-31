@@ -192,6 +192,9 @@ class GlobalShims(L.Module):
             "See: https://github.com/atopile/atopile/issues/755"
         )
 
+    def override_net_name(self, name: str):
+        self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
+
 
 def _handle_footprint_shim(module: L.Module, value: str):
     from atopile.front_end import DeprecatedException

@@ -296,6 +296,9 @@ class PCB:
             pcb.kicad_pcb.nets.append(pcb_net)
             pcb_nets[net_name] = (pcb_net, [])
         pcb.kicad_pcb.nets.sort(key=lambda x: x.number)
+        # Check that net numbers are unique
+        # FIXME: this is broken by conflicting net numbers on the loaded PCB
+        assert len(pcb.kicad_pcb.nets) == len(set(n.number for n in pcb.kicad_pcb.nets))
 
         # Components ===================================================================
         pcb_comps = {

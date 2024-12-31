@@ -783,3 +783,26 @@ class Node(CNode):
         yield self.get_full_name()
 
     __rich_repr__.angular = True
+
+    def deepest_common_parent(self, *others: "Node") -> tuple["Node", str] | None:
+        """
+        Finds the deepest common parent of the given nodes, or None if no common
+        parent exists
+        """
+        nodes = [self, *others]
+        if not nodes:
+            return None
+
+        # Get hierarchies for all nodes
+        hierarchies = [list(n.get_hierarchy()) for n in nodes]
+        min_length = min(len(h) for h in hierarchies)
+
+        # Find the last matching ancestor
+        last_match = None
+        for i in range(min_length):
+            ref_node, ref_name = hierarchies[0][i]
+            if any(h[i][0] is not ref_node for h in hierarchies[1:]):
+                break
+            last_match = (ref_node, ref_name)
+
+        return last_match
