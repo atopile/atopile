@@ -828,11 +828,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 promised_supers=[item] + promised_supers,
             )
 
-            # HACK: promised_supers is falsey a hack way to check
-            # that we're only looking at the top-node w/ promised supers
-            if not promised_supers and (block_type.COMPONENT() or block_type.MODULE()):
-                result[0].add(has_ato_cmp_attrs())
-
             return result
 
         # This should never happen
@@ -847,6 +842,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             node_type,
             promised_supers=[],
         )
+
+        # Shim on component and module classes defined in ato
+        # Do not shim fabll modules, or interfaces
+        if isinstance(node_type, ap.BlockdefContext):
+            if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
+                # Some shims add the trait themselves
+                if not new_node.has_trait(has_ato_cmp_attrs):
+                    new_node.add(has_ato_cmp_attrs())
 
         yield new_node
 
@@ -1099,8 +1102,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         by the connect method
         """
         try:
+            # Try a proper connection
             a.connect(b)
         except NodeException as top_ex:
+            # If that fails, try connecting via duck-typing
             for name, (c_a, c_b) in a.zip_children_by_name_with(
                 b, L.ModuleInterface
             ).items():
@@ -1122,7 +1127,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     raise top_ex
 
             else:
-                if ctx is not None:
+                # If we connect everything via name (and tried in the first place)
+                # then we're good to go! We just need to tell everyone to probably not
+                # do that in the future - and we're off!
+                if ctx is not None:  # Check that this is the top-level _connect call
                     with downgrade(DeprecatedException), self._suppression_connect:
                         raise DeprecatedException.from_ctx(
                             ctx,

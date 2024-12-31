@@ -1822,3 +1822,14 @@ def try_relative_to(
         return target.relative_to(root, walk_up=walk_up)
     except FileNotFoundError:
         return target
+
+
+def repo_root() -> Path:
+    repo_root = Path(__file__)
+    while not (repo_root / ".git").exists():
+        if parent := repo_root.parent:
+            repo_root = parent
+        else:
+            raise FileNotFoundError("Could not find repo root")
+    else:
+        return repo_root
