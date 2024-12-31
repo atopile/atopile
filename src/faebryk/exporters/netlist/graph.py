@@ -284,7 +284,7 @@ def generate_net_names(nets: list[F.Net]) -> None:
     # Resolve as many conflict as possible by prefixing on the lowest common node's full name # noqa: E501  # pre-existing
     for conflict_nets in _conflicts(names):
         for net in conflict_nets:
-            if lcn := L.Node.deepest_common_parent(*net.get_connected_interfaces()):
+            if lcn := L.Node.nearest_common_ancestor(*net.get_connected_interfaces()):
                 names[net].prefix = lcn[0].get_full_name()
 
     # Resolve remaining conflicts by suffixing on a number

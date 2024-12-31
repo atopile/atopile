@@ -43,24 +43,24 @@ def node_hierarchy():
 
 
 def test_deepest_common_parent_single_node(node_hierarchy):
-    result = Node.deepest_common_parent(node_hierarchy.child1)
+    result = Node.nearest_common_ancestor(node_hierarchy.child1)
     assert result == (node_hierarchy.child1, "child1")
 
 
 def test_deepest_common_parent_common_parent(node_hierarchy):
-    result = Node.deepest_common_parent(node_hierarchy.child1, node_hierarchy.child2)
+    result = Node.nearest_common_ancestor(node_hierarchy.child1, node_hierarchy.child2)
     assert result == (node_hierarchy.root, "root")
 
 
 def test_deepest_common_parent_different_depths(node_hierarchy):
-    result = Node.deepest_common_parent(
+    result = Node.nearest_common_ancestor(
         node_hierarchy.grandchild1, node_hierarchy.child2
     )
     assert result == (node_hierarchy.root, "root")
 
 
 def test_deepest_common_parent_same_branch(node_hierarchy):
-    result = Node.deepest_common_parent(
+    result = Node.nearest_common_ancestor(
         node_hierarchy.grandchild1, node_hierarchy.child1
     )
     assert result == (node_hierarchy.child1, "child1")

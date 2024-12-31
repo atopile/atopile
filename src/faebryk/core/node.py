@@ -784,10 +784,10 @@ class Node(CNode):
 
     __rich_repr__.angular = True
 
-    def deepest_common_parent(self, *others: "Node") -> tuple["Node", str] | None:
+    def nearest_common_ancestor(self, *others: "Node") -> tuple["Node", str] | None:
         """
-        Finds the deepest common parent of the given nodes, or None if no common
-        parent exists
+        Finds the nearest common ancestor of the given nodes, or None if no common
+        ancestor exists
         """
         nodes = [self, *others]
         if not nodes:
