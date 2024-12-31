@@ -277,8 +277,11 @@ def generate_net_names(nets: list[F.Net]) -> None:
 
         names[net] = _NetName()
         if implicit_name_candidates:
+            # Type ignored on this because they typing on both max and defaultdict.get
+            # is poor. This is actually correct, and supposed to return None sometimes
             names[net].base_name = max(
-                implicit_name_candidates, key=implicit_name_candidates.get
+                implicit_name_candidates,
+                key=implicit_name_candidates.get,  # type: ignore
             )
 
     # Resolve as many conflict as possible by prefixing on the lowest common node's full name # noqa: E501  # pre-existing
