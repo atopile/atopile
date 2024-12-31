@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 
 from atopile.config import BuildContext
-from faebryk.libs.exceptions import downgrade
 
 if TYPE_CHECKING:
     from faebryk.core.module import Module
@@ -62,24 +61,14 @@ def build(
             build_ctx.frozen = frozen
             if frozen:
                 if keep_picked_parts is False:  # is, ignores None
-                    with downgrade(ValueError):
-                        raise ValueError(
-                            "Ignoring --keep-picked-parts should typically be True when"
-                            " building frozen. This combination of inputs is expected"
-                            " to fail"
-                        )
-                else:
-                    build_ctx.keep_picked_parts = True
+                    raise ValueError("--keep-picked-parts conflict with --frozen")
+
+                build_ctx.keep_picked_parts = True
 
                 if keep_net_names is False:  # is, ignores None
-                    with downgrade(ValueError):
-                        raise ValueError(
-                            "Ignoring --keep-net-names should typically be True when"
-                            " building frozen. This combination of inputs is"
-                            " expected to fail"
-                        )
-                else:
-                    build_ctx.keep_net_names = True
+                    raise ValueError("--keep-net-names conflict with --frozen")
+
+                build_ctx.keep_net_names = True
 
     with accumulate() as accumulator:
         for build_ctx in build_ctxs:
