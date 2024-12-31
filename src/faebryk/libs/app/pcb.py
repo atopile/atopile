@@ -4,12 +4,15 @@
 import logging
 import os
 import sys
+from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Mapping
 
 import psutil
+from more_itertools import first
 
 import faebryk.library._F as F
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.pcb import PCB
@@ -200,3 +203,44 @@ def apply_netlist(
     else:
         logger.info(f"Apply netlist to {build_paths.layout}")
         PCB.apply_netlist_to_file(build_paths.layout, build_paths.netlist)
+
+
+def load_nets(
+    graph: Graph, attach: bool = False, match_threshold: float = 0.8
+) -> dict[F.Net, str]:
+    """
+    Load nets from attached footprints and attach them to the nodes.
+    """
+
+    if match_threshold < 0.5:
+        # This is because we rely on being >50% sure to ensure we're the most
+        # likely match.
+        raise ValueError("match_threshold must be at least 0.5")
+
+    known_nets: dict[F.Net, str] = {}
+    for net in GraphFunctions(graph).nodes_of_type(F.Net):
+        total_pads = 0
+        net_candidates: Mapping[str, int] = defaultdict(int)
+
+        for ato_pad, ato_fp in net.get_fps().items():
+            if pcb_pad_t := ato_pad.try_get_trait(PCB_Transformer.has_linked_kicad_pad):
+                pcb_fp, pcb_pads = pcb_pad_t.get_pad()
+                net_names = set(
+                    pcb_pad.net.name if pcb_pad.net is not None else None
+                    for pcb_pad in pcb_pads
+                )
+                if len(net_names) == 1 and (net_name := first(net_names)) is not None:
+                    net_candidates[net_name] += 1
+            total_pads += 1
+
+        if net_candidates:
+            best_net = max(net_candidates, key=lambda x: net_candidates[x])
+            if best_net and net_candidates[best_net] > total_pads * match_threshold:
+                known_nets[net] = best_net
+
+    if attach:
+        for net, name in known_nets.items():
+            if not net.has_trait(F.has_overriden_name):
+                net.add(F.has_overriden_name_defined(name))
+
+    return known_nets

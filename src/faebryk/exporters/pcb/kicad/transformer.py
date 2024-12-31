@@ -302,7 +302,7 @@ class PCB_Transformer:
                 for pad in fp.pads
                 if pad.name == pin_names[cast_assert(F.Pad, fpad)]
             ]
-            fpad.add(PCB_Transformer.has_linked_kicad_pad_defined(fp, pads, self))
+            fpad.add(self.has_linked_kicad_pad_defined(fp, pads, self))
 
     def cleanup(self):
         # delete faebryk objects in pcb
