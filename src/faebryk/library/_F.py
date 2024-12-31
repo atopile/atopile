@@ -25,6 +25,7 @@ from faebryk.library.has_single_electric_reference import has_single_electric_re
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.can_be_surge_protected import can_be_surge_protected
+from faebryk.library.has_net_name import has_net_name
 from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.Signal import Signal
