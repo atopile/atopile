@@ -1,3 +1,4 @@
+import copy
 import logging
 import shutil
 import time
@@ -54,6 +55,7 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.sexp.dataclass_sexp import sort_dataclass_sexp
 from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
@@ -132,16 +134,27 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     transformer.move_footprints()
     apply_routing(app, transformer)
 
-    if pcb == original_pcb:
+    sorted_updated_pcb = sort_dataclass_sexp(copy.deepcopy(pcb))
+    sorted_original_pcb = sort_dataclass_sexp(original_pcb)
+    if sorted_updated_pcb == sorted_original_pcb:
         if build_ctx.frozen:
             logger.info("No changes to layout. Passed --frozen check.")
         else:
             logger.info(f"No changes to layout. Not writing {build_paths.layout}")
     elif build_ctx.frozen:
         original_path = build_ctx.paths.output_base.with_suffix(".original.kicad_pcb")
+        sorted_original_path = build_ctx.paths.output_base.with_suffix(
+            ".original-sorted.kicad_pcb"
+        )
         updated_path = build_ctx.paths.output_base.with_suffix(".updated.kicad_pcb")
+        sorted_updated_path = build_ctx.paths.output_base.with_suffix(
+            ".updated-sorted.kicad_pcb"
+        )
+
         original_pcb.dumps(original_path)
+        sorted_original_pcb.dumps(sorted_original_path)
         pcb.dumps(updated_path)
+        sorted_updated_pcb.dumps(sorted_updated_path)
 
         # TODO: make this a real util
         def _try_relative(path: Path) -> Path:

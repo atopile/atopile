@@ -584,3 +584,27 @@ def _iterate_tree(
     elif isinstance(obj, dict):
         for k, v in obj.items():
             yield from _iterate_tree(v, out_path, name_path + [f"[{repr(k)}]"])
+
+
+def sort_dataclass_sexp[T](obj: T) -> T:
+    """
+    Sort all the lists in the object in-place
+    """
+    _sort_dataclass_sexp(obj)
+    return obj
+
+
+def _sort_dataclass_sexp(obj) -> None:
+    if is_dataclass(obj):
+        for f in fields(obj):
+            _sort_dataclass_sexp(getattr(obj, f.name))
+    elif isinstance(obj, list):
+        obj.sort(key=str)
+        for v in obj:
+            _sort_dataclass_sexp(v)
+    elif isinstance(obj, dict):
+        new_obj = dict(sorted(obj.items(), key=lambda x: str(x[0])))
+        obj.clear()
+        obj.update(new_obj)
+        for v in obj.values():
+            _sort_dataclass_sexp(v)
