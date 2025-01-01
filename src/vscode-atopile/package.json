@@ -196,7 +196,7 @@
     "dependencies": {
         "@vscode/python-extension": "^1.0.5",
         "fs-extra": "^11.2.0",
-        "ovsx": "^0.9.1",
+        "ovsx": "^0.10.1",
         "vscode-languageclient": "^8.1.0"
     },
     "devDependencies": {
