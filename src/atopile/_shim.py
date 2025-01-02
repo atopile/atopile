@@ -253,6 +253,19 @@ class ShimResistor(F.Resistor):
 
 
 class _CommonCap(F.Capacitor):
+    class has_power(L.Trait.decless()):
+        """
+        This trait is used to add power interfaces to
+        capacitors who use them, keeping the interfaces
+        off caps which don't use it.
+
+        Caps have power-interfaces when used with them.
+        """
+
+        def __init__(self, power: F.ElectricPower) -> None:
+            super().__init__()
+            self.power = power
+
     @property
     def value(self):
         return self.capacitance
@@ -281,15 +294,26 @@ class _CommonCap(F.Capacitor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
+    @property
+    def power(self) -> F.ElectricPower:
+        if self.has_trait(self.has_power):
+            power = self.get_trait(self.has_power).power
+        else:
+            power = F.ElectricPower()
+            power.hv.connect_via(self, power.lv)
+            self.add(self.has_power(power))
+
+        return power
+
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
 class ShimCapacitor(_CommonCap):
     """Temporary shim to translate `value` to `capacitance`."""
 
-    power: F.ElectricPower
+    # power: F.ElectricPower
 
-    def __preinit__(self) -> None:
-        self.power.hv.connect_via(self, self.power.lv)
+    # def __preinit__(self) -> None:
+    #     self.power.hv.connect_via(self, self.power.lv)
 
     @L.rt_field
     def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
