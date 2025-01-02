@@ -388,7 +388,7 @@ def test_duck_type_connect(bob: Bob):
     assert not any(a_two.is_connected_to(other) for other in [a_one, b_one])
 
 
-def test_shim_power(bob: Bob, caplog: pytest.LogCaptureFixture):
+def test_shim_power(bob: Bob):
     from atopile._shim import ShimPower
 
     ctx = ParserRuleContext()

@@ -120,5 +120,4 @@ class ElectricPower(F.Power):
             F.is_bus_parameter(reduce=(self.max_current, Add))
         )
 
-        self.hv.add(F.has_net_name("vcc"))
         self.lv.add(F.has_net_name("gnd"))

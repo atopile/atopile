@@ -253,6 +253,19 @@ class ShimResistor(F.Resistor):
 
 
 class _CommonCap(F.Capacitor):
+    class has_power(L.Trait.decless()):
+        """
+        This trait is used to add power interfaces to
+        capacitors who use them, keeping the interfaces
+        off caps which don't use it.
+
+        Caps have power-interfaces when used with them.
+        """
+
+        def __init__(self, power: F.ElectricPower) -> None:
+            super().__init__()
+            self.power = power
+
     @property
     def value(self):
         return self.capacitance
@@ -286,17 +299,23 @@ class _CommonCap(F.Capacitor):
 class ShimCapacitor(_CommonCap):
     """Temporary shim to translate `value` to `capacitance`."""
 
-    power: F.ElectricPower
-
-    def __preinit__(self) -> None:
-        self.power.hv.connect_via(self, self.power.lv)
-
     @L.rt_field
     def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
         trait = has_ato_cmp_attrs()
         trait.pinmap["1"] = self.p1
         trait.pinmap["2"] = self.p2
         return trait
+
+    @property
+    def power(self) -> F.ElectricPower:
+        if self.has_trait(self.has_power):
+            power = self.get_trait(self.has_power).power
+        else:
+            power = F.ElectricPower()
+            power.hv.connect_via(self, power.lv)
+            self.add(self.has_power(power))
+
+        return power
 
 
 @_register_shim(
@@ -310,11 +329,17 @@ class ShimCapacitorElectrolytic(_CommonCap):
 
     pickable = None
 
-    power: F.ElectricPower
+    @property
+    def power(self) -> F.ElectricPower:
+        if self.has_trait(self.has_power):
+            power = self.get_trait(self.has_power).power
+        else:
+            power = F.ElectricPower()
+            power.hv.connect(self.anode)
+            power.lv.connect(self.cathode)
+            self.add(self.has_power(power))
 
-    def __preinit__(self) -> None:
-        self.power.hv.connect(self.anode)
-        self.power.lv.connect(self.cathode)
+        return power
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
