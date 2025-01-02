@@ -31,7 +31,7 @@ jobs:
         submodules: true
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@v5
       with:
         version: '0.5.5'
         enable-cache: true
@@ -66,7 +66,7 @@ jobs:
       with:
         submodules: true
 
-    - uses: astral-sh/setup-uv@v4
+    - uses: astral-sh/setup-uv@v5
       with:
         version: '0.5.5'
 
