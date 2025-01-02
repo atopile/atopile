@@ -12,8 +12,12 @@ from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
-
 NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
+
+# math.isclose default is 1e-9
+# numpy default is 1e-5
+# empirically we need <= 1e-8
+EPSILON_REL = 1e-6
 
 
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -54,13 +58,16 @@ class Numeric_Interval(Numeric_Set[NumericT]):
 
     def as_center_rel(self) -> tuple[NumericT, float]:
         center = (self._min + self._max) / 2
-        if isinstance(self._min, int):
-            center = int(center)
         rel = (self._max - self._min) / 2 / center
         return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
-        return self._min >= other._min and self._max <= other._max
+        return (
+            (self._min >= other._min)
+            or math.isclose(self._min, other._min, rel_tol=EPSILON_REL)
+            and (self._max <= other._max)
+            or math.isclose(self._max, other._max, rel_tol=EPSILON_REL)
+        )
 
     def op_add_interval(
         self, other: "Numeric_Interval[NumericT]"
@@ -159,7 +166,7 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         min_ = max(self._min, other._min)
         max_ = min(self._max, other._max)
-        if min_ <= max_:
+        if min_ <= max_ or math.isclose(min_, max_, rel_tol=EPSILON_REL):
             return Numeric_Interval_Disjoint(Numeric_Interval(min_, max_))
         return Numeric_Set_Empty()
 
@@ -191,13 +198,20 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         if not isinstance(other, Numeric_Interval):
             return False
-        return self._min == other._min and self._max == other._max
+
+        return math.isclose(
+            self._min, other._min, rel_tol=EPSILON_REL
+        ) and math.isclose(self._max, other._max, rel_tol=EPSILON_REL)
 
     def __contains__(self, item: NumericT) -> bool:
         """
         Set checks if a number is in a interval.
         """
-        return self._min <= item <= self._max
+        return (
+            self._min <= item <= self._max
+            or math.isclose(self._min, item, rel_tol=EPSILON_REL)
+            or math.isclose(self._max, item, rel_tol=EPSILON_REL)
+        )
 
     def __hash__(self) -> int:
         return hash((self._min, self._max))
@@ -387,7 +401,7 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
                 # ro ends before rs, so move to next in other list
                 o += 1
             else:
-                # rs and ro end on same number, so move to next in both lists
+                # rs and ro end on approximately same number, move to next in both lists
                 s += 1
                 o += 1
 

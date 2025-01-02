@@ -16,6 +16,7 @@ from faebryk.core.parameter import (
     Multiply,
     Or,
     Parameter,
+    ParameterOperatable,
     Subtract,
     SymmetricDifference,
     Union,
@@ -82,7 +83,9 @@ def test_mutator_no_graph_merge():
 
     p3 = Parameter(units=P.V)
 
-    mutator = Mutator(p0.get_graph())
+    context = ParameterOperatable.ReprContext()
+
+    mutator = Mutator(p0.get_graph(), print_context=context)
     p0_new = cast_assert(Parameter, mutator.get_copy(p0))
     p3_new = cast_assert(Parameter, mutator.get_copy(p3))
     alias_new = cast_assert(Is, mutator.get_copy(alias))

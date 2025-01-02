@@ -45,6 +45,8 @@ class Diode(Module):
     anode: F.Electrical
     cathode: F.Electrical
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Diode)
+
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.anode, self.cathode)

@@ -8,8 +8,8 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
-from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.exporters.netlist.netlist import T2Netlist, make_t2_netlist_from_graph
+from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
+from faebryk.exporters.netlist.netlist import FBRKNetlist, make_fbrk_netlist_from_graph
 from faebryk.libs.app.designators import (
     attach_random_designators,
     override_names_with_designators,
@@ -55,13 +55,13 @@ def netlist_graph():
     attach_random_designators(G())
     override_names_with_designators(G())
     attach_nets_and_kicad_info(G())
-    return make_t2_netlist_from_graph(G())
+    return make_fbrk_netlist_from_graph(G())
 
 
 @pytest.fixture
 def netlist_t2():
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
-    resistor1 = T2Netlist.Component(
+    resistor1 = FBRKNetlist.Component(
         name="R1",
         value="100Ω",
         properties={
@@ -69,7 +69,7 @@ def netlist_t2():
         },
     )
 
-    resistor2 = T2Netlist.Component(
+    resistor2 = FBRKNetlist.Component(
         name="R2",
         value="200Ω",
         properties={
@@ -77,33 +77,33 @@ def netlist_t2():
         },
     )
 
-    return T2Netlist(
+    return FBRKNetlist(
         nets=[
-            T2Netlist.Net(
+            FBRKNetlist.Net(
                 properties={
                     "name": "GND",
                 },
                 vertices=[
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor1,
                         pin="2",
                     ),
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor2,
                         pin="2",
                     ),
                 ],
             ),
-            T2Netlist.Net(
+            FBRKNetlist.Net(
                 properties={
                     "name": "+3V3",
                 },
                 vertices=[
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor1,
                         pin="1",
                     ),
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor2,
                         pin="1",
                     ),
@@ -181,7 +181,7 @@ def netlist_manu():
 
 
 def test_netlist_t2(netlist_t2, netlist_manu):
-    netlist_t2 = from_faebryk_t2_netlist(netlist_t2)
+    netlist_t2 = faebryk_netlist_to_kicad(netlist_t2)
     assert netlist_t2.dumps() == netlist_manu.dumps()
 
 
@@ -190,6 +190,6 @@ def test_netlist_graph(netlist_graph, netlist_t2):
         assert isinstance(comp.properties, dict)
         comp.properties.pop("atopile_address", None)
 
-    netlist_graph = from_faebryk_t2_netlist(netlist_graph)
-    netlist_t2 = from_faebryk_t2_netlist(netlist_t2)
+    netlist_graph = faebryk_netlist_to_kicad(netlist_graph)
+    netlist_t2 = faebryk_netlist_to_kicad(netlist_t2)
     assert netlist_graph.dumps() == netlist_t2.dumps()

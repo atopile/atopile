@@ -22,6 +22,7 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     cast_assert,
     not_none,
+    once,
     operator_type_check,
     round_str,
 )
@@ -178,10 +179,12 @@ class Quantity_Interval(Quantity_Set):
         return center, delta  # type: ignore
 
     @property
+    @once
     def min_elem(self) -> Quantity:
         return self.base_to_units(self._interval.min_elem)
 
     @property
+    @once
     def max_elem(self) -> Quantity:
         return self.base_to_units(self._interval.max_elem)
 
@@ -315,6 +318,7 @@ class Quantity_Interval(Quantity_Set):
     def __and__(self, other: "Quantity_Interval"):
         return self.op_intersect_interval(other)
 
+    @once
     def is_single_element(self) -> bool:
         return self.min_elem == self.max_elem  # type: ignore #TODO
 
@@ -403,12 +407,14 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self._intervals.is_empty()
 
     @property
+    @once
     def min_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have min element")
         return self.base_to_units(self._intervals.min_elem)
 
     @property
+    @once
     def max_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have max element")
@@ -533,19 +539,26 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return self._intervals.__contains__(item)
         return False
 
+    @once
     def __hash__(self) -> int:
         return hash((self._intervals, self.interval_units))
 
+    @once
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self})"
 
+    @once
     def __str__(self) -> str:
         def _format_interval(r: Numeric_Interval[NumericT]) -> str:
             if r._min == r._max:
                 return f"[{self._format_number(r._min)}]"
-            center, rel = r.as_center_rel()
-            if rel < 1:
-                return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+            try:
+                center, rel = r.as_center_rel()
+                if rel < 1:
+                    return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
+            except ZeroDivisionError:
+                pass
+
             return f"[{self._format_number(r._min)}, {self._format_number(r._max)}]"
 
         out = ", ".join(_format_interval(r) for r in self._intervals.intervals)
@@ -651,6 +664,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             raise ValueError("incompatible units")
         return self._intervals <= other_q._intervals
 
+    @once
     def is_single_element(self) -> bool:
         if self.is_empty():
             return False

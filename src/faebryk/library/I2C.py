@@ -4,10 +4,10 @@ import logging
 from enum import Enum
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +28,11 @@ class I2C(ModuleInterface):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    def terminate(self):
+    def terminate(self, owner: Module):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
-        self.sda.pulled.pull(up=True)
-        self.scl.pulled.pull(up=True)
+        self.sda.pulled.pull(up=True, owner=owner)
+        self.scl.pulled.pull(up=True, owner=owner)
 
     class SpeedMode(Enum):
         low_speed = 10 * P.khertz
@@ -45,6 +45,4 @@ class I2C(ModuleInterface):
         return L.Range(I2C.SpeedMode.low_speed.value, mode.value)
 
     def __preinit__(self) -> None:
-        self.frequency.add(
-            F.is_dynamic_by_connections(lambda mif: cast_assert(I2C, mif).frequency)
-        )
+        self.frequency.add(F.is_bus_parameter())

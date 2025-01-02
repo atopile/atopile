@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
+# Release dates for reference:
+# KiCad 8.0.0 - January 31, 2024
+# KiCad 7.0.0 - March 1, 2023
+# KiCad 6.0.0 - December 15, 2021
+# KiCad 5.1.0 - May 22, 2019
+# KiCad 5.0.0 - July 21, 2018
+
 KICAD_PCB_VERSION = 20240108
 
 
@@ -550,6 +557,7 @@ class C_fp_text:
     layer: C_text_layer
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_effects
+    unlocked: bool = False
 
 
 @dataclass(kw_only=True)
@@ -659,6 +667,7 @@ class C_footprint:
         die_length: Optional[float] = None
         options: Optional[C_options] = None
         primitives: Optional[C_gr] = None
+        uuid: UUID = field(default_factory=gen_uuid)
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
 
@@ -830,7 +839,6 @@ class C_kicad_pcb_file(SEXP_File):
                     name: str = field(**sexp_field(positional=True))
 
                 net: Optional[C_net] = None
-                uuid: UUID = field(default_factory=gen_uuid)
 
             uuid: UUID = field(**sexp_field(order=-15))
             at: C_xyr = field(**sexp_field(order=-10))
@@ -1382,3 +1390,7 @@ class C_kicad_fp_lib_table_file(SEXP_File):
         libs: list[C_lib] = field(**sexp_field(multidict=True), default_factory=list)
 
     fp_lib_table: C_fp_lib_table
+
+    @classmethod
+    def skeleton(cls, version: int = 7) -> "C_kicad_fp_lib_table_file":
+        return cls(cls.C_fp_lib_table(version=version, libs=[]))

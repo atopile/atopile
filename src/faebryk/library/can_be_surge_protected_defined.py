@@ -4,6 +4,7 @@
 import logging
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 
 logger = logging.getLogger(__name__)
 
@@ -14,20 +15,12 @@ class can_be_surge_protected_defined(F.can_be_surge_protected.impl()):
         self.protect_if = protect_if
         self.low_potential = low_potential
 
-    def protect(self):
-        obj = self.obj
-        tvss = []
-
-        for protect_if in self.protect_if:
-            if protect_if.has_trait(F.can_be_surge_protected):
-                tvss.extend(protect_if.get_trait(F.can_be_surge_protected).protect())
-            else:
-                tvs = protect_if.add(F.TVS(), "tvs")
-                protect_if.connect_via(tvs, self.low_potential)
-                tvss.append(tvs)
-
-        obj.add(F.is_surge_protected_defined(tvss))
-        return tvss
+    def protect(self, owner: Module):
+        surge_protection = F.SurgeProtection.from_interfaces(
+            self.low_potential, *self.protect_if
+        )
+        owner.add(F.is_surge_protected_defined(surge_protection))
+        return surge_protection
 
     def is_implemented(self):
         return not self.obj.has_trait(F.is_surge_protected)

@@ -71,7 +71,7 @@ class has_pin_association_heuristic_lookup_table(
                     f"alias {alt_names}"
                 )
 
-        unmatched = [p for p in pins if p[0] not in pinmap]
+        unmatched = [p for p in pins if p[0] not in pinmap and p[1] not in self.nc]
         if unmatched:
             logger.warning(
                 f"Unmatched pins: {unmatched}, all pins: {pins},"

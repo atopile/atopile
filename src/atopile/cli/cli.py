@@ -11,7 +11,8 @@ import typer
 
 from atopile import telemetry
 from atopile.cli import build, configure, create, inspect, install, view
-from atopile.cli.logging import logger
+from atopile.cli.logging import logger, handler
+from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
@@ -49,8 +50,14 @@ def cli(
     non_interactive: Annotated[
         bool, typer.Option("--non-interactive", envvar="ATO_NON_INTERACTIVE")
     ] = False,
-    debug: Annotated[bool, typer.Option("--debug")] = False,
-    verbose: Annotated[int, typer.Option("--verbose", "-v", count=True)] = 0,
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Wait to attach debugger on start"),
+    ] = False,
+    verbose: Annotated[
+        int,
+        typer.Option("--verbose", "-v", count=True, help="Increase verbosity"),
+    ] = 0,
     python_path: Annotated[
         bool, typer.Option(hidden=True, callback=python_interpreter_path)
     ] = False,
@@ -70,15 +77,21 @@ def cli(
         logger.info("Starting debugpy on port %s", debug_port)
         debugpy.wait_for_client()
 
-    # Initialize telemetry
-    if ctx.invoked_subcommand:
-        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
-
     # set the log level
     if verbose == 1:
+        handler.hide_traceback_types = ()
+        handler.tracebacks_show_locals = True
+    elif verbose == 2:
+        handler.tracebacks_suppress_map = {}  # Traceback through atopile infra
+    elif verbose >= 3:
         logger.root.setLevel(logging.DEBUG)
-    elif verbose > 1:
-        logger.root.setLevel(logging.NOTSET)
+        handler.traceback_level = logging.WARNING
+
+    if ctx.invoked_subcommand:
+        check_for_update()
+
+        # Initialize telemetry
+        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
     if not non_interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()

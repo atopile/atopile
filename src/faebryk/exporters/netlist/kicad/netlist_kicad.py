@@ -4,14 +4,14 @@
 import itertools
 import logging
 
-from faebryk.exporters.netlist.netlist import T2Netlist
+from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
 from faebryk.libs.util import duplicates
 
 logger = logging.getLogger(__name__)
 
 
-def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
+def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
     tstamp = itertools.count(1)
     net_code = itertools.count(1)
 
@@ -22,7 +22,7 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
     #   - net_code can be generated (ascending, continuous)
     #   - components unique
 
-    dupes = duplicates(t2_netlist.comps, lambda comp: comp.name)
+    dupes = duplicates(fbrk_netlist.comps, lambda comp: comp.name)
     assert not dupes, f"Duplicate comps {dupes}"
 
     NetlistFile = C_kicad_netlist_file
@@ -46,13 +46,13 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
             ),
         )
         # sort because tstamp determined by pos
-        for comp in sorted(t2_netlist.comps, key=lambda comp: comp.name)
+        for comp in sorted(fbrk_netlist.comps, key=lambda comp: comp.name)
     ]
 
     # check if all vertices have a component in pre_comps
     # not sure if this is necessary
-    pre_comp_names = {comp.name for comp in t2_netlist.comps}
-    for net in t2_netlist.nets:
+    pre_comp_names = {comp.name for comp in fbrk_netlist.comps}
+    for net in fbrk_netlist.nets:
         for vertex in net.vertices:
             assert (
                 vertex.component.name in pre_comp_names
@@ -72,7 +72,7 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
             ],
         )
         # sort because code determined by pos
-        for net in sorted(t2_netlist.nets, key=lambda net: net.properties["name"])
+        for net in sorted(fbrk_netlist.nets, key=lambda net: net.properties["name"])
     ]
 
     return NetlistFile(

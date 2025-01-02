@@ -67,10 +67,10 @@ class GenericBusProtection(Module):
 
         # TVS
         if self.bus_protected.has_trait(F.can_be_surge_protected):
-            self.bus_protected.get_trait(F.can_be_surge_protected).protect()
+            self.bus_protected.get_trait(F.can_be_surge_protected).protect(self)
         else:
             for line_unprotected, line_protected in signals + power + raw:
-                line_protected.get_trait(F.can_be_surge_protected).protect()
+                line_protected.get_trait(F.can_be_surge_protected).protect(self)
 
         # TODO add shallow connect
 

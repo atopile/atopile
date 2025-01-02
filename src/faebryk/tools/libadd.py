@@ -13,11 +13,8 @@ from natsort import natsorted
 
 from atopile.errors import UserException
 from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.picker.api.api import Component
-from faebryk.libs.picker.api.picker_lib import (
-    find_component_by_lcsc_id,
-    find_component_by_mfr,
-)
+from faebryk.libs.picker.api.api import ApiHTTPError, Component, get_api_client
+from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
 from faebryk.libs.pycodegen import (
     fix_indent,
@@ -27,7 +24,7 @@ from faebryk.libs.pycodegen import (
     sanitize_name,
 )
 from faebryk.libs.tools.typer import typer_callback
-from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, find, groupby
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, groupby
 
 # TODO use AST instead of string
 
@@ -172,24 +169,26 @@ def find_part(lcsc_id: str | None, mfr: str | None, mfr_pn: str | None) -> Compo
     Raises NoPartFound if no part matches the query.
     Raises ValueError if no valid query was given.
     """
-    if lcsc_id:
-        part = find_component_by_lcsc_id(lcsc_id)
+    client = get_api_client()
 
-    elif mfr_pn:
-        try:
-            part = find_component_by_mfr(mfr or "", mfr_pn)
-        except KeyErrorNotFound as e:
-            raise NoPartFound(mfr_pn) from e
-        except KeyErrorAmbiguous as e:
-            # try find exact match
+    match lcsc_id, mfr_pn:
+        case (lcsc_id, None):
+            assert lcsc_id is not None
             try:
-                part = find(e.duplicates, lambda x: x.mfr == mfr_pn)
-            except KeyErrorNotFound:
-                pass  # fall through to raise AmbiguousParts
-            raise AmbiguousParts(e.duplicates) from e
-
-    else:
-        raise ValueError("Need either mfr_pn or lcsc_id")
+                (part,) = client.fetch_part_by_lcsc(_extract_numeric_id(lcsc_id))
+            except ApiHTTPError as e:
+                if e.response.status_code == 404:
+                    raise NoPartFound(lcsc_id) from e
+                raise e
+        case (None, mfr_pn):
+            try:
+                (part,) = client.fetch_part_by_mfr(mfr or "", mfr_pn)
+            except ApiHTTPError as e:
+                if e.response.status_code == 404:
+                    raise NoPartFound(mfr_pn) from e
+                raise e
+        case _:
+            raise ValueError("Need either lcsc_id or mfr_pn")
 
     return part
 
@@ -204,9 +203,11 @@ class Template:
     docstring: str = "TODO: Docstring describing your module"
 
     def add_part(self, part: Component):
-        self.name = sanitize_name(f"{part.mfr_name}_{part.mfr}")
+        self.name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(self.name, str)
-        _, _, _, _, easyeda_symbol = download_easyeda_info(part.partno, get_model=False)
+        _, _, _, _, easyeda_symbol = download_easyeda_info(
+            part.lcsc_display, get_model=False
+        )
 
         designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
         self.traits.append(
@@ -219,13 +220,13 @@ class Template:
         )
         self.traits.append(
             f"descriptive_properties = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{DescriptiveProperties.manufacturer: '{part.mfr_name}', "
-            f"DescriptiveProperties.partno: '{part.mfr}'}})"
+            f"({{DescriptiveProperties.manufacturer: '{part.manufacturer_name}', "
+            f"DescriptiveProperties.partno: '{part.part_number}'}})"
         )
 
-        if part.datasheet:
+        if url := part.datasheet_url:
             self.traits.append(
-                f"datasheet = L.f_field(F.has_datasheet_defined)('{part.datasheet}')"
+                f"datasheet = L.f_field(F.has_datasheet_defined)('{url}')"
             )
 
         partdoc = part.description.replace("  ", "\n")

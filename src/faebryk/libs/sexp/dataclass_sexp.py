@@ -83,6 +83,7 @@ def _convert(
     stack: list[tuple[str, type]] | None = None,
     name: str | None = None,
     sp: sexp_field | None = None,
+    ignore_assertions: bool = False,
 ):
     if name is None:
         name = "<" + t.__name__ + ">"
@@ -99,10 +100,16 @@ def _convert(
         if (origin := get_origin(t)) is not None:
             args = get_args(t)
             if origin is list:
-                return [_convert(_val, args[0], substack) for _val in val]
+                return [
+                    _convert(
+                        _val, args[0], substack, ignore_assertions=ignore_assertions
+                    )
+                    for _val in val
+                ]
             if origin is tuple:
                 return tuple(
-                    _convert(_val, _t, substack) for _val, _t in zip(val, args)
+                    _convert(_val, _t, substack, ignore_assertions=ignore_assertions)
+                    for _val, _t in zip(val, args)
                 )
             if (
                 origin in (Union, UnionType)
@@ -110,13 +117,19 @@ def _convert(
                 and args[1] is type(None)
             ):
                 # Optional[T] == Union[T, None]
-                return _convert(val, args[0], substack) if val is not None else None
+                return (
+                    _convert(
+                        val, args[0], substack, ignore_assertions=ignore_assertions
+                    )
+                    if val is not None
+                    else None
+                )
 
             raise NotImplementedError(f"{origin} not supported")
 
         #
         if is_dataclass(t):
-            return _decode(val, t, substack)
+            return _decode(val, t, substack, ignore_assertions=ignore_assertions)
 
         # Primitive
 
@@ -162,6 +175,7 @@ def _decode[T](
     sexp: netlist_type,
     t: type[T],
     stack: list[tuple[str, type]] | None = None,
+    ignore_assertions: bool = False,
 ) -> T:
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"parse into: {t.__name__} {'-'*40}")
@@ -249,7 +263,15 @@ def _decode[T](
             if origin is list:
                 val_t = args[0]
                 value_dict[name] = [
-                    _convert(_val[1:], val_t, stack, name, sp) for _val in values
+                    _convert(
+                        _val[1:],
+                        val_t,
+                        stack,
+                        name,
+                        sp,
+                        ignore_assertions=ignore_assertions,
+                    )
+                    for _val in values
                 ]
             elif origin is dict:
                 if not sp.key:
@@ -257,7 +279,15 @@ def _decode[T](
                 key_t = args[0]
                 val_t = args[1]
                 converted_values = [
-                    _convert(_val[1:], val_t, stack, name, sp) for _val in values
+                    _convert(
+                        _val[1:],
+                        val_t,
+                        stack,
+                        name,
+                        sp,
+                        ignore_assertions=ignore_assertions,
+                    )
+                    for _val in values
                 ]
                 values_with_key = [(sp.key(_val), _val) for _val in converted_values]
 
@@ -275,7 +305,14 @@ def _decode[T](
                 )
         else:
             assert len(values) == 1, f"Duplicate key: {name}"
-            out = _convert(values[0][1:], f.type, stack, name, sp)
+            out = _convert(
+                values[0][1:],
+                f.type,
+                stack,
+                name,
+                sp,
+                ignore_assertions=ignore_assertions,
+            )
             # if val is None, use default
             if out is not None:
                 value_dict[name] = out
@@ -292,7 +329,14 @@ def _decode[T](
             and "" in f.type
             and not isinstance(v, Symbol)
         ):
-            out = _convert(Symbol(""), f.type, stack, f.name, sp)
+            out = _convert(
+                Symbol(""),
+                f.type,
+                stack,
+                f.name,
+                sp,
+                ignore_assertions=ignore_assertions,
+            )
             # only advance field iterator
             # if no more positional fields, there shouldn't be any more values
             if it.next(0) is None:
@@ -306,9 +350,13 @@ def _decode[T](
                 while (next_val := it.next(1, None)) is not None:
                     vs.append(next_val[1])
 
-                out = _convert(vs, f.type, stack, f.name, sp)
+                out = _convert(
+                    vs, f.type, stack, f.name, sp, ignore_assertions=ignore_assertions
+                )
             else:
-                out = _convert(v, f.type, stack, f.name, sp)
+                out = _convert(
+                    v, f.type, stack, f.name, sp, ignore_assertions=ignore_assertions
+                )
 
         unprocessed.pop(sexp_i, None)
         value_dict[f.name] = out
@@ -449,7 +497,7 @@ def _encode(t) -> netlist_type:
     return sexp
 
 
-def loads[T](s: str | Path | list, t: type[T]) -> T:
+def loads[T](s: str | Path | list, t: type[T], ignore_assertions: bool = False) -> T:
     text = s
     sexp = s
     if isinstance(s, Path):
@@ -460,7 +508,7 @@ def loads[T](s: str | Path | list, t: type[T]) -> T:
         except Exception as e:
             raise DecodeError(f"Failed to parse sexp: {text}") from e
 
-    return _decode([sexp], t)
+    return _decode([sexp], t, ignore_assertions=ignore_assertions)
 
 
 def dumps(obj, path: PathLike | None = None) -> str:

@@ -1,4 +1,3 @@
-import logging
 import os
 import sys
 from subprocess import run
@@ -10,12 +9,12 @@ from faebryk.libs.util import run_live
 
 @pytest.mark.slow
 @pytest.mark.parametrize("config", ["ato", "fab"])
-def test_app(config, caplog: pytest.LogCaptureFixture):
-    caplog.set_level(logging.INFO)
+def test_app(config):
     stdout, _ = run_live(
         [sys.executable, "-m", "atopile", "build", "examples", "-b", config],
         env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
-        stdout_level=logging.INFO,
+        stdout=print,
+        stderr=print,
     )
     assert "Build successful!" in stdout
     assert "ERROR" not in stdout

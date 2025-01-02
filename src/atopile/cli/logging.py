@@ -4,6 +4,8 @@ from types import ModuleType, TracebackType
 from rich._null_file import NullFile
 from rich.console import ConsoleRenderable
 from rich.logging import RichHandler
+from rich.markdown import Markdown
+from rich.text import Text
 from rich.traceback import Traceback
 
 import atopile
@@ -19,6 +21,9 @@ from . import console
 
 _logged_exceptions: set[tuple[type[Exception], tuple]] = set()
 
+logging.getLogger("requests").setLevel(logging.WARNING)
+logging.getLogger("urllib3").setLevel(logging.WARNING)
+
 
 class LogHandler(RichHandler):
     """
@@ -33,11 +38,17 @@ class LogHandler(RichHandler):
         tracebacks_suppress_map: dict[type[BaseException], list[ModuleType]]
         | None = None,
         tracebacks_unwrap: list[type[BaseException]] | None = None,
+        hide_traceback_types: tuple[type[BaseException], ...] = (),
+        always_show_traceback_types: tuple[type[BaseException], ...] = (),
+        traceback_level: int = logging.ERROR,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.tracebacks_suppress_map = tracebacks_suppress_map or {}
         self.tracebacks_unwrap = tracebacks_unwrap or []
+        self.hide_traceback_types = hide_traceback_types
+        self.always_show_traceback_types = always_show_traceback_types
+        self.traceback_level = traceback_level
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -90,9 +101,10 @@ class LogHandler(RichHandler):
 
         suppress = self._get_suppress(exc_type)
 
-        hide_traceback = isinstance(
-            exc_value, _BaseBaseUserException
-        ) and not isinstance(exc_value, UserPythonModuleError)
+        hide_traceback = (
+            isinstance(exc_value, self.hide_traceback_types)
+            and not isinstance(exc_value, self.always_show_traceback_types)
+        ) or record.levelno < self.traceback_level
 
         if isinstance(exc_value, UserPythonModuleError):
             exc_type, exc_value, exc_traceback = self._unwrap_chained_exceptions(
@@ -116,17 +128,49 @@ class LogHandler(RichHandler):
             suppress=suppress,
         )
 
+    def _render_message(
+        self, record: logging.LogRecord, message: str
+    ) -> "ConsoleRenderable":
+        """Render message text in to Text.
+
+        Args:
+            record (LogRecord): logging Record.
+            message (str): String containing log message.
+
+        Returns:
+            ConsoleRenderable: Renderable to display log message.
+        """
+        use_markdown = getattr(record, "markdown", False)
+        use_markup = getattr(record, "markup", self.markup)
+        highlighter = getattr(record, "highlighter", self.highlighter)
+
+        if use_markdown:
+            message_text = Markdown(message)
+        else:
+            message_text = Text.from_markup(message) if use_markup else Text(message)
+
+            if highlighter:
+                message_text = highlighter(message_text)
+
+            if self.keywords is None:
+                self.keywords = self.KEYWORDS
+
+            if self.keywords:
+                message_text.highlight_words(self.keywords, "logging.keyword")
+
+        return message_text
+
     def render_message(
         self, record: logging.LogRecord, message: str
     ) -> ConsoleRenderable:
         # special handling for exceptions only
         if record.exc_info is None:
-            return super().render_message(record, message)
+            return self._render_message(record, message)
 
         _, exc, _ = record.exc_info
 
         if not isinstance(exc, ConsoleRenderable):
-            return super().render_message(record, message)
+            return self._render_message(record, message)
 
         return exc
 
@@ -161,7 +205,7 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                self.console.print(log_renderable)
+                self.console.print(log_renderable, highlight=True)
             except Exception:
                 self.handleError(record)
 
@@ -178,6 +222,9 @@ handler = LogHandler(
     tracebacks_suppress=["typer"],
     tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
     tracebacks_unwrap=[UserPythonModuleError],
+    hide_traceback_types=(_BaseBaseUserException,),
+    always_show_traceback_types=(UserPythonModuleError,),
+    traceback_level=logging.ERROR,
 )
 
 handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))

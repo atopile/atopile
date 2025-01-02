@@ -4,37 +4,33 @@
 import logging
 import os
 import sys
+from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Mapping
 
 import psutil
+from more_itertools import first
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.exporters.pcb.kicad.pcb import PCB
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
-from faebryk.libs.app.kicad_netlist import write_netlist
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
+    C_kicad_netlist_file,
     C_kicad_pcb_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import ConfigFlag
+from faebryk.libs.util import not_none, once
 
 if TYPE_CHECKING:
     from atopile.config import BuildPaths
 
 logger = logging.getLogger(__name__)
-
-PCBNEW_AUTO = ConfigFlag(
-    "PCBNEW_AUTO",
-    default=False,
-    descr="Automatically open pcbnew when applying netlist",
-)
 
 
 def apply_layouts(app: Module):
@@ -74,58 +70,22 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
             apply_route_in_pcb(route, transformer)
 
 
-def apply_design(
+def ensure_footprint_lib(
     build_paths: "BuildPaths",
-    app: Module,
-    G: Graph,
-    transform: Callable[[PCB_Transformer], Any] | None = None,
+    lib_name: str,
+    fppath: os.PathLike,
+    fptable: C_kicad_fp_lib_table_file | None = None,
 ):
-    resolve_dynamic_parameters(G)
+    fppath = Path(fppath)
 
-    logger.info(f"Writing netlist to {build_paths.netlist}")
-    changed = write_netlist(G, build_paths.netlist, use_kicad_designators=True)
-    apply_netlist(build_paths, changed)
-
-    logger.info("Load PCB")
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
-
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-
-    logger.info("Transform PCB")
-    if transform:
-        transform(transformer)
-
-    # set layout
-    apply_layouts(app)
-    transformer.move_footprints()
-    apply_routing(app, transformer)
-
-    logger.info(f"Writing pcbfile {build_paths.layout}")
-    pcb.dumps(build_paths.layout)
-
-    print("Reopen PCB in kicad")
-    if PCBNEW_AUTO:
+    if fptable is None:
         try:
-            open_pcb(build_paths.layout)
+            fptable = C_kicad_fp_lib_table_file.loads(
+                path_or_string_or_data=build_paths.fp_lib_table
+            )
         except FileNotFoundError:
-            print(f"PCB location: {build_paths.layout}")
-        except RuntimeError as e:
-            print(f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter")
-    else:
-        print(f"PCB location: {build_paths.layout}")
+            fptable = C_kicad_fp_lib_table_file.skeleton()
 
-
-def include_footprints(build_paths: "BuildPaths"):
-    if build_paths.fp_lib_table.exists():
-        fptable = C_kicad_fp_lib_table_file.loads(
-            path_or_string_or_data=build_paths.fp_lib_table
-        )
-    else:
-        fptable = C_kicad_fp_lib_table_file(
-            C_kicad_fp_lib_table_file.C_fp_lib_table(version=7, libs=[])
-        )
-
-    fppath = build_paths.component_lib / "footprints" / "lcsc.pretty"
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
@@ -133,7 +93,7 @@ def include_footprints(build_paths: "BuildPaths"):
         )
         # check if not going up outside the project directory
         # relative_to raises a ValueError if it has to walk up to make a relative path
-        fppath.relative_to(build_paths.root)
+        fppath.relative_to(not_none(build_paths.root))
     except ValueError:
         relative = False
         with downgrade(UserResourceException):
@@ -150,37 +110,46 @@ def include_footprints(build_paths: "BuildPaths"):
         assert not uri.startswith("${KIPRJMOD}")
         uri = "${KIPRJMOD}/" + uri
 
-    lcsc_lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
-        name="lcsc",
+    lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+        name=lib_name,
         type="KiCad",
         uri=uri,
         options="",
-        descr="atopile: project LCSC footprints",
+        descr=f"atopile: {lib_name} footprints",
     )
 
-    lcsc_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == "lcsc"]
-    table_has_one_lcsc = len(lcsc_libs) == 1
-    lcsc_table_outdated = any(lib != lcsc_lib for lib in lcsc_libs)
+    lib_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == lib_name]
+    table_has_one_lib = len(lib_libs) == 1
+    lib_table_outdated = any(lib != lib for lib in lib_libs)
 
-    if not table_has_one_lcsc or lcsc_table_outdated:
+    if not table_has_one_lib or lib_table_outdated:
         fptable.fp_lib_table.libs = [
-            lib for lib in fptable.fp_lib_table.libs if lib.name != "lcsc"
-        ] + [lcsc_lib]
+            lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
+        ] + [lib]
 
         logger.warning("pcbnew restart required (updated fp-lib-table)")
 
     fptable.dumps(build_paths.fp_lib_table)
 
+    return fptable
 
+
+def include_footprints(build_paths: "BuildPaths"):
+    ensure_footprint_lib(
+        build_paths, "lcsc", build_paths.component_lib / "footprints" / "lcsc.pretty"
+    )
+
+
+@once
 def find_pcbnew() -> os.PathLike:
     """Figure out what to call for the pcbnew CLI."""
     if sys.platform.startswith("linux"):
-        return "pcbnew"
+        return Path("pcbnew")
 
     if sys.platform.startswith("darwin"):
         base = Path("/Applications/KiCad/")
     elif sys.platform.startswith("win"):
-        base = Path(os.getenv("ProgramFiles")) / "KiCad"
+        base = Path(not_none(os.getenv("ProgramFiles"))) / "KiCad"
     else:
         raise NotImplementedError(f"Unsupported platform: {sys.platform}")
 
@@ -205,23 +174,73 @@ def open_pcb(pcb_path: os.PathLike):
     subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
 
 
-def apply_netlist(build_paths: "BuildPaths", netlist_has_changed: bool = True):
-    from faebryk.exporters.pcb.kicad.pcb import PCB
-
-    include_footprints(build_paths)
-
-    # Set netlist path in gui menu
-    if not build_paths.kicad_project.exists():
+def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
+    """
+    Set netlist path in gui menu
+    """
+    if not project_path.exists():
         project = C_kicad_project_file()
     else:
-        project = C_kicad_project_file.loads(build_paths.kicad_project)
+        project = C_kicad_project_file.loads(project_path)
     project.pcbnew.last_paths.netlist = str(
-        build_paths.netlist.resolve().relative_to(
-            build_paths.layout.parent.resolve(), walk_up=True
-        )
+        netlist_path.resolve().relative_to(project_path.parent.resolve(), walk_up=True)
     )
-    project.dumps(build_paths.kicad_project)
+    project.dumps(project_path)
+
+
+def apply_netlist(
+    build_paths: "BuildPaths",
+    files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None,
+):
+    include_footprints(build_paths)
+
+    set_kicad_netlist_path_in_project(build_paths.kicad_project, build_paths.netlist)
 
     # Import netlist into pcb
-    logger.info(f"Apply netlist to {build_paths.layout}")
-    PCB.apply_netlist(build_paths.layout, build_paths.netlist)
+    if files:
+        pcb, netlist = files
+        PCB.apply_netlist(pcb, netlist, build_paths.layout.parent / "fp-lib-table")
+    else:
+        logger.info(f"Apply netlist to {build_paths.layout}")
+        PCB.apply_netlist_to_file(build_paths.layout, build_paths.netlist)
+
+
+def load_nets(
+    graph: Graph, attach: bool = False, match_threshold: float = 0.8
+) -> dict[F.Net, str]:
+    """
+    Load nets from attached footprints and attach them to the nodes.
+    """
+
+    if match_threshold < 0.5:
+        # This is because we rely on being >50% sure to ensure we're the most
+        # likely match.
+        raise ValueError("match_threshold must be at least 0.5")
+
+    known_nets: dict[F.Net, str] = {}
+    for net in GraphFunctions(graph).nodes_of_type(F.Net):
+        total_pads = 0
+        net_candidates: Mapping[str, int] = defaultdict(int)
+
+        for ato_pad, ato_fp in net.get_fps().items():
+            if pcb_pad_t := ato_pad.try_get_trait(PCB_Transformer.has_linked_kicad_pad):
+                pcb_fp, pcb_pads = pcb_pad_t.get_pad()
+                net_names = set(
+                    pcb_pad.net.name if pcb_pad.net is not None else None
+                    for pcb_pad in pcb_pads
+                )
+                if len(net_names) == 1 and (net_name := first(net_names)) is not None:
+                    net_candidates[net_name] += 1
+            total_pads += 1
+
+        if net_candidates:
+            best_net = max(net_candidates, key=lambda x: net_candidates[x])
+            if best_net and net_candidates[best_net] > total_pads * match_threshold:
+                known_nets[net] = best_net
+
+    if attach:
+        for net, name in known_nets.items():
+            if not net.has_trait(F.has_overriden_name):
+                net.add(F.has_overriden_name_defined(name))
+
+    return known_nets

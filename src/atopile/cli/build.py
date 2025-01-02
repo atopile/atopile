@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, Annotated
 
 import typer
 
+from atopile import errors
 from atopile.config import BuildContext
 
 if TYPE_CHECKING:
@@ -22,7 +23,16 @@ def build(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
-    standalone: Annotated[bool, typer.Option("--standalone", hidden=True)] = False,
+    frozen: Annotated[
+        bool | None,
+        typer.Option(
+            help="PCB must be rebuilt without changes. Useful in CI",
+            envvar="ATO_FROZEN",
+        ),
+    ] = None,
+    keep_picked_parts: bool | None = None,
+    keep_net_names: bool | None = None,
+    standalone: bool = False,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -36,24 +46,47 @@ def build(
     from atopile.cli.common import create_build_contexts
     from atopile.config import BuildType
     from faebryk.library import _F as F
-    from faebryk.libs.exceptions import ExceptionAccumulator, log_user_errors
+    from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.picker import lcsc
 
     build_ctxs = create_build_contexts(entry, build, target, option, standalone)
 
-    with ExceptionAccumulator() as accumulator:
+    for build_ctx in build_ctxs:
+        if keep_picked_parts is not None:
+            build_ctx.keep_picked_parts = keep_picked_parts
+
+        if keep_net_names is not None:
+            build_ctx.keep_net_names = keep_net_names
+
+        if frozen is not None:
+            build_ctx.frozen = frozen
+            if frozen:
+                if keep_picked_parts is False:  # is, ignores None
+                    raise errors.UserBadParameterError(
+                        "`--keep-picked-parts` conflict with `--frozen`"
+                    )
+
+                build_ctx.keep_picked_parts = True
+
+                if keep_net_names is False:  # is, ignores None
+                    raise errors.UserBadParameterError(
+                        "`--keep-net-names` conflict with `--frozen`"
+                    )
+
+                build_ctx.keep_net_names = True
+
+    with accumulate() as accumulator:
         for build_ctx in build_ctxs:
-            logger.info("Building %s", build_ctx.name)
+            logger.info("Building '%s'", build_ctx.name)
             with accumulator.collect(), log_user_errors(logger):
                 match build_ctx.build_type:
                     case BuildType.ATO:
                         app = _init_ato_app(build_ctx)
                     case BuildType.PYTHON:
                         app = _init_python_app(build_ctx)
+                        app.add(F.is_app_root())
                     case _:
                         raise ValueError(f"Unknown build type: {build_ctx.build_type}")
-
-                app.add(F.is_app_root())
 
                 # TODO: these should be drawn from the buildcontext like everything else
                 lcsc.BUILD_FOLDER = build_ctx.paths.build

@@ -7,6 +7,8 @@ import unittest
 from itertools import pairwise
 from typing import Callable
 
+import pytest
+
 import faebryk.library._F as F
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.module import Module
@@ -14,9 +16,7 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
-from faebryk.libs.picker.api.pickers import add_api_pickers
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
@@ -251,7 +251,7 @@ class TestPerformance(unittest.TestCase):
             app = t()  # noqa: F841
             timings.add(f"{t.__name__}: construct")
 
-            resolve_dynamic_parameters(app.get_graph())
+            F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
             timings.add(f"{t.__name__}: resolve")
 
         logger.info(f"\n{timings}")
@@ -282,7 +282,8 @@ class TestPerformance(unittest.TestCase):
         logger.info(f"\n{timings}")
 
 
-# DONT COMMIT
+# TODO dont commit
+@pytest.mark.slow
 def test_complex_module_full():
     timings = Times()
 
@@ -294,13 +295,10 @@ def test_complex_module_full():
     app = App()
     timings.add("construct")
 
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
-    for mod in app.get_children(direct_only=False, types=Module):
-        add_api_pickers(mod)
-    timings.add("add_pickers")
 
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)
@@ -312,22 +310,43 @@ def test_complex_module_full():
     logger.info(f"\n{timings}")
 
 
+@pytest.mark.slow
+@pytest.mark.xfail(reason="TODO")
+def test_very_complex_module_full():
+    timings = Times()
+
+    app = F.RP2040_ReferenceDesign()
+    timings.add("construct")
+
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    timings.add("resolve bus params")
+
+    solver = DefaultSolver()
+
+    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
+    solver.inspect_get_known_supersets(p)
+    timings.add("pre-solve")
+
+    pick_part_recursively(app, solver)
+    timings.add("pick")
+
+    logger.info(f"\n{timings}")
+
+
+@pytest.mark.slow
 def test_complex_module_comp_count():
     timings = Times()
 
     class App(Module):
-        caps = L.f_field(F.MultiCapacitor)(1)
+        caps = L.f_field(F.MultiCapacitor)(10)
 
     app = App()
     timings.add("construct")
 
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     timings.add("resolve bus params")
 
     solver = DefaultSolver()
-    for mod in app.get_children(direct_only=False, types=Module):
-        add_api_pickers(mod)
-    timings.add("add_pickers")
 
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)

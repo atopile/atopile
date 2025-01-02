@@ -40,3 +40,12 @@ class Net(Module):
         n = cls()
         n.add(F.has_overriden_name_defined(name))
         return n
+
+    @classmethod
+    def from_part_of_mif(cls, mif: F.Electrical) -> "Net | None":
+        parent = mif.get_parent()
+        if parent is None:
+            return None
+        if isinstance(parent[0], cls):
+            return parent[0]
+        return None

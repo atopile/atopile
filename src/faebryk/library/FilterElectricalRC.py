@@ -6,9 +6,9 @@ import math
 
 from more_itertools import raise_
 
-import faebryk.library._F as F  # noqa: F401
-from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.units import P  # noqa: F401
+import faebryk.library._F as F
+from faebryk.libs.library import L
+from faebryk.libs.units import P
 from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
@@ -33,6 +33,7 @@ class FilterElectricalRC(F.Filter):
         ).if_then_else(
             self.build_lowpass,
             lambda: raise_(NotImplementedError()),
+            preference=True,
         )
 
         # TODO add construction dependency trait

@@ -26,6 +26,7 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
     FullyAssociative,
     Mutator,
+    SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
@@ -34,6 +35,7 @@ from faebryk.core.solver.utils import (
     is_replacable,
     is_replacable_by_literal,
     merge_parameters,
+    no_other_constrains,
     remove_predicate,
     try_extract_all_literals,
     try_extract_literal,
@@ -45,7 +47,6 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     EquivalenceClasses,
-    cast_assert,
     find_or,
     groupby,
     not_none,
@@ -101,9 +102,10 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
 def remove_unconstrained(mutator: Mutator):
     """
-    Remove all parameteroperables that are not involved in any constrained predicates
+    Remove all expressions that are not involved in any constrained predicates
+    Note: Not possible for Parameters, want to keep those around for REPR
     """
-    objs = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    objs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for obj in objs:
         if get_constrained_expressions_involved_in(obj):
             continue
@@ -246,11 +248,15 @@ def resolve_alias_classes(mutator: Mutator):
         else:
             # If not params or lits in class, create a new param as representative
             # for expressions
-            representative = Parameter(domain=domain)
+            representative = mutator.register_created_parameter(
+                Parameter(domain=domain)
+            )
 
+        # Repr old expr with new param, but keep old expr around
+        # This will implicitly swap out the expr in other exprs with the repr
         for e in alias_class_exprs:
             copy_expr = mutator.mutate_expression(e)
-            copy_expr.alias_is(representative)
+            mutator.create_expression(Is, copy_expr, representative)
             # DANGER!
             mutator._override_repr(e, representative)
 
@@ -276,6 +282,13 @@ def merge_intersect_subsets(mutator: Mutator):
     -> A subset (L1 & L2)
     """
 
+    # TODO use Intersection/Union expr
+    # A ss B, A ss C -> A ss (B & C)
+    # and then use literal folding
+    # should also work for others:
+    #   A < B, A < C -> A < (B | C)
+    # Got to consider when to Intersect/Union is more useful than the associative
+
     params = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
 
     for param in ParameterOperatable.sort_by_depth(params, ascending=True):
@@ -296,6 +309,7 @@ def merge_intersect_subsets(mutator: Mutator):
         ]
         # intersect
         intersected = P_Set.intersect_all(*literal_subsets)
+        # short-cut, would be detected by A ss! {} -> A is! {} -> Contradiction
         if intersected.is_empty():
             raise ContradictionByLiteral(
                 "Intersection of literals is empty",
@@ -314,9 +328,10 @@ def merge_intersect_subsets(mutator: Mutator):
             default_multi=lambda dup: dup[0],
         )
         if narrowest is None:
-            p_copy = cast_assert(ParameterOperatable, mutator.get_copy(param))
-            narrowest = p_copy.constrain_subset(intersected)
-            alias_is_literal(narrowest, True)
+            narrowest = mutator.create_expression(
+                IsSubset, param, intersected
+            ).constrain()
+            alias_is_literal(narrowest, True, mutator)
 
         for e in constrained_subset_ops_with_literal:
             if e is narrowest:
@@ -356,6 +371,18 @@ def compress_associative(mutator: Mutator):
             expr,
             operands=res.extracted_operands,
         )
+
+
+def empty_set(mutator: Mutator):
+    """
+    A is {} -> False
+    """
+    for e in GraphFunctions(mutator.G).nodes_of_type(Is):
+        lits = cast(dict[int, SolverLiteral], e.get_literal_operands())
+        if not lits:
+            continue
+        if any(lit.is_empty() for lit in lits.values()):
+            alias_is_literal_and_check_predicate_eval(e, False, mutator)
 
 
 def fold_literals(mutator: Mutator):
@@ -435,6 +462,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
     for expr in exprs:
+        expr = cast(CanonicalOperation, expr)
         # In Is automatically by eq classes
         if isinstance(expr, Is):
             continue
@@ -454,9 +482,10 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             operands.append(subset_lits)
 
         # Make new expr with subset literals
-        new_expr = type(expr)(*[mutator.get_copy(operand) for operand in operands])
-        # Constrain subset on copy of old expr
-        ss = cast_assert(Expression, mutator.get_copy(expr)).constrain_subset(new_expr)
+        new_expr = mutator.create_expression(type(expr), *operands)
+        # Constrain subset on old expr
+        ss = mutator.create_expression(IsSubset, expr, new_expr).constrain()
+
         mutator.mark_predicate_true(ss)
 
 
@@ -528,7 +557,7 @@ def transitive_subset(mutator: Mutator):
 
             # TODO this seems iffy
             # create A ss! C/X
-            _ = IsSubset(mutator.get_copy(A), mutator.get_copy(C_or_X)).constrain()
+            _ = mutator.create_expression(IsSubset, A, C_or_X).constrain()
             ss_lookup[A].append(C_or_X)
 
 
@@ -542,16 +571,24 @@ def remove_empty_graphs(mutator: Mutator):
         p
         for p in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
         if p.constrained
+        # TODO consider marking predicates as irrelevant or something
         # Ignore Is!!(P!!, True)
         and not (
             isinstance(p, Is)
             and p._solver_evaluates_to_true
-            and BoolSet(True) in p.get_literal_operands().values()
-            and all(
-                isinstance(inner, ConstrainableExpression)
-                and inner.constrained
-                and inner._solver_evaluates_to_true
-                for inner in p.get_operatable_operands()
+            and (
+                # Is!!(P!!, True)
+                (
+                    BoolSet(True) in p.get_literal_operands().values()
+                    and all(
+                        isinstance(inner, ConstrainableExpression)
+                        and inner.constrained
+                        and inner._solver_evaluates_to_true
+                        for inner in p.get_operatable_operands()
+                    )
+                )
+                # Is!!(A, A)
+                or p.operands[0] is p.operands[1]
             )
         )
     ]
@@ -566,7 +603,8 @@ def remove_empty_graphs(mutator: Mutator):
     if predicates:
         return
 
-    mutator.remove(*GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable))
+    # If there are no predicates, the graph can be removed
+    mutator.remove_graph()
 
 
 def predicate_literal_deduce(mutator: Mutator):
@@ -591,12 +629,30 @@ def predicate_literal_deduce(mutator: Mutator):
             continue
         lits = not_none(try_extract_all_literals(p, accept_partial=True))
         if len(p.operands) - len(lits) <= 1:
-            # mutator.mark_predicate_true(p)
-            # purely for printing mutating needed
-            if not mutator.is_predicate_true(p):
-                mutator.mark_predicate_true(
-                    cast_assert(ConstrainableExpression, mutator.mutate_expression(p))
-                )
+            mutator.mark_predicate_true(p)
+
+
+def predicate_unconstrained_operands_deduce(mutator: Mutator):
+    """
+    A op! B | A or B unconstrained -> A op!! B
+    """
+
+    preds = GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+    for p in preds:
+        if not p.constrained:
+            continue
+        if mutator.is_predicate_true(p):
+            continue
+
+        if any(ParameterOperatable.is_literal(o) for o in p.operands):
+            continue
+
+        if no_other_constrains(p.operands[0], p, unfulfilled_only=True):
+            alias_is_literal_and_check_predicate_eval(p, True, mutator)
+            return
+        if no_other_constrains(p.operands[1], p, unfulfilled_only=True):
+            alias_is_literal_and_check_predicate_eval(p, True, mutator)
+            return
 
 
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):

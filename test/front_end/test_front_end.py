@@ -2,14 +2,17 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
+from antlr4 import ParserRuleContext
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
+from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, Component
+from atopile.front_end import Bob, has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.util import cast_assert
 
 
 @pytest.fixture
@@ -38,7 +41,6 @@ def test_empty_module_build(bob: Bob):
     assert isinstance(node, bob.modules[":A"])
 
 
-@pytest.mark.skip
 def test_simple_module_build(bob: Bob):
     text = dedent(
         """
@@ -55,7 +57,6 @@ def test_simple_module_build(bob: Bob):
     # TODO: check value
 
 
-@pytest.mark.skip
 def test_arithmetic(bob: Bob):
     text = dedent(
         """
@@ -88,7 +89,7 @@ def test_simple_new(bob: Bob):
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert isinstance(child, Component)
+    assert child.has_trait(has_ato_cmp_attrs)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
@@ -240,3 +241,163 @@ def test_import_ato(bob: Bob, tmp_path):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
+
+
+@pytest.mark.parametrize(
+    "module,count", [("A", 1), ("B", 3), ("C", 5), ("D", 6), ("E", 6)]
+)
+def test_traceback(bob: Bob, module: str, count: int):
+    text = dedent(
+        """
+        module A:
+            doesnt_exit ~ notta_connectable
+
+        module B:
+            a = new A
+
+        module C:
+            b = new B
+
+        module D from C:
+            pass
+
+        module E from D:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    with pytest.raises(errors.UserKeyError) as e:
+        bob.build_ast(tree, Ref([module]))
+
+    assert e.value.traceback is not None
+    assert len(e.value.traceback) == count
+
+
+# TODO: test connect
+# - signal ~ signal
+# - higher-level mif
+# - duck-typed
+def _get_mif(node: L.Node, name: str) -> L.ModuleInterface:
+    return cast_assert(L.ModuleInterface, Bob.get_node_attr(node, name))
+
+
+def test_signal_connect(bob: Bob):
+    text = dedent(
+        """
+        module App:
+            signal a
+            signal b
+            signal c
+            a ~ b
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(node, "a")
+    b = _get_mif(node, "b")
+    c = _get_mif(node, "c")
+
+    assert a.is_connected_to(b)
+    assert not a.is_connected_to(c)
+
+
+def test_interface_connect(bob: Bob):
+    text = dedent(
+        """
+        interface SomeInterface:
+            signal one
+            signal two
+
+        module App:
+            a = new SomeInterface
+            b = new SomeInterface
+            c = new SomeInterface
+            a ~ b
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(node, "a")
+    b = _get_mif(node, "b")
+    c = _get_mif(node, "c")
+
+    assert a.is_connected_to(b)
+    assert not a.is_connected_to(c)
+
+    a_one = _get_mif(a, "one")
+    b_one = _get_mif(b, "one")
+    c_one = _get_mif(c, "one")
+    a_two = _get_mif(a, "two")
+    b_two = _get_mif(b, "two")
+    c_two = _get_mif(c, "two")
+
+    assert a_one.is_connected_to(b_one)
+    assert a_two.is_connected_to(b_two)
+    assert not any(
+        a_one.is_connected_to(other) for other in [a_two, b_two, c_one, c_two]
+    )
+    assert not any(
+        a_two.is_connected_to(other) for other in [a_one, b_one, c_one, c_two]
+    )
+
+
+def test_duck_type_connect(bob: Bob):
+    text = dedent(
+        """
+        interface SomeInterface:
+            signal one
+            signal two
+
+        interface SomeOtherInterface:
+            signal one
+            signal two
+
+        module App:
+            a = new SomeInterface
+            b = new SomeOtherInterface
+            a ~ b
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(node, "a")
+    b = _get_mif(node, "b")
+
+    a_one = _get_mif(a, "one")
+    b_one = _get_mif(b, "one")
+    a_two = _get_mif(a, "two")
+    b_two = _get_mif(b, "two")
+
+    assert a_one.is_connected_to(b_one)
+    assert a_two.is_connected_to(b_two)
+    assert not any(a_one.is_connected_to(other) for other in [a_two, b_two])
+    assert not any(a_two.is_connected_to(other) for other in [a_one, b_one])
+
+
+def test_shim_power(bob: Bob, caplog: pytest.LogCaptureFixture):
+    from atopile._shim import ShimPower
+
+    ctx = ParserRuleContext()
+
+    a = ShimPower()
+    b = F.ElectricPower()
+
+    bob._connect(a, b, ctx)
+
+    assert a.lv.is_connected_to(b.lv)
+    assert a.hv.is_connected_to(b.hv)
+    assert not a.lv.is_connected_to(b.hv)

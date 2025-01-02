@@ -37,9 +37,9 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.controller.vbus_detect.set_weak(on=True).resistance.constrain_subset(
-            L.Range.from_center_rel(1 * P.kohm, 0.01)
-        )
+        self.controller.vbus_detect.set_weak(
+            on=True, owner=self
+        ).resistance.constrain_subset(L.Range.from_center_rel(1 * P.kohm, 0.01))
         self.controller.vbus_detect.reference.connect(self.vbus)
 
         self.controller.power.hv.connect_via(self.vdd_resistor, self.vbus.hv)
@@ -55,7 +55,7 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.controller.power.decoupled.decouple().capacitance.constrain_subset(
+        self.controller.power.decoupled.decouple(self).capacitance.constrain_subset(
             L.Range.from_center_rel(1 * P.uF, 0.1)
         )
 

@@ -32,6 +32,7 @@ class USB2514B(Module):
         @assert_once
         def configure_usb_port(
             self,
+            owner: Module,
             enable_usb: bool = True,
             enable_battery_charging: bool = True,
         ):
@@ -40,12 +41,12 @@ class USB2514B(Module):
             """
             # enable/disable usb port
             if not enable_usb:
-                self.usb_port_disable_p.set_weak(on=True)
-                self.usb_port_disable_n.set_weak(on=True)
+                self.usb_port_disable_p.set_weak(on=True, owner=owner)
+                self.usb_port_disable_n.set_weak(on=True, owner=owner)
 
             # enable/disable battery charging
             if not enable_battery_charging:
-                self.battery_charging_enable.set_weak(on=False)
+                self.battery_charging_enable.set_weak(on=False, owner=owner)
 
         def __preinit__(self):
             F.ElectricLogic.connect_all_module_references(self)
@@ -82,23 +83,24 @@ class USB2514B(Module):
     @assert_once
     def set_configuration_source(
         self,
+        owner: Module,
         configuration_source: ConfigurationSource = ConfigurationSource.DEFAULT,
     ):
         """
         Set the source of configuration settings for the USB2514B.
         """
         if configuration_source == USB2514B.ConfigurationSource.DEFAULT:
-            self.configuration_source_input[0].pulled.pull(up=False)
-            self.configuration_source_input[1].pulled.pull(up=False)
+            self.configuration_source_input[0].pulled.pull(up=False, owner=owner)
+            self.configuration_source_input[1].pulled.pull(up=False, owner=owner)
         elif configuration_source == USB2514B.ConfigurationSource.BUS_POWERED:
-            self.configuration_source_input[0].pulled.pull(up=False)
-            self.configuration_source_input[1].pulled.pull(up=True)
+            self.configuration_source_input[0].pulled.pull(up=False, owner=owner)
+            self.configuration_source_input[1].pulled.pull(up=True, owner=owner)
         elif configuration_source == USB2514B.ConfigurationSource.SMBUS:
-            self.configuration_source_input[0].pulled.pull(up=True)
-            self.configuration_source_input[1].pulled.pull(up=False)
+            self.configuration_source_input[0].pulled.pull(up=True, owner=owner)
+            self.configuration_source_input[1].pulled.pull(up=False, owner=owner)
         elif configuration_source == USB2514B.ConfigurationSource.EEPROM:
-            self.configuration_source_input[0].pulled.pull(up=True)
-            self.configuration_source_input[1].pulled.pull(up=True)
+            self.configuration_source_input[0].pulled.pull(up=True, owner=owner)
+            self.configuration_source_input[1].pulled.pull(up=True, owner=owner)
 
     class NonRemovablePortConfiguration(Enum):
         ALL_PORTS_REMOVABLE = auto()
@@ -109,6 +111,7 @@ class USB2514B(Module):
     @assert_once
     def set_non_removable_ports(
         self,
+        owner: Module,
         non_removable_port_configuration: NonRemovablePortConfiguration,
     ):
         """
@@ -118,26 +121,34 @@ class USB2514B(Module):
             non_removable_port_configuration
             == USB2514B.NonRemovablePortConfiguration.ALL_PORTS_REMOVABLE
         ):
-            self.usb_removability_configuration_intput[0].set_weak(on=False)
-            self.usb_removability_configuration_intput[1].set_weak(on=False)
+            self.usb_removability_configuration_intput[0].set_weak(
+                on=False, owner=owner
+            )
+            self.usb_removability_configuration_intput[1].set_weak(
+                on=False, owner=owner
+            )
         elif (
             non_removable_port_configuration
             == USB2514B.NonRemovablePortConfiguration.PORT_0_NOT_REMOVABLE
         ):
-            self.usb_removability_configuration_intput[0].set_weak(on=True)
-            self.usb_removability_configuration_intput[1].set_weak(on=False)
+            self.usb_removability_configuration_intput[0].set_weak(on=True, owner=owner)
+            self.usb_removability_configuration_intput[1].set_weak(
+                on=False, owner=owner
+            )
         elif (
             non_removable_port_configuration
             == USB2514B.NonRemovablePortConfiguration.PORT_0_1_NOT_REMOVABLE
         ):
-            self.usb_removability_configuration_intput[0].set_weak(on=False)
-            self.usb_removability_configuration_intput[1].set_weak(on=True)
+            self.usb_removability_configuration_intput[0].set_weak(
+                on=False, owner=owner
+            )
+            self.usb_removability_configuration_intput[1].set_weak(on=True, owner=owner)
         elif (
             non_removable_port_configuration
             == USB2514B.NonRemovablePortConfiguration.PORT_0_1_2_NOT_REMOVABLE
         ):
-            self.usb_removability_configuration_intput[0].set_weak(on=True)
-            self.usb_removability_configuration_intput[1].set_weak(on=True)
+            self.usb_removability_configuration_intput[0].set_weak(on=True, owner=owner)
+            self.usb_removability_configuration_intput[1].set_weak(on=True, owner=owner)
 
     # ----------------------------------------
     #     modules, interfaces, parameters

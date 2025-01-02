@@ -36,7 +36,7 @@ class PowerSwitchMOSFET(F.PowerSwitch):
         # True        False             False
         # False       True              False
         # False       False             True
-        self.logic_in.pulled.pull(self._lowside == self._normally_closed)
+        self.logic_in.pulled.pull(self._lowside == self._normally_closed, owner=self)
 
         # connect gate to logic
         self.logic_in.signal.connect(self.mosfet.gate)
