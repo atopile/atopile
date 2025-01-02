@@ -294,6 +294,18 @@ class _CommonCap(F.Capacitor):
     def _2(self) -> F.Electrical:
         return self.unnamed[1]
 
+
+@_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
+class ShimCapacitor(_CommonCap):
+    """Temporary shim to translate `value` to `capacitance`."""
+
+    @L.rt_field
+    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
+        trait = has_ato_cmp_attrs()
+        trait.pinmap["1"] = self.p1
+        trait.pinmap["2"] = self.p2
+        return trait
+
     @property
     def power(self) -> F.ElectricPower:
         if self.has_trait(self.has_power):
@@ -304,23 +316,6 @@ class _CommonCap(F.Capacitor):
             self.add(self.has_power(power))
 
         return power
-
-
-@_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class ShimCapacitor(_CommonCap):
-    """Temporary shim to translate `value` to `capacitance`."""
-
-    # power: F.ElectricPower
-
-    # def __preinit__(self) -> None:
-    #     self.power.hv.connect_via(self, self.power.lv)
-
-    @L.rt_field
-    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
-        trait = has_ato_cmp_attrs()
-        trait.pinmap["1"] = self.p1
-        trait.pinmap["2"] = self.p2
-        return trait
 
 
 @_register_shim(
@@ -334,11 +329,17 @@ class ShimCapacitorElectrolytic(_CommonCap):
 
     pickable = None
 
-    power: F.ElectricPower
+    @property
+    def power(self) -> F.ElectricPower:
+        if self.has_trait(self.has_power):
+            power = self.get_trait(self.has_power).power
+        else:
+            power = F.ElectricPower()
+            power.hv.connect(self.anode)
+            power.lv.connect(self.cathode)
+            self.add(self.has_power(power))
 
-    def __preinit__(self) -> None:
-        self.power.hv.connect(self.anode)
-        self.power.lv.connect(self.cathode)
+        return power
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
