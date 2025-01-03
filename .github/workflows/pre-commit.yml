@@ -2,7 +2,6 @@ name: pre-commit
 
 on:
   push:
-  workflow_call:  # Used by other repos
 
 jobs:
   pre-commit:
