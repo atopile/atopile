@@ -2,6 +2,7 @@ name: pre-commit
 
 on:
   push:
+  workflow_call:  # Used by other repos
 
 jobs:
   pre-commit:
@@ -10,15 +11,15 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - uses: actions/setup-python@v5
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
       with:
-        python-version-file: 'pyproject.toml'
-
-    - name: Install pre-commit
-      run: pip install pre-commit
+        version: '0.5.5'
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
 
     - name: Run pre-commit
-      run: pre-commit run --all-files
+      run: uv tool run pre-commit run --all-files
 
     - name: Fail on diff after pre-commit is run
       run: git diff --exit-code
