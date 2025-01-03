@@ -6,6 +6,7 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated
+from rich import print as rich_print
 
 import typer
 
@@ -103,6 +104,13 @@ app.command()(install.install)
 app.command()(configure.configure)
 app.command()(inspect.inspect)
 app.command()(view.view)
+
+
+@app.command(hidden=True)
+def dump_config():
+    from atopile.config import config
+
+    rich_print(config)
 
 
 def main():

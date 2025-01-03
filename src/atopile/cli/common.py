@@ -7,10 +7,11 @@ import logging
 from pathlib import Path
 from typing import Iterable
 
-import atopile.config
 import faebryk.libs.exceptions
 from atopile import address, errors, version
 from atopile.address import AddrStr
+from atopile.config import BuildConfig, ProjectConfig, ProjectPaths, config
+from atopile.legacy_config import get_project_config_from_path
 
 log = logging.getLogger(__name__)
 
@@ -34,21 +35,6 @@ def get_entry_arg_file_path(entry: str | None) -> tuple[AddrStr | None, Path]:
         )
 
     return entry, entry_arg_file_path
-
-
-def get_project_config(entry_arg_file_path: Path) -> atopile.config.ProjectConfig:
-    try:
-        project_config = atopile.config.get_project_config_from_addr(
-            str(entry_arg_file_path)
-        )
-    except FileNotFoundError as ex:
-        # FIXME: this raises an exception when the entry is not in a project
-        raise errors.UserBadParameterError(
-            f"Could not find project from path {str(entry_arg_file_path)}. "
-            "Is this file path within a project?"
-        ) from ex
-
-    return project_config
 
 
 def check_entry_arg_file_path(
@@ -86,21 +72,23 @@ def check_entry_arg_file_path(
     return entry_addr_override
 
 
-def check_compiler_versions(config: atopile.config.ProjectConfig):
+def check_compiler_versions():
     """
     Check that the compiler version is compatible with the version
     used to build the project.
     """
-    assert config.location is not None
+
+    assert config.project_path is not None
+    project_config = config.get_project_config()
     dependency_cfgs = (
         faebryk.libs.exceptions.downgrade(FileNotFoundError)(
-            atopile.config.get_project_config_from_path
+            get_project_config_from_path
         )(p)
-        for p in config.location.glob(".ato/modules/**/ato.yaml")
+        for p in config.project_path.glob(".ato/modules/**/ato.yaml")
     )
 
     for cltr, cfg in faebryk.libs.exceptions.iter_through_errors(
-        itertools.chain([config], dependency_cfgs)
+        itertools.chain([project_config], dependency_cfgs)
     ):
         if cfg is None:
             continue
@@ -122,10 +110,10 @@ def check_compiler_versions(config: atopile.config.ProjectConfig):
                 )
 
 
-def configure_project_context(
-    entry: str | None, standalone: bool = False
-) -> tuple[atopile.config.ProjectConfig, atopile.config.ProjectContext]:
+def configure_project_context(entry: str | None, standalone: bool = False) -> None:
+    # TODO: mvoe to config
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
+    config.entry = entry
 
     if standalone:
         if not entry:
@@ -137,40 +125,41 @@ def configure_project_context(
                 f"The file you have specified does not exist: {entry_arg_file_path}"
             )
 
-        project_config = atopile.config.ProjectConfig(
-            location=Path.cwd(),
+        if config.project is not None:
+            # TODO: verify behaviour
+            raise errors.UserBadParameterError(
+                "Project config must not be present for standalone builds"
+            )
+
+        config.project_path = Path.cwd()
+        config.project = ProjectConfig(
+            location=config.project_path,
             ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=atopile.config.ProjectPaths(
-                layout=Path.cwd() / "standalone",
-                src=Path.cwd(),
+            paths=ProjectPaths(
+                layout=config.project_path / "standalone",
+                src=config.project_path,
             ),
-            builds={"default": atopile.config.ProjectBuildConfig(targets=[])},
+            builds={"default": BuildConfig(entry="", targets=[])},
         )
-    else:
-        project_config = get_project_config(entry_arg_file_path)
 
     # Make sure I an all my sub-configs have appropriate versions
-    check_compiler_versions(project_config)
+    check_compiler_versions()
 
-    log.info("Using project %s", project_config.location)
-
-    # Configure project context
-    project_ctx = atopile.config.ProjectContext.from_config(project_config)
-    atopile.config.set_project_context(project_ctx)
-
-    return project_config, project_ctx
+    log.info("Using project %s", config.project_path)
 
 
-def create_build_contexts(
+def parse_build_options(
     entry: str | None,
     build: Iterable[str],
     target: Iterable[str],
     option: Iterable[str],
     standalone: bool,
-) -> list[atopile.config.BuildContext]:
+) -> list[str]:
+    # TODO: move this to config
+
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
 
-    config, project_ctx = configure_project_context(entry, standalone)
+    configure_project_context(entry, standalone)
 
     # These checks are only relevant if we're **building** standalone
     # TODO: Some of the contents should be moved out of the project context
@@ -199,23 +188,73 @@ def create_build_contexts(
     # if we set an entry-point, we now need to deal with that
     entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
 
-    # Make build contexts
-    if build_names := build or config.builds.keys():
-        build_ctxs: list[atopile.config.BuildContext] = [
-            atopile.config.BuildContext.from_config_name(config, build_name)
-            for build_name in build_names
-        ]
-    else:
-        build_ctxs = [
-            atopile.config.BuildContext.from_config(
-                "default", atopile.config.ProjectBuildConfig(), project_ctx
-            )
-        ]
+    build_names = build or config.get_project_config().builds.keys() or ["default"]
 
-    for build_ctx in build_ctxs:
+    for build_name in build_names:
+        build_config = config.get_project_config().builds[build_name]
         if entry_addr_override is not None:
-            build_ctx.entry = entry_addr_override
+            build_config.entry = entry_addr_override
         if target:
-            build_ctx.targets = list(target)
+            build_config.targets = list(target)
 
-    return build_ctxs
+    return build_names
+
+
+# def create_build_contexts(
+#     entry: str | None,
+#     build: Iterable[str],
+#     target: Iterable[str],
+#     option: Iterable[str],
+#     standalone: bool,
+# ):
+#     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
+
+#     config, project_ctx = configure_project_context(entry, standalone)
+
+#     # These checks are only relevant if we're **building** standalone
+#     # TODO: Some of the contents should be moved out of the project context
+#     if standalone:
+#         if not entry_arg_file_path.is_file():
+#             raise errors.UserBadParameterError(
+#                 "The path you're building with the --standalone"
+#                 f" option must be a file {entry_arg_file_path}"
+#             )
+#         assert entry is not None  # Handled by configure_project_context
+#         if not address.get_entry_section(entry):
+#             raise errors.UserBadParameterError(
+#                 "You must specify what to build within a file to build with the"
+#                 " --standalone option"
+#             )
+
+#     # add custom config overrides
+#     if option:
+#         raise errors.UserNotImplementedError(
+#             "Custom config overrides have been removed in a refactor. "
+#             "It's planned to re-add them in a future release. "
+#             "If this is a blocker for you, please raise an issue. "
+#             "In the meantime, you can use the `ato.yaml` file to set these options."
+#         )
+
+#     # if we set an entry-point, we now need to deal with that
+#     entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
+
+#     # Make build contexts
+#     if build_names := build or config.builds.keys():
+#         build_ctxs: list[atopile.config.BuildContext] = [
+#             atopile.config.BuildContext.from_config_name(config, build_name)
+#             for build_name in build_names
+#         ]
+#     else:
+#         build_ctxs = [
+#             atopile.config.BuildContext.from_config(
+#                 "default", atopile.config.ProjectBuildConfig(), project_ctx
+#             )
+#         ]
+
+#     for build_ctx in build_ctxs:
+#         if entry_addr_override is not None:
+#             build_ctx.entry = entry_addr_override
+#         if target:
+#             build_ctx.targets = list(target)
+
+#     return build_ctxs

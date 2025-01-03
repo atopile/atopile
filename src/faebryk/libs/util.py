@@ -1597,7 +1597,7 @@ def get_module_from_path(
 
 
 def import_from_path(
-    file_path: os.PathLike, attr: str | None = None
+    file_path: os.PathLike | Path, attr: str | None = None
 ) -> ModuleType | Type:
     """
     Import a module from a file path.

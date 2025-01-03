@@ -21,6 +21,7 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 import atopile.config
 import faebryk.libs.exceptions
 from atopile import errors, version
+from atopile.config import ProjectConfig
 from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
@@ -110,11 +111,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
 
 
 def install_single_dependency(
-    to_install: str,
-    link: bool,
-    upgrade: bool,
-    config: atopile.config.ProjectConfig,
-    ctx: atopile.config.ProjectContext,
+    to_install: str, link: bool, upgrade: bool, config: ProjectConfig
 ):
     dependency = atopile.config.Dependency.from_str(to_install)
     name = _name_and_clone_url_helper(dependency.name)[0]
@@ -159,11 +156,7 @@ def install_single_dependency(
     config.save_changes()
 
 
-def install_project_dependencies(
-    config: atopile.config.ProjectConfig,
-    ctx: atopile.config.ProjectContext,
-    upgrade: bool,
-):
+def install_project_dependencies(config: ProjectConfig, upgrade: bool):
     for _ctx, dependency in faebryk.libs.exceptions.iter_through_errors(
         config.dependencies
     ):

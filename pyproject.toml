@@ -71,6 +71,7 @@ dependencies = [
     "uvicorn[standard]>=0.25.0",
     "watchfiles>=0.21.0",
     "questionary>=2.0.1",
+    "pydantic-settings>=2.7.1",
 ]
 
 [project.urls]
