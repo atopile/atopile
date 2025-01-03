@@ -18,8 +18,12 @@ jobs:
         enable-cache: true
         cache-dependency-glob: "uv.lock"
 
+    - uses: actions/setup-python@v5
+      with:
+        python-version-file: 'pyproject.toml'
+
     - name: Run pre-commit
-      run: uv tool run pre-commit run --all-files
+      run: uv run pre-commit run --all-files
 
     - name: Fail on diff after pre-commit is run
       run: git diff --exit-code
