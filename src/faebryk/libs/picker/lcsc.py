@@ -34,7 +34,7 @@ CRAWL_DATASHEET = ConfigFlag(
 # TODO dont hardcode relative paths
 BUILD_FOLDER = Path("./build")
 LIB_FOLDER = Path("./src/kicad/libs")
-MODEL_PATH: str | None = "${KIPRJMOD}/../libs/"
+MODEL_PATH: str | None = None
 
 EXPORT_NON_EXISTING_MODELS = False
 
