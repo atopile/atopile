@@ -664,7 +664,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_intersect_intervals(other_qty)
 
     def __rand__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self & other
+        return Quantity_Interval_Disjoint.from_value(other) & self
 
     def __or__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         try:
@@ -674,7 +674,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_union_intervals(other_qty)
 
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self | other
+        return Quantity_Interval_Disjoint.from_value(other) | self
 
     def __ge__(self, other: QuantitySetLike) -> BoolSet:
         other_q = Quantity_Interval_Disjoint.from_value(other)
