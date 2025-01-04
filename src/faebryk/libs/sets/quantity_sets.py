@@ -611,13 +611,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self._intervals == value_q._intervals
 
     def __add__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_add_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_add_intervals(other_qty)
 
     def __radd__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self + other
 
     def __sub__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_subtract_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_subtract_intervals(other_qty)
 
     def __rsub__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return -self + other
@@ -626,13 +634,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_negate()
 
     def __mul__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_mul_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_mul_intervals(other_qty)
 
     def __rmul__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self * other
 
     def __truediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_div_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_div_intervals(other_qty)
 
     def __rtruediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_invert() * Quantity_Interval_Disjoint.from_value(other)
@@ -641,13 +657,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_pow_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __and__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_intersect_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_intersect_intervals(other_qty)
 
     def __rand__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) & self
 
     def __or__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_union_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_union_intervals(other_qty)
 
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) | self
