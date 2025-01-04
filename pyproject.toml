@@ -130,6 +130,13 @@ artifacts = ["**/viewer/dist"]
 [tool.hatch.version]
 source = "vcs"
 
+[tool.hatch.version.raw-options]
+# Passed through to setuptools-scm
+# See: https://setuptools-scm.readthedocs.io/en/latest/config/
+# https://setuptools-scm.readthedocs.io/en/latest/extending/
+version_scheme = "only-version"
+local_scheme = "no-local-version"
+
 [tool.isort]
 profile = "black"
 known_third_party = []
