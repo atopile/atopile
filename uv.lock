@@ -108,10 +108,11 @@ wheels = [
 
 [[package]]
 name = "atopile"
-version = "0.3.1.dev93+g105d402a.d20241224"
+version = "0.3.6.dev1+g305c8f74.d20250104"
 source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
+    { name = "atopile-easyeda2kicad" },
     { name = "attrs" },
     { name = "black" },
     { name = "case-converter" },
@@ -119,7 +120,6 @@ dependencies = [
     { name = "dataclasses-json" },
     { name = "deepdiff" },
     { name = "deprecated" },
-    { name = "easyeda2kicad" },
     { name = "fake-useragent" },
     { name = "fastapi" },
     { name = "freetype-py" },
@@ -188,6 +188,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
+    { name = "atopile-easyeda2kicad" },
     { name = "attrs", specifier = ">=23.2.0" },
     { name = "black", specifier = ">=24.4.2,<24.11.0" },
     { name = "case-converter", specifier = ">=1.1.0" },
@@ -195,7 +196,6 @@ requires-dist = [
     { name = "dataclasses-json", specifier = ">=0.6.7,<0.7.0" },
     { name = "deepdiff", specifier = ">=6.7.1" },
     { name = "deprecated", specifier = "~=1.2.14" },
-    { name = "easyeda2kicad", git = "https://github.com/atopile/easyeda2kicad.py.git" },
     { name = "fake-useragent", specifier = ">=1.4.0" },
     { name = "fastapi", specifier = ">=0.109.0" },
     { name = "freetype-py", specifier = ">=2.4,<2.6" },
@@ -259,6 +259,19 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "pytest-xdist", specifier = "~=3.6.1" },
     { name = "viztracer", specifier = ">=1.0.0,<2.0.0" },
+]
+
+[[package]]
+name = "atopile-easyeda2kicad"
+version = "0.9.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/72/37/6ffd9f76f0452b93eb1e089d0fb9ecf3f3bd50e5dbb6aa03916367ab1cce/atopile_easyeda2kicad-0.9.4.tar.gz", hash = "sha256:c0d54a06964c6027218373a4dc7d33052619138c8f7724a1852be78e3dfd9379", size = 1474164 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/4b/2236445330b125207ce8451bfc141f82ca7ce0959f24c289e64e3da98261/atopile_easyeda2kicad-0.9.4-py3-none-any.whl", hash = "sha256:a858505ba62b7a06dbee78e1f2b0228c439071fe71ca48584615ad58a23e03ac", size = 54693 },
 ]
 
 [[package]]
@@ -588,15 +601,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0d/dd/1bec4c5ddb504ca60fc29472f3d27e8d4da1257a854e1d96742f15c1d02d/distlib-0.3.9.tar.gz", hash = "sha256:a60f20dea646b8a33f3e7772f74dc0b2d0772d2837ee1342a00645c81edf9403", size = 613923 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/a1/cf2472db20f7ce4a6be1253a81cfdf85ad9c7885ffbed7047fb72c24cf87/distlib-0.3.9-py2.py3-none-any.whl", hash = "sha256:47f8c22fd27c27e25a65601af709b38e4f0a45ea4fc2e710f65755fa8caaaf87", size = 468973 },
-]
-
-[[package]]
-name = "easyeda2kicad"
-version = "0.8.0"
-source = { git = "https://github.com/atopile/easyeda2kicad.py.git#261e4ee478c1fdf008c92e20c8b29327f78266a4" }
-dependencies = [
-    { name = "pydantic" },
-    { name = "requests" },
 ]
 
 [[package]]

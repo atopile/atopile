@@ -92,7 +92,7 @@ jobs:
     name: Upload if release
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: pypi
     permissions:
       id-token: write
@@ -110,9 +110,16 @@ jobs:
       with:
         subject-path: "dist/*"
 
-    - uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Publish to TestPyPI
+      if: github.event_name != 'release'
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
-        # TODO: we want this on
-        # URL-based dependencies aren't supported
-        # https://github.com/atopile/atopile/blob/28b85da0cd29a6743f8f4b5de54ecd1474872b2f/pyproject.toml#L34
+        repository-url: https://test.pypi.org/legacy/
+        skip-existing: true
         attestations: false
+
+    - name: Publish to PyPI
+      if: github.event_name == 'release' && github.event.action == 'published'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        attestations: true
