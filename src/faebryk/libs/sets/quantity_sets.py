@@ -591,8 +591,6 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return Quantity_Interval_Disjoint(other)
         if isinstance(other, (int, float)):
             return Quantity_Set_Discrete(quantity(other))
-        if isinstance(other, ParameterOperatable):
-            raise NotImplementedError(f"unsupported type: {type(other)}")
         raise ValueError(f"unsupported type: {type(other)}")
 
     @staticmethod
@@ -603,11 +601,12 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         for o in obj[1:]:
             intersected = intersected & Quantity_Interval_Disjoint.from_value(o)
         return intersected
-    
+
     @staticmethod
     def _check_parameter_operable(other: Any) -> bool:
         # Local import to avoid circular dependency
         from faebryk.core.parameter import ParameterOperatable
+
         return isinstance(other, ParameterOperatable)
 
     def __eq__(self, value: Any) -> bool:
