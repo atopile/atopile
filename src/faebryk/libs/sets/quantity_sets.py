@@ -591,6 +591,8 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return Quantity_Interval_Disjoint(other)
         if isinstance(other, (int, float)):
             return Quantity_Set_Discrete(quantity(other))
+        if isinstance(other, ParameterOperatable):
+            raise NotImplementedError(f"unsupported type: {type(other)}")
         raise ValueError(f"unsupported type: {type(other)}")
 
     @staticmethod
@@ -601,6 +603,12 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         for o in obj[1:]:
             intersected = intersected & Quantity_Interval_Disjoint.from_value(o)
         return intersected
+    
+    @staticmethod
+    def _check_parameter_operable(other: Any) -> bool:
+        # Local import to avoid circular dependency
+        from faebryk.core.parameter import ParameterOperatable
+        return isinstance(other, ParameterOperatable)
 
     def __eq__(self, value: Any) -> bool:
         if value is None:
@@ -611,12 +619,16 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self._intervals == value_q._intervals
 
     def __add__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if self._check_parameter_operable(other):
+            return NotImplemented
         return self.op_add_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __radd__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self + other
 
     def __sub__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if self._check_parameter_operable(other):
+            return NotImplemented
         return self.op_subtract_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __rsub__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
@@ -626,12 +638,16 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_negate()
 
     def __mul__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if self._check_parameter_operable(other):
+            return NotImplemented
         return self.op_mul_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __rmul__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self * other
 
     def __truediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if self._check_parameter_operable(other):
+            return NotImplemented
         return self.op_div_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __rtruediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
@@ -644,12 +660,16 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_intersect_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __rand__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if self._check_parameter_operable(other):
+            return NotImplemented
         return Quantity_Interval_Disjoint.from_value(other) & self
 
     def __or__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_union_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        if self._check_parameter_operable(other):
+            return NotImplemented
         return Quantity_Interval_Disjoint.from_value(other) | self
 
     def __ge__(self, other: QuantitySetLike) -> BoolSet:
