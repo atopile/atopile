@@ -10,19 +10,11 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: '0.5.5'
-        enable-cache: true
-        cache-dependency-glob: "uv.lock"
-
     - uses: actions/setup-python@v5
       with:
         python-version-file: 'pyproject.toml'
 
-    - name: Run pre-commit
-      run: uv run pre-commit run --all-files
+    - uses: pre-commit/action@v3.0.1
 
     - name: Fail on diff after pre-commit is run
       run: git diff --exit-code
