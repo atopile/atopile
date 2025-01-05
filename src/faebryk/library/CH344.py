@@ -70,8 +70,6 @@ class CH344(Module):
         self.gpio[14].connect(self.uart[0].dsr)
         self.gpio[15].connect(self.uart[1].dcd)
 
-        self.test.set_weak(on=False, owner=self)
-
         # ------------------------------------
         #          parametrization
         # ------------------------------------
