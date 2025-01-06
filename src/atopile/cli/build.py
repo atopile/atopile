@@ -48,11 +48,10 @@ def build(
     from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.picker import lcsc
 
-    project_config = config.get_project_config()
     build_names = parse_build_options(entry, build, target, option, standalone)
 
     for build_name in build_names:
-        build_config = project_config.builds[build_name]
+        build_config = config.project.builds[build_name]
         if keep_picked_parts is not None:
             build_config.keep_picked_parts = keep_picked_parts
 
@@ -78,7 +77,7 @@ def build(
 
     with accumulate() as accumulator:
         for build_name in build_names:
-            build_config = project_config.builds[build_name]
+            build_config = config.project.builds[build_name]
             logger.info("Building '%s'", build_name)
             with accumulator.collect(), log_user_errors(logger):
                 match build_config.build_type:
@@ -93,13 +92,13 @@ def build(
                         )
 
                 # TODO: these should be drawn from the buildcontext like everything else
-                lcsc.BUILD_FOLDER = build_config.paths.build
-                lcsc.LIB_FOLDER = build_config.paths.component_lib
-                lcsc.LIB_FOLDER.mkdir(exist_ok=True, parents=True)
+                # FIXME
+                lcsc.BUILD_FOLDER = config.project.paths.build
+                lcsc.LIB_FOLDER = config.project.paths.footprints  # FIXME
                 # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models # noqa: E501  # pre-existing
 
                 # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
-                buildutil.build(build_config, app)
+                buildutil.build(build_name, app)
 
         with accumulator.collect():
             # FIXME: this should be done elsewhere, but there's no other "overview"
@@ -107,7 +106,7 @@ def build(
             manifest = {}
             manifest["version"] = "2.0"
             for build_name in build_names:
-                build_config = project_config.builds[build_name]
+                build_config = config.project.builds[build_name]
                 if build_config.paths.layout:
                     by_layout_manifest = manifest.setdefault(
                         "by-layout", {}
@@ -116,7 +115,7 @@ def build(
                         build_config.paths.output_base.with_suffix(".layouts.json")
                     )
 
-            manifest_path = config.get_project_config().paths.manifest
+            manifest_path = config.project.paths.manifest
             manifest_path.parent.mkdir(exist_ok=True, parents=True)
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f)

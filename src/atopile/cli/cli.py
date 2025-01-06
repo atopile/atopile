@@ -13,6 +13,7 @@ import typer
 from atopile import telemetry
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger, handler
+from atopile.config import config
 from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
 
@@ -45,6 +46,13 @@ def version_callback(ctx: typer.Context, value: bool):
     raise typer.Exit()
 
 
+def project_dir_callback(ctx: typer.Context, value: Path):
+    if not value or ctx.resilient_parsing:
+        return
+
+    config.project_dir = value
+
+
 @app.callback()
 def cli(
     ctx: typer.Context,
@@ -69,6 +77,14 @@ def cli(
         bool | None,
         typer.Option("--version", callback=version_callback, is_eager=True),
     ] = None,
+    project_dir: Annotated[
+        Path,
+        typer.Option(
+            "--project-dir",
+            help="Location of the project directory to use",
+            callback=project_dir_callback,
+        ),
+    ] = Path.cwd(),
 ):
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
@@ -108,8 +124,6 @@ app.command()(view.view)
 
 @app.command(hidden=True)
 def dump_config():
-    from atopile.config import config
-
     rich_print(config)
 
 

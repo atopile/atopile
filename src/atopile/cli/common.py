@@ -11,7 +11,6 @@ import faebryk.libs.exceptions
 from atopile import address, errors, version
 from atopile.address import AddrStr
 from atopile.config import BuildConfig, ProjectConfig, ProjectPaths, config
-from atopile.legacy_config import get_project_config_from_path
 
 log = logging.getLogger(__name__)
 
@@ -78,17 +77,14 @@ def check_compiler_versions():
     used to build the project.
     """
 
-    assert config.project_path is not None
-    project_config = config.get_project_config()
     dependency_cfgs = (
-        faebryk.libs.exceptions.downgrade(FileNotFoundError)(
-            get_project_config_from_path
-        )(p)
-        for p in config.project_path.glob(".ato/modules/**/ato.yaml")
+        (dep.project_config for dep in config.project.dependencies)
+        if config.project.dependencies is not None
+        else ()
     )
 
     for cltr, cfg in faebryk.libs.exceptions.iter_through_errors(
-        itertools.chain([project_config], dependency_cfgs)
+        itertools.chain([config.project], dependency_cfgs)
     ):
         if cfg is None:
             continue
@@ -104,7 +100,7 @@ def check_compiler_versions():
 
             if not version.match_compiler_compatability(built_with_version):
                 raise version.VersionMismatchError(
-                    f"{cfg.location} ({cfg.ato_version}) can't be"
+                    f"{cfg.paths.root} ({cfg.ato_version}) can't be"
                     " built with this version of atopile "
                     f"({version.get_installed_atopile_version()})."
                 )
@@ -113,7 +109,7 @@ def check_compiler_versions():
 def configure_project_context(entry: str | None, standalone: bool = False) -> None:
     # TODO: mvoe to config
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
-    config.entry = entry
+    config.project.entry = entry
 
     if standalone:
         if not entry:
@@ -131,13 +127,12 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
                 "Project config must not be present for standalone builds"
             )
 
-        config.project_path = Path.cwd()
+        config.project_dir = Path.cwd()
         config.project = ProjectConfig(
-            location=config.project_path,
             ato_version=f"^{version.get_installed_atopile_version()}",
             paths=ProjectPaths(
-                layout=config.project_path / "standalone",
-                src=config.project_path,
+                layout=config.project_dir / "standalone",
+                src=config.project_dir,
             ),
             builds={"default": BuildConfig(entry="", targets=[])},
         )
@@ -145,7 +140,7 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
     # Make sure I an all my sub-configs have appropriate versions
     check_compiler_versions()
 
-    log.info("Using project %s", config.project_path)
+    log.info("Using project %s", config.project_dir)
 
 
 def parse_build_options(
@@ -154,7 +149,7 @@ def parse_build_options(
     target: Iterable[str],
     option: Iterable[str],
     standalone: bool,
-) -> list[str]:
+) -> Iterable[str]:
     # TODO: move this to config
 
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
@@ -188,12 +183,12 @@ def parse_build_options(
     # if we set an entry-point, we now need to deal with that
     entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
 
-    build_names = build or config.get_project_config().builds.keys() or ["default"]
+    build_names = build or config.project.builds.keys() or ["default"]
 
     for build_name in build_names:
-        build_config = config.get_project_config().builds[build_name]
+        build_config = config.project.builds[build_name]
         if entry_addr_override is not None:
-            build_config.entry = entry_addr_override
+            build_config.address = entry_addr_override
         if target:
             build_config.targets = list(target)
 

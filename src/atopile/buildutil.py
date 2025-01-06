@@ -8,7 +8,7 @@ from typing import Callable, Optional
 from more_itertools import first
 
 from atopile import layout
-from atopile.config import BuildConfig
+from atopile.config import BuildConfig, config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
@@ -66,12 +66,11 @@ PCBNEW_AUTO = ConfigFlag(
 )
 
 
-def build(build_cfg: BuildConfig, app: Module) -> None:
+def build(build_name: str, app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
     solver = DefaultSolver()
-    build_cfg.paths.ensure_paths()
-    build_paths = build_cfg.paths
+    build_cfg = config.project.builds[build_name]
 
     logger.info("Resolving bus parameters")
     try:
@@ -88,10 +87,10 @@ def build(build_cfg: BuildConfig, app: Module) -> None:
 
     # Pre-pick project checks - things to look at before time is spend ---------
     # Make sure the footprint libraries we're looking for exist
-    consolidate_footprints(build_cfg, app)
+    consolidate_footprints(build_name, app)
 
     # Load PCB / cached --------------------------------------------------------
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+    pcb = C_kicad_pcb_file.loads(build_cfg.paths.layout)
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app, cleanup=False)
     load_designators(G, attach=True)
 
@@ -125,7 +124,7 @@ def build(build_cfg: BuildConfig, app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    apply_netlist(build_paths, files=(pcb, netlist))
+    apply_netlist(build_cfg, files=(pcb, netlist))
 
     transformer.cleanup()
 
@@ -142,7 +141,7 @@ def build(build_cfg: BuildConfig, app: Module) -> None:
         if build_cfg.frozen:
             logger.info("No changes to layout. Passed --frozen check.")
         else:
-            logger.info(f"No changes to layout. Not writing {build_paths.layout}")
+            logger.info(f"No changes to layout. Not writing {build_cfg.paths.layout}")
     elif build_cfg.frozen:
         original_path = build_cfg.paths.output_base.with_suffix(".original.kicad_pcb")
         updated_path = build_cfg.paths.output_base.with_suffix(".updated.kicad_pcb")
@@ -168,18 +167,18 @@ def build(build_cfg: BuildConfig, app: Module) -> None:
             title="Frozen failed",
         )
     else:
-        backup_file = build_paths.output_base.with_suffix(
+        backup_file = build_cfg.paths.output_base.with_suffix(
             f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
         )
         logger.info(f"Backing up layout to {backup_file}")
-        with build_paths.layout.open("rb") as f:
+        with build_cfg.paths.layout.open("rb") as f:
             backup_file.write_bytes(f.read())
 
-        logger.info(f"Updating layout {build_paths.layout}")
-        pcb.dumps(build_paths.layout)
+        logger.info(f"Updating layout {build_cfg.paths.layout}")
+        pcb.dumps(build_cfg.paths.layout)
         if PCBNEW_AUTO:
             try:
-                open_pcb(build_paths.layout)
+                open_pcb(build_cfg.paths.layout)
             except FileNotFoundError:
                 pass
             except RuntimeError as e:
@@ -207,14 +206,14 @@ def build(build_cfg: BuildConfig, app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            logger.info(f"Building '{target_name}' for '{build_cfg.name}' config")
+            logger.info(f"Building '{target_name}' for '{build_name}' config")
             with accumulator.collect():
                 muster.targets[target_name](build_cfg, app)
             built_targets.append(target_name)
 
     logger.info(
         f"Built {', '.join(f'\'{target}\'' for target in built_targets)} "
-        f"for '{build_cfg.name}' config"
+        f"for '{build_name}' config"
     )
 
 
@@ -304,7 +303,7 @@ def generate_variable_report(build_cfg: BuildConfig, app: Module) -> None:
     )
 
 
-def consolidate_footprints(build_cfg: BuildConfig, app: Module) -> None:
+def consolidate_footprints(build_name: str, app: Module) -> None:
     """
     Consolidate all the project's footprints into a single directory.
 
@@ -312,6 +311,7 @@ def consolidate_footprints(build_cfg: BuildConfig, app: Module) -> None:
     If there's an entry named "lib" pointing at "build/footprints/footprints.pretty"
     then copy all footprints we can find there
     """
+    build_cfg = config.project.builds[build_name]
     fp_ids_to_check = []
     for fp_t in app.get_children(False, types=(F.has_footprint)):
         fp = fp_t.get_footprint()
@@ -337,7 +337,7 @@ def consolidate_footprints(build_cfg: BuildConfig, app: Module) -> None:
         ensure_footprint_lib(
             build_cfg.paths,
             "lib",
-            build_cfg.paths.build / "footprints" / "footprints.pretty",
+            config.project.paths.build / "footprints" / "footprints.pretty",
             fptable,
         )
     elif lib_in_fptable and not lib_prefix_on_ids:
@@ -349,18 +349,18 @@ def consolidate_footprints(build_cfg: BuildConfig, app: Module) -> None:
             "'fp-lib-table' file."
         )
 
-    fp_target = build_cfg.paths.build / "footprints" / "footprints.pretty"
-    fp_target_step = build_cfg.paths.build / "footprints" / "footprints.3dshapes"
+    fp_target = config.project.paths.build / "footprints" / "footprints.pretty"
+    fp_target_step = config.project.paths.build / "footprints" / "footprints.3dshapes"
     fp_target.mkdir(exist_ok=True, parents=True)
 
-    if not build_cfg.paths.root:
+    if not config.project.paths.root:
         with downgrade(UserResourceException):
             raise UserResourceException(
                 "No project root directory found. Cannot consolidate footprints."
             )
         return
 
-    for fp in build_cfg.paths.root.glob("**/*.kicad_mod"):
+    for fp in config.project.paths.root.glob("**/*.kicad_mod"):
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:

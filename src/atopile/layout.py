@@ -16,8 +16,9 @@ from more_itertools import first
 
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import config, errors, front_end
+from atopile import errors, front_end, legacy_config
 from atopile.address import AddressError
+from atopile.config import config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.util import (
@@ -40,18 +41,19 @@ def _generate_uuid_from_string(path: str) -> str:
 
 def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
     """Find, tag and return a set of all the modules with layouts."""
-    directory = config.get_project_context().project_path
+    directory = config.project.paths.root
 
     entries: FuncDict[type[Module], set[Path]] = FuncDict()
     ato_modules = front_end.bob.modules
 
     for filepath in directory.glob("**/ato.yaml"):
         with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
-            cfg = config.get_project_config_from_path(filepath)
+            # FIXME
+            cfg = legacy_config.get_project_config_from_path(filepath)
 
             for build_name in cfg.builds:
                 with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
-                    ctx = config.BuildContext.from_config_name(cfg, build_name)
+                    ctx = legacy_config.BuildContext.from_config_name(cfg, build_name)
 
                     try:
                         entry_section = ctx.entry.entry_section
@@ -81,7 +83,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
     return entries
 
 
-def generate_module_map(build_ctx: "config.BuildContext", app: Module) -> None:
+def generate_module_map(build_ctx: "legacy_config.BuildContext", app: Module) -> None:
     """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
     module_map = {}
 
