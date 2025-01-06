@@ -2,7 +2,6 @@ import fnmatch
 import logging
 import os
 import platform
-from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
 from typing import Any
@@ -13,11 +12,11 @@ from pydantic import (
     Field,
     ValidationError,
 )
-from pydantic.fields import FieldInfo
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
+    YamlConfigSettingsSource,
 )
 from ruamel.yaml import YAML
 
@@ -86,37 +85,16 @@ class UserConfigurationError(UserException):
     """An error in the config file."""
 
 
-class YamlConfigSettingsSource(PydanticBaseSettingsSource, ABC):
-    # TODO: use YamlConfigSettingsSource
-    @abstractmethod
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> tuple[Any, str, bool]:
-        pass
-
-    def prepare_field_value(
-        self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
-    ) -> Any:
-        return value
-
-    def __call__(self) -> dict[str, Any]:
-        d: dict[str, Any] = {}
-
-        for field_name, field in self.settings_cls.model_fields.items():
-            field_value, field_key, value_is_complex = self.get_field_value(
-                field, field_name
-            )
-            field_value = self.prepare_field_value(
-                field_name, field, field_value, value_is_complex
-            )
-            if field_value is not None:
-                d[field_key] = field_value
-
-        return d
-
-
 class GlobalConfigSettingsSource(YamlConfigSettingsSource):
-    def _find_config_file(self) -> Path | None:
+    def __init__(
+        self,
+        settings_cls: type[BaseSettings],
+    ):
+        yaml_file = GlobalConfigSettingsSource._find_config_file()
+        super().__init__(settings_cls, yaml_file, yaml_file_encoding="utf-8")
+
+    @classmethod
+    def _find_config_file(cls) -> Path | None:
         """
         Find the global config file in the user's home directory.
         """
@@ -135,39 +113,32 @@ class GlobalConfigSettingsSource(YamlConfigSettingsSource):
         config_file = config_dir / GLOBAL_CONFIG_FILENAME
         return config_file if config_file.exists() else None
 
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> tuple[Any, str, bool]:
-        config_file = self._find_config_file()
-        if not config_file:
-            return None, field_name, False
-
-        file_contents = yaml.load(config_file)
-        field_value = file_contents.get(field_name)
-
-        return field_value, field_name, False
-
 
 class ProjectConfigSettingsSource(YamlConfigSettingsSource):
-    def get_field_value(
-        self, field: FieldInfo, field_name: str
-    ) -> tuple[Any, str, bool]:
-        project_path = _project_dir
-        if not project_path:
-            return None, field_name, False
+    def __init__(self, settings_cls: type[BaseSettings]):
+        project_dir = (
+            _project_dir or ProjectConfigSettingsSource._find_project() or Path.cwd()
+        )
+        yaml_file = project_dir / PROJECT_CONFIG_FILENAME
 
-        config_file = project_path / PROJECT_CONFIG_FILENAME
-        match field_name:
-            case "project":
-                if not config_file:
-                    return None, field_name, False
+        self.yaml_file_encoding = "utf-8"
+        self.yaml_data = self._read_files(yaml_file)
 
-                # config file contains only the project key
-                field_value = yaml.load(config_file)
-                field_value.setdefault("location", config_file.parent)
-                return field_value, field_name, False
-            case _:
-                return None, field_name, False
+        super(YamlConfigSettingsSource, self).__init__(
+            settings_cls, {"project": self.yaml_data if self.yaml_data else None}
+        )
+
+    @classmethod
+    def _find_project(cls, dir: Path = Path.cwd()) -> Path | None:
+        """
+        Find a project config file in the specified directory or any parent directories.
+        """
+        path = dir
+        while not (path / PROJECT_CONFIG_FILENAME).exists():
+            path = path.parent
+            if path == Path("/"):
+                return None
+        return path.resolve().absolute()
 
 
 class ProjectPaths(BaseModel):
@@ -474,17 +445,5 @@ class Config:
         self._settings = _try_construct_config(Settings, project_dir=value)
 
 
-def _find_project(dir: Path = Path.cwd()) -> Path | None:
-    """
-    Find a project config file in the specified directory or any parent directories.
-    """
-    path = dir
-    while not (path / PROJECT_CONFIG_FILENAME).exists():
-        path = path.parent
-        if path == Path("/"):
-            return None
-    return path.resolve().absolute()
-
-
-_project_dir: Path | None = _find_project()
+_project_dir: Path | None = None
 config: Config = Config()
