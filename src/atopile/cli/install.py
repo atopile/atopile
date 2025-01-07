@@ -58,24 +58,26 @@ def do_install(
     This is split in two so that it can be called from `install` and `create`
     """
 
-    current_path = Path.cwd()
-    config = atopile.config.get_project_config_from_path(Path(path or current_path))
-    ctx = atopile.config.ProjectContext.from_config(config)
-    top_level_path = config.location
+    if path is not None:
+        atopile.config.config.project_dir = path
 
-    log.info(f"Installing {to_install + ' ' if to_install else ''}in {top_level_path}")
+    config = atopile.config.config.project
+
+    log.info(
+        f"Installing {to_install + ' ' if to_install else ''}in {config.paths.root}"
+    )
 
     if jlcpcb:
         if to_install is None:
             raise errors.UserBadParameterError("No component ID specified")
         # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install, top_level_path)
+        install_jlcpcb(to_install, config.paths.root)
     elif to_install:
         # eg. "ato install some-atopile-module"
-        install_single_dependency(to_install, link, upgrade, config, ctx)
+        install_single_dependency(to_install, link, upgrade, config)
     else:
         # eg. "ato install"
-        install_project_dependencies(config, ctx, upgrade)
+        install_project_dependencies(config, upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
@@ -117,11 +119,11 @@ def install_single_dependency(
     name = _name_and_clone_url_helper(dependency.name)[0]
     if link:
         dependency.link_broken = False
-        abs_path = ctx.module_path / name
-        dependency.path = abs_path.relative_to(ctx.project_path)
+        abs_path = config.paths.modules / name
+        dependency.path = abs_path.relative_to(config.paths.root)
     else:
-        abs_path = ctx.src_path / name
-        dependency.path = abs_path.relative_to(ctx.project_path)
+        abs_path = config.paths.src / name
+        dependency.path = abs_path.relative_to(config.paths.root)
         dependency.link_broken = True
 
     try:
@@ -148,7 +150,8 @@ def install_single_dependency(
         # use the one we just installed as a basis
         dependency.version_spec = f"@{installed_version}"
 
-    names = {dep.name: i for i, dep in enumerate(config.dependencies)}
+    names = {dep.name: i for i, dep in enumerate(config.dependencies or [])}
+    # FIXME
     if dependency.name in names:
         config.dependencies[names[dependency.name]] = dependency
     else:
@@ -158,14 +161,14 @@ def install_single_dependency(
 
 def install_project_dependencies(config: ProjectConfig, upgrade: bool):
     for _ctx, dependency in faebryk.libs.exceptions.iter_through_errors(
-        config.dependencies
+        config.dependencies or []
     ):
         with _ctx():
             if not dependency.link_broken:
                 # FIXME: these dependency objects are a little too entangled
                 name = _name_and_clone_url_helper(dependency.name)[0]
-                abs_path = ctx.module_path / name
-                dependency.path = abs_path.relative_to(ctx.project_path)
+                abs_path = config.paths.modules / name
+                dependency.path = abs_path.relative_to(config.paths.root)
 
                 try:
                     install_dependency(dependency, upgrade, abs_path)
@@ -276,16 +279,10 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     if not component_id.startswith("C") or not component_id[1:].isdigit():
         raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
 
-    footprints_dir = (
-        top_level_path
-        / atopile.config.get_project_config_from_path(top_level_path).paths.footprints
-    )
+    footprints_dir = top_level_path / atopile.config.config.project.paths.footprints
     footprints_dir.mkdir(parents=True, exist_ok=True)
 
-    ato_src_dir = (
-        top_level_path
-        / atopile.config.get_project_config_from_path(top_level_path).paths.src
-    )
+    ato_src_dir = top_level_path / atopile.config.config.project.paths.src
     ato_src_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Footprints directory: {footprints_dir}")

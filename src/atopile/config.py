@@ -155,6 +155,7 @@ class ProjectPaths(BaseModel):
     manifest: Path
     build: Path
     component_lib: Path
+    modules: Path
 
     def __init__(self, **data: Any):
         data.setdefault("root", _project_dir or Path.cwd())
@@ -164,6 +165,7 @@ class ProjectPaths(BaseModel):
         data.setdefault("manifest", data["root"] / "build" / "manifest.json")
         data.setdefault("build", data["root"] / "build")
         data.setdefault("component_lib", data["root"] / "build" / "kicad" / "libs")
+        data.setdefault("modules", data["root"] / ".ato" / "modules")
         super().__init__(**data)
 
     def ensure(self) -> None:
