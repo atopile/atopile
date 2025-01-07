@@ -30,6 +30,7 @@ from faebryk.libs.util import (
     find,
     find_or,
     not_none,
+    yield_missing,
 )
 
 logger = logging.getLogger(__name__)
@@ -288,11 +289,7 @@ class PCB:
 
         for net_name in nets_added:
             # Find the first unused net number
-            net_number = next(
-                i
-                for i in range(len(existing_net_numbers) + len(nets_added))
-                if i not in existing_net_numbers
-            )
+            net_number = next(yield_missing(existing_net_numbers))
             existing_net_numbers.add(net_number)
 
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
@@ -437,18 +434,13 @@ class PCB:
                             )
                             if p.name in pads
                             else None,
-                            # rest of fields
-                            # **dataclass_as_kwargs(p),
                             **{
-                                k: v
-                                for k, v in dataclass_as_kwargs(p).items()
-                                if k != "at"
+                                **dataclass_as_kwargs(p),
+                                "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
                             },
-                            at=C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
                         )
                         for p in footprint.pads
                     ],
-                    #
                     name=footprint_identifier,
                     layer=footprint.layer,
                     propertys=footprint.propertys,
