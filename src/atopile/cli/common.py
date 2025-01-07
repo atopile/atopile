@@ -120,7 +120,7 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
                 f"The file you have specified does not exist: {entry_arg_file_path}"
             )
 
-        if config.has_project():
+        if config.has_project:
             raise errors.UserBadParameterError(
                 "Project config must not be present for standalone builds"
             )

@@ -458,6 +458,7 @@ class Config:
     def build_configs(self) -> Iterable[BuildConfig]:
         return (self.project.builds[name] for name in self.builds)
 
+    @property
     def has_project(self) -> bool:
         return self._settings.project is not None
 

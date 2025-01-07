@@ -596,10 +596,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if context.file_path is not None:
             search_paths.insert(0, context.file_path.parent)
 
-        search_paths += [
-            config.project.paths.src,
-            config.project.paths.footprints,
-        ]
+        if config.has_project:
+            search_paths += [config.project.paths.src, config.project.paths.modules]
 
         return search_paths
 
