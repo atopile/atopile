@@ -11,6 +11,7 @@ from pydantic import (
     BaseModel,
     Field,
     ValidationError,
+    field_validator,
 )
 from pydantic_settings import (
     BaseSettings,
@@ -125,7 +126,11 @@ class ProjectConfigSettingsSource(YamlConfigSettingsSource):
         self.yaml_data = self._read_files(yaml_file)
 
         super(YamlConfigSettingsSource, self).__init__(
-            settings_cls, {"project": self.yaml_data if self.yaml_data else None}
+            settings_cls,
+            {
+                "project": self.yaml_data if self.yaml_data else None,
+                "project_dir": project_dir,
+            },
         )
 
     @classmethod
@@ -138,41 +143,26 @@ class ProjectConfigSettingsSource(YamlConfigSettingsSource):
             path = path.parent
             if path == Path("/"):
                 return None
+
         return path.resolve().absolute()
 
 
 class ProjectPaths(BaseModel):
-    root: Path = Field(default=Path.cwd())
-    src: Path | None = Field(default=None)
-    layout: Path | None = Field(default=None)
-    footprints: Path | None = Field(default=None)
-    manifest: Path | None = Field(default=None)
-    build: Path | None = Field(default=None)
-    component_lib: Path | None = Field(default=None)
+    root: Path = Field(default_factory=lambda: _project_dir or Path.cwd())
+    src: Path = Field(default_factory=lambda data: data["root"] / "elec" / "src")
+    layout: Path = Field(default_factory=lambda data: data["root"] / "elec" / "layout")
+    footprints: Path = Field(
+        default_factory=lambda data: data["root"] / "elec" / "footprints"
+    )
+    manifest: Path = Field(
+        default_factory=lambda data: data["root"] / "build" / "manifest.json"
+    )
+    build: Path = Field(default_factory=lambda data: data["root"] / "build")
+    component_lib: Path = Field(
+        default_factory=lambda data: data["root"] / "build" / "kicad" / "libs"
+    )
 
-    def apply_layout(self, location: Path) -> None:
-        """Apply default project layout if not already specified."""
-        if self.root is None:
-            self.root = location
-
-        if self.src is None:
-            self.src = self.root / "elec" / "src"
-
-        if self.layout is None:
-            self.layout = self.root / "elec" / "layout"
-
-        if self.footprints is None:
-            self.footprints = self.root / "elec" / "footprints"
-
-        if self.build is None:
-            self.build = self.root / "build"
-
-        if self.manifest is None:
-            self.manifest = self.build / "manifest.json"
-
-        if self.component_lib is None:
-            self.component_lib = self.build / "kicad" / "libs"
-
+    def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.build.mkdir(parents=True, exist_ok=True)
         self.layout.mkdir(parents=True, exist_ok=True)
@@ -181,30 +171,19 @@ class ProjectPaths(BaseModel):
 
 
 class BuildPaths(BaseModel):
-    layout: Path | None = Field(default=None)
-    output_base: Path | None = Field(default=None)
-    netlist: Path | None = Field(default=None)
-    fp_lib_table: Path | None = Field(default=None)
-    kicad_project: Path | None = Field(default=None)
+    layout: Path
+    output_base: Path
+    netlist: Path
+    fp_lib_table: Path
+    kicad_project: Path
 
-    def apply_layout(self, name: str, project_paths: ProjectPaths) -> None:
-        assert project_paths.layout is not None
-        assert project_paths.build is not None
-
-        if self.layout is None:
-            self.layout = BuildPaths.find_layout(project_paths.layout / name)
-
-        if self.output_base is None:
-            self.output_base = project_paths.build / name
-
-        if self.netlist is None:
-            self.netlist = self.output_base / f"{name}.net"
-
-        if self.fp_lib_table is None:
-            self.fp_lib_table = self.layout.parent / "fp-lib-table"
-
-        if self.kicad_project is None:
-            self.kicad_project = self.layout.with_suffix(".kicad_pro")
+    def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
+        data.setdefault("layout", BuildPaths.find_layout(project_paths.layout / name))
+        data.setdefault("output_base", project_paths.build / name)
+        data.setdefault("netlist", data["output_base"] / f"{name}.net")
+        data.setdefault("fp_lib_table", project_paths.layout.parent / "fp-lib-table")
+        data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
+        super().__init__(**data)
 
     @classmethod
     def find_layout(cls, layout_base: Path) -> Path:
@@ -265,13 +244,19 @@ class BuildEntry(BaseModel):
 
 
 class BuildConfig(BaseModel):
+    name: str | None = Field(default_factory=lambda data: print(data))
     address: str = Field(alias="entry")
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
     exclude_targets: list[str] = Field(default=[])
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
-    paths: BuildPaths = Field(default_factory=BuildPaths)
+    paths: BuildPaths = Field(
+        default_factory=lambda data: BuildPaths(
+            project_paths=ProjectPaths(),
+            **data,
+        )
+    )
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
 
@@ -359,9 +344,17 @@ class ProjectConfig(BaseModel):
         validation_alias="ato-version", serialization_alias="ato-version"
     )
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
-    builds: dict[str, BuildConfig] | None = Field(default=None)
     dependencies: list[Dependency | str] | None = Field(default=None)
     entry: str | None = Field(default=None)
+    builds: dict[str, BuildConfig] | None = Field(default=None)
+
+    @field_validator("builds", mode="before")
+    def add_build_names(
+        cls, value: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        for build_name, data in value.items():
+            data.setdefault("name", build_name)
+        return value
 
     def model_post_init(self, __context: Any) -> None:
         self.dependencies = [
@@ -369,11 +362,8 @@ class ProjectConfig(BaseModel):
             for dep in self.dependencies or []
         ]
 
-    def apply_layout(self, location: Path) -> None:
-        """Determine project paths from the project directory and configured values."""
-        self.paths.apply_layout(location)
-        for build in self.builds:
-            self.builds[build].paths.apply_layout(build, self.paths)
+    def ensure_paths(self) -> None:
+        self.paths.ensure()
 
 
 class ServicesConfig(BaseModel):
@@ -409,7 +399,7 @@ class Settings(BaseSettings):
 
     def model_post_init(self, __context: Any) -> None:
         if self.project_dir is not None and self.project is not None:
-            self.project.apply_layout(self.project_dir)
+            self.project.ensure_paths()
 
 
 class Config:
