@@ -251,7 +251,7 @@ class BuildEntry(BaseModel):
 
 
 class BuildConfig(BaseModel):
-    name: str | None = Field(default_factory=lambda data: print(data))
+    name: str
     address: str = Field(alias="entry")
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
     exclude_targets: list[str] = Field(default=[])
@@ -450,6 +450,10 @@ class Config:
     @builds.setter
     def builds(self, value: list[str]) -> None:
         self._settings.builds = value
+
+    @property
+    def build_configs(self) -> Iterable[BuildConfig]:
+        return (self.project.builds[name] for name in self.builds)
 
 
 _project_dir: Path | None = None

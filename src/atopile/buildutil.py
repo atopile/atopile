@@ -66,11 +66,10 @@ PCBNEW_AUTO = ConfigFlag(
 )
 
 
-def build(build_name: str, app: Module) -> None:
+def build(build_cfg: BuildConfig, app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
     solver = DefaultSolver()
-    build_cfg = config.project.builds[build_name]
 
     logger.info("Resolving bus parameters")
     try:
@@ -87,7 +86,7 @@ def build(build_name: str, app: Module) -> None:
 
     # Pre-pick project checks - things to look at before time is spend ---------
     # Make sure the footprint libraries we're looking for exist
-    consolidate_footprints(build_name, app)
+    consolidate_footprints(build_cfg, app)
 
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(build_cfg.paths.layout)
@@ -206,14 +205,14 @@ def build(build_name: str, app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            logger.info(f"Building '{target_name}' for '{build_name}' config")
+            logger.info(f"Building '{target_name}' for '{build_cfg.name}' config")
             with accumulator.collect():
                 muster.targets[target_name](build_cfg, app)
             built_targets.append(target_name)
 
     logger.info(
         f"Built {', '.join(f'\'{target}\'' for target in built_targets)} "
-        f"for '{build_name}' config"
+        f"for '{build_cfg.name}' config"
     )
 
 
@@ -303,7 +302,7 @@ def generate_variable_report(build_cfg: BuildConfig, app: Module) -> None:
     )
 
 
-def consolidate_footprints(build_name: str, app: Module) -> None:
+def consolidate_footprints(build_cfg: BuildConfig, app: Module) -> None:
     """
     Consolidate all the project's footprints into a single directory.
 
@@ -311,7 +310,6 @@ def consolidate_footprints(build_name: str, app: Module) -> None:
     If there's an entry named "lib" pointing at "build/footprints/footprints.pretty"
     then copy all footprints we can find there
     """
-    build_cfg = config.project.builds[build_name]
     fp_ids_to_check = []
     for fp_t in app.get_children(False, types=(F.has_footprint)):
         fp = fp_t.get_footprint()

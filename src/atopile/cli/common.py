@@ -149,7 +149,7 @@ def parse_build_options(
     target: Iterable[str],
     option: Iterable[str],
     standalone: bool,
-) -> Iterable[str]:
+) -> None:
     # TODO: move this to config
 
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
@@ -197,5 +197,3 @@ def parse_build_options(
             build_config.address = entry_addr_override
         if target:
             build_config.targets = list(target)
-
-    return config.builds

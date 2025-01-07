@@ -48,48 +48,44 @@ def build(
     from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.picker import lcsc
 
-    build_names = parse_build_options(entry, build, target, option, standalone)
+    parse_build_options(entry, build, target, option, standalone)
 
-    for build_name in build_names:
-        build_config = config.project.builds[build_name]
+    for build_cfg in config.build_configs:
         if keep_picked_parts is not None:
-            build_config.keep_picked_parts = keep_picked_parts
+            build_cfg.keep_picked_parts = keep_picked_parts
 
         if keep_net_names is not None:
-            build_config.keep_net_names = keep_net_names
+            build_cfg.keep_net_names = keep_net_names
 
         if frozen is not None:
-            build_config.frozen = frozen
+            build_cfg.frozen = frozen
             if frozen:
                 if keep_picked_parts is False:  # is, ignores None
                     raise errors.UserBadParameterError(
                         "`--keep-picked-parts` conflict with `--frozen`"
                     )
 
-                build_config.keep_picked_parts = True
+                build_cfg.keep_picked_parts = True
 
                 if keep_net_names is False:  # is, ignores None
                     raise errors.UserBadParameterError(
                         "`--keep-net-names` conflict with `--frozen`"
                     )
 
-                build_config.keep_net_names = True
+                build_cfg.keep_net_names = True
 
     with accumulate() as accumulator:
-        for build_name in build_names:
-            build_config = config.project.builds[build_name]
-            logger.info("Building '%s'", build_name)
+        for build_cfg in config.build_configs:
+            logger.info("Building '%s'", build_cfg.name)
             with accumulator.collect(), log_user_errors(logger):
-                match build_config.build_type:
+                match build_cfg.build_type:
                     case BuildType.ATO:
-                        app = _init_ato_app(build_config)
+                        app = _init_ato_app(build_cfg)
                     case BuildType.PYTHON:
-                        app = _init_python_app(build_config)
+                        app = _init_python_app(build_cfg)
                         app.add(F.is_app_root())
                     case _:
-                        raise ValueError(
-                            f"Unknown build type: {build_config.build_type}"
-                        )
+                        raise ValueError(f"Unknown build type: {build_cfg.build_type}")
 
                 # TODO: these should be drawn from the buildcontext like everything else
                 # FIXME
@@ -98,21 +94,20 @@ def build(
                 # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models # noqa: E501  # pre-existing
 
                 # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
-                buildutil.build(build_name, app)
+                buildutil.build(build_cfg, app)
 
         with accumulator.collect():
             # FIXME: this should be done elsewhere, but there's no other "overview"
             # that can see all the builds simultaneously
             manifest = {}
             manifest["version"] = "2.0"
-            for build_name in build_names:
-                build_config = config.project.builds[build_name]
-                if build_config.paths.layout:
+            for build_cfg in config.build_configs:
+                if build_cfg.paths.layout:
                     by_layout_manifest = manifest.setdefault(
                         "by-layout", {}
-                    ).setdefault(str(build_config.paths.layout), {})
+                    ).setdefault(str(build_cfg.paths.layout), {})
                     by_layout_manifest["layouts"] = str(
-                        build_config.paths.output_base.with_suffix(".layouts.json")
+                        build_cfg.paths.output_base.with_suffix(".layouts.json")
                     )
 
             manifest_path = config.project.paths.manifest
