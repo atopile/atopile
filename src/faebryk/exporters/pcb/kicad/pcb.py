@@ -26,6 +26,7 @@ from faebryk.libs.sexp.dataclass_sexp import get_parent
 from faebryk.libs.util import (
     KeyErrorNotFound,
     dataclass_as_kwargs,
+    duplicates,
     find,
     find_or,
     not_none,
@@ -283,22 +284,27 @@ class PCB:
 
         # Add new nets -----------------------------------------------------------------
         logger.debug(f"New nets: {nets_added}")
+        existing_net_numbers = {net.number for net in pcb.kicad_pcb.nets}
+
         for net_name in nets_added:
-            # nl_net = nl_nets[net_name]
-            if removed_net_numbers:
-                net_number = removed_net_numbers.pop()
-            else:
-                net_number = len(pcb.kicad_pcb.nets)
+            # Find the first unused net number
+            net_number = next(
+                i
+                for i in range(len(existing_net_numbers) + len(nets_added))
+                if i not in existing_net_numbers
+            )
+            existing_net_numbers.add(net_number)
+
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
                 name=net_name,
                 number=net_number,
             )
             pcb.kicad_pcb.nets.append(pcb_net)
             pcb_nets[net_name] = (pcb_net, [])
+
         pcb.kicad_pcb.nets.sort(key=lambda x: x.number)
         # Check that net numbers are unique
-        # FIXME: this is broken by conflicting net numbers on the loaded PCB
-        assert len(pcb.kicad_pcb.nets) == len(set(n.number for n in pcb.kicad_pcb.nets))
+        assert not duplicates(pcb.kicad_pcb.nets, lambda x: x.number)
 
         # Components ===================================================================
         pcb_comps = {
@@ -432,7 +438,13 @@ class PCB:
                             if p.name in pads
                             else None,
                             # rest of fields
-                            **dataclass_as_kwargs(p),
+                            # **dataclass_as_kwargs(p),
+                            **{
+                                k: v
+                                for k, v in dataclass_as_kwargs(p).items()
+                                if k != "at"
+                            },
+                            at=C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
                         )
                         for p in footprint.pads
                     ],
