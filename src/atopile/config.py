@@ -1,10 +1,11 @@
+from email.policy import default
 import fnmatch
 import logging
 import os
 import platform
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from pydantic import (
     AliasChoices,
@@ -344,9 +345,9 @@ class ProjectConfig(BaseModel):
         validation_alias="ato-version", serialization_alias="ato-version"
     )
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
-    dependencies: list[Dependency | str] | None = Field(default=None)
+    dependencies: list[Dependency] | None = Field(default=None)
     entry: str | None = Field(default=None)
-    builds: dict[str, BuildConfig] | None = Field(default=None)
+    builds: dict[str, BuildConfig] = Field(default_factory=dict)
 
     @field_validator("builds", mode="before")
     def add_build_names(
@@ -356,10 +357,11 @@ class ProjectConfig(BaseModel):
             data.setdefault("name", build_name)
         return value
 
-    def model_post_init(self, __context: Any) -> None:
-        self.dependencies = [
-            Dependency.from_str(dep) if isinstance(dep, str) else dep
-            for dep in self.dependencies or []
+    @field_validator("dependencies", mode="before")
+    def add_dependencies(cls, value: list[dict[str, Any]]) -> list[Dependency]:
+        return [
+            Dependency.from_str(dep) if isinstance(dep, str) else Dependency(**dep)
+            for dep in value
         ]
 
     def ensure_paths(self) -> None:
@@ -375,9 +377,10 @@ class ServicesConfig(BaseModel):
 
 class Settings(BaseSettings):
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    entry: str | None = Field(default=None)
     project_dir: Path | None
     project: ProjectConfig | None = Field(default=None)
+    entry: str | None = Field(default=None)
+    builds: list[str] | None = Field(default=None)
 
     model_config = SettingsConfigDict(env_prefix="ATO_")
 
@@ -433,6 +436,14 @@ class Config:
         global _project_dir
         _project_dir = value
         self._settings = _try_construct_config(Settings, project_dir=value)
+
+    @property
+    def builds(self) -> Iterable[str]:
+        return self._settings.builds or self.project.builds.keys() or ["default"]
+
+    @builds.setter
+    def builds(self, value: list[str]) -> None:
+        self._settings.builds = value
 
 
 _project_dir: Path | None = None
