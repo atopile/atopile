@@ -20,9 +20,10 @@ import ruamel.yaml
 import typer
 from rich.table import Table
 
-from atopile import config, errors
+from atopile import errors
 from atopile.cli.common import configure_project_context
 from atopile.cli.install import do_install
+from atopile.config import PROJECT_CONFIG_FILENAME, config
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError
 from faebryk.libs.util import robustly_rm_dir
@@ -243,11 +244,9 @@ def build(
         )
 
     try:
-        project_config = config.get_project_config_from_path(Path("."))
-        project_context = config.ProjectContext.from_config(project_config)
-        top_level_path = project_context.project_path
-        layout_path = project_context.layout_path
-        src_path = project_context.src_path
+        top_level_path = config.project.paths.root
+        layout_path = config.project.paths.layout
+        src_path = config.project.paths.src
     except FileNotFoundError:
         raise errors.UserException(
             "Could not find the project directory, are you within an ato project?"
@@ -279,7 +278,9 @@ def build(
             do_configure(name, str(target_layout_path), debug=False)
 
         # Add the build to the ato.yaml file
-        ato_yaml_path = top_level_path / config.CONFIG_FILENAME
+        ato_yaml_path = (
+            top_level_path / config.project.paths.root / PROJECT_CONFIG_FILENAME
+        )
         # Check if ato.yaml exists
         if not ato_yaml_path.exists():
             print(
@@ -384,15 +385,11 @@ def component(
     from faebryk.tools.libadd import Template
 
     try:
-        project_config, project_ctx = configure_project_context(None)
+        configure_project_context(None)
     except errors.UserBadParameterError:
-        project_config, project_ctx = configure_project_context(
-            str(Path.cwd()), standalone=True
-        )
+        configure_project_context(str(Path.cwd()), standalone=True)
 
-    # FIXME: dedup path bullshit
-    lcsc_.LIB_FOLDER = (project_config.location / "build" / "kicad" / "libs",)
-    lcsc_.LIB_FOLDER = lcsc_.BUILD_FOLDER / "kicad" / "libs"
+    lcsc_.LIB_FOLDER = (config.project.paths.component_lib,)
     lcsc_.MODEL_PATH = None
 
     # Find a component --------------------------------------------------------
@@ -506,7 +503,7 @@ def component(
         if filepath.absolute():
             out_path = filepath.resolve()
         else:
-            out_path = (project_ctx.src_path / filename).resolve()
+            out_path = (config.project.paths.src / filename).resolve()
 
         if out_path.exists():
             rich.print(f"File {out_path} already exists")
