@@ -335,7 +335,7 @@ def consolidate_footprints(build_name: str, app: Module) -> None:
     elif lib_prefix_on_ids and not lib_in_fptable:
         # we need to add a lib entry pointing to the footprints dir
         ensure_footprint_lib(
-            build_cfg.paths,
+            build_cfg,
             "lib",
             config.project.paths.build / "footprints" / "footprints.pretty",
             fptable,

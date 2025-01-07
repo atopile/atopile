@@ -1,4 +1,3 @@
-from email.policy import default
 import fnmatch
 import logging
 import os
@@ -149,19 +148,23 @@ class ProjectConfigSettingsSource(YamlConfigSettingsSource):
 
 
 class ProjectPaths(BaseModel):
-    root: Path = Field(default_factory=lambda: _project_dir or Path.cwd())
-    src: Path = Field(default_factory=lambda data: data["root"] / "elec" / "src")
-    layout: Path = Field(default_factory=lambda data: data["root"] / "elec" / "layout")
-    footprints: Path = Field(
-        default_factory=lambda data: data["root"] / "elec" / "footprints"
-    )
-    manifest: Path = Field(
-        default_factory=lambda data: data["root"] / "build" / "manifest.json"
-    )
-    build: Path = Field(default_factory=lambda data: data["root"] / "build")
-    component_lib: Path = Field(
-        default_factory=lambda data: data["root"] / "build" / "kicad" / "libs"
-    )
+    root: Path
+    src: Path
+    layout: Path
+    footprints: Path
+    manifest: Path
+    build: Path
+    component_lib: Path
+
+    def __init__(self, **data: Any):
+        data.setdefault("root", _project_dir or Path.cwd())
+        data.setdefault("src", data["root"] / "elec" / "src")
+        data.setdefault("layout", data["root"] / "elec" / "layout")
+        data.setdefault("footprints", data["root"] / "elec" / "footprints")
+        data.setdefault("manifest", data["root"] / "build" / "manifest.json")
+        data.setdefault("build", data["root"] / "build")
+        data.setdefault("component_lib", data["root"] / "build" / "kicad" / "libs")
+        super().__init__(**data)
 
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
@@ -179,7 +182,10 @@ class BuildPaths(BaseModel):
     kicad_project: Path
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
-        data.setdefault("layout", BuildPaths.find_layout(project_paths.layout / name))
+        data.setdefault(
+            "layout",
+            BuildPaths.find_layout(project_paths.root / project_paths.layout / name),
+        )
         data.setdefault("output_base", project_paths.build / name)
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", project_paths.layout.parent / "fp-lib-table")
