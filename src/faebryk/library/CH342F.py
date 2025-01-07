@@ -25,13 +25,13 @@ class CH342F(F.CH342):
         ...
 
         @assert_once
-        def enable_tnow_mode(self):
+        def enable_tnow_mode(self, owner: Module):
             """
             Set TNOW mode for specified UART for use with RS485 tranceivers.
             The TNOW pin can be connected to the tx_enable and rx_enable
             pins of the RS485 tranceiver for automatic half-duplex control.
             """
-            self.uart.dtr.set_weak(on=False)
+            self.uart.dtr.set_weak(on=False, owner=owner)
             self.uart.dtr.connect(self.tnow)
 
     # ----------------------------------------
