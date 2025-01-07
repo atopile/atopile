@@ -6,13 +6,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable
 
-from pydantic import (
-    AliasChoices,
-    BaseModel,
-    Field,
-    ValidationError,
-    field_validator,
-)
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -350,7 +344,8 @@ class ProjectConfig(BaseModel):
     """
 
     ato_version: str = Field(
-        validation_alias="ato-version", serialization_alias="ato-version"
+        validation_alias=AliasChoices("ato-version", "ato_version"),
+        serialization_alias="ato-version",
     )
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
@@ -359,10 +354,16 @@ class ProjectConfig(BaseModel):
 
     @field_validator("builds", mode="before")
     def add_build_names(
-        cls, value: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
+        cls, value: dict[str, dict[str, Any] | BuildConfig]
+    ) -> dict[str, Any]:
         for build_name, data in value.items():
-            data.setdefault("name", build_name)
+            match data:
+                case BuildConfig():
+                    data.name = build_name
+                case dict():
+                    data.setdefault("name", build_name)
+                case _:
+                    raise ValueError(f"Invalid build data: {data}")
         return value
 
     @field_validator("dependencies", mode="before")
@@ -456,6 +457,9 @@ class Config:
     @property
     def build_configs(self) -> Iterable[BuildConfig]:
         return (self.project.builds[name] for name in self.builds)
+
+    def has_project(self) -> bool:
+        return self._settings.project is not None
 
 
 _project_dir: Path | None = None

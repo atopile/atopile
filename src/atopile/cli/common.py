@@ -10,7 +10,7 @@ from typing import Iterable
 import faebryk.libs.exceptions
 from atopile import address, errors, version
 from atopile.address import AddrStr
-from atopile.config import BuildConfig, ProjectConfig, ProjectPaths, config
+from atopile.config import BuildConfig, BuildPaths, ProjectConfig, ProjectPaths, config
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +109,6 @@ def check_compiler_versions():
 def configure_project_context(entry: str | None, standalone: bool = False) -> None:
     # TODO: mvoe to config
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
-    config.project.entry = entry
 
     if standalone:
         if not entry:
@@ -121,21 +120,32 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
                 f"The file you have specified does not exist: {entry_arg_file_path}"
             )
 
-        if config.project is not None:
-            # TODO: verify behaviour
+        if config.has_project():
             raise errors.UserBadParameterError(
                 "Project config must not be present for standalone builds"
             )
 
+        project_paths = ProjectPaths(
+            layout=config.project_dir / "standalone",
+            src=config.project_dir,
+        )
+
         config.project_dir = Path.cwd()
         config.project = ProjectConfig(
             ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=ProjectPaths(
-                layout=config.project_dir / "standalone",
-                src=config.project_dir,
-            ),
-            builds={"default": BuildConfig(entry="", targets=[])},
+            paths=project_paths,
+            entry=entry,
+            builds={
+                "default": BuildConfig(
+                    name="default",
+                    entry="",
+                    targets=[],
+                    paths=BuildPaths(name="default", project_paths=project_paths),
+                )
+            },
         )
+
+    config.project.entry = entry
 
     # Make sure I an all my sub-configs have appropriate versions
     check_compiler_versions()
