@@ -286,11 +286,11 @@ class PCB:
         # Add new nets -----------------------------------------------------------------
         logger.debug(f"New nets: {nets_added}")
         existing_net_numbers = {net.number for net in pcb.kicad_pcb.nets}
+        net_numbers = iter(yield_missing(existing_net_numbers))
 
         for net_name in nets_added:
             # Find the first unused net number
-            net_number = next(yield_missing(existing_net_numbers))
-            existing_net_numbers.add(net_number)
+            net_number = next(net_numbers)
 
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
                 name=net_name,
