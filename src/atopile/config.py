@@ -6,7 +6,7 @@ from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Any, Generator, Iterable
+from typing import Any, Callable, Generator, Iterable
 
 from pydantic import (
     AliasChoices,
@@ -91,10 +91,7 @@ class UserConfigurationError(UserException):
 
 
 class GlobalConfigSettingsSource(YamlConfigSettingsSource):
-    def __init__(
-        self,
-        settings_cls: type[BaseSettings],
-    ):
+    def __init__(self, settings_cls: type[BaseSettings]):
         yaml_file = GlobalConfigSettingsSource._find_config_file()
         super().__init__(settings_cls, yaml_file, yaml_file_encoding="utf-8")
 
@@ -520,6 +517,39 @@ class Config:
         global _project_dir
         _project_dir = value
         self._settings = _try_construct_config(Settings, project_dir=value)
+
+    def update_project_config(
+        self, transformer: Callable[[dict, dict], dict], data: dict
+    ) -> None:
+        """Apply an update to the project config file."""
+
+        yaml = YAML(typ="rt")  # round-trip
+        filename = self.project_dir / PROJECT_CONFIG_FILENAME
+        temp_filename = filename.with_suffix(".yaml.tmp")
+
+        try:
+            try:
+                with filename.open("r", encoding="utf-8") as file:
+                    yaml_data: dict = yaml.load(file) or {}
+            except FileNotFoundError:
+                yaml_data = {}
+
+            yaml_data = transformer(yaml_data, data)
+
+            with temp_filename.open("w", encoding="utf-8") as file:
+                yaml.dump(yaml_data, file)
+
+            temp_filename.replace(filename)
+
+            self._settings = _try_construct_config(
+                Settings, project_dir=self.project_dir
+            )
+        except Exception as e:
+            try:
+                temp_filename.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise e
 
     @property
     def selected_builds(self) -> Iterable[str]:
