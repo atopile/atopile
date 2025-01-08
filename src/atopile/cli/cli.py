@@ -6,7 +6,6 @@ import sys
 from importlib.metadata import version
 from pathlib import Path
 from typing import Annotated
-from rich import print as rich_print
 
 import typer
 
@@ -123,8 +122,15 @@ app.command()(view.view)
 
 
 @app.command(hidden=True)
-def dump_config():
-    rich_print(config)
+def export_config_schema(project: bool = False):
+    if project:
+        from atopile.config import ProjectConfig
+
+        print(ProjectConfig.model_json_schema())
+    else:
+        from atopile.config import Settings
+
+        print(Settings.model_json_schema())
 
 
 def main():
