@@ -399,6 +399,24 @@ class ProjectConfig(BaseModel):
     def ensure_paths(self) -> None:
         self.paths.ensure()
 
+    @classmethod
+    def skeleton(cls, entry: str, paths: ProjectPaths | None):
+        """Creates a minimal ProjectConfig"""
+        project_paths = paths or ProjectPaths()
+        return ProjectConfig(
+            ato_version=f"^{version.get_installed_atopile_version()}",
+            paths=project_paths,
+            entry=entry,
+            builds={
+                "default": BuildConfig(
+                    _project_paths=project_paths,
+                    name="default",
+                    entry="",
+                    paths=BuildPaths(name="default", project_paths=project_paths),
+                )
+            },
+        )
+
 
 class ServicesConfig(BaseModel):
     components_api_url: str = Field(

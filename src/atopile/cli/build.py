@@ -48,7 +48,6 @@ def build(
     from atopile.config import BuildType
     from faebryk.library import _F as F
     from faebryk.libs.exceptions import accumulate, log_user_errors
-    from faebryk.libs.picker import lcsc
 
     parse_build_options(entry, selected_builds, target, option, standalone)
 
@@ -91,11 +90,6 @@ def build(
                             raise ValueError(
                                 f"Unknown build type: {config.build.build_type}"
                             )
-
-                    # FIXME: from build context
-                    lcsc.BUILD_FOLDER = config.project.paths.build
-                    lcsc.LIB_FOLDER = config.project.paths.footprints  # FIXME
-                    # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models # noqa: E501  # pre-existing
 
                     # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
                     buildutil.build(app)

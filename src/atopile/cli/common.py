@@ -10,7 +10,7 @@ from typing import Iterable
 import faebryk.libs.exceptions
 from atopile import address, errors, version
 from atopile.address import AddrStr
-from atopile.config import BuildConfig, ProjectConfig, ProjectPaths, config
+from atopile.config import ProjectConfig, ProjectPaths, config
 
 log = logging.getLogger(__name__)
 
@@ -125,21 +125,13 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
                 "Project config must not be present for standalone builds"
             )
 
-        project_paths = ProjectPaths(
-            layout=config.project_dir / "standalone",
-            src=config.project_dir,
-        )
-
         config.project_dir = Path.cwd()
-        config.project = ProjectConfig(
-            ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=project_paths,
+        config.project = ProjectConfig.skeleton(
             entry=entry,
-            builds={
-                "default": BuildConfig(
-                    _project_paths=project_paths, name="default", entry=""
-                )
-            },
+            paths=ProjectPaths(
+                layout=config.project_dir / "standalone",
+                src=config.project_dir,
+            ),
         )
 
     config.project.entry = entry
