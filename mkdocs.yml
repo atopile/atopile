@@ -1,5 +1,5 @@
 site_name: atopile
-site_url: https://atopile.io
+site_url: https://docs.atopile.io
 site_description: >-
   atopile is a language and toolchain to describe electronic circuit boards with code.
   By replacing the point and click schematic interface with code, we introduce software
@@ -65,6 +65,7 @@ plugins:
           signature_crossrefs: true
           show_symbol_type_heading: true
           show_symbol_type_toc: true
+- mike
 
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
@@ -159,7 +160,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/atopile/atopile
     - icon: fontawesome/solid/paper-plane
-      link: "mailto:tim@atopile.io,matt@atopile.io,narayan@atopile.io"
+      link: "mailto:ioannis@atopile.io,matt@atopile.io,narayan@atopile.io"
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/atopile_io
   generator: false
