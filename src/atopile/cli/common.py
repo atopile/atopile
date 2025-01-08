@@ -110,15 +110,6 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
     # TODO: mvoe to config
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
 
-    if entry_arg_file_path.is_dir():
-        config.project_dir = entry_arg_file_path
-    elif entry_arg_file_path.is_file():
-        config.project_dir = entry_arg_file_path.parent
-    else:
-        raise errors.UserBadParameterError(
-            f"Specified entry path is not a file or directory: {entry_arg_file_path}"
-        )
-
     if standalone:
         if not entry:
             raise errors.UserBadParameterError(
@@ -142,6 +133,16 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
                 src=config.project_dir,
             ),
         )
+    else:
+        if entry_arg_file_path.is_dir():
+            config.project_dir = entry_arg_file_path
+        elif entry_arg_file_path.is_file():
+            config.project_dir = entry_arg_file_path.parent
+        else:
+            raise errors.UserBadParameterError(
+                f"Specified entry path is not a file or directory: "
+                f"{entry_arg_file_path}"
+            )
 
     config.project.entry = entry
 
