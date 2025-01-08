@@ -172,6 +172,18 @@ class ProjectPaths(BaseModel):
         data.setdefault("modules", data["root"] / ".ato" / "modules")
         super().__init__(**data)
 
+    @model_validator(mode="after")
+    def make_paths_absolute(model: "ProjectPaths") -> "ProjectPaths":
+        """Make all paths absolute relative to the project root."""
+        for field_name, field_value in model:
+            if field_name != "root" and isinstance(field_value, Path):
+                if not field_value.is_absolute():
+                    setattr(model, field_name, model.root / field_value)
+                setattr(
+                    model, field_name, getattr(model, field_name).resolve().absolute()
+                )
+        return model
+
     def ensure(self) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
         self.build.mkdir(parents=True, exist_ok=True)
@@ -266,9 +278,13 @@ class BuildConfig(BaseModel):
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
-    paths: BuildPaths | None = Field(default=None, validate_default=True)
+    paths: BuildPaths
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
+
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        self._project_paths = data.get("_project_paths", ProjectPaths())
 
     @model_validator(mode="before")
     def init_paths(cls, data: dict) -> dict:
@@ -308,7 +324,7 @@ class BuildConfig(BaseModel):
     @property
     def file_path(self) -> Path:
         address = AddrStr(self.address)
-        return address.file_path
+        return self._project_paths.root / address.file_path
 
     @property
     def entry_section(self) -> str:
