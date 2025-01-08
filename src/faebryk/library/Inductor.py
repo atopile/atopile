@@ -23,21 +23,28 @@ class Inductor(Module):
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
-    current_rating = L.p_field(
+    """Frequency where inductance and parasitic capacitance cancel causing resonance."""
+
+    rated_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
     )
+    """Maximum continuous RMS current rating"""
+
     saturation_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
     )
+    """Current at which inductance drops 70% due to core saturation"""
+
     dc_resistance = L.p_field(
         units=P.Ω,
         soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
     )
+    """DC resistance of the inductor"""
 
     pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Inductor)
 
@@ -53,7 +60,7 @@ class Inductor(Module):
         return F.has_simple_value_representation_based_on_params_chain(
             S(self.inductance, tolerance=True),
             S(self.self_resonant_frequency),
-            S(self.current_rating),
+            S(self.rated_current),
             S(self.saturation_current),
             S(self.dc_resistance),
         )

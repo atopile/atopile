@@ -99,8 +99,8 @@ class ApiClient:
         finally:
             logger.info(f"Backend query took {time.time() - now:.3f} seconds")
 
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
+        if logger.isEnabledFor(logging.INFO):
+            logger.info(
                 f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
                 f"{json.dumps(response.json(), indent=2)}"
             )

@@ -75,7 +75,8 @@ class InductorParams(BaseParams):
     endpoint: str = "inductors"
     inductance: ApiParamT = SerializableField()
     self_resonant_frequency: ApiParamT = SerializableField()
-    max_current: ApiParamT = SerializableField()
+    rated_current: ApiParamT = SerializableField()
+    saturation_current: ApiParamT = SerializableField()
     dc_resistance: ApiParamT = SerializableField()
 
 

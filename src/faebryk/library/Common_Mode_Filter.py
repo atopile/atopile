@@ -47,5 +47,5 @@ class Common_Mode_Filter(Module):
         for coil in [self.coil_a, self.coil_b]:
             coil.inductance.alias_is(self.inductance)
             coil.self_resonant_frequency.alias_is(self.self_resonant_frequency)
-            coil.max_current.alias_is(self.max_current)
+            coil.rated_current.alias_is(self.max_current)
             coil.dc_resistance.alias_is(self.dc_resistance)

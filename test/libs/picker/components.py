@@ -144,7 +144,7 @@ inductors = [
                 i.inductance.constrain_subset(
                     L.Range.from_center(470 * P.nH, 47 * P.nH)
                 ),
-                i.max_current.constrain_ge(0.01 * P.A),
+                i.rated_current.constrain_ge(0.01 * P.A),
                 i.dc_resistance.constrain_le(1 * P.ohm),
                 i.self_resonant_frequency.constrain_ge(100 * P.Mhertz),
             )
@@ -155,7 +155,7 @@ inductors = [
         F.Inductor().builder(
             lambda i: (
                 i.inductance.constrain_subset(L.Range.from_center_rel(10 * P.uH, 0.4)),
-                i.max_current.constrain_ge(4 * P.A),
+                i.rated_current.constrain_ge(4 * P.A),
             )
         ),
         packages=[],
