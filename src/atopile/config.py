@@ -28,7 +28,7 @@ from ruamel.yaml import YAML
 
 from atopile import version
 from atopile.address import AddrStr
-from atopile.errors import UserException
+from atopile.errors import UserException, UserFileNotFoundError
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
 
 logger = logging.getLogger(__name__)
@@ -337,8 +337,7 @@ class Dependency(BaseModel):
     path: Path | None = None
 
     project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: Dependency._load_project_config(data["path"]),
-        exclude=True,
+        default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
     )
 
     @classmethod
@@ -355,24 +354,6 @@ class Dependency(BaseModel):
                     ) from ex
                 return cls(name=name, version_spec=version_spec)
         return cls(name=spec_str)
-
-    @classmethod
-    def _load_project_config(cls, project_path: Path | None) -> "ProjectConfig | None":
-        if project_path is None:
-            return None
-
-        config_file = project_path / PROJECT_CONFIG_FILENAME
-
-        if not config_file.exists():
-            return None
-
-        file_contents = yaml.load(config_file)
-        return _try_construct_config(
-            ProjectConfig,
-            identifier=config_file,
-            location=project_path,
-            **file_contents,
-        )
 
     @field_serializer("path")
     def serialize_path(self, path: Path | None, _info: Any) -> str | None:
@@ -434,6 +415,27 @@ class ProjectConfig(BaseModel):
                     paths=BuildPaths(name="default", project_paths=project_paths),
                 )
             },
+        )
+
+    @classmethod
+    def from_path(cls, path: Path | None) -> "ProjectConfig | None":
+        if path is None:
+            return None
+
+        config_file = path / PROJECT_CONFIG_FILENAME
+
+        if not config_file.exists():
+            return None
+
+        try:
+            file_contents = yaml.load(config_file)
+        except FileNotFoundError as e:
+            raise UserFileNotFoundError(f"Failed to load project config: {e}") from e
+        except Exception as e:
+            raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        return _try_construct_config(
+            ProjectConfig, identifier=config_file, location=path, **file_contents
         )
 
 
