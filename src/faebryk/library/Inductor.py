@@ -23,7 +23,12 @@ class Inductor(Module):
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
-    max_current = L.p_field(
+    current_rating = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.A),
+    )
+    saturation_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
@@ -48,7 +53,8 @@ class Inductor(Module):
         return F.has_simple_value_representation_based_on_params_chain(
             S(self.inductance, tolerance=True),
             S(self.self_resonant_frequency),
-            S(self.max_current),
+            S(self.current_rating),
+            S(self.saturation_current),
             S(self.dc_resistance),
         )
 
