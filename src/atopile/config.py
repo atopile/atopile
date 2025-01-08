@@ -6,7 +6,15 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Iterable
 
-from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -247,6 +255,8 @@ class BuildEntry(BaseModel):
 
 
 class BuildConfig(BaseModel):
+    _project_paths: ProjectPaths
+
     name: str
     address: str = Field(alias="entry")
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
@@ -254,14 +264,34 @@ class BuildConfig(BaseModel):
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
-    paths: BuildPaths = Field(
-        default_factory=lambda data: BuildPaths(
-            project_paths=ProjectPaths(),
-            **data,
-        )
-    )
+    paths: BuildPaths | None = Field(default=None, validate_default=True)
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
+
+    @model_validator(mode="before")
+    def validate_paths(
+        self: "BuildConfig | dict[str, Any]",
+    ) -> "BuildConfig | dict[str, Any]":
+        match self:
+            case dict() | None:
+                self.setdefault(
+                    "paths",
+                    BuildPaths(
+                        name=self["name"],
+                        project_paths=self["_project_paths"],
+                        **(self.get("paths", {})),
+                    ),
+                )
+            case BuildConfig():
+                self.paths = self.paths or BuildPaths(
+                    name=self.name,
+                    project_paths=self._project_paths,
+                    **(self.paths or {}),
+                )
+            case _:
+                raise ValueError(f"Invalid build paths: {self.paths}")
+
+        return self
 
     @property
     def build_type(self) -> BuildType:
@@ -354,7 +384,7 @@ class ProjectConfig(BaseModel):
 
     @field_validator("builds", mode="before")
     def add_build_names(
-        cls, value: dict[str, dict[str, Any] | BuildConfig]
+        cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
     ) -> dict[str, Any]:
         for build_name, data in value.items():
             match data:
@@ -362,6 +392,7 @@ class ProjectConfig(BaseModel):
                     data.name = build_name
                 case dict():
                     data.setdefault("name", build_name)
+                    data["_project_paths"] = info.data["paths"]
                 case _:
                     raise ValueError(f"Invalid build data: {data}")
         return value
