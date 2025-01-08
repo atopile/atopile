@@ -25,7 +25,7 @@ from pint import UndefinedUnitError
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
-from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
+from atopile._shim import GlobalShims, ShimElectrical, has_ato_cmp_attrs, shim_map
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
@@ -1079,7 +1079,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if mif := self._try_get_mif(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        mif = self._current_node.add(F.Electrical(), name=name)
+        mif = self._current_node.add(ShimElectrical(), name=name)
         return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
     # TODO: @v0.4 remove this deprecated import form

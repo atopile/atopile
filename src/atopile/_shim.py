@@ -212,6 +212,18 @@ def _handle_footprint_shim(module: L.Module, value: str):
     GlobalShims.footprint.fset(module, value)
 
 
+class ShimElectrical(F.Electrical):
+    """Shim module interface for signals."""
+
+    @property
+    def override_net_name(self) -> str:
+        return self.get_trait(F.has_net_name).name
+
+    @override_net_name.setter
+    def override_net_name(self, value: str):
+        self.add(F.has_net_name(value, level=F.has_net_name.Level.EXPECTED))
+
+
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
 class ShimResistor(F.Resistor):
     """Temporary shim to translate `value` to `resistance`."""
