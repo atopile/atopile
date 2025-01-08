@@ -1567,9 +1567,9 @@
   </header>
   <div class="md-post__content md-typeset">
     <h2 id="be-assertive"><a class="toclink" href="../../2024/02/29/be-assertive-/">Be assertive 💪</a></h2>
-<p><img alt="Equation solver" src="/assets/images/equation-preview.gif" /></p>
+<p><img alt="Equation solver" src="../../../assets/images/equation-preview.gif" /></p>
 <h3 id="check-yoself-before-you-wreck-yo-design"><a class="toclink" href="../../2024/02/29/be-assertive-/#check-yoself-before-you-wreck-yo-design">Check yo'self before you wreck yo'... design</a></h3>
-<p><img alt="Assertion Checks" src="/assets/images/assertion-checks-2.png" /></p>
+<p><img alt="Assertion Checks" src="../../../assets/images/assertion-checks-2.png" /></p>
 <p>atopile has your back when it comes to ensuring your design is correct. With the new assertion feature, you can apply constraints on attributes of your design.</p>
 <ul>
 <li>Make sure voltage inputs on ICs are withing operational ranges</li>
@@ -1668,7 +1668,7 @@
   <div class="md-post__content md-typeset">
     <h2 id="make-hardware-flow"><a class="toclink" href="../../2024/02/06/make-hardware-flow/">Make hardware flow</a></h2>
 <p>My dad taught me the technical details of everything for as long as I can remember. For my 7<sup>th</sup> Christmas, I got a lawn-mower - to tear the engine off and turn into a go-kart. I was absolutely stoked.</p>
-<p>As <a href="/blog/posts/narayans-story">Narayan</a> and I grew up, we spent every weekend building things. We were always scheming about the next project, and we were always building something. We built a CNC machine, a liquid-fueled rocket motor, and a drone. We were always trying to make things better, faster, and more efficient. We were always trying to make things work better.</p>
+<p>As <a href="../../2024/01/31/from-weekend-projects-to-reinventing-hardware-design/">Narayan's story</a> and I grew up, we spent every weekend building things. We were always scheming about the next project, and we were always building something. We built a CNC machine, a liquid-fueled rocket motor, and a drone. We were always trying to make things better, faster, and more efficient. We were always trying to make things work better.</p>
 <p>More than any of the individual projects, the thing that I always got most stoked about was new tools. We converted a milling machine to CNC an axis at a time by first 3D printing and then machining each of the axes brackets. We had to take a second pass at the first two axes because the 3D printed parts were sloppy enough that the machined brackets they created still had too much play for comfort.
 Man, that was a great project. And the endeavour landed us more offers for contract work (as ~17 year-olds) than we could handle.</p>
 <p>One specific part of that project I wanted, and wanted for years, were low-cost tightly integrated servo drives. I wanted to make a PCB with 4 servo controllers on it that meant I would only need to run cables out to the motors and I could control the whole system form a single PCB - similar to 3D printer controllers. We're finally getting close! <a href="https://github.com/atopile/spin-servo-drive">https://github.com/atopile/spin-servo-drive</a></p>
@@ -1721,7 +1721,7 @@ Man, that was a great project. And the endeavour landed us more offers for contr
     <img src="/assets/images/ci-generated-gerbers.gif" />
 </picture></p>
 <p>... and stamp them with the precise version of the source-code used to create them!</p>
-<p><img alt="githash" src="/assets/images/ci-generated-gerbers-githash.png" /></p>
+<p><img alt="CI generated gerbers" src="../../../assets/images/ci-generated-gerbers-githash.png" /></p>
 <p>No more export mistakes 👌. Plus, it makes ordering boards super easy!</p>
 <p>Matt</p>
     
@@ -1886,7 +1886,7 @@ All you need to do is hit the sync 🔄 button to group the components into the 
 </span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a>diode.power_dissipation = 5W to 60W
 </span></code></pre></div>
 At build time, we take the requirements and send them to our component server, which filters parts in our library for the specified requirements. The server then sorts the parts by price and availability, and returns the best matches. These components are then downloaded and added to your BOM and netlist.</p>
-<p><img alt="BOM output" src="/assets/images/cloud_bom.png" /></p>
+<p><img alt="BOM output" src="../../../assets/images/cloud_bom.png" /></p>
 <h4 id="footprints"><a class="toclink" href="../../2024/01/31/cloud-components/#footprints">Footprints</a></h4>
 <p>This was a bit of a pain. This is pretty simple for things like resistors and caps, but becomes a little more complex for devices like mosfets that might have three pins on some parts and eight on others. Our current solution, which admittedly is a bit of a hack, stores a muated footprint in the server for each part, downloads it and adds it to your library.</p>
 <p>For example, here is a multi-pin mosfet, you can see that the pin names have been mutated to their corresponding signals:</p>

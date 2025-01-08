@@ -1569,9 +1569,9 @@
   </header>
   <div class="md-post__content md-typeset">
     <h2 id="be-assertive"><a class="toclink" href="../../2024/02/29/be-assertive-/">Be assertive 💪</a></h2>
-<p><img alt="Equation solver" src="/assets/images/equation-preview.gif" /></p>
+<p><img alt="Equation solver" src="../../../assets/images/equation-preview.gif" /></p>
 <h3 id="check-yoself-before-you-wreck-yo-design"><a class="toclink" href="../../2024/02/29/be-assertive-/#check-yoself-before-you-wreck-yo-design">Check yo'self before you wreck yo'... design</a></h3>
-<p><img alt="Assertion Checks" src="/assets/images/assertion-checks-2.png" /></p>
+<p><img alt="Assertion Checks" src="../../../assets/images/assertion-checks-2.png" /></p>
 <p>atopile has your back when it comes to ensuring your design is correct. With the new assertion feature, you can apply constraints on attributes of your design.</p>
 <ul>
 <li>Make sure voltage inputs on ICs are withing operational ranges</li>
@@ -1630,7 +1630,7 @@
     <img src="/assets/images/ci-generated-gerbers.gif" />
 </picture></p>
 <p>... and stamp them with the precise version of the source-code used to create them!</p>
-<p><img alt="githash" src="/assets/images/ci-generated-gerbers-githash.png" /></p>
+<p><img alt="CI generated gerbers" src="../../../assets/images/ci-generated-gerbers-githash.png" /></p>
 <p>No more export mistakes 👌. Plus, it makes ordering boards super easy!</p>
 <p>Matt</p>
     
@@ -1795,7 +1795,7 @@ All you need to do is hit the sync 🔄 button to group the components into the 
 </span><span id="__span-2-22"><a id="__codelineno-2-22" name="__codelineno-2-22" href="#__codelineno-2-22"></a>diode.power_dissipation = 5W to 60W
 </span></code></pre></div>
 At build time, we take the requirements and send them to our component server, which filters parts in our library for the specified requirements. The server then sorts the parts by price and availability, and returns the best matches. These components are then downloaded and added to your BOM and netlist.</p>
-<p><img alt="BOM output" src="/assets/images/cloud_bom.png" /></p>
+<p><img alt="BOM output" src="../../../assets/images/cloud_bom.png" /></p>
 <h4 id="footprints"><a class="toclink" href="../../2024/01/31/cloud-components/#footprints">Footprints</a></h4>
 <p>This was a bit of a pain. This is pretty simple for things like resistors and caps, but becomes a little more complex for devices like mosfets that might have three pins on some parts and eight on others. Our current solution, which admittedly is a bit of a hack, stores a muated footprint in the server for each part, downloads it and adds it to your library.</p>
 <p>For example, here is a multi-pin mosfet, you can see that the pin names have been mutated to their corresponding signals:</p>
