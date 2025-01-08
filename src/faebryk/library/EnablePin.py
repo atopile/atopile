@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 
@@ -17,8 +18,8 @@ class EnablePin(ModuleInterface):
         self.add(F.is_optional_defined(not value, self._handle_optional))
         self.enable.set(value)
 
-    def set_weak(self, value: bool):
-        self.enable.set_weak(value)
+    def set_weak(self, value: bool, owner: Module):
+        self.enable.set_weak(value, owner=owner)
 
     @L.rt_field
     def has_single_electric_reference(self):
