@@ -10,7 +10,7 @@ from typing import Iterable
 import faebryk.libs.exceptions
 from atopile import address, errors, version
 from atopile.address import AddrStr
-from atopile.config import BuildConfig, BuildPaths, ProjectConfig, ProjectPaths, config
+from atopile.config import BuildConfig, ProjectConfig, ProjectPaths, config
 
 log = logging.getLogger(__name__)
 
@@ -137,10 +137,7 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
             entry=entry,
             builds={
                 "default": BuildConfig(
-                    name="default",
-                    entry="",
-                    targets=[],
-                    paths=BuildPaths(name="default", project_paths=project_paths),
+                    _project_paths=project_paths, name="default", entry=""
                 )
             },
         )
@@ -155,7 +152,7 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
 
 def parse_build_options(
     entry: str | None,
-    build: Iterable[str],
+    selected_builds: Iterable[str],
     target: Iterable[str],
     option: Iterable[str],
     standalone: bool,
@@ -193,17 +190,16 @@ def parse_build_options(
     # if we set an entry-point, we now need to deal with that
     entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
 
-    if build:
-        config.builds = list(build)
+    if selected_builds:
+        config.selected_builds = list(selected_builds)
 
-    for build_name in config.builds:
-        try:
-            build_config = config.project.builds[build_name]
-        except KeyError:
+    for build_name in config.selected_builds:
+        if build_name not in config.project.builds:
             raise errors.UserBadParameterError(
                 f"Build `{build_name}` not found in project config"
             )
+
         if entry_addr_override is not None:
-            build_config.address = entry_addr_override
+            config.project.builds[build_name].address = entry_addr_override
         if target:
-            build_config.targets = list(target)
+            config.project.builds[build_name].targets = list(target)

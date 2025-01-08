@@ -8,7 +8,7 @@ import pytest
 
 from atopile import errors
 from atopile.cli.build import _init_python_app
-from atopile.config import BuildConfig
+from atopile.config import config
 
 PROJECT_DIR = Path("test/common/resources/test-project")
 
@@ -34,10 +34,11 @@ def from_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 )
 @pytest.mark.usefixtures("from_project_dir")
 def test_build_errors(build_name: str, expected_error):
-    build_cfg = BuildConfig(name=build_name, entry="", targets=[])
+    config.project_dir = Path.cwd()
+    config.selected_builds = [build_name]
 
-    with pytest.raises(expected_error) as exc_info:
-        _init_python_app(build_cfg)
+    with pytest.raises(expected_error) as exc_info, next(config.builds):
+        _init_python_app()
 
     assert exc_info.value.__cause__ is not None
     assert isinstance(exc_info.value.__cause__, ValueError)

@@ -2,9 +2,11 @@ import fnmatch
 import logging
 import os
 import platform
+from contextlib import _GeneratorContextManager, contextmanager
+from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Generator, Iterable
 
 from pydantic import (
     AliasChoices,
@@ -258,7 +260,7 @@ class BuildConfig(BaseModel):
     _project_paths: ProjectPaths
 
     name: str
-    address: str = Field(alias="entry")
+    address: str | None = Field(alias="entry")
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
     exclude_targets: list[str] = Field(default=[])
     fail_on_drcs: bool = Field(default=False)
@@ -269,29 +271,19 @@ class BuildConfig(BaseModel):
     frozen: bool = Field(default=False)
 
     @model_validator(mode="before")
-    def validate_paths(
-        self: "BuildConfig | dict[str, Any]",
-    ) -> "BuildConfig | dict[str, Any]":
-        match self:
+    def init_paths(cls, data: dict) -> dict:
+        match data.get("paths"):
             case dict() | None:
-                self.setdefault(
-                    "paths",
-                    BuildPaths(
-                        name=self["name"],
-                        project_paths=self["_project_paths"],
-                        **(self.get("paths", {})),
-                    ),
+                data["paths"] = BuildPaths(
+                    name=data["name"],
+                    project_paths=data["_project_paths"],
+                    **data.get("paths", {}),
                 )
-            case BuildConfig():
-                self.paths = self.paths or BuildPaths(
-                    name=self.name,
-                    project_paths=self._project_paths,
-                    **(self.paths or {}),
-                )
+            case BuildPaths():
+                pass
             case _:
-                raise ValueError(f"Invalid build paths: {self.paths}")
-
-        return self
+                raise ValueError(f"Invalid build paths: {data.get('paths')}")
+        return data
 
     @property
     def build_type(self) -> BuildType:
@@ -383,7 +375,7 @@ class ProjectConfig(BaseModel):
     builds: dict[str, BuildConfig] = Field(default_factory=dict)
 
     @field_validator("builds", mode="before")
-    def add_build_names(
+    def init_builds(
         cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
     ) -> dict[str, Any]:
         for build_name, data in value.items():
@@ -420,7 +412,7 @@ class Settings(BaseSettings):
     project_dir: Path | None
     project: ProjectConfig | None = Field(default=None)
     entry: str | None = Field(default=None)
-    builds: list[str] | None = Field(default=None)
+    selected_builds: list[str] | None = Field(default=None)
 
     model_config = SettingsConfigDict(env_prefix="ATO_")
 
@@ -445,14 +437,32 @@ class Settings(BaseSettings):
             self.project.ensure_paths()
 
 
+_current_build_cfg: ContextVar[BuildConfig | None] = ContextVar(
+    "current_build_cfg", default=None
+)
+
+
+@contextmanager
+def _build_context(config: "Config", build_name: str):
+    cfg = config.project.builds[build_name]
+    token = _current_build_cfg.set(cfg)
+    try:
+        yield
+    finally:
+        _current_build_cfg.reset(token)
+
+
 class Config:
     _settings: Settings
 
     def __init__(self) -> None:
         self._settings = _try_construct_config(Settings, project_dir=_project_dir)
 
+    def __repr__(self) -> str:
+        return self._settings.__repr__()
+
     def __rich_repr__(self):
-        return self._settings
+        return self._settings.__rich_repr__()
 
     @property
     def project(self) -> ProjectConfig:
@@ -478,20 +488,33 @@ class Config:
         self._settings = _try_construct_config(Settings, project_dir=value)
 
     @property
-    def builds(self) -> Iterable[str]:
-        return self._settings.builds or self.project.builds.keys() or ["default"]
+    def selected_builds(self) -> Iterable[str]:
+        return (
+            self._settings.selected_builds or self.project.builds.keys() or ["default"]
+        )
 
-    @builds.setter
-    def builds(self, value: list[str]) -> None:
-        self._settings.builds = value
+    @selected_builds.setter
+    def selected_builds(self, value: list[str]) -> None:
+        self._settings.selected_builds = value
 
     @property
-    def build_configs(self) -> Iterable[BuildConfig]:
-        return (self.project.builds[name] for name in self.builds)
+    def builds(self) -> Generator[_GeneratorContextManager[None], None, None]:
+        """Return an iterable of BuildContext objects for each build."""
+        return (_build_context(self, name) for name in self.selected_builds)
+
+    @property
+    def build(self) -> BuildConfig:
+        if current := self._current_build:
+            return current
+        raise RuntimeError("No build config is currently active")
 
     @property
     def has_project(self) -> bool:
         return self._settings.project is not None
+
+    @property
+    def _current_build(self) -> BuildConfig | None:
+        return _current_build_cfg.get()
 
 
 _project_dir: Path | None = None

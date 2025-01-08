@@ -18,7 +18,7 @@ import faebryk.library._F as F
 import faebryk.libs.exceptions
 from atopile import errors, front_end, legacy_config
 from atopile.address import AddressError
-from atopile.config import BuildConfig, config
+from atopile.config import config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.util import (
@@ -83,7 +83,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
     return entries
 
 
-def generate_module_map(build_cfg: BuildConfig, app: Module) -> None:
+def generate_module_map(app: Module) -> None:
     """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
     module_map = {}
 
@@ -131,6 +131,8 @@ def generate_module_map(build_cfg: BuildConfig, app: Module) -> None:
         }
 
     with open(
-        build_cfg.paths.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
+        config.build.paths.output_base.with_suffix(".layouts.json"),
+        "w",
+        encoding="utf-8",
     ) as f:
         json.dump(module_map, f)
