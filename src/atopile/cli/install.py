@@ -147,21 +147,16 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
         # use the one we just installed as a basis
         dependency.version_spec = f"@{installed_version}"
 
-    names = {dep.name: i for i, dep in enumerate(config.project.dependencies or [])}
+    def add_dependency(config_data, new_data):
+        for i, dep in enumerate(config_data["dependencies"]):
+            if dep["name"] == new_data["name"]:
+                config_data["dependencies"][i] = new_data
+                break
+        else:
+            config_data["dependencies"] = config_data["dependencies"] + [new_data]
+        return config_data
 
-    new_data = (
-        {"dependencies": {str(names[dependency.name]): dependency.model_dump()}}
-        if dependency.name in names
-        else {
-            "dependencies": {
-                str(len(config.project.dependencies or []) - 1): dependency.model_dump()
-            }
-        }
-    )
-
-    config.update_project_config(
-        lambda config_data, new_data: config_data | new_data, new_data
-    )
+    config.update_project_config(add_dependency, dependency.model_dump())
 
 
 def install_project_dependencies(upgrade: bool):

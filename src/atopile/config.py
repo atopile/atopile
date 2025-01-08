@@ -14,6 +14,7 @@ from pydantic import (
     Field,
     ValidationError,
     ValidationInfo,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -336,7 +337,8 @@ class Dependency(BaseModel):
     path: Path | None = None
 
     project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: Dependency._load_project_config(data["path"])
+        default_factory=lambda data: Dependency._load_project_config(data["path"]),
+        exclude=True,
     )
 
     @classmethod
@@ -371,6 +373,10 @@ class Dependency(BaseModel):
             location=project_path,
             **file_contents,
         )
+
+    @field_serializer("path")
+    def serialize_path(self, path: Path | None, _info: Any) -> str | None:
+        return str(path) if path else None
 
 
 class ProjectConfig(BaseModel):
@@ -519,22 +525,23 @@ class Config:
         self._settings = _try_construct_config(Settings, project_dir=value)
 
     def update_project_config(
-        self, transformer: Callable[[dict, dict], dict], data: dict
+        self, transformer: Callable[[dict, dict], dict], new_data: dict
     ) -> None:
         """Apply an update to the project config file."""
 
-        yaml = YAML(typ="rt")  # round-trip
+        yaml = YAML()  # YAML(typ="rt")  # round-trip
+        # yaml.default_flow_style = False
         filename = self.project_dir / PROJECT_CONFIG_FILENAME
         temp_filename = filename.with_suffix(".yaml.tmp")
 
         try:
             try:
                 with filename.open("r", encoding="utf-8") as file:
-                    yaml_data: dict = yaml.load(file) or {}
+                    yaml_data: dict = yaml.load(filename) or {}
             except FileNotFoundError:
                 yaml_data = {}
 
-            yaml_data = transformer(yaml_data, data)
+            yaml_data = transformer(yaml_data, new_data)
 
             with temp_filename.open("w", encoding="utf-8") as file:
                 yaml.dump(yaml_data, file)
