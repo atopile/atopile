@@ -60,7 +60,7 @@ def get_package_candidates(module: Module) -> frozenset["PackageCandidate"]:
 class ApiClient:
     @dataclass
     class Config:
-        api_url: str = config.project.services.components_api_url
+        api_url: str = config.project.services.components.url
         api_key: str | None = None
 
     cfg = Config()

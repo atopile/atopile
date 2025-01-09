@@ -86,7 +86,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
     """
     try:
         response = requests.post(
-            "https://get-package-atsuhzfd5a-uc.a.run.app",
+            config.project.services.packages.url,
             json={"name": module_name},
             timeout=10,
         )

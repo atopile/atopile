@@ -23,6 +23,7 @@ from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
+    SettingsError,
     YamlConfigSettingsSource,
 )
 from ruamel.yaml import YAML
@@ -82,6 +83,8 @@ def _try_construct_config[T](
             ],
         )
         raise excs from ex
+    except SettingsError as ex:
+        raise UserConfigurationError(f"Invalid config: {ex}") from ex
 
 
 class BuildType(Enum):
@@ -364,11 +367,26 @@ class Dependency(BaseModel):
 
 
 class ServicesConfig(BaseModel):
-    components_api_url: str = Field(
-        default="https://components.atopileapi.com",
-        validation_alias=AliasChoices("components_api_url", "components"),
-        description="Components API URL",
-    )
+    class Components(BaseModel):
+        url: str = Field(
+            default="https://components.atopileapi.com", description="Components URL"
+        )
+
+    class Packages(BaseModel):
+        url: str = Field(
+            default="https://get-package-atsuhzfd5a-uc.a.run.app",
+            description="Packages URL",
+        )
+
+    @field_validator("components", mode="before")
+    def validate_components(cls, value: Components | str) -> Components:
+        # also accepts a string for backwards compatibility
+        if isinstance(value, str):
+            return cls.Components(url=value)
+        return value
+
+    components: Components = Field(default_factory=Components)
+    packages: Packages = Field(default_factory=Packages)
 
 
 class ProjectConfig(BaseModel):
@@ -465,7 +483,12 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     """
 
     # TOOD: ignore but warn for extra fields
-    model_config = SettingsConfigDict(env_prefix=ENV_VAR_PREFIX, extra="forbid")
+    model_config = SettingsConfigDict(
+        env_prefix=ENV_VAR_PREFIX,
+        env_nested_delimiter="_",
+        enable_decoding=False,
+        extra="forbid",
+    )
 
     @classmethod
     def settings_customise_sources(
