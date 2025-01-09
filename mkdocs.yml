@@ -42,29 +42,29 @@ nav:
 plugins:
 - blog
 - search
-# - mkdocstrings:
-#     handlers:
-#       python:
-#         paths: [src]
-#         options:
-#           extensions:
-#           - griffe_typingdoc
-#           show_root_heading: true
-#           show_if_no_docstring: true
-#           preload_modules:
-#           - faebryk
-#           - atopile
-#           inherited_members: true
-#           members_order: source
-#           separate_signature: true
-#           unwrap_annotated: true
-#           filters:
-#           - '!^_'
-#           merge_init_into_class: true
-#           docstring_section_style: spacy
-#           signature_crossrefs: true
-#           show_symbol_type_heading: true
-#           show_symbol_type_toc: true
+- mkdocstrings:
+    handlers:
+      python:
+        paths: [src]
+        options:
+          extensions:
+          - griffe_typingdoc
+          show_root_heading: true
+          show_if_no_docstring: true
+          preload_modules:
+          - faebryk
+          - atopile
+          inherited_members: true
+          members_order: source
+          separate_signature: true
+          unwrap_annotated: true
+          filters:
+          - '!^_'
+          merge_init_into_class: true
+          docstring_section_style: spacy
+          signature_crossrefs: true
+          show_symbol_type_heading: true
+          show_symbol_type_toc: true
 - mike
 
 repo_name: atopile/atopile
