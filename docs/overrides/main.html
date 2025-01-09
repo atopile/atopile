@@ -1,7 +1,12 @@
-{#-
-  This file was automatically generated - do not edit
--#}
 {% extends "base.html" %}
+
+{% block outdated %}
+  You're not viewing the latest version.
+  <a href="{{ '../' ~ base_url }}">
+    <strong>Click here to go to latest.</strong>
+  </a>
+{% endblock %}
+
 {% block announce %}
   For updates, star us on
   <a href="https://github.com/atopile/atopile">

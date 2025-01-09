@@ -102,6 +102,8 @@ dev = [
     "mkdocstrings[python]>=0.27.0",
     "griffe-typingdoc>=0.2.7",
     "pathvalidate>=3.2.1",
+    "mike>=2.1.3",
+    "hatch>=1.14.0",
 ]
 
 

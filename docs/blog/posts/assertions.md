@@ -10,11 +10,11 @@ links:
 
 # Be assertive 💪
 
-![Equation solver](/assets/images/equation-preview.gif)
+![Equation solver](../../assets/images/equation-preview.gif)
 
 ## Check yo'self before you wreck yo'... design
 
-![Assertion Checks](/assets/images/assertion-checks-2.png)
+![Assertion Checks](../../assets/images/assertion-checks-2.png)
 
 atopile has your back when it comes to ensuring your design is correct. With the new assertion feature, you can apply constraints on attributes of your design.
 
