@@ -2,6 +2,7 @@ import fnmatch
 import logging
 import os
 import platform
+from abc import ABC, abstractmethod
 from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
@@ -91,13 +92,25 @@ class UserConfigurationError(UserException):
     """An error in the config file."""
 
 
-class GlobalConfigSettingsSource(YamlConfigSettingsSource):
+class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
     def __init__(self, settings_cls: type[BaseSettings]):
-        yaml_file = GlobalConfigSettingsSource._find_config_file()
-        super().__init__(settings_cls, yaml_file, yaml_file_encoding="utf-8")
+        self.yaml_file_path = self.find_config_file()
+        self.yaml_file_encoding = "utf-8"
+        self.yaml_data = self._read_files(self.yaml_file_path)
+
+        super(YamlConfigSettingsSource, self).__init__(settings_cls, self.get_data())
 
     @classmethod
-    def _find_config_file(cls) -> Path | None:
+    @abstractmethod
+    def find_config_file(cls) -> Path | None: ...
+
+    @abstractmethod
+    def get_data(self) -> dict[str, Any]: ...
+
+
+class GlobalConfigSettingsSource(ConfigFileSettingsSource):
+    @classmethod
+    def find_config_file(cls) -> Path | None:
         """
         Find the global config file in the user's home directory.
         """
@@ -116,37 +129,29 @@ class GlobalConfigSettingsSource(YamlConfigSettingsSource):
         config_file = config_dir / GLOBAL_CONFIG_FILENAME
         return config_file if config_file.exists() else None
 
+    def get_data(self) -> dict[str, Any]:
+        return self.yaml_data if self.yaml_data else {}
 
-class ProjectConfigSettingsSource(YamlConfigSettingsSource):
-    def __init__(self, settings_cls: type[BaseSettings]):
-        project_dir = (
-            _project_dir or ProjectConfigSettingsSource._find_project() or Path.cwd()
-        )
-        yaml_file = project_dir / PROJECT_CONFIG_FILENAME
 
-        self.yaml_file_encoding = "utf-8"
-        self.yaml_data = self._read_files(yaml_file)
-
-        super(YamlConfigSettingsSource, self).__init__(
-            settings_cls,
-            {
-                "project": self.yaml_data if self.yaml_data else None,
-                "project_dir": project_dir,
-            },
-        )
-
+class ProjectConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
-    def _find_project(cls, dir: Path = Path.cwd()) -> Path | None:
+    def find_config_file(cls) -> Path | None:
         """
         Find a project config file in the specified directory or any parent directories.
         """
-        path = dir
+        if _project_dir:
+            return _project_dir / PROJECT_CONFIG_FILENAME
+
+        path = Path.cwd()
         while not (path / PROJECT_CONFIG_FILENAME).exists():
             path = path.parent
             if path == Path("/"):
                 return None
 
-        return path.resolve().absolute()
+        return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+
+    def get_data(self) -> dict[str, Any]:
+        return self.yaml_data if self.yaml_data else {}
 
 
 class ProjectPaths(BaseModel):
@@ -358,61 +363,17 @@ class Dependency(BaseModel):
 
 
 class ProjectConfig(BaseModel):
-    """
-    Project-level configuration, loaded from an `ato.yaml` file.
-    """
+    """Project-level config"""
 
     ato_version: str = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
+        default=f"^{version.get_installed_atopile_version()}",
     )
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
     entry: str | None = Field(default=None)
     builds: dict[str, BuildConfig] = Field(default_factory=dict)
-
-    @field_validator("builds", mode="before")
-    def init_builds(
-        cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
-    ) -> dict[str, Any]:
-        for build_name, data in value.items():
-            match data:
-                case BuildConfig():
-                    data.name = build_name
-                case dict():
-                    data.setdefault("name", build_name)
-                    data["_project_paths"] = info.data["paths"]
-                case _:
-                    raise ValueError(f"Invalid build data: {data}")
-        return value
-
-    @field_validator("dependencies", mode="before")
-    def add_dependencies(cls, value: list[dict[str, Any]]) -> list[Dependency]:
-        return [
-            Dependency.from_str(dep) if isinstance(dep, str) else Dependency(**dep)
-            for dep in value
-        ]
-
-    def ensure_paths(self) -> None:
-        self.paths.ensure()
-
-    @classmethod
-    def skeleton(cls, entry: str, paths: ProjectPaths | None):
-        """Creates a minimal ProjectConfig"""
-        project_paths = paths or ProjectPaths()
-        return ProjectConfig(
-            ato_version=f"^{version.get_installed_atopile_version()}",
-            paths=project_paths,
-            entry=entry,
-            builds={
-                "default": BuildConfig(
-                    _project_paths=project_paths,
-                    name="default",
-                    entry="",
-                    paths=BuildPaths(name="default", project_paths=project_paths),
-                )
-            },
-        )
 
     @classmethod
     def from_path(cls, path: Path | None) -> "ProjectConfig | None":
@@ -435,20 +396,59 @@ class ProjectConfig(BaseModel):
             ProjectConfig, identifier=config_file, location=path, **file_contents
         )
 
+    @field_validator("builds", mode="before")
+    def init_builds(
+        cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
+    ) -> dict[str, Any]:
+        for build_name, data in value.items():
+            match data:
+                case BuildConfig():
+                    data.name = build_name
+                case dict():
+                    data.setdefault("name", build_name)
+                    data["_project_paths"] = info.data["paths"]
+                case _:
+                    raise ValueError(f"Invalid build data: {data}")
+        return value
 
-class ServicesConfig(BaseModel):
-    components_api_url: str = Field(
-        default="https://components.atopileapi.com/legacy/jlc",
-        validation_alias=AliasChoices("components_api_url", "components"),
-    )
+    @field_validator("dependencies", mode="before")
+    def add_dependencies(cls, value: list[dict[str, Any]] | None) -> list[Dependency]:
+        return [
+            Dependency.from_str(dep) if isinstance(dep, str) else Dependency(**dep)
+            for dep in (value or [])
+        ]
+
+    @classmethod
+    def skeleton(cls, entry: str, paths: ProjectPaths | None):
+        """Creates a minimal ProjectConfig"""
+        project_paths = paths or ProjectPaths()
+        return _try_construct_config(
+            ProjectConfig,
+            ato_version=f"^{version.get_installed_atopile_version()}",
+            paths=project_paths,
+            entry=entry,
+            builds={
+                "default": BuildConfig(
+                    _project_paths=project_paths,
+                    name="default",
+                    entry="",
+                    paths=BuildPaths(name="default", project_paths=project_paths),
+                )
+            },
+        )
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.paths is not None:
+            self.paths.ensure()
 
 
-class Settings(BaseSettings):
-    services: ServicesConfig = Field(default_factory=ServicesConfig)
-    project_dir: Path | None
-    project: ProjectConfig | None = Field(default=None)
-    entry: str | None = Field(default=None)
-    selected_builds: list[str] | None = Field(default=None)
+class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
+    """
+    Project-level config, loaded from
+    - global config e.g. ~/.config/atopile/config.yaml
+    - ato.yaml
+    - environment variables e.g. ATO_ATO_VERSION
+    """
 
     model_config = SettingsConfigDict(env_prefix="ATO_")
 
@@ -468,9 +468,12 @@ class Settings(BaseSettings):
             GlobalConfigSettingsSource(settings_cls),
         )
 
-    def model_post_init(self, __context: Any) -> None:
-        if self.project_dir is not None and self.project is not None:
-            self.project.ensure_paths()
+
+class ServicesConfig(BaseModel):
+    components_api_url: str = Field(
+        default="https://components.atopileapi.com/legacy/jlc",
+        validation_alias=AliasChoices("components_api_url", "components"),
+    )
 
 
 _current_build_cfg: ContextVar[BuildConfig | None] = ContextVar(
@@ -489,56 +492,64 @@ def _build_context(config: "Config", build_name: str):
 
 
 class Config:
-    _settings: Settings
+    services: ServicesConfig
+    _project: ProjectSettings | ProjectConfig | None
+    _entry: str | None
+    _selected_builds: list[str] | None
+    _project_dir: Path | None
 
     def __init__(self) -> None:
-        self._settings = _try_construct_config(Settings, project_dir=_project_dir)
+        self.services = ServicesConfig()
+        self._project_dir = _project_dir
+        self._project = _try_construct_config(ProjectSettings)
+        self._entry = None
+        self._selected_builds = None
 
     def __repr__(self) -> str:
-        return self._settings.__repr__()
+        return self._project.__repr__()
 
     def __rich_repr__(self):
-        return self._settings.__rich_repr__()
+        yield "project", self._project
+        yield "entry", self._entry
+        yield "selected_builds", self._selected_builds
+        yield "project_dir", self._project_dir
 
     @property
-    def project(self) -> ProjectConfig:
-        if self._settings.project is None:
+    def project(self) -> ProjectSettings | ProjectConfig:
+        if self._project is None:
             # TODO: better message
             raise UserConfigurationError("No project config found")
 
-        return self._settings.project
+        return self._project
 
     @project.setter
-    def project(self, value: ProjectConfig) -> None:
-        self._settings.project = value
+    def project(self, value: ProjectSettings | ProjectConfig) -> None:
+        self._project = value
 
     @property
     def project_dir(self) -> Path:
-        assert self._settings.project_dir is not None
-        return self._settings.project_dir
+        if not self._project_dir:
+            raise ValueError("No project directory found")
+        return self._project_dir
 
     @project_dir.setter
     def project_dir(self, value: Path) -> None:
         global _project_dir
         _project_dir = value
-        self._settings = _try_construct_config(Settings, project_dir=value)
+        self._project_dir = value
+        self._project = _try_construct_config(ProjectSettings)
 
     def update_project_config(
         self, transformer: Callable[[dict, dict], dict], new_data: dict
     ) -> None:
         """Apply an update to the project config file."""
-
-        yaml = YAML()  # YAML(typ="rt")  # round-trip
-        # yaml.default_flow_style = False
+        yaml = YAML(typ="rt")  # round-trip
         filename = self.project_dir / PROJECT_CONFIG_FILENAME
         temp_filename = filename.with_suffix(".yaml.tmp")
 
         try:
-            try:
-                with filename.open("r", encoding="utf-8") as file:
-                    yaml_data: dict = yaml.load(filename) or {}
-            except FileNotFoundError:
-                yaml_data = {}
+            with filename.open("r", encoding="utf-8") as file:
+                yaml_data: dict = yaml.load(filename) or {}
 
             yaml_data = transformer(yaml_data, new_data)
 
@@ -547,9 +558,8 @@ class Config:
 
             temp_filename.replace(filename)
 
-            self._settings = _try_construct_config(
-                Settings, project_dir=self.project_dir
-            )
+            self._project = _try_construct_config(ProjectSettings)
+
         except Exception as e:
             try:
                 temp_filename.unlink(missing_ok=True)
@@ -559,13 +569,11 @@ class Config:
 
     @property
     def selected_builds(self) -> Iterable[str]:
-        return (
-            self._settings.selected_builds or self.project.builds.keys() or ["default"]
-        )
+        return self._selected_builds or self.project.builds.keys() or ["default"]
 
     @selected_builds.setter
     def selected_builds(self, value: list[str]) -> None:
-        self._settings.selected_builds = value
+        self._selected_builds = value
 
     @property
     def builds(self) -> Generator[_GeneratorContextManager[None], None, None]:
@@ -580,7 +588,11 @@ class Config:
 
     @property
     def has_project(self) -> bool:
-        return self._settings.project is not None
+        try:
+            project_dir = self.project_dir
+        except ValueError:
+            return False
+        return (project_dir / PROJECT_CONFIG_FILENAME).exists()
 
     @property
     def _current_build(self) -> BuildConfig | None:

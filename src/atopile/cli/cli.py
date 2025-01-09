@@ -122,15 +122,10 @@ app.command()(view.view)
 
 
 @app.command(hidden=True)
-def export_config_schema(project: bool = False):
-    if project:
-        from atopile.config import ProjectConfig
+def export_config_schema():
+    from atopile.config import ProjectConfig
 
-        print(ProjectConfig.model_json_schema())
-    else:
-        from atopile.config import Settings
-
-        print(Settings.model_json_schema())
+    print(ProjectConfig.model_json_schema())
 
 
 def main():
