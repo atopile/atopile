@@ -157,6 +157,7 @@ def get_db_session():
     adapter = HTTPAdapter(max_retries=retry_strategy)
 
     _db_session = requests.Session()
+    _db_session.verify = False
     _db_session.mount("https://", adapter)
     _db_session.mount("http://", adapter)
 
