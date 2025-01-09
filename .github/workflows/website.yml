@@ -41,7 +41,7 @@ jobs:
         # because currently ato might also produce logging output
         # which contaminates stdout
         run: |
-          VERSION=$(uv run hatch version)
+          VERSION=$(uv run --dev hatch version)
           MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
