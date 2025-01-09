@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 import requests
 
+from atopile.config import config
 from faebryk.core.module import Module
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -16,14 +17,11 @@ from faebryk.libs.picker.api.models import (
     ManufacturerPartParams,
     PackageCandidate,
 )
-from faebryk.libs.util import ConfigFlagString, once
+from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_API_URL = "https://components.atopileapi.com"
 DEFAULT_API_TIMEOUT_SECONDS = 30
-API_URL = ConfigFlagString("PICKER_API_URL", DEFAULT_API_URL, "API URL")
-API_KEY = ConfigFlagString("PICKER_API_KEY", "", "API key")
 
 
 class ApiError(Exception): ...
@@ -62,25 +60,25 @@ def get_package_candidates(module: Module) -> frozenset["PackageCandidate"]:
 class ApiClient:
     @dataclass
     class Config:
-        api_url: str = API_URL.get()
-        api_key: str = API_KEY.get()
+        api_url: str = config.project.services.components_api_url
+        api_key: str | None = None
 
-    config = Config()
+    cfg = Config()
 
     def __init__(self):
         self._client = requests.Session()
-        self._client.headers["Authorization"] = f"Bearer {self.config.api_key}"
+        self._client.headers["Authorization"] = f"Bearer {self.cfg.api_key}"
 
     def _get(self, url: str, timeout: float = 10) -> requests.Response:
         try:
-            response = self._client.get(f"{self.config.api_url}{url}", timeout=timeout)
+            response = self._client.get(f"{self.cfg.api_url}{url}", timeout=timeout)
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"GET {self.config.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
+                f"GET {self.cfg.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
             )
 
         return response
@@ -91,7 +89,7 @@ class ApiClient:
         now = time.time()
         try:
             response = self._client.post(
-                f"{self.config.api_url}{url}", json=data, timeout=timeout
+                f"{self.cfg.api_url}{url}", json=data, timeout=timeout
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -101,7 +99,7 @@ class ApiClient:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"POST {self.config.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
+                f"POST {self.cfg.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
                 f"{json.dumps(response.json(), indent=2)}"
             )
 

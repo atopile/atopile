@@ -55,15 +55,9 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
-
-PCBNEW_AUTO = ConfigFlag(
-    "PCBNEW_AUTO",
-    default=False,
-    descr="Automatically open pcbnew when applying netlist",
-)
 
 
 def build(app: Module) -> None:
@@ -186,7 +180,7 @@ def build(app: Module) -> None:
 
         logger.info(f"Updating layout {config.build.paths.layout}")
         pcb.dumps(config.build.paths.layout)
-        if PCBNEW_AUTO:
+        if config.project.pcbnew_auto:
             try:
                 open_pcb(config.build.paths.layout)
             except FileNotFoundError:

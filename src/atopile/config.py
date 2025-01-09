@@ -365,8 +365,9 @@ class Dependency(BaseModel):
 
 class ServicesConfig(BaseModel):
     components_api_url: str = Field(
-        default="https://components.atopileapi.com/legacy/jlc",
+        default="https://components.atopileapi.com",
         validation_alias=AliasChoices("components_api_url", "components"),
+        description="Components API URL",
     )
 
 
@@ -383,6 +384,10 @@ class ProjectConfig(BaseModel):
     entry: str | None = Field(default=None)
     builds: dict[str, BuildConfig] = Field(default_factory=dict)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
+    pcbnew_auto: bool = Field(
+        default=False,
+        description="Automatically open pcbnew when applying netlist",
+    )
 
     @classmethod
     def from_path(cls, path: Path | None) -> "ProjectConfig | None":
