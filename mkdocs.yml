@@ -9,6 +9,7 @@ site_description: >-
 nav:
 - Docs:
   - index.md
+  - upgrade-guide.md
   - first_project.md
   - config.md
   - building.md
