@@ -9,7 +9,6 @@ TEST_CONFIG_TEXT = dedent(
     builds:
       debug:
         entry: elec/src/debug.ato:Debug
-    unknown: test
     # comments
     dependencies:
     - tps63020dsjr # comments

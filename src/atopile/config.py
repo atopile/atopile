@@ -37,6 +37,7 @@ yaml = YAML()
 
 
 APPLICATION_NAME = "atopile"
+ENV_VAR_PREFIX = "ATO_"
 PROJECT_CONFIG_FILENAME = "ato.yaml"
 GLOBAL_CONFIG_FILENAME = "config.yaml"
 
@@ -450,7 +451,8 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     - environment variables e.g. ATO_ATO_VERSION
     """
 
-    model_config = SettingsConfigDict(env_prefix="ATO_")
+    # TOOD: ignore but warn for extra fields
+    model_config = SettingsConfigDict(env_prefix=ENV_VAR_PREFIX, extra="forbid")
 
     @classmethod
     def settings_customise_sources(
