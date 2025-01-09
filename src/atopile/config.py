@@ -363,6 +363,13 @@ class Dependency(BaseModel):
         return str(path) if path else None
 
 
+class ServicesConfig(BaseModel):
+    components_api_url: str = Field(
+        default="https://components.atopileapi.com/legacy/jlc",
+        validation_alias=AliasChoices("components_api_url", "components"),
+    )
+
+
 class ProjectConfig(BaseModel):
     """Project-level config"""
 
@@ -375,6 +382,7 @@ class ProjectConfig(BaseModel):
     dependencies: list[Dependency] | None = Field(default=None)
     entry: str | None = Field(default=None)
     builds: dict[str, BuildConfig] = Field(default_factory=dict)
+    services: ServicesConfig = Field(default_factory=ServicesConfig)
 
     @classmethod
     def from_path(cls, path: Path | None) -> "ProjectConfig | None":
@@ -448,7 +456,7 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     Project-level config, loaded from
     - global config e.g. ~/.config/atopile/config.yaml
     - ato.yaml
-    - environment variables e.g. ATO_ATO_VERSION
+    - environment variables e.g. ATO_SERVICES_COMPONENTS_API_URL
     """
 
     # TOOD: ignore but warn for extra fields
@@ -471,13 +479,6 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
         )
 
 
-class ServicesConfig(BaseModel):
-    components_api_url: str = Field(
-        default="https://components.atopileapi.com/legacy/jlc",
-        validation_alias=AliasChoices("components_api_url", "components"),
-    )
-
-
 _current_build_cfg: ContextVar[BuildConfig | None] = ContextVar(
     "current_build_cfg", default=None
 )
@@ -494,14 +495,12 @@ def _build_context(config: "Config", build_name: str):
 
 
 class Config:
-    services: ServicesConfig
     _project: ProjectSettings | ProjectConfig | None
     _entry: str | None
     _selected_builds: list[str] | None
     _project_dir: Path | None
 
     def __init__(self) -> None:
-        self.services = ServicesConfig()
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
         self._entry = None
