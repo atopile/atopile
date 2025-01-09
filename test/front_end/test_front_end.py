@@ -150,7 +150,7 @@ def test_resistor(bob: Bob, repo_root: Path):
     assert isinstance(node, L.Module)
 
     r1 = Bob.get_node_attr(node, "r1")
-    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0805"]
+    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
 
 def test_standard_library_import(bob: Bob):
@@ -200,7 +200,7 @@ def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: 
     assert isinstance(node, L.Module)
 
     a = Bob.get_node_attr(node, "a")
-    assert a.get_trait(F.has_package_requirement).get_package_candidates()[0] == "0402"
+    assert a.get_trait(F.has_package)._enum_set == {F.has_package.Package.C0402}
     assert a.get_trait(F.has_descriptive_properties).get_properties() == {
         DescriptiveProperties.partno: "1234567890"
     }

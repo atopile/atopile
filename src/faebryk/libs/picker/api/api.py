@@ -8,13 +8,11 @@ from dataclasses import dataclass
 
 import requests
 
-from faebryk.core.module import Module
 from faebryk.libs.picker.api.models import (
     BaseParams,
     Component,
     LCSCParams,
     ManufacturerPartParams,
-    PackageCandidate,
 )
 from faebryk.libs.util import ConfigFlagString, once
 
@@ -44,19 +42,6 @@ class ApiHTTPError(ApiError):
         except Exception:
             detail = self.response.text
         return f"{super().__str__()}: {status_code} {detail}"
-
-
-def get_package_candidates(module: Module) -> frozenset["PackageCandidate"]:
-    import faebryk.library._F as F
-
-    if module.has_trait(F.has_package_requirement):
-        return frozenset(
-            PackageCandidate(package)
-            for package in module.get_trait(
-                F.has_package_requirement
-            ).get_package_candidates()
-        )
-    return frozenset()
 
 
 class ApiClient:
