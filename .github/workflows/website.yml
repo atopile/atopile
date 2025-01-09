@@ -62,5 +62,5 @@ jobs:
         run: uv run mike deploy --push --update-aliases dev
 
       - name: Deploy release docs
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
         run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest
