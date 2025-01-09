@@ -121,8 +121,8 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 
     # paths -------------------------------------------------------------------
     name = easyeda_footprint.info.name
-    out_base_path = config.project.paths.footprints
-    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"
+    out_base_path = config.project.paths.component_lib
+    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"  # TODO: config property
     sym_base_path = out_base_path / "lcsc.kicad_sym"
     fp_base_path.mkdir(exist_ok=True, parents=True)
     footprint_filename = f"{name}.kicad_mod"

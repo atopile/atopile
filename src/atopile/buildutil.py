@@ -107,6 +107,13 @@ def build(app: Module) -> None:
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
 
+    ensure_footprint_lib(
+        "lcsc",
+        config.project.paths.component_lib
+        / "footprints"
+        / "lcsc.pretty",  # TODO: config property
+    )
+
     # Re-attach because picking might have added new footprints
     # Many nodes gain their footprints from picking, meaning we'll gather more now
     transformer.attach(check_unattached=True)

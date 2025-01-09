@@ -82,7 +82,7 @@ def ensure_footprint_lib(
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
-            config.build.paths.layout.parent.resolve(), walk_up=True
+            config.build.paths.fp_lib_table.parent.resolve(), walk_up=True
         )
         # check if not going up outside the project directory
         # relative_to raises a ValueError if it has to walk up to make a relative path
@@ -98,6 +98,7 @@ def ensure_footprint_lib(
         fppath = fppath_rel
 
     uri = str(fppath)
+
     if relative:
         assert not uri.startswith("/")
         assert not uri.startswith("${KIPRJMOD}")
@@ -111,11 +112,13 @@ def ensure_footprint_lib(
         descr=f"atopile: {lib_name} footprints",
     )
 
-    lib_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == lib_name]
-    table_has_one_lib = len(lib_libs) == 1
-    lib_table_outdated = any(lib != lib for lib in lib_libs)
+    matching_libs = [
+        lib_ for lib_ in fptable.fp_lib_table.libs if lib_.name == lib.name
+    ]
+    lib_is_duplicated = len(matching_libs) != 1
+    lib_is_outdated = any(lib_ != lib for lib_ in matching_libs)
 
-    if not table_has_one_lib or lib_table_outdated:
+    if lib_is_duplicated or lib_is_outdated:
         fptable.fp_lib_table.libs = [
             lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
         ] + [lib]
@@ -191,9 +194,7 @@ def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = 
     # Import netlist into pcb
     if files:
         pcb, netlist = files
-        PCB.apply_netlist(
-            pcb, netlist, config.build.paths.layout.parent / "fp-lib-table"
-        )
+        PCB.apply_netlist(pcb, netlist, config.build.paths.fp_lib_table)
     else:
         logger.info(f"Apply netlist to {config.build.paths.layout}")
         PCB.apply_netlist_to_file(config.build.paths.layout, config.build.paths.netlist)

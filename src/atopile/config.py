@@ -164,9 +164,9 @@ class ProjectPaths(BaseModel):
         data.setdefault("src", data["root"] / "elec" / "src")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data.setdefault("footprints", data["root"] / "elec" / "footprints")
-        data.setdefault("manifest", data["root"] / "build" / "manifest.json")
         data.setdefault("build", data["root"] / "build")
-        data.setdefault("component_lib", data["root"] / "build" / "kicad" / "libs")
+        data.setdefault("manifest", data["build"] / "manifest.json")
+        data.setdefault("component_lib", data["build"] / "kicad" / "libs")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
         super().__init__(**data)
 
@@ -183,11 +183,8 @@ class ProjectPaths(BaseModel):
         return model
 
     def ensure(self) -> None:
-        self.root.mkdir(parents=True, exist_ok=True)
         self.build.mkdir(parents=True, exist_ok=True)
         self.layout.mkdir(parents=True, exist_ok=True)
-        self.footprints.mkdir(parents=True, exist_ok=True)
-        self.src.mkdir(parents=True, exist_ok=True)
 
 
 class BuildPaths(BaseModel):

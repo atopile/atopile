@@ -125,12 +125,14 @@ def configure_project_context(entry: str | None, standalone: bool = False) -> No
                 "Project config must not be present for standalone builds"
             )
 
-        config.project_dir = Path.cwd()
+        config.project_dir = entry_arg_file_path.parent or Path.cwd()
         config.project = ProjectConfig.skeleton(
             entry=entry,
             paths=ProjectPaths(
-                layout=config.project_dir / "standalone",
+                root=config.project_dir,
                 src=config.project_dir,
+                layout=config.project_dir / "standalone",
+                footprints=config.project_dir / "standalone",
             ),
         )
     else:

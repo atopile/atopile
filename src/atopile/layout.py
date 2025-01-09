@@ -48,7 +48,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
 
     for filepath in directory.glob("**/ato.yaml"):
         with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
-            project_config = ProjectConfig.from_path(filepath)
+            project_config = ProjectConfig.from_path(filepath.parent)
 
             if project_config is None:
                 raise faebryk.libs.exceptions.UserResourceException(
