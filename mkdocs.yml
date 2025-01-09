@@ -163,4 +163,7 @@ extra:
       link: "mailto:ioannis@atopile.io,matt@atopile.io,narayan@atopile.io"
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/atopile_io
+  version:
+    provider: mike
+    default: latest
   generator: false

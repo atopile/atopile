@@ -3,13 +3,19 @@ on:
   push:
     branches:
       - main
+  release:
+    types: [published]
+
 permissions:
   contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for mike to work with git history
 
       - name: Configure Git Credentials
         run: |
@@ -28,13 +34,21 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
+      - name: Get version
+        id: get_version
+        # Uses hatch rather than ato to get the version
+        # because currently ato might also produce logging output
+        # which contaminates stdout
+        run: |
+          VERSION=$(uv run hatch version)
+          MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
 
-      - uses: actions/cache@v4
-        with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .cache
-          restore-keys: |
-            mkdocs-material-
+      - name: Deploy development docs
+        if: github.event_name == 'push'
+        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR dev
 
-      - run: uv run --dev mkdocs gh-deploy --force
+      - name: Deploy release docs
+        if: github.event_name == 'release'
+        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest
