@@ -160,7 +160,7 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/atopile/atopile
     - icon: fontawesome/solid/paper-plane
-      link: "mailto:ioannis@atopile.io,matt@atopile.io,narayan@atopile.io"
+      link: "mailto:founders@atopile.io"
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/atopile_io
   version:
