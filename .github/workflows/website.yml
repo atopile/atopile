@@ -12,6 +12,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: github-pages
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,9 +46,20 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
 
+      # FIXME: enable deployment access restrictions
+      # - enforce https://github.com/atopile/atopile/settings/rules/3213715
+      # - specify the --remote in `mike deploy` to include the app token https://stackoverflow.com/questions/18935539/authenticate-with-github-using-a-token
+      # - uses: actions/create-github-app-token@v1
+      #   id: app-token
+      #   with:
+      #     app-id: ${{ vars.WEBSITE_DEPLOYER_APP_ID }}
+      #     private-key: ${{ secrets.WEBSITE_DEPLOYER_KEY }}
+
       - name: Deploy development docs
         if: github.event_name == 'push'
-        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR dev
+        # TODO: it'd be nice to have the upcoming version number here as well
+        # but it clobbers the latest release in case they're the same
+        run: uv run mike deploy --push --update-aliases dev
 
       - name: Deploy release docs
         if: github.event_name == 'release'
