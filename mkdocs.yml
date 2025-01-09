@@ -131,7 +131,7 @@ theme:
     repo: fontawesome/brands/git-alt
   name: material
   custom_dir: docs/overrides
-  logo: assets/logo/ato_logo_256x256.png
+  logo: assets/logo/emblem-white.svg
   favicon: assets/logo/emblem.svg
   palette:
     - media: "(prefers-color-scheme)"
@@ -140,15 +140,15 @@ theme:
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue grey
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/toggle-switch
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
       primary: black
-      accent: indigo
+      accent: custom
       toggle:
         icon: material/toggle-switch-off
         name: Switch to system preference
@@ -167,3 +167,6 @@ extra:
     provider: mike
     default: latest
   generator: false
+
+extra_css:
+  - stylesheets/extra.css
