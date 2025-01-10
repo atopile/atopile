@@ -35,6 +35,7 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
+pcb_update_logger = logging.getLogger("pcb_updates")
 
 # TODO: dynamic spacing based on footprint dimensions?
 HORIZONTAL_SPACING = 10
@@ -52,7 +53,7 @@ def _nets_same(
 ) -> bool:
     pcb_pads = {
         f"{get_parent(p, C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint)
-           .propertys['Reference'].value}.{p.name}"
+            .propertys['Reference'].value}.{p.name}"
         for p in pcb_net[1]
     }
     nl_pads = {f"{n.ref}.{n.pin}" for n in nl_net.nodes}
@@ -253,6 +254,7 @@ class PCB:
         logger.debug(f"Removed nets: {nets_removed}")
         removed_net_numbers = list[int]()
         for net_name in nets_removed:
+            pcb_update_logger.info(f"Removing net: '{net_name}'")
             pcb_net, pads = pcb_nets[net_name]
             removed_net_numbers.append(pcb_net.number)
             pcb.kicad_pcb.nets.remove(pcb_net)
@@ -273,6 +275,7 @@ class PCB:
         # Rename nets ------------------------------------------------------------------
         logger.debug(f"Renamed nets: {matched_nets}")
         for new_name, old_name in matched_nets.items():
+            pcb_update_logger.info(f"Renaming net: '{old_name}' -> '{new_name}'")
             pcb_net, pads = pcb_nets[old_name]
             pcb_net.name = new_name
             pcb_nets[new_name] = (pcb_net, pads)
@@ -291,6 +294,7 @@ class PCB:
 
         for net_name in nets_added:
             # Find the first unused net number
+            pcb_update_logger.info(f"Adding net: '{net_name}'")
             net_number = next(net_numbers)
 
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
@@ -320,8 +324,11 @@ class PCB:
             nl_comp = nl_comps[comp_name]
             pcb_comp = pcb_comps[comp_name]
 
-            # update
             if pcb_comp.name != nl_comp.footprint:
+                pcb_update_logger.info(
+                    f"Footprint mismatch for {comp_name}: PCB={pcb_comp.name}, "
+                    f"Updated={nl_comp.footprint}"
+                )
                 comps_removed.add(comp_name)
                 comps_added.add(comp_name)
                 comps_changed[comp_name] = pcb_comp
@@ -363,12 +370,14 @@ class PCB:
 
         # Remove components ------------------------------------------------------------
         logger.debug(f"Comps removed: {comps_removed}")
+        pcb_update_logger.info(f"Comps removed: {comps_removed}")
         for comp_name in comps_removed:
             comp = pcb_comps[comp_name]
             pcb.kicad_pcb.footprints.remove(comp)
 
         # Add new components -----------------------------------------------------------
         logger.debug(f"Comps added: {comps_added}")
+        pcb_update_logger.info(f"Comps added: {comps_added}")
 
         x, y = 0, 0
         current_prefix = None
@@ -379,6 +388,11 @@ class PCB:
                 comp = nl_comps[comp_name]
                 address_prefix = _get_address_prefix(comp)
                 footprint_identifier = comp.footprint
+
+                pcb_update_logger.info(
+                    f"Adding {comp_name} with footprint {footprint_identifier}"
+                )
+
                 footprint = _get_footprint(footprint_identifier, fp_lib_path)
 
                 pads = {
@@ -423,6 +437,9 @@ class PCB:
                 if comp_name in comps_changed:
                     # TODO also need to do geo rotations and stuff
                     at = comps_changed[comp_name].at
+                    pcb_update_logger.info(
+                        f"Reusing position from changed component {comp_name}"
+                    )
 
                 pcb_comp = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint(
                     uuid=gen_uuid(mark=""),
