@@ -108,7 +108,7 @@ class LDOParams(BaseParams):
     output_voltage: ApiParamT = SerializableField()
     quiescent_current: ApiParamT = SerializableField()
     dropout_voltage: ApiParamT = SerializableField()
-    # power_supply_ripple_rejection_ratio: ApiParamT = SerializableField()
+    # ripple_rejection_ratio: ApiParamT = SerializableField()
     output_polarity: ApiParamT = SerializableField()
     output_type: ApiParamT = SerializableField()
     output_current: ApiParamT = SerializableField()

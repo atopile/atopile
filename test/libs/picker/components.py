@@ -240,7 +240,7 @@ ldos = [
                 u.dropout_voltage.constrain_le(1 * P.V),
                 u.output_polarity.constrain_subset(F.LDO.OutputPolarity.POSITIVE),
                 u.output_type.constrain_subset(F.LDO.OutputType.FIXED),
-                # u.power_supply_ripple_rejection_ratio,
+                # u.ripple_rejection_ratio,
                 # u.quiescent_current,
             )
         ),
