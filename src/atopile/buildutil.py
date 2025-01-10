@@ -110,25 +110,19 @@ def build(app: Module) -> None:
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
 
-    # fp-lib-table might need updating after footprints are downloaded during the
-    # picking process
-    ensure_footprint_lib(
-        "lcsc",
-        config.project.paths.component_lib
-        / "footprints"
-        / "lcsc.pretty",  # TODO: config property
-    )
-
-    # Re-attach because picking might have added new footprints
-    # Many nodes gain their footprints from picking, meaning we'll gather more now
-    transformer.attach(check_unattached=True)
-
     # Footprints ----------------------------------------------------------------
     # Use standard footprints for known packages regardless of
     # what's otherwise been specified.
     # FIXME: this currently includes explicitly set footprints, but shouldn't
     standardize_footprints(app, solver)
     create_footprint_library(app)
+
+    # fp-lib-table might need updating after footprints are downloaded during the
+    # picking process
+    ensure_footprint_lib("lcsc", config.project.paths.footprint_lib("lcsc"))
+
+    # Re-attach now that any new footprints have been created / standardised
+    transformer.attach(check_unattached=True)
 
     # Write Netlist ------------------------------------------------------------
     attach_random_designators(G)

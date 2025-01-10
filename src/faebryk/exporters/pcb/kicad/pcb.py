@@ -98,13 +98,12 @@ def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
         .replace("${KIPRJMOD}", str(config.build.paths.fp_lib_table.parent))
         .replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
     )
-
-    path = dir_path / f"{fp_name}.kicad_mod"
+    path = (dir_path / f"{fp_name}").with_suffix(".kicad_mod")
     try:
         return kicad_footprint_file(path).footprint
     except FileNotFoundError as ex:
         raise UserResourceException(
-            f'Footprint "{fp_name}" doesn\'t exist in library "{lib_id}"'
+            f"Footprint `{fp_name}` doesn't exist in library `{lib_id}`"
         ) from ex
 
 

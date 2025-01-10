@@ -131,12 +131,6 @@ def ensure_footprint_lib(
     return fptable
 
 
-def include_footprints():
-    ensure_footprint_lib(
-        "lcsc", config.project.paths.component_lib / "footprints" / "lcsc.pretty"
-    )
-
-
 @once
 def find_pcbnew() -> os.PathLike:
     """Figure out what to call for the pcbnew CLI."""
@@ -186,7 +180,7 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
 
 
 def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None):
-    include_footprints()
+    ensure_footprint_lib("lcsc", config.project.paths.footprint_lib("lcsc"))
 
     set_kicad_netlist_path_in_project(
         config.build.paths.kicad_project, config.build.paths.netlist
@@ -256,9 +250,7 @@ def create_footprint_library(app: Module) -> None:
     LIB_NAME = "atopile"
 
     # Create the library it doesn't exist
-    atopile_fp_dir = (
-        config.project.paths.component_lib / "footprints" / "atopile.pretty"
-    )
+    atopile_fp_dir = config.project.paths.footprint_lib("atopile")
     atopile_fp_dir.mkdir(parents=True, exist_ok=True)
     ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
 
@@ -273,8 +265,8 @@ def create_footprint_library(app: Module) -> None:
         """
         if path not in path_to_fp_id:
             mini_hash = hash_string(str(path))[:6]
-            path_to_fp_id[path] = f"{LIB_NAME}:{path.name}-{mini_hash}"
-            path_map[path] = atopile_fp_dir / f"{path.stem}-{mini_hash}.{path.suffix}"
+            path_to_fp_id[path] = f"{LIB_NAME}:{path.stem}-{mini_hash}{path.suffix}"
+            path_map[path] = atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
             shutil.copy(path, path_map[path])
 
         return path_to_fp_id[path], path_map[path]
