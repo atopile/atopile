@@ -2,7 +2,6 @@ import fnmatch
 import itertools
 import logging
 import os
-import platform
 from abc import ABC, abstractmethod
 from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
@@ -123,21 +122,14 @@ class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
 class GlobalConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
-        """
-        Find the global config file in the user's home directory.
-        """
-        match platform.system():
-            case "Darwin" | "Linux":
-                config_dir = (
-                    Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-                    / APPLICATION_NAME
-                )
-            case "Windows":
-                # TODO: @windows
-                raise UserException(f"Unsupported platform: {platform.system()}")
-            case _:
-                raise UserException(f"Unsupported platform: {platform.system()}")
+        """Find the global config file in the user's home directory."""
 
+        # note deliberate use of ~/.config on all platforms
+        # (rather than e.g. platformdirs)
+        config_dir = (
+            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+            / APPLICATION_NAME
+        )
         config_file = config_dir / GLOBAL_CONFIG_FILENAME
         return config_file if config_file.exists() else None
 
