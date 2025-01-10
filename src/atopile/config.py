@@ -747,7 +747,8 @@ class Config:
                 )
             else:
                 raise ValueError(
-                    f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"  # noqa: E501  # pre-existing
+                    f"Unexpected entry path type {entry_arg_file_path}"
+                    " - this should never happen!"
                 )
 
         return entry_addr_override
