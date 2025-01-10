@@ -12,6 +12,7 @@ import typer
 from atopile import telemetry
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger, handler
+from atopile.config import config
 from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
 
@@ -103,6 +104,20 @@ app.command()(install.install)
 app.command()(configure.configure)
 app.command()(inspect.inspect)
 app.command()(view.view)
+
+
+@app.command(hidden=True)
+def export_config_schema():
+    from atopile.config import ProjectConfig
+
+    print(ProjectConfig.model_json_schema())
+
+
+@app.command(hidden=True)
+def dump_config():
+    from rich import print
+
+    print(config.project)
 
 
 def main():

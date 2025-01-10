@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from tempfile import mkdtemp
 
+import pytest
+
 import faebryk.libs.picker.lcsc as lcsc
 
 """
@@ -16,6 +18,7 @@ This is especially useful while reverse engineering the easyeda translations.
 INTERACTIVE_TESTING = False
 
 
+@pytest.mark.usefixtures("setup_project_config")
 class TestLCSC(unittest.TestCase):
     def test_model_translations(self):
         test_parts = {
