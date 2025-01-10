@@ -14,6 +14,10 @@ TEST_CONFIG_TEXT = dedent(
     - tps63020dsjr # comments
     - usb-connectors ^v2.0.1
     - esp32-s3
+    - name: rp2040
+      path: ../rp2040
+      version_spec: ^v0.0.1
+      link_broken: true
     """
 ).lstrip()
 
@@ -29,6 +33,10 @@ def test_roundtrip(tmp_path: Path):
     assert config.project.dependencies[1].name == "usb-connectors"
     assert config.project.dependencies[1].version_spec == "^v2.0.1"
     assert config.project.dependencies[2].name == "esp32-s3"
+    assert config.project.dependencies[3].name == "rp2040"
+    assert config.project.dependencies[3].path == Path("../rp2040")
+    assert config.project.dependencies[3].version_spec == "^v0.0.1"
+    assert config.project.dependencies[3].link_broken is True
 
     config.update_project_config(lambda data, new_data: data, {})
 
@@ -53,5 +61,5 @@ def test_update_project_config(tmp_path: Path):
 
     assert config.project.dependencies is not None
 
-    assert config.project.dependencies[3].path == Path("test")
-    assert config.project.dependencies[4].path == Path("../esp32-s3")
+    assert config.project.dependencies[4].path == Path("test")
+    assert config.project.dependencies[5].path == Path("../esp32-s3")
