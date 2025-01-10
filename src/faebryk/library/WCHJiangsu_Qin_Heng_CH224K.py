@@ -24,6 +24,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
     @assert_once
     def config_voltage(
         self,
+        owner: Module,
         voltage: Literal["5V", "9V", "12V", "15V", "20V"],
         mode: Literal["Resistor", "LogicLevel"] = "LogicLevel",
     ):
@@ -47,7 +48,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
             elif voltage == "20V":
                 return  # no resistor connected
 
-            self.cfg[0].set_weak(on=False).resistance.constrain_subset(
+            self.cfg[0].set_weak(on=False, owner=owner).resistance.constrain_subset(
                 connection_matrix[voltage][0]
             )
         elif mode == "LogicLevel":

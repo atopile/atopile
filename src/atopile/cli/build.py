@@ -92,7 +92,7 @@ def build(
                 lcsc.BUILD_FOLDER = build_ctx.paths.build
                 lcsc.LIB_FOLDER = build_ctx.paths.component_lib
                 lcsc.LIB_FOLDER.mkdir(exist_ok=True, parents=True)
-                # lcsc.MODEL_PATH = None  # TODO: assign to something to download the 3d models # noqa: E501  # pre-existing
+                lcsc.KICAD_PROJECT_PATH = build_ctx.paths.kicad_project.parent
 
                 # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
                 buildutil.build(build_ctx, app)

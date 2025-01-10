@@ -281,8 +281,8 @@ class PCB_Transformer:
             elif fp := fps_by_path.get(f"/{hashed_addr}/{hashed_addr}"):
                 with downgrade(DeprecatedException):
                     raise DeprecatedException(
-                        f"{fp.name} is linked using v0.2 mechanism, "
-                        "please save the design to update."
+                        f"`{node.get_full_name()}` is linked to the layout using v0.2"
+                        " mechanism, please save the design to update."
                     )
                 footprint_map[node] = fp
 
@@ -826,7 +826,7 @@ class PCB_Transformer:
                 min_thickness=0.2,
                 filled_areas_thickness=False,
                 fill=Zone.C_fill(
-                    enable=True,
+                    enable=Zone.C_fill.E_yes.yes,
                     mode=None,
                     hatch_thickness=0.0,
                     hatch_gap=0.5,

@@ -34,7 +34,8 @@ CRAWL_DATASHEET = ConfigFlag(
 # TODO dont hardcode relative paths
 BUILD_FOLDER = Path("./build")
 LIB_FOLDER = Path("./src/kicad/libs")
-MODEL_PATH: str | None = "${KIPRJMOD}/../libs/"
+KICAD_PROJECT_PATH: Path | None = None
+MODEL_PATH: str | None = None
 
 EXPORT_NON_EXISTING_MODELS = False
 
@@ -172,6 +173,11 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
         kicad_model_path = (
             f"{MODEL_PATH}/3dmodels/lcsc.3dshapes"
             if MODEL_PATH
+            else str(
+                "${KIPRJMOD}"
+                / model_base_path_full.relative_to(KICAD_PROJECT_PATH, walk_up=True)
+            )
+            if KICAD_PROJECT_PATH
             else str(model_base_path_full.resolve())
         )
         ki_footprint.export(
