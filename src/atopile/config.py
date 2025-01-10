@@ -241,7 +241,7 @@ class BuildPaths(BaseConfigModel):
         )
         data.setdefault("output_base", project_paths.build / name)
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
-        data.setdefault("fp_lib_table", project_paths.layout / "fp-lib-table")
+        data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
         super().__init__(**data)
 
