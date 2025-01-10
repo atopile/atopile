@@ -182,6 +182,9 @@ class ProjectPaths(BaseModel):
     @model_validator(mode="after")
     def make_paths_absolute(model: "ProjectPaths") -> "ProjectPaths":
         """Make all paths absolute relative to the project root."""
+        if not model.root.is_absolute():
+            model.root = model.root.resolve().absolute()
+
         for field_name, field_value in model:
             if field_name != "root" and isinstance(field_value, Path):
                 if not field_value.is_absolute():
