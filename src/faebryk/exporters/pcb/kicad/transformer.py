@@ -4,13 +4,15 @@
 import logging
 import re
 import subprocess
+from collections import defaultdict
 from dataclasses import fields
 from enum import Enum, auto
 from itertools import pairwise
-from typing import Any, Callable, Iterable, List, Optional, Sequence, TypeVar
+from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
 
 import numpy as np
 from deprecated import deprecated
+from more_itertools import first
 from shapely import Polygon
 
 import faebryk.library._F as F
@@ -186,6 +188,18 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
+    class has_linked_kicad_net(ModuleInterface.TraitT.decless()):
+        def __init__(self, net: Net, transformer: "PCB_Transformer") -> None:
+            super().__init__()
+            self.net = net
+            self.transformer = transformer
+
+        def get_net(self):
+            return self.net
+
+        def get_transformer(self):
+            return self.transformer
+
     def __init__(
         self, pcb: PCB, graph: Graph, app: Module, cleanup: bool = True
     ) -> None:
@@ -209,6 +223,10 @@ class PCB_Transformer:
     def attach(self, check_unattached: bool = False):
         for node, fp in PCB_Transformer.map_footprints(self.graph, self.pcb).items():
             self.bind_footprint(fp, node)
+
+        known_nets = self.map_nets()
+        for net, pcb_net in known_nets.items():
+            self.bind_net(net, pcb_net)
 
         if check_unattached:
             self.check_unattached()
@@ -280,6 +298,66 @@ class PCB_Transformer:
                 if pad.name == pin_names[cast_assert(F.Pad, fpad)]
             ]
             fpad.add(self.has_linked_kicad_pad(fp, pads, self))
+
+    def map_nets(self, match_threshold: float = 0.8) -> dict[F.Net, Net]:
+        """
+        Create a mapping between the internal nets and the nets defined in the PCB file.
+
+        This relies on linking between the footprints and pads, so must be called after.
+        """
+        if match_threshold < 0.5:
+            # This is because we rely on being >50% sure to ensure we're the most
+            # likely match.
+            raise ValueError("match_threshold must be at least 0.5")
+
+        known_nets: dict[F.Net, Net] = {}
+        pcb_nets_by_name: dict[str, Net] = {}
+
+        for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
+            total_pads = 0
+            # map from net name to the number of pads we've
+            # linked corroborating it's accuracy
+            net_candidates: Mapping[str, int] = defaultdict(int)
+
+            for ato_pad, ato_fp in net.get_fps().items():
+                if pcb_pad_t := ato_pad.try_get_trait(
+                    PCB_Transformer.has_linked_kicad_pad
+                ):
+                    # In the (strange) case something's handeled by another transformer,
+                    # we skip it without counting it towards the total pads.
+                    if pcb_pad_t.get_transformer() is not self:
+                        continue
+
+                    pcb_fp, pcb_pads = pcb_pad_t.get_pad()
+
+                    # This practically means that if the pads to which a net is
+                    # connected varies within a single component, we're going to ignore
+                    # it. This could probably be improved to be a little more subtle
+                    # within-component net matching, for later
+                    net_names = set(
+                        pcb_pad.net.name if pcb_pad.net is not None else None
+                        for pcb_pad in pcb_pads
+                    )
+                    if (
+                        len(net_names) == 1
+                        and (net_name := first(net_names)) is not None
+                    ):
+                        net_candidates[net_name] += 1
+
+                total_pads += 1
+
+            if net_candidates:
+                best_net_name = max(net_candidates, key=lambda x: net_candidates[x])
+                if (
+                    best_net_name
+                    and net_candidates[best_net_name] > total_pads * match_threshold
+                ):
+                    known_nets[net] = pcb_nets_by_name[best_net_name]
+
+        return known_nets
+
+    def bind_net(self, net: F.Net, pcb_net: Net):
+        net.add(self.has_linked_kicad_net(pcb_net, self))
 
     def cleanup(self):
         # delete faebryk objects in pcb
