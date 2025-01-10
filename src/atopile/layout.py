@@ -16,8 +16,9 @@ from more_itertools import first
 
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import config, errors, front_end
-from atopile.address import AddressError
+from atopile import errors, front_end
+from atopile.address import AddressError, AddrStr
+from atopile.config import ProjectConfig, config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.util import (
@@ -40,21 +41,24 @@ def _generate_uuid_from_string(path: str) -> str:
 
 def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
     """Find, tag and return a set of all the modules with layouts."""
-    directory = config.get_project_context().project_path
+    directory = config.project.paths.root
 
     entries: FuncDict[type[Module], set[Path]] = FuncDict()
     ato_modules = front_end.bob.modules
 
     for filepath in directory.glob("**/ato.yaml"):
         with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
-            cfg = config.get_project_config_from_path(filepath)
+            project_config = ProjectConfig.from_path(filepath.parent)
 
-            for build_name in cfg.builds:
+            if project_config is None:
+                raise faebryk.libs.exceptions.UserResourceException(
+                    f"Failed to load module config: {filepath}"
+                )
+
+            for build in project_config.builds.values():
                 with faebryk.libs.exceptions.downgrade(Exception, logger=logger):
-                    ctx = config.BuildContext.from_config_name(cfg, build_name)
-
                     try:
-                        entry_section = ctx.entry.entry_section
+                        entry_section = build.entry_section
                     except AddressError:
                         # skip builds with no entry, e.g. generics
                         # config validation happens before this point
@@ -63,7 +67,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                     # Check if the module is a known python module
                     if (
                         class_ := get_module_from_path(
-                            ctx.entry.file_path,
+                            build.file_path,
                             entry_section,
                             # we might have duplicates from different builds
                             allow_ambiguous=True,
@@ -72,16 +76,16 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                         # we only bother to index things we've imported,
                         # otherwise we can be sure they weren't used
                         assert isinstance(class_, type)
-                        entries.setdefault(class_, set()).add(ctx.paths.layout)
+                        entries.setdefault(class_, set()).add(build.paths.layout)
 
                     # Check if the module is a known ato module
-                    elif class_ := ato_modules.get(ctx.entry):
-                        entries.setdefault(class_, set()).add(ctx.paths.layout)
+                    elif class_ := ato_modules.get(AddrStr(build.address)):
+                        entries.setdefault(class_, set()).add(build.paths.layout)
 
     return entries
 
 
-def generate_module_map(build_ctx: "config.BuildContext", app: Module) -> None:
+def generate_module_map(app: Module) -> None:
     """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
     module_map = {}
 
@@ -129,6 +133,8 @@ def generate_module_map(build_ctx: "config.BuildContext", app: Module) -> None:
         }
 
     with open(
-        build_ctx.paths.output_base.with_suffix(".layouts.json"), "w", encoding="utf-8"
+        config.build.paths.output_base.with_suffix(".layouts.json"),
+        "w",
+        encoding="utf-8",
     ) as f:
         json.dump(module_map, f)

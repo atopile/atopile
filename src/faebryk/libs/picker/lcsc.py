@@ -17,6 +17,7 @@ from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 
 import faebryk.library._F as F
+from atopile.config import config
 from faebryk.core.module import Module
 from faebryk.libs.picker.picker import (
     Part,
@@ -31,11 +32,10 @@ CRAWL_DATASHEET = ConfigFlag(
     "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
 
-# TODO dont hardcode relative paths
-BUILD_FOLDER = Path("./build")
-LIB_FOLDER = Path("./src/kicad/libs")
-KICAD_PROJECT_PATH: Path | None = None
-MODEL_PATH: str | None = None
+# TODO: get appropriate value from config
+MODEL_PATH: str | None = "${KIPRJMOD}/../libs/"
+
+EASYEDA_CACHE_FOLDER = Path("cache/easyeda")
 
 EXPORT_NON_EXISTING_MODELS = False
 
@@ -70,10 +70,6 @@ def _fix_3d_model_offsets(ki_footprint):
             ki_footprint.output.model_3d.translation.y *= 2.54
 
 
-def cache_base_path():
-    return BUILD_FOLDER / Path("cache/easyeda")
-
-
 class LCSCException(Exception):
     def __init__(self, partno: str, *args: object) -> None:
         self.partno = partno
@@ -92,7 +88,7 @@ class LCSC_PinmapException(LCSCException): ...
 def get_raw(lcsc_id: str):
     api = EasyedaApi()
 
-    cache_base = cache_base_path()
+    cache_base = config.project.paths.build / EASYEDA_CACHE_FOLDER
     cache_base.mkdir(parents=True, exist_ok=True)
 
     comp_path = cache_base.joinpath(lcsc_id)
@@ -125,8 +121,8 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 
     # paths -------------------------------------------------------------------
     name = easyeda_footprint.info.name
-    out_base_path = LIB_FOLDER
-    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"
+    out_base_path = config.project.paths.component_lib
+    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"  # TODO: config property
     sym_base_path = out_base_path / "lcsc.kicad_sym"
     fp_base_path.mkdir(exist_ok=True, parents=True)
     footprint_filename = f"{name}.kicad_mod"
@@ -175,9 +171,11 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
             if MODEL_PATH
             else str(
                 "${KIPRJMOD}"
-                / model_base_path_full.relative_to(KICAD_PROJECT_PATH, walk_up=True)
+                / model_base_path_full.relative_to(
+                    config.project.paths.layout.parent, walk_up=True
+                )
             )
-            if KICAD_PROJECT_PATH
+            if config.project.paths.layout
             else str(model_base_path_full.resolve())
         )
         ki_footprint.export(

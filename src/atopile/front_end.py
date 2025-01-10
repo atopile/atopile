@@ -24,8 +24,9 @@ from pint import UndefinedUnitError
 
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
-from atopile import address, config, errors
+from atopile import address, errors
 from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
+from atopile.config import config
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
@@ -599,16 +600,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if context.file_path is not None:
             search_paths.insert(0, context.file_path.parent)
 
-        try:
-            prj_context = config.get_project_context()
-        except ValueError:
-            # No project context, so we can't import anything
-            pass
-        else:
-            search_paths += [
-                prj_context.src_path,
-                prj_context.module_path,
-            ]
+        if config.has_project:
+            search_paths += [config.project.paths.src, config.project.paths.modules]
 
         return search_paths
 

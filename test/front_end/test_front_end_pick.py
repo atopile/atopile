@@ -25,6 +25,7 @@ def repo_root() -> Path:
     return repo_root
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
 

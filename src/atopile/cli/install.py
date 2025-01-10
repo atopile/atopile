@@ -18,9 +18,9 @@ import ruamel.yaml
 import typer
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-import atopile.config
 import faebryk.libs.exceptions
 from atopile import errors, version
+from atopile.config import Dependency, config
 from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
@@ -57,24 +57,25 @@ def do_install(
     This is split in two so that it can be called from `install` and `create`
     """
 
-    current_path = Path.cwd()
-    config = atopile.config.get_project_config_from_path(Path(path or current_path))
-    ctx = atopile.config.ProjectContext.from_config(config)
-    top_level_path = config.location
+    if path is not None:
+        config.project_dir = path
 
-    log.info(f"Installing {to_install + ' ' if to_install else ''}in {top_level_path}")
+    log.info(
+        f"Installing {to_install}{' ' if to_install else ''}"
+        f"in {config.project.paths.root}"
+    )
 
     if jlcpcb:
         if to_install is None:
             raise errors.UserBadParameterError("No component ID specified")
         # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install, top_level_path)
+        install_jlcpcb(to_install, config.project.paths.root)
     elif to_install:
         # eg. "ato install some-atopile-module"
-        install_single_dependency(to_install, link, upgrade, config, ctx)
+        install_single_dependency(to_install, link, upgrade)
     else:
         # eg. "ato install"
-        install_project_dependencies(config, ctx, upgrade)
+        install_project_dependencies(upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
@@ -85,7 +86,7 @@ def get_package_repo_from_registry(module_name: str) -> str:
     """
     try:
         response = requests.post(
-            "https://get-package-atsuhzfd5a-uc.a.run.app",
+            config.project.services.packages.url,
             json={"name": module_name},
             timeout=10,
         )
@@ -109,22 +110,16 @@ def get_package_repo_from_registry(module_name: str) -> str:
     return return_url
 
 
-def install_single_dependency(
-    to_install: str,
-    link: bool,
-    upgrade: bool,
-    config: atopile.config.ProjectConfig,
-    ctx: atopile.config.ProjectContext,
-):
-    dependency = atopile.config.Dependency.from_str(to_install)
+def install_single_dependency(to_install: str, link: bool, upgrade: bool):
+    dependency = Dependency.from_str(to_install)
     name = _name_and_clone_url_helper(dependency.name)[0]
     if link:
         dependency.link_broken = False
-        abs_path = ctx.module_path / name
-        dependency.path = abs_path.relative_to(ctx.project_path)
+        abs_path = config.project.paths.modules / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
     else:
-        abs_path = ctx.src_path / name
-        dependency.path = abs_path.relative_to(ctx.project_path)
+        abs_path = config.project.paths.src / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
         dependency.link_broken = True
 
     try:
@@ -142,37 +137,41 @@ def install_single_dependency(
         try:
             robustly_rm_dir(abs_path / ".git")
         except (PermissionError, OSError, FileNotFoundError) as ex:
-            errors.UserException(f"Failed to remove .git directory: {repr(ex)}").log(
-                log, logging.WARNING
-            )
+            with faebryk.libs.exceptions.downgrade(errors.UserException):
+                raise errors.UserException(
+                    f"Failed to remove .git directory: {repr(ex)}"
+                ) from ex
 
     if dependency.version_spec is None and installed_version:
         # If the user didn't specify a version, we'll
         # use the one we just installed as a basis
         dependency.version_spec = f"@{installed_version}"
 
-    names = {dep.name: i for i, dep in enumerate(config.dependencies)}
-    if dependency.name in names:
-        config.dependencies[names[dependency.name]] = dependency
-    else:
-        config.dependencies.append(dependency)
-    config.save_changes()
+    def add_dependency(config_data, new_data):
+        if config_data.get("dependencies") is None:
+            config_data["dependencies"] = []
+
+        for i, dep in enumerate(config_data["dependencies"]):
+            if dep["name"] == new_data["name"]:
+                config_data["dependencies"][i] = new_data
+                break
+        else:
+            config_data["dependencies"] = config_data["dependencies"] + [new_data]
+        return config_data
+
+    config.update_project_config(add_dependency, dependency.model_dump())
 
 
-def install_project_dependencies(
-    config: atopile.config.ProjectConfig,
-    ctx: atopile.config.ProjectContext,
-    upgrade: bool,
-):
+def install_project_dependencies(upgrade: bool):
     for _ctx, dependency in faebryk.libs.exceptions.iter_through_errors(
-        config.dependencies
+        config.project.dependencies or []
     ):
         with _ctx():
             if not dependency.link_broken:
                 # FIXME: these dependency objects are a little too entangled
                 name = _name_and_clone_url_helper(dependency.name)[0]
-                abs_path = ctx.module_path / name
-                dependency.path = abs_path.relative_to(ctx.project_path)
+                abs_path = config.project.paths.modules / name
+                dependency.path = abs_path.relative_to(config.project.paths.root)
 
                 try:
                     install_dependency(dependency, upgrade, abs_path)
@@ -187,7 +186,7 @@ def install_project_dependencies(
 
 
 def install_dependency(
-    dependency: atopile.config.Dependency, upgrade: bool, abs_path: Path
+    dependency: Dependency, upgrade: bool, abs_path: Path
 ) -> Optional[str]:
     """
     Install a dependency of the name "module_name"
@@ -206,7 +205,13 @@ def install_dependency(
         # Directory does not contain a valid repo, clone into it
         log.info(f"Installing dependency {module_name}")
         repo = Repo.clone_from(clone_url, abs_path)
-        repo.active_branch.tracking_branch().checkout()
+        tracking = repo.active_branch.tracking_branch()
+        if tracking:
+            tracking.checkout()
+        else:
+            log.warning(
+                f"No tracking branch found for {module_name}, using current branch"
+            )
     else:
         # In this case the directory exists and contains a valid repo
         if upgrade:
@@ -283,16 +288,10 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     if not component_id.startswith("C") or not component_id[1:].isdigit():
         raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
 
-    footprints_dir = (
-        top_level_path
-        / atopile.config.get_project_config_from_path(top_level_path).paths.footprints
-    )
+    footprints_dir = top_level_path / config.project.paths.footprints
     footprints_dir.mkdir(parents=True, exist_ok=True)
 
-    ato_src_dir = (
-        top_level_path
-        / atopile.config.get_project_config_from_path(top_level_path).paths.src
-    )
+    ato_src_dir = top_level_path / config.project.paths.src
     ato_src_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Footprints directory: {footprints_dir}")

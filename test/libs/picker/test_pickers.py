@@ -50,6 +50,7 @@ def _make_id(m: "ComponentTestCase"):
     return module_name
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
 @pytest.mark.parametrize(
     "case",
@@ -138,6 +139,7 @@ def test_no_pick_inherit_remove():
     assert module.get_trait(F.has_part_picked).removed
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_skip_self_pick():
     class _CapInherit(F.Capacitor):
         pickable = None
