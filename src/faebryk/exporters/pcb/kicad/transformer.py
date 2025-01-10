@@ -4,7 +4,6 @@
 import logging
 import re
 import subprocess
-from abc import abstractmethod
 from dataclasses import fields
 from enum import Enum, auto
 from itertools import pairwise
@@ -155,19 +154,12 @@ def get_all_geos(obj: PCB | Footprint) -> list[Geom]:
 
 
 class PCB_Transformer:
-    class has_linked_kicad_footprint(Module.TraitT):
+    class has_linked_kicad_footprint(Module.TraitT.decless()):
         """
         Module has footprint (which has kicad footprint) and that footprint
         is found in the current PCB file.
         """
 
-        @abstractmethod
-        def get_transformer(self) -> "PCB_Transformer": ...
-
-        @abstractmethod
-        def get_fp(self) -> Footprint: ...
-
-    class has_linked_kicad_footprint_defined(has_linked_kicad_footprint.impl()):
         def __init__(self, fp: Footprint, transformer: "PCB_Transformer") -> None:
             super().__init__()
             self.fp = fp
@@ -179,14 +171,7 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    class has_linked_kicad_pad(ModuleInterface.TraitT):
-        @abstractmethod
-        def get_pad(self) -> tuple[Footprint, list[Pad]]: ...
-
-        @abstractmethod
-        def get_transformer(self) -> "PCB_Transformer": ...
-
-    class has_linked_kicad_pad_defined(has_linked_kicad_pad.impl()):
+    class has_linked_kicad_pad(ModuleInterface.TraitT.decless()):
         def __init__(
             self, fp: Footprint, pad: list[Pad], transformer: "PCB_Transformer"
         ) -> None:
@@ -281,12 +266,12 @@ class PCB_Transformer:
         return footprint_map
 
     def bind_footprint(self, fp: Footprint, node: Node):
-        node.add(self.has_linked_kicad_footprint_defined(fp, self))
+        node.add(self.has_linked_kicad_footprint(fp, self))
         if not node.has_trait(F.has_footprint):
             return
 
         g_fp = node.get_trait(F.has_footprint).get_footprint()
-        g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
+        g_fp.add(self.has_linked_kicad_footprint(fp, self))
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
         for fpad in g_fp.get_children(direct_only=True, types=ModuleInterface):
             pads = [
@@ -294,7 +279,7 @@ class PCB_Transformer:
                 for pad in fp.pads
                 if pad.name == pin_names[cast_assert(F.Pad, fpad)]
             ]
-            fpad.add(self.has_linked_kicad_pad_defined(fp, pads, self))
+            fpad.add(self.has_linked_kicad_pad(fp, pads, self))
 
     def cleanup(self):
         # delete faebryk objects in pcb
