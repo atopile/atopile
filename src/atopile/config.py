@@ -280,9 +280,9 @@ class BuildConfig(BaseModel):
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
-    paths: BuildPaths
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
+    paths: BuildPaths
 
     def __init__(self, **data: Any):
         super().__init__(**data)
