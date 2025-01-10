@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 import time
@@ -291,6 +292,29 @@ def generate_manufacturing_data(app: Module) -> None:
         pnp_file,
         config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
     )
+
+
+@muster.register("manifest")
+def generate_manifest(app: Module) -> None:
+    """Generate a manifest for the project."""
+    with accumulate() as accumulator:
+        with accumulator.collect():
+            manifest = {}
+            manifest["version"] = "2.0"
+            for build in config.builds:
+                with build:
+                    if config.build.paths.layout:
+                        by_layout_manifest = manifest.setdefault(
+                            "by-layout", {}
+                        ).setdefault(str(config.build.paths.layout), {})
+                        by_layout_manifest["layouts"] = str(
+                            config.build.paths.output_base.with_suffix(".layouts.json")
+                        )
+
+            manifest_path = config.project.paths.manifest
+            manifest_path.parent.mkdir(exist_ok=True, parents=True)
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f)
 
 
 @muster.register("layout-module-map")

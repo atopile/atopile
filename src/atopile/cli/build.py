@@ -41,8 +41,6 @@ def build(
     Optionally specify a different entrypoint with the argument ENTRY.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    import json
-
     from atopile import buildutil
     from atopile.cli.common import parse_build_options
     from atopile.config import BuildType
@@ -93,26 +91,6 @@ def build(
 
                     # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
                     buildutil.build(app)
-
-        with accumulator.collect():
-            # FIXME: this should be done elsewhere, but there's no other "overview"
-            # that can see all the builds simultaneously
-            manifest = {}
-            manifest["version"] = "2.0"
-            for build in config.builds:
-                with build:
-                    if config.build.paths.layout:
-                        by_layout_manifest = manifest.setdefault(
-                            "by-layout", {}
-                        ).setdefault(str(config.build.paths.layout), {})
-                        by_layout_manifest["layouts"] = str(
-                            config.build.paths.output_base.with_suffix(".layouts.json")
-                        )
-
-            manifest_path = config.project.paths.manifest
-            manifest_path.parent.mkdir(exist_ok=True, parents=True)
-            with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f)
 
     logger.info("Build successful! 🚀")
 
