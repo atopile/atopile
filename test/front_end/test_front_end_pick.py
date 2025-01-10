@@ -47,7 +47,7 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
-    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0805"]
+    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
     pick_part_recursively(r1, DefaultSolver())
 
@@ -65,7 +65,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
             r1 = new BypassCap100nF
 
         component BypassCap from Capacitor:
-            footprint = "R0402"
+            footprint = "C0402"
 
         component BypassCap100nF from BypassCap:
             value = 100nF +/- 20%
@@ -79,7 +79,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Capacitor)
-    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0402"]
+    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.C0402}
 
     pick_part_recursively(r1, DefaultSolver())
 
