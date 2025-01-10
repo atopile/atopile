@@ -28,9 +28,8 @@ from pydantic_settings import (
 )
 from ruamel.yaml import YAML
 
-from atopile import version
+from atopile import address, version
 from atopile.address import AddressError, AddrStr
-from atopile.cli.common import check_entry_arg_file_path, get_entry_arg_file_path
 from atopile.errors import (
     UserBadParameterError,
     UserException,
@@ -700,6 +699,62 @@ class Config:
             ),
         )
 
+    def _check_entry_arg_file_path(
+        self, entry: str | None, entry_arg_file_path: Path
+    ) -> AddrStr | None:
+        entry_addr_override = None
+
+        if entry:
+            if entry_arg_file_path.is_file():
+                if entry_section := address.get_entry_section(AddrStr(entry)):
+                    entry_addr_override = address.from_parts(
+                        str(entry_arg_file_path.absolute()),
+                        entry_section,
+                    )
+                else:
+                    raise UserBadParameterError(
+                        "If an entry of a file is specified, you must specify"
+                        " the node within it you want to build.",
+                        title="Bad 'entry' parameter",
+                    )
+
+            elif entry_arg_file_path.is_dir():
+                pass
+
+            elif not entry_arg_file_path.exists():
+                raise UserBadParameterError(
+                    "The entry you have specified does not exist.",
+                    title="Bad 'entry' parameter",
+                )
+            else:
+                raise ValueError(
+                    f"Unexpected entry path type {entry_arg_file_path} - this should never happen!"  # noqa: E501  # pre-existing
+                )
+
+        return entry_addr_override
+
+    def _get_entry_arg_file_path(
+        self, entry: str | None
+    ) -> tuple[AddrStr | None, Path]:
+        # basic the entry address if provided, otherwise leave it as None
+
+        if entry is None:
+            entry_arg_file_path = Path.cwd()
+        else:
+            entry = AddrStr(entry)
+
+            if address.get_file(entry) is None:
+                raise UserBadParameterError(
+                    f"Invalid entry address {entry} - entry must specify a file.",
+                    title="Bad 'entry' parameter",
+                )
+
+            entry_arg_file_path = (
+                Path(address.get_file(entry)).expanduser().resolve().absolute()
+            )
+
+        return entry, entry_arg_file_path
+
     def apply_options(
         self,
         entry: str | None,
@@ -709,7 +764,7 @@ class Config:
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
     ) -> None:
-        entry, entry_arg_file_path = get_entry_arg_file_path(entry)
+        entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
 
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)
@@ -739,7 +794,9 @@ class Config:
             )
 
         # if we set an entry-point, we now need to deal with that
-        entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
+        entry_addr_override = self._check_entry_arg_file_path(
+            entry, entry_arg_file_path
+        )
 
         if selected_builds:
             self.selected_builds = list(selected_builds)
