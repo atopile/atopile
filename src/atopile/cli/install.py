@@ -148,6 +148,9 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
         dependency.version_spec = f"@{installed_version}"
 
     def add_dependency(config_data, new_data):
+        if config_data.get("dependencies") is None:
+            config_data["dependencies"] = []
+
         for i, dep in enumerate(config_data["dependencies"]):
             if dep["name"] == new_data["name"]:
                 config_data["dependencies"][i] = new_data
