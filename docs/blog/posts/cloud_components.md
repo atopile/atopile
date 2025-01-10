@@ -40,7 +40,7 @@ diode.power_dissipation = 5W to 60W
 ```
 At build time, we take the requirements and send them to our component server, which filters parts in our library for the specified requirements. The server then sorts the parts by price and availability, and returns the best matches. These components are then downloaded and added to your BOM and netlist.
 
-![BOM output](/assets/images/cloud_bom.png)
+![BOM output](../..//assets/images/cloud_bom.png)
 
 ### Footprints
 This was a bit of a pain. This is pretty simple for things like resistors and caps, but becomes a little more complex for devices like mosfets that might have three pins on some parts and eight on others. Our current solution, which admittedly is a bit of a hack, stores a muated footprint in the server for each part, downloads it and adds it to your library.

@@ -1,5 +1,5 @@
 site_name: atopile
-site_url: https://atopile.io
+site_url: https://docs.atopile.io
 site_description: >-
   atopile is a language and toolchain to describe electronic circuit boards with code.
   By replacing the point and click schematic interface with code, we introduce software
@@ -9,6 +9,7 @@ site_description: >-
 nav:
 - Docs:
   - index.md
+  - upgrade-guide.md
   - first_project.md
   - config.md
   - building.md
@@ -65,6 +66,7 @@ plugins:
           signature_crossrefs: true
           show_symbol_type_heading: true
           show_symbol_type_toc: true
+- mike
 
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
@@ -130,7 +132,7 @@ theme:
     repo: fontawesome/brands/git-alt
   name: material
   custom_dir: docs/overrides
-  logo: assets/logo/ato_logo_256x256.png
+  logo: assets/logo/emblem.svg
   favicon: assets/logo/emblem.svg
   palette:
     - media: "(prefers-color-scheme)"
@@ -139,15 +141,15 @@ theme:
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: blue grey
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/toggle-switch
         name: Switch to dark mode
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: black
-      accent: indigo
+      primary: custom
+      accent: custom
       toggle:
         icon: material/toggle-switch-off
         name: Switch to system preference
@@ -159,7 +161,14 @@ extra:
     - icon: fontawesome/brands/github
       link: https://github.com/atopile/atopile
     - icon: fontawesome/solid/paper-plane
-      link: "mailto:tim@atopile.io,matt@atopile.io,narayan@atopile.io"
+      link: "mailto:founders@atopile.io"
     - icon: fontawesome/brands/twitter
       link: https://twitter.com/atopile_io
+  version:
+    provider: mike
+    default: latest
+    alias: true
   generator: false
+
+extra_css:
+  - stylesheets/extra.css

@@ -26,6 +26,9 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, config, errors
 from atopile._shim import GlobalShims, ShimElectrical, has_ato_cmp_attrs, shim_map
+from atopile import address, errors
+from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map, ShimElectrical
+from atopile.config import config
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
@@ -353,7 +356,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 else:
                     dep_ctx = item_ctx
 
-                with downgrade(DeprecatedException):
+                # TODO: @v0.4 increase the level of this to WARNING
+                # when there's an alternative
+                with downgrade(DeprecatedException, to_level=logging.DEBUG):
                     raise DeprecatedException.from_ctx(
                         dep_ctx,
                         f"`{ref}` is deprecated and will be removed in a future"
@@ -508,7 +513,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_finish = suppress_after_count(
         3,
-        DeprecatedException,
+        errors.UserActionWithoutEffectError,
         logger=logger,
         suppression_warning="Suppressing further deprecation warnings",
     )
@@ -529,13 +534,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             raise ex
                         else:
                             with (
-                                downgrade(DeprecatedException),
+                                downgrade(
+                                    errors.UserActionWithoutEffectError,
+                                    to_level=logging.DEBUG,
+                                ),
                                 self._suppressor_finish,
                             ):
-                                raise DeprecatedException.from_ctx(
+                                raise errors.UserActionWithoutEffectError.from_ctx(
                                     ctx,
-                                    f"Parameter `{param}` declared but never assigned."
-                                    " In the future this will be an error.",
+                                    f"Parameter `{param}` declared but never assigned.",
                                     traceback=traceback,
                                 )
                             continue
@@ -595,16 +602,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if context.file_path is not None:
             search_paths.insert(0, context.file_path.parent)
 
-        try:
-            prj_context = config.get_project_context()
-        except ValueError:
-            # No project context, so we can't import anything
-            pass
-        else:
-            search_paths += [
-                prj_context.src_path,
-                prj_context.module_path,
-            ]
+        if config.has_project:
+            search_paths += [config.project.paths.src, config.project.paths.modules]
 
         return search_paths
 
@@ -1016,14 +1015,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return NOTHING
 
     # TODO: @v0.4 remove this deprecated import form
-    _suppression_try_get_mif = suppress_after_count(
+    _suppression_get_mif_and_warn_when_exists = suppress_after_count(
         3,
-        DeprecatedException,
+        errors.UserAlreadyExistsError,
         logger=logger,
         suppression_warning="Suppressing further deprecation warnings",
     )
 
-    def _try_get_mif(
+    def _get_mif_and_warn_when_exists(
         self, name: str, ctx: ParserRuleContext
     ) -> L.ModuleInterface | None:
         try:
@@ -1032,10 +1031,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return None
 
         if isinstance(mif, L.ModuleInterface):
-            with downgrade(DeprecatedException), self._suppression_try_get_mif:
-                raise DeprecatedException(
+            with (
+                downgrade(errors.UserAlreadyExistsError),
+                self._suppression_get_mif_and_warn_when_exists,
+            ):
+                raise errors.UserAlreadyExistsError(
                     f"`{name}` already exists; skipping."
-                    " In the future this will be an error."
                 )
         else:
             raise errors.UserTypeError.from_ctx(
@@ -1058,7 +1059,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise ValueError(f"Unhandled pin name type `{ctx}`")
 
-        if mif := self._try_get_mif(name, ctx):
+        if mif := self._get_mif_and_warn_when_exists(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
@@ -1076,7 +1077,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> KeyOptMap[L.ModuleInterface]:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
-        if mif := self._try_get_mif(name, ctx):
+        if mif := self._get_mif_and_warn_when_exists(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
         mif = self._current_node.add(ShimElectrical(), name=name)
@@ -1131,7 +1132,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 # then we're good to go! We just need to tell everyone to probably not
                 # do that in the future - and we're off!
                 if ctx is not None:  # Check that this is the top-level _connect call
-                    with downgrade(DeprecatedException), self._suppression_connect:
+                    # TODO: @v0.4 increase the level of this to WARNING
+                    # when there's an alternative
+                    with (
+                        downgrade(DeprecatedException, to_level=logging.DEBUG),
+                        self._suppression_connect,
+                    ):
                         raise DeprecatedException.from_ctx(
                             ctx,
                             f"Connected `{a}` to `{b}` by duck-typing."
@@ -1504,7 +1510,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Syntax should protect from this
             raise ValueError(f"Unhandled set assignment operator {ctx}")
 
-        with downgrade(DeprecatedException), self._suppressor_visitCum_assign_stmt:
+        # TODO: @v0.4 increase the level of this to WARNING
+        # when there's an alternative
+        with (
+            downgrade(DeprecatedException, to_level=logging.DEBUG),
+            self._suppressor_visitCum_assign_stmt,
+        ):
             raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
         return NOTHING
 

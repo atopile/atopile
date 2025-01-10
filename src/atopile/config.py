@@ -1,346 +1,101 @@
-# pylint: disable=too-few-public-methods
-
-"""
-Schema and utils for atopile config files.
-
-Requirements for the config files include:
-- Structured + typed access
-- Preservation of structure and comments
-"""
-
-import copy
 import fnmatch
+import itertools
 import logging
+import os
+from abc import ABC, abstractmethod
+from contextlib import _GeneratorContextManager, contextmanager
+from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Callable, Generator, Iterable, Self
 
-import cattrs
-from attr import fields_dict
-from attrs import Factory, define
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    ValidationInfo,
+    field_serializer,
+    field_validator,
+    model_validator,
+)
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    SettingsError,
+    YamlConfigSettingsSource,
+)
 from ruamel.yaml import YAML
 
-import atopile.errors
-import atopile.version
-from atopile import address
-from faebryk.libs.util import cast_assert
+from atopile import address, version
+from atopile.address import AddressError, AddrStr
+from atopile.errors import (
+    UserBadParameterError,
+    UserException,
+    UserFileNotFoundError,
+    UserNotImplementedError,
+)
+from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
+from faebryk.libs.exceptions import iter_through_errors
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 yaml = YAML()
 
 
-CONFIG_FILENAME = "ato.yaml"
-ATO_DIR_NAME = ".ato"
-MODULE_DIR_NAME = "modules"
-BUILD_DIR_NAME = "build"
-LOCK_FILE_NAME = "ato-lock.yaml"
+APPLICATION_NAME = "atopile"
+ENV_VAR_PREFIX = "ATO_"
+PROJECT_CONFIG_FILENAME = "ato.yaml"
+GLOBAL_CONFIG_FILENAME = "config.yaml"
 
 
-_converter = cattrs.Converter()
+def _loc_to_dot_sep(loc: tuple[str | int, ...]) -> str:
+    # via https://docs.pydantic.dev/dev/errors/errors/#customize-error-messages
+    path = ""
+    for i, x in enumerate(loc):
+        if isinstance(x, str):
+            if i > 0:
+                path += "."
+            path += x
+        elif isinstance(x, int):
+            path += f"[{x}]"
+        else:
+            raise TypeError("Unexpected type")
+    return path
 
 
-class AtoConfigError(atopile.errors.UserException):
-    """An error in the config file."""
-
-
-@define
-class ProjectPaths:
-    """Config grouping for all the paths in a project."""
-
-    src: Path = Factory(lambda: ProjectPaths._conditional_path(Path("elec") / "src"))
-    layout: Path = Factory(
-        lambda: ProjectPaths._conditional_path(Path("elec") / "layout")
-    )
-    footprints: Path = Factory(
-        lambda: ProjectPaths._conditional_path(
-            Path("elec") / "footprints" / "footprints"
-        )
-    )
-
-    @staticmethod
-    def _conditional_path(path: Path, fallback: Path = Path(".")) -> Path:
-        return path if path.exists() else fallback
-
-
-@define
-class ProjectBuildConfig:
-    """Config for a build."""
-
-    entry: Optional[str] = None
-    targets: list[str] = Factory(lambda: ["__default__"])
-    exclude_targets: list[str] = Factory(list)
-    fail_on_drcs: bool = False
-    dont_solve_equations: bool = False
-    keep_picked_parts: bool = False
-
-
-@define
-class ProjectServicesConfig:
-    """A config for services used by the project."""
-
-    components: str = "https://components.atopileapi.com/legacy/jlc"
-
-
-@define
-class Dependency:
-    """A dependency for a project."""
-
-    name: str
-    version_spec: Optional[str] = None
-    link_broken: bool = False
-    path: Optional[Path] = None
-
-    @classmethod
-    def from_str(cls, spec_str: str) -> "Dependency":
-        """Create a Dependency object from a string."""
-        for splitter in atopile.version.OPERATORS + ("@",):
-            if splitter in spec_str:
-                try:
-                    name, version_spec = spec_str.rsplit(splitter, 1)
-                    name = name.strip()
-                    version_spec = version_spec.strip()
-                    version_spec = splitter + version_spec
-                except TypeError as ex:
-                    raise atopile.errors.UserTypeError(
-                        f"Invalid dependency spec: {spec_str}"
-                    ) from ex
-                return cls(name, version_spec)
-        return cls(name=spec_str)
-
-
-@define
-class ProjectConfig:
-    """
-    The config object for atopile.
-    """
-
-    location: Path = None  # type: ignore  # Deferred (but promised)
-
-    ato_version: str = "0.1.0"
-    paths: ProjectPaths = Factory(ProjectPaths)
-    builds: dict[str, ProjectBuildConfig] = Factory(dict)
-    dependencies: list[str | Dependency] = Factory(list)
-    services: ProjectServicesConfig = Factory(ProjectServicesConfig)
-
-    @classmethod
-    def _sanitise_dict_keys(cls, data: dict) -> dict:
-        """Sanitise the keys of a dictionary to be valid python identifiers."""
-        data = copy.deepcopy(data) or {}
-        fields = fields_dict(cls)
-        data["ato_version"] = data.pop("ato-version", fields["ato_version"].default)
-        return data
-
-    @staticmethod
-    def _unsanitise_dict_keys(d: dict) -> dict:
-        """Sanitise the keys of a dictionary to be valid python identifiers."""
-        data = copy.deepcopy(d)
-        data["ato-version"] = data.pop("ato_version")
-        del data[
-            "location"
-        ]  # The location is saved by the literal location of the file
-        return data
-
-    @classmethod
-    def structure(cls, data: dict) -> "ProjectConfig":
-        """Make a config object from a dictionary."""
-        try:
-            return _converter.structure(cls._sanitise_dict_keys(data), cls)
-        except* KeyError as exs:
-            for ex in exs.exceptions:
-                # FIXME: make this less shit
-                raise AtoConfigError(f"Bad key in config {repr(ex)}") from ex
-        raise ValueError("Failed to structure config")
-
-    def patch_config(self, original: dict) -> dict:
-        """Apply a delta between the original and the current config."""
-
-        # delayed import to improve startup time
-        # because deepdiff loads pandas
-        from deepdiff import DeepDiff, Delta
-
-        original_cfg = self.structure(original)
-
-        # Here we need to work around some structural changes
-        # FIXME: the ideal behaviour here would be to default back to
-        # the new structure whenever there's a conflict, but I can't
-        # find a hook to callback to a "conflict-resolver" or the likes
-        # and the exceptions don't have sufficient information to easily find them
-        original_deps_by_name = {d.name: d for d in original_cfg.dependencies}
-        original_dep_indicies = {
-            d.name: i for i, d in enumerate(original_cfg.dependencies)
-        }
-        for d in self.dependencies:
-            if d.name in original_deps_by_name and d != original_deps_by_name[d.name]:
-                del original["dependencies"][original_dep_indicies[d.name]]
-        original_cfg = self.structure(original)
-        # Kill me... I'm sorry
-
-        diff = DeepDiff(
-            self._unsanitise_dict_keys(_converter.unstructure(original_cfg)),
-            self._unsanitise_dict_keys(_converter.unstructure(self)),
-        )
-
-        delta = Delta(diff)
-        return cast_assert(dict, original + delta)
-
-    def save_changes(self, location: Optional[Path] = None) -> None:
-        """
-        Save the changes to the config object
-        """
-        if location is None:
-            location = self.location / CONFIG_FILENAME
-
-        with location.open() as f:
-            original = yaml.load(f)
-
-        patched = self.patch_config(original)
-
-        with location.open("w") as f:
-            yaml.dump(patched, f)
-
-    @classmethod
-    def load(cls, location: Path) -> "ProjectConfig":
-        """
-        Make a config object for a project.
-        """
-        with location.open() as f:
-            config_data = yaml.load(f)
-
-        config = cls.structure(config_data)
-        config.location = location.parent.expanduser().resolve().absolute()
-
-        return config
-
-
-## Register hooks for cattrs to handle the custom types
-
-_converter.register_structure_hook(
-    str | Dependency,
-    lambda d, _: Dependency.from_str(d)
-    if isinstance(d, str)
-    else _converter.structure(d, Dependency),
-)
-
-##
-
-
-def get_project_dir_from_path(path: Path) -> Path:
-    """
-    Resolve the project directory from the specified path.
-    """
-    # TODO: when provided with the "." path, it doesn't find the config in parent directories # noqa: E501  # pre-existing
-    path = Path(path)
-    for p in [path] + list(path.parents):
-        clean_path = p.resolve().absolute()
-        if (clean_path / CONFIG_FILENAME).exists():
-            return clean_path
-    raise atopile.errors.UserFileNotFoundError(
-        f"Could not find {CONFIG_FILENAME} in {path} or any parents"
-    )
-
-
-_loaded_configs: dict[Path, ProjectConfig] = {}
-
-
-def get_project_config_from_path(path: Path) -> ProjectConfig:
-    """
-    Get the project config from a path.
-    """
-    project_dir = get_project_dir_from_path(path)
-    project_config_file = project_dir / CONFIG_FILENAME
-    if project_config_file not in _loaded_configs:
-        _loaded_configs[project_config_file] = ProjectConfig.load(project_config_file)
-    return _loaded_configs[project_config_file]
-
-
-def get_project_config_from_addr(addr: address.AddrStr) -> ProjectConfig:
-    """
-    Get the project config from an address.
-    """
-    return get_project_config_from_path(Path(address.get_file(addr)))
-
-
-# FIXME: we need factory constructors for these classes
-@define
-class ProjectContext:
-    """A class to hold the arguments to a project."""
-
-    project_path: Path  # abs path to the project directory
-    src_path: Path  # abs path to the source directory
-    module_path: Path  # abs path to the module directory
-    layout_path: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
-    lock_file_path: Path  # eg. path/to/project/ato-lock.yaml
-    config: ProjectConfig
-
-    @classmethod
-    def from_config(cls, config: ProjectConfig) -> "ProjectContext":
-        """Create a BuildArgs object from a Config object."""
-
-        return ProjectContext(
-            project_path=Path(config.location),
-            src_path=Path(config.location) / config.paths.src,
-            module_path=Path(config.location) / ATO_DIR_NAME / MODULE_DIR_NAME,
-            layout_path=Path(config.location) / config.paths.layout,
-            lock_file_path=Path(config.location) / LOCK_FILE_NAME,
-            config=config,
-        )
-
-    @classmethod
-    def from_path(cls, path: Path) -> "ProjectContext":
-        """Create a BuildArgs object from a Config object."""
-        return cls.from_config(get_project_config_from_path(path))
-
-
-def match_user_layout(path: Path) -> bool:
-    """Check whether a given filename is a KiCAD autosaved layout."""
-    autosave_patterns = [
-        "_autosave-*",
-        "*-save.kicad_pcb",
+def _convert_errors(e: ValidationError) -> list[dict[str, Any]]:
+    return [
+        {"msg": error["msg"], "loc": _loc_to_dot_sep(error["loc"])}
+        for error in e.errors()
     ]
 
-    name = path.name
 
-    for pattern in autosave_patterns:
-        if fnmatch.fnmatch(name, pattern):
-            return False
-    return True
+def _try_construct_config[T](
+    model: type[T], identifier: str | Path | None = None, **kwargs: Any
+) -> T:
+    message_prefix = f"`{identifier}`: " if identifier else ""
 
-
-def find_layout(layout_base: Path) -> Path:
-    """Return the layout associated with a build."""
-
-    if layout_base.with_suffix(".kicad_pcb").exists():
-        return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
-
-    elif layout_base.is_dir():
-        layout_candidates = list(
-            filter(match_user_layout, layout_base.glob("*.kicad_pcb"))
+    try:
+        return model(**kwargs)
+    except ValidationError as ex:
+        excs = ExceptionGroup(
+            "Configuration is invalid",
+            [
+                UserConfigurationError(
+                    f"{message_prefix}{error['msg']}: `{error['loc']}`"
+                )
+                for error in _convert_errors(ex)
+            ],
         )
+        raise excs from ex
+    except SettingsError as ex:
+        raise UserConfigurationError(f"Invalid config: {ex}") from ex
 
-        if len(layout_candidates) == 1:
-            return layout_candidates[0].resolve().absolute()
 
-        else:
-            raise atopile.errors.UserException(
-                "Layout directories must contain only 1 layout,"
-                f" but {len(layout_candidates)} found in {layout_base}"
-            )
-
-    else:
-        layout_path = layout_base.with_suffix(".kicad_pcb")
-
-        log.warning("Creating new layout at %s", layout_path)
-        layout_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # delayed import to improve startup time
-        from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
-
-        C_kicad_pcb_file.skeleton(
-            generator=atopile.version.DISTRIBUTION_NAME,
-            generator_version=str(atopile.version.get_installed_atopile_version()),
-        ).dumps(layout_path)
-
-        return layout_path
+class BaseConfigModel(BaseModel):
+    model_config = ConfigDict(use_attribute_docstrings=True)
 
 
 class BuildType(Enum):
@@ -348,40 +103,233 @@ class BuildType(Enum):
     PYTHON = "python"
 
 
-@define
-class BuildPaths:
-    """Output paths for a build."""
+class UserConfigurationError(UserException):
+    """An error in the config file."""
 
-    root: (
-        Path | None
-    )  # eg. path/to/project/<where ato.yaml is> OR git repo OR None is indiscernible
-    layout: Path  # eg. path/to/project/layouts/default/default.kicad_pcb
-    lock_file: Path | None  # eg. path/to/project/ato-lock.yaml
-    build: Path  # eg. path/to/project/build/<build-name>
-    output_base: Path  # eg. path/to/project/build/<build-name>/entry-name
-    netlist: Path
-    fp_lib_table: Path
+
+class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
+    def __init__(self, settings_cls: type[BaseSettings]):
+        self.yaml_file_path = self.find_config_file()
+        self.yaml_file_encoding = "utf-8"
+        self.yaml_data = self._read_files(self.yaml_file_path)
+
+        super(YamlConfigSettingsSource, self).__init__(settings_cls, self.get_data())
+
+    @classmethod
+    @abstractmethod
+    def find_config_file(cls) -> Path | None: ...
+
+    @abstractmethod
+    def get_data(self) -> dict[str, Any]: ...
+
+
+class GlobalConfigSettingsSource(ConfigFileSettingsSource):
+    @classmethod
+    def find_config_file(cls) -> Path | None:
+        """Find the global config file in the user's home directory."""
+
+        # note deliberate use of ~/.config on all platforms
+        # (rather than e.g. platformdirs)
+        config_dir = (
+            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+            / APPLICATION_NAME
+        )
+        config_file = config_dir / GLOBAL_CONFIG_FILENAME
+        return config_file if config_file.exists() else None
+
+    def get_data(self) -> dict[str, Any]:
+        return self.yaml_data if self.yaml_data else {}
+
+
+class ProjectConfigSettingsSource(ConfigFileSettingsSource):
+    @classmethod
+    def find_config_file(cls) -> Path | None:
+        """
+        Find a project config file in the specified directory or any parent directories.
+        """
+        if _project_dir:
+            return _project_dir / PROJECT_CONFIG_FILENAME
+
+        path = Path.cwd()
+        while not (path / PROJECT_CONFIG_FILENAME).exists():
+            path = path.parent
+            if path == Path("/"):
+                return None
+
+        return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+
+    def get_data(self) -> dict[str, Any]:
+        return self.yaml_data or {}
+
+
+class ProjectPaths(BaseConfigModel):
+    root: Path
+    """Project root directory (where the ato.yaml file is located)"""
+
+    src: Path
+    """Project source code directory"""
+
+    layout: Path
+    """Project layout directory"""
+
+    footprints: Path
+    """Project footprints directory"""
+
+    build: Path
+    """Build artifact output directory"""
+
+    manifest: Path
+    """Build manifest file"""
+
     component_lib: Path
+    """Component library directory for builds"""
+
+    modules: Path
+    """Project modules directory (`.ato/modules` from the project root)"""
+
+    def __init__(self, **data: Any):
+        data.setdefault("root", _project_dir or Path.cwd())
+        data.setdefault("src", data["root"] / "elec" / "src")
+        data.setdefault("layout", data["root"] / "elec" / "layout")
+        data.setdefault("footprints", data["root"] / "elec" / "footprints")
+        data.setdefault("build", data["root"] / "build")
+        data.setdefault("manifest", data["build"] / "manifest.json")
+        data.setdefault("component_lib", data["build"] / "kicad" / "libs")
+        data.setdefault("modules", data["root"] / ".ato" / "modules")
+        super().__init__(**data)
+
+    @model_validator(mode="after")
+    def make_paths_absolute(model: "ProjectPaths") -> "ProjectPaths":
+        """Make all paths absolute relative to the project root."""
+        if not model.root.is_absolute():
+            model.root = model.root.resolve().absolute()
+
+        for field_name, field_value in model:
+            if field_name != "root" and isinstance(field_value, Path):
+                if not field_value.is_absolute():
+                    setattr(model, field_name, model.root / field_value)
+                setattr(
+                    model, field_name, getattr(model, field_name).resolve().absolute()
+                )
+        return model
+
+    def ensure(self) -> None:
+        self.build.mkdir(parents=True, exist_ok=True)
+        self.layout.mkdir(parents=True, exist_ok=True)
+
+
+class BuildPaths(BaseConfigModel):
+    layout: Path
+    """Build layout file"""
+
+    output_base: Path
+    """Extension-less filename for build artifacts"""
+
+    netlist: Path
+    """Build netlist file"""
+
+    fp_lib_table: Path
+    """Project footprint library table file"""
+
     kicad_project: Path
+    """Build KiCAD project file"""
+
+    def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
+        data.setdefault(
+            "layout",
+            BuildPaths.find_layout(project_paths.root / project_paths.layout / name),
+        )
+        data.setdefault("output_base", project_paths.build / name)
+        data.setdefault("netlist", data["output_base"] / f"{name}.net")
+        data.setdefault("fp_lib_table", project_paths.layout.parent / "fp-lib-table")
+        data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
+        super().__init__(**data)
+
+    @classmethod
+    def find_layout(cls, layout_base: Path) -> Path:
+        """Return the layout associated with a build."""
+
+        if layout_base.with_suffix(".kicad_pcb").exists():
+            return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+
+        elif layout_base.is_dir():
+            layout_candidates = list(
+                filter(BuildPaths.match_user_layout, layout_base.glob("*.kicad_pcb"))
+            )
+
+            if len(layout_candidates) == 1:
+                return layout_candidates[0].resolve().absolute()
+
+            else:
+                raise UserException(
+                    "Layout directories must contain only 1 layout,"
+                    f" but {len(layout_candidates)} found in {layout_base}"
+                )
+
+        else:
+            layout_path = layout_base.with_suffix(".kicad_pcb")
+
+            logger.warning("Creating new layout at %s", layout_path)
+            layout_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # delayed import to improve startup time
+            from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+
+            C_kicad_pcb_file.skeleton(
+                generator=DISTRIBUTION_NAME,
+                generator_version=str(get_installed_atopile_version()),
+            ).dumps(layout_path)
+
+            return layout_path
+
+    @classmethod
+    def match_user_layout(cls, path: Path) -> bool:
+        """Check whether a given filename is a KiCAD autosaved layout."""
+        autosave_patterns = [
+            "_autosave-*",
+            "*-save.kicad_pcb",
+        ]
+
+        name = path.name
+
+        for pattern in autosave_patterns:
+            if fnmatch.fnmatch(name, pattern):
+                return False
+        return True
 
 
-@define
-class BuildContext:
-    """A class to hold the arguments to a build."""
+class BuildConfig(BaseConfigModel):
+    _project_paths: ProjectPaths
 
-    project_context: ProjectContext
     name: str
-    entry: address.AddrStr  # eg. "path/to/project/src/entry-name.ato:module.path"
-    targets: list[str]
-    exclude_targets: list[str]
-    fail_on_drcs: bool
-    dont_solve_equations: bool
-    keep_picked_parts: bool
-
+    address: str | None = Field(alias="entry")
+    targets: list[str] = Field(default=["__default__"])  # TODO: validate
+    exclude_targets: list[str] = Field(default=[])
+    fail_on_drcs: bool = Field(default=False)
+    dont_solve_equations: bool = Field(default=False)
+    keep_picked_parts: bool = Field(default=False)
+    keep_net_names: bool = Field(default=False)
+    frozen: bool = Field(default=False)
     paths: BuildPaths
 
-    keep_net_names: bool = False
-    frozen: bool = False
+    def __init__(self, **data: Any):
+        super().__init__(**data)
+        self._project_paths = data.get("_project_paths", ProjectPaths())
+
+    @model_validator(mode="before")
+    def init_paths(cls, data: dict) -> dict:
+        match data.get("paths"):
+            case dict() | None:
+                data["paths"] = BuildPaths(
+                    name=data["name"],
+                    project_paths=data["_project_paths"],
+                    **data.get("paths", {}),
+                )
+            case BuildPaths():
+                pass
+            case _:
+                raise ValueError(f"Invalid build paths: {data.get('paths')}")
+        return data
 
     @property
     def build_type(self) -> BuildType:
@@ -391,8 +339,7 @@ class BuildContext:
         **/*.ato:* -> BuildType.ATO
         **/*.py:* -> BuildType.PYTHON
         """
-
-        suffix = self.entry.file_path.suffix
+        suffix = self.entry_file_path.suffix
 
         match suffix:
             case ".ato":
@@ -400,84 +347,497 @@ class BuildContext:
             case ".py":
                 return BuildType.PYTHON
             case _:
-                raise atopile.errors.UserException(
-                    f"Unknown entry suffix: {suffix} for {self.entry}"
+                raise UserException(
+                    f"Unknown entry suffix: {suffix} for {self.entry_section}"
                 )
 
+    @property
+    def entry_file_path(self) -> Path:
+        address = AddrStr(self.address)
+        return self._project_paths.root / address.file_path
+
+    @property
+    def entry_section(self) -> str:
+        address = AddrStr(self.address)
+        return address.entry_section
+
+
+class Dependency(BaseConfigModel):
+    name: str
+    version_spec: str | None = None
+    link_broken: bool = False
+    path: Path | None = None
+
+    project_config: "ProjectConfig | None" = Field(
+        default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
+    )
+
     @classmethod
-    def from_config(
+    def from_str(cls, spec_str: str) -> "Dependency":
+        for splitter in version.OPERATORS + ("@",):
+            if splitter in spec_str:
+                try:
+                    name, version_spec = spec_str.rsplit(splitter, 1)
+                    name = name.strip()
+                    version_spec = splitter + version_spec
+                except TypeError as ex:
+                    raise UserConfigurationError(
+                        f"Invalid dependency spec: {spec_str}"
+                    ) from ex
+                return cls(name=name, version_spec=version_spec)
+        return cls(name=spec_str)
+
+    @field_serializer("path")
+    def serialize_path(self, path: Path | None, _info: Any) -> str | None:
+        return str(path) if path else None
+
+
+class ServicesConfig(BaseConfigModel):
+    class Components(BaseConfigModel):
+        url: str = Field(default="https://components.atopileapi.com")
+        """Components URL"""
+
+    class Packages(BaseConfigModel):
+        url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
+        """Packages URL"""
+
+    @field_validator("components", mode="before")
+    def validate_components(cls, value: Components | str) -> Components:
+        # also accepts a string for backwards compatibility
+        if isinstance(value, str):
+            return cls.Components(url=value)
+        return value
+
+    components: Components = Field(default_factory=Components)
+    packages: Packages = Field(default_factory=Packages)
+
+
+class ProjectConfig(BaseConfigModel):
+    """Project-level config"""
+
+    ato_version: str = Field(
+        validation_alias=AliasChoices("ato-version", "ato_version"),
+        serialization_alias="ato-version",
+        default=f"^{version.get_installed_atopile_version()}",
+    )
+    paths: ProjectPaths = Field(default_factory=ProjectPaths)
+    dependencies: list[Dependency] | None = Field(default=None)
+    entry: str | None = Field(default=None)
+    builds: dict[str, BuildConfig] = Field(default_factory=dict)
+    services: ServicesConfig = Field(default_factory=ServicesConfig)
+    pcbnew_auto: bool = Field(default=False)
+    """Automatically open pcbnew when applying netlist"""
+
+    @classmethod
+    def from_path(cls, path: Path | None) -> "ProjectConfig | None":
+        if path is None:
+            return None
+
+        config_file = path / PROJECT_CONFIG_FILENAME
+
+        if not config_file.exists():
+            return None
+
+        try:
+            file_contents = yaml.load(config_file)
+        except FileNotFoundError as e:
+            raise UserFileNotFoundError(f"Failed to load project config: {e}") from e
+        except Exception as e:
+            raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        return _try_construct_config(
+            ProjectConfig, identifier=config_file, location=path, **file_contents
+        )
+
+    @field_validator("builds", mode="before")
+    def init_builds(
+        cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
+    ) -> dict[str, Any]:
+        for build_name, data in value.items():
+            match data:
+                case BuildConfig():
+                    data.name = build_name
+                case dict():
+                    data.setdefault("name", build_name)
+                    data["_project_paths"] = info.data["paths"]
+                case _:
+                    raise ValueError(f"Invalid build data: {data}")
+        return value
+
+    @field_validator("dependencies", mode="before")
+    def add_dependencies(cls, value: list[dict[str, Any]] | None) -> list[Dependency]:
+        return [
+            Dependency.from_str(dep) if isinstance(dep, str) else Dependency(**dep)
+            for dep in (value or [])
+        ]
+
+    @model_validator(mode="after")
+    def validate_compiler_versions(self) -> Self:
+        """
+        Check that the compiler version is compatible with the version
+        used to build the project.
+        """
+        dependency_cfgs = (
+            (dep.project_config for dep in self.dependencies)
+            if self.dependencies is not None
+            else ()
+        )
+
+        for cltr, cfg in iter_through_errors(itertools.chain([self], dependency_cfgs)):
+            if cfg is None:
+                continue
+
+            with cltr():
+                semver_str = cfg.ato_version
+                # FIXME: this is a hack to the moment to get around us breaking
+                # the versioning scheme in the ato.yaml files
+                for operator in version.OPERATORS:
+                    semver_str = semver_str.replace(operator, "")
+
+                built_with_version = version.parse(semver_str)
+
+                if not version.match_compiler_compatability(built_with_version):
+                    raise version.VersionMismatchError(
+                        f"{cfg.paths.root} ({cfg.ato_version}) can't be"
+                        " built with this version of atopile "
+                        f"({version.get_installed_atopile_version()})."
+                    )
+        return self
+
+    @classmethod
+    def skeleton(cls, entry: str, paths: ProjectPaths | None):
+        """Creates a minimal ProjectConfig"""
+        project_paths = paths or ProjectPaths()
+        return _try_construct_config(
+            ProjectConfig,
+            ato_version=f"^{version.get_installed_atopile_version()}",
+            paths=project_paths,
+            entry=entry,
+            builds={
+                "default": BuildConfig(
+                    _project_paths=project_paths,
+                    name="default",
+                    entry="",
+                    paths=BuildPaths(name="default", project_paths=project_paths),
+                )
+            },
+        )
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.paths is not None:
+            self.paths.ensure()
+
+
+class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
+    """
+    Project-level config, loaded from
+    - global config e.g. ~/.config/atopile/config.yaml
+    - ato.yaml
+    - environment variables e.g. ATO_SERVICES_COMPONENTS_API_URL
+    """
+
+    # TOOD: ignore but warn for extra fields
+    model_config = BaseConfigModel.model_config | SettingsConfigDict(
+        env_prefix=ENV_VAR_PREFIX,
+        env_nested_delimiter="_",
+        enable_decoding=False,
+        use_attribute_docstrings=True,
+        extra="forbid",
+    )
+
+    @classmethod
+    def settings_customise_sources(
         cls,
-        config_name: str,
-        build_config: ProjectBuildConfig,
-        project_context: ProjectContext,
-    ) -> "BuildContext":
-        """Create a BuildArgs object from a Config object."""
-        abs_entry = address.AddrStr(
-            str((project_context.project_path / (build_config.entry or "")).resolve())
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            env_settings,
+            ProjectConfigSettingsSource(settings_cls),
+            GlobalConfigSettingsSource(settings_cls),
         )
 
-        build_path = Path(project_context.project_path) / BUILD_DIR_NAME
-        layout_path = find_layout(
-            project_context.project_path / project_context.layout_path / config_name
-        )
 
-        return BuildContext(
-            project_context=project_context,
-            name=config_name,
-            entry=abs_entry,
-            targets=build_config.targets,
-            exclude_targets=build_config.exclude_targets,
-            fail_on_drcs=build_config.fail_on_drcs,
-            dont_solve_equations=build_config.dont_solve_equations,
-            keep_picked_parts=build_config.keep_picked_parts,
-            paths=BuildPaths(
-                root=project_context.project_path,
-                layout=layout_path,
-                lock_file=project_context.lock_file_path,
-                build=build_path,
-                output_base=build_path / config_name,
-                netlist=build_path / config_name / f"{config_name}.net",
-                fp_lib_table=layout_path.parent / "fp-lib-table",
-                component_lib=build_path / "kicad" / "libs",
-                kicad_project=layout_path.with_suffix(".kicad_pro"),
+_current_build_cfg: ContextVar[BuildConfig | None] = ContextVar(
+    "current_build_cfg", default=None
+)
+
+
+@contextmanager
+def _build_context(config: "Config", build_name: str):
+    cfg = config.project.builds[build_name]
+    token = _current_build_cfg.set(cfg)
+    try:
+        yield
+    finally:
+        _current_build_cfg.reset(token)
+
+
+class Config:
+    _project: ProjectSettings | ProjectConfig | None
+    _entry: str | None
+    _selected_builds: list[str] | None
+    _project_dir: Path | None
+
+    def __init__(self) -> None:
+        self._project_dir = _project_dir
+        self._project = _try_construct_config(ProjectSettings)
+        self._entry = None
+        self._selected_builds = None
+
+    def __repr__(self) -> str:
+        return self._project.__repr__()
+
+    def __rich_repr__(self):
+        yield "project", self._project
+        yield "entry", self._entry
+        yield "selected_builds", self._selected_builds
+        yield "project_dir", self._project_dir
+
+    @property
+    def project(self) -> ProjectSettings | ProjectConfig:
+        if self._project is None:
+            # TODO: better message
+            raise UserConfigurationError("No project config found")
+
+        return self._project
+
+    @project.setter
+    def project(self, value: ProjectSettings | ProjectConfig) -> None:
+        self._project = value
+
+    @property
+    def project_dir(self) -> Path:
+        if not self._project_dir:
+            raise ValueError("No project directory found")
+        return self._project_dir
+
+    @project_dir.setter
+    def project_dir(self, value: Path) -> None:
+        global _project_dir
+        _project_dir = value
+        self._project_dir = value
+        self._project = _try_construct_config(ProjectSettings)
+
+    def update_project_config(
+        self, transformer: Callable[[dict, dict], dict], new_data: dict
+    ) -> None:
+        """Apply an update to the project config file."""
+        yaml = YAML(typ="rt")  # round-trip
+        filename = self.project_dir / PROJECT_CONFIG_FILENAME
+        temp_filename = filename.with_suffix(".yaml.tmp")
+
+        try:
+            with filename.open("r", encoding="utf-8") as file:
+                yaml_data: dict = yaml.load(filename) or {}
+
+            yaml_data = transformer(yaml_data, new_data)
+
+            with temp_filename.open("w", encoding="utf-8") as file:
+                yaml.dump(yaml_data, file)
+
+            temp_filename.replace(filename)
+
+            self._project = _try_construct_config(ProjectSettings)
+
+        except Exception as e:
+            try:
+                temp_filename.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise e
+
+    @property
+    def selected_builds(self) -> Iterable[str]:
+        return self._selected_builds or self.project.builds.keys() or ["default"]
+
+    @selected_builds.setter
+    def selected_builds(self, value: list[str]) -> None:
+        self._selected_builds = value
+
+    @property
+    def builds(self) -> Generator[_GeneratorContextManager[None], None, None]:
+        """Return an iterable of BuildContext objects for each build."""
+        return (_build_context(self, name) for name in self.selected_builds)
+
+    @property
+    def build(self) -> BuildConfig:
+        if current := self._current_build:
+            return current
+        raise RuntimeError("No build config is currently active")
+
+    @property
+    def has_project(self) -> bool:
+        try:
+            project_dir = self.project_dir
+        except ValueError:
+            return False
+        return (project_dir / PROJECT_CONFIG_FILENAME).exists()
+
+    @property
+    def _current_build(self) -> BuildConfig | None:
+        return _current_build_cfg.get()
+
+    def _setup_standalone(self, entry: str | None, entry_arg_file_path: Path) -> None:
+        if not entry:
+            raise UserBadParameterError(
+                "You must specify an entry to build with the --standalone option"
+            )
+        if not entry_arg_file_path.exists():
+            raise UserBadParameterError(
+                f"The file you have specified does not exist: {entry_arg_file_path}"
+            )
+
+        if not entry_arg_file_path.is_file():
+            raise UserBadParameterError(
+                "The path you're building with the --standalone"
+                f" option must be a file {entry_arg_file_path}",
+                markdown=False,
+            )
+
+        if config.has_project:
+            raise UserBadParameterError(
+                "Project config must not be present for standalone builds"
+            )
+
+        try:
+            AddrStr(entry).entry_section
+        except AddressError:
+            raise UserBadParameterError(
+                "You must specify what to build within a file to build with the"
+                " --standalone option"
+            )
+
+        # don't trigger reload
+        self._project_dir = entry_arg_file_path.parent or Path.cwd()
+        self._project = ProjectConfig.skeleton(
+            entry=entry,
+            paths=ProjectPaths(
+                root=self._project_dir,
+                src=self._project_dir,
+                layout=self._project_dir / "standalone",
+                footprints=self._project_dir / "standalone",
             ),
         )
 
-    @classmethod
-    def from_config_name(cls, config: ProjectConfig, build_name: str) -> "BuildContext":
-        """Create a BuildArgs object from a Config object."""
-        project_context = ProjectContext.from_config(config)
+    def _check_entry_arg_file_path(
+        self, entry: str | None, entry_arg_file_path: Path
+    ) -> AddrStr | None:
+        entry_addr_override = None
 
-        try:
-            build_config = config.builds[build_name]
-        except KeyError as ex:
-            raise atopile.errors.UserException(
-                f"Build {build_name} not found for project {config.location}\n"
-                f"Available builds: {list(config.builds.keys())}"
-            ) from ex
+        if entry:
+            if entry_arg_file_path.is_file():
+                if entry_section := address.get_entry_section(AddrStr(entry)):
+                    entry_addr_override = address.from_parts(
+                        str(entry_arg_file_path.absolute()),
+                        entry_section,
+                    )
+                else:
+                    raise UserBadParameterError(
+                        "If an entry of a file is specified, you must specify"
+                        " the node within it you want to build.",
+                        title="Bad 'entry' parameter",
+                    )
 
-        return cls.from_config(build_name, build_config, project_context)
+            elif entry_arg_file_path.is_dir():
+                pass
 
-    def ensure_paths(self) -> None:
-        self.paths.build.mkdir(parents=True, exist_ok=True)
-        self.paths.output_base.parent.mkdir(parents=True, exist_ok=True)
+            elif not entry_arg_file_path.exists():
+                raise UserBadParameterError(
+                    "The entry you have specified does not exist.",
+                    title="Bad 'entry' parameter",
+                )
+            else:
+                raise ValueError(
+                    f"Unexpected entry path type {entry_arg_file_path}"
+                    " - this should never happen!"
+                )
+
+        return entry_addr_override
+
+    def _get_entry_arg_file_path(
+        self, entry: str | None
+    ) -> tuple[AddrStr | None, Path]:
+        # basic the entry address if provided, otherwise leave it as None
+
+        if entry is None:
+            entry_arg_file_path = Path.cwd()
+        else:
+            entry = AddrStr(entry)
+
+            if address.get_file(entry) is None:
+                raise UserBadParameterError(
+                    f"Invalid entry address {entry} - entry must specify a file.",
+                    title="Bad 'entry' parameter",
+                )
+
+            entry_arg_file_path = (
+                Path(address.get_file(entry)).expanduser().resolve().absolute()
+            )
+
+        return entry, entry_arg_file_path
+
+    def apply_options(
+        self,
+        entry: str | None,
+        entry_arg_file_path: Path = Path.cwd(),
+        standalone: bool = False,
+        option: Iterable[str] = (),
+        target: Iterable[str] = (),
+        selected_builds: Iterable[str] = (),
+    ) -> None:
+        entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
+
+        if standalone:
+            self._setup_standalone(entry, entry_arg_file_path)
+        else:
+            if entry_arg_file_path.is_dir():
+                self.project_dir = entry_arg_file_path
+            elif entry_arg_file_path.is_file():
+                self.project_dir = entry_arg_file_path.parent
+            else:
+                raise UserBadParameterError(
+                    f"Specified entry path is not a file or directory: "
+                    f"{entry_arg_file_path}",
+                    markdown=False,
+                )
+
+        self.project.entry = entry
+
+        logger.info("Using project %s", self.project_dir)
+
+        # add custom config overrides
+        if option:
+            raise UserNotImplementedError(
+                "Custom config overrides have been removed in a refactor. "
+                "It's planned to re-add them in a future release. "
+                "If this is a blocker for you, please raise an issue. "
+                "In the meantime, you can use the `ato.yaml` file to set these options."
+            )
+
+        # if we set an entry-point, we now need to deal with that
+        entry_addr_override = self._check_entry_arg_file_path(
+            entry, entry_arg_file_path
+        )
+
+        if selected_builds:
+            self.selected_builds = list(selected_builds)
+
+        for build_name in self.selected_builds:
+            if build_name not in self.project.builds:
+                raise UserBadParameterError(
+                    f"Build `{build_name}` not found in project config"
+                )
+
+            if entry_addr_override is not None:
+                self.project.builds[build_name].address = entry_addr_override
+            if target:
+                self.project.builds[build_name].targets = list(target)
 
 
-_project_context: Optional[ProjectContext] = None
-
-
-def set_project_context(project_context: ProjectContext) -> None:
-    """
-    Set the project context for the current process.
-    """
-    global _project_context
-    _project_context = project_context
-
-
-def get_project_context() -> ProjectContext:
-    """
-    Get the project context for the current process.
-    """
-    if _project_context is None:
-        raise ValueError("Project context not set")
-    return _project_context
+_project_dir: Path | None = None
+config: Config = Config()

@@ -232,3 +232,15 @@ class UserPickError(UserException):
             origin = None
 
         return cls.from_ctx(origin, ex.message)
+
+
+class UserActionWithoutEffectError(UserException):
+    """
+    Raised when an action is performed but has no effect.
+    """
+
+
+class UserAlreadyExistsError(UserException):
+    """
+    Raised when something already exists.
+    """

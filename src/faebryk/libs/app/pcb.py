@@ -6,12 +6,13 @@ import os
 import sys
 from collections import defaultdict
 from pathlib import Path
-from typing import TYPE_CHECKING, Mapping
+from typing import Mapping
 
 import psutil
 from more_itertools import first
 
 import faebryk.library._F as F
+from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
@@ -26,9 +27,6 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
 )
 from faebryk.libs.util import not_none, once
-
-if TYPE_CHECKING:
-    from atopile.config import BuildPaths
 
 logger = logging.getLogger(__name__)
 
@@ -71,29 +69,24 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
 
 
 def ensure_footprint_lib(
-    build_paths: "BuildPaths",
-    lib_name: str,
-    fppath: os.PathLike,
-    fptable: C_kicad_fp_lib_table_file | None = None,
+    lib_name: str, fppath: os.PathLike, fptable: C_kicad_fp_lib_table_file | None = None
 ):
     fppath = Path(fppath)
 
     if fptable is None:
         try:
-            fptable = C_kicad_fp_lib_table_file.loads(
-                path_or_string_or_data=build_paths.fp_lib_table
-            )
+            fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)
         except FileNotFoundError:
             fptable = C_kicad_fp_lib_table_file.skeleton()
 
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
-            build_paths.layout.parent.resolve(), walk_up=True
+            config.build.paths.fp_lib_table.parent.resolve(), walk_up=True
         )
         # check if not going up outside the project directory
         # relative_to raises a ValueError if it has to walk up to make a relative path
-        fppath.relative_to(not_none(build_paths.root))
+        fppath.relative_to(not_none(config.project.paths.root))
     except ValueError:
         relative = False
         with downgrade(UserResourceException):
@@ -105,6 +98,7 @@ def ensure_footprint_lib(
         fppath = fppath_rel
 
     uri = str(fppath)
+
     if relative:
         assert not uri.startswith("/")
         assert not uri.startswith("${KIPRJMOD}")
@@ -118,25 +112,27 @@ def ensure_footprint_lib(
         descr=f"atopile: {lib_name} footprints",
     )
 
-    lib_libs = [lib for lib in fptable.fp_lib_table.libs if lib.name == lib_name]
-    table_has_one_lib = len(lib_libs) == 1
-    lib_table_outdated = any(lib != lib for lib in lib_libs)
+    matching_libs = [
+        lib_ for lib_ in fptable.fp_lib_table.libs if lib_.name == lib.name
+    ]
+    lib_is_duplicated = len(matching_libs) != 1
+    lib_is_outdated = any(lib_ != lib for lib_ in matching_libs)
 
-    if not table_has_one_lib or lib_table_outdated:
+    if lib_is_duplicated or lib_is_outdated:
         fptable.fp_lib_table.libs = [
             lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
         ] + [lib]
 
         logger.warning("pcbnew restart required (updated fp-lib-table)")
 
-    fptable.dumps(build_paths.fp_lib_table)
+    fptable.dumps(config.build.paths.fp_lib_table)
 
     return fptable
 
 
-def include_footprints(build_paths: "BuildPaths"):
+def include_footprints():
     ensure_footprint_lib(
-        build_paths, "lcsc", build_paths.component_lib / "footprints" / "lcsc.pretty"
+        "lcsc", config.project.paths.component_lib / "footprints" / "lcsc.pretty"
     )
 
 
@@ -188,21 +184,20 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def apply_netlist(
-    build_paths: "BuildPaths",
-    files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None,
-):
-    include_footprints(build_paths)
+def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None):
+    include_footprints()
 
-    set_kicad_netlist_path_in_project(build_paths.kicad_project, build_paths.netlist)
+    set_kicad_netlist_path_in_project(
+        config.build.paths.kicad_project, config.build.paths.netlist
+    )
 
     # Import netlist into pcb
     if files:
         pcb, netlist = files
-        PCB.apply_netlist(pcb, netlist, build_paths.layout.parent / "fp-lib-table")
+        PCB.apply_netlist(pcb, netlist, config.build.paths.fp_lib_table)
     else:
-        logger.info(f"Apply netlist to {build_paths.layout}")
-        PCB.apply_netlist_to_file(build_paths.layout, build_paths.netlist)
+        logger.info(f"Apply netlist to {config.build.paths.layout}")
+        PCB.apply_netlist_to_file(config.build.paths.layout, config.build.paths.netlist)
 
 
 def load_nets(
