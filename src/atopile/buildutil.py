@@ -74,6 +74,7 @@ def build(app: Module) -> None:
         raise UserException(
             "Unfortunately, there's a compiler bug at the moment that means that "
             "this sometimes fails. Try again, and it'll probably work."
+            "See https://github.com/atopile/atopile/issues/807"
         ) from ex
 
     logger.info("Running checks")
