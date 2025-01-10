@@ -12,6 +12,7 @@ from typing import Any, Callable, Generator, Iterable, Self
 from pydantic import (
     AliasChoices,
     BaseModel,
+    ConfigDict,
     Field,
     ValidationError,
     ValidationInfo,
@@ -93,6 +94,10 @@ def _try_construct_config[T](
         raise UserConfigurationError(f"Invalid config: {ex}") from ex
 
 
+class BaseConfigModel(BaseModel):
+    model_config = ConfigDict(use_attribute_docstrings=True)
+
+
 class BuildType(Enum):
     ATO = "ato"
     PYTHON = "python"
@@ -157,7 +162,7 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data or {}
 
 
-class ProjectPaths(BaseModel):
+class ProjectPaths(BaseConfigModel):
     root: Path
     """Project root directory (where the ato.yaml file is located)"""
 
@@ -213,7 +218,7 @@ class ProjectPaths(BaseModel):
         self.layout.mkdir(parents=True, exist_ok=True)
 
 
-class BuildPaths(BaseModel):
+class BuildPaths(BaseConfigModel):
     layout: Path
     """Build layout file"""
 
@@ -293,7 +298,7 @@ class BuildPaths(BaseModel):
         return True
 
 
-class BuildConfig(BaseModel):
+class BuildConfig(BaseConfigModel):
     _project_paths: ProjectPaths
 
     name: str
@@ -357,7 +362,7 @@ class BuildConfig(BaseModel):
         return address.entry_section
 
 
-class Dependency(BaseModel):
+class Dependency(BaseConfigModel):
     name: str
     version_spec: str | None = None
     link_broken: bool = False
@@ -387,12 +392,12 @@ class Dependency(BaseModel):
         return str(path) if path else None
 
 
-class ServicesConfig(BaseModel):
-    class Components(BaseModel):
+class ServicesConfig(BaseConfigModel):
+    class Components(BaseConfigModel):
         url: str = Field(default="https://components.atopileapi.com")
         """Components URL"""
 
-    class Packages(BaseModel):
+    class Packages(BaseConfigModel):
         url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
         """Packages URL"""
 
@@ -407,7 +412,7 @@ class ServicesConfig(BaseModel):
     packages: Packages = Field(default_factory=Packages)
 
 
-class ProjectConfig(BaseModel):
+class ProjectConfig(BaseConfigModel):
     """Project-level config"""
 
     ato_version: str = Field(
@@ -532,10 +537,11 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     """
 
     # TOOD: ignore but warn for extra fields
-    model_config = SettingsConfigDict(
+    model_config = BaseConfigModel.model_config | SettingsConfigDict(
         env_prefix=ENV_VAR_PREFIX,
         env_nested_delimiter="_",
         enable_decoding=False,
+        use_attribute_docstrings=True,
         extra="forbid",
     )
 
