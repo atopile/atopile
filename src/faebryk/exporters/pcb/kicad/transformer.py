@@ -220,7 +220,7 @@ class PCB_Transformer:
             self.cleanup()
         self.attach()
 
-    def attach(self, check_unattached: bool = False):
+    def attach(self, check_unattached_fps: bool = False):
         for node, fp in PCB_Transformer.map_footprints(self.graph, self.pcb).items():
             self.bind_footprint(fp, node)
 
@@ -228,10 +228,10 @@ class PCB_Transformer:
         for net, pcb_net in known_nets.items():
             self.bind_net(net, pcb_net)
 
-        if check_unattached:
-            self.check_unattached()
+        if check_unattached_fps:
+            self.check_unattached_fps()
 
-    def check_unattached(self):
+    def check_unattached_fps(self):
         unattached_nodes = {
             node
             for node, trait in GraphFunctions(self.graph).nodes_with_trait(
