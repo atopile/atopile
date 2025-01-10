@@ -1598,7 +1598,7 @@ def get_module_from_path(
 
 
 def import_from_path(
-    file_path: os.PathLike | Path, attr: str | None = None
+    file_path: os.PathLike, attr: str | None = None
 ) -> ModuleType | Type:
     """
     Import a module from a file path.
@@ -1626,7 +1626,7 @@ def import_from_path(
             submodule_search_locations=submodule_search_locations,
         )
         if spec is None:
-            raise ImportError(path=file_path)
+            raise ImportError(path=str(file_path))
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
