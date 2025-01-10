@@ -216,6 +216,11 @@ def _name_shittiness(name: str | None) -> float:
     if name.startswith("_"):
         return 0.2
 
+    # "hv" is common from power interfaces, but
+    # if there's something else available, prefer that
+    if name == "hv":
+        return 0.3
+
     # Anything with a trailing number is
     # generally less interesting
     if re.match(r".*\d+$", name):
@@ -287,16 +292,13 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
             net.add(F.has_overriden_name_defined(net_required_names.pop()))
             continue
 
-        if net_suggested_names:
-            net.add(
-                F.has_overriden_name_defined(
-                    min(net_suggested_names, key=lambda x: x[1])[0]
-                )
-            )
-            continue
-
+        # Initialize the net name for the remaining processing
         names[net] = _NetName()
-        if implicit_name_candidates:
+
+        if net_suggested_names:
+            names[net].base_name = min(net_suggested_names, key=lambda x: x[1])[0]
+
+        elif implicit_name_candidates:
             # Type ignored on this because they typing on both max and defaultdict.get
             # is poor. This is actually correct, and supposed to return None sometimes
             names[net].base_name = max(
@@ -304,7 +306,8 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
                 key=implicit_name_candidates.get,  # type: ignore
             )
 
-    # Resolve as many conflict as possible by prefixing on the lowest common node's full name # noqa: E501  # pre-existing
+    # Resolve as many conflict as possible by prefixing on
+    # the lowest common node's full name
     for conflict_nets in _conflicts(names):
         for net in conflict_nets:
             if lcn := L.Node.nearest_common_ancestor(*net.get_connected_interfaces()):

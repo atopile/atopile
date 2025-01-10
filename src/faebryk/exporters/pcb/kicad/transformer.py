@@ -826,7 +826,7 @@ class PCB_Transformer:
                 min_thickness=0.2,
                 filled_areas_thickness=False,
                 fill=Zone.C_fill(
-                    enable=True,
+                    enable=Zone.C_fill.E_yes.yes,
                     mode=None,
                     hatch_thickness=0.0,
                     hatch_gap=0.5,

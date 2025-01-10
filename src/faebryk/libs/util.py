@@ -33,6 +33,7 @@ from typing import (
     Any,
     Callable,
     Concatenate,
+    Container,
     Generator,
     Hashable,
     Iterable,
@@ -1811,6 +1812,14 @@ def robustly_rm_dir(path: os.PathLike) -> None:
         func(path)
 
     shutil.rmtree(path, onexc=remove_readonly)
+
+
+def yield_missing(existing: Container, candidates: Iterable | None = None):
+    if candidates is None:
+        candidates = range(10000)  # Prevent counting to infinity by default
+    for c in candidates:
+        if c not in existing:
+            yield c
 
 
 def try_relative_to(
