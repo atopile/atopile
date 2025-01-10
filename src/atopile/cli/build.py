@@ -75,22 +75,21 @@ def build(
 
     with accumulate() as accumulator:
         for build in config.builds:
-            with build:
+            with accumulator.collect(), log_user_errors(logger), build:
                 logger.info("Building '%s'", config.build.name)
-                with accumulator.collect(), log_user_errors(logger):
-                    match config.build.build_type:
-                        case BuildType.ATO:
-                            app = _init_ato_app()
-                        case BuildType.PYTHON:
-                            app = _init_python_app()
-                            app.add(F.is_app_root())
-                        case _:
-                            raise ValueError(
-                                f"Unknown build type: {config.build.build_type}"
-                            )
+                match config.build.build_type:
+                    case BuildType.ATO:
+                        app = _init_ato_app()
+                    case BuildType.PYTHON:
+                        app = _init_python_app()
+                        app.add(F.is_app_root())
+                    case _:
+                        raise ValueError(
+                            f"Unknown build type: {config.build.build_type}"
+                        )
 
-                    # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
-                    buildutil.build(app)
+                # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
+                buildutil.build(app)
 
     logger.info("Build successful! 🚀")
 
@@ -114,7 +113,7 @@ def _init_python_app() -> "Module":
 
     if not isinstance(app_class, type):
         raise errors.UserPythonLoadError(
-            f"Build entry {config.build.address} is not a module we can instantiate"  # noqa: E501  # pre-existing
+            f"Build entry {config.build.address} is not a module we can instantiate"
         )
 
     try:
