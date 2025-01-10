@@ -155,7 +155,7 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
         return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
 
     def get_data(self) -> dict[str, Any]:
-        return self.yaml_data if self.yaml_data else {}
+        return self.yaml_data or {}
 
 
 class ProjectPaths(BaseModel):
