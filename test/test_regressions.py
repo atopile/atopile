@@ -59,7 +59,7 @@ class BuildError(Exception):
     [
         ("https://github.com/atopile/spin-servo-drive", {}),
         ("https://github.com/atopile/esp32-s3", {}),
-        ("https://github.com/atopile/nonos", {}),
+        # ("https://github.com/atopile/nonos", {}), # Removing from critical path
         (
             "https://github.com/atopile/cell-sim",
             {
