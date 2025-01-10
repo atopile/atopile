@@ -375,7 +375,8 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
             file.write(content)
             file.truncate()
 
-    # TODO: increase the level of this to WARNING when there's an alternative
+    # TODO: @v0.4 increase the level of this to WARNING
+    # when there's an alternative
     with downgrade(DeprecatedException, to_level=logging.DEBUG):
         raise DeprecatedException(
             "This project uses a deprecated footprint consolidation mechanism."

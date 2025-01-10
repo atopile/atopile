@@ -353,7 +353,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 else:
                     dep_ctx = item_ctx
 
-                # TODO: increase the level of this to WARNING
+                # TODO: @v0.4 increase the level of this to WARNING
+                # when there's an alternative
                 with downgrade(DeprecatedException, to_level=logging.DEBUG):
                     raise DeprecatedException.from_ctx(
                         dep_ctx,
@@ -1136,7 +1137,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 # then we're good to go! We just need to tell everyone to probably not
                 # do that in the future - and we're off!
                 if ctx is not None:  # Check that this is the top-level _connect call
-                    # TODO: increase the level of this to WARNING
+                    # TODO: @v0.4 increase the level of this to WARNING
                     # when there's an alternative
                     with (
                         downgrade(DeprecatedException, to_level=logging.DEBUG),
@@ -1514,7 +1515,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Syntax should protect from this
             raise ValueError(f"Unhandled set assignment operator {ctx}")
 
-        # TODO: increase the level of this to WARNING when there's an alternative
+        # TODO: @v0.4 increase the level of this to WARNING
+        # when there's an alternative
         with (
             downgrade(DeprecatedException, to_level=logging.DEBUG),
             self._suppressor_visitCum_assign_stmt,
