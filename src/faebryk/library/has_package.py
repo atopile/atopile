@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import StrEnum, auto
+from enum import StrEnum
 
 from faebryk.core.module import Module
 from faebryk.core.parameter import EnumDomain, EnumSet, Parameter
@@ -12,18 +12,18 @@ class has_package(Module.TraitT.decless()):
 
     class Package(StrEnum):
         # TODO: make this more extensive
-        C0201 = auto()
-        C0402 = auto()
-        C0603 = auto()
-        C0805 = auto()
-        R0201 = auto()
-        R0402 = auto()
-        R0603 = auto()
-        R0805 = auto()
-        L0201 = auto()
-        L0402 = auto()
-        L0603 = auto()
-        L0805 = auto()
+        C0201 = "C0201"
+        C0402 = "C0402"
+        C0603 = "C0603"
+        C0805 = "C0805"
+        R0201 = "R0201"
+        R0402 = "R0402"
+        R0603 = "R0603"
+        R0805 = "R0805"
+        L0201 = "L0201"
+        L0402 = "L0402"
+        L0603 = "L0603"
+        L0805 = "L0805"
 
     def __init__(self, *package_candidates: str | Package) -> None:
         super().__init__()
