@@ -401,11 +401,6 @@ class PCB:
                     if p.ref == comp_name
                 }
 
-                if comp_name in comps_changed:
-                    pcb_update_logger.info(
-                        f"Reusing position from changed component {comp_name}"
-                    )
-
                 # Fill in variables
                 footprint.propertys["Reference"].value = comp_name
                 footprint.propertys["Value"].value = comp.value
@@ -441,6 +436,9 @@ class PCB:
                 if comp_name in comps_changed:
                     # TODO also need to do geo rotations and stuff
                     at = comps_changed[comp_name].at
+                    pcb_update_logger.info(
+                        f"Reusing position from changed component {comp_name}"
+                    )
 
                 pcb_comp = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint(
                     uuid=gen_uuid(mark=""),
