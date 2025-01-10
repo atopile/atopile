@@ -267,11 +267,6 @@ class BuildPaths(BaseModel):
         return True
 
 
-class BuildEntry(BaseModel):
-    file_path: Path | None = Field(default=None)
-    entry_section: str | None = Field(default=None)
-
-
 class BuildConfig(BaseModel):
     _project_paths: ProjectPaths
 
@@ -313,7 +308,7 @@ class BuildConfig(BaseModel):
         **/*.ato:* -> BuildType.ATO
         **/*.py:* -> BuildType.PYTHON
         """
-        suffix = self.file_path.suffix
+        suffix = self.entry_file_path.suffix
 
         match suffix:
             case ".ato":
@@ -326,7 +321,7 @@ class BuildConfig(BaseModel):
                 )
 
     @property
-    def file_path(self) -> Path:
+    def entry_file_path(self) -> Path:
         address = AddrStr(self.address)
         return self._project_paths.root / address.file_path
 

@@ -101,7 +101,9 @@ def _init_python_app() -> "Module":
     from faebryk.libs.util import import_from_path
 
     try:
-        app_class = import_from_path(config.build.file_path, config.build.entry_section)
+        app_class = import_from_path(
+            config.build.entry_file_path, config.build.entry_section
+        )
     except FileNotFoundError as e:
         raise errors.UserFileNotFoundError(
             f"Cannot find build entry {config.build.address}"
@@ -134,7 +136,7 @@ def _init_ato_app() -> "Module":
     from faebryk.libs.library import L
 
     node = front_end.bob.build_file(
-        config.build.file_path,
+        config.build.entry_file_path,
         Ref(config.build.entry_section.split(".")),
     )
     assert isinstance(node, L.Module)
