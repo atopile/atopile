@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Sequence
 
+from atopile.config import config
 from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
@@ -93,9 +94,9 @@ def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
     lib_id, fp_name = identifier.split(":")
     lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
     dir_path = Path(
-        lib.uri.replace("${KIPRJMOD}", str(fp_lib_path.parent)).replace(
-            "${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH)
-        )
+        (lib.uri)
+        .replace("${KIPRJMOD}", str(config.build.paths.fp_lib_table.parent))
+        .replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
     )
 
     path = dir_path / f"{fp_name}.kicad_mod"
@@ -140,7 +141,7 @@ class PCB:
     def apply_netlist_to_file(pcb_path: Path, netlist_path: Path):
         pcb = C_kicad_pcb_file.loads(pcb_path)
         netlist = C_kicad_netlist_file.loads(netlist_path)
-        fp_lib_path = pcb_path.parent / "fp-lib-table"
+        fp_lib_path = config.build.paths.fp_lib_table
         PCB.apply_netlist(pcb, netlist, fp_lib_path)
         logger.debug(f"Save PCB: {pcb_path}")
         pcb.dumps(pcb_path)

@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 import time
@@ -8,7 +9,7 @@ from typing import Callable, Optional
 from more_itertools import first
 
 from atopile import layout
-from atopile.config import BuildContext
+from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
@@ -55,23 +56,15 @@ from faebryk.libs.exceptions import (
 )
 from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
-PCBNEW_AUTO = ConfigFlag(
-    "PCBNEW_AUTO",
-    default=False,
-    descr="Automatically open pcbnew when applying netlist",
-)
 
-
-def build(build_ctx: BuildContext, app: Module) -> None:
+def build(app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
     solver = DefaultSolver()
-    build_ctx.ensure_paths()
-    build_paths = build_ctx.paths
 
     logger.info("Resolving bus parameters")
     try:
@@ -88,10 +81,10 @@ def build(build_ctx: BuildContext, app: Module) -> None:
 
     # Pre-pick project checks - things to look at before time is spend ---------
     # Make sure the footprint libraries we're looking for exist
-    consolidate_footprints(build_ctx, app)
+    consolidate_footprints(app)
 
     # Load PCB / cached --------------------------------------------------------
-    pcb = C_kicad_pcb_file.loads(build_paths.layout)
+    pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app, cleanup=False)
     load_designators(G, attach=True)
 
@@ -102,12 +95,21 @@ def build(build_ctx: BuildContext, app: Module) -> None:
         solver.inspect_get_known_supersets(first(parameters), force_update=True)
 
     # Pickers ------------------------------------------------------------------
-    if build_ctx.keep_picked_parts:
+    if config.build.keep_picked_parts:
         load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
+
+    # fp-lib-table might need updating after footprints are downloaded during the
+    # picking process
+    ensure_footprint_lib(
+        "lcsc",
+        config.project.paths.component_lib
+        / "footprints"
+        / "lcsc.pretty",  # TODO: config property
+    )
 
     # Re-attach because picking might have added new footprints
     # Many nodes gain their footprints from picking, meaning we'll gather more now
@@ -117,7 +119,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     attach_random_designators(G)
     override_names_with_designators(G)
     nets = attach_nets_and_kicad_info(G)
-    if build_ctx.keep_net_names:
+    if config.build.keep_net_names:
         load_nets(G, attach=True)
     attach_net_names(nets)
     netlist = faebryk_netlist_to_kicad(make_fbrk_netlist_from_graph(G))
@@ -125,7 +127,7 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    apply_netlist(build_paths, files=(pcb, netlist))
+    apply_netlist(files=(pcb, netlist))
 
     transformer.cleanup()
 
@@ -139,13 +141,17 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     apply_routing(app, transformer)
 
     if pcb == original_pcb:
-        if build_ctx.frozen:
+        if config.build.frozen:
             logger.info("No changes to layout. Passed --frozen check.")
         else:
-            logger.info(f"No changes to layout. Not writing {build_paths.layout}")
-    elif build_ctx.frozen:
-        original_path = build_ctx.paths.output_base.with_suffix(".original.kicad_pcb")
-        updated_path = build_ctx.paths.output_base.with_suffix(".updated.kicad_pcb")
+            logger.info(
+                f"No changes to layout. Not writing {config.build.paths.layout}"
+            )
+    elif config.build.frozen:
+        original_path = config.build.paths.output_base.with_suffix(
+            ".original.kicad_pcb"
+        )
+        updated_path = config.build.paths.output_base.with_suffix(".updated.kicad_pcb")
         original_pcb.dumps(original_path)
         pcb.dumps(updated_path)
 
@@ -168,18 +174,18 @@ def build(build_ctx: BuildContext, app: Module) -> None:
             title="Frozen failed",
         )
     else:
-        backup_file = build_paths.output_base.with_suffix(
+        backup_file = config.build.paths.output_base.with_suffix(
             f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
         )
         logger.info(f"Backing up layout to {backup_file}")
-        with build_paths.layout.open("rb") as f:
+        with config.build.paths.layout.open("rb") as f:
             backup_file.write_bytes(f.read())
 
-        logger.info(f"Updating layout {build_paths.layout}")
-        pcb.dumps(build_paths.layout)
-        if PCBNEW_AUTO:
+        logger.info(f"Updating layout {config.build.paths.layout}")
+        pcb.dumps(config.build.paths.layout)
+        if config.project.pcbnew_auto:
             try:
-                open_pcb(build_paths.layout)
+                open_pcb(config.build.paths.layout)
             except FileNotFoundError:
                 pass
             except RuntimeError as e:
@@ -191,15 +197,15 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     logger.info("Building targets")
 
     # Figure out what targets to build
-    if build_ctx.targets == ["__default__"]:
+    if config.build.targets == ["__default__"]:
         targets = muster.do_by_default
-    elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
+    elif config.build.targets == ["*"] or config.build.targets == ["all"]:
         targets = list(muster.targets.keys())
     else:
-        targets = build_ctx.targets
+        targets = config.build.targets
 
     # Remove targets we don't know about, or are excluded
-    excluded_targets = set(build_ctx.exclude_targets)
+    excluded_targets = set(config.build.exclude_targets)
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
 
@@ -207,18 +213,18 @@ def build(build_ctx: BuildContext, app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            logger.info(f"Building '{target_name}' for '{build_ctx.name}' config")
+            logger.info(f"Building '{target_name}' for '{config.build.name}' config")
             with accumulator.collect():
-                muster.targets[target_name](build_ctx, app)
+                muster.targets[target_name](app)
             built_targets.append(target_name)
 
     logger.info(
         f"Built {', '.join(f'\'{target}\'' for target in built_targets)} "
-        f"for '{build_ctx.name}' config"
+        f"for '{config.build.name}' config"
     )
 
 
-TargetType = Callable[[BuildContext, Module], None]
+TargetType = Callable[[Module], None]
 
 
 class Muster:
@@ -253,58 +259,81 @@ muster = Muster()
 
 
 @muster.register("bom")
-def generate_bom(build_ctx: BuildContext, app: Module) -> None:
+def generate_bom(app: Module) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
-        build_ctx.paths.output_base.with_suffix(".bom.csv"),
+        config.build.paths.output_base.with_suffix(".bom.csv"),
     )
 
 
 @muster.register("mfg-data", default=False)
-def generate_manufacturing_data(build_ctx: BuildContext, app: Module) -> None:
+def generate_manufacturing_data(app: Module) -> None:
     """Generate a designator map for the project."""
     export_step(
-        build_ctx.paths.layout,
-        step_file=build_ctx.paths.output_base.with_suffix(".pcba.step"),
+        config.build.paths.layout,
+        step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
     )
     export_glb(
-        build_ctx.paths.layout,
-        glb_file=build_ctx.paths.output_base.with_suffix(".pcba.glb"),
+        config.build.paths.layout,
+        glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
     )
     export_dxf(
-        build_ctx.paths.layout,
-        dxf_file=build_ctx.paths.output_base.with_suffix(".pcba.dxf"),
+        config.build.paths.layout,
+        dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
     )
 
     export_gerber(
-        build_ctx.paths.layout,
-        gerber_zip_file=build_ctx.paths.output_base.with_suffix(".gerber.zip"),
+        config.build.paths.layout,
+        gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
     )
 
-    pnp_file = build_ctx.paths.output_base.with_suffix(".pick_and_place.csv")
-    export_pick_and_place(build_ctx.paths.layout, pick_and_place_file=pnp_file)
+    pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
+    export_pick_and_place(config.build.paths.layout, pick_and_place_file=pnp_file)
     convert_kicad_pick_and_place_to_jlcpcb(
         pnp_file,
-        build_ctx.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
+        config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
     )
+
+
+@muster.register("manifest")
+def generate_manifest(app: Module) -> None:
+    """Generate a manifest for the project."""
+    with accumulate() as accumulator:
+        with accumulator.collect():
+            manifest = {}
+            manifest["version"] = "2.0"
+            for build in config.builds:
+                with build:
+                    if config.build.paths.layout:
+                        by_layout_manifest = manifest.setdefault(
+                            "by-layout", {}
+                        ).setdefault(str(config.build.paths.layout), {})
+                        by_layout_manifest["layouts"] = str(
+                            config.build.paths.output_base.with_suffix(".layouts.json")
+                        )
+
+            manifest_path = config.project.paths.manifest
+            manifest_path.parent.mkdir(exist_ok=True, parents=True)
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f)
 
 
 @muster.register("layout-module-map")
-def generate_module_map(build_ctx: BuildContext, app: Module) -> None:
+def generate_module_map(app: Module) -> None:
     """Generate a designator map for the project."""
-    layout.generate_module_map(build_ctx, app)
+    layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
-def generate_variable_report(build_ctx: BuildContext, app: Module) -> None:
+def generate_variable_report(app: Module) -> None:
     """Generate a report of all the variable values in the design."""
     export_parameters_to_file(
-        app, build_ctx.paths.output_base.with_suffix(".variables.md")
+        app, config.build.paths.output_base.with_suffix(".variables.md")
     )
 
 
-def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
+def consolidate_footprints(app: Module) -> None:
     """
     Consolidate all the project's footprints into a single directory.
 
@@ -319,7 +348,7 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
             fp_ids_to_check.append(fp.kicad_identifier)
 
     try:
-        fptable = C_kicad_fp_lib_table_file.loads(build_ctx.paths.fp_lib_table)
+        fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)
     except FileNotFoundError:
         fptable = C_kicad_fp_lib_table_file.skeleton()
 
@@ -335,9 +364,8 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
     elif lib_prefix_on_ids and not lib_in_fptable:
         # we need to add a lib entry pointing to the footprints dir
         ensure_footprint_lib(
-            build_ctx.paths,
             "lib",
-            build_ctx.paths.build / "footprints" / "footprints.pretty",
+            config.project.paths.build / "footprints" / "footprints.pretty",
             fptable,
         )
     elif lib_in_fptable and not lib_prefix_on_ids:
@@ -349,18 +377,18 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
             "'fp-lib-table' file."
         )
 
-    fp_target = build_ctx.paths.build / "footprints" / "footprints.pretty"
-    fp_target_step = build_ctx.paths.build / "footprints" / "footprints.3dshapes"
+    fp_target = config.project.paths.build / "footprints" / "footprints.pretty"
+    fp_target_step = config.project.paths.build / "footprints" / "footprints.3dshapes"
     fp_target.mkdir(exist_ok=True, parents=True)
 
-    if not build_ctx.paths.root:
+    if not config.project.paths.root:
         with downgrade(UserResourceException):
             raise UserResourceException(
                 "No project root directory found. Cannot consolidate footprints."
             )
         return
 
-    for fp in build_ctx.paths.root.glob("**/*.kicad_mod"):
+    for fp in config.project.paths.root.glob("**/*.kicad_mod"):
         try:
             shutil.copy(fp, fp_target)
         except shutil.SameFileError:
@@ -386,7 +414,7 @@ def consolidate_footprints(build_ctx: BuildContext, app: Module) -> None:
     try:
         for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
             with err_collector():
-                _get_footprint(fp_id, build_ctx.paths.fp_lib_table)
+                _get_footprint(fp_id, config.build.paths.fp_lib_table)
     except* (FileNotFoundError, LibNotInTable) as ex:
 
         def _make_user_resource_exception(e: Exception) -> UserResourceException:

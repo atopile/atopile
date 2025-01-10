@@ -615,6 +615,7 @@ def test_inspect_enum_led():
     assert solver.inspect_get_known_supersets(led.color) == F.LED.Color.EMERALD
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_simple_pick():
     led = F.LED()
 
