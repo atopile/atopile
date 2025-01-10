@@ -30,8 +30,14 @@ from pydantic_settings import (
 from ruamel.yaml import YAML
 
 from atopile import version
-from atopile.address import AddrStr
-from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
+from atopile.address import AddressError, AddrStr
+from atopile.cli.common import check_entry_arg_file_path, get_entry_arg_file_path
+from atopile.errors import (
+    UserBadParameterError,
+    UserException,
+    UserFileNotFoundError,
+    UserNotImplementedError,
+)
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
 from faebryk.libs.exceptions import iter_through_errors
 
@@ -660,52 +666,102 @@ class Config:
     def _current_build(self) -> BuildConfig | None:
         return _current_build_cfg.get()
 
+    def _setup_standalone(self, entry: str | None, entry_arg_file_path: Path) -> None:
+        if not entry:
+            raise UserBadParameterError(
+                "You must specify an entry to build with the --standalone option"
+            )
+        if not entry_arg_file_path.exists():
+            raise UserBadParameterError(
+                f"The file you have specified does not exist: {entry_arg_file_path}"
+            )
+
+        if not entry_arg_file_path.is_file():
+            raise UserBadParameterError(
+                "The path you're building with the --standalone"
+                f" option must be a file {entry_arg_file_path}",
+                markdown=False,
+            )
+
+        if config.has_project:
+            raise UserBadParameterError(
+                "Project config must not be present for standalone builds"
+            )
+
+        try:
+            AddrStr(entry).entry_section
+        except AddressError:
+            raise UserBadParameterError(
+                "You must specify what to build within a file to build with the"
+                " --standalone option"
+            )
+
+        # don't trigger reload
+        self._project_dir = entry_arg_file_path.parent or Path.cwd()
+        self._project = ProjectConfig.skeleton(
+            entry=entry,
+            paths=ProjectPaths(
+                root=self._project_dir,
+                src=self._project_dir,
+                layout=self._project_dir / "standalone",
+                footprints=self._project_dir / "standalone",
+            ),
+        )
+
     def apply_options(
         self,
         entry: str | None,
         entry_arg_file_path: Path = Path.cwd(),
         standalone: bool = False,
+        option: Iterable[str] = (),
+        target: Iterable[str] = (),
+        selected_builds: Iterable[str] = (),
     ) -> None:
+        entry, entry_arg_file_path = get_entry_arg_file_path(entry)
+
         if standalone:
-            if not entry:
-                raise UserBadParameterError(
-                    "You must specify an entry to build with the --standalone option"
-                )
-            if not entry_arg_file_path.exists():
-                raise UserBadParameterError(
-                    f"The file you have specified does not exist: {entry_arg_file_path}"
-                )
-
-            if config.has_project:
-                raise UserBadParameterError(
-                    "Project config must not be present for standalone builds"
-                )
-
-            # don't trigger reload
-            self._project_dir = entry_arg_file_path.parent or Path.cwd()
-            self._project = ProjectConfig.skeleton(
-                entry=entry,
-                paths=ProjectPaths(
-                    root=self._project_dir,
-                    src=self._project_dir,
-                    layout=self._project_dir / "standalone",
-                    footprints=self._project_dir / "standalone",
-                ),
-            )
+            self._setup_standalone(entry, entry_arg_file_path)
         else:
             if entry_arg_file_path.is_dir():
-                config.project_dir = entry_arg_file_path
+                self.project_dir = entry_arg_file_path
             elif entry_arg_file_path.is_file():
-                config.project_dir = entry_arg_file_path.parent
+                self.project_dir = entry_arg_file_path.parent
             else:
                 raise UserBadParameterError(
                     f"Specified entry path is not a file or directory: "
-                    f"{entry_arg_file_path}"
+                    f"{entry_arg_file_path}",
+                    markdown=False,
                 )
 
         self.project.entry = entry
 
         logger.info("Using project %s", self.project_dir)
+
+        # add custom config overrides
+        if option:
+            raise UserNotImplementedError(
+                "Custom config overrides have been removed in a refactor. "
+                "It's planned to re-add them in a future release. "
+                "If this is a blocker for you, please raise an issue. "
+                "In the meantime, you can use the `ato.yaml` file to set these options."
+            )
+
+        # if we set an entry-point, we now need to deal with that
+        entry_addr_override = check_entry_arg_file_path(entry, entry_arg_file_path)
+
+        if selected_builds:
+            self.selected_builds = list(selected_builds)
+
+        for build_name in self.selected_builds:
+            if build_name not in self.project.builds:
+                raise UserBadParameterError(
+                    f"Build `{build_name}` not found in project config"
+                )
+
+            if entry_addr_override is not None:
+                self.project.builds[build_name].address = entry_addr_override
+            if target:
+                self.project.builds[build_name].targets = list(target)
 
 
 _project_dir: Path | None = None

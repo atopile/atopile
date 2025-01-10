@@ -42,12 +42,17 @@ def build(
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
     from atopile import buildutil
-    from atopile.cli.common import parse_build_options
     from atopile.config import BuildType
     from faebryk.library import _F as F
     from faebryk.libs.exceptions import accumulate, log_user_errors
 
-    parse_build_options(entry, selected_builds, target, option, standalone)
+    config.apply_options(
+        entry=entry,
+        selected_builds=selected_builds,
+        target=target,
+        option=option,
+        standalone=standalone,
+    )
 
     for build_cfg in config.project.builds.values():
         if keep_picked_parts is not None:
