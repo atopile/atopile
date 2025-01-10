@@ -378,7 +378,6 @@ def component(
     type_: Annotated[ComponentType | None, typer.Option("--type", "-t")] = None,
 ):
     """Create a new component."""
-    import faebryk.libs.picker.lcsc as lcsc_
     from faebryk.libs.picker.api.models import Component
     from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
     from faebryk.libs.pycodegen import format_and_write, sanitize_name
@@ -388,9 +387,6 @@ def component(
         configure_project_context(None)
     except errors.UserBadParameterError:
         configure_project_context(str(Path.cwd()), standalone=True)
-
-    lcsc_.LIB_FOLDER = (config.project.paths.component_lib,)
-    lcsc_.MODEL_PATH = None
 
     # Find a component --------------------------------------------------------
 
