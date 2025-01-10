@@ -158,14 +158,18 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
 
 
 class ProjectPaths(BaseModel):
-    root: Path
-    src: Path
-    layout: Path
-    footprints: Path
-    manifest: Path
-    build: Path
-    component_lib: Path
-    modules: Path
+    root: Path = Field(
+        description="Project root directory (where the ato.yaml file is located)"
+    )
+    src: Path = Field(description="Project source code directory")
+    layout: Path = Field(description="Project layout directory")
+    footprints: Path = Field(description="Project footprints directory")
+    build: Path = Field(description="Build artifact output directory")
+    manifest: Path = Field(description="Build manifest file")
+    component_lib: Path = Field(description="Component library directory for builds")
+    modules: Path = Field(
+        description="Project modules directory (`.ato/modules` from the project root)"
+    )
 
     def __init__(self, **data: Any):
         data.setdefault("root", _project_dir or Path.cwd())
@@ -199,11 +203,11 @@ class ProjectPaths(BaseModel):
 
 
 class BuildPaths(BaseModel):
-    layout: Path
-    output_base: Path
-    netlist: Path
-    fp_lib_table: Path
-    kicad_project: Path
+    layout: Path = Field(description="Build layout file")
+    output_base: Path = Field(description="Extension-less filename for build artifacts")
+    netlist: Path = Field(description="Build netlist file")
+    fp_lib_table: Path = Field(description="Project footprint library table file")
+    kicad_project: Path = Field(description="Build KiCAD project file")
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         data.setdefault(
