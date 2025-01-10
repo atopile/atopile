@@ -59,26 +59,35 @@ def get_package_candidates(module: Module) -> frozenset["PackageCandidate"]:
 
 class ApiClient:
     @dataclass
-    class Config:
+    class ApiConfig:
         api_url: str = config.project.services.components.url
         api_key: str | None = None
 
-    cfg = Config()
-
     def __init__(self):
         self._client = requests.Session()
-        self._client.headers["Authorization"] = f"Bearer {self.cfg.api_key}"
+
+    @property
+    @once
+    def _cfg(self) -> ApiConfig:
+        return self.ApiConfig()
+
+    @property
+    @once
+    def _headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._cfg.api_key}"}
 
     def _get(self, url: str, timeout: float = 10) -> requests.Response:
         try:
-            response = self._client.get(f"{self.cfg.api_url}{url}", timeout=timeout)
+            response = self._client.get(
+                f"{self._cfg.api_url}{url}", timeout=timeout, headers=self._headers
+            )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"GET {self.cfg.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
+                f"GET {self._cfg.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
             )
 
         return response
@@ -89,7 +98,10 @@ class ApiClient:
         now = time.time()
         try:
             response = self._client.post(
-                f"{self.cfg.api_url}{url}", json=data, timeout=timeout
+                f"{self._cfg.api_url}{url}",
+                json=data,
+                timeout=timeout,
+                headers=self._headers,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -99,7 +111,7 @@ class ApiClient:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                f"POST {self.cfg.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
+                f"POST {self._cfg.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
                 f"{json.dumps(response.json(), indent=2)}"
             )
 
