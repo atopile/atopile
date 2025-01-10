@@ -45,13 +45,6 @@ def version_callback(ctx: typer.Context, value: bool):
     raise typer.Exit()
 
 
-def project_dir_callback(ctx: typer.Context, value: Path):
-    if not value or ctx.resilient_parsing:
-        return
-
-    config.project_dir = value
-
-
 @app.callback()
 def cli(
     ctx: typer.Context,
@@ -76,14 +69,6 @@ def cli(
         bool | None,
         typer.Option("--version", callback=version_callback, is_eager=True),
     ] = None,
-    project_dir: Annotated[
-        Path,
-        typer.Option(
-            "--project-dir",
-            help="Location of the project directory to use",
-            callback=project_dir_callback,
-        ),
-    ] = Path.cwd(),
 ):
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
@@ -126,6 +111,13 @@ def export_config_schema():
     from atopile.config import ProjectConfig
 
     print(ProjectConfig.model_json_schema())
+
+
+@app.command(hidden=True)
+def dump_config():
+    from rich import print
+
+    print(config.project)
 
 
 def main():
