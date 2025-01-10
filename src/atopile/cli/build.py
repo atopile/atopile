@@ -49,7 +49,7 @@ def build(
 
     parse_build_options(entry, selected_builds, target, option, standalone)
 
-    for _, build_cfg in config.project.builds.items():
+    for build_cfg in config.project.builds.values():
         if keep_picked_parts is not None:
             build_cfg.keep_picked_parts = keep_picked_parts
 
