@@ -2,38 +2,15 @@
 Common CLI writing utilities.
 """
 
-import itertools
 import logging
 from pathlib import Path
 from typing import Iterable
 
-import faebryk.libs.exceptions
-from atopile import address, errors, version
+from atopile import address, errors
 from atopile.address import AddrStr
-from atopile.config import ProjectConfig, ProjectPaths, config
+from atopile.config import config
 
 log = logging.getLogger(__name__)
-
-
-def get_entry_arg_file_path(entry: str | None) -> tuple[AddrStr | None, Path]:
-    # basic the entry address if provided, otherwise leave it as None
-
-    if entry is None:
-        entry_arg_file_path = Path.cwd()
-    else:
-        entry = AddrStr(entry)
-
-        if address.get_file(entry) is None:
-            raise errors.UserBadParameterError(
-                f"Invalid entry address {entry} - entry must specify a file.",
-                title="Bad 'entry' parameter",
-            )
-
-        entry_arg_file_path = (
-            Path(address.get_file(entry)).expanduser().resolve().absolute()
-        )
-
-    return entry, entry_arg_file_path
 
 
 def check_entry_arg_file_path(
@@ -71,87 +48,25 @@ def check_entry_arg_file_path(
     return entry_addr_override
 
 
-def check_compiler_versions():
-    """
-    Check that the compiler version is compatible with the version
-    used to build the project.
-    """
+def get_entry_arg_file_path(entry: str | None) -> tuple[AddrStr | None, Path]:
+    # basic the entry address if provided, otherwise leave it as None
 
-    dependency_cfgs = (
-        (dep.project_config for dep in config.project.dependencies)
-        if config.project.dependencies is not None
-        else ()
-    )
-
-    for cltr, cfg in faebryk.libs.exceptions.iter_through_errors(
-        itertools.chain([config.project], dependency_cfgs)
-    ):
-        if cfg is None:
-            continue
-
-        with cltr():
-            semver_str = cfg.ato_version
-            # FIXME: this is a hack to the moment to get around us breaking
-            # the versioning scheme in the ato.yaml files
-            for operator in version.OPERATORS:
-                semver_str = semver_str.replace(operator, "")
-
-            built_with_version = version.parse(semver_str)
-
-            if not version.match_compiler_compatability(built_with_version):
-                raise version.VersionMismatchError(
-                    f"{cfg.paths.root} ({cfg.ato_version}) can't be"
-                    " built with this version of atopile "
-                    f"({version.get_installed_atopile_version()})."
-                )
-
-
-def configure_project_context(entry: str | None, standalone: bool = False) -> None:
-    # TODO: mvoe to config
-    entry, entry_arg_file_path = get_entry_arg_file_path(entry)
-
-    if standalone:
-        if not entry:
-            raise errors.UserBadParameterError(
-                "You must specify an entry to build with the --standalone option"
-            )
-        if not entry_arg_file_path.exists():
-            raise errors.UserBadParameterError(
-                f"The file you have specified does not exist: {entry_arg_file_path}"
-            )
-
-        if config.has_project:
-            raise errors.UserBadParameterError(
-                "Project config must not be present for standalone builds"
-            )
-
-        config.project_dir = entry_arg_file_path.parent or Path.cwd()
-        config.project = ProjectConfig.skeleton(
-            entry=entry,
-            paths=ProjectPaths(
-                root=config.project_dir,
-                src=config.project_dir,
-                layout=config.project_dir / "standalone",
-                footprints=config.project_dir / "standalone",
-            ),
-        )
+    if entry is None:
+        entry_arg_file_path = Path.cwd()
     else:
-        if entry_arg_file_path.is_dir():
-            config.project_dir = entry_arg_file_path
-        elif entry_arg_file_path.is_file():
-            config.project_dir = entry_arg_file_path.parent
-        else:
+        entry = AddrStr(entry)
+
+        if address.get_file(entry) is None:
             raise errors.UserBadParameterError(
-                f"Specified entry path is not a file or directory: "
-                f"{entry_arg_file_path}"
+                f"Invalid entry address {entry} - entry must specify a file.",
+                title="Bad 'entry' parameter",
             )
 
-    config.project.entry = entry
+        entry_arg_file_path = (
+            Path(address.get_file(entry)).expanduser().resolve().absolute()
+        )
 
-    # Make sure I an all my sub-configs have appropriate versions
-    check_compiler_versions()
-
-    log.info("Using project %s", config.project_dir)
+    return entry, entry_arg_file_path
 
 
 def parse_build_options(
@@ -164,8 +79,7 @@ def parse_build_options(
     # TODO: move this to config
 
     entry, entry_arg_file_path = get_entry_arg_file_path(entry)
-
-    configure_project_context(entry, standalone)
+    config.apply_options(entry, entry_arg_file_path, standalone)
 
     # These checks are only relevant if we're **building** standalone
     # TODO: Some of the contents should be moved out of the project context
@@ -175,7 +89,7 @@ def parse_build_options(
                 "The path you're building with the --standalone"
                 f" option must be a file {entry_arg_file_path}"
             )
-        assert entry is not None  # Handled by configure_project_context
+        assert entry is not None  # Handled by config.apply_build_options
         if not address.get_entry_section(entry):
             raise errors.UserBadParameterError(
                 "You must specify what to build within a file to build with the"

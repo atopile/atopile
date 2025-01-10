@@ -21,7 +21,6 @@ import typer
 from rich.table import Table
 
 from atopile import errors
-from atopile.cli.common import configure_project_context
 from atopile.cli.install import do_install
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from faebryk.libs.exceptions import downgrade
@@ -384,9 +383,9 @@ def component(
     from faebryk.tools.libadd import Template
 
     try:
-        configure_project_context(None)
+        config.apply_options(None)
     except errors.UserBadParameterError:
-        configure_project_context(str(Path.cwd()), standalone=True)
+        config.apply_options(None, standalone=True)
 
     # Find a component --------------------------------------------------------
 

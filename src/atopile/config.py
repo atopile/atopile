@@ -1,4 +1,5 @@
 import fnmatch
+import itertools
 import logging
 import os
 import platform
@@ -7,7 +8,7 @@ from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generator, Iterable
+from typing import Any, Callable, Generator, Iterable, Self
 
 from pydantic import (
     AliasChoices,
@@ -30,8 +31,9 @@ from ruamel.yaml import YAML
 
 from atopile import version
 from atopile.address import AddrStr
-from atopile.errors import UserException, UserFileNotFoundError
+from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
+from faebryk.libs.exceptions import iter_through_errors
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -448,6 +450,39 @@ class ProjectConfig(BaseModel):
             for dep in (value or [])
         ]
 
+    @model_validator(mode="after")
+    def validate_compiler_versions(self) -> Self:
+        """
+        Check that the compiler version is compatible with the version
+        used to build the project.
+        """
+        dependency_cfgs = (
+            (dep.project_config for dep in self.dependencies)
+            if self.dependencies is not None
+            else ()
+        )
+
+        for cltr, cfg in iter_through_errors(itertools.chain([self], dependency_cfgs)):
+            if cfg is None:
+                continue
+
+            with cltr():
+                semver_str = cfg.ato_version
+                # FIXME: this is a hack to the moment to get around us breaking
+                # the versioning scheme in the ato.yaml files
+                for operator in version.OPERATORS:
+                    semver_str = semver_str.replace(operator, "")
+
+                built_with_version = version.parse(semver_str)
+
+                if not version.match_compiler_compatability(built_with_version):
+                    raise version.VersionMismatchError(
+                        f"{cfg.paths.root} ({cfg.ato_version}) can't be"
+                        " built with this version of atopile "
+                        f"({version.get_installed_atopile_version()})."
+                    )
+        return self
+
     @classmethod
     def skeleton(cls, entry: str, paths: ProjectPaths | None):
         """Creates a minimal ProjectConfig"""
@@ -624,6 +659,53 @@ class Config:
     @property
     def _current_build(self) -> BuildConfig | None:
         return _current_build_cfg.get()
+
+    def apply_options(
+        self,
+        entry: str | None,
+        entry_arg_file_path: Path = Path.cwd(),
+        standalone: bool = False,
+    ) -> None:
+        if standalone:
+            if not entry:
+                raise UserBadParameterError(
+                    "You must specify an entry to build with the --standalone option"
+                )
+            if not entry_arg_file_path.exists():
+                raise UserBadParameterError(
+                    f"The file you have specified does not exist: {entry_arg_file_path}"
+                )
+
+            if config.has_project:
+                raise UserBadParameterError(
+                    "Project config must not be present for standalone builds"
+                )
+
+            # don't trigger reload
+            self._project_dir = entry_arg_file_path.parent or Path.cwd()
+            self._project = ProjectConfig.skeleton(
+                entry=entry,
+                paths=ProjectPaths(
+                    root=self._project_dir,
+                    src=self._project_dir,
+                    layout=self._project_dir / "standalone",
+                    footprints=self._project_dir / "standalone",
+                ),
+            )
+        else:
+            if entry_arg_file_path.is_dir():
+                config.project_dir = entry_arg_file_path
+            elif entry_arg_file_path.is_file():
+                config.project_dir = entry_arg_file_path.parent
+            else:
+                raise UserBadParameterError(
+                    f"Specified entry path is not a file or directory: "
+                    f"{entry_arg_file_path}"
+                )
+
+        self.project.entry = entry
+
+        logger.info("Using project %s", self.project_dir)
 
 
 _project_dir: Path | None = None
