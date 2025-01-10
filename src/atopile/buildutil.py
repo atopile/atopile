@@ -102,6 +102,8 @@ def build(app: Module) -> None:
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
 
+    # fp-lib-table might need updating after footprints are downloaded during the
+    # picking process
     ensure_footprint_lib(
         "lcsc",
         config.project.paths.component_lib
