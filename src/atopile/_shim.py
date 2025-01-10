@@ -195,25 +195,13 @@ class GlobalShims(L.Module):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
 
-def _handle_footprint_shim(module: L.Module, value: str):
-    from atopile.front_end import DeprecatedException
-
-    if value.startswith(("R", "C")):
-        value = value[1:]
-        with downgrade(DeprecatedException):
-            raise DeprecatedException(
-                "`footprint` is deprecated for assignment of package. "
-                f"Use: `package = '{value}'`"
-            )
-        GlobalShims.package.fset(module, value)
-        return
-
-    GlobalShims.footprint.fset(module, value)
-
-
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
     try:
-        module.add(F.has_package(starts_with + value))
+        try:
+            pkg = F.has_package.Package(starts_with + value)
+        except ValueError:
+            # TODO: decide whether supporting this is a good idea at all
+            pkg = F.has_package.Package(value)
     except ValueError:
         raise UserBadParameterError(
             f"Invalid package for {module.__class__.__name__}: " + value,
@@ -224,6 +212,8 @@ def _handle_package_shim(module: L.Module, value: str, starts_with: str):
                 if k.startswith(starts_with)
             ),
         )
+    else:
+        module.add(F.has_package(pkg))
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
@@ -240,7 +230,21 @@ class ShimResistor(F.Resistor):
 
     @write_only_property
     def footprint(self, value: str):
-        _handle_footprint_shim(self, value)
+        from atopile.front_end import DeprecatedException
+
+        if value.startswith("R"):
+            try:
+                self.package = value[1:]
+            except UserBadParameterError:
+                pass
+            else:
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        "`footprint` is deprecated for assignment of package. "
+                        f"Use: `package = '{value[1:]}'`"
+                    )
+
+        GlobalShims.footprint.fset(self, value)
 
     @write_only_property
     def package(self, value: str):
@@ -298,7 +302,21 @@ class _CommonCap(F.Capacitor):
 
     @write_only_property
     def footprint(self, value: str):
-        _handle_footprint_shim(self, value)
+        from atopile.front_end import DeprecatedException
+
+        if value.startswith("C"):
+            try:
+                self.package = value[1:]
+            except UserBadParameterError:
+                pass
+            else:
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        "`footprint` is deprecated for assignment of package. "
+                        f"Use: `package = '{value[1:]}'`"
+                    )
+
+        GlobalShims.footprint.fset(self, value)
 
     @property
     def p1(self) -> F.Electrical:
