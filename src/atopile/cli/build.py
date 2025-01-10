@@ -88,7 +88,7 @@ def build(
                             f"Unknown build type: {config.build.build_type}"
                         )
 
-                # TODO: add a mechanism to override the following with custom build machinery # noqa: E501  # pre-existing
+                # TODO: add a way to override the following with custom build machinery
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
