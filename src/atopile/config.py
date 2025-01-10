@@ -158,18 +158,29 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
 
 
 class ProjectPaths(BaseModel):
-    root: Path = Field(
-        description="Project root directory (where the ato.yaml file is located)"
-    )
-    src: Path = Field(description="Project source code directory")
-    layout: Path = Field(description="Project layout directory")
-    footprints: Path = Field(description="Project footprints directory")
-    build: Path = Field(description="Build artifact output directory")
-    manifest: Path = Field(description="Build manifest file")
-    component_lib: Path = Field(description="Component library directory for builds")
-    modules: Path = Field(
-        description="Project modules directory (`.ato/modules` from the project root)"
-    )
+    root: Path
+    """Project root directory (where the ato.yaml file is located)"""
+
+    src: Path
+    """Project source code directory"""
+
+    layout: Path
+    """Project layout directory"""
+
+    footprints: Path
+    """Project footprints directory"""
+
+    build: Path
+    """Build artifact output directory"""
+
+    manifest: Path
+    """Build manifest file"""
+
+    component_lib: Path
+    """Component library directory for builds"""
+
+    modules: Path
+    """Project modules directory (`.ato/modules` from the project root)"""
 
     def __init__(self, **data: Any):
         data.setdefault("root", _project_dir or Path.cwd())
@@ -203,11 +214,20 @@ class ProjectPaths(BaseModel):
 
 
 class BuildPaths(BaseModel):
-    layout: Path = Field(description="Build layout file")
-    output_base: Path = Field(description="Extension-less filename for build artifacts")
-    netlist: Path = Field(description="Build netlist file")
-    fp_lib_table: Path = Field(description="Project footprint library table file")
-    kicad_project: Path = Field(description="Build KiCAD project file")
+    layout: Path
+    """Build layout file"""
+
+    output_base: Path
+    """Extension-less filename for build artifacts"""
+
+    netlist: Path
+    """Build netlist file"""
+
+    fp_lib_table: Path
+    """Project footprint library table file"""
+
+    kicad_project: Path
+    """Build KiCAD project file"""
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         data.setdefault(
@@ -369,15 +389,12 @@ class Dependency(BaseModel):
 
 class ServicesConfig(BaseModel):
     class Components(BaseModel):
-        url: str = Field(
-            default="https://components.atopileapi.com", description="Components URL"
-        )
+        url: str = Field(default="https://components.atopileapi.com")
+        """Components URL"""
 
     class Packages(BaseModel):
-        url: str = Field(
-            default="https://get-package-atsuhzfd5a-uc.a.run.app",
-            description="Packages URL",
-        )
+        url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
+        """Packages URL"""
 
     @field_validator("components", mode="before")
     def validate_components(cls, value: Components | str) -> Components:
@@ -403,10 +420,8 @@ class ProjectConfig(BaseModel):
     entry: str | None = Field(default=None)
     builds: dict[str, BuildConfig] = Field(default_factory=dict)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    pcbnew_auto: bool = Field(
-        default=False,
-        description="Automatically open pcbnew when applying netlist",
-    )
+    pcbnew_auto: bool = Field(default=False)
+    """Automatically open pcbnew when applying netlist"""
 
     @classmethod
     def from_path(cls, path: Path | None) -> "ProjectConfig | None":
