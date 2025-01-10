@@ -34,7 +34,7 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
-logger_pcb = logging.getLogger("pcb_updates")
+pcb_update_logger = logging.getLogger("pcb_updates")
 
 # TODO: dynamic spacing based on footprint dimensions?
 HORIZONTAL_SPACING = 10
@@ -52,7 +52,7 @@ def _nets_same(
 ) -> bool:
     pcb_pads = {
         f"{get_parent(p, C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint)
-           .propertys['Reference'].value}.{p.name}"
+            .propertys['Reference'].value}.{p.name}"
         for p in pcb_net[1]
     }
     nl_pads = {f"{n.ref}.{n.pin}" for n in nl_net.nodes}
@@ -253,10 +253,10 @@ class PCB:
         logger.debug(f"Removed nets: {nets_removed}")
         removed_net_numbers = list[int]()
         for net_name in nets_removed:
+            pcb_update_logger.info(f"Removing net: '{net_name}'")
             pcb_net, pads = pcb_nets[net_name]
             removed_net_numbers.append(pcb_net.number)
             pcb.kicad_pcb.nets.remove(pcb_net)
-            logger_pcb.info(f"Removed net: {net_name}")
             for pad in pads:
                 assert pad.net
                 pad.net.name = ""
@@ -274,11 +274,11 @@ class PCB:
         # Rename nets ------------------------------------------------------------------
         logger.debug(f"Renamed nets: {matched_nets}")
         for new_name, old_name in matched_nets.items():
+            pcb_update_logger.info(f"Renaming net: '{old_name}' -> '{new_name}'")
             pcb_net, pads = pcb_nets[old_name]
             pcb_net.name = new_name
             pcb_nets[new_name] = (pcb_net, pads)
             del pcb_nets[old_name]
-            logger_pcb.info(f"Renamed net: {old_name} -> {new_name}")
             for pad in pads:
                 assert pad.net
                 pad.net.name = new_name
@@ -293,6 +293,7 @@ class PCB:
 
         for net_name in nets_added:
             # Find the first unused net number
+            pcb_update_logger.info(f"Adding net: '{net_name}'")
             net_number = next(net_numbers)
 
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
@@ -316,70 +317,21 @@ class PCB:
         comps_matched = nl_comps.keys() & pcb_comps.keys()
         comps_changed: dict[str, C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint] = {}
 
-        # At the start of component processing
-        logger_pcb.info(
-            f"Processing components - Found in PCB: {list(pcb_comps.keys())}"
-        )
-        logger_pcb.info(
-            f"Processing components - Found in Netlist: {list(nl_comps.keys())}"
-        )
-        logger_pcb.info(f"Components to add: {comps_added}")
-        logger_pcb.info(f"Components to remove: {comps_removed}")
-        logger_pcb.info(f"Components to update: {comps_matched}")
-
-        # At the start of component processing, add this after the existing logs:
-        logger_pcb.info("Component address mappings:")
-        for comp_name, comp in nl_comps.items():
-            logger_pcb.info(
-                f"  {comp_name} -> {get_property_value(comp, 'atopile_address',
-                                                        'No atopile_address')}"
-            )
-
-        # When sorting components by address prefix, add this before the sort:
-        logger_pcb.debug("Sorting components by address prefix:")
-        for comp_name in comps_added:
-            comp = nl_comps[comp_name]
-            logger_pcb.debug(
-                f"  {comp_name} ({_get_address_prefix(comp)}) -> {_get_address(comp)}"
-            )
-
         # Update components ------------------------------------------------------------
         logger.debug(f"Comps matched: {comps_matched}")
         for comp_name in comps_matched:
             nl_comp = nl_comps[comp_name]
             pcb_comp = pcb_comps[comp_name]
 
-            # Log footprint changes
             if pcb_comp.name != nl_comp.footprint:
-                logger_pcb.info(
+                pcb_update_logger.info(
                     f"Footprint mismatch for {comp_name}: PCB={pcb_comp.name}, "
-                    f"Netlist={nl_comp.footprint}"
+                    f"Updated={nl_comp.footprint}"
                 )
-                logger_pcb.info(f"Moving {comp_name} to changed components list")
                 comps_removed.add(comp_name)
                 comps_added.add(comp_name)
                 comps_changed[comp_name] = pcb_comp
                 continue
-
-            # Log property updates
-            logger_pcb.debug(f"Updating properties for {comp_name}")
-            logger_pcb.debug(f"  Value: {nl_comp.value}")
-            logger_pcb.debug(
-                f"  Address: {get_property_value(nl_comp, 'atopile_address',
-                                                 'No atopile_address')}"
-            )
-            logger_pcb.debug(
-                f"  LCSC: {get_property_value(nl_comp, 'LCSC', NO_LCSC_DISPLAY)}"
-            )
-
-            # Log pad net updates
-            pads = {
-                p.pin: n
-                for n in nl_nets.values()
-                for p in n.nodes
-                if p.ref == comp_name
-            }
-            logger_pcb.debug(f"  Pad connections for {comp_name}: {pads}")
 
             pcb_comp.propertys["Value"].value = nl_comp.value
             pcb_comp.propertys["atopile_address"] = fill_fp_property(
@@ -417,14 +369,14 @@ class PCB:
 
         # Remove components ------------------------------------------------------------
         logger.debug(f"Comps removed: {comps_removed}")
-        logger_pcb.info(f"Comps removed: {comps_removed}")
+        pcb_update_logger.info(f"Comps removed: {comps_removed}")
         for comp_name in comps_removed:
             comp = pcb_comps[comp_name]
             pcb.kicad_pcb.footprints.remove(comp)
 
         # Add new components -----------------------------------------------------------
         logger.debug(f"Comps added: {comps_added}")
-        logger_pcb.info(f"Comps added: {comps_added}")
+        pcb_update_logger.info(f"Comps added: {comps_added}")
 
         x, y = 0, 0
         current_prefix = None
@@ -436,23 +388,17 @@ class PCB:
                 address_prefix = _get_address_prefix(comp)
                 footprint_identifier = comp.footprint
 
-                logger_pcb.info(f"Adding component {comp_name}")
-                logger_pcb.debug(f"  Footprint: {footprint_identifier}")
-                logger_pcb.debug(f"  Address prefix: {address_prefix}")
+                pcb_update_logger.info(
+                    f"Adding {comp_name} with footprint {footprint_identifier}"
+                )
 
-                try:
-                    footprint = _get_footprint(footprint_identifier, fp_lib_path)
-                    logger_pcb.debug("  Footprint loaded successfully")
-                except Exception as e:
-                    logger_pcb.error(f"  Failed to load footprint: {str(e)}")
-                    raise
+                footprint = _get_footprint(footprint_identifier, fp_lib_path)
 
                 # Log position information
                 if comp_name in comps_changed:
-                    logger_pcb.info(
-                        f"  Reusing position from changed component {comp_name}"
+                    pcb_update_logger.info(
+                        f"Reusing position from changed component {comp_name}"
                     )
-                    logger_pcb.debug(f"  Position: {comps_changed[comp_name].at}")
 
                 # Fill in variables
                 footprint.propertys["Reference"].value = comp_name
