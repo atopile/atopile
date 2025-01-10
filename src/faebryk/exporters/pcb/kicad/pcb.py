@@ -394,7 +394,13 @@ class PCB:
 
                 footprint = _get_footprint(footprint_identifier, fp_lib_path)
 
-                # Log position information
+                pads = {
+                    p.pin: n
+                    for n in nl_nets.values()
+                    for p in n.nodes
+                    if p.ref == comp_name
+                }
+
                 if comp_name in comps_changed:
                     pcb_update_logger.info(
                         f"Reusing position from changed component {comp_name}"
