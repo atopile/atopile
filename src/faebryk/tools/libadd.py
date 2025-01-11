@@ -205,7 +205,7 @@ class Template:
     def add_part(self, part: Component):
         self.name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(self.name, str)
-        _, _, _, _, easyeda_symbol = download_easyeda_info(
+        _, _, _, _, easyeda_symbol, _ = download_easyeda_info(
             part.lcsc_display, get_model=False
         )
 

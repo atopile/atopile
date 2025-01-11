@@ -41,9 +41,10 @@ class Mounting_Hole(Module):
         if padtype:
             padtype = f"_{padtype}"
 
-        return F.has_footprint_defined(
-            F.KicadFootprint(
-                f"MountingHole:MountingHole_{size_mm}{size_name}{padtype}",
-                pin_names=[],
+        fp = F.KicadFootprint(pin_names=[])
+        fp.add(
+            F.KicadFootprint.has_kicad_identifier(
+                f"MountingHole:MountingHole_{size_mm}{size_name}{padtype}"
             )
         )
+        return F.has_footprint_defined(fp)

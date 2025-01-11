@@ -3,6 +3,7 @@
 
 import logging
 import os
+import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -15,7 +16,7 @@ import faebryk.library._F as F
 from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
-from faebryk.core.node import Node
+from faebryk.core.node import Node, NodeException
 from faebryk.exporters.pcb.kicad.pcb import PCB
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
@@ -26,7 +27,7 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import not_none, once
+from faebryk.libs.util import hash_string, not_none, once
 
 logger = logging.getLogger(__name__)
 
@@ -130,12 +131,6 @@ def ensure_footprint_lib(
     return fptable
 
 
-def include_footprints():
-    ensure_footprint_lib(
-        "lcsc", config.project.paths.component_lib / "footprints" / "lcsc.pretty"
-    )
-
-
 @once
 def find_pcbnew() -> os.PathLike:
     """Figure out what to call for the pcbnew CLI."""
@@ -185,8 +180,6 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
 
 
 def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None):
-    include_footprints()
-
     set_kicad_netlist_path_in_project(
         config.build.paths.kicad_project, config.build.paths.netlist
     )
@@ -239,3 +232,62 @@ def load_nets(
                 net.add(F.has_overriden_name_defined(name))
 
     return known_nets
+
+
+def create_footprint_library(app: Module) -> None:
+    """
+    Ensure all KicadFootprints have a kicad identifier (via the F.has_kicad_footprint
+    trait).
+
+    Create a footprint library for all the footprints with files and without KiCAD
+    identifiers.
+
+    Check all of the KicadFootprints have a manual identifier. Raise an error if they
+    don't.
+    """
+    LIB_NAME = "atopile"
+
+    # Create the library it doesn't exist
+    atopile_fp_dir = config.project.paths.get_footprint_lib("atopile")
+    atopile_fp_dir.mkdir(parents=True, exist_ok=True)
+    ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
+
+    # Cache the mapping from path to identifier and the path to the new file
+    path_to_fp_id: dict[Path, str] = {}
+    path_map: dict[Path, Path] = {}
+
+    def _ensure_fp(path: Path) -> tuple[str, Path]:
+        """
+        Ensure the footprint is in the library
+        Return the identifier and the path to the new file
+        """
+        if path not in path_to_fp_id:
+            mini_hash = hash_string(str(path))[:6]
+            path_to_fp_id[path] = f"{LIB_NAME}:{path.stem}-{mini_hash}"
+            path_map[path] = atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
+            shutil.copy(path, path_map[path])
+
+        return path_to_fp_id[path], path_map[path]
+
+    for fp in app.get_children(direct_only=False, types=F.KicadFootprint):
+        # has_kicad_identifier implies has_kicad_footprint, but not the other way around
+        if fp.has_trait(F.has_kicad_footprint):
+            # I started writing this and forgot where I was going
+            # So I'm going to leave it an attempt to prompt my or someone else's ideas
+            # as to what we were supposed to do here
+            pass
+        else:
+            if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
+                # Copy the footprint to the new library with a
+                # pseudo-guaranteed unique name
+                path = Path(has_file_t.file).expanduser().resolve()
+                lib_path, fp_path = _ensure_fp(path)
+                fp.add(F.KicadFootprint.has_file(fp_path))  # Override with new path
+                # Attach the newly minted identifier
+                fp.add(F.KicadFootprint.has_kicad_identifier(lib_path))
+            else:
+                # This shouldn't happen
+                # KicadFootprint should always have a file, or an identifier
+                raise NodeException(
+                    fp, f"{fp.__class__.__name__} has no footprint identifier or file"
+                )

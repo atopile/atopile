@@ -12,9 +12,11 @@ from atopile import layout
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_net_names, attach_nets_and_kicad_info
 from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
@@ -43,6 +45,7 @@ from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_netlist,
     apply_routing,
+    create_footprint_library,
     ensure_footprint_lib,
     load_nets,
     open_pcb,
@@ -54,9 +57,13 @@ from faebryk.libs.exceptions import (
     downgrade,
     iter_through_errors,
 )
-from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import (
+    C_kicad_footprint_file,
+    C_kicad_fp_lib_table_file,
+    C_kicad_pcb_file,
+)
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.util import KeyErrorAmbiguous, cast_assert, once
 
 logger = logging.getLogger(__name__)
 
@@ -103,18 +110,12 @@ def build(app: Module) -> None:
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
 
-    # fp-lib-table might need updating after footprints are downloaded during the
-    # picking process
-    ensure_footprint_lib(
-        "lcsc",
-        config.project.paths.component_lib
-        / "footprints"
-        / "lcsc.pretty",  # TODO: config property
-    )
-
-    # Re-attach because picking might have added new footprints
-    # Many nodes gain their footprints from picking, meaning we'll gather more now
-    transformer.attach(check_unattached=True)
+    # Footprints ----------------------------------------------------------------
+    # Use standard footprints for known packages regardless of
+    # what's otherwise been specified.
+    # FIXME: this currently includes explicitly set footprints, but shouldn't
+    standardize_footprints(app, solver)
+    create_footprint_library(app)
 
     # Write Netlist ------------------------------------------------------------
     attach_random_designators(G)
@@ -130,6 +131,8 @@ def build(app: Module) -> None:
     original_pcb = deepcopy(pcb)
     apply_netlist(files=(pcb, netlist))
 
+    # Re-attach now that any new footprints have been created / standardised
+    transformer.attach(check_unattached=True)
     transformer.cleanup()
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
@@ -334,6 +337,45 @@ def generate_variable_report(app: Module) -> None:
     )
 
 
+def standardize_footprints(app: Module, solver: Solver) -> None:
+    """
+    Attach standard footprints for known packages
+
+    This must be done before the create_footprint_library is run
+    """
+    from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
+
+    gf = GraphFunctions(app.get_graph())
+
+    # TODO: make this caching global. Shit takes time
+    @once
+    def _get_footprint(fp_path: Path) -> C_kicad_footprint_file:
+        return C_kicad_footprint_file.loads(fp_path)
+
+    for node, pkg_t in gf.nodes_with_trait(F.has_package):
+        package_superset = solver.inspect_get_known_supersets(pkg_t.package)
+        if package_superset.is_empty():
+            logger.warning("%s has a package requirement but no candidates", node)
+            continue
+        elif not package_superset.is_single_element():
+            logger.warning("%s has multiple package candidates", node)
+            continue
+
+        # Skip nodes with footprints already
+        if node.has_trait(F.has_footprint):
+            continue
+
+        # We have guaranteed `.any()` returns only one thing
+        package = cast_assert(F.has_package.Package, package_superset.any())
+
+        if fp_path := KNOWN_PACKAGES_TO_FOOTPRINT.get(package):
+            if can_attach_t := node.try_get_trait(F.can_attach_to_footprint):
+                fp = _get_footprint(fp_path)
+                kicad_fp = F.KicadFootprint.from_file(fp)
+                kicad_fp.add(F.KicadFootprint.has_file(fp_path))
+                can_attach_t.attach(kicad_fp)
+
+
 def consolidate_footprints(app: Module) -> None:
     """
     Consolidate all the project's footprints into a single directory.
@@ -345,8 +387,8 @@ def consolidate_footprints(app: Module) -> None:
     fp_ids_to_check = []
     for fp_t in app.get_children(False, types=(F.has_footprint)):
         fp = fp_t.get_footprint()
-        if isinstance(fp, F.KicadFootprint):
-            fp_ids_to_check.append(fp.kicad_identifier)
+        if has_identifier_t := fp.try_get_trait(F.KicadFootprint.has_kicad_identifier):
+            fp_ids_to_check.append(has_identifier_t.kicad_identifier)
 
     try:
         fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)

@@ -5,6 +5,7 @@ import logging
 import sys
 from pathlib import Path
 from tempfile import mkdtemp
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,8 +20,11 @@ from faebryk.libs.util import groupby
 
 sys.path.append(str(Path(__file__).parent))
 
+if TYPE_CHECKING:
+    from components import ComponentTestCase
+
 try:
-    from components import ComponentTestCase, components_to_test
+    from components import components_to_test
 except ImportError:
     components_to_test = []
 
@@ -33,7 +37,7 @@ def test_load_components():
     assert components_to_test, "Failed to load components"
 
 
-def _make_id(m: ComponentTestCase):
+def _make_id(m: "ComponentTestCase"):
     if m.override_test_name:
         module_name = m.override_test_name
     else:
@@ -53,7 +57,7 @@ def _make_id(m: ComponentTestCase):
     components_to_test,
     ids=[_make_id(m) for m in components_to_test],
 )
-def test_pick_module(case: ComponentTestCase):
+def test_pick_module(case: "ComponentTestCase"):
     module = case.module
 
     pre_pick_descriptive_properties = {}
@@ -63,7 +67,7 @@ def test_pick_module(case: ComponentTestCase):
         ).get_properties()
 
     if case.packages:
-        module.add(F.has_package_requirement(*case.packages))
+        module.add(F.has_package(*case.packages))
 
     # pick
     solver = DefaultSolver()

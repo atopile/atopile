@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import pprint
 import re
 import subprocess
 from abc import abstractmethod
@@ -47,13 +46,7 @@ from faebryk.libs.kicad.fileformats import (
 )
 from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
-from faebryk.libs.util import (
-    KeyErrorNotFound,
-    cast_assert,
-    find,
-    get_key,
-    hash_string,
-)
+from faebryk.libs.util import KeyErrorNotFound, cast_assert, find, get_key, hash_string
 
 logger = logging.getLogger(__name__)
 
@@ -241,13 +234,12 @@ class PCB_Transformer:
             for node, trait in GraphFunctions(self.graph).nodes_with_trait(
                 F.has_footprint
             )
-            if not trait.get_footprint().has_trait(F.has_kicad_footprint)
-            and not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
+            if not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
         }
         if unattached_nodes:
-            logger.error(f"Unattached: {pprint.pformat(unattached_nodes)}")
             raise UserException(
-                f"Failed to attach {len(unattached_nodes)} node(s) to footprints"
+                f"Failed to attach {len(unattached_nodes)} node(s) to footprints: "
+                f"{', '.join(f'`{node.get_full_name()}`' for node in unattached_nodes)}"
             )
 
         # TODO: check other properties:

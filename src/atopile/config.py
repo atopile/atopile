@@ -217,6 +217,9 @@ class ProjectPaths(BaseConfigModel):
         self.build.mkdir(parents=True, exist_ok=True)
         self.layout.mkdir(parents=True, exist_ok=True)
 
+    def get_footprint_lib(self, lib_name: str) -> Path:
+        return self.component_lib / "footprints" / f"{lib_name}.pretty"
+
 
 class BuildPaths(BaseConfigModel):
     layout: Path
@@ -445,8 +448,9 @@ class ProjectConfig(BaseConfigModel):
         except Exception as e:
             raise UserConfigurationError(f"Failed to load project config: {e}") from e
 
+        file_contents["paths"].setdefault("root", path)
         return _try_construct_config(
-            ProjectConfig, identifier=config_file, location=path, **file_contents
+            ProjectConfig, identifier=config_file, **file_contents
         )
 
     @field_validator("builds", mode="before")
