@@ -265,7 +265,7 @@ def create_footprint_library(app: Module) -> None:
         """
         if path not in path_to_fp_id:
             mini_hash = hash_string(str(path))[:6]
-            path_to_fp_id[path] = f"{LIB_NAME}:{path.stem}-{mini_hash}{path.suffix}"
+            path_to_fp_id[path] = f"{LIB_NAME}:{path.stem}-{mini_hash}"
             path_map[path] = atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
             shutil.copy(path, path_map[path])
 
