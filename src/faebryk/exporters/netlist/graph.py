@@ -3,7 +3,6 @@
 
 import logging
 import re
-from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
@@ -21,33 +20,9 @@ from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, try_or
 logger = logging.getLogger(__name__)
 
 
-class can_represent_kicad_footprint(F.Footprint.TraitT):
+class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
     kicad_footprint = FBRKNetlist.Component
 
-    @abstractmethod
-    def get_name_and_value(self) -> tuple[str, str]: ...
-
-    @abstractmethod
-    def get_kicad_obj(self) -> kicad_footprint: ...
-
-    @abstractmethod
-    def get_pin_name(self, pin: F.Pad) -> str: ...
-
-
-def ensure_ref_and_value(c: Module):
-    value = (
-        c.get_trait(F.has_simple_value_representation).get_value()
-        if c.has_trait(F.has_simple_value_representation)
-        else type(c).__name__
-    )
-
-    # At this point, all components MUST have a designator
-    return c.get_trait(F.has_designator).get_designator(), value
-
-
-class can_represent_kicad_footprint_via_attached_component(
-    can_represent_kicad_footprint.impl()
-):
     def __init__(self, component: Module, graph: Graph) -> None:
         """
         graph has to be electrically closed
@@ -97,6 +72,17 @@ class can_represent_kicad_footprint_via_attached_component(
         )
 
 
+def ensure_ref_and_value(c: Module):
+    value = (
+        c.get_trait(F.has_simple_value_representation).get_value()
+        if c.has_trait(F.has_simple_value_representation)
+        else type(c).__name__
+    )
+
+    # At this point, all components MUST have a designator
+    return c.get_trait(F.has_designator).get_designator(), value
+
+
 def add_or_get_nets(*interfaces: F.Electrical):
     buses = ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
@@ -137,7 +123,7 @@ def attach_nets_and_kicad_info(G: Graph) -> set[F.Net]:
     for n, fp in node_fps.items():
         if fp.has_trait(can_represent_kicad_footprint):
             continue
-        fp.add(can_represent_kicad_footprint_via_attached_component(n, G))
+        fp.add(can_represent_kicad_footprint(n, G))
 
     mifs = [
         mif.net
