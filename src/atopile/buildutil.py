@@ -47,7 +47,7 @@ from faebryk.libs.app.pcb import (
     apply_routing,
     create_footprint_library,
     ensure_footprint_lib,
-    load_nets,
+    load_net_names,
     open_pcb,
 )
 from faebryk.libs.app.picking import load_descriptive_properties
@@ -122,7 +122,7 @@ def build(app: Module) -> None:
     override_names_with_designators(G)
     nets = attach_nets_and_kicad_info(G)
     if config.build.keep_net_names:
-        load_nets(G, attach=True)
+        load_net_names(G)
     attach_net_names(nets)
     netlist = faebryk_netlist_to_kicad(make_fbrk_netlist_from_graph(G))
 
