@@ -160,9 +160,8 @@ jobs:
         with:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
-          # TODO: re-enable @latest tag once main is stable again (@v0.3)
           flavor: |
-            latest=false
+            latest=${{github.event_name == 'release' && github.event.action == 'published' && !github.event.release.prerelease && !github.event.release.draft}}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
