@@ -74,4 +74,4 @@ class Capacitor(Module):
             self.capacitance.constrain_subset(capacitance)
 
         if footprint is not None:
-            self.attach_to_footprint.add(F.has_package_requirement(footprint))
+            self.add(F.has_package(footprint))

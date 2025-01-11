@@ -87,10 +87,11 @@ def _get_pad_side(fp: KFootprint, pad: KPad) -> Side:
         return next(iter(match))
 
     logger.warning(
-        f"Uncertain about pad position of {fp.name}"
-        f"|{fp.propertys['Reference'].value}.{pad.name}: "
-        f"Heuristic at: {pos_side}, "
-        f"Heuristic size: {pos_rot} ||| {rot=} {pad.at=} {pad.size=}"
+        f"Uncertain about pad position of `{fp.name}"
+        f"|{fp.propertys['Reference'].value}.{pad.name}`: "
+        f"Heuristic at: `{pos_side}`, "
+        f"Heuristic size: `{pos_rot} ||| {rot=} {pad.at=} {pad.size=}`",
+        extra={"markdown": True},
     )
     return pos_side[0]
 

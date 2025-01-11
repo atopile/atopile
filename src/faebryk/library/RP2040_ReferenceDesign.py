@@ -39,13 +39,14 @@ class RP2040_ReferenceDesign(Module):
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
 
-            self.switch.attach_to_footprint.attach(
-                # TODO this is not nice
-                F.KicadFootprint(
-                    "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical",
-                    pin_names=["1", "2"],
+            # TODO this is not nice
+            fp = F.KicadFootprint(pin_names=["1", "2"])
+            fp.add(
+                F.KicadFootprint.has_kicad_identifier(
+                    "Connector_PinHeader_2.54mm:PinHeader_1x02_P2.54mm_Vertical"
                 )
             )
+            self.switch.attach_to_footprint.attach(fp)
 
         @L.rt_field
         def single_reference(self):
@@ -161,7 +162,7 @@ class RP2040_ReferenceDesign(Module):
             ),
         )
         for c in caps_100nF:
-            c.add(F.has_package_requirement("0201"))
+            c.add(F.has_package(F.has_package.Package.C0201))
 
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self
