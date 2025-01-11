@@ -1,4 +1,3 @@
-import glob
 import itertools
 import logging
 import re
@@ -11,7 +10,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from textwrap import dedent
 from typing import Annotated, Iterator, cast
 
 import caseconverter
@@ -28,10 +26,8 @@ from rich.table import Table
 from atopile import errors
 from atopile.cli.install import do_install
 from atopile.config import PROJECT_CONFIG_FILENAME, config
-from atopile.errors import UserException
 from faebryk.libs.exceptions import downgrade
-from faebryk.libs.logging import setup_basic_logging
-from faebryk.libs.picker.api.api import ApiHTTPError, Component, get_api_client
+from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
 from faebryk.libs.pycodegen import (
@@ -41,10 +37,7 @@ from faebryk.libs.pycodegen import (
     gen_repeated_block,
     sanitize_name,
 )
-from faebryk.libs.tools.typer import typer_callback
 from faebryk.libs.util import (
-    KeyErrorAmbiguous,
-    KeyErrorNotFound,
     groupby,
     robustly_rm_dir,
 )
@@ -400,9 +393,8 @@ def component(
 ):
     """Create a new component."""
     from faebryk.libs.picker.api.models import Component
-    from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
-    from faebryk.libs.pycodegen import format_and_write, sanitize_name
-    from faebryk.tools.libadd import Template
+    from faebryk.libs.picker.api.picker_lib import client
+    from faebryk.libs.pycodegen import sanitize_name
 
     try:
         config.apply_options(None)
@@ -543,7 +535,7 @@ def component(
         )
 
     elif type_ == ComponentType.fab:
-        template = Template(name=sanitized_name, base="Module")
+        template = FabllTemplate(name=sanitized_name, base="Module")
         template.add_part(component)
         out = template.dumps()
         format_and_write(out, out_path)
@@ -580,173 +572,6 @@ class CTX:
     path: Path
     pypath: str
     overwrite: bool
-
-
-def get_ctx(ctx: typer.Context) -> "CTX":
-    return ctx.obj
-
-
-def write(ctx: typer.Context, contents: str, filename=""):
-    path: Path = get_ctx(ctx).path
-    if filename:
-        path = path.with_stem(filename)
-
-    if path.exists() and not get_ctx(ctx).overwrite:
-        raise FileExistsError(f"File {path} already exists")
-
-    format_and_write(contents, path)
-
-    typer.echo(f"File {path} created")
-
-
-def get_name(ctx: typer.Context):
-    return get_ctx(ctx).path.stem
-
-
-@typer_callback(None)
-def add_component(
-    ctx: typer.Context,
-    name: str,
-    local: bool = True,
-    overwrite: bool = False,
-    fabll: bool = False,
-    interface: bool = False,
-    mfr: bool = False,
-    lcsc: bool = False,
-):
-    """
-    Can be called like this: > faebryk libadd
-    Or python -m faebryk libadd
-    Or python -m faebryk.tools.libadd
-    For help invoke command without arguments.
-    """
-    setup_basic_logging()
-
-    if not local:
-        import faebryk.library._F as F
-
-        libfolder = Path(F.__file__).parent
-        pypath = f"faebryk.library.{name}"
-    else:
-        libfolder = Path("library")
-        if not libfolder.is_dir():
-            if Path("src").is_dir():
-                candidates = glob.glob("src/*/library")
-                if not len(candidates) == 1:
-                    raise FileNotFoundError(
-                        f"Library folder not found, are you in the right directory? "
-                        f"{candidates}"
-                    )
-                libfolder = Path(candidates[0])
-
-        pypath = f".library.{name}"
-
-    if not libfolder.exists():
-        raise FileNotFoundError(
-            f"Library folder {libfolder} not found, are you in the right directory?"
-        )
-
-    path = libfolder / (name + ".py")
-
-    ctx.obj = CTX(path=path, pypath=pypath, overwrite=overwrite)
-
-
-@main.command()
-def module(
-    ctx: typer.Context,
-    fabll: bool = False,
-    interface: bool = False,
-    mfr: bool = False,
-    lcsc: bool = False,
-):
-    # conditional of which template to use fabll or ato
-    if fabll:
-        template = FabllTemplate(
-            name=get_name(ctx),
-            base="Module" if not interface else "ModuleInterface",
-        )
-    else:
-        template = AtoTemplate(
-            name=get_name(ctx),
-            base="Module" if not interface else "ModuleInterface",
-        )
-
-    if mfr and lcsc:
-        raise ValueError("Cannot use both mfr and lcsc")
-
-    if lcsc:
-        template.add_part(find_part(lcsc_id=template.name, mfr=None, mfr_pn=None))
-
-    elif mfr:
-        if "," in template.name:
-            mfr_, mfr_pn = template.name.split(",", maxsplit=1)
-        else:
-            mfr_, mfr_pn = "", template.name
-
-        try:
-            template.add_part(find_part(lcsc_id=None, mfr=mfr_, mfr_pn=mfr_pn))
-        except KeyErrorAmbiguous as e:
-            print(
-                f"Error: Ambiguous mfr_pn({mfr_pn}):"
-                f" {[(x.mfr_name, x.mfr) for x in e.duplicates]}"
-            )  # raise user exception instead
-            print(
-                "Tip: Specify the full mfr_pn of your choice"
-            )  # raise user exception instead
-            sys.exit(1)
-
-        except KeyErrorNotFound:
-            print(f"Error: Could not find {mfr_pn}")  # raise user exception instead
-            sys.exit(1)
-
-    out = template.dumps()
-
-    write(ctx, out, filename=template.name)
-
-
-# TODO: there should be something analogous in common use.
-# Use that instead of re-implementing it here.
-class NoPartFound(UserException):
-    pass
-
-
-class AmbiguousParts(UserException):
-    def __init__(self, duplicates: list[Component]):
-        self.duplicates = duplicates
-
-
-def find_part(lcsc_id: str | None, mfr: str | None, mfr_pn: str | None) -> Component:
-    """
-    Find a part by LCSC ID or Manufacturer Part Number (+ optionally manufacturer).
-
-    Returns a Component object.
-
-    Raises KeyErrorAmbiguous if multiple parts match the query.
-    Raises NoPartFound if no part matches the query.
-    Raises ValueError if no valid query was given.
-    """
-    client = get_api_client()
-
-    match lcsc_id, mfr_pn:
-        case (lcsc_id, None):
-            assert lcsc_id is not None
-            try:
-                (part,) = client.fetch_part_by_lcsc(_extract_numeric_id(lcsc_id))
-            except ApiHTTPError as e:
-                if e.response.status_code == 404:
-                    raise NoPartFound(lcsc_id) from e
-                raise e
-        case (None, mfr_pn):
-            try:
-                (part,) = client.fetch_part_by_mfr(mfr or "", mfr_pn)
-            except ApiHTTPError as e:
-                if e.response.status_code == 404:
-                    raise NoPartFound(mfr_pn) from e
-                raise e
-        case _:
-            raise ValueError("Need either lcsc_id or mfr_pn")
-
-    return part
 
 
 @dataclass
@@ -909,59 +734,3 @@ class FabllTemplate(Template):
         """)
 
         return out
-
-
-@main.command()
-def trait(ctx: typer.Context, defined: bool = False):
-    traitname = get_name(ctx)
-    out = dedent(f"""
-        # This file is part of the faebryk project
-        # SPDX-License-Identifier: MIT
-
-        import logging
-        from abc import abstractmethod
-
-        from faebryk.core.trait import Trait
-
-        logger = logging.getLogger(__name__)
-
-        class {traitname}(Trait):
-            \"\"\"
-            Docstring describing your module
-            \"\"\"
-
-            @abstractmethod
-            def DO_SOMETHING(self) -> None:
-                \"\"\"
-                Docstring describing the function
-                \"\"\"
-                pass
-    """)
-
-    write(ctx, out)
-
-    if not defined:
-        return
-
-    implname = get_name(ctx) + "_defined"
-
-    out = dedent(f"""
-        # This file is part of the atopile project
-        # SPDX-License-Identifier: MIT
-
-        import logging
-
-        from {get_ctx(ctx).pypath} import {traitname}
-
-        logger = logging.getLogger(__name__)
-
-        class {implname}({traitname}.impl()):
-            def DO_SOMETHING(self) -> None:
-                pass
-    """)
-
-    write(ctx, out, filename=implname)
-
-
-if __name__ == "__main__":
-    main()
