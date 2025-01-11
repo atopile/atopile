@@ -172,10 +172,10 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
             else str(
                 "${KIPRJMOD}"
                 / model_base_path_full.relative_to(
-                    config.project.paths.layout, walk_up=True
+                    config.build.paths.layout, walk_up=True
                 )
             )
-            if config.project.paths.layout
+            if config.build.paths.layout
             else str(model_base_path_full.resolve())
         )
         ki_footprint.export(
