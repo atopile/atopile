@@ -471,13 +471,13 @@ def component(
     assert component is not None
 
     # TODO: templated ato components too
-    if type_ is None:
-        type_ = ComponentType.fab
     # if type_ is None:
-    #     type_ = questionary.select(
-    #         "Select the component type", choices=list(ComponentType)
-    #     ).unsafe_ask()
-    #     assert type_ is not None
+    #     type_ = ComponentType.fab
+    if type_ is None:
+        type_ = questionary.select(
+            "Select the component type", choices=list(ComponentType)
+        ).unsafe_ask()
+        assert type_ is not None
 
     if name is None:
         name = questionary.text(
@@ -530,9 +530,11 @@ def component(
     assert out_path is not None
 
     if type_ == ComponentType.ato:
-        raise errors.UserNotImplementedError(
-            "Creating ato components are not yet supported"
-        )
+        template = AtoTemplate(name=sanitized_name, base="Module")
+        template.add_part(component)
+        out = template.dumps()
+        out_path.write_text(out)
+        rich.print(f":sparkles: Created {out_path} !")
 
     elif type_ == ComponentType.fab:
         template = FabllTemplate(name=sanitized_name, base="Module")
@@ -588,7 +590,33 @@ class Template(ABC):
 
 @dataclass
 class AtoTemplate(Template):
-    def add_part(self, part: Component): ...
+    attributes: list[str] = field(default_factory=list)
+
+    def add_part(self, part: Component):
+        self.name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
+        assert isinstance(self.name, str)
+        _, _, _, _, easyeda_symbol = download_easyeda_info(
+            part.lcsc_display, get_model=False
+        )
+
+        designator_prefix = easyeda_symbol.info.prefix.replace("?", "U")
+        self.attributes.append(f"designator_prefix = '{designator_prefix}'")
+
+        self.attributes.append(f"manufacturer = '{part.manufacturer_name}'")
+
+        self.attributes.append(f"mpn = '{part.part_number}'")
+
+        self.attributes.append(f"description = '{part.description}'")
+
+        self.attributes.append(f"datasheet = '{part.datasheet_url}'")
+        self.attributes.append(f"lcsc_id = '{part.lcsc_display}'")
+
+    def dumps(self) -> str:
+        output = ""
+        for attr in self.attributes:
+            output += f"{attr}\n"
+
+        return output
 
 
 @dataclass
