@@ -19,8 +19,6 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import attach_net_names, attach_nets_and_kicad_info
-from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
-from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
@@ -42,7 +40,6 @@ from faebryk.libs.app.designators import (
 )
 from faebryk.libs.app.pcb import (
     apply_layouts,
-    apply_netlist,
     apply_routing,
     create_footprint_library,
     ensure_footprint_lib,
@@ -116,21 +113,19 @@ def build(app: Module) -> None:
     standardize_footprints(app, solver)
     create_footprint_library(app)
 
-    # Write Netlist ------------------------------------------------------------
+    # Pre-netlist preparation ---------------------------------------------------
     attach_random_designators(G)
     nets = attach_nets_and_kicad_info(G)
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
-    netlist = faebryk_netlist_to_kicad(make_fbrk_netlist_from_graph(G))
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    apply_netlist(files=(pcb, netlist))
+    transformer.apply_design(config.build.paths.fp_lib_table)
 
     # Re-attach now that any new footprints have been created / standardised
-    transformer.attach(check_unattached=True)
     transformer.cleanup()
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
