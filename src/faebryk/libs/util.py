@@ -19,7 +19,7 @@ import uuid
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from enum import Enum, StrEnum
 from functools import wraps
 from genericpath import commonprefix
@@ -1055,10 +1055,6 @@ def zip_exhaust(*args):
 
 def join_if_non_empty(sep: str, *args):
     return sep.join(s for arg in args if (s := str(arg)))
-
-
-def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
-    return {f.name: getattr(obj, f.name) for f in fields(obj)}
 
 
 class RecursionGuard:

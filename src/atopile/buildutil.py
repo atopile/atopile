@@ -29,7 +29,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_pick_and_place,
     export_step,
 )
-from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, _get_footprint
+from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -455,7 +455,7 @@ def consolidate_footprints(app: Module) -> None:
     try:
         for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
             with err_collector():
-                _get_footprint(fp_id, config.build.paths.fp_lib_table)
+                get_footprint(fp_id, config.build.paths.fp_lib_table)
     except* (FileNotFoundError, LibNotInTable) as ex:
 
         def _make_user_resource_exception(e: Exception) -> UserResourceException:
