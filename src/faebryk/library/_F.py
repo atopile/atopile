@@ -20,7 +20,7 @@ from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_esphome_config import has_esphome_config
 from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.has_package_requirement import has_package_requirement
+from faebryk.library.has_package import has_package
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
@@ -63,6 +63,7 @@ from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
 from faebryk.library.is_esphome_bus_defined import is_esphome_bus_defined
+from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic

@@ -2,14 +2,24 @@
 # SPDX-License-Identifier: MIT
 
 from typing import Sequence
+from warnings import deprecated
 
+import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
+from faebryk.libs.library import L
 
 
+@deprecated("Use F.has_package instead")
 class has_package_requirement(Module.TraitT.decless()):
-    def __init__(self, *footprint_candidates: str) -> None:
+    def __init__(self, *package_candidates: str) -> None:
         super().__init__()
-        self.footprint_candidates = list(footprint_candidates)
+        self._package_candidates = list(package_candidates)
 
+    def on_obj_set(self):
+        obj = self.get_obj(L.Module)
+        obj.add(F.has_package(*self._package_candidates))
+        return super().on_obj_set()
+
+    # Delete this
     def get_package_candidates(self) -> Sequence[str]:
-        return self.footprint_candidates
+        raise NotImplementedError("Use F.has_package instead")
