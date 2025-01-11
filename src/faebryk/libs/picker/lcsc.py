@@ -32,9 +32,6 @@ CRAWL_DATASHEET = ConfigFlag(
     "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
 
-# TODO: get appropriate value from config
-MODEL_PATH: str | None = None
-
 EASYEDA_CACHE_FOLDER = Path("cache/easyeda")
 
 EXPORT_NON_EXISTING_MODELS = False
@@ -124,13 +121,13 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     out_base_path = config.project.paths.component_lib
     fp_base_path = out_base_path / "footprints" / "lcsc.pretty"  # TODO: config property
     sym_base_path = out_base_path / "lcsc.kicad_sym"
+    model_base_path = out_base_path / "lcsc"
     fp_base_path.mkdir(exist_ok=True, parents=True)
     footprint_filename = f"{name}.kicad_mod"
     footprint_filepath = fp_base_path.joinpath(footprint_filename)
 
     # The base_path has to be split from the full path, because the exporter
     # will append .3dshapes to it
-    model_base_path = out_base_path / "3dmodels" / "lcsc"
     model_base_path_full = model_base_path.with_suffix(".3dshapes")
     model_base_path_full.mkdir(exist_ok=True, parents=True)
 
@@ -167,9 +164,7 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
         kicad_model_path = (
-            f"{MODEL_PATH}/3dmodels/lcsc.3dshapes"
-            if MODEL_PATH
-            else str(
+            str(
                 "${KIPRJMOD}"
                 / model_base_path_full.relative_to(
                     config.build.paths.layout, walk_up=True
