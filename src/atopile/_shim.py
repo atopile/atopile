@@ -197,11 +197,7 @@ class GlobalShims(L.Module):
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
     try:
-        try:
-            pkg = F.has_package.Package(starts_with + value)
-        except ValueError:
-            # TODO: decide whether supporting this is a good idea at all
-            pkg = F.has_package.Package(value)
+        pkg = F.has_package.Package(starts_with + value)
     except ValueError:
         raise UserBadParameterError(
             f"Invalid package for {module.__class__.__name__}: " + value,

@@ -47,10 +47,6 @@ class KicadFootprint(F.Footprint):
         unique_pin_names = sorted(set(pin_names))
         self.pin_names_sorted = list(enumerate(unique_pin_names))
 
-    @classmethod
-    def with_simple_names(cls, pin_cnt: int):
-        return cls([str(i + 1) for i in range(pin_cnt)])
-
     @L.rt_field
     def pins(self):
         return times(len(self.pin_names_sorted), F.Pad)

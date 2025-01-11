@@ -365,6 +365,7 @@ def standardize_footprints(app: Module, solver: Solver) -> None:
         if node.has_trait(F.has_footprint):
             continue
 
+        # We have guaranteed `.any()` returns only one thing
         package = cast_assert(F.has_package.Package, package_superset.any())
 
         if fp_path := KNOWN_PACKAGES_TO_FOOTPRINT.get(package):

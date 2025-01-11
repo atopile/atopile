@@ -217,7 +217,7 @@ class ProjectPaths(BaseConfigModel):
         self.build.mkdir(parents=True, exist_ok=True)
         self.layout.mkdir(parents=True, exist_ok=True)
 
-    def footprint_lib(self, lib_name: str) -> Path:
+    def get_footprint_lib(self, lib_name: str) -> Path:
         return self.component_lib / "footprints" / f"{lib_name}.pretty"
 
 

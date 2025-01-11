@@ -179,13 +179,13 @@ def test_standard_library_import(bob: Bob):
         (
             "from 'generics/resistors.ato' import Resistor",
             "Resistor",
-            "R0402",
+            "0402",
             F.has_package.Package.R0402,
         ),
         (
             "from 'generics/capacitors.ato' import Capacitor",
             "Capacitor",
-            "C0402",
+            "0402",
             F.has_package.Package.C0402,
         ),
     ],

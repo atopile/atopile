@@ -180,8 +180,6 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
 
 
 def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None):
-    ensure_footprint_lib("lcsc", config.project.paths.footprint_lib("lcsc"))
-
     set_kicad_netlist_path_in_project(
         config.build.paths.kicad_project, config.build.paths.netlist
     )
@@ -250,7 +248,7 @@ def create_footprint_library(app: Module) -> None:
     LIB_NAME = "atopile"
 
     # Create the library it doesn't exist
-    atopile_fp_dir = config.project.paths.footprint_lib("atopile")
+    atopile_fp_dir = config.project.paths.get_footprint_lib("atopile")
     atopile_fp_dir.mkdir(parents=True, exist_ok=True)
     ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
 
