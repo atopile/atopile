@@ -325,8 +325,8 @@ class PCB:
 
             if pcb_comp.name != nl_comp.footprint:
                 pcb_update_logger.info(
-                    f"Footprint mismatch for {comp_name}: PCB={pcb_comp.name}, "
-                    f"Updated={nl_comp.footprint}"
+                    f"Footprint mismatch for '{comp_name}': PCB='{pcb_comp.name}', "
+                    f"Updated='{nl_comp.footprint}'"
                 )
                 comps_removed.add(comp_name)
                 comps_added.add(comp_name)
@@ -389,7 +389,7 @@ class PCB:
                 footprint_identifier = comp.footprint
 
                 pcb_update_logger.info(
-                    f"Adding {comp_name} with footprint {footprint_identifier}"
+                    f"Adding '{comp_name}' with footprint '{footprint_identifier}'"
                 )
 
                 footprint = _get_footprint(footprint_identifier, fp_lib_path)
@@ -437,7 +437,7 @@ class PCB:
                     # TODO also need to do geo rotations and stuff
                     at = comps_changed[comp_name].at
                     pcb_update_logger.info(
-                        f"Reusing position from changed component {comp_name}"
+                        f"Reusing position from changed component '{comp_name}'"
                     )
 
                 pcb_comp = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint(
