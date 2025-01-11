@@ -3,6 +3,7 @@
 
 import logging
 import os
+from dataclasses import asdict
 from pathlib import Path
 from typing import Sequence
 
@@ -26,7 +27,6 @@ from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import get_parent
 from faebryk.libs.util import (
     KeyErrorNotFound,
-    dataclass_as_kwargs,
     duplicates,
     find,
     find_or,
@@ -90,7 +90,7 @@ def _find_footprint(
     raise ValueError("No footprint libraries provided")
 
 
-def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
+def get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
     lib_id, fp_name = identifier.split(":")
     lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
     dir_path = Path(
@@ -98,6 +98,7 @@ def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
         .replace("${KIPRJMOD}", str(config.build.paths.fp_lib_table.parent))
         .replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
     )
+
     path = dir_path / f"{fp_name}.kicad_mod"
     try:
         return kicad_footprint_file(path).footprint
@@ -392,7 +393,7 @@ class PCB:
                     f"Adding '{comp_name}' with footprint '{footprint_identifier}'"
                 )
 
-                footprint = _get_footprint(footprint_identifier, fp_lib_path)
+                footprint = get_footprint(footprint_identifier, fp_lib_path)
 
                 pads = {
                     p.pin: n
@@ -437,7 +438,7 @@ class PCB:
                     # TODO also need to do geo rotations and stuff
                     at = comps_changed[comp_name].at
                     pcb_update_logger.info(
-                        f"Reusing position from changed component '{comp_name}'"
+                        f"Reusing position from changed component {comp_name}"
                     )
 
                 pcb_comp = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint(
@@ -452,7 +453,7 @@ class PCB:
                             if p.name in pads
                             else None,
                             **{
-                                **dataclass_as_kwargs(p),
+                                **asdict(p),
                                 "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
                             },
                         )
