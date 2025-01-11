@@ -591,30 +591,73 @@ class Template(ABC):
 @dataclass
 class AtoTemplate(Template):
     attributes: list[str] = field(default_factory=list)
+    pins: list[str] = field(default_factory=list)
+    defined_signals: set[str] = field(default_factory=set)  # Track defined signals
 
     def add_part(self, part: Component):
+        # Basic component info
         self.name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(self.name, str)
         _, _, _, _, easyeda_symbol = download_easyeda_info(
             part.lcsc_display, get_model=False
         )
 
-        designator_prefix = easyeda_symbol.info.prefix.replace("?", "U")
-        self.attributes.append(f"designator_prefix = '{designator_prefix}'")
+        # Add component metadata
+        self.attributes.extend(
+            [
+                f'lcsc_id = "{part.lcsc_display}"',
+                f'manufacturer = "{part.manufacturer_name}"',
+                f'mpn = "{part.part_number}"',
+                f'description = "{part.description}"',
+            ]
+        )
 
-        self.attributes.append(f"manufacturer = '{part.manufacturer_name}'")
+        # # Add footprint if available
+        # if hasattr(part, 'footprint') and part.footprint:
+        #     self.attributes.append(f'footprint = "{part.footprint}"')
 
-        self.attributes.append(f"mpn = '{part.part_number}'")
+        # Add datasheet if available
+        if part.datasheet_url:
+            self.attributes.append(f'datasheet = "{part.datasheet_url}"')
 
-        self.attributes.append(f"description = '{part.description}'")
+        # Add designator prefix from EasyEDA symbol
+        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
+        self.attributes.append(f'designator_prefix = "{designator_prefix}"')
 
-        self.attributes.append(f"datasheet = '{part.datasheet_url}'")
-        self.attributes.append(f"lcsc_id = '{part.lcsc_display}'")
+        # Process pins - track defined signals
+        if hasattr(easyeda_symbol, "units") and easyeda_symbol.units:
+            for unit in easyeda_symbol.units:
+                if hasattr(unit, "pins"):
+                    for pin in unit.pins:
+                        pin_num = pin.settings.spice_pin_number
+                        pin_name = pin.name.text
+                        if (
+                            pin_name
+                            and pin_name not in ["NC", "nc"]
+                            and not re.match(r"^[0-9]+$", pin_name)
+                        ):
+                            pin_name = sanitize_name(pin_name)
+                            if pin_name not in self.defined_signals:
+                                self.pins.append(f"signal {pin_name} ~ pin {pin_num}")
+                                self.defined_signals.add(pin_name)
+                            else:
+                                self.pins.append(f"{pin_name} ~ pin {pin_num}")
 
     def dumps(self) -> str:
-        output = ""
+        output = f"component {self.name}:\n"
+        output += f'    """{self.name} component"""\n'
+
+        # Add attributes
         for attr in self.attributes:
-            output += f"{attr}\n"
+            output += f"    {attr}\n"
+
+        # Add blank line after attributes
+        output += "\n"
+
+        if self.pins:
+            output += "    # pins\n"
+            for pin in self.pins:
+                output += f"    {pin}\n"
 
         return output
 
