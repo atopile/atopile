@@ -117,13 +117,6 @@ def build(app: Module) -> None:
     standardize_footprints(app, solver)
     create_footprint_library(app)
 
-    # fp-lib-table might need updating after footprints are downloaded during the
-    # picking process
-    ensure_footprint_lib("lcsc", config.project.paths.footprint_lib("lcsc"))
-
-    # Re-attach now that any new footprints have been created / standardised
-    transformer.attach(check_unattached=True)
-
     # Write Netlist ------------------------------------------------------------
     attach_random_designators(G)
     override_names_with_designators(G)
@@ -138,6 +131,8 @@ def build(app: Module) -> None:
     original_pcb = deepcopy(pcb)
     apply_netlist(files=(pcb, netlist))
 
+    # Re-attach now that any new footprints have been created / standardised
+    transformer.attach(check_unattached=True)
     transformer.cleanup()
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):

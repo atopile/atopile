@@ -234,8 +234,7 @@ class PCB_Transformer:
             for node, trait in GraphFunctions(self.graph).nodes_with_trait(
                 F.has_footprint
             )
-            if not trait.get_footprint().has_trait(F.has_kicad_footprint)
-            and not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
+            if not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
         }
         if unattached_nodes:
             raise UserException(
