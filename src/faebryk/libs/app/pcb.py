@@ -14,14 +14,11 @@ from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node, NodeException
-from faebryk.exporters.pcb.kicad.pcb import PCB
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
-    C_kicad_netlist_file,
-    C_kicad_pcb_file,
     C_kicad_project_file,
 )
 from faebryk.libs.util import hash_string, not_none, once
@@ -174,20 +171,6 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
         netlist_path.resolve().relative_to(project_path.parent.resolve(), walk_up=True)
     )
     project.dumps(project_path)
-
-
-def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None):
-    set_kicad_netlist_path_in_project(
-        config.build.paths.kicad_project, config.build.paths.netlist
-    )
-
-    # Import netlist into pcb
-    if files:
-        pcb, netlist = files
-        PCB.apply_netlist(pcb, netlist, config.build.paths.fp_lib_table)
-    else:
-        logger.info(f"Apply netlist to {config.build.paths.layout}")
-        PCB.apply_netlist_to_file(config.build.paths.layout, config.build.paths.netlist)
 
 
 def load_net_names(graph: Graph) -> None:
