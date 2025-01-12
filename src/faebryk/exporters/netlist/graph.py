@@ -105,7 +105,17 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets_and_kicad_info(G: Graph) -> set[F.Net]:
+def attach_nets(G: Graph) -> set[F.Net]:
+    """Create nets for all the pads in the graph."""
+    pad_mifs = [pad.net for pad in GraphFunctions(G).nodes_of_type(F.Pad)]
+    nets = add_or_get_nets(*pad_mifs)
+    return nets
+
+
+# FIXME: this belongs at most in the KiCAD netlist generator
+# and should likely just return the properties rather than mutating the graph
+def attach_kicad_info(G: Graph) -> None:
+    """Attach kicad info to the footprints in the graph."""
     # group comps & fps
     node_fps = {
         n: t.get_footprint()
@@ -124,15 +134,6 @@ def attach_nets_and_kicad_info(G: Graph) -> set[F.Net]:
         if fp.has_trait(can_represent_kicad_footprint):
             continue
         fp.add(can_represent_kicad_footprint(n, G))
-
-    mifs = [
-        mif.net
-        for fp in node_fps.values()
-        for mif in fp.get_children(direct_only=True, types=F.Pad)
-    ]
-    nets = add_or_get_nets(*mifs)
-
-    return nets
 
 
 @dataclass

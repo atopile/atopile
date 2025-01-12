@@ -7,7 +7,7 @@ import logging
 import pytest
 
 import faebryk.library._F as F
-from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
+from faebryk.exporters.netlist.graph import attach_kicad_info, attach_nets
 from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
 from faebryk.exporters.netlist.netlist import FBRKNetlist, make_fbrk_netlist_from_graph
 from faebryk.libs.app.designators import (
@@ -52,7 +52,8 @@ def netlist_graph():
     # make netlist
     G = resistor1.get_graph
     attach_random_designators(G())
-    attach_nets_and_kicad_info(G())
+    attach_nets(G())
+    attach_kicad_info(G())
     return make_fbrk_netlist_from_graph(G())
 
 
