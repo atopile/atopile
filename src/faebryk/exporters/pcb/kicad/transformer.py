@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import copy
 import logging
 import re
 import subprocess
@@ -230,6 +231,8 @@ class PCB_Transformer:
             yield_missing({net.number for net in self.pcb.nets})
         )
         """Yield available net numbers"""
+
+        self.default_component_insert_point = C_xyr(x=0, y=0, r=0)
 
         if cleanup:
             self.cleanup()
@@ -1402,7 +1405,7 @@ class PCB_Transformer:
     ) -> Footprint:
         """Insert a footprint into the pcb, at optionally a specific position"""
         if at is None:
-            at = C_xyr(0, 0, 0)
+            at = copy.deepcopy(self.default_component_insert_point)
 
         pads = [
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
@@ -1533,8 +1536,8 @@ class PCB_Transformer:
         )
 
     def _update_footprint_from_node(
-        self, component: L.Node, fp_lib_path: Path
-    ) -> Footprint:
+        self, component: L.Node, fp_lib_path: Path, insert_point: C_xyr | None = None
+    ) -> tuple[Footprint, bool]:
         from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
         from faebryk.exporters.pcb.kicad.pcb import get_footprint
 
@@ -1561,11 +1564,16 @@ class PCB_Transformer:
                 )
                 new_fp = get_footprint(fp_id, fp_lib_path)
                 self.update_footprint_from_lib(pcb_fp, new_fp)
+            new_fp = False
+
         ## Add new footprint
         else:
             logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
-            pcb_fp = self.insert_footprint(get_footprint(fp_id, fp_lib_path))
+            pcb_fp = self.insert_footprint(
+                get_footprint(fp_id, fp_lib_path), insert_point
+            )
             self.bind_footprint(pcb_fp, f_fp)
+            new_fp = True
 
         def _get_prop_uuid(name: str) -> str | None:
             if name in pcb_fp.propertys:
@@ -1606,7 +1614,7 @@ class PCB_Transformer:
                 )
                 pcb_fp.propertys[prop_name].value = prop_value
 
-        return pcb_fp
+        return pcb_fp, new_fp
 
     def apply_design(self, fp_lib_path: Path, logger: logging.Logger = logger):
         """Apply the design to the pcb"""
@@ -1618,8 +1626,38 @@ class PCB_Transformer:
 
         # Update footprints
         processed_fps = FuncSet[Footprint]()
+
+        # Spacing algorithm to neatly insert new footprints
+        # Each component group is clustered around their immediate parent
+        # Each new component in the cluster is inserted with one vertical spacing
+        # Each new cluster is inserted with one horizontal spacing
+
+        HORIZONTAL_SPACING = 10
+        VERTICAL_SPACING = -5
+
+        cluster_point = copy.deepcopy(self.default_component_insert_point)
+
+        def _new_cluster() -> C_xyr:
+            next_point = copy.deepcopy(cluster_point)
+            cluster_point.x += HORIZONTAL_SPACING
+            return next_point
+
+        cluster_points = defaultdict(_new_cluster)
+        cluster_points[None]  # Trigger top-level components, so they're at the top
+
+        def _increment_cluster_point(key):
+            cluster_points[key].y += VERTICAL_SPACING
+
         for component, _ in gf.nodes_with_trait(F.has_footprint):
-            pcb_fp = self._update_footprint_from_node(component, fp_lib_path)
+            cluster_key = component.get_parent()
+            insert_point = cluster_points[cluster_key]
+            pcb_fp, new_fp = self._update_footprint_from_node(
+                component, fp_lib_path, insert_point
+            )
+            # If we used that point, increment the cluster point
+            if new_fp:
+                _increment_cluster_point(cluster_key)
+
             processed_fps.add(pcb_fp)
 
         ## Remove footprints that aren't present in the design
