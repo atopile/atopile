@@ -1587,22 +1587,24 @@ class PCB_Transformer:
             else:
                 old_prop_value = None
 
-            # If the property value has changed, update it
-            if prop_value != old_prop_value:
-                if old_prop_value is None:
-                    logger.info(
-                        f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})"
-                    )
-                else:
-                    logger.info(
-                        f"Updating `{prop_name}`->`{prop_value}` on `{address}` ({ref})"
-                    )
+            ### If it's a new property, add it
+            if old_prop_value is None:
+                logger.info(
+                    f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})"
+                )
                 pcb_fp.propertys[prop_name] = self._make_fp_property(
                     property_name=prop_name,
                     layer="User.9",
                     value=prop_value,
                     uuid=_get_prop_uuid(prop_name) or self.gen_uuid(mark=True),
                 )
+
+            ### If the property value has changed, update it
+            elif prop_value != old_prop_value:
+                logger.info(
+                    f"Updating `{prop_name}`->`{prop_value}` on `{address}` ({ref})"
+                )
+                pcb_fp.propertys[prop_name].value = prop_value
 
         return pcb_fp
 
