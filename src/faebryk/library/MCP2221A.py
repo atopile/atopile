@@ -22,7 +22,7 @@ class MCP2221A(Module):
     def __preinit__(self):
         self.power.lv.connect(self.power_vusb.lv)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

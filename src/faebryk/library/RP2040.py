@@ -162,7 +162,7 @@ class RP2040(Module):
     def decoupled(self):
         return F.can_be_decoupled_rails(self.power_io, self.power_core)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(

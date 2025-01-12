@@ -45,7 +45,7 @@ def netlist_graph():
             F.SMDTwoPin(F.SMDTwoPin.Type._0805)
         )
         r.add(
-            F.has_designator_defined(
+            F.has_designator(
                 resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
             )
         )

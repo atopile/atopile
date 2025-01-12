@@ -15,7 +15,7 @@ class SPIFlash(Module):
         units=P.byte,
         domain=L.Domains.Numbers.NATURAL(),
     )
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
