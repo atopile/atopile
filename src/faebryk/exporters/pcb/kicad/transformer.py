@@ -47,8 +47,10 @@ from faebryk.libs.kicad.fileformats import (
     gen_uuid as _gen_uuid,
 )
 from faebryk.libs.kicad.fileformats_common import C_pts
+from faebryk.libs.library import L
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
+    FuncSet,
     KeyErrorNotFound,
     cast_assert,
     find,
@@ -324,7 +326,7 @@ class PCB_Transformer:
             raise ValueError("match_threshold must be at least 0.5")
 
         known_nets: dict[F.Net, Net] = {}
-        pcb_nets_by_name: dict[str, Net] = {}
+        pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
 
         for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
             total_pads = 0
@@ -1530,11 +1532,82 @@ class PCB_Transformer:
             at=C_xyr(x=0, y=0, r=0),
         )
 
-    def apply_design(self, fp_lib_path: Path, logger: logging.Logger = logger):
-        """Apply the design to the pcb"""
+    def _update_footprint_from_node(
+        self, component: L.Node, fp_lib_path: Path
+    ) -> Footprint:
         from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
         from faebryk.exporters.pcb.kicad.pcb import get_footprint
 
+        f_fp = component.get_trait(F.has_footprint).get_footprint()
+
+        # At this point, all footprints MUST have a KiCAD identifier
+        kicad_if_t = f_fp.get_trait(F.KicadFootprint.has_kicad_identifier)
+        fp_id = kicad_if_t.kicad_identifier
+
+        # FIXME: this is a bit of a hacky object to rely on, but it exists already
+        can_represent_kicad_footprint_t = f_fp.get_trait(can_represent_kicad_footprint)
+        # This is the component which is being stuck on the board
+        address = component.get_full_name()
+
+        # All modules MUST have a designator by this point
+        ref = component.get_trait(F.has_designator).get_designator()
+
+        ## Update existing footprint
+        if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
+            pcb_fp = pcb_fp_t.get_fp()
+            if fp_id != pcb_fp.name:
+                logger.info(
+                    f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})"
+                )
+                new_fp = get_footprint(fp_id, fp_lib_path)
+                self.update_footprint_from_lib(pcb_fp, new_fp)
+        ## Add new footprint
+        else:
+            logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
+            pcb_fp = self.insert_footprint(get_footprint(fp_id, fp_lib_path))
+            self.bind_footprint(pcb_fp, f_fp)
+
+        def _get_prop_uuid(name: str) -> str | None:
+            if name in pcb_fp.propertys:
+                return pcb_fp.propertys[name].uuid
+            return None
+
+        ## Apply propertys, Reference and atopile_address
+        ### At this point, the footprint MUST had a name, which is the Reference
+        pcb_fp.propertys["Reference"].value = ref
+
+        properties_blob = can_represent_kicad_footprint_t.get_kicad_obj()
+        properties = properties_blob.properties.copy()
+        properties["Value"] = properties_blob.value
+
+        for prop_name, prop_value in properties_blob.properties.items():
+            ### Get old property value, representing non-existent properties as None
+            if prop := pcb_fp.propertys.get(prop_name):
+                old_prop_value = prop.value
+            else:
+                old_prop_value = None
+
+            # If the property value has changed, update it
+            if prop_value != old_prop_value:
+                if old_prop_value is None:
+                    logger.info(
+                        f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})"
+                    )
+                else:
+                    logger.info(
+                        f"Updating `{prop_name}`->`{prop_value}` on `{address}` ({ref})"
+                    )
+                pcb_fp.propertys[prop_name] = self._make_fp_property(
+                    property_name=prop_name,
+                    layer="User.9",
+                    value=prop_value,
+                    uuid=_get_prop_uuid(prop_name) or self.gen_uuid(mark=True),
+                )
+
+        return pcb_fp
+
+    def apply_design(self, fp_lib_path: Path, logger: logging.Logger = logger):
+        """Apply the design to the pcb"""
         # Re-attach everything one more time
         # We rely on this to reliably update the pcb
         self.attach(check_unattached_fps=False)
@@ -1542,65 +1615,23 @@ class PCB_Transformer:
         gf = GraphFunctions(self.graph)
 
         # Update footprints
-        processed_fps: set[Footprint] = set()
-        for f_fp, kicad_if_t in gf.nodes_with_trait(
-            F.KicadFootprint.has_kicad_identifier
-        ):
-            fp_id = kicad_if_t.kicad_identifier
-            ref = f_fp.get_trait(F.has_overriden_name).get_name()
-
-            ## Update existing footprint
-            if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
-                pcb_fp = pcb_fp_t.get_fp()
-                if fp_id != pcb_fp.name:
-                    logger.info(
-                        f"Updating `{pcb_fp.name}` from `{pcb_fp.name}` to `{fp_id}`"
-                    )
-                    new_fp = get_footprint(fp_id, fp_lib_path)
-                    self.update_footprint_from_lib(pcb_fp, new_fp)
-            ## Add new footprint
-            else:
-                logger.info(f"Adding `{ref}` as `{fp_id}`")
-                pcb_fp = self.insert_footprint(get_footprint(fp_id, fp_lib_path))
-                self.bind_footprint(pcb_fp, f_fp)
-
-            def _get_prop_uuid(name: str) -> str | None:
-                if name in pcb_fp.propertys:
-                    return pcb_fp.propertys[name].uuid
-                return None
-
-            ## Apply propertys, Reference and atopile_address
-            # At this point, the footprint MUST had a name, which is the Reference
-            pcb_fp.propertys["Reference"].value = ref
-
-            # FIXME: this is a bit of a hacky object to rely on, but it exists already
-            properties_blob = f_fp.get_trait(
-                can_represent_kicad_footprint
-            ).get_kicad_obj()
-            properties = properties_blob.properties.copy()
-            properties["Value"] = properties_blob.value
-
-            for prop_name, prop_value in properties_blob.properties.items():
-                if prop_value != pcb_fp.propertys[prop_name].value:
-                    logger.info(
-                        f"Updating `{ref}` `{prop_name}` from"
-                        f" `{pcb_fp.propertys[prop_name].value}` to `{prop_value}`"
-                    )
-                    pcb_fp.propertys[prop_name] = self._make_fp_property(
-                        property_name=prop_name,
-                        layer="User.9",
-                        value=prop_value,
-                        uuid=_get_prop_uuid(prop_name) or self.gen_uuid(mark=True),
-                    )
-
+        processed_fps = FuncSet[Footprint]()
+        for component, _ in gf.nodes_with_trait(F.has_footprint):
+            pcb_fp = self._update_footprint_from_node(component, fp_lib_path)
             processed_fps.add(pcb_fp)
 
         ## Remove footprints that aren't present in the design
+        # TODO: figure out how this should work with some
+        # concept of a --tidy flag or the likes
+        # Should this remove unmarked footprints?
         for pcb_fp in self.pcb.footprints:
             if pcb_fp not in processed_fps:
-                if self.is_marked(pcb_fp):
-                    logger.info(f"Removing `{pcb_fp.name}`")
-                    self.remove_footprint(pcb_fp)
+                if ref_prop := pcb_fp.propertys.get("Reference"):
+                    removed_fp_ref = ref_prop.value
+                else:
+                    removed_fp_ref = "<no reference>"
+                logger.info(f"Removing `{removed_fp_ref}`")
+                self.remove_footprint(pcb_fp)
 
         # Update nets
         # All nets MUST have a name by this point
@@ -1609,18 +1640,18 @@ class PCB_Transformer:
             for n in gf.nodes_of_type(F.Net)
         }
 
-        processed_nets: set[Net] = set()
+        processed_nets = FuncSet[Net]()
         for net_name, f_net in f_nets_by_name.items():
             ## Rename existing nets if they're correct
-            if linked_net_t := f_net.get_trait(self.has_linked_kicad_net):
+            if linked_net_t := f_net.try_get_trait(self.has_linked_kicad_net):
                 pcb_net = linked_net_t.get_net()
                 if pcb_net.name != net_name:
-                    logger.info(f"Renaming net `{pcb_net.name}` to `{net_name}`")
+                    logger.info(f"Renaming net `{pcb_net.name}`->`{net_name}`")
                     self.rename_net(pcb_net, net_name)
 
             ## Add missing nets
             else:
-                logger.info(f"Adding new net `{net_name}`")
+                logger.info(f"Adding net `{net_name}`")
                 pcb_net = self.insert_net(net_name)
                 self.bind_net(pcb_net, f_net)
 
