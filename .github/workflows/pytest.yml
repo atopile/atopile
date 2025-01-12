@@ -33,6 +33,10 @@ jobs:
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v2
 
+    # This isn't in the pyproject.toml file, because it's exclusively used in the CI workflow
+    - name: Install pytest-github-actions-annotate-failures
+      run: uv pip install pytest-github-actions-annotate-failures
+
     - name: Run pytest
       id: pytest
       continue-on-error: true
