@@ -103,7 +103,7 @@ class LDO(Module):
             prefix="LDO",
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

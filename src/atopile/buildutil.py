@@ -37,7 +37,6 @@ from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
-    override_names_with_designators,
 )
 from faebryk.libs.app.pcb import (
     apply_layouts,
@@ -116,7 +115,6 @@ def build(app: Module) -> None:
 
     # Pre-netlist preparation ---------------------------------------------------
     attach_random_designators(G)
-    override_names_with_designators(G)
     nets = attach_nets_and_kicad_info(G)
     if config.build.keep_net_names:
         load_net_names(G)

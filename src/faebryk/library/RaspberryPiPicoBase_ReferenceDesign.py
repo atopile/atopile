@@ -43,7 +43,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         swd: F.SWD
 
         lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C160389"})
-        designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        designator_prefix = L.f_field(F.has_designator_prefix)(
             F.has_designator_prefix.Prefix.J
         )
 

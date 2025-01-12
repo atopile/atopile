@@ -37,7 +37,7 @@ class XL_3528RGBW_WS2812B(Module):
     do: F.ElectricLogic
     di: F.ElectricLogic
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.LED
     )
 

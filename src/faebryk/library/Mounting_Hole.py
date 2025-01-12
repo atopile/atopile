@@ -21,7 +21,7 @@ class Mounting_Hole(Module):
         Pad_Via = "Pad_Via"
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.H
     )
 

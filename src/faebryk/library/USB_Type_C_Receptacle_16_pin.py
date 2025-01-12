@@ -72,6 +72,6 @@ class USB_Type_C_Receptacle_16_pin(Module):
             case_sensitive=False,
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )
