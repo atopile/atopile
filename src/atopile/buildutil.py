@@ -18,7 +18,11 @@ from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
-from faebryk.exporters.netlist.graph import attach_net_names, attach_nets_and_kicad_info
+from faebryk.exporters.netlist.graph import (
+    attach_kicad_info,
+    attach_net_names,
+    attach_nets,
+)
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
@@ -115,7 +119,8 @@ def build(app: Module) -> None:
 
     # Pre-netlist preparation ---------------------------------------------------
     attach_random_designators(G)
-    nets = attach_nets_and_kicad_info(G)
+    nets = attach_nets(G)
+    attach_kicad_info(G)
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
