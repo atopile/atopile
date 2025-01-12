@@ -1536,7 +1536,11 @@ class PCB_Transformer:
         )
 
     def _update_footprint_from_node(
-        self, component: L.Node, fp_lib_path: Path, insert_point: C_xyr | None = None
+        self,
+        component: L.Node,
+        fp_lib_path: Path,
+        logger: logging.Logger,
+        insert_point: C_xyr | None = None,
     ) -> tuple[Footprint, bool]:
         from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
         from faebryk.exporters.pcb.kicad.pcb import get_footprint
@@ -1598,7 +1602,8 @@ class PCB_Transformer:
             ### If it's a new property, add it
             if old_prop_value is None:
                 logger.info(
-                    f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})"
+                    f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
+                    extra={"markdown": True},
                 )
                 pcb_fp.propertys[prop_name] = self._make_fp_property(
                     property_name=prop_name,
@@ -1610,7 +1615,8 @@ class PCB_Transformer:
             ### If the property value has changed, update it
             elif prop_value != old_prop_value:
                 logger.info(
-                    f"Updating `{prop_name}`->`{prop_value}` on `{address}` ({ref})"
+                    f"Updating `{prop_name}`->`{prop_value}` on `{address}` ({ref})",
+                    extra={"markdown": True},
                 )
                 pcb_fp.propertys[prop_name].value = prop_value
 
@@ -1652,7 +1658,7 @@ class PCB_Transformer:
             cluster_key = component.get_parent()
             insert_point = cluster_points[cluster_key]
             pcb_fp, new_fp = self._update_footprint_from_node(
-                component, fp_lib_path, insert_point
+                component, fp_lib_path, logger, insert_point
             )
             # If we used that point, increment the cluster point
             if new_fp:
@@ -1670,7 +1676,7 @@ class PCB_Transformer:
                     removed_fp_ref = ref_prop.value
                 else:
                     removed_fp_ref = "<no reference>"
-                logger.info(f"Removing `{removed_fp_ref}`")
+                logger.info(f"Removing `{removed_fp_ref}`", extra={"markdown": True})
                 self.remove_footprint(pcb_fp)
 
         # Update nets
@@ -1686,12 +1692,18 @@ class PCB_Transformer:
             if linked_net_t := f_net.try_get_trait(self.has_linked_kicad_net):
                 pcb_net = linked_net_t.get_net()
                 if pcb_net.name != net_name:
-                    logger.info(f"Renaming net `{pcb_net.name}`->`{net_name}`")
+                    logger.info(
+                        f"Renaming net `{pcb_net.name}`->`{net_name}`",
+                        extra={"markdown": True},
+                    )
                     self.rename_net(pcb_net, net_name)
 
             ## Add missing nets
             else:
-                logger.info(f"Adding net `{net_name}`")
+                logger.info(
+                    f"Adding net `{net_name}`",
+                    extra={"markdown": True},
+                )
                 pcb_net = self.insert_net(net_name)
                 self.bind_net(pcb_net, f_net)
 
@@ -1710,5 +1722,8 @@ class PCB_Transformer:
         ## Remove nets that aren't present in the design
         for pcb_net in self.pcb.nets:
             if pcb_net not in processed_nets:
-                logger.info(f"Removing net `{pcb_net.name}`")
+                logger.info(
+                    f"Removing net `{pcb_net.name}`",
+                    extra={"markdown": True},
+                )
                 self.remove_net(pcb_net)
