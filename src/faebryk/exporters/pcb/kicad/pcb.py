@@ -17,7 +17,6 @@ from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.util import KeyErrorNotFound, find
 
 logger = logging.getLogger(__name__)
-pcb_update_logger = logging.getLogger("pcb_updates")
 
 # TODO: dynamic spacing based on footprint dimensions?
 HORIZONTAL_SPACING = 10
