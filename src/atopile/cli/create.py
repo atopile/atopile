@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Annotated, Iterator, cast
+from typing import Annotated, Any, Iterator, cast
 
 import caseconverter
 import click
@@ -584,6 +584,15 @@ class Template(ABC):
     nodes: list[str] = field(default_factory=list)
     docstring: str = "TODO: Docstring describing your module"
 
+    def _process_part(self, part: Component) -> tuple[str, Any]:
+        """Common part processing logic used by child classes."""
+        name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
+        assert isinstance(name, str)
+        _, _, _, _, easyeda_symbol = download_easyeda_info(
+            part.lcsc_display, get_model=False
+        )
+        return name, easyeda_symbol
+
     @abstractmethod
     def add_part(self, part: Component): ...
 
@@ -592,15 +601,14 @@ class Template(ABC):
 class AtoTemplate(Template):
     attributes: list[str] = field(default_factory=list)
     pins: list[str] = field(default_factory=list)
-    defined_signals: set[str] = field(default_factory=set)  # Track defined signals
+    defined_signals: set[str] = field(default_factory=set)
 
     def add_part(self, part: Component):
-        # Basic component info
-        self.name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
-        assert isinstance(self.name, str)
-        _, _, _, _, easyeda_symbol = download_easyeda_info(
-            part.lcsc_display, get_model=False
-        )
+        # Get common processed data
+        self.name, easyeda_symbol = self._process_part(part)
+
+        # Set docstring with description
+        self.docstring = part.description
 
         # Add component metadata
         self.attributes.extend(
@@ -608,17 +616,12 @@ class AtoTemplate(Template):
                 f'lcsc_id = "{part.lcsc_display}"',
                 f'manufacturer = "{part.manufacturer_name}"',
                 f'mpn = "{part.part_number}"',
-                f'description = "{part.description}"',
             ]
         )
 
-        # # Add footprint if available
-        # if hasattr(part, 'footprint') and part.footprint:
-        #     self.attributes.append(f'footprint = "{part.footprint}"')
-
         # Add datasheet if available
         if part.datasheet_url:
-            self.attributes.append(f'datasheet = "{part.datasheet_url}"')
+            self.attributes.append(f'datasheet_url = "{part.datasheet_url}"')
 
         # Add designator prefix from EasyEDA symbol
         designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
@@ -667,16 +670,18 @@ class FabllTemplate(Template):
     traits: list[str] = field(default_factory=list)
 
     def add_part(self, part: Component):
-        self.name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
-        assert isinstance(self.name, str)
-        _, _, _, _, easyeda_symbol = download_easyeda_info(
-            part.lcsc_display, get_model=False
-        )
+        # Get common processed data
+        self.name, easyeda_symbol = self._process_part(part)
 
         designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
         self.traits.append(
             f"designator_prefix = L.f_field(F.has_designator_prefix_defined)"
             f"('{designator_prefix}')"
+        )
+
+        self.traits.append(
+            "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
+            f"({{'LCSC': '{self.name}'}})"
         )
 
         self.imports.append(
@@ -753,10 +758,6 @@ class FabllTemplate(Template):
                 )
         """)
         )
-        # template.traits.append(
-        #     "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-        #     f"({{'LCSC': '{template.name}'}})"
-        # ) # move to inside the fabll template
 
     def dumps(self) -> str:
         always_import = [
