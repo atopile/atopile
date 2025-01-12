@@ -247,7 +247,21 @@ def create_footprint_library(app: Module) -> None:
             if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
                 # Copy the footprint to the new library with a
                 # pseudo-guaranteed unique name
-                path = Path(has_file_t.file).expanduser().resolve()
+
+                # These should be relative to the project directory
+                # so the hashes are stable across machines
+                try:
+                    path = (
+                        Path(has_file_t.file)
+                        .resolve()
+                        .relative_to(config.project.paths.root)
+                    )
+                except ValueError as ex:
+                    raise UserResourceException(
+                        f"Footprint file {has_file_t.file} is outside the project"
+                        " directory. Footprint files must be in the project directory."
+                    ) from ex
+
                 lib_path, fp_path = _ensure_fp(path)
                 fp.add(F.KicadFootprint.has_file(fp_path))  # Override with new path
                 # Attach the newly minted identifier
