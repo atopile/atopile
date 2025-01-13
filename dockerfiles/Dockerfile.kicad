@@ -34,8 +34,8 @@ COPY --from=ghcr.io/astral-sh/uv:0.5.5 /uv /bin/uv
 # @python3.14
 RUN uv python install 3.13
 
-COPY --chown=kicad:kicad dist/atopile-*.whl /tmp/
+COPY --chown=kicad:kicad dist/atopile-*-cp313-cp313-manylinux*.whl /tmp/
 
-RUN uv tool install /tmp/atopile-*.whl
+RUN uv tool install /tmp/atopile-*-cp313-cp313-manylinux*.whl
 
 ENTRYPOINT [ "bash", "-c", "ato install && ato build" ]
