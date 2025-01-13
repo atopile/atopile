@@ -128,10 +128,8 @@ def build(app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    transformer.apply_design(config.build.paths.fp_lib_table)
-
-    # Re-attach now that any new footprints have been created / standardised
     transformer.cleanup()
+    transformer.apply_design(config.build.paths.fp_lib_table)
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
         logger.info("Transforming PCB")
