@@ -15,5 +15,5 @@ Upgrading will give you more access to features as they're added, but there's no
 
 ## Component Creation
 
-Old command: ato install --jlcpcb C2040
-new command: ato create > component > follow the prompts
+Old command: `ato install --jlcpcb C2040`
+New command: `ato create component` or `ato create component --help`
