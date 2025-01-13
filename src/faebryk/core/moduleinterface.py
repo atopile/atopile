@@ -244,7 +244,7 @@ class ModuleInterface(Node):
         buses = {}
         while to_check:
             interface = to_check.pop()
-            ifs = interface.get_connected()
+            ifs = interface.get_connected(include_self=True)
             buses[interface] = ifs
             to_check.difference_update(ifs.keys())
 
