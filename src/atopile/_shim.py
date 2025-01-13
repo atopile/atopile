@@ -237,6 +237,8 @@ class ShimResistor(F.Resistor):
                         "`footprint` is deprecated for assignment of package. "
                         f"Use: `package = '{value[1:]}'`"
                     )
+                # Return here, to avoid additionally setting the footprint
+                return
 
         GlobalShims.footprint.fset(self, value)
 
@@ -309,6 +311,8 @@ class _CommonCap(F.Capacitor):
                         "`footprint` is deprecated for assignment of package. "
                         f"Use: `package = '{value[1:]}'`"
                     )
+                # Return here, to avoid additionally setting the footprint
+                return
 
         GlobalShims.footprint.fset(self, value)
 
