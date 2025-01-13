@@ -20,14 +20,6 @@ def bob() -> Bob:
     return Bob()
 
 
-@pytest.fixture
-def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / "pyproject.toml").exists():
-        repo_root = repo_root.parent
-    return repo_root
-
-
 def test_empty_module_build(bob: Bob):
     text = dedent(
         """

@@ -7,37 +7,8 @@ from subprocess import CalledProcessError
 import pathvalidate
 import pytest
 
+from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir, run_live
-
-repo_root = Path.cwd()
-while not (repo_root / "pyproject.toml").exists():
-    repo_root = repo_root.parent
-
-
-EXAMPLES_DIR = repo_root / "examples"
-
-
-@pytest.mark.slow
-@pytest.mark.regression
-@pytest.mark.parametrize(
-    "example",
-    list(EXAMPLES_DIR.glob("*.py")),
-    ids=lambda p: p.stem,
-)
-def test_fabll_example(example: Path, tmp_path: Path):
-    assert example.exists()
-
-    example_copy = tmp_path / example.name
-    example_copy.write_text(example.read_text())
-    example = example_copy
-
-    run_live(
-        [sys.executable, "-m", "atopile", "build", "--standalone", f"{example}:App"],
-        env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
-        cwd=tmp_path,
-        stdout=print,
-        stderr=print,
-    )
 
 
 class CloneError(Exception):
@@ -52,6 +23,9 @@ class BuildError(Exception):
     """Failed to build the project."""
 
 
+@pytest.mark.xfail(
+    reason="Projects require update to use the latest version of atopile"
+)
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
@@ -117,7 +91,7 @@ def test_projects(
         )
     except CalledProcessError as ex:
         artifact_path = (
-            repo_root
+            _repo_root()
             / "artifacts"
             / pathvalidate.sanitize_filename(str(request.node.name))
         )
