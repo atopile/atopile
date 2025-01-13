@@ -30,7 +30,6 @@ from faebryk.libs.library.L import Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
-    has_part_picked,
     pick_module_by_params,
     pick_part_recursively,
 )
@@ -616,6 +615,7 @@ def test_inspect_enum_led():
     assert solver.inspect_get_known_supersets(led.color) == F.LED.Color.EMERALD
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_simple_pick():
     led = F.LED()
 
@@ -637,8 +637,8 @@ def test_simple_pick():
         ],
     )
 
-    assert led.has_trait(has_part_picked)
-    assert led.get_trait(has_part_picked).get_part().partno == "C72043"
+    assert led.has_trait(F.has_part_picked)
+    assert led.get_trait(F.has_part_picked).get_part().partno == "C72043"
 
 
 def test_simple_negative_pick():
@@ -673,8 +673,8 @@ def test_simple_negative_pick():
         ],
     )
 
-    assert led.has_trait(has_part_picked)
-    assert led.get_trait(has_part_picked).get_part().partno == "C72041"
+    assert led.has_trait(F.has_part_picked)
+    assert led.get_trait(F.has_part_picked).get_part().partno == "C72041"
 
 
 def test_jlcpcb_pick_resistor():
@@ -684,8 +684,8 @@ def test_jlcpcb_pick_resistor():
     solver = DefaultSolver()
     pick_part_recursively(resistor, solver)
 
-    assert resistor.has_trait(has_part_picked)
-    print(resistor.get_trait(has_part_picked).get_part())
+    assert resistor.has_trait(F.has_part_picked)
+    print(resistor.get_trait(F.has_part_picked).get_part())
 
 
 def test_jlcpcb_pick_capacitor():
@@ -696,8 +696,8 @@ def test_jlcpcb_pick_capacitor():
     solver = DefaultSolver()
     pick_part_recursively(capacitor, solver)
 
-    assert capacitor.has_trait(has_part_picked)
-    print(capacitor.get_trait(has_part_picked).get_part())
+    assert capacitor.has_trait(F.has_part_picked)
+    print(capacitor.get_trait(F.has_part_picked).get_part())
 
 
 def test_jlcpcb_pick_led():
@@ -708,8 +708,8 @@ def test_jlcpcb_pick_led():
     solver = DefaultSolver()
     pick_part_recursively(led, solver)
 
-    assert led.has_trait(has_part_picked)
-    print(led.get_trait(has_part_picked).get_part())
+    assert led.has_trait(F.has_part_picked)
+    print(led.get_trait(F.has_part_picked).get_part())
 
 
 @pytest.mark.xfail(reason="Need picker backtracking")
@@ -723,6 +723,6 @@ def test_jlcpcb_pick_powered_led():
 
     pick_part_recursively(led, solver)
 
-    picked_parts = [mod for mod in children_mods if mod.has_trait(has_part_picked)]
+    picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
     assert len(picked_parts) == 2
-    print([(p, p.get_trait(has_part_picked).get_part()) for p in picked_parts])
+    print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])

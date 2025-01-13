@@ -7,6 +7,7 @@ from faebryk.core.cpp import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
 from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
+from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import cast_assert, unique_ref
 
 if TYPE_CHECKING:
@@ -110,6 +111,17 @@ class Module(Node):
 
         return out
 
+    class InvalidSpecializationError(Exception):
+        """Cannot specialize module with special"""
+
+        def __init__(
+            self, message: str, *args, module: "Module", special: "Module", **kwargs
+        ):
+            self.message = message
+            self.module = module
+            self.special = special
+            super().__init__(message, *args, **kwargs)
+
     def specialize[T: Module](
         self,
         special: T,
@@ -128,22 +140,35 @@ class Module(Node):
             matrix = get_node_prop_matrix(ModuleInterface)
 
         # TODO add warning if not all src interfaces used
-
         param_matrix = get_node_prop_matrix(Parameter)
 
+        err_acc = accumulate(self.InvalidSpecializationError)
+
         for src, dst in matrix:
-            if src is None:
-                continue
-            if dst is None:
-                raise Exception(f"Special module misses interface: {src.get_name()}")
-            src.specialize(dst)
+            with err_acc.collect():
+                if src is None:
+                    continue
+                if dst is None:
+                    raise self.InvalidSpecializationError(
+                        f"Special module misses interface: {src.get_name()}",
+                        module=self,
+                        special=special,
+                    )
+                src.specialize(dst)
 
         for src, dst in param_matrix:
-            if src is None:
-                continue
-            if dst is None:
-                raise Exception(f"Special module misses parameter: {src.get_name()}")
-            dst.alias_is(src)
+            with err_acc.collect():
+                if src is None:
+                    continue
+                if dst is None:
+                    raise self.InvalidSpecializationError(
+                        f"Special module misses parameter: {src.get_name()}",
+                        module=self,
+                        special=special,
+                    )
+                dst.alias_is(src)
+
+        err_acc.raise_errors()
 
         # TODO this cant work
         # for t in self.traits:

@@ -119,3 +119,5 @@ class ElectricPower(F.Power):
         self.bus_max_current_consumption_sum.add(
             F.is_bus_parameter(reduce=(self.max_current, Add))
         )
+
+        self.lv.add(F.has_net_name("gnd"))

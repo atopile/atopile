@@ -27,8 +27,10 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.util import (
     ConfigFlag,
+    KeyErrorAmbiguous,
     KeyErrorNotFound,
     Tree,
+    indented_container,
     not_none,
     partition,
     try_or,
@@ -83,6 +85,16 @@ class PickError(Exception):
         return f"{type(self).__name__}({self.module}, {self.message})"
 
 
+class MultiPickError(PickError):
+    def __init__(self, message: str, modules: Iterable[Module]):
+        first_module = next(iter(modules))
+        super().__init__(message, first_module)
+        self.modules = modules
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.modules}, {self.message})"
+
+
 class PickErrorNotImplemented(PickError):
     def __init__(self, module: Module):
         message = f"Could not pick part for {module}: Not implemented"
@@ -131,45 +143,10 @@ class PickErrorParams(PickError):
         super().__init__(message, module)
 
 
-class has_part_picked(Module.TraitT):
-    @abstractmethod
-    def get_part(self) -> Part: ...
-
-
-class has_part_picked_defined(has_part_picked.impl()):
-    def __init__(self, part: Part):
-        super().__init__()
-        self.part = part
-
-    def get_part(self) -> Part:
-        return self.part
-
-
-class has_part_picked_remove(has_part_picked.impl()):
-    class RemovePart(Part):
-        class NoSupplier(Supplier):
-            def attach(self, module: Module, part: PickerOption):
-                pass
-
-        def __init__(self):
-            super().__init__("REMOVE", self.NoSupplier())
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.part = self.RemovePart()
-
-    def get_part(self) -> Part:
-        return self.part
-
-
-class skip_self_pick(Module.TraitT.decless()):
-    """Indicates that a node exists only to contain children, and shouldn't itself be picked"""  # noqa: E501  # pre-existing
-
-
 def pick_module_by_params(
     module: Module, solver: Solver, options: Iterable[PickerOption]
 ):
-    if module.has_trait(has_part_picked):
+    if module.has_trait(F.has_part_picked):
         logger.debug(f"Ignoring already picked module: {module}")
         return
 
@@ -214,7 +191,7 @@ def pick_module_by_params(
         module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
 
     option.part.supplier.attach(module, option)
-    module.add(has_part_picked_defined(option.part))
+    module.add(F.has_part_picked(option.part))
 
     logger.debug(f"Attached {option.part.partno} to {module}")
     return option
@@ -223,7 +200,7 @@ def pick_module_by_params(
 class PickerProgress:
     def __init__(self, tree: Tree[Module]):
         self.tree = tree
-        self.progress = Progress(disable=bool(NO_PROGRESS_BAR))
+        self.progress = Progress(disable=bool(NO_PROGRESS_BAR), transient=True)
         leaves = list(tree.leaves())
         count = len(leaves)
 
@@ -250,10 +227,10 @@ def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
     tree = Tree()
     merge_tree = tree
 
-    if module.has_trait(has_part_picked):
+    if module.has_trait(F.has_part_picked):
         return tree
 
-    if module.has_trait(F.is_pickable) and not module.has_trait(skip_self_pick):
+    if module.has_trait(F.is_pickable):
         merge_tree = Tree()
         tree[module] = merge_tree
 
@@ -286,17 +263,19 @@ def check_missing_picks(module: Module):
         and not isinstance(m, F.Footprint)
         # no parent with part picked
         and not try_or(
-            lambda: m.get_parent_with_trait(has_part_picked),
+            lambda: m.get_parent_with_trait(F.has_part_picked),
             default=False,
             catch=KeyErrorNotFound,
         )
-        # not skip self pick
-        and not m.has_trait(skip_self_pick)
         # no parent with picker
         and not try_or(
-            lambda: m.get_parent_with_trait(F.is_pickable),
-            default=False,
-            catch=KeyErrorNotFound,
+            lambda: try_or(
+                lambda: m.get_parent_with_trait(F.is_pickable),
+                default=False,
+                catch=KeyErrorNotFound,
+            ),
+            default=True,
+            catch=KeyErrorAmbiguous,
         ),
     )
 
@@ -306,11 +285,11 @@ def check_missing_picks(module: Module):
         )
 
         if with_fp:
-            logger.warning(f"No pickers for {with_fp}")
+            logger.warning(f"No pickers for {indented_container(with_fp)}")
         if no_fp:
             logger.warning(
-                f"No pickers and no footprint for {no_fp}."
-                "\nAttention: These modules will not apperar in netlist or pcb."
+                f"No pickers and no footprint for {indented_container(no_fp)}."
+                "\nATTENTION: These modules will not appear in netlist or pcb."
             )
 
 
@@ -331,7 +310,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     logger.info("Getting part candidates for modules")
     candidates_now = time.time()
     candidates = get_candidates(tree, solver)
-    logger.info(f"Got candidates in {time.time() - candidates_now:.3f}s")
+    logger.info(f"Got candidates in {time.time() - candidates_now:.3f} seconds")
 
     now = time.time()
 
@@ -368,7 +347,7 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     if ok:
         for m, _ in sorted_candidates:
             progress.advance(m)
-        logger.info(f"Fast-Picked parts in {time.time() - now:.3f}s")
+        logger.info(f"Fast-picked parts in {time.time() - now:.3f} seconds")
         return
 
     logger.warning("Could not pick all parts atomically, picking one by one (slow)")
@@ -385,13 +364,6 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
 # TODO should be a Picker
 def pick_part_recursively(module: Module, solver: Solver):
-    from faebryk.libs.picker.api.picker_lib import add_pickers
-
-    modules = module.get_children_modules(types=Module, include_root=True)
-
-    for n in modules:
-        add_pickers(n)
-
     pick_tree = get_pick_tree(module)
     if LOG_PICK_SOLVE:
         logger.info(f"Pick tree:\n{pick_tree.pretty()}")
@@ -410,4 +382,4 @@ def pick_part_recursively(module: Module, solver: Solver):
                 f"Could not find pick for {m}:\n {sube.message}\n"
                 f"Params:\n{indent(m.pretty_params(solver), prefix=' '*4)}"
             )
-        raise e
+        raise

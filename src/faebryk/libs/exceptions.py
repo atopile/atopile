@@ -4,7 +4,12 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Callable, Iterable, Self, Type, cast
 
+from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.markdown import Markdown
+from rich.text import Text
 from rich.traceback import Traceback
+
+from faebryk.libs.logging import ReprHighlighter
 
 from .titlecase import titlecase
 
@@ -24,13 +29,16 @@ class UserException(Exception):
 
     def __init__(
         self,
+        message: str = "",
         *args,
         title: str | None = None,
+        markdown: bool = True,
         **kwargs,
     ) -> None:
-        super().__init__(*args, **kwargs)
-        self.message = args[0] if args else ""
+        super().__init__(message, *args, **kwargs)
+        self.message = message
         self._title = title
+        self.markdown = markdown
 
     @property
     def title(self):
@@ -46,6 +54,19 @@ class UserException(Exception):
         Return a frozen version of this error.
         """
         return (self.__class__, self.message, self._title)
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> list[ConsoleRenderable]:
+        renderables: list[ConsoleRenderable] = []
+        if self.title:
+            renderables += [Text(self.title, style="bold")]
+
+        renderables += [
+            Markdown(self.message) if self.markdown else ReprHighlighter()(self.message)
+        ]
+
+        return renderables
 
 
 class DeprecatedException(UserException):
@@ -67,10 +88,10 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
 
     def __init__(
         self,
-        *exceptions: Type[T] | tuple[Type[T]],
+        *exceptions: Type[T],
         default=None,
     ):
-        super().__init__(*exceptions)  # type: ignore - more precisely typed here than std
+        self._exceptions = exceptions
         self.default = default
 
     @abstractmethod
@@ -88,7 +109,7 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
     # The following methods are copied and modified from contextlib.suppress
     # type errors are reproduced faithfully
 
-    def __exit__(self, exctype, excinst, exctb):  # type: ignore
+    def _will_be__exit__(self, exctype, excinst, exctb):  # type: ignore  # Faithfully reproduce type error
         # Unlike isinstance and issubclass, CPython exception handling
         # currently only looks at the concrete type hierarchy (ignoring
         # the instance and subclass checking hooks). While Guido considers
@@ -134,6 +155,15 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
             return self.default
 
         return inner
+
+
+# HACK: this is attached outside the class definition because
+# linters/type-checkers are typically smart enough to know about,
+# contextlib.supress, but key off it's __exit__ method
+# By attaching it here, we don't have static analysis complaining
+# that code is unreachable when using Pacman and it's subclasses
+# to downgrade exceptions
+Pacman.__exit__ = Pacman._will_be__exit__  # type: ignore
 
 
 class accumulate:
@@ -225,7 +255,7 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
-            self.logger.log(self.to_level, e, exc_info=exc)
+            self.logger.log(self.to_level, str(e), exc_info=e, extra={"markdown": True})
 
 
 class suppress_after_count[T: Exception](Pacman):
@@ -234,13 +264,13 @@ class suppress_after_count[T: Exception](Pacman):
         limit: int,
         *exceptions: Type[T],
         default: bool = False,
-        supression_warning: str | None = None,
+        suppression_warning: str | None = None,
         logger: logging.Logger = logger,
     ):
         super().__init__(*exceptions, default=default)
         self.limit = limit
         self.counter = 0
-        self.supression_warning = supression_warning
+        self.supression_warning = suppression_warning
         self.logger = logger
 
     def nom_nom_nom(self, exc: T, original_exinfo):

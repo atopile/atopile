@@ -2,16 +2,14 @@
 
 name: Wheels
 
-
 on:
   workflow_dispatch:
   pull_request:
   push:
     branches:
-     - main
+      - main
   release:
     types:
-  #    - created
       - published
 
 env:
@@ -94,17 +92,13 @@ jobs:
     name: Upload if release
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: pypi
     permissions:
       id-token: write
       attestations: write
 
     steps:
-    - uses: actions/setup-python@v5
-      with:
-        python-version-file: 'pyproject.toml'
-
     - uses: actions/download-artifact@v4
       with:
         pattern: cibw-*
@@ -116,6 +110,16 @@ jobs:
       with:
         subject-path: "dist/*"
 
-    - uses: pypa/gh-action-pypi-publish@release/v1
+    - name: Publish to TestPyPI
+      if: github.event_name != 'release'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        skip-existing: true
+        attestations: false
+
+    - name: Publish to PyPI
+      if: github.event_name == 'release' && github.event.action == 'published'
+      uses: pypa/gh-action-pypi-publish@release/v1
       with:
         attestations: true

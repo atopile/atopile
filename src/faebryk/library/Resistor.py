@@ -19,6 +19,8 @@ class Resistor(Module):
         F.has_designator_prefix.Prefix.R
     )
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Resistor)
+
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(*self.unnamed)
@@ -40,7 +42,7 @@ class Resistor(Module):
         # def do_replace():
         #     self.resistance.constrain_subset(0.0 * P.ohm)
         #     self.unnamed[0].connect(self.unnamed[1])
-        #     self.add(has_part_picked_remove())
+        #     self.add(F.has_part_removed())
         #
         # self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
         #     lambda: do_replace(),

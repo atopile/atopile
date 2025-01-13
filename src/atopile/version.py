@@ -5,14 +5,15 @@ Tools to compare semantic versions using npm style version specifiers.
 import importlib.metadata
 import logging
 
+import requests
 from semver import Version
 
 from atopile import errors
 
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
 
 DISTRIBUTION_NAME = "atopile"
+UPGRADE_DOCS_URL = "https://atopile.io/#installation"
 
 
 class VersionMismatchError(errors.UserException):
@@ -68,6 +69,23 @@ def get_installed_atopile_version() -> Version:
     ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
     semver = parse(ap_version_str)
     return semver
+
+
+def get_latest_atopile_version() -> Version | None:
+    """
+    Get the latest atopile version
+    """
+    try:
+        response = requests.get(
+            f"https://pypi.org/pypi/{DISTRIBUTION_NAME}/json", timeout=0.1
+        )
+        response.raise_for_status()
+        version_str = response.json()["info"]["version"]
+    except (KeyError, requests.exceptions.RequestException):
+        log.debug("Failed to get latest version")
+        return None
+
+    return parse(version_str)
 
 
 def match_compiler_compatability(built_with_version: Version) -> bool:
@@ -166,3 +184,27 @@ def match(spec: str, version: Version) -> bool:
 
     else:
         raise ValueError(f"Invalid operator: {operator}")
+
+
+def check_for_update() -> None:
+    installed_version = get_installed_atopile_version()
+    latest_version = get_latest_atopile_version()
+    installed_version_clean = clean_version(installed_version)
+
+    if latest_version is None:
+        return
+
+    if installed_version < latest_version:
+        log.warning(
+            "Your version of atopile (%s) is out-of-date. Latest version: %s.\n"
+            "You can find upgrade instructions here: %s",
+            installed_version_clean,
+            latest_version,
+            UPGRADE_DOCS_URL,
+        )
+    elif installed_version > latest_version:
+        log.info(
+            "Current version (%s) is newer than latest (%s)",
+            installed_version_clean,
+            latest_version,
+        )

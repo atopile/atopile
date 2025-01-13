@@ -12,3 +12,5 @@ logger = logging.getLogger(__name__)
 
 class TVS(F.Diode):
     reverse_breakdown_voltage = L.p_field(units=P.V)
+
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.TVS)

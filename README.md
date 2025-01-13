@@ -85,19 +85,6 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
-Generate a **block diagram** from code
-<h1 align="center">
-    <picture>
-    <img alt="Schematics example" src="docs/assets/images/block_diagram_example.png" style="width: 80%;">
-    </picture>
-</h1>
-
-Produce **schematics** for documentation
-<h1 align="center">
-    <picture>
-    <img alt="Schematics example" src="docs/assets/images/schematic_example.png" style="width: 80%;">
-    </picture>
-</h1>
 
 ### Discover Full Projects
 

@@ -5,7 +5,6 @@ import pytest
 from faebryk.core.node import Node
 from faebryk.exporters.netlist.graph import (
     _conflicts,
-    _lowest_common_ancestor,
     _NetName,
 )
 from faebryk.library import Net as F
@@ -62,34 +61,6 @@ def node_hierarchy():
             "grandchild2": grandchild2,
         },
     )
-
-
-def test_lowest_common_ancestor_empty():
-    assert _lowest_common_ancestor([]) is None
-
-
-def test_lowest_common_ancestor_single_node(node_hierarchy):
-    result = _lowest_common_ancestor([node_hierarchy.child1])
-    assert result == (node_hierarchy.child1, "child1")
-
-
-def test_lowest_common_ancestor_common_parent(node_hierarchy):
-    result = _lowest_common_ancestor([node_hierarchy.child1, node_hierarchy.child2])
-    assert result == (node_hierarchy.root, "root")
-
-
-def test_lowest_common_ancestor_different_depths(node_hierarchy):
-    result = _lowest_common_ancestor(
-        [node_hierarchy.grandchild1, node_hierarchy.child2]
-    )
-    assert result == (node_hierarchy.root, "root")
-
-
-def test_lowest_common_ancestor_same_branch(node_hierarchy):
-    result = _lowest_common_ancestor(
-        [node_hierarchy.grandchild1, node_hierarchy.child1]
-    )
-    assert result == (node_hierarchy.child1, "child1")
 
 
 @pytest.fixture

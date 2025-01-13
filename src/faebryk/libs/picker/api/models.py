@@ -12,30 +12,14 @@ from dataclasses_json import dataclass_json
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.picker.picker import DescriptiveProperties, has_part_picked_defined
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Serializable, SerializableJSONEncoder
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass_json
-@dataclass(frozen=True)
-class PackageCandidate:
-    package: str
-
-
-@dataclass_json
-@dataclass(frozen=True, kw_only=True)
-class BaseParams(Serializable):
-    package_candidates: frozenset[PackageCandidate]
-    qty: int
-    endpoint: str | None = None
-
-    def serialize(self) -> dict:
-        return self.to_dict()  # type: ignore
 
 
 @dataclass(frozen=True)
@@ -51,6 +35,17 @@ def SerializableField():
     return field(
         metadata=dataclass_json_config(encoder=SerializableJSONEncoder().default)
     )
+
+
+@dataclass_json
+@dataclass(frozen=True, kw_only=True)
+class BaseParams(Serializable):
+    package: ApiParamT = SerializableField()
+    qty: int
+    endpoint: str | None = None
+
+    def serialize(self) -> dict:
+        return self.to_dict()  # type: ignore
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -124,16 +119,33 @@ class MOSFETParams(BaseParams):
     on_resistance: ApiParamT = SerializableField()
 
 
+@dataclass_json
 @dataclass(frozen=True)
-class LCSCParams:
+class LCSCParams(Serializable):
     lcsc: int
+    quantity: int
+
+    def serialize(self) -> dict:
+        return self.to_dict()  # type: ignore
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "LCSCParams":
+        return cls(**data)
 
 
+@dataclass_json
 @dataclass(frozen=True)
-class ManufacturerPartParams:
+class ManufacturerPartParams(Serializable):
     manufacturer_name: str
-    mfr: str
-    qty: int
+    part_number: str
+    quantity: int
+
+    def serialize(self) -> dict:
+        return self.to_dict()  # type: ignore
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "ManufacturerPartParams":
+        return cls(**data)
 
 
 @dataclass_json
@@ -222,9 +234,17 @@ class Component:
             )
         )
 
-        module.add(has_part_picked_defined(LCSC_Part(self.lcsc_display)))
+        module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
 
         for name, literal in self.attribute_literals.items():
+            if not hasattr(module, name):
+                with downgrade(UserException):
+                    raise UserException(
+                        f"{module} does not have attribute {name}",
+                        title="Attribute not found",
+                    )
+                continue
+
             p = getattr(module, name)
             assert isinstance(p, Parameter)
             if literal is None:

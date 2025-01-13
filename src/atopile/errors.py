@@ -1,13 +1,18 @@
 from pathlib import Path
-from typing import Sequence
+from typing import TYPE_CHECKING, Sequence
 
 from antlr4 import ParserRuleContext
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
+from rich.highlighter import ReprHighlighter
+from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
 from atopile.parse_utils import PygmentsLexerShim, get_src_info_from_ctx
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
+
+if TYPE_CHECKING:
+    from faebryk.libs.picker.picker import PickError
 
 
 def _render_ctx(ctx: ParserRuleContext) -> list[ConsoleRenderable]:
@@ -50,25 +55,27 @@ class _BaseUserException(_BaseBaseUserException):
         *args,
         origin: ParserRuleContext | None = None,
         traceback: Sequence[ParserRuleContext | None] | None = None,
+        markdown: bool = True,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
         self.origin = origin
         self.traceback = traceback
+        self.markdown = markdown
 
     @classmethod
-    def from_ctx(
-        cls,
+    def from_ctx[T](
+        cls: type[T],
         origin: ParserRuleContext | None,
         message: str,
         *args,
         traceback: Sequence[ParserRuleContext | None] | None = None,
         **kwargs,
-    ) -> "_BaseUserException":
+    ) -> T:
         """Create an error from a context."""
 
-        self = cls(message, *args, origin=origin, traceback=traceback, **kwargs)
-        return self
+        instance = cls(message, *args, origin=origin, traceback=traceback, **kwargs)
+        return instance
 
     def get_frozen(self) -> tuple:
         if self.origin:
@@ -81,7 +88,11 @@ class _BaseUserException(_BaseBaseUserException):
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
-        renderables += [Text(self.message)]
+        renderables += [
+            Markdown(self.message)
+            if self.markdown
+            else ReprHighlighter()(Text(self.message))
+        ]
 
         for ctx in self.traceback or []:
             if ctx is not None:
@@ -197,4 +208,39 @@ class UserPythonModuleError(UserException):
 class UserPythonConstructionError(UserPythonModuleError):
     """
     Raised when a Python module couldn't be constructed.
+    """
+
+
+class UserAssertionError(UserException):
+    """
+    Raised when an assertion fails.
+    """
+
+
+class UserPickError(UserException):
+    """
+    Raised when there's an error in the picker.
+    """
+
+    @classmethod
+    def from_pick_error(cls, ex: "PickError") -> "UserPickError":
+        from atopile.front_end import from_dsl
+
+        if origin_t := ex.module.try_get_trait(from_dsl):
+            origin = origin_t.src_ctx
+        else:
+            origin = None
+
+        return cls.from_ctx(origin, ex.message)
+
+
+class UserActionWithoutEffectError(UserException):
+    """
+    Raised when an action is performed but has no effect.
+    """
+
+
+class UserAlreadyExistsError(UserException):
+    """
+    Raised when something already exists.
     """

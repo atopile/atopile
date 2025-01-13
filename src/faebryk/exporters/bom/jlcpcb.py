@@ -112,7 +112,7 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
             F.has_designator,
         )
     ):
-        logger.warning(f"Missing fields on component {cmp}")
+        logger.warning(f"Missing fields on component '{cmp}'")
         return
 
     properties = cmp.get_trait(F.has_descriptive_properties).get_properties()
@@ -126,7 +126,7 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
     designator = cmp.get_trait(F.has_designator).get_designator()
 
     if not footprint.has_trait(F.has_kicad_footprint):
-        logger.warning(f"Missing kicad footprint on component {cmp}")
+        logger.warning(f"Missing kicad footprint on component '{cmp}'")
         return
 
     if "LCSC" not in properties:

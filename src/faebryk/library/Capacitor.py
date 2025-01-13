@@ -46,6 +46,8 @@ class Capacitor(Module):
         F.has_designator_prefix.Prefix.C
     )
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Capacitor)
+
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(*self.unnamed)
@@ -72,4 +74,4 @@ class Capacitor(Module):
             self.capacitance.constrain_subset(capacitance)
 
         if footprint is not None:
-            self.attach_to_footprint.add(F.has_package_requirement(footprint))
+            self.add(F.has_package(footprint))

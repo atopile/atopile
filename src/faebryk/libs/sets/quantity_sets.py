@@ -22,6 +22,7 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     cast_assert,
     not_none,
+    once,
     operator_type_check,
     round_str,
 )
@@ -178,10 +179,12 @@ class Quantity_Interval(Quantity_Set):
         return center, delta  # type: ignore
 
     @property
+    @once
     def min_elem(self) -> Quantity:
         return self.base_to_units(self._interval.min_elem)
 
     @property
+    @once
     def max_elem(self) -> Quantity:
         return self.base_to_units(self._interval.max_elem)
 
@@ -315,6 +318,7 @@ class Quantity_Interval(Quantity_Set):
     def __and__(self, other: "Quantity_Interval"):
         return self.op_intersect_interval(other)
 
+    @once
     def is_single_element(self) -> bool:
         return self.min_elem == self.max_elem  # type: ignore #TODO
 
@@ -403,12 +407,14 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self._intervals.is_empty()
 
     @property
+    @once
     def min_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have min element")
         return self.base_to_units(self._intervals.min_elem)
 
     @property
+    @once
     def max_elem(self) -> Quantity:
         if self.is_empty():
             raise ValueError("empty interval cannot have max element")
@@ -533,12 +539,15 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return self._intervals.__contains__(item)
         return False
 
+    @once
     def __hash__(self) -> int:
         return hash((self._intervals, self.interval_units))
 
+    @once
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self})"
 
+    @once
     def __str__(self) -> str:
         def _format_interval(r: Numeric_Interval[NumericT]) -> str:
             if r._min == r._max:
@@ -602,13 +611,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self._intervals == value_q._intervals
 
     def __add__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_add_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_add_intervals(other_qty)
 
     def __radd__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self + other
 
     def __sub__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_subtract_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_subtract_intervals(other_qty)
 
     def __rsub__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return -self + other
@@ -617,13 +634,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_negate()
 
     def __mul__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_mul_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_mul_intervals(other_qty)
 
     def __rmul__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self * other
 
     def __truediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_div_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_div_intervals(other_qty)
 
     def __rtruediv__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return self.op_invert() * Quantity_Interval_Disjoint.from_value(other)
@@ -632,13 +657,21 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return self.op_pow_intervals(Quantity_Interval_Disjoint.from_value(other))
 
     def __and__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_intersect_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_intersect_intervals(other_qty)
 
     def __rand__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) & self
 
     def __or__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
-        return self.op_union_intervals(Quantity_Interval_Disjoint.from_value(other))
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_union_intervals(other_qty)
 
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) | self
@@ -655,6 +688,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             raise ValueError("incompatible units")
         return self._intervals <= other_q._intervals
 
+    @once
     def is_single_element(self) -> bool:
         if self.is_empty():
             return False

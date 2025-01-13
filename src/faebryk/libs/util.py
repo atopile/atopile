@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import select
+import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -31,6 +33,7 @@ from typing import (
     Any,
     Callable,
     Concatenate,
+    Container,
     Generator,
     Hashable,
     Iterable,
@@ -143,6 +146,9 @@ class KeyErrorAmbiguous[T](KeyError):
     def __init__(self, duplicates: list[T], *args: object) -> None:
         super().__init__(*args)
         self.duplicates = duplicates
+
+    def __str__(self):
+        return f"KeyErrorAmbiguous: {self.duplicates}"
 
 
 def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
@@ -919,7 +925,9 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         super().__init__(name, default, descr)
 
     def _convert(self, raw_val: str) -> int:
-        return int(raw_val)
+        if raw_val.startswith("0x"):
+            return int(raw_val, 16)
+        return int(float(raw_val))
 
     def __int__(self) -> int:
         return self.get()
@@ -1070,6 +1078,11 @@ def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
+    # short-cut so we don't end up with a bunch of useless warnings
+    # when just checking for debugpy in the import statement
+    if "debugpy" not in sys.modules:
+        return False
+
     try:
         import debugpy
 
@@ -1354,9 +1367,8 @@ def ind[T: str | list[str]](lines: T) -> T:
 
 def run_live(
     *args,
-    logger: logging.Logger = logger,
-    stdout_level: int | None = logging.DEBUG,
-    stderr_level: int | None = logging.ERROR,
+    stdout: Callable[[str], Any] = logger.debug,
+    stderr: Callable[[str], Any] = logger.error,
     **kwargs,
 ) -> tuple[str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1372,7 +1384,7 @@ def run_live(
 
     # Set up file descriptors to monitor
     reads = [process.stdout, process.stderr]
-    stdout = []
+    stdout_lines = []
     while reads and process.poll() is None:
         # Wait for output on either stream
         readable, _, _ = select.select(reads, [], [])
@@ -1384,12 +1396,12 @@ def run_live(
                 continue
 
             if stream == process.stdout:
-                stdout.append(line)
-                if stdout_level is not None:
-                    logger.log(stdout_level, line.rstrip())
+                stdout_lines.append(line)
+                if stdout:
+                    stdout(line.rstrip())
             else:
-                if stderr_level is not None:
-                    logger.log(stderr_level, line.rstrip())
+                if stderr:
+                    stderr(line.rstrip())
 
     # Ensure the process has finished
     process.wait()
@@ -1397,10 +1409,10 @@ def run_live(
     # Get return code and check for errors
     if process.returncode != 0:
         raise subprocess.CalledProcessError(
-            process.returncode, args[0], "".join(stdout)
+            process.returncode, args[0], "".join(stdout_lines)
         )
 
-    return "\n".join(stdout), process
+    return "\n".join(stdout_lines), process
 
 
 @contextmanager
@@ -1552,10 +1564,13 @@ def hash_string(string: str) -> str:
 
 
 def get_module_from_path(
-    file_path: os.PathLike, attr: str | None = None
+    file_path: os.PathLike, attr: str | None = None, allow_ambiguous: bool = False
 ) -> ModuleType | None:
     """
     Return a module based on a file path if already imported, or return None.
+
+    If allow_ambiguous is True, and there are multiple modules with the same file path,
+    return the first one.
     """
     sanitized_file_path = Path(file_path).expanduser().resolve().absolute()
 
@@ -1570,6 +1585,11 @@ def get_module_from_path(
         module = find(sys.modules.values(), _needle)
     except KeyErrorNotFound:
         return None
+    except KeyErrorAmbiguous as e:
+        if allow_ambiguous:
+            module = e.duplicates[0]
+        else:
+            raise
 
     if attr is None:
         return module
@@ -1606,7 +1626,7 @@ def import_from_path(
             submodule_search_locations=submodule_search_locations,
         )
         if spec is None:
-            raise ImportError(path=file_path)
+            raise ImportError(path=str(file_path))
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
@@ -1780,3 +1800,45 @@ def indented_container(
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}}}"
+
+
+def robustly_rm_dir(path: os.PathLike) -> None:
+    """Remove a directory and all its contents."""
+
+    path = Path(path)
+
+    def remove_readonly(func, path, excinfo):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(path, onexc=remove_readonly)
+
+
+def yield_missing(existing: Container, candidates: Iterable | None = None):
+    if candidates is None:
+        candidates = range(10000)  # Prevent counting to infinity by default
+    for c in candidates:
+        if c not in existing:
+            yield c
+
+
+def try_relative_to(
+    target: os.PathLike, root: os.PathLike | None = None, walk_up: bool = False
+) -> Path:
+    target = Path(target)
+    root = Path(root) if root is not None else Path.cwd()
+    try:
+        return target.relative_to(root, walk_up=walk_up)
+    except FileNotFoundError:
+        return target
+
+
+def repo_root() -> Path:
+    repo_root = Path(__file__)
+    while not (repo_root / ".git").exists():
+        if parent := repo_root.parent:
+            repo_root = parent
+        else:
+            raise FileNotFoundError("Could not find repo root")
+    else:
+        return repo_root

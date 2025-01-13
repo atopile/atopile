@@ -2,6 +2,10 @@ name: pytest
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   pytest:
@@ -34,6 +38,8 @@ jobs:
       continue-on-error: true
       run: |
         uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow and not regression" --timeout=300
+      env:
+        COLUMNS: 150  # rich console width will be pulled from this
 
     - name: Upload all test logs
       if: steps.pytest.outcome == 'failure'

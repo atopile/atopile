@@ -74,7 +74,8 @@ def compile_and_load():
                 "-DPython_EXECUTABLE=" + sys.executable,
                 *other_flags,
             ],
-            logger=logger,
+            stdout=logger.debug,
+            stderr=logger.error,
         )
         run_live(
             [
@@ -84,7 +85,8 @@ def compile_and_load():
                 "--",
                 "-j",
             ],
-            logger=logger,
+            stdout=logger.debug,
+            stderr=logger.error,
         )
 
     if not _build_dir.exists():
@@ -112,7 +114,8 @@ def compile_and_load():
         )
         run_live(
             [sys.executable, "-m", "ruff", "check", "--fix", pyi_out],
-            logger=logger,
+            stdout=logger.debug,
+            stderr=logger.error,
         )
 
 

@@ -36,7 +36,9 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
     else:
         with contextlib.suppress(Exception):
             telemetry.telemetry_data.crash += 1
-        logger.exception("Uncaught compiler exception", exc_info=exc_value)
+        logger.exception(
+            "Uncaught compiler exception", exc_info=(exc_type, exc_value, exc_traceback)
+        )
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -50,7 +52,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
 
         rich.print(
             "\n\nUnfortunately errors ^^^ stopped the build. "
-            "If you need a hand jump on [#9656ce]Discord! https://discord.gg/mjtxARsr9V[/] :wave:"  # noqa: E501  # pre-existing
+            "If you need a hand jump on [#9656ce]Discord[/]! [link=https://discord.gg/mjtxARsr9V]https://discord.gg/mjtxARsr9V[/] :wave:"  # noqa: E501  # pre-existing
         )
         sys.exit(1)
 

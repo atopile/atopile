@@ -23,6 +23,13 @@ logger = logging.getLogger(__name__)
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
+# Release dates for reference:
+# KiCad 8.0.0 - January 31, 2024
+# KiCad 7.0.0 - March 1, 2023
+# KiCad 6.0.0 - December 15, 2021
+# KiCad 5.1.0 - May 22, 2019
+# KiCad 5.0.0 - July 21, 2018
+
 KICAD_PCB_VERSION = 20240108
 
 
@@ -550,6 +557,7 @@ class C_fp_text:
     layer: C_text_layer
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_effects
+    unlocked: bool = False
 
 
 @dataclass(kw_only=True)
@@ -720,6 +728,9 @@ class C_kicad_pcb_file(SEXP_File):
             class E_type(SymEnum):
                 signal = auto()
                 user = auto()
+                mixed = auto()
+                jumper = auto()
+                power = auto()
 
             number: int = field(**sexp_field(positional=True))
             name: str = field(**sexp_field(positional=True))
@@ -879,6 +890,9 @@ class C_kicad_pcb_file(SEXP_File):
 
             @dataclass(kw_only=True)
             class C_fill:
+                class E_yes(SymEnum):
+                    yes = "yes"
+
                 class E_mode(SymEnum):
                     hatch = auto()
 
@@ -893,7 +907,9 @@ class C_kicad_pcb_file(SEXP_File):
                     do_not_remove = 1
                     below_area_limit = 2
 
-                enable: bool = field(**sexp_field(positional=True), default=False)
+                enable: Optional[E_yes] = field(
+                    **sexp_field(positional=True), default=None
+                )
                 mode: Optional[E_mode] = None
                 hatch_thickness: Optional[float] = None
                 hatch_gap: Optional[float] = None

@@ -2,17 +2,19 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import re
 from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Generator, Iterable
+from typing import Generator, Iterable, Mapping
 
 import faebryk.library._F as F
+from atopile.errors import UserException
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
-from faebryk.exporters.netlist.netlist import T2Netlist
+from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
 from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, try_or
 
@@ -20,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class can_represent_kicad_footprint(F.Footprint.TraitT):
-    kicad_footprint = T2Netlist.Component
+    kicad_footprint = FBRKNetlist.Component
 
     @abstractmethod
     def get_name_and_value(self) -> tuple[str, str]: ...
@@ -127,7 +129,7 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets_and_kicad_info(G: Graph):
+def attach_nets_and_kicad_info(G: Graph) -> set[F.Net]:
     # group comps & fps
     node_fps = {
         n: t.get_footprint()
@@ -154,7 +156,7 @@ def attach_nets_and_kicad_info(G: Graph):
     ]
     nets = add_or_get_nets(*mifs)
 
-    generate_net_names(list(nets))
+    return nets
 
 
 @dataclass
@@ -176,59 +178,64 @@ class _NetName:
         )
 
 
-def _lowest_common_ancestor(nodes: Iterable[L.Node]) -> tuple[L.Node, str] | None:
-    """
-    Finds the deepest common ancestor of the given nodes.
-
-    Args:
-        nodes: Iterable of Node objects to find common ancestor for
-
-    Returns:
-        Tuple of (node, name) for the deepest common ancestor,
-        or None if no common ancestor exists
-    """
-    nodes = list(nodes)  # Convert iterable to list to ensure multiple iterations
-    if not nodes:
-        return None
-
-    # Get hierarchies for all nodes
-    hierarchies = [list(n.get_hierarchy()) for n in nodes]
-    min_length = min(len(h) for h in hierarchies)
-
-    # Find the last matching ancestor
-    last_match = None
-    for i in range(min_length):
-        ref_node, ref_name = hierarchies[0][i]
-        if any(h[i][0] is not ref_node for h in hierarchies[1:]):
-            break
-        last_match = (ref_node, ref_name)
-
-    return last_match
-
-
-def _conflicts(names: dict[F.Net, _NetName]) -> Generator[Iterable[F.Net], None, None]:
+def _conflicts(
+    names: Mapping[F.Net, _NetName],
+) -> Generator[Iterable[F.Net], None, None]:
     for items in groupby(names.items(), lambda it: it[1].name).values():
         if len(items) > 1:
             yield [net for net, _ in items]
 
 
-def _shit_name(name: str) -> bool:
-    if name in {"p1", "p2"}:
-        return True
+def _name_shittiness(name: str | None) -> float:
+    """Caesar says 👎"""
 
-    if "unnamed" in name:
-        return True
+    # These are completely shit names that
+    # have no business existing
+    if name is None:
+        return 0
 
-    return False
+    if name == "net":
+        # By the time we're here, we have a bunch
+        # of pads with the name net attached
+        return 0
+
+    if name == "":
+        return 0
+
+    if name.startswith("unnamed"):
+        return 0
+
+    if re.match(r"^(_\d+|p\d+)$", name):
+        return 0
+
+    # Here are some shitty patterns, that are
+    # fine as a backup, but should be avoided
+
+    # Anything that starts with an underscore
+    # is probably a temporary name
+    if name.startswith("_"):
+        return 0.2
+
+    # "hv" is common from power interfaces, but
+    # if there's something else available, prefer that
+    if name == "hv":
+        return 0.3
+
+    # Anything with a trailing number is
+    # generally less interesting
+    if re.match(r".*\d+$", name):
+        return 0.5
+
+    return 1
 
 
-def generate_net_names(nets: list[F.Net]) -> None:
+def attach_net_names(nets: Iterable[F.Net]) -> None:
     """
     Generate good net names, assuming that we're passed all the nets in a design
     """
 
     # Ignore nets with names already
-    nets = filter(lambda n: not n.has_trait(F.has_overriden_name), nets)
+    unnamed_nets = [n for n in nets if not n.has_trait(F.has_overriden_name)]
 
     names = FuncDict[F.Net, _NetName]()
 
@@ -236,35 +243,74 @@ def generate_net_names(nets: list[F.Net]) -> None:
     def _decay(depth: int) -> float:
         return 1 / (depth + 1)
 
-    for net in nets:
-        name_candidates = defaultdict(float)
+    # FIXME: overriden names will be modified if multiple nets are in conflict
+    # FIXME: the errors for this deserve vast improvement. Attaching an origin trait
+    # to has_net_name is a start, but we need a generic way to raise those as
+    # well-formed errors
+    for net in unnamed_nets:
+        net_required_names: set[str] = set()
+        net_suggested_names: list[tuple[str, int]] = []
+        implicit_name_candidates: Mapping[str, float] = defaultdict(float)
+        case_insensitive_map: Mapping[str, str] = {}
+
         for mif in net.get_connected_interfaces():
+            # If there's net info, use it
+            depth = len(mif.get_hierarchy())
+
+            if t := mif.try_get_trait(F.has_net_name):
+                if t.level == F.has_net_name.Level.EXPECTED:
+                    net_required_names.add(t.name)
+                elif t.level == F.has_net_name.Level.SUGGESTED:
+                    net_suggested_names.append((t.name, len(mif.get_hierarchy())))
+                continue
+
+            # Rate implicit names
             # lower case so we are not case sensitive
             try:
-                name = mif.get_name().lower()
+                name = mif.get_name()
             except NodeNoParent:
                 # Skip no names
                 continue
 
-            if _shit_name(name):
-                # Skip ranking shitty names
-                continue
+            lower_name = name.lower()
+            case_insensitive_map[lower_name] = name
 
-            depth = len(mif.get_hierarchy())
             if mif.get_parent_of_type(L.ModuleInterface):
                 # Give interfaces on the same level a fighting chance
                 depth -= 1
 
-            name_candidates[name] += _decay(depth)
+            implicit_name_candidates[case_insensitive_map[lower_name]] += _decay(
+                depth
+            ) * _name_shittiness(lower_name)
 
+        # Check required names
+        if net_required_names:
+            if len(set(net_required_names)) > 1:
+                raise UserException(
+                    f"Multiple conflicting required net names: {net_required_names}"
+                )
+            net.add(F.has_overriden_name_defined(net_required_names.pop()))
+            continue
+
+        # Initialize the net name for the remaining processing
         names[net] = _NetName()
-        if name_candidates:
-            names[net].base_name = max(name_candidates, key=name_candidates.get)
 
-    # Resolve as many conflict as possible by prefixing on the lowest common node's full name # noqa: E501  # pre-existing
+        if net_suggested_names:
+            names[net].base_name = min(net_suggested_names, key=lambda x: x[1])[0]
+
+        elif implicit_name_candidates:
+            # Type ignored on this because they typing on both max and defaultdict.get
+            # is poor. This is actually correct, and supposed to return None sometimes
+            names[net].base_name = max(
+                implicit_name_candidates,
+                key=implicit_name_candidates.get,  # type: ignore
+            )
+
+    # Resolve as many conflict as possible by prefixing on
+    # the lowest common node's full name
     for conflict_nets in _conflicts(names):
         for net in conflict_nets:
-            if lcn := _lowest_common_ancestor(net.get_connected_interfaces()):
+            if lcn := L.Node.nearest_common_ancestor(*net.get_connected_interfaces()):
                 names[net].prefix = lcn[0].get_full_name()
 
     # Resolve remaining conflicts by suffixing on a number
@@ -280,3 +326,5 @@ def generate_net_names(nets: list[F.Net]) -> None:
         else:
             name_str = name.name
         net.add(F.has_overriden_name_defined(name_str))
+
+    assert all(n.has_trait(F.has_overriden_name) for n in nets)
