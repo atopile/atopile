@@ -16,12 +16,4 @@ repos:
     rev: 0.5.18
     hooks:
       - id: uv-lock
-        name: uv-lock
-        description: "Automatically run 'uv lock' on your project dependencies"
         entry: sh -c 'uv sync --frozen && uv lock'
-        language: python
-        files: ^(uv\.lock|pyproject\.toml|uv\.toml)$
-        args: []
-        pass_filenames: false
-        additional_dependencies: []
-        minimum_pre_commit_version: "2.9.2"
