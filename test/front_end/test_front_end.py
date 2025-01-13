@@ -13,17 +13,11 @@ from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import cast_assert
-from faebryk.libs.util import repo_root as _repo_root
 
 
 @pytest.fixture
 def bob() -> Bob:
     return Bob()
-
-
-@pytest.fixture
-def repo_root() -> Path:
-    return _repo_root()
 
 
 def test_empty_module_build(bob: Bob):
