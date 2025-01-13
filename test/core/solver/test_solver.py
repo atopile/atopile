@@ -14,6 +14,7 @@ from faebryk.core.parameter import (
     Arithmetic,
     Is,
     IsSubset,
+    Max,
     Multiply,
     Not,
     Or,
@@ -24,15 +25,11 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps, Single
-from faebryk.libs.picker.api.pickers import add_api_pickers
-from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
-    has_part_picked,
     pick_module_by_params,
     pick_part_recursively,
 )
@@ -204,6 +201,34 @@ def test_alias_classes():
     # TODO actually test something
 
 
+@pytest.mark.xfail(reason="TODO reenable ge fold")
+def test_min_max_single():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(10 * P.V)
+
+
+@pytest.mark.xfail(reason="TODO")
+def test_min_max_multi():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+    p3 = Parameter(units=P.V)
+    p3.alias_is(L.Range(4 * P.V, 15 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0, p3))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(15 * P.V)
+
+
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
@@ -213,7 +238,7 @@ def test_solve_realworld():
 
 def test_solve_realworld_bigger():
     app = F.RP2040_ReferenceDesign()
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
 
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(app.get_graph())
@@ -572,6 +597,25 @@ def test_congruence_filter():
     assert result.repr_map[y1] is result.repr_map[y2]
 
 
+def test_inspect_enum_simple():
+    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+
+    A.constrain_subset(F.LED.Color.EMERALD)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == F.LED.Color.EMERALD
+
+
+def test_inspect_enum_led():
+    led = F.LED()
+
+    led.color.constrain_subset(F.LED.Color.EMERALD)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(led.color) == F.LED.Color.EMERALD
+
+
+@pytest.mark.usefixtures("setup_project_config")
 def test_simple_pick():
     led = F.LED()
 
@@ -593,8 +637,8 @@ def test_simple_pick():
         ],
     )
 
-    assert led.has_trait(has_part_picked)
-    assert led.get_trait(has_part_picked).get_part().partno == "C72043"
+    assert led.has_trait(F.has_part_picked)
+    assert led.get_trait(F.has_part_picked).get_part().partno == "C72043"
 
 
 def test_simple_negative_pick():
@@ -629,8 +673,8 @@ def test_simple_negative_pick():
         ],
     )
 
-    assert led.has_trait(has_part_picked)
-    assert led.get_trait(has_part_picked).get_part().partno == "C72041"
+    assert led.has_trait(F.has_part_picked)
+    assert led.get_trait(F.has_part_picked).get_part().partno == "C72041"
 
 
 def test_jlcpcb_pick_resistor():
@@ -638,11 +682,10 @@ def test_jlcpcb_pick_resistor():
     resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
 
     solver = DefaultSolver()
-    add_api_pickers(resistor)
     pick_part_recursively(resistor, solver)
 
-    assert resistor.has_trait(has_part_picked)
-    print(resistor.get_trait(has_part_picked).get_part())
+    assert resistor.has_trait(F.has_part_picked)
+    print(resistor.get_trait(F.has_part_picked).get_part())
 
 
 def test_jlcpcb_pick_capacitor():
@@ -651,11 +694,10 @@ def test_jlcpcb_pick_capacitor():
     capacitor.max_voltage.constrain_ge(50 * P.V)
 
     solver = DefaultSolver()
-    add_api_pickers(capacitor)
     pick_part_recursively(capacitor, solver)
 
-    assert capacitor.has_trait(has_part_picked)
-    print(capacitor.get_trait(has_part_picked).get_part())
+    assert capacitor.has_trait(F.has_part_picked)
+    print(capacitor.get_trait(F.has_part_picked).get_part())
 
 
 def test_jlcpcb_pick_led():
@@ -664,11 +706,10 @@ def test_jlcpcb_pick_led():
     led.max_current.constrain_ge(10 * P.mA)
 
     solver = DefaultSolver()
-    add_api_pickers(led)
     pick_part_recursively(led, solver)
 
-    assert led.has_trait(has_part_picked)
-    print(led.get_trait(has_part_picked).get_part())
+    assert led.has_trait(F.has_part_picked)
+    print(led.get_trait(F.has_part_picked).get_part())
 
 
 @pytest.mark.xfail(reason="Need picker backtracking")
@@ -679,12 +720,9 @@ def test_jlcpcb_pick_powered_led():
 
     solver = DefaultSolver()
     children_mods = led.get_children_modules(direct_only=False, types=(Module,))
-    for mod in children_mods:
-        # add_api_pickers(mod)
-        add_jlcpcb_pickers(mod)
 
     pick_part_recursively(led, solver)
 
-    picked_parts = [mod for mod in children_mods if mod.has_trait(has_part_picked)]
+    picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
     assert len(picked_parts) == 2
-    print([(p, p.get_trait(has_part_picked).get_part()) for p in picked_parts])
+    print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])

@@ -108,7 +108,7 @@ class RaspberryPiPico(Module):
             elif i == 15:
                 pin.connect(power_3v3.hv)
             elif i == 16:
-                pin.connect(self.base.ldo.enable.signal)
+                pin.connect(self.base.ldo.enable.get_enable_signal())
             elif i == 18:
                 pin.connect(self.base.ldo.power_in.hv)
             elif i == 19:

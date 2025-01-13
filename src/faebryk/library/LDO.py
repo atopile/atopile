@@ -59,15 +59,17 @@ class LDO(Module):
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.mA),
     )
-    enable: F.ElectricLogic
+    enable: F.EnablePin
     power_in: F.ElectricPower
     power_out = L.d_field(lambda: F.ElectricPower().make_source())
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.LDO)
+
     def __preinit__(self):
         self.max_input_voltage.constrain_ge(self.power_in.voltage)
-        self.power_out.voltage.alias_is(self.output_voltage)
+        self.power_out.voltage.constrain_subset(self.output_voltage)
 
-        self.enable.reference.connect(self.power_in)
+        self.enable.enable.reference.connect(self.power_in)
         # TODO: should be implemented differently (see below)
         # if self.output_polarity == self.OutputPolarity.NEGATIVE:
         #    self.power_in.hv.connect(self.power_out.hv)
@@ -110,9 +112,9 @@ class LDO(Module):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
                 self.power_in.hv: ["Vin", "Vi", "in"],
-                self.power_out.hv: ["Vout", "Vo", "out"],
-                self.power_in.lv: ["GND", "V-"],
-                self.enable.signal: ["EN", "Enable"],
+                self.power_out.hv: ["Vout", "Vo", "out", "output"],
+                self.power_in.lv: ["GND", "V-", "ADJ/GND"],
+                self.enable.enable.signal: ["EN", "Enable"],
             },
             accept_prefix=False,
             case_sensitive=False,

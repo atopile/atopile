@@ -8,7 +8,7 @@ import pytest
 
 from atopile import errors
 from atopile.cli.build import _init_python_app
-from atopile.cli.common import create_build_contexts
+from atopile.config import config
 
 PROJECT_DIR = Path("test/common/resources/test-project")
 
@@ -34,14 +34,11 @@ def from_project_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 )
 @pytest.mark.usefixtures("from_project_dir")
 def test_build_errors(build_name: str, expected_error):
-    build_ctxs = create_build_contexts(
-        entry=None, build=[build_name], target=[], option=[], standalone=False
-    )
+    config.project_dir = Path.cwd()
+    config.selected_builds = [build_name]
 
-    (build_ctx,) = build_ctxs
-
-    with pytest.raises(expected_error) as exc_info:
-        _init_python_app(build_ctx)
+    with pytest.raises(expected_error) as exc_info, next(config.builds):
+        _init_python_app()
 
     assert exc_info.value.__cause__ is not None
     assert isinstance(exc_info.value.__cause__, ValueError)
@@ -71,9 +68,12 @@ def test_build_error_logging(build_name: str):
     assert f'raise ValueError("{build_name}")' in process.stdout
 
     # exiting cleanly
-    assert process.stdout.strip().endswith(
-        "Unfortunately errors ^^^ stopped the build. If you need a hand jump on Discord! \nhttps://discord.gg/mjtxARsr9V 👋"  # noqa: E501  # pre-existing
+    expected_ending = (
+        "Unfortunately errors ^^^ stopped the build. If you need a"
+        " hand jump on Discord! https://discord.gg/mjtxARsr9V 👋"
     )
+    actual_ending = process.stdout.strip().replace("\n", "")
+    assert actual_ending.endswith(expected_ending)
 
     # exception groups are unwrapped
     assert "ExceptionGroup" not in process.stdout

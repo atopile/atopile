@@ -27,7 +27,7 @@ class USB2514B_ReferenceDesign(Module):
         Power switched USB2_0 interface.
         """
 
-        power_distribution_switch: F.Diodes_Incorporated_AP2552W6_7
+        power_distribution_switch: F.Diodes_Incorporated_AP2553W6_7
         usb_dfp_power_indicator: F.PoweredLED
 
         power_in: F.ElectricPower
@@ -46,8 +46,8 @@ class USB2514B_ReferenceDesign(Module):
             LVL = LayoutTypeHierarchy.Level
 
             layouts = [
-                LVL(  # Diodes Incorporated AP2552W6_7
-                    mod_type=F.Diodes_Incorporated_AP2552W6_7,
+                LVL(  # Diodes Incorporated AP2553W6_7
+                    mod_type=F.Diodes_Incorporated_AP2553W6_7,
                     layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
                 ),
                 LVL(  # PoweredLED
@@ -188,13 +188,15 @@ class USB2514B_ReferenceDesign(Module):
         #            parametrization
         # ----------------------------------------
         self.hub_controller.set_non_removable_ports(
-            F.USB2514B.NonRemovablePortConfiguration.ALL_PORTS_REMOVABLE
+            self, F.USB2514B.NonRemovablePortConfiguration.ALL_PORTS_REMOVABLE
         )
         self.hub_controller.set_configuration_source(
-            F.USB2514B.ConfigurationSource.DEFAULT
+            self,
+            F.USB2514B.ConfigurationSource.DEFAULT,
         )
         for dsf_usb in self.hub_controller.configurable_downstream_usb:
             dsf_usb.configure_usb_port(
+                owner=self,
                 enable_usb=True,
                 enable_battery_charging=True,
             )
@@ -225,18 +227,18 @@ class USB2514B_ReferenceDesign(Module):
         self.ldo_3v3.output_voltage.constrain_subset(
             L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
-        self.ldo_3v3.power_in.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.1)
-        )
-        self.ldo_3v3.power_out.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.1)
-        )
+        self.ldo_3v3.power_in.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(100 * P.nF, 0.1))
+        self.ldo_3v3.power_out.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(100 * P.nF, 0.1))
 
         # Hub controller power rails decoupling
         regulator_decoupling_caps = (
-            self.hub_controller.power_3v3_regulator.decoupled.decouple().specialize(
-                F.MultiCapacitor(2)
-            )
+            self.hub_controller.power_3v3_regulator.decoupled.decouple(
+                owner=self
+            ).specialize(F.MultiCapacitor(2))
         )
         regulator_decoupling_caps.capacitors[0].capacitance.constrain_subset(
             L.Range.from_center_rel(100 * P.nF, 0.05)
@@ -244,27 +246,27 @@ class USB2514B_ReferenceDesign(Module):
         regulator_decoupling_caps.capacitors[1].capacitance.constrain_subset(
             L.Range.from_center_rel(4.7 * P.uF, 0.05)
         )
-        self.hub_controller.power_3v3_analog.decoupled.decouple().specialize(
+        self.hub_controller.power_3v3_analog.decoupled.decouple(owner=self).specialize(
             F.MultiCapacitor(4)
         ).set_equal_capacitance_each(L.Range.from_center_rel(100 * P.nF, 0.05))
-        self.hub_controller.power_pll.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.5)
-        )
-        self.hub_controller.power_core.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.5)
-        )
-        self.hub_controller.power_io.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(100 * P.nF, 0.5)
-        )
+        self.hub_controller.power_pll.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(100 * P.nF, 0.5))
+        self.hub_controller.power_core.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(100 * P.nF, 0.5))
+        self.hub_controller.power_io.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(100 * P.nF, 0.5))
 
         # VBUS detect
         for r in self.vbus_voltage_divider.resistor:
             r.resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.01))
 
         # reset
-        self.hub_controller.reset.set_weak(on=True).resistance.constrain_subset(
-            L.Range.from_center_rel(100 * P.kohm, 0.01)
-        )
+        self.hub_controller.reset.set_weak(
+            on=True, owner=self
+        ).resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.01))
 
         # ----------------------------------------
         #              connections

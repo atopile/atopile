@@ -28,9 +28,15 @@ class CH340x(Module):
         self.gpio_power.lv.connect(self.usb.usb_if.buspower.lv)
 
         self.gpio_power.voltage.constrain_subset(L.Range(0 * P.V, 5.3 * P.V))
-        self.gpio_power.decoupled.decouple()
         self.usb.usb_if.buspower.voltage.constrain_subset(L.Range(4 * P.V, 5.3 * P.V))
 
-        self.usb.usb_if.buspower.decoupled.decouple()
-
         self.gpio_power.lv.connect(self.usb.usb_if.buspower.lv)
+
+    @L.rt_field
+    def can_be_decoupled(self):
+        class _(F.can_be_decoupled.impl()):
+            def decouple(self, owner: Module):
+                obj = self.get_obj(CH340x)
+
+                obj.gpio_power.decoupled.decouple(owner=owner)
+                obj.usb.usb_if.buspower.decoupled.decouple(owner=owner)

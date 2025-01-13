@@ -16,6 +16,7 @@ from faebryk.core.link import (
     LinkParent,
     LinkSibling,
 )
+from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
@@ -200,3 +201,71 @@ class TestGraph(unittest.TestCase):
         assert_and_reset(3)
         N112()
         assert_and_reset(2)
+
+
+def test_get_children_modules_simple():
+    class App(Module):
+        m: Module
+
+    app = App()
+
+    mods = app.get_children_modules(types=Module)
+    assert mods == {app.m}
+
+
+def test_get_children_modules_specialized():
+    class App(Module):
+        m: Module
+
+    class ModuleSpecial(Module):
+        pass
+
+    app = App()
+    special = ModuleSpecial()
+    app.m.specialize(special)
+
+    mods = app.get_children_modules(types=ModuleSpecial)
+    assert mods == {special}
+
+
+def test_get_children_modules_specialized_chain():
+    class App(Module):
+        m: Module
+
+    class ModuleSpecial(Module):
+        m: Module
+
+    app = App()
+    special = ModuleSpecial()
+    app.m.specialize(special)
+
+    special2 = ModuleSpecial()
+    special.m.specialize(special2)
+
+    mods = app.get_children_modules(types=ModuleSpecial)
+    assert mods == {special, special2}
+
+    mods_raw = app.get_children_modules(
+        types=Module, f_filter=lambda x: type(x) is Module
+    )
+    assert mods_raw == {special2.m}
+
+
+def test_get_children_modules_tree():
+    import faebryk.library._F as F
+
+    cap1 = F.Capacitor()
+    cap2 = F.Capacitor()
+    cap_1 = F.MultiCapacitor.from_capacitors(cap1, cap2)
+    cap3 = F.MultiCapacitor(4)
+    cap_2 = F.MultiCapacitor.from_capacitors(cap_1, cap3)
+
+    mods = cap_1.get_children_modules(
+        types=F.Capacitor, f_filter=lambda x: type(x) is F.Capacitor
+    )
+    assert mods == {cap1, cap2}
+
+    mods = cap_2.get_children_modules(
+        types=F.Capacitor, f_filter=lambda x: type(x) is F.Capacitor
+    )
+    assert mods == {cap1, cap2, *cap3.capacitors}

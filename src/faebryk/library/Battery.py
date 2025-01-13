@@ -23,7 +23,7 @@ class Battery(Module):
     power: F.ElectricPower
 
     def __preinit__(self) -> None:
-        self.power.voltage.alias_is(self.voltage)
+        self.power.voltage.constrain_subset(self.voltage)
 
     @L.rt_field
     def single_electric_reference(self):

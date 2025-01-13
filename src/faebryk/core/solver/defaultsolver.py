@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import time
 from typing import Any, Callable, override
 
 from faebryk.core.graph import Graph, GraphFunctions
@@ -16,9 +17,11 @@ from faebryk.core.solver.analytical import (
     compress_associative,
     convert_inequality_with_literal_to_subset,
     convert_operable_aliased_to_single_into_literal,
+    empty_set,
     fold_literals,
     merge_intersect_subsets,
     predicate_literal_deduce,
+    predicate_unconstrained_operands_deduce,
     remove_congruent_expressions,
     remove_empty_graphs,
     remove_unconstrained,
@@ -31,7 +34,7 @@ from faebryk.core.solver.canonical import (
     convert_to_canonical_literals,
     convert_to_canonical_operations,
 )
-from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     PRINT_START,
     S_LOG,
@@ -44,7 +47,7 @@ from faebryk.core.solver.utils import (
     try_extract_literal,
 )
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import times_out
+from faebryk.libs.util import groupby, times_out
 
 logger = logging.getLogger(__name__)
 
@@ -85,13 +88,15 @@ class DefaultSolver(Solver):
         # any constrained expression literal is False
         raise NotImplementedError()
 
-    @times_out(10)
+    @times_out(120)
     def phase_1_simplify_analytically(
         self,
         g: Graph,
         print_context: ParameterOperatable.ReprContext | None = None,
     ):
-        logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
+        now = time.time()
+        if LOG_PICK_SOLVE:
+            logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
 
         # TODO move into comment here
         # strategies
@@ -120,6 +125,11 @@ class DefaultSolver(Solver):
             ("Fold literals", fold_literals),
             ("Merge intersecting subsets", merge_intersect_subsets),
             ("Predicate literal deduce", predicate_literal_deduce),
+            (
+                "Predicate unconstrained operands deduce",
+                predicate_unconstrained_operands_deduce,
+            ),
+            ("Empty set", empty_set),
             ("Transitive subset", transitive_subset),
             ("Remove empty graphs", remove_empty_graphs),
         ]
@@ -129,8 +139,9 @@ class DefaultSolver(Solver):
 
         print_context_ = print_context or ParameterOperatable.ReprContext()
 
-        debug_name_mappings(print_context_, g)
-        Mutators.print_all(g, context=print_context_, type_filter=Expression)
+        if S_LOG:
+            debug_name_mappings(print_context_, g)
+            Mutators.print_all(g, context=print_context_, type_filter=Expression)
 
         def run_algo(
             graphs: list[Graph],
@@ -144,7 +155,7 @@ class DefaultSolver(Solver):
                     f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
                     f" G:{len(graphs)}"
                 )
-            mutators = Mutators(*graphs)
+            mutators = Mutators(*graphs, print_context=print_context_)
             mutators.run(algo)
             algo_repr_map, algo_graphs, algo_dirty = mutators.close()
             # TODO remove
@@ -153,13 +164,13 @@ class DefaultSolver(Solver):
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} "
                     f"G:{len(graphs)}"
                 )
-                print_context_ = mutators.debug_print(print_context_)
+                print_context_ = mutators.debug_print()
             # TODO assert all new graphs
             return algo_repr_map, algo_graphs, algo_dirty
 
         any_dirty = True
         iterno = -1
-        total_repr_map: Mutator.REPR_MAP = {}
+        total_repr_map = Mutators.ReprMap({})
         graphs = [g]
 
         # subset specific
@@ -199,10 +210,13 @@ class DefaultSolver(Solver):
 
             any_dirty = any(iteration_dirty.values())
 
-            total_repr_map = Mutators.concat_repr_maps(
-                *([total_repr_map] if total_repr_map else []),
+            total_repr_map = Mutators.create_concat_repr_map(
+                *([total_repr_map.repr_map] if iterno > 0 else []),
                 *iteration_repr_maps.values(),
             )
+
+            if not any_dirty:
+                continue
 
             # subset -------------------------------------------------------------------
             if iterno == 0:
@@ -216,14 +230,13 @@ class DefaultSolver(Solver):
 
             # check which subset literals have changed for our old paramops
             subset_dirty = False
-            total_repr_map_obj = Mutators.create_concat_repr_map(total_repr_map)
             param_ops_subset_literals = {
                 po: lit
                 for po, lit in param_ops_subset_literals.items()
-                if po in total_repr_map_obj
+                if po in total_repr_map
             }
             for po in param_ops_subset_literals:
-                new_subset_literal = total_repr_map_obj.try_get_literal(
+                new_subset_literal = total_repr_map.try_get_literal(
                     po, allow_subset=True
                 )
                 if new_subset_literal != param_ops_subset_literals[po]:
@@ -254,20 +267,21 @@ class DefaultSolver(Solver):
                 graphs = algo_graphs
                 iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
 
-            total_repr_map = Mutators.concat_repr_maps(
-                *([total_repr_map] if total_repr_map else []),
+            total_repr_map = Mutators.create_concat_repr_map(
+                total_repr_map.repr_map,
                 *iteration_repr_maps.values(),
             )
             # --------------------------------------------------------------------------
 
-        Mutators.print_all(*graphs, context=print_context_)
+        if S_LOG:
+            Mutators.print_all(*graphs, context=print_context_)
 
-        logger.info(
-            f"Phase 1 Solving: Analytical Solving done in {iterno} iterations ".ljust(
-                80, "="
+        if LOG_PICK_SOLVE:
+            logger.info(
+                f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
+                f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
-        )
-        return Mutators.create_concat_repr_map(total_repr_map), print_context_
+        return total_repr_map, print_context_
 
     @override
     def get_any_single(
@@ -301,41 +315,55 @@ class DefaultSolver(Solver):
 
     # IMPORTANT ------------------------------------------------------------------------
 
-    # Could be exponentially many
+    # TODO: Could be exponentially many
     @override
-    def inspect_known_supersets_are_few(self, value: Parameter) -> bool:
-        lit = self.inspect_get_known_supersets(value)
-        return lit.is_finite()
-
-    @override
-    def inspect_get_known_supersets(self, param: Parameter) -> P_Set:
-        g_hash = hash(param.get_graph())
-        if self.superset_cache.get(param, (None, None))[0] == g_hash:
+    def inspect_get_known_supersets(
+        self, param: Parameter, force_update: bool = False
+    ) -> P_Set:
+        all_params = GraphFunctions(param.get_graph()).nodes_of_type(
+            ParameterOperatable
+        )
+        g_hash = hash(tuple(sorted(all_params, key=id)))
+        cached = self.superset_cache.get(param, (None, None))[0]
+        if cached == g_hash or (cached is not None and not force_update):
             return self.superset_cache[param][1]
 
-        out = self._inspect_get_known_supersets(param)
+        out, repr_map = self._inspect_get_known_supersets(param)
         self.superset_cache[param] = g_hash, out
+
+        if repr_map:
+            for p in all_params:
+                if not isinstance(p, Parameter):
+                    continue
+                lit = repr_map.try_get_literal(p, allow_subset=True)
+                if lit is None:
+                    lit = p.domain_set()
+                self.superset_cache[p] = g_hash, P_Set.from_value(lit)
+
         return out
 
-    def _inspect_get_known_supersets(self, param: Parameter) -> P_Set:
+    def _inspect_get_known_supersets(
+        self, param: Parameter
+    ) -> tuple[P_Set, Mutators.ReprMap | None]:
         lit = param.try_get_literal()
         if lit is not None:
-            return P_Set.from_value(lit)
+            return P_Set.from_value(lit), None
 
         # run phase 1 solver
         # TODO caching
         repr_map, print_context = self.phase_1_simplify_analytically(param.get_graph())
         if param not in repr_map.repr_map:
-            logger.warning(f"Parameter {param} not in repr_map")
-            return param.domain_set()
+            if LOG_PICK_SOLVE:
+                logger.warning(f"Parameter {param} not in repr_map")
+            return param.domain_set(), repr_map
 
         # check predicates (is, subset), (ge, le covered too)
         literal = repr_map.try_get_literal(param, allow_subset=True)
 
         if literal is None:
-            return param.domain_set()
+            return param.domain_set(), repr_map
 
-        return P_Set.from_value(literal)
+        return P_Set.from_value(literal), repr_map
 
     @override
     def assert_any_predicate[ArgType](
@@ -410,11 +438,33 @@ class DefaultSolver(Solver):
                         f"NOT DEDUCED: \n    {'\n    '.join([
                             p.compact_repr(print_context_new) for p in not_deducted])}"
                     )
-                    result.unknown_predicates.append(p)
-                else:
-                    result.true_predicates.append(p)
 
-            except Contradiction:
+                    if LOG_PICK_SOLVE:
+                        debug_name_mappings(
+                            print_context, pred.get_graph(), print_out=logger.warning
+                        )
+                        not_deduced_grouped = groupby(
+                            not_deducted, key=lambda p: p.get_graph()
+                        )
+                        for g, _ in not_deduced_grouped.items():
+                            Mutators.print_all(
+                                g,
+                                context=print_context_new,
+                                print_out=logger.warning,
+                            )
+
+                    result.unknown_predicates.append(p)
+                    continue
+
+                result.true_predicates.append(p)
+                # This is allowed, but we might want to add an option to prohibit
+                # short-circuiting
+                break
+
+            except Contradiction as e:
+                if LOG_PICK_SOLVE:
+                    logger.warning(f"CONTRADICTION: {pred.compact_repr(print_context)}")
+                    logger.warning(f"CAUSE: {e}")
                 result.false_predicates.append(p)
             except TimeoutError:
                 result.unknown_predicates.append(p)
@@ -425,7 +475,7 @@ class DefaultSolver(Solver):
 
         if lock and result.true_predicates:
             if len(result.true_predicates) > 1:
-                # TODO, move this decision to caller
+                # TODO, move this decision to caller (see short-circuiting)
                 logger.warning("Multiple true predicates, locking first")
             result.true_predicates[0][0].constrain()
 

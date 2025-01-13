@@ -47,7 +47,8 @@ class SNx4LVC541A(Module):
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        self.power.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
 
     @L.rt_field
     def single_electric_reference(self):

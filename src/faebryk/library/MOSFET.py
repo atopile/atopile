@@ -33,6 +33,8 @@ class MOSFET(Module):
         F.has_designator_prefix.Prefix.Q
     )
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.MOSFET)
+
     # TODO pretty confusing
     @L.rt_field
     def can_bridge(self):

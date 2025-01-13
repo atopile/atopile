@@ -3,10 +3,9 @@
 
 import logging
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 from tempfile import mkdtemp
-from typing import Any, Callable
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,16 +13,18 @@ import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.picker.api.pickers import add_api_pickers
-from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB
-from faebryk.libs.picker.jlcpcb.pickers import add_jlcpcb_pickers
-from faebryk.libs.picker.picker import has_part_picked, pick_part_recursively
+from faebryk.libs.library import L
+from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.units import P
 from faebryk.libs.util import groupby
 
 sys.path.append(str(Path(__file__).parent))
 
+if TYPE_CHECKING:
+    from components import ComponentTestCase
+
 try:
-    from components import ComponentTestCase, components_to_test
+    from components import components_to_test
 except ImportError:
     components_to_test = []
 
@@ -36,27 +37,7 @@ def test_load_components():
     assert components_to_test, "Failed to load components"
 
 
-@dataclass
-class PickerTestCase:
-    add_pickers_fn: Callable[[Module], None]
-    check_skip: Callable[[], Any] = lambda: False
-
-
-def is_db_available():
-    return JLCPCB_DB.config.db_path.exists()
-
-
-pickers = [
-    PickerTestCase(
-        add_jlcpcb_pickers,
-        lambda: None if is_db_available() else pytest.skip("DB not available"),
-    ),
-    PickerTestCase(add_api_pickers),
-]
-
-
-def _make_id(p: PickerTestCase, m: ComponentTestCase):
-    picker_name = p.add_pickers_fn.__name__.split("_")[1]
+def _make_id(m: "ComponentTestCase"):
     if m.override_test_name:
         module_name = m.override_test_name
     else:
@@ -66,23 +47,18 @@ def _make_id(p: PickerTestCase, m: ComponentTestCase):
         if len(group_for_module) > 1:
             module_name += f"[{group_for_module.index(m)}]"
 
-    return f"{picker_name}-{module_name}"
+    return module_name
 
 
-@pytest.mark.xfail(reason="Super flaky and sometimes times out")
-@pytest.mark.slow
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
 @pytest.mark.parametrize(
-    "case,picker",
-    [(m, p) for p in pickers for m in components_to_test],
-    ids=[_make_id(p, m) for p in pickers for m in components_to_test],
+    "case",
+    components_to_test,
+    ids=[_make_id(m) for m in components_to_test],
 )
-def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
-    picker.check_skip()
-    if picker.add_pickers_fn is add_api_pickers:
-        pytest.xfail(reason="API picker not implemented for params v2")
+def test_pick_module(case: "ComponentTestCase"):
     module = case.module
-    picker.add_pickers_fn(module)
 
     pre_pick_descriptive_properties = {}
     if module.has_trait(F.has_descriptive_properties):
@@ -91,15 +67,15 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
         ).get_properties()
 
     if case.packages:
-        module.add(F.has_package_requirement(*case.packages))
+        module.add(F.has_package(*case.packages))
 
     # pick
     solver = DefaultSolver()
     pick_part_recursively(module, solver)
 
     # Check descriptive properties
-    assert module.has_trait(has_part_picked)
-    part = module.get_trait(has_part_picked).get_part()
+    assert module.has_trait(F.has_part_picked)
+    part = module.get_trait(F.has_part_picked).get_part()
     assert module.has_trait(F.has_descriptive_properties)
     properties = module.get_trait(F.has_descriptive_properties).get_properties()
 
@@ -116,9 +92,62 @@ def test_pick_module(case: ComponentTestCase, picker: PickerTestCase):
     # TODO check that part params are equal (alias_is) to module params
 
 
-@pytest.fixture(autouse=True)
-def cleanup_db():
-    # Run test first
-    yield
-    # in test atexit not triggered, thus need to close DB manually
-    JLCPCB_DB.close()
+def test_type_pick():
+    module = F.Resistor()
+
+    assert module.has_trait(F.is_pickable_by_type)
+    assert module.has_trait(F.is_pickable)
+    module.resistance.constrain_subset(L.Range.from_center_rel(100 * P.ohm, 0.1))
+
+    pick_part_recursively(module, DefaultSolver())
+
+    assert module.has_trait(F.has_part_picked)
+
+
+def test_no_pick():
+    module = Module()
+    module.add(F.has_part_removed())
+
+    pick_part_recursively(module, DefaultSolver())
+
+    assert module.has_trait(F.has_part_picked)
+    assert module.get_trait(F.has_part_picked).removed
+
+
+def test_no_pick_inherit_override_none():
+    class _CapInherit(F.Capacitor):
+        pickable = None
+
+    module = _CapInherit()
+
+    assert not module.has_trait(F.is_pickable)
+
+    pick_part_recursively(module, DefaultSolver())
+
+    assert not module.has_trait(F.has_part_picked)
+
+
+def test_no_pick_inherit_remove():
+    class _(F.Capacitor):
+        no_pick: F.has_part_removed
+
+    module = _()
+
+    pick_part_recursively(module, DefaultSolver())
+
+    assert module.has_trait(F.has_part_picked)
+    assert module.get_trait(F.has_part_picked).removed
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_skip_self_pick():
+    class _CapInherit(F.Capacitor):
+        pickable = None
+        inner: F.Capacitor
+
+    module = _CapInherit()
+
+    pick_part_recursively(module, DefaultSolver())
+
+    assert not module.has_trait(F.has_part_picked)
+    assert module.inner.has_trait(F.has_part_picked)

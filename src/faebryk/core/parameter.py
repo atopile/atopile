@@ -6,7 +6,16 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import NotImplementedType
-from typing import Any, Callable, Self, Sequence, TypeGuard, cast, override
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Self,
+    Sequence,
+    TypeGuard,
+    cast,
+    override,
+)
 
 from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
@@ -33,8 +42,12 @@ from faebryk.libs.util import (
     abstract,
     cast_assert,
     find,
+    once,
     unique,
 )
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +114,18 @@ class ParameterOperatable(Node):
 
     def operation_abs(self):
         return Abs(self)
+
+    def operation_min(self):
+        return Min(self)
+
+    def operation_max(self):
+        return Max(self)
+
+    def operation_integrate(self, variable: "Parameter"):
+        return Integrate(self, variable)
+
+    def operation_differentiate(self, variable: "Parameter"):
+        return Differentiate(self, variable)
 
     def operation_negate(self):
         return Multiply(self, quantity(-1))
@@ -304,27 +329,6 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
 
-    # should be eager, in the sense that, if the outcome is known, the callable is
-    # called immediately, without storing an expression
-    # we must force a value (at the end of solving at the least)
-    def if_then_else(
-        self,
-        if_true: Callable[[], Any],
-        if_false: Callable[[], Any],
-        preference: bool | None = None,
-    ) -> None:
-        IfThenElse(self, if_true, if_false, preference)
-
-    # def assert_true(
-    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
-    # ) -> None:
-    #     self.if_then_else(lambda: None, error, True)
-
-    # def assert_false(
-    #     self, error: Callable[[], None] = lambda: raise_(ValueError())
-    # ) -> None:
-    #     self.if_then_else(error, lambda: None, False)
-
     # TODO
     # def switch_case(
     #    self,
@@ -501,6 +505,7 @@ class Expression(ParameterOperatable):
         self.operatable_operands: set[ParameterOperatable] = {
             op for op in operands if isinstance(op, ParameterOperatable)
         }
+        self.non_operands: list[Any] = []
 
     def __preinit__(self):
         for op in self.operatable_operands:
@@ -510,6 +515,25 @@ class Expression(ParameterOperatable):
                 continue
             self.operates_on.connect(op.operated_on)
 
+    @once
+    def get_uncorrelatable_literals(self) -> list[ParameterOperatable.Literal]:
+        return [
+            lit
+            for lit in self.operands
+            # TODO we should just use the canonical lits, for now just no support
+            # for non-canonical lits
+            if not isinstance(lit, ParameterOperatable)
+            and (
+                not isinstance(lit, P_Set)
+                or not (lit.is_single_element() or lit.is_empty())
+            )
+        ]
+
+    @once
+    def get_sorted_operands(self) -> list[ParameterOperatable]:
+        return sorted(self.operands, key=hash)
+
+    @once
     def is_congruent_to(self, other: "Expression") -> bool:
         if self == other:
             return True
@@ -518,22 +542,7 @@ class Expression(ParameterOperatable):
         if len(self.operands) != len(other.operands):
             return False
 
-        def get_uncorrelatable_literals(
-            e: "Expression",
-        ) -> list[ParameterOperatable.Literal]:
-            return [
-                lit
-                for lit in e.operands
-                # TODO we should just use the canonical lits, for now just no support
-                # for non-canonical lits
-                if not isinstance(lit, ParameterOperatable)
-                and (
-                    not isinstance(lit, P_Set)
-                    or not (lit.is_single_element() or lit.is_empty())
-                )
-            ]
-
-        if get_uncorrelatable_literals(self) or get_uncorrelatable_literals(other):
+        if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
             return False
 
         if self.operands == other.operands:
@@ -542,8 +551,8 @@ class Expression(ParameterOperatable):
             # fucking genius
             # lit hash is stable
             # paramop hash only same with same id
-            left = sorted(self.operands, key=hash)
-            right = sorted(other.operands, key=hash)
+            left = self.get_sorted_operands()
+            right = other.get_sorted_operands()
             if left == right:
                 return True
 
@@ -728,6 +737,17 @@ class ConstrainableExpression(Expression):
         self.constrained = True
         return self
 
+    # should be eager, in the sense that, if the outcome is known, the callable is
+    # called immediately, without storing an expression
+    # we must force a value (at the end of solving at the least)
+    def if_then_else(
+        self,
+        if_true: Callable[[], Any],
+        if_false: Callable[[], Any],
+        preference: bool | None = None,
+    ):
+        return IfThenElse(self, if_true, if_false, preference)
+
 
 @abstract
 class Arithmetic(Expression):
@@ -882,11 +902,11 @@ class Power(Arithmetic):
         units = dimensionless
         if not base_unit.is_compatible_with(dimensionless):
             exp_val = Quantity_Interval_Disjoint.from_value(exponent)
-            if exp_val.min_elem() != exp_val.max_elem():
+            if exp_val.min_elem != exp_val.max_elem:
                 raise ValueError(
                     "exponent must be a single value for non-dimensionless base"
                 )
-            units = base_unit ** exp_val.min_elem().magnitude
+            units = base_unit**exp_val.min_elem.magnitude
         assert isinstance(units, Unit)
         self.units = units
 
@@ -995,6 +1015,62 @@ class Ceil(Arithmetic):
         return False
 
 
+class Min(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="min",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        self.units = assert_compatible_units(operands)
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Max(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="max",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, *operands):
+        super().__init__(*operands)
+        self.units = assert_compatible_units(operands)
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Integrate(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="∫",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+        # TODO units
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
+class Differentiate(Arithmetic):
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="d",
+        placement=Arithmetic.ReprStyle.Placement.PREFIX,
+    )
+
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+        # TODO units
+
+    def has_implicit_constraint(self) -> bool:
+        return False
+
+
 class Logic(ConstrainableExpression):
     def __init__(self, *operands):
         super().__init__(*operands)
@@ -1055,12 +1131,45 @@ class Implies(Logic):
 
 
 class IfThenElse(Expression):
-    def __init__(self, condition, if_true, if_false, preference: bool | None = None):
+    def __init__(
+        self,
+        condition: ConstrainableExpression,
+        if_true: Callable[[], None] | None = None,
+        if_false: Callable[[], None] | None = None,
+        preference: bool | None = None,
+    ):
         # FIXME domain
         super().__init__(None, condition)
-        self.preference = preference
-        self.if_true = if_true
-        self.if_false = if_false
+
+        # TODO a bit hacky
+        self.non_operands = [
+            if_true or (lambda: None),
+            if_false or (lambda: None),
+            preference,
+        ]
+
+        # TODO actually implement this
+        if preference is not None:
+            if preference:
+                condition.constrain()
+                if if_true:
+                    if_true()
+            else:
+                condition.operation_not().constrain()
+                if if_false:
+                    if_false()
+
+    @property
+    def if_true(self) -> Callable[[], None]:
+        return self.non_operands[0]
+
+    @property
+    def if_false(self) -> Callable[[], None]:
+        return self.non_operands[1]
+
+    @property
+    def preference(self) -> bool | None:
+        return self.non_operands[2]
 
 
 class Setic(Expression):
@@ -1173,6 +1282,16 @@ class Numbers(Domain):
 
     @override
     def unbounded(self, param: "Parameter") -> Quantity_Interval_Disjoint:
+        if self.integer:
+            raise NotImplementedError("Integer unbounded not implemented")
+        if not self.zero_allowed:
+            raise NotImplementedError("Non-zero unbounded not implemented")
+        if not self.negative:
+            return Quantity_Interval_Disjoint.from_value(
+                Quantity_Interval(
+                    min=quantity(0, param.units), max=None, units=param.units
+                )
+            )
         return Quantity_Interval_Disjoint.unbounded(param.units)
 
 
@@ -1497,6 +1616,10 @@ class Parameter(ParameterOperatable):
 
     def domain_set(self) -> P_Set:
         return self.domain.unbounded(self)
+
+    def get_last_known_deduced_superset(self, solver: "Solver") -> P_Set | None:
+        as_literal = solver.inspect_get_known_supersets(self, force_update=False)
+        return None if as_literal == self.domain_set() else as_literal
 
 
 p_field = f_field(Parameter)

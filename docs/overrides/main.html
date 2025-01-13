@@ -1,7 +1,12 @@
-{#-
-  This file was automatically generated - do not edit
--#}
 {% extends "base.html" %}
+
+{% block outdated %}
+  You're not viewing the latest version.
+  <a href="{{ '../' ~ base_url }}">
+    <strong>Click here to go to latest.</strong>
+  </a>
+{% endblock %}
+
 {% block announce %}
   For updates, star us on
   <a href="https://github.com/atopile/atopile">
@@ -23,6 +28,7 @@
       {% include ".icons/fontawesome/brands/youtube.svg" %}
     </span>
     <strong>YouTube</strong>
+  </a>
   , or join us on
   <a href="https://discord.gg/nkpC7wYRVw">
     <span class="twemoji discord">
@@ -31,9 +37,11 @@
     <strong>Discord</strong>
   </a>
 {% endblock %}
+
 {% block extrahead %}
   <link rel="stylesheet" href="{{ 'assets/stylesheets/custom.css' | url }}">
 {% endblock %}
+
 {% block scripts %}
   {{ super() }}
   <script src="{{ 'assets/javascripts/custom.129bd6ad.min.js' | url }}"></script>

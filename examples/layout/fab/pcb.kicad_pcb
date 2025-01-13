@@ -294,15 +294,15 @@
             (size 0.8 0.8)
             (layers "F.Cu" "F.Paste" "F.Mask")
             (remove_unused_layers no)
-            (net 2 "cathode")
-            (uuid "0cdc9943-2d42-4e9f-9761-7a71fafa7cea"))
+            (uuid "0cdc9943-2d42-4e9f-9761-7a71fafa7cea")
+            (net 2 "cathode"))
         (pad "2" smd rect
             (at 0.8 0 90)
             (size 0.8 0.8)
             (layers "F.Cu" "F.Paste" "F.Mask")
             (remove_unused_layers no)
-            (net 1 "hv")
-            (uuid "edd540a8-b17b-4f61-bfad-7e04aa079356"))
+            (uuid "edd540a8-b17b-4f61-bfad-7e04aa079356")
+            (net 1 "hv"))
         (model "${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes/LED0603-RD-YELLOW.wrl"
             (offset
                 (xyz 0 0 0))
@@ -431,16 +431,16 @@
             (drill 1.1999975999999999)
             (layers "*.Cu" "*.Mask")
             (remove_unused_layers no)
-            (net 3 "lv")
-            (uuid "a7ff3154-652f-4c3b-9592-62a14f8a80a3"))
+            (uuid "a7ff3154-652f-4c3b-9592-62a14f8a80a3")
+            (net 3 "lv"))
         (pad "2" thru_hole circle
             (at 10 0 0)
             (size 1.8 1.8)
             (drill 1.1999975999999999)
             (layers "*.Cu" "*.Mask")
             (remove_unused_layers no)
-            (net 1 "hv")
-            (uuid "9ac89135-e0ff-4fbd-8438-c292d576373c"))
+            (uuid "9ac89135-e0ff-4fbd-8438-c292d576373c")
+            (net 1 "hv"))
         (model "${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes/BAT-TH_BS-02-A1AJ010.wrl"
             (offset
                 (xyz -0.85 0 0))

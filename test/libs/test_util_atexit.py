@@ -3,8 +3,6 @@
 
 import unittest
 
-from faebryk.libs.picker.jlcpcb.jlcpcb import JLCPCB_DB, ComponentQuery
-
 HELLO = "Hello, World!"
 BYE = "Bye, World!"
 
@@ -18,10 +16,11 @@ def sync_stuff():
 
 
 def async_stuff():
-    JLCPCB_DB.get()
-    ComponentQuery().filter_by_category(
-        "Instrumentation/Meter", "Tester"
-    ).filter_by_lcsc_pn("92738").get()
+    # FIXME replace this
+    # JLCPCB_DB.get()
+    # ComponentQuery().filter_by_category(
+    #    "Instrumentation/Meter", "Tester"
+    # ).filter_by_lcsc_pn("92738").get()
     print("Done")
 
 
@@ -52,7 +51,7 @@ SWITCH = {
 
 
 class TestUtilAtExit(unittest.TestCase):
-    @unittest.skip("Requires DB")
+    @unittest.skip("FIXME")
     def test_configs(self):
         import subprocess
 

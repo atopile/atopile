@@ -209,3 +209,53 @@ def test_trait_impl_exception():
 
     t1 = obj.add(trait1impl())
     assert obj.get_trait(trait1impl) is t1
+
+
+def test_trait_decless_basic():
+    class T1(Trait.decless()):
+        def __init__(self, data: str) -> None:
+            super().__init__()
+            self.data = data
+
+    n = Node()
+    n.add(T1("test"))
+
+    assert n.has_trait(T1)
+    assert n.get_trait(T1).data == "test"
+
+
+def test_trait_decless_inherit():
+    class T1(Trait.decless()):
+        def __init__(self, data: str) -> None:
+            super().__init__()
+            self.data = data
+
+    class T2(T1):
+        def __init__(self, data: str, more_data: str) -> None:
+            super().__init__(data)
+            self.more_data = more_data
+
+    n = Node()
+    n.add(T2("test", "more"))
+
+    assert n.has_trait(T1)
+    assert n.get_trait(T1).data == "test"
+    assert n.has_trait(T2)
+    assert n.get_trait(T2).more_data == "more"
+
+
+def test_trait_decless_inherit_2():
+    class T1(Trait):
+        pass
+
+    class T2(T1.decless()):
+        def __init__(self, data: str) -> None:
+            super().__init__()
+            self.data = data
+
+    n = Node()
+    n.add(T2("test"))
+
+    assert n.has_trait(T1)
+    assert n.has_trait(T2)
+    assert n.get_trait(T2).data == "test"

@@ -3,14 +3,7 @@
     "typescript.tsc.autoDetect": "off",
     "python.testing.unittestEnabled": false,
     "python.testing.pytestEnabled": true,
-    "python.testing.pytestArgs": [
-        "test",
-    ],
     "python.testing.cwd": "${workspaceFolder}",
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-
-    "cSpell.words": [
-        "UNITLESS"
-    ],
     "python.analysis.typeCheckingMode": "standard"
 }

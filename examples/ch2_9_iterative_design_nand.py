@@ -18,7 +18,6 @@ import faebryk.library._F as F
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -93,7 +92,7 @@ class App(Module):
         e_out.reference.connect(power)
         e_on.reference.connect(power)
         e_off.reference.connect(power)
-        e_in.set_weak(on=False)
+        e_in.set_weak(on=False, owner=self)
         e_on.set(on=True)
         e_off.set(on=False)
 
@@ -109,6 +108,17 @@ class App(Module):
             matrix=[
                 (e, el.signal) for e, el in zip(e_switch.unnamed, el_switch.unnamed)
             ],
+        )
+        e_switch.add(
+            F.has_explicit_part.by_supplier(
+                "C318884",
+                pinmap={
+                    "1": e_switch.unnamed[0],
+                    "2": e_switch.unnamed[0],
+                    "3": e_switch.unnamed[1],
+                    "4": e_switch.unnamed[1],
+                },
+            )
         )
 
         # build graph
@@ -144,7 +154,3 @@ class App(Module):
         nand_ic.power.connect(power_source.power)
 
         self.add(nand_ic)
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)

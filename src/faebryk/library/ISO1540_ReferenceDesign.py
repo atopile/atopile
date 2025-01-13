@@ -22,9 +22,9 @@ class ISO1540_ReferenceDesign(Module):
     # ----------------------------------------
 
     def __preinit__(self):
-        self.isolator.non_iso.power.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(10 * P.uF, 0.01)
-        )
-        self.isolator.iso.power.decoupled.decouple().capacitance.constrain_subset(
-            L.Range.from_center_rel(10 * P.uF, 0.01)
-        )
+        self.isolator.non_iso.power.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(10 * P.uF, 0.01))
+        self.isolator.iso.power.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(10 * P.uF, 0.01))

@@ -19,7 +19,6 @@ from faebryk.exporters.pcb.layout.heuristic_pulls import (
 )
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.examples.pickers import add_example_pickers
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -40,10 +39,10 @@ class App(Module):
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
-        self.eeprom.power.voltage.constrain_subset(
+        self.eeprom.ic.power.voltage.constrain_subset(
             L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
-        self.eeprom.set_address(0x0)
+        self.eeprom.ic.set_address(0x0)
 
         # Layout
         Point = F.has_pcb_position.Point
@@ -82,7 +81,3 @@ class App(Module):
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self
         )
-
-    def __postinit__(self) -> None:
-        for m in self.get_children_modules(types=Module):
-            add_example_pickers(m)

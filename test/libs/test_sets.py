@@ -1,12 +1,18 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import math
 from enum import Enum, auto
 
 import pytest
 
 from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
-from faebryk.libs.sets.sets import BoolSet, EnumSet
+from faebryk.libs.sets.numeric_sets import Numeric_Interval, Numeric_Interval_Disjoint
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+)
+from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
 from faebryk.libs.units import P, Unit, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
@@ -46,17 +52,17 @@ def test_interval_unit_different():
 
 def test_set_min_elem():
     x = DiscreteSet(5, 3, 2, 4, 1)
-    assert x.min_elem() == 1
+    assert x.min_elem == 1
 
 
 def test_set_closest_elem():
     x = RangeWithGaps((5, 6), (7, 8), DiscreteSet(2, 4, 1))
-    assert x.closest_elem(0 * dimensionless) == 1
-    assert x.closest_elem(1 * dimensionless) == 1
-    assert x.closest_elem(5.1 * dimensionless) == 5.1 * dimensionless
-    assert x.closest_elem(4.9 * dimensionless) == 5 * dimensionless
-    assert x.closest_elem(4.1 * dimensionless) == 4 * dimensionless
-    assert x.closest_elem(6.9 * dimensionless) == 7 * dimensionless
+    assert x.closest_elem(quantity(0)) == 1
+    assert x.closest_elem(quantity(1)) == 1
+    assert x.closest_elem(quantity(5.1)) == 5.1
+    assert x.closest_elem(quantity(4.9)) == 5
+    assert x.closest_elem(quantity(4.1)) == 4
+    assert x.closest_elem(quantity(6.9)) == 7
 
 
 def test_set_contains():
@@ -72,7 +78,7 @@ def test_union_min_elem():
         Single(9),
         RangeWithGaps(Range(1, 2), RangeWithGaps(Range(0, 1))),
     )
-    assert x.min_elem() == 0
+    assert x.min_elem == 0
 
 
 def test_union_contains():
@@ -277,9 +283,43 @@ def test_enumset():
     y = EnumSet(E.A, E.B)
     z = x & y
 
-    assert z.enum is E
+    assert z.enum.enum is E
 
     assert E.B in z
     assert E.A not in z
 
     assert z == EnumSet(E.B)
+
+
+class _Enum(Enum):
+    A = auto()
+    B = auto()
+    C = auto()
+
+
+@pytest.mark.parametrize(
+    "input_set,expected",
+    [
+        (Numeric_Interval(-10, 20), None),
+        (Numeric_Interval(-10.5, 20.5), None),
+        (Numeric_Interval(-10.5, 20), None),
+        (Numeric_Interval(-math.inf, 50), None),
+        (
+            Numeric_Interval_Disjoint(
+                Numeric_Interval(-10, 20), Numeric_Interval(30, 40.0)
+            ),
+            None,
+        ),
+        (BoolSet(True), None),
+        (BoolSet.unbounded(), None),
+        (Quantity_Interval_Disjoint(Quantity_Interval(0 * P.V, 1 * P.V)), None),
+        (EnumSet(_Enum.A, _Enum.B), None),
+        (EnumSet.unbounded(_Enum), None),
+    ],
+)
+def test_serialize(input_set: P_Set, expected: P_Set | None):
+    if expected is None:
+        expected = input_set
+    serialized = input_set.serialize()
+    deserialized = P_Set.deserialize(serialized)
+    assert deserialized == expected

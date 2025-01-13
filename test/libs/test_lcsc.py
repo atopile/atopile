@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from tempfile import mkdtemp
 
+import pytest
+
 import faebryk.libs.picker.lcsc as lcsc
 
 """
@@ -16,6 +18,7 @@ This is especially useful while reverse engineering the easyeda translations.
 INTERACTIVE_TESTING = False
 
 
+@pytest.mark.usefixtures("setup_project_config")
 class TestLCSC(unittest.TestCase):
     def test_model_translations(self):
         test_parts = {
@@ -49,7 +52,7 @@ class TestLCSC(unittest.TestCase):
         lcsc.EXPORT_NON_EXISTING_MODELS = True
 
         for part, expected in test_parts.items():
-            ki_footprint, ki_model, ee_footprint, ee_model, ee_symbol = (
+            ki_footprint, ki_model, ee_footprint, ee_model, ee_symbol, _ = (
                 lcsc.download_easyeda_info(
                     part,
                     get_model=INTERACTIVE_TESTING,

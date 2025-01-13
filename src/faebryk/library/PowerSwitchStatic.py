@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import faebryk.library._F as F
-from faebryk.libs.picker.picker import has_part_picked_remove
 
 
 class PowerSwitchStatic(F.PowerSwitch):
@@ -11,10 +10,10 @@ class PowerSwitchStatic(F.PowerSwitch):
     This is useful when transforming an F.ElectricLogic to an F.ElectricPower
     """
 
-    picked: has_part_picked_remove
+    picked: F.has_part_removed
 
-    def __init__(self) -> None:
-        super().__init__(normally_closed=False)
+    def __init__(self, normally_closed: bool) -> None:
+        super().__init__(normally_closed=normally_closed)
 
     def __preinit__(self):
         self.power_in.connect(self.switched_power_out)

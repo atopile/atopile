@@ -10,6 +10,7 @@ from typing import (
     Callable,
     Iterable,
     Self,
+    Sequence,
     Type,
     cast,
     get_args,
@@ -26,19 +27,21 @@ from faebryk.core.graphinterface import (
 from faebryk.core.link import LinkNamedParent, LinkSibling
 from faebryk.libs.exceptions import UserException
 from faebryk.libs.util import (
+    KeyErrorAmbiguous,
     KeyErrorNotFound,
     Tree,
     cast_assert,
     find,
     in_debug_session,
     not_none,
+    once,
     post_init_decorator,
     times,
-    try_avoid_endless_recursion,
     zip_dicts_by_key,
 )
 
 if TYPE_CHECKING:
+    from faebryk.core.solver.solver import Solver
     from faebryk.core.trait import Trait, TraitImpl
 
 logger = logging.getLogger(__name__)
@@ -185,6 +188,8 @@ class Node(CNode):
     specialized_: list["Node"]
 
     _init: bool = False
+    _mro: list[type] = []
+    _mro_ids: set[int] = set()
 
     class _Skipped(Exception):
         pass
@@ -197,7 +202,7 @@ class Node(CNode):
         self,
         obj: T,
         name: str | None = None,
-        container: list | dict[str, Any] | None = None,
+        container: Sequence | dict[str, Any] | None = None,
     ) -> T:
         assert obj is not None
 
@@ -243,7 +248,10 @@ class Node(CNode):
         return obj
 
     def add_to_container[T: Node](
-        self, n: int, factory: Callable[[], T], container: list["Node"] | None = None
+        self,
+        n: int,
+        factory: Callable[[], T],
+        container: Sequence["Node"] | None = None,
     ):
         if container is None:
             container = self.runtime_anon
@@ -254,6 +262,7 @@ class Node(CNode):
         return constr
 
     @classmethod
+    @once
     def __faebryk_fields__(cls) -> tuple[dict[str, Any], dict[str, Any]]:
         def all_vars(cls):
             return {k: v for c in reversed(cls.__mro__) for k, v in vars(c).items()}
@@ -365,7 +374,7 @@ class Node(CNode):
 
         return dict(fabfields), dict(nonfabfields)
 
-    def _setup_fields(self, cls):
+    def _setup_fields(self):
         clsfields, _ = self.__faebryk_fields__()
         LL_Types = (Node, GraphInterface)
 
@@ -472,20 +481,8 @@ class Node(CNode):
         return out
 
     def _setup(self, *args, **kwargs) -> None:
-        cls = type(self)
-        # print(f"Called Node init {cls.__qualname__:<20} {'-' * 80}")
-
-        # check if accidentally added a node instance instead of field
-        node_instances = [
-            (name, f)
-            for name, f in vars(cls).items()
-            if isinstance(f, Node) and not name.startswith("_")
-        ]
-        if node_instances:
-            raise FieldError(f"Node instances not allowed: {node_instances}")
-
         # Construct Fields
-        _, _ = self._setup_fields(cls)
+        _, _ = self._setup_fields()
 
         # Call 2-stage constructors
 
@@ -518,6 +515,19 @@ class Node(CNode):
     def __init_subclass__(cls, *, init: bool = True) -> None:
         cls._init = init
         post_init_decorator(cls)
+        Node_mro = CNode.mro()
+        cls_mro = cls.mro()
+        cls._mro = cls_mro[: -len(Node_mro)]
+        cls._mro_ids = {id(c) for c in cls._mro}
+
+        # check if accidentally added a node instance instead of field
+        node_instances = [
+            (name, f)
+            for name, f in vars(cls).items()
+            if isinstance(f, Node) and not name.startswith("_")
+        ]
+        if node_instances:
+            raise FieldError(f"Node instances not allowed: {node_instances}")
 
     def _handle_add_gif(self, name: str, gif: GraphInterface):
         gif.node = self
@@ -551,18 +561,21 @@ class Node(CNode):
 
     # printing -------------------------------------------------------------------------
 
-    @try_avoid_endless_recursion
     def __str__(self) -> str:
-        return f"<{self.get_full_name(types=True)}>"
+        return self.get_full_name()
 
-    def pretty_params(self) -> str:
+    def pretty_params(self, solver: "Solver | None" = None) -> str:
         from faebryk.core.parameter import Parameter
 
         params = {
             not_none(p.get_parent())[1]: p
             for p in self.get_children(direct_only=True, types=Parameter)
         }
-        params_str = "\n".join(f"{k}: {v}" for k, v in params.items())
+        params_str = "\n".join(
+            f"{k}: {solver.inspect_get_known_supersets(v, force_update=False)
+                    if solver else v}"
+            for k, v in params.items()
+        )
 
         return params_str
 
@@ -607,6 +620,8 @@ class Node(CNode):
             and (cast(TraitImpl, impl).is_implemented() or not only_implemented),
         )
 
+        if len(out) > 1:
+            raise KeyErrorAmbiguous(duplicates=list(out))
         assert len(out) <= 1
         return cast_assert(trait, next(iter(out))) if out else None
 
@@ -620,7 +635,10 @@ class Node(CNode):
         return self._find_trait_impl(trait, only_implemented=True)
 
     def has_trait(self, trait: type["Trait | TraitImpl"]) -> bool:
-        return self.try_get_trait(trait) is not None
+        try:
+            return self.try_get_trait(trait) is not None
+        except KeyErrorAmbiguous:
+            return True
 
     def get_trait[V: "Trait | TraitImpl"](self, trait: Type[V]) -> V:
         from faebryk.core.trait import Trait, TraitNotFound
@@ -760,3 +778,31 @@ class Node(CNode):
     @staticmethod
     def with_names[N: Node](nodes: Iterable[N]) -> dict[str, N]:
         return {n.get_name(): n for n in nodes}
+
+    def __rich_repr__(self):
+        yield self.get_full_name()
+
+    __rich_repr__.angular = True
+
+    def nearest_common_ancestor(self, *others: "Node") -> tuple["Node", str] | None:
+        """
+        Finds the nearest common ancestor of the given nodes, or None if no common
+        ancestor exists
+        """
+        nodes = [self, *others]
+        if not nodes:
+            return None
+
+        # Get hierarchies for all nodes
+        hierarchies = [list(n.get_hierarchy()) for n in nodes]
+        min_length = min(len(h) for h in hierarchies)
+
+        # Find the last matching ancestor
+        last_match = None
+        for i in range(min_length):
+            ref_node, ref_name = hierarchies[0][i]
+            if any(h[i][0] is not ref_node for h in hierarchies[1:]):
+                break
+            last_match = (ref_node, ref_name)
+
+        return last_match

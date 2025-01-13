@@ -7,7 +7,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.units import P
+from faebryk.libs.units import P, Quantity
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,8 @@ class Capacitor(Module):
         F.has_designator_prefix.Prefix.C
     )
 
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Capacitor)
+
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(*self.unnamed)
@@ -58,3 +60,18 @@ class Capacitor(Module):
             S(self.max_voltage),
             S(self.temperature_coefficient),
         )
+
+    def explicit(
+        self,
+        nominal_capacitance: Quantity | None = None,
+        tolerance: float | None = None,
+        footprint: str | None = None,
+    ):
+        if nominal_capacitance is not None:
+            if tolerance is None:
+                tolerance = 0.2
+            capacitance = L.Range.from_center_rel(nominal_capacitance, tolerance)
+            self.capacitance.constrain_subset(capacitance)
+
+        if footprint is not None:
+            self.add(F.has_package(footprint))

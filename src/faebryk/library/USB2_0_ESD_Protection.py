@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import has_part_picked_remove
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -26,7 +25,7 @@ class USB2_0_ESD_Protection(Module):
     vbus_esd_protection = L.p_field(domain=L.Domains.BOOL())
     data_esd_protection = L.p_field(domain=L.Domains.BOOL())
 
-    no_pick: has_part_picked_remove
+    no_pick: F.has_part_removed
 
     # ----------------------------------------
     #                 traits
@@ -45,7 +44,8 @@ class USB2_0_ESD_Protection(Module):
         # ------------------------------------
         self.usb[0].connect(self.usb[1])
         self.usb[0].usb_if.buspower.connect(self.usb[1].usb_if.buspower)
-        self.usb[0].usb_if.buspower.decoupled.decouple()
+        # FIXME
+        # self.usb[0].usb_if.buspower.decoupled.decouple()
 
         # ------------------------------------
         #          parametrization
@@ -53,6 +53,3 @@ class USB2_0_ESD_Protection(Module):
         self.usb[0].usb_if.buspower.voltage.constrain_subset(
             L.Range(4.75 * P.V, 5.25 * P.V)
         )
-
-        # TODO remove if adding any child modules
-        has_part_picked_remove.mark_no_pick_needed(self)

@@ -17,7 +17,6 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
 from faebryk.core.node import NodeException
 from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
 from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
 
@@ -558,7 +557,7 @@ def test_regression_rp2040_usb_diffpair_full():
     app.rp2040.i2c[0].connect(rp2040_2.i2c[0])
     app.rp2040.i2c[0].connect(rp2040_3.i2c[0])
 
-    resolve_dynamic_parameters(app.get_graph())
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
 
 
 def test_connect_incompatible():

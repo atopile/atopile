@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import asyncio
 import collections.abc
 import hashlib
 import importlib.util
@@ -11,6 +10,8 @@ import json
 import logging
 import os
 import select
+import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -19,11 +20,12 @@ from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from enum import StrEnum
+from enum import Enum, StrEnum
 from functools import wraps
 from genericpath import commonprefix
 from importlib.metadata import Distribution
 from itertools import chain, pairwise
+from json import JSONEncoder
 from pathlib import Path
 from textwrap import indent
 from types import ModuleType
@@ -31,27 +33,42 @@ from typing import (
     Any,
     Callable,
     Concatenate,
+    Container,
+    Generator,
     Hashable,
     Iterable,
     Iterator,
     List,
     Optional,
+    Protocol,
     Self,
     Sequence,
     SupportsFloat,
     SupportsInt,
     Type,
     TypeGuard,
+    cast,
     get_origin,
     get_type_hints,
     overload,
+    override,
 )
 
 import psutil
-from tortoise import Model
-from tortoise.queryset import QuerySet
 
 logger = logging.getLogger(__name__)
+
+
+class Serializable(Protocol):
+    def serialize(self) -> dict: ...
+
+    @classmethod
+    def deserialize(cls, data: dict) -> Self: ...
+
+
+class SerializableJSONEncoder(JSONEncoder):
+    def default(self, o: Serializable | None):
+        return None if o is None else o.serialize()
 
 
 class lazy:
@@ -129,6 +146,9 @@ class KeyErrorAmbiguous[T](KeyError):
     def __init__(self, duplicates: list[T], *args: object) -> None:
         super().__init__(*args)
         self.duplicates = duplicates
+
+    def __str__(self):
+        return f"KeyErrorAmbiguous: {self.duplicates}"
 
 
 def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
@@ -487,6 +507,12 @@ def split_recursive_stack(
 CACHED_RECUSION_ERRORS = set()
 
 
+# TODO: now unused
+# Consider splitting into three functions
+# - A "lower_recursion_limit" contextmanager, should increase limit from current usage
+# - A "better_recursion_error" function, should improve recursion error messaging
+# - A separate composable "except" decorator which can be used to more generically
+#   return something in case of a function raising an error
 def try_avoid_endless_recursion(f: Callable[..., str]):
     import sys
 
@@ -750,7 +776,6 @@ class LazyMixin:
 
 class Lazy(LazyMixin):
     def __init_subclass__(cls) -> None:
-        print("SUBCLASS", cls)
         super().__init_subclass__()
         lazy_construct(cls)
 
@@ -900,7 +925,9 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         super().__init__(name, default, descr)
 
     def _convert(self, raw_val: str) -> int:
-        return int(raw_val)
+        if raw_val.startswith("0x"):
+            return int(raw_val, 16)
+        return int(float(raw_val))
 
     def __int__(self) -> int:
         return self.get()
@@ -909,25 +936,6 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
 def zip_dicts_by_key(*dicts):
     keys = {k for d in dicts for k in d}
     return {k: tuple(d.get(k) for d in dicts) for k in keys}
-
-
-def paginated_query[T: Model](page_size: int, q: QuerySet[T]) -> Iterator[T]:
-    page = 0
-
-    async def get_page(page: int):
-        offset = page * page_size
-        return await q.offset(offset).limit(page_size)
-
-    while True:
-        results = asyncio.run(get_page(page))
-
-        if not results:
-            break  # No more records to fetch, exit the loop
-
-        for r in results:
-            yield r
-
-        page += 1
 
 
 def factory[T, **P](con: Callable[P, T]) -> Callable[P, Callable[[], T]]:
@@ -989,18 +997,49 @@ class Tree[T](dict[T, "Tree[T]"]):
         out = ""
         next_levels = [self]
         while next_levels:
-            if any(next_levels):
-                out += indent("\n|\nv\n", " " * 12)
             for next_level in next_levels:
-                for p, _ in next_level.items():
-                    out += f"{p!r}"
+                out += " | ".join(f"{p!r}" for p in next_level.keys())
             next_levels = [
                 children
                 for next_level in next_levels
                 for _, children in next_level.items()
             ]
+            if any(next_levels):
+                out += indent("\n↓\n", " " * 12)
 
         return out
+
+    def copy(self) -> "Tree[T]":
+        return Tree({k: v.copy() for k, v in self.items()})
+
+    def flat(self) -> set[T]:
+        return {n for level in self.iter_by_depth() for n in level}
+
+    def leaves(self) -> Generator[T, None, None]:
+        for child, child_tree in self.items():
+            if not child_tree:
+                yield child
+            else:
+                yield from child_tree.leaves()
+
+    def get_subtree(self, node: T) -> "Tree[T]":
+        """
+        If not acyclic, will return the highest subtree containing the node.
+        """
+        trees = [self]
+        while trees:
+            tree = find_or(
+                trees,
+                lambda t: node in not_none(t),
+                default=None,
+                default_multi=lambda x: x[0],
+            )
+            if tree is not None:
+                return tree[node]
+
+            trees = [child for tree in trees for child in tree.values()]
+
+        raise KeyErrorNotFound(f"Node {node} not found in tree")
 
 
 # zip iterators, but if one iterators stops producing, the rest continue
@@ -1039,6 +1078,11 @@ def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
+    # short-cut so we don't end up with a bunch of useless warnings
+    # when just checking for debugpy in the import statement
+    if "debugpy" not in sys.modules:
+        return False
+
     try:
         import debugpy
 
@@ -1050,7 +1094,7 @@ def in_debug_session() -> bool:
     return False
 
 
-class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
+class FuncSet[T, H: Hashable = int](collections.abc.MutableSet[T]):
     """
     A set by pre-processing the objects with the hasher function.
     """
@@ -1089,8 +1133,7 @@ class FuncSet[T, H: Hashable](collections.abc.MutableSet[T]):
         )
 
 
-# TODO: @python3.13 ..., H: Hashable = int]
-class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
+class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
     """
     A dict by pre-processing the objects with the hasher function.
     """
@@ -1109,8 +1152,12 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
             self._keys[hashed_key].append(key)
             self._values[hashed_key].append(value)
 
-    def __contains__(self, item: T):
-        return item in self._keys[self._hasher(item)]
+    def __contains__(self, item: object):
+        try:
+            hashed = self._hasher(item)  # type: ignore
+        except TypeError:
+            return False
+        return item in self._keys[hashed]
 
     def keys(self) -> Iterator[T]:
         yield from chain.from_iterable(self._keys.values())
@@ -1320,9 +1367,8 @@ def ind[T: str | list[str]](lines: T) -> T:
 
 def run_live(
     *args,
-    logger: logging.Logger = logger,
-    stdout_level: int | None = logging.DEBUG,
-    stderr_level: int | None = logging.ERROR,
+    stdout: Callable[[str], Any] = logger.debug,
+    stderr: Callable[[str], Any] = logger.error,
     **kwargs,
 ) -> tuple[str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1338,7 +1384,7 @@ def run_live(
 
     # Set up file descriptors to monitor
     reads = [process.stdout, process.stderr]
-    stdout = []
+    stdout_lines = []
     while reads and process.poll() is None:
         # Wait for output on either stream
         readable, _, _ = select.select(reads, [], [])
@@ -1350,12 +1396,12 @@ def run_live(
                 continue
 
             if stream == process.stdout:
-                stdout.append(line)
-                if stdout_level is not None:
-                    logger.log(stdout_level, line.rstrip())
+                stdout_lines.append(line)
+                if stdout:
+                    stdout(line.rstrip())
             else:
-                if stderr_level is not None:
-                    logger.log(stderr_level, line.rstrip())
+                if stderr:
+                    stderr(line.rstrip())
 
     # Ensure the process has finished
     process.wait()
@@ -1363,10 +1409,10 @@ def run_live(
     # Get return code and check for errors
     if process.returncode != 0:
         raise subprocess.CalledProcessError(
-            process.returncode, args[0], "".join(stdout)
+            process.returncode, args[0], "".join(stdout_lines)
         )
 
-    return "\n".join(stdout), process
+    return "\n".join(stdout_lines), process
 
 
 @contextmanager
@@ -1518,10 +1564,13 @@ def hash_string(string: str) -> str:
 
 
 def get_module_from_path(
-    file_path: os.PathLike, attr: str | None = None
+    file_path: os.PathLike, attr: str | None = None, allow_ambiguous: bool = False
 ) -> ModuleType | None:
     """
     Return a module based on a file path if already imported, or return None.
+
+    If allow_ambiguous is True, and there are multiple modules with the same file path,
+    return the first one.
     """
     sanitized_file_path = Path(file_path).expanduser().resolve().absolute()
 
@@ -1536,6 +1585,11 @@ def get_module_from_path(
         module = find(sys.modules.values(), _needle)
     except KeyErrorNotFound:
         return None
+    except KeyErrorAmbiguous as e:
+        if allow_ambiguous:
+            module = e.duplicates[0]
+        else:
+            raise
 
     if attr is None:
         return module
@@ -1572,7 +1626,7 @@ def import_from_path(
             submodule_search_locations=submodule_search_locations,
         )
         if spec is None:
-            raise ImportError(path=file_path)
+            raise ImportError(path=str(file_path))
 
         module = importlib.util.module_from_spec(spec)
         sys.modules[module_name] = module
@@ -1648,3 +1702,143 @@ def is_editable_install():
         .get("dir_info", {})
         .get("editable", False)
     )
+
+
+class SerializableEnum[E: Enum](Serializable):
+    class Value[E_: Enum](Serializable):
+        def __init__(self, enum: "SerializableEnum", value: E_):
+            self._value = value
+            self._enum = enum
+
+        @property
+        def name(self) -> str:
+            return self._value.name
+
+        @property
+        def value(self) -> E:
+            return self._value.value
+
+        @override
+        def serialize(self) -> dict:
+            return {"name": self._value.name}
+
+        def __eq__(self, other: "SerializableEnum.Value[E]") -> bool:
+            if not other._enum == self._enum:
+                return False
+            return (
+                other._value.name == self._value.name
+                and other._value.value == self._value.value
+            )
+
+        def __hash__(self) -> int:
+            return hash(self._value)
+
+        def __repr__(self) -> str:
+            return f"{self._enum.enum.__name__}.{self._value.name}"
+
+    def __init__(self, enum: type[Enum]):
+        self.enum = enum
+
+        class _Value(SerializableEnum.Value[E]):
+            @override
+            @staticmethod
+            def deserialize(data: dict) -> "_Value":
+                return _Value(self, self.enum[data["name"]])
+
+        self.value_cls = _Value
+
+    def serialize(self) -> dict:
+        enum = self.enum
+        # check enum values to all be ints or str
+        if not all(isinstance(e.value, (int, str, float)) for e in enum):
+            raise ValueError(f"Can't serialize {enum}: has non-primitive values")
+
+        enum_cls_serialized = {
+            "name": enum.__name__,
+            "values": {e.name: e.value for e in enum},
+        }
+
+        return enum_cls_serialized
+
+    @staticmethod
+    def deserialize(data: dict) -> "SerializableEnum":
+        enum_cls = Enum(data["name"], data["values"])
+        return SerializableEnum(cast(type[Enum], enum_cls))
+
+    def make_value(
+        self, value: "E | SerializableEnum.Value[E]"
+    ) -> "SerializableEnum.Value[E]":
+        if isinstance(value, SerializableEnum.Value):
+            return value
+        return self.value_cls(self, value)
+
+    def deserialize_value(self, data: dict) -> "SerializableEnum.Value[E]":
+        return self.value_cls.deserialize(data)
+
+    def __eq__(self, other: "SerializableEnum") -> bool:
+        return self.enum.__name__ == other.enum.__name__ and {
+            e.name: e.value for e in self.enum
+        } == {e.name: e.value for e in other.enum}
+
+
+def indented_container(
+    obj: Iterable | dict,
+    indent_level: int = 1,
+    recursive: bool = False,
+    use_repr: bool = True,
+) -> str:
+    kvs = obj.items() if isinstance(obj, dict) else enumerate(obj)
+
+    def format_v(v: Any) -> str:
+        if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
+            return repr(v) if use_repr else str(v)
+        return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
+
+    ind = "\n" + "  " * indent_level
+    inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
+    if kvs:
+        inside = f"{ind}{inside}\n"
+
+    return f"{{{inside}}}"
+
+
+def robustly_rm_dir(path: os.PathLike) -> None:
+    """Remove a directory and all its contents."""
+
+    path = Path(path)
+
+    def remove_readonly(func, path, excinfo):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(path, onexc=remove_readonly)
+
+
+def yield_missing(existing: Container, candidates: Iterable | None = None):
+    if candidates is None:
+        candidates = range(10000)  # Prevent counting to infinity by default
+    for c in candidates:
+        if c not in existing:
+            yield c
+
+
+def try_relative_to(
+    target: os.PathLike, root: os.PathLike | None = None, walk_up: bool = False
+) -> Path:
+    target = Path(target)
+    root = Path(root) if root is not None else Path.cwd()
+    try:
+        return target.relative_to(root, walk_up=walk_up)
+    except FileNotFoundError:
+        return target
+
+
+def repo_root() -> Path:
+    repo_root = Path(__file__)
+    while not (repo_root / ".git").exists():
+        if parent := repo_root.parent:
+            repo_root = parent
+        else:
+            raise FileNotFoundError("Could not find repo root")
+    else:
+        return repo_root

@@ -2,8 +2,16 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import os
 from pathlib import Path
+from typing import Sequence
 
+from atopile.config import config
+from faebryk.libs.exceptions import (
+    UserResourceException,
+    accumulate,
+    iter_through_errors,
+)
 from faebryk.libs.kicad.fileformats import (
     C_footprint,
     C_kicad_fp_lib_table_file,
@@ -19,16 +27,21 @@ from faebryk.libs.sexp.dataclass_sexp import get_parent
 from faebryk.libs.util import (
     KeyErrorNotFound,
     dataclass_as_kwargs,
+    duplicates,
     find,
     find_or,
     not_none,
+    yield_missing,
 )
 
 logger = logging.getLogger(__name__)
+pcb_update_logger = logging.getLogger("pcb_updates")
 
 # TODO: dynamic spacing based on footprint dimensions?
 HORIZONTAL_SPACING = 10
 VERTICAL_SPACING = -5  # negative is upwards
+
+NO_LCSC_DISPLAY = "No LCSC number"
 
 
 def _nets_same(
@@ -40,29 +53,58 @@ def _nets_same(
 ) -> bool:
     pcb_pads = {
         f"{get_parent(p, C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint)
-           .propertys['Reference'].value}.{p.name}"
+            .propertys['Reference'].value}.{p.name}"
         for p in pcb_net[1]
     }
     nl_pads = {f"{n.ref}.{n.pin}" for n in nl_net.nodes}
     return pcb_pads == nl_pads
 
 
-def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
-    fp_lib_table = C_kicad_fp_lib_table_file.loads(fp_lib_path)
-    lib_id, fp_name = identifier.split(":")
-    try:
-        lib = find(fp_lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
-        dir_path = Path(lib.uri.replace("${KIPRJMOD}", str(fp_lib_path.parent)))
-    except KeyErrorNotFound:
-        # non-local lib, search in kicad global lib
-        global_fp_lib_table = C_kicad_fp_lib_table_file.loads(GLOBAL_FP_LIB_PATH)
-        lib = find(global_fp_lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
-        dir_path = Path(
-            lib.uri.replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
-        )
+class LibNotInTable(Exception):
+    def __init__(self, *args: object, lib_id: str, lib_table_path: Path) -> None:
+        super().__init__(*args)
+        self.lib_id = lib_id
+        self.lib_table_path = lib_table_path
 
+
+def _find_footprint(
+    lib_tables: Sequence[os.PathLike], lib_id: str
+) -> C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib:
+    lib_tables = [Path(lib_table) for lib_table in lib_tables]
+
+    err_accumulator = accumulate(LibNotInTable, FileNotFoundError)
+
+    for lib_table_path in lib_tables:
+        with err_accumulator.collect():
+            lib_table = C_kicad_fp_lib_table_file.loads(lib_table_path)
+            try:
+                return find(lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
+            except KeyErrorNotFound as ex:
+                raise LibNotInTable(
+                    lib_id=lib_id, lib_table_path=lib_table_path
+                ) from ex
+
+    if ex := err_accumulator.get_exception():
+        raise ex
+
+    raise ValueError("No footprint libraries provided")
+
+
+def _get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
+    lib_id, fp_name = identifier.split(":")
+    lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
+    dir_path = Path(
+        (lib.uri)
+        .replace("${KIPRJMOD}", str(config.build.paths.fp_lib_table.parent))
+        .replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
+    )
     path = dir_path / f"{fp_name}.kicad_mod"
-    return kicad_footprint_file(path).footprint
+    try:
+        return kicad_footprint_file(path).footprint
+    except FileNotFoundError as ex:
+        raise UserResourceException(
+            f"Footprint `{fp_name}` doesn't exist in library `{lib_id}`"
+        ) from ex
 
 
 def _get_address(
@@ -95,14 +137,21 @@ def _sort_by_address_prefix(
 
 class PCB:
     @staticmethod
-    def apply_netlist(pcb_path: Path, netlist_path: Path):
-        from faebryk.exporters.pcb.kicad.transformer import gen_uuid
-
-        fp_lib_path = pcb_path.parent / "fp-lib-table"
-
+    def apply_netlist_to_file(pcb_path: Path, netlist_path: Path):
         pcb = C_kicad_pcb_file.loads(pcb_path)
-
         netlist = C_kicad_netlist_file.loads(netlist_path)
+        fp_lib_path = config.build.paths.fp_lib_table
+        PCB.apply_netlist(pcb, netlist, fp_lib_path)
+        logger.debug(f"Save PCB: {pcb_path}")
+        pcb.dumps(pcb_path)
+
+    @staticmethod
+    def apply_netlist(
+        pcb: C_kicad_pcb_file,
+        netlist: C_kicad_netlist_file,
+        fp_lib_path: Path,
+    ):
+        from faebryk.exporters.pcb.kicad.transformer import gen_uuid
 
         # footprint properties
         def fill_fp_property(
@@ -204,6 +253,7 @@ class PCB:
         logger.debug(f"Removed nets: {nets_removed}")
         removed_net_numbers = list[int]()
         for net_name in nets_removed:
+            pcb_update_logger.info(f"Removing net: '{net_name}'")
             pcb_net, pads = pcb_nets[net_name]
             removed_net_numbers.append(pcb_net.number)
             pcb.kicad_pcb.nets.remove(pcb_net)
@@ -224,6 +274,7 @@ class PCB:
         # Rename nets ------------------------------------------------------------------
         logger.debug(f"Renamed nets: {matched_nets}")
         for new_name, old_name in matched_nets.items():
+            pcb_update_logger.info(f"Renaming net: '{old_name}' -> '{new_name}'")
             pcb_net, pads = pcb_nets[old_name]
             pcb_net.name = new_name
             pcb_nets[new_name] = (pcb_net, pads)
@@ -237,19 +288,24 @@ class PCB:
 
         # Add new nets -----------------------------------------------------------------
         logger.debug(f"New nets: {nets_added}")
+        existing_net_numbers = {net.number for net in pcb.kicad_pcb.nets}
+        net_numbers = iter(yield_missing(existing_net_numbers))
+
         for net_name in nets_added:
-            # nl_net = nl_nets[net_name]
-            if removed_net_numbers:
-                net_number = removed_net_numbers.pop()
-            else:
-                net_number = len(pcb.kicad_pcb.nets)
+            # Find the first unused net number
+            pcb_update_logger.info(f"Adding net: '{net_name}'")
+            net_number = next(net_numbers)
+
             pcb_net = C_kicad_pcb_file.C_kicad_pcb.C_net(
                 name=net_name,
                 number=net_number,
             )
             pcb.kicad_pcb.nets.append(pcb_net)
             pcb_nets[net_name] = (pcb_net, [])
+
         pcb.kicad_pcb.nets.sort(key=lambda x: x.number)
+        # Check that net numbers are unique
+        assert not duplicates(pcb.kicad_pcb.nets, lambda x: x.number)
 
         # Components ===================================================================
         pcb_comps = {
@@ -267,8 +323,11 @@ class PCB:
             nl_comp = nl_comps[comp_name]
             pcb_comp = pcb_comps[comp_name]
 
-            # update
             if pcb_comp.name != nl_comp.footprint:
+                pcb_update_logger.info(
+                    f"Footprint mismatch for '{comp_name}': PCB='{pcb_comp.name}', "
+                    f"Updated='{nl_comp.footprint}'"
+                )
                 comps_removed.add(comp_name)
                 comps_added.add(comp_name)
                 comps_changed[comp_name] = pcb_comp
@@ -288,7 +347,7 @@ class PCB:
                 fp=pcb_comp,
                 property_name="LCSC",
                 layer="User.9",
-                value=get_property_value(nl_comp, "LCSC", "No LCSC number"),
+                value=get_property_value(nl_comp, "LCSC", NO_LCSC_DISPLAY),
                 uuid=get_property_uuid(pcb_comp, "LCSC"),
             )
 
@@ -310,94 +369,106 @@ class PCB:
 
         # Remove components ------------------------------------------------------------
         logger.debug(f"Comps removed: {comps_removed}")
+        pcb_update_logger.info(f"Comps removed: {comps_removed}")
         for comp_name in comps_removed:
             comp = pcb_comps[comp_name]
             pcb.kicad_pcb.footprints.remove(comp)
 
         # Add new components -----------------------------------------------------------
         logger.debug(f"Comps added: {comps_added}")
+        pcb_update_logger.info(f"Comps added: {comps_added}")
 
         x, y = 0, 0
         current_prefix = None
-        for comp_name in _sort_by_address_prefix(nl_comps, comps_added):
-            comp = nl_comps[comp_name]
-            address_prefix = _get_address_prefix(comp)
-            footprint_identifier = comp.footprint
-            footprint = _get_footprint(footprint_identifier, fp_lib_path)
-            pads = {
-                p.pin: n
-                for n in nl_nets.values()
-                for p in n.nodes
-                if p.ref == comp_name
-            }
+        for err_collector, comp_name in iter_through_errors(
+            _sort_by_address_prefix(nl_comps, comps_added)
+        ):
+            with err_collector():
+                comp = nl_comps[comp_name]
+                address_prefix = _get_address_prefix(comp)
+                footprint_identifier = comp.footprint
 
-            # Fill in variables
-            footprint.propertys["Reference"].value = comp_name
-            footprint.propertys["Value"].value = comp.value
-            footprint.propertys["atopile_address"] = fill_fp_property(
-                fp=footprint,
-                property_name="atopile_address",
-                layer="User.9",
-                value=get_property_value(comp, "atopile_address", "No atopile_address"),
-                uuid=get_property_uuid(comp, "atopile_address"),
-            )
-            footprint.propertys["LCSC"] = fill_fp_property(
-                fp=footprint,
-                property_name="LCSC",
-                layer="User.9",
-                value=get_property_value(comp, "LCSC", "No LCSC number"),
-                uuid=get_property_uuid(comp, "LCSC"),
-            )
+                pcb_update_logger.info(
+                    f"Adding '{comp_name}' with footprint '{footprint_identifier}'"
+                )
 
-            if current_prefix is not None and address_prefix != current_prefix:
-                # separate prefix groups horizontally
-                x += HORIZONTAL_SPACING
-                y = 0
+                footprint = _get_footprint(footprint_identifier, fp_lib_path)
 
-            current_prefix = address_prefix
+                pads = {
+                    p.pin: n
+                    for n in nl_nets.values()
+                    for p in n.nodes
+                    if p.ref == comp_name
+                }
 
-            at = C_xyr(x=x, y=y, r=0)
+                # Fill in variables
+                footprint.propertys["Reference"].value = comp_name
+                footprint.propertys["Value"].value = comp.value
+                footprint.propertys["atopile_address"] = fill_fp_property(
+                    fp=footprint,
+                    property_name="atopile_address",
+                    layer="User.9",
+                    value=get_property_value(
+                        comp, "atopile_address", "No atopile_address"
+                    ),
+                    uuid=get_property_uuid(comp, "atopile_address"),
+                )
+                footprint.propertys["LCSC"] = fill_fp_property(
+                    fp=footprint,
+                    property_name="LCSC",
+                    layer="User.9",
+                    value=get_property_value(comp, "LCSC", NO_LCSC_DISPLAY),
+                    uuid=get_property_uuid(comp, "LCSC"),
+                )
 
-            # separate components vertically within group
-            y += VERTICAL_SPACING
+                if current_prefix is not None and address_prefix != current_prefix:
+                    # separate prefix groups horizontally
+                    x += HORIZONTAL_SPACING
+                    y = 0
 
-            if comp_name in comps_changed:
-                # TODO also need to do geo rotations and stuff
-                at = comps_changed[comp_name].at
+                current_prefix = address_prefix
 
-            pcb_comp = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint(
-                uuid=gen_uuid(mark=""),
-                at=at,
-                pads=[
-                    C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
-                        uuid=gen_uuid(mark=""),
-                        net=C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad.C_net(
-                            number=pcb_nets[pads[p.name].name][0].number,
-                            name=pads[p.name].name,
-                        )
-                        if p.name in pads
-                        else None,
-                        # rest of fields
-                        **dataclass_as_kwargs(p),
+                at = C_xyr(x=x, y=y, r=0)
+
+                # separate components vertically within group
+                y += VERTICAL_SPACING
+
+                if comp_name in comps_changed:
+                    # TODO also need to do geo rotations and stuff
+                    at = comps_changed[comp_name].at
+                    pcb_update_logger.info(
+                        f"Reusing position from changed component '{comp_name}'"
                     )
-                    for p in footprint.pads
-                ],
-                #
-                name=footprint_identifier,
-                layer=footprint.layer,
-                propertys=footprint.propertys,
-                attr=footprint.attr,
-                fp_lines=footprint.fp_lines,
-                fp_arcs=footprint.fp_arcs,
-                fp_circles=footprint.fp_circles,
-                fp_rects=footprint.fp_rects,
-                fp_texts=footprint.fp_texts,
-                fp_poly=footprint.fp_poly,
-                model=footprint.model,
-            )
 
-            pcb.kicad_pcb.footprints.append(pcb_comp)
+                pcb_comp = C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint(
+                    uuid=gen_uuid(mark=""),
+                    at=at,
+                    pads=[
+                        C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
+                            net=C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad.C_net(
+                                number=pcb_nets[pads[p.name].name][0].number,
+                                name=pads[p.name].name,
+                            )
+                            if p.name in pads
+                            else None,
+                            **{
+                                **dataclass_as_kwargs(p),
+                                "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
+                            },
+                        )
+                        for p in footprint.pads
+                    ],
+                    name=footprint_identifier,
+                    layer=footprint.layer,
+                    propertys=footprint.propertys,
+                    attr=footprint.attr,
+                    fp_lines=footprint.fp_lines,
+                    fp_arcs=footprint.fp_arcs,
+                    fp_circles=footprint.fp_circles,
+                    fp_rects=footprint.fp_rects,
+                    fp_texts=footprint.fp_texts,
+                    fp_poly=footprint.fp_poly,
+                    model=footprint.model,
+                )
 
-        # ---
-        logger.debug(f"Save PCB: {pcb_path}")
-        pcb.dumps(pcb_path)
+                pcb.kicad_pcb.footprints.append(pcb_comp)

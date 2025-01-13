@@ -6,11 +6,15 @@ from enum import Enum
 from typing import Any, Protocol, override, runtime_checkable
 
 from faebryk.libs.units import Unit, dimensionless
+from faebryk.libs.util import (
+    Serializable,
+    SerializableEnum,
+)
 
 
 # Protocols ----------------------------------------------------------------------------
 @runtime_checkable
-class P_Set[T](Protocol):
+class P_Set[T](Serializable, Protocol):
     def is_empty(self) -> bool: ...
 
     def is_finite(self) -> bool: ...
@@ -39,7 +43,7 @@ class P_Set[T](Protocol):
             return EnumSet(value)
         if isinstance(value, PlainSet):
             return value
-        return PlainSet(value)
+        raise ValueError(f"cannot convert {value} to P_Set")
 
     def is_subset_of(self, other: "P_Set[T]") -> bool: ...
 
@@ -61,6 +65,40 @@ class P_Set[T](Protocol):
     def is_single_element(self) -> bool: ...
 
     def any(self) -> T: ...
+
+    def serialize(self) -> dict:
+        return {"type": type(self).__name__, "data": self.serialize_pset()}
+
+    def serialize_pset(self) -> dict: ...
+
+    @classmethod
+    def deserialize(cls, data: dict) -> "P_Set":
+        from faebryk.libs.sets.numeric_sets import (
+            Numeric_Interval,
+            Numeric_Interval_Disjoint,
+        )
+        from faebryk.libs.sets.quantity_sets import (
+            Quantity_Interval,
+            Quantity_Interval_Disjoint,
+            Quantity_Set_Discrete,
+        )
+
+        types = [
+            Numeric_Interval,
+            Numeric_Interval_Disjoint,
+            BoolSet,
+            EnumSet,
+            Quantity_Interval,
+            Quantity_Interval_Disjoint,
+            Quantity_Set_Discrete,
+        ]
+        cls_ = next((t for t in types if t.__name__ == data["type"]), None)
+        if cls_ is None:
+            raise ValueError(f"unknown type {data['type']}")
+        return cls_.deserialize_pset(data["data"])
+
+    @classmethod
+    def deserialize_pset(cls, data: dict) -> "P_Set": ...
 
 
 class P_IterableSet[T, IterT](P_Set[T], Iterable[IterT], Protocol): ...
@@ -186,20 +224,44 @@ class BoolSet(PlainSet[bool]):
     def unbounded(cls) -> "BoolSet":
         return cls(True, False)
 
+    @override
+    def serialize_pset(self) -> dict:
+        return {"elements": list(self.elements)}
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        return cls(*data["elements"])
+
 
 BoolSetLike = bool | BoolSet | PlainSet[bool]
 
 
-class EnumSet[E: Enum](PlainSet[E]):
-    def __init__(self, *elements: "E | EnumSet[E] | type[E]"):
+class EnumSet[E: Enum](PlainSet[SerializableEnum.Value[E]]):
+    def __init__(
+        self,
+        *elements: "E | EnumSet[E] | type[E] | SerializableEnum.Value[E] | SerializableEnum",  # noqa: E501
+    ):
         enum_types = (
-            {e.enum for e in elements if isinstance(e, EnumSet)}
+            {e.enum.enum for e in elements if isinstance(e, EnumSet)}
             | {type(e) for e in elements if isinstance(e, Enum)}
             | {e for e in elements if isinstance(e, type) and issubclass(e, Enum)}
+            | {e._enum.enum for e in elements if isinstance(e, SerializableEnum.Value)}
         )
         assert len(enum_types) == 1
-        self.enum = next(iter(enum_types))
-        super().__init__(*(e for e in elements if not isinstance(e, type)))
+        self.enum = SerializableEnum(next(iter(enum_types)))
+
+        elements_raw = [
+            *[elem for e in elements if isinstance(e, EnumSet) for elem in e.elements],
+            *[e for e in elements if isinstance(e, self.enum.enum)],
+            *[e for e in elements if isinstance(e, SerializableEnum.Value)],
+        ]
+        elements_ser = [self.enum.make_value(e) for e in elements_raw]
+
+        super().__init__(*elements_ser)
+
+    def __contains__(self, item: E) -> bool:
+        return super().__contains__(self.enum.make_value(item))
 
     @classmethod
     def empty(cls, enum: type[E]) -> "EnumSet[E]":
@@ -208,3 +270,16 @@ class EnumSet[E: Enum](PlainSet[E]):
     @classmethod
     def unbounded(cls, enum: type[E]) -> "EnumSet[E]":
         return cls(*enum)
+
+    @override
+    def serialize_pset(self) -> dict:
+        return {
+            "elements": [e.serialize() for e in self.elements],
+            "enum": self.enum.serialize(),
+        }
+
+    @override
+    @classmethod
+    def deserialize_pset(cls, data: dict):
+        enum = SerializableEnum.deserialize(data["enum"])
+        return cls(*(enum.deserialize_value(e) for e in data["elements"]), enum)

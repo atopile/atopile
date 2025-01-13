@@ -1,0 +1,17 @@
+{
+    // Enable your dictionary by adding it to the list of `dictionaries`
+    "dictionaries": ["atopile-custom-words"],
+
+    // Tell CSpell about your dictionary
+    "dictionaryDefinitions": [
+        {
+            // The name of the dictionary is used to look it up.
+            "name": "atopile-custom-words",
+            // Path to the custom word file. Relative to this `cspell.json` file.
+            "path": "./atopile-custom-words.txt",
+            // Some editor extensions will use `addWords` for adding words to your
+            // personal dictionary.
+            "addWords": true
+        }
+    ]
+}

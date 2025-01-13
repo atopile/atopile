@@ -1,0 +1,7 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "lcsc")(type "KiCad")(uri "${KIPRJMOD}/../libs/footprints/lcsc.pretty")(options "")(descr "FBRK: LCSC footprints auto-downloaded"))
+  (lib (name "logos")(type "KiCad")(uri "${KIPRJMOD}/../libs/footprints/logos.pretty")(options "")(descr "FBRK: faebryk logo"))
+  (lib (name "here")(type "KiCad")(uri "${KIPRJMOD}")(options "")(descr "project root"))
+  (lib (name "syms")(type "KiCad")(uri "${KIPRJMOD}/../../v8/sym")(options "")(descr "symbols (used for tests)"))
+)
