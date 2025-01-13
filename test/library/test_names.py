@@ -18,7 +18,11 @@ def _extract_classes_from_file(filepath: Path):
 
 @pytest.mark.parametrize(
     "py_file",
-    [p for p in (_repo_root() / "src/faebryk/library").glob("**/*.py") if p.is_file()],
+    [
+        p
+        for p in (_repo_root() / "src" / "faebryk" / "library").glob("**/*.py")
+        if p.is_file()
+    ],
     ids=lambda p: p.stem,
 )
 def test_class_name(py_file: Path):
