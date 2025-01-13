@@ -588,7 +588,7 @@ class Template(ABC):
         """Common part processing logic used by child classes."""
         name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(name, str)
-        _, _, _, _, easyeda_symbol = download_easyeda_info(
+        _, _, _, _, easyeda_symbol, _ = download_easyeda_info(
             part.lcsc_display, get_model=False
         )
         return name, easyeda_symbol
@@ -627,7 +627,8 @@ class AtoTemplate(Template):
         designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
         self.attributes.append(f'designator_prefix = "{designator_prefix}"')
 
-        # Process pins - track defined signals
+        # Collect and sort pins first
+        sorted_pins = []
         if hasattr(easyeda_symbol, "units") and easyeda_symbol.units:
             for unit in easyeda_symbol.units:
                 if hasattr(unit, "pins"):
@@ -639,12 +640,18 @@ class AtoTemplate(Template):
                             and pin_name not in ["NC", "nc"]
                             and not re.match(r"^[0-9]+$", pin_name)
                         ):
-                            pin_name = sanitize_name(pin_name)
-                            if pin_name not in self.defined_signals:
-                                self.pins.append(f"signal {pin_name} ~ pin {pin_num}")
-                                self.defined_signals.add(pin_name)
-                            else:
-                                self.pins.append(f"{pin_name} ~ pin {pin_num}")
+                            sorted_pins.append((sanitize_name(pin_name), pin_num))
+
+        # Sort pins by name using natsort
+        sorted_pins = natsorted(sorted_pins, key=lambda x: x[0])
+
+        # Process sorted pins
+        for pin_name, pin_num in sorted_pins:
+            if pin_name not in self.defined_signals:
+                self.pins.append(f"signal {pin_name} ~ pin {pin_num}")
+                self.defined_signals.add(pin_name)
+            else:
+                self.pins.append(f"{pin_name} ~ pin {pin_num}")
 
     def dumps(self) -> str:
         output = f"component {self.name}:\n"
