@@ -566,9 +566,6 @@ if __name__ == "__main__":
     create_app()  # pylint: disable=no-value-for-parameter
 
 
-# copied code from libadd
-
-
 @dataclass
 class CTX:
     path: Path
