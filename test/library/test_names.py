@@ -5,6 +5,8 @@ import ast
 import unittest
 from pathlib import Path
 
+from faebryk.libs.util import repo_root as _repo_root
+
 
 def _extract_classes_from_file(filepath: Path):
     with open(filepath, "r") as file:
@@ -15,7 +17,7 @@ def _extract_classes_from_file(filepath: Path):
 
 class TestClassNames(unittest.TestCase):
     def test_class_name(self):
-        root_dir = Path(__file__).parent.parent.parent
+        root_dir = _repo_root()
         source_directory = root_dir / Path("src/faebryk/library/")
 
         for py_file in source_directory.glob("**/*.py"):

@@ -7,13 +7,10 @@ from subprocess import CalledProcessError
 import pathvalidate
 import pytest
 
+from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir, run_live
 
-repo_root = Path.cwd()
-while not (repo_root / "pyproject.toml").exists():
-    repo_root = repo_root.parent
-
-
+repo_root = _repo_root()
 EXAMPLES_DIR = repo_root / "examples"
 
 

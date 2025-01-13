@@ -10,6 +10,7 @@ from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.util import repo_root as _repo_root
 
 
 @pytest.fixture
@@ -19,10 +20,7 @@ def bob() -> Bob:
 
 @pytest.fixture
 def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / "pyproject.toml").exists():
-        repo_root = repo_root.parent
-    return repo_root
+    return _repo_root()
 
 
 @pytest.mark.usefixtures("setup_project_config")
