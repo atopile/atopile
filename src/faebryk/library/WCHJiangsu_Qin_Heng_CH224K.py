@@ -71,7 +71,7 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
     #                 traits
     # ----------------------------------------
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C970725"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(

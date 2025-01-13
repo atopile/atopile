@@ -55,10 +55,11 @@ from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_not_pickable import is_not_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
-from faebryk.library.has_designator_prefix_defined import has_designator_prefix_defined
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_defined_relative
 from faebryk.library.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
+from faebryk.library.PJ398SM import PJ398SM
+from faebryk.library.RJ45_Receptacle import RJ45_Receptacle
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
@@ -76,7 +77,6 @@ from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_designator_defined import has_designator_defined
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain
@@ -84,8 +84,6 @@ from faebryk.library.has_simple_value_representation_defined import has_simple_v
 from faebryk.library.has_pcb_layout_defined import has_pcb_layout_defined
 from faebryk.library.has_single_connection_impl import has_single_connection_impl
 from faebryk.library.is_representable_by_single_value_defined import is_representable_by_single_value_defined
-from faebryk.library.PJ398SM import PJ398SM
-from faebryk.library.RJ45_Receptacle import RJ45_Receptacle
 from faebryk.library.has_pin_association_heuristic_lookup_table import has_pin_association_heuristic_lookup_table
 from faebryk.library.LogicOps import LogicOps
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint

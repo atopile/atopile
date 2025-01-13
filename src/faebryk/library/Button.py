@@ -20,7 +20,7 @@ class Button(Module):
         tolerance_guess=10 * P.percent,
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.S
     )
 

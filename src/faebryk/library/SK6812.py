@@ -35,7 +35,7 @@ class SK6812(Module):
         return F.can_bridge_defined(self.data_in, self.data_out)
 
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C5378720"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.LED
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(

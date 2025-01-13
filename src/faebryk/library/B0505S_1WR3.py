@@ -31,7 +31,7 @@ class _B0505S_1WR3(Module):
     def bridge(self):
         return F.can_bridge_defined(self.power_in, self.power_out)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

@@ -37,7 +37,7 @@ class RaspberryPiPico(Module):
 
     @L.rt_field
     def designator_prefix(self):
-        return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.MOD)
+        return F.has_designator_prefix(F.has_designator_prefix.Prefix.MOD)
 
     @L.rt_field
     def pcb_layout(self):

@@ -45,7 +45,7 @@ class CH344(Module):
         "https://wch-ic.com/downloads/CH344DS1_PDF.html"
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

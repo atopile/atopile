@@ -34,25 +34,15 @@ class can_represent_kicad_footprint(F.Footprint.TraitT):
     def get_pin_name(self, pin: F.Pad) -> str: ...
 
 
-def get_or_set_name_and_value_of_node(c: Module):
+def ensure_ref_and_value(c: Module):
     value = (
         c.get_trait(F.has_simple_value_representation).get_value()
         if c.has_trait(F.has_simple_value_representation)
         else type(c).__name__
     )
 
-    if not c.has_trait(F.has_overriden_name):
-        c.add(
-            F.has_overriden_name_defined(
-                "{}[{}:{}]".format(
-                    c.get_full_name(),
-                    type(c).__name__,
-                    value,
-                )
-            )
-        )
-
-    return c.get_trait(F.has_overriden_name).get_name(), value
+    # At this point, all components MUST have a designator
+    return c.get_trait(F.has_designator).get_designator(), value
 
 
 class can_represent_kicad_footprint_via_attached_component(
@@ -68,7 +58,7 @@ class can_represent_kicad_footprint_via_attached_component(
         self.graph = graph
 
     def get_name_and_value(self):
-        return get_or_set_name_and_value_of_node(self.component)
+        return ensure_ref_and_value(self.component)
 
     def get_pin_name(self, pin: F.Pad):
         return self.obj.get_trait(F.has_kicad_footprint).get_pin_names()[pin]

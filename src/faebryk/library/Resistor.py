@@ -15,7 +15,7 @@ class Resistor(Module):
     max_voltage = L.p_field(units=P.V)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R
     )
 
