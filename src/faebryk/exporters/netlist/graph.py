@@ -15,7 +15,7 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
-from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, try_or
+from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -51,17 +51,7 @@ class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
                     c.get_trait(F.has_descriptive_properties).get_properties()
                 )
 
-        # FIXME: this should be a part of the Node.get_full_name(),
-        # but it's not yet implemented, so we're patching in the same
-        # functionality here. See: https://github.com/atopile/atopile/issues/547
-        if root_trait := try_or(
-            lambda: self.component.get_parent_with_trait(F.is_app_root)
-        ):
-            root, _ = root_trait
-            address = self.component.relative_address(root)
-        else:
-            address = self.component.get_full_name()
-        properties["atopile_address"] = address
+        properties["atopile_address"] = self.component.get_full_name()
 
         name, value = self.get_name_and_value()
 
