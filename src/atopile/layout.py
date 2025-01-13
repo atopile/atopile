@@ -67,7 +67,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                     # Check if the module is a known python module
                     if (
                         class_ := get_module_from_path(
-                            build.file_path,
+                            build.entry_file_path,
                             entry_section,
                             # we might have duplicates from different builds
                             allow_ambiguous=True,

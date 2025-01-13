@@ -728,6 +728,9 @@ class C_kicad_pcb_file(SEXP_File):
             class E_type(SymEnum):
                 signal = auto()
                 user = auto()
+                mixed = auto()
+                jumper = auto()
+                power = auto()
 
             number: int = field(**sexp_field(positional=True))
             name: str = field(**sexp_field(positional=True))

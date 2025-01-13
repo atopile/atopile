@@ -14,11 +14,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
-from faebryk.libs.picker.api.api import (
-    ApiHTTPError,
-    get_api_client,
-    get_package_candidates,
-)
+from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
     CapacitorParams,
@@ -111,7 +107,11 @@ def _prepare_query(
         pick_type = trait.get_pick_type()
         params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
 
-        fps = get_package_candidates(module)
+        if pkg_t := module.try_get_trait(F.has_package):
+            package = pkg_t.package.get_last_known_deduced_superset(solver)
+        else:
+            package = None
+
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
             lambda p: p.get_name() in generic_field_names, module.get_parameters()
@@ -120,7 +120,7 @@ def _prepare_query(
             p.get_name(): p.get_last_known_deduced_superset(solver)
             for p in known_params
         }
-        return params_t(package_candidates=fps, qty=qty, **cmp_params)  # type: ignore
+        return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
 
     raise NotImplementedError(
         f"Unsupported pickable trait: {module.get_trait(F.is_pickable)}"
