@@ -1708,10 +1708,9 @@ class PCB_Transformer:
                 self.bind_net(pcb_net, f_net)
 
             ## Connect pads to nets
-            for f_pad, f_fp in f_net.get_fps().items():
-                if linked_pad_t := f_pad.try_get_trait(self.has_linked_kicad_pad):
-                    _, pcb_pads = linked_pad_t.get_pad()
-                    for pcb_pad in pcb_pads:
+            pads_to_footprints = f_net.get_connected_pads()
+            for f_pad in pads_to_footprints.keys():
+                for pcb_pad in f_pad.get_trait(self.has_linked_kicad_pad).get_pad()[1]:
                         pcb_pad.net = Footprint.C_pad.C_net(
                             name=pcb_net.name,
                             number=pcb_net.number,

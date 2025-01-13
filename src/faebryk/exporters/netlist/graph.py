@@ -91,12 +91,14 @@ def add_or_get_nets(*interfaces: F.Electrical):
         nets_on_bus = {
             net
             for mif in connected_mifs
-            if (net := F.Net.from_part_of_mif(mif)) is not None
+            if (net := F.Net.find_from_part_of_mif(mif)) is not None
         }
+
         if not nets_on_bus:
             net = F.Net()
             net.part_of.connect(bus_repr)
             nets_on_bus = {net}
+
         if len(nets_on_bus) > 1:
             raise KeyErrorAmbiguous(list(nets_on_bus), "Multiple nets interconnected")
 
