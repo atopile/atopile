@@ -317,7 +317,7 @@ class BuildTargetPaths(BaseConfigModel):
         return True
 
 
-class BuildConfig(BaseConfigModel):
+class BuildTargetConfig(BaseConfigModel):
     _project_paths: ProjectPaths
 
     name: str
@@ -442,7 +442,7 @@ class ProjectConfig(BaseConfigModel):
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
     entry: str | None = Field(default=None)
-    builds: dict[str, BuildConfig] = Field(default_factory=dict)
+    builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     pcbnew_auto: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
@@ -471,11 +471,11 @@ class ProjectConfig(BaseConfigModel):
 
     @field_validator("builds", mode="before")
     def init_builds(
-        cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
+        cls, value: dict[str, dict[str, Any] | BuildTargetConfig], info: ValidationInfo
     ) -> dict[str, Any]:
         for build_name, data in value.items():
             match data:
-                case BuildConfig():
+                case BuildTargetConfig():
                     data.name = build_name
                 case dict():
                     data.setdefault("name", build_name)
@@ -534,7 +534,7 @@ class ProjectConfig(BaseConfigModel):
             paths=project_paths,
             entry=entry,
             builds={
-                "default": BuildConfig(
+                "default": BuildTargetConfig(
                     _project_paths=project_paths,
                     name="default",
                     entry="",
@@ -582,7 +582,7 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
         )
 
 
-_current_build_cfg: ContextVar[BuildConfig | None] = ContextVar(
+_current_build_cfg: ContextVar[BuildTargetConfig | None] = ContextVar(
     "current_build_cfg", default=None
 )
 
@@ -685,7 +685,7 @@ class Config:
         return (_build_context(self, name) for name in self.selected_builds)
 
     @property
-    def build(self) -> BuildConfig:
+    def build(self) -> BuildTargetConfig:
         if current := self._current_build:
             return current
         raise RuntimeError("No build config is currently active")
@@ -699,7 +699,7 @@ class Config:
         return (project_dir / PROJECT_CONFIG_FILENAME).exists()
 
     @property
-    def _current_build(self) -> BuildConfig | None:
+    def _current_build(self) -> BuildTargetConfig | None:
         return _current_build_cfg.get()
 
     def _setup_standalone(self, entry: str | None, entry_arg_file_path: Path) -> None:
