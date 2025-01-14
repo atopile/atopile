@@ -7,7 +7,7 @@ import re
 import subprocess
 from collections import defaultdict
 from dataclasses import asdict, fields
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 from itertools import pairwise
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
@@ -1417,6 +1417,28 @@ class PCB_Transformer:
             for field in fields(C_footprint)
         }
 
+    @staticmethod
+    def _hash_lib_fp(lib_fp: C_footprint) -> str:
+        # Ignore the name field. It's not meaningful and we override it
+        dict_ = asdict(lib_fp)
+        dict_["name"] = ""
+        return hash_string(repr(dict_))
+
+    _FP_LIB_HASH = "__atopile_lib_fp_hash__"
+
+    def _set_lib_fp_hash(
+        self, footprint: Footprint, lib_footprint: C_footprint
+    ) -> None:
+        """Create a hidden property which stores the original lib footprint hash
+        so we can detect if the footprint has truly been updated, or if it's
+        merely been renamed"""
+        footprint.propertys[self._FP_LIB_HASH] = self._make_fp_property(
+            property_name=self._FP_LIB_HASH,
+            layer="User.9",
+            value=self._hash_lib_fp(lib_footprint),
+            uuid=self.gen_uuid(mark=True),
+        )
+
     def insert_footprint(
         self, lib_footprint: C_footprint, at: C_xyr | None = None
     ) -> Footprint:
@@ -1445,9 +1467,116 @@ class PCB_Transformer:
             **lib_attrs,
         )
 
+        self._set_lib_fp_hash(footprint, lib_footprint)
+
         self.pcb.footprints.append(footprint)
 
         return footprint
+
+    class BoardSide(StrEnum):
+        FRONT = "F.Cu"
+        BACK = "B.Cu"
+
+    def _set_footprint_side(
+        self, footprint: Footprint, side: BoardSide, logger: logging.Logger
+    ) -> None:
+        """Set the side a footprint is on by mutating the footprint."""
+        # First, check the side the footprint's currently on
+        current_side = self.BoardSide(footprint.layer)
+
+        # If the side is the same, do nothing
+        if current_side == side:
+            return
+
+        # FIXME: this function is currently limited in it's ability to make these flips
+        # This means it's liable to mangle the footprint's data on update.
+        if ref_prop := footprint.propertys.get("Reference"):
+            ref = ref_prop.value
+        else:
+            ref = "Unknown"
+
+        logger.warning(f"Flipping {ref} side. Scrutinize this footprint in the PCB.")
+
+        def _backup_flip(obj):
+            """Shitty flip function which should only be used as a backup."""
+            if obj is None:
+                return
+
+            for obj, path, name_path in dataclass_dfs(obj):
+                # This only works for strings, so skip everything else
+                if not isinstance(obj, str):
+                    continue
+
+                # path ends with: [..., container, str]
+                container = path[-2]
+
+                # objects that have a "layer" property
+                if name_path[-2] == "layer" and hasattr(container, "layer"):
+                    container.layer = _flip(obj)
+
+                # dicts which have a "layer" key
+                elif name_path[-2] == "[layer]" and isinstance(container, dict):
+                    container["layer"] = _flip(obj)
+
+                # lists which have a "layer" key
+                # name_path ends with: [..., "layer", list, str]
+                elif name_path[-3] in [
+                    "layer",
+                    "layers",
+                    "[layer]",
+                    "[layers]",
+                ] and isinstance(container, list):
+                    # Replace the layer string with the flipped one
+                    container[container.index(obj)] = _flip(obj)
+
+        # Otherwise, flip the footprint to the other side
+        # FIXME: we're flipping based on the naming conventiong of "F." and "B."
+        # there are no guarantees that this will be robust with new versions of KiCAD
+        def _flip(layer: str) -> str:
+            if layer.startswith("F."):
+                return layer.replace("F.", "B.", 1)
+            elif layer.startswith("B."):
+                return layer.replace("B.", "F.", 1)
+
+            # User.* layers, for example, aren't flipped and that's fine
+            return layer
+
+        # Flip the pads
+        for pad in footprint.pads:
+            pad.layers = [_flip(lay) for lay in pad.layers]
+
+            # Flip the primitives
+            # FIXME: flip pad primitives
+            _backup_flip(pad.unknown)
+
+        # Flip the properties
+        for prop in footprint.propertys.values():
+            prop.layer.layer = _flip(prop.layer.layer)
+
+        # Flip primitives
+        for line in footprint.fp_lines:
+            line.layer = _flip(line.layer)
+
+        for arc in footprint.fp_arcs:
+            arc.layer = _flip(arc.layer)
+
+        for circle in footprint.fp_circles:
+            circle.layer = _flip(circle.layer)
+
+        for rect in footprint.fp_rects:
+            rect.layer = _flip(rect.layer)
+
+        for text in footprint.fp_texts:
+            text.layer.layer = _flip(text.layer.layer)
+
+        for polygon in footprint.fp_poly:
+            polygon.layer = _flip(polygon.layer)
+
+        # Flip anything unknown
+        _backup_flip(footprint.unknown)
+
+        # Mark the footprint as being on the other side
+        footprint.layer = _flip(footprint.layer)
 
     def update_footprint_from_lib(
         self, footprint: Footprint, lib_footprint: C_footprint
@@ -1458,7 +1587,8 @@ class PCB_Transformer:
         This will disconnect the footprint from any nets - which subsequentially
         must be reconnected.
         """
-        # TODO: do we need to skip the "layer" attribute?
+        original_side = self.BoardSide(footprint.layer)
+
         updates = self._fp_common_fields_dict(lib_footprint)
         updates["pads"] = [
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
@@ -1478,6 +1608,12 @@ class PCB_Transformer:
         }
         for name, update in updates.items():
             setattr(footprint, name, update)
+
+        # Update the lib footprint hash, so we can avoid unnecessary updates later
+        self._set_lib_fp_hash(footprint, lib_footprint)
+
+        # Set the boardside of the footprint
+        self._set_footprint_side(footprint, original_side, logger)
 
         return footprint
 
@@ -1578,14 +1714,23 @@ class PCB_Transformer:
         if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
             pcb_fp = pcb_fp_t.get_fp()
             if fp_id != pcb_fp.name:
-                logger.info(
-                    f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
-                    extra={"markdown": True},
-                )
-                lib_fp = get_footprint(fp_id, fp_lib_path)
-                lib_fp.name = fp_id
-                self.update_footprint_from_lib(pcb_fp, lib_fp)
-                self.bind_footprint(pcb_fp, component)
+                lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
+                if existing_hash_prop := pcb_fp.propertys.get(self._FP_LIB_HASH):
+                    existing_hash = existing_hash_prop.value
+                else:
+                    existing_hash = None
+
+                # If the hash never existed, or it's changed then update the footprint
+                if existing_hash is None or existing_hash != self._hash_lib_fp(lib_fp):
+                    logger.info(
+                        f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
+                        extra={"markdown": True},
+                    )
+                    # We need to manually override the name because the
+                    # footprint's data could've ultimately come from anywhere
+                    lib_fp.name = fp_id
+                    self.update_footprint_from_lib(pcb_fp, lib_fp)
+                    self.bind_footprint(pcb_fp, component)
             new_fp = False
 
         ## Add new footprint
@@ -1595,7 +1740,7 @@ class PCB_Transformer:
             assert not component.has_trait(self.has_linked_kicad_footprint)
 
             logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
-            lib_fp = get_footprint(fp_id, fp_lib_path)
+            lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
             # We need to manually override the name because the
             # footprint's data could've ultimately come from anywhere
             lib_fp.name = fp_id
