@@ -19,7 +19,6 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
-    attach_kicad_info,
     attach_net_names,
     attach_nets,
 )
@@ -120,7 +119,6 @@ def build(app: Module) -> None:
     # Pre-netlist preparation ---------------------------------------------------
     attach_random_designators(G)
     nets = attach_nets(G)
-    attach_kicad_info(G)
     # We have to re-attach the footprints, and subsequently nets, because the first
     # attachment is typically done before the footprints have been created
     # and therefore many nets won't be re-attached properly. Also, we just created
@@ -133,6 +131,8 @@ def build(app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
+    # We have to cleanup before applying the design, because otherwise we'll
+    # delete the things we're adding
     transformer.cleanup()
     transformer.apply_design(config.build.paths.fp_lib_table)
 

@@ -106,28 +106,6 @@ def attach_nets(G: Graph) -> set[F.Net]:
 
 # FIXME: this belongs at most in the KiCAD netlist generator
 # and should likely just return the properties rather than mutating the graph
-def attach_kicad_info(G: Graph) -> None:
-    """Attach kicad info to the footprints in the graph."""
-    # group comps & fps
-    node_fps = {
-        n: t.get_footprint()
-        # TODO maybe nicer to just look for footprints
-        # and get their respective components instead
-        for n, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
-        if isinstance(n, Module)
-    }
-
-    logger.info(f"Found {len(node_fps)} components with footprints")
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"node_fps: {node_fps}")
-
-    # add trait/info to footprints
-    for n, fp in node_fps.items():
-        if fp.has_trait(can_represent_kicad_footprint):
-            continue
-        fp.add(can_represent_kicad_footprint(n, G))
-
-
 @dataclass
 class _NetName:
     base_name: str | None = None
