@@ -167,12 +167,13 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
             str(
                 "${KIPRJMOD}"
                 / model_base_path_full.relative_to(
-                    config.build.paths.layout, walk_up=True
+                    config.build.paths.root, walk_up=True
                 )
             )
             if config.build.paths.layout
             else str(model_base_path_full.resolve())
         )
+        logger.debug(f"Exporting 3D model to: {kicad_model_path}")
         ki_footprint.export(
             footprint_full_path=str(footprint_filepath),
             model_3d_path=kicad_model_path,

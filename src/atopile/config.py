@@ -163,6 +163,10 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
 
 
 class ProjectPaths(BaseConfigModel):
+    """
+    Project global paths
+    """
+
     root: Path
     """Project root directory (where the ato.yaml file is located)"""
 
@@ -221,31 +225,41 @@ class ProjectPaths(BaseConfigModel):
         return self.component_lib / "footprints" / f"{lib_name}.pretty"
 
 
-class BuildPaths(BaseConfigModel):
+class BuildTargetPaths(BaseConfigModel):
+    """
+    Build-target specific paths
+    """
+
+    root: Path
+    """Build-target root directory"""
+
     layout: Path
-    """Build layout file"""
+    """Build-target layout file"""
 
     output_base: Path
     """Extension-less filename for build artifacts"""
 
     netlist: Path
-    """Build netlist file"""
+    """Build-target netlist file"""
 
     fp_lib_table: Path
     """Project footprint library table file"""
 
     kicad_project: Path
-    """Build KiCAD project file"""
+    """Build-target KiCAD project file"""
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         data.setdefault(
             "layout",
-            BuildPaths.find_layout(project_paths.root / project_paths.layout / name),
+            BuildTargetPaths.find_layout(
+                project_paths.root / project_paths.layout / name
+            ),
         )
         data.setdefault("output_base", project_paths.build / name)
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
+        data.setdefault("root", data["layout"].parent)
         super().__init__(**data)
 
     @classmethod
@@ -257,7 +271,9 @@ class BuildPaths(BaseConfigModel):
 
         elif layout_base.is_dir():
             layout_candidates = list(
-                filter(BuildPaths.match_user_layout, layout_base.glob("*.kicad_pcb"))
+                filter(
+                    BuildTargetPaths.match_user_layout, layout_base.glob("*.kicad_pcb")
+                )
             )
 
             if len(layout_candidates) == 1:
@@ -313,7 +329,7 @@ class BuildConfig(BaseConfigModel):
     keep_picked_parts: bool = Field(default=False)
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
-    paths: BuildPaths
+    paths: BuildTargetPaths
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -323,12 +339,12 @@ class BuildConfig(BaseConfigModel):
     def init_paths(cls, data: dict) -> dict:
         match data.get("paths"):
             case dict() | None:
-                data["paths"] = BuildPaths(
+                data["paths"] = BuildTargetPaths(
                     name=data["name"],
                     project_paths=data["_project_paths"],
                     **data.get("paths", {}),
                 )
-            case BuildPaths():
+            case BuildTargetPaths():
                 pass
             case _:
                 raise ValueError(f"Invalid build paths: {data.get('paths')}")
@@ -522,7 +538,7 @@ class ProjectConfig(BaseConfigModel):
                     _project_paths=project_paths,
                     name="default",
                     entry="",
-                    paths=BuildPaths(name="default", project_paths=project_paths),
+                    paths=BuildTargetPaths(name="default", project_paths=project_paths),
                 )
             },
         )
