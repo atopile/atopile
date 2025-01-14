@@ -643,18 +643,6 @@ class C_footprint:
             size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
             offset: Optional[C_xy] = None
 
-        # TODO: replace with generic gr item
-        @dataclass(kw_only=True)
-        class C_gr:
-            @dataclass
-            class C_gr_poly(C_polygon):
-                width: float
-                fill: bool | None = None
-
-            gr_poly: list[C_gr_poly] = field(
-                **sexp_field(multidict=True), default_factory=list
-            )
-
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
@@ -666,7 +654,6 @@ class C_footprint:
         roundrect_rratio: Optional[float] = None
         die_length: Optional[float] = None
         options: Optional[C_options] = None
-        primitives: Optional[C_gr] = None
         uuid: UUID = field(default_factory=gen_uuid)
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
