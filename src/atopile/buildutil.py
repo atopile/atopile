@@ -135,6 +135,7 @@ def build(app: Module) -> None:
     # delete the things we're adding
     transformer.cleanup()
     transformer.apply_design(config.build.paths.fp_lib_table)
+    transformer.check_unattached_fps()
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
         logger.info("Transforming PCB")
