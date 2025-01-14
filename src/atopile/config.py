@@ -259,7 +259,7 @@ class BuildTargetPaths(BaseConfigModel):
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
-        data.setdefault("root", data["layout"].parent)
+        # We deliberately don't set a root for an individual build
         super().__init__(**data)
 
     @classmethod
