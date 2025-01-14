@@ -1909,6 +1909,11 @@ class PCB_Transformer:
 
         ## Remove nets that aren't present in the design
         for pcb_net in self.pcb.nets:
+            # Net number == 0 and name == "" are the default values
+            # They represent unconnected to nets, so skip them
+            if pcb_net.number == 0 and pcb_net.name == "":
+                continue
+
             if pcb_net not in processed_nets:
                 logger.info(
                     f"Removing net `{pcb_net.name}`",
