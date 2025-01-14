@@ -1676,6 +1676,7 @@ class PCB_Transformer:
         layer: str,
         value: str,
         uuid: str,
+        hide: bool = True,
     ) -> C_footprint.C_property:
         return C_footprint.C_property(
             name=property_name,
@@ -1684,9 +1685,10 @@ class PCB_Transformer:
             uuid=UUID(uuid),
             effects=C_effects(
                 font=self.font,
-                hide=True,
+                hide=hide,
             ),
             at=C_xyr(x=0, y=0, r=0),
+            hide=hide,
         )
 
     def _update_footprint_from_node(
@@ -1772,13 +1774,18 @@ class PCB_Transformer:
 
         for prop_name, prop_value in property_values.items():
             ### Get old property value, representing non-existent properties as None
+            ### If the property value has changed, update it
             if prop := pcb_fp.propertys.get(prop_name):
-                old_prop_value = prop.value
-            else:
-                old_prop_value = None
+                if prop_value != prop.value:
+                    logger.info(
+                        f"Updating `{prop_name}`->`{prop_value}` on"
+                        f" `{address}` ({ref})",
+                        extra={"markdown": True},
+                    )
+                    pcb_fp.propertys[prop_name].value = prop_value
 
             ### If it's a new property, add it
-            if old_prop_value is None:
+            else:
                 logger.info(
                     f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
                     extra={"markdown": True},
@@ -1789,14 +1796,6 @@ class PCB_Transformer:
                     value=prop_value,
                     uuid=_get_prop_uuid(prop_name) or self.gen_uuid(mark=True),
                 )
-
-            ### If the property value has changed, update it
-            elif prop_value != old_prop_value:
-                logger.info(
-                    f"Updating `{prop_name}`->`{prop_value}` on `{address}` ({ref})",
-                    extra={"markdown": True},
-                )
-                pcb_fp.propertys[prop_name].value = prop_value
 
         return pcb_fp, new_fp
 
