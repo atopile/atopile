@@ -20,7 +20,7 @@ class TD541S485H(Module):
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

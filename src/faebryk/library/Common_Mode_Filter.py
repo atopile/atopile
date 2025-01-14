@@ -36,7 +36,7 @@ class Common_Mode_Filter(Module):
         units=P.Ω,
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.FL
     )
 

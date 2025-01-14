@@ -63,7 +63,7 @@ class ButtonCell(F.Battery):
         domain=L.Domains.ENUM(Size),
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.B
     )
 

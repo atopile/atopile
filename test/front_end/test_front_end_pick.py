@@ -17,14 +17,6 @@ def bob() -> Bob:
     return Bob()
 
 
-@pytest.fixture
-def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / "pyproject.toml").exists():
-        repo_root = repo_root.parent
-    return repo_root
-
-
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")

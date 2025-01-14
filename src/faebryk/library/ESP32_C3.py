@@ -30,7 +30,7 @@ class ESP32_C3(Module):
     uart = L.list_field(2, F.UART_Base)
     # ... etc
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(

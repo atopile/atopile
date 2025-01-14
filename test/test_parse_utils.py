@@ -5,6 +5,7 @@ import pytest
 import atopile
 import atopile.parse
 import atopile.parse_utils
+from faebryk.libs.util import repo_root as _repo_root
 
 
 def _parser(src: str):
@@ -26,11 +27,7 @@ def test_reconstructor_simple_stmt(txt: str):
     assert atopile.parse_utils.reconstruct(_parser(txt).simple_stmt()) == txt
 
 
-repo_root = Path.cwd()
-while not (repo_root / "pyproject.toml").exists():
-    repo_root = repo_root.parent
-
-
+repo_root = _repo_root()
 EXAMPLES_DIR = repo_root / "examples"
 
 

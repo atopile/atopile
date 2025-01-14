@@ -29,7 +29,7 @@ class App(Module):
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
-        self.battery.add(F.has_designator_prefix_defined("B"))
+        self.battery.add(F.has_designator_prefix("B"))
         self.battery.power.voltage.constrain_superset(
             L.Range(2.5 * P.volt, 4.2 * P.volt)
         )
@@ -43,7 +43,7 @@ class App(Module):
             )
         )
 
-        self.led.add(F.has_designator_prefix_defined("D"))
+        self.led.add(F.has_designator_prefix("D"))
         self.led.add(F.has_descriptive_properties_defined({"LCSC": "C72038"}))
         self.led.add(
             F.can_attach_to_footprint_via_pinmap(

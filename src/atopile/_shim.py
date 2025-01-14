@@ -88,9 +88,7 @@ class has_ato_cmp_attrs(L.Module.TraitT.decless()):
     def on_obj_set(self):
         self.module = self.get_obj(L.Module)
         self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
-        self.module.add(
-            F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
-        )
+        self.module.add(F.has_designator_prefix(F.has_designator_prefix.Prefix.U))
 
     def add_pin(self, name: str) -> F.Electrical:
         if _is_int(name):
@@ -159,7 +157,7 @@ class GlobalShims(L.Module):
 
     @write_only_property
     def designator_prefix(self, value: str):
-        self.add(F.has_designator_prefix_defined(value))
+        self.add(F.has_designator_prefix(value))
 
     @write_only_property
     def package(self, value: str):
