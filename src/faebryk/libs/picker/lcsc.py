@@ -163,16 +163,15 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
-        kicad_model_path = (
-            str(
+        try:
+            kicad_model_path = str(
                 "${KIPRJMOD}"
                 / model_base_path_full.relative_to(
                     config.build.paths.root, walk_up=True
                 )
             )
-            if config.build.paths.layout
-            else str(model_base_path_full.resolve())
-        )
+        except RuntimeError:
+            kicad_model_path = str(model_base_path_full.resolve())
         logger.debug(f"Exporting 3D model to: {kicad_model_path}")
         ki_footprint.export(
             footprint_full_path=str(footprint_filepath),
