@@ -121,6 +121,11 @@ def build(app: Module) -> None:
     attach_random_designators(G)
     nets = attach_nets(G)
     attach_kicad_info(G)
+    # We have to re-attach the footprints, and subsequently nets, because the first
+    # attachment is typically done before the footprints have been created
+    # and therefore many nets won't be re-attached properly. Also, we just created
+    # and attached them to the design above, so they weren't even there to attach
+    transformer.attach()
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
