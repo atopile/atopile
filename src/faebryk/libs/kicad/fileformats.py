@@ -588,13 +588,17 @@ class C_footprint:
 
     @dataclass(kw_only=True)
     class C_property:
+        @dataclass(kw_only=True)
+        class C_footprint_property_effects(C_effects):
+            hide: Optional[bool] = None
+
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_effects
+        effects: C_footprint_property_effects
 
     @dataclass
     class C_footprint_polygon(C_polygon):

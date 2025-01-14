@@ -1683,9 +1683,9 @@ class PCB_Transformer:
             value=value,
             layer=C_text_layer(layer=layer),
             uuid=UUID(uuid),
-            effects=C_effects(
+            effects=C_footprint.C_property.C_footprint_property_effects(
                 font=self.font,
-                hide=hide,
+                hide=None,
             ),
             at=C_xyr(x=0, y=0, r=0),
             hide=hide,
