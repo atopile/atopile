@@ -1444,6 +1444,8 @@ class PCB_Transformer:
     ) -> Footprint:
         """Insert a footprint into the pcb, at optionally a specific position"""
         if at is None:
+            # Copy the data structure so if we later mutate it we don't
+            # end up w/ those changes everywhere
             at = copy.deepcopy(self.default_component_insert_point)
 
         lib_attrs = self._fp_common_fields_dict(lib_footprint)
@@ -1716,6 +1718,8 @@ class PCB_Transformer:
         if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
             pcb_fp = pcb_fp_t.get_fp()
             if fp_id != pcb_fp.name:
+                # Copy the data structure so if we later mutate it we don't
+                # end up w/ those changes everywhere
                 lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
                 if existing_hash_prop := pcb_fp.propertys.get(self._FP_LIB_HASH):
                     existing_hash = existing_hash_prop.value
@@ -1742,6 +1746,8 @@ class PCB_Transformer:
             assert not component.has_trait(self.has_linked_kicad_footprint)
 
             logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
+            # Copy the data structure so if we later mutate it we don't
+            # end up w/ those changes everywhere
             lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
             # We need to manually override the name because the
             # footprint's data could've ultimately come from anywhere
