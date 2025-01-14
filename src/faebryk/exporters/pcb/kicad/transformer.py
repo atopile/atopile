@@ -1687,6 +1687,9 @@ class PCB_Transformer:
             uuid=UUID(uuid),
             effects=C_footprint.C_property.C_footprint_property_effects(
                 font=self.font,
+                # This inner hide should be None and the outer below drives things
+                # otherwise KiCAD will convert-on-save and you can get some weird
+                # behaviour
                 hide=None,
             ),
             at=C_xyr(x=0, y=0, r=0),
