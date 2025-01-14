@@ -1560,7 +1560,6 @@ class PCB_Transformer:
         logger: logging.Logger,
         insert_point: C_xyr | None = None,
     ) -> tuple[Footprint, bool]:
-        from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
         from faebryk.exporters.pcb.kicad.pcb import get_footprint
 
         f_fp = component.get_trait(F.has_footprint).get_footprint()
@@ -1569,8 +1568,6 @@ class PCB_Transformer:
         kicad_if_t = f_fp.get_trait(F.KicadFootprint.has_kicad_identifier)
         fp_id = kicad_if_t.kicad_identifier
 
-        # FIXME: this is a bit of a hacky object to rely on, but it exists already
-        can_represent_kicad_footprint_t = f_fp.get_trait(can_represent_kicad_footprint)
         # This is the component which is being stuck on the board
         address = component.get_full_name()
 
@@ -1585,8 +1582,9 @@ class PCB_Transformer:
                     f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
                     extra={"markdown": True},
                 )
-                new_fp = get_footprint(fp_id, fp_lib_path)
-                self.update_footprint_from_lib(pcb_fp, new_fp)
+                lib_fp = get_footprint(fp_id, fp_lib_path)
+                lib_fp.name = fp_id
+                self.update_footprint_from_lib(pcb_fp, lib_fp)
                 self.bind_footprint(pcb_fp, component)
             new_fp = False
 
@@ -1598,6 +1596,9 @@ class PCB_Transformer:
 
             logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
             lib_fp = get_footprint(fp_id, fp_lib_path)
+            # We need to manually override the name because the
+            # footprint's data could've ultimately come from anywhere
+            lib_fp.name = fp_id
             pcb_fp = self.insert_footprint(lib_fp, insert_point)
             self.bind_footprint(pcb_fp, component)
             new_fp = True
@@ -1608,13 +1609,23 @@ class PCB_Transformer:
             return None
 
         ## Apply propertys, Reference and atopile_address
-        pcb_fp.propertys["Reference"].value = ref
+        property_values = {}
 
-        properties_blob = can_represent_kicad_footprint_t.get_kicad_obj()
-        properties = properties_blob.properties.copy()
-        properties["Value"] = properties_blob.value
+        # Take any descriptive properties defined on the component
+        if c_props_t := component.try_get_trait(F.has_descriptive_properties):
+            property_values.update(c_props_t.get_properties())
 
-        for prop_name, prop_value in properties_blob.properties.items():
+        property_values["Reference"] = ref
+        property_values["Footprint"] = pcb_fp.name
+
+        if value_t := component.try_get_trait(F.has_simple_value_representation):
+            property_values["Value"] = value_t.get_value()
+        else:
+            property_values["Value"] = ""
+
+        property_values["atopile_address"] = component.get_full_name()
+
+        for prop_name, prop_value in property_values.items():
             ### Get old property value, representing non-existent properties as None
             if prop := pcb_fp.propertys.get(prop_name):
                 old_prop_value = prop.value
