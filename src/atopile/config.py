@@ -230,9 +230,6 @@ class BuildTargetPaths(BaseConfigModel):
     Build-target specific paths
     """
 
-    root: Path
-    """Build-target root directory"""
-
     layout: Path
     """Build-target layout file"""
 

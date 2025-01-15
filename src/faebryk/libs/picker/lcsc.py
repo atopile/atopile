@@ -167,7 +167,7 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
             kicad_model_path = str(
                 "${KIPRJMOD}"
                 / model_base_path_full.relative_to(
-                    config.build.paths.root, walk_up=True
+                    config.build.paths.kicad_project.parent, walk_up=True
                 )
             )
         except RuntimeError:
