@@ -12,11 +12,9 @@ from atopile import layout
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -57,12 +55,11 @@ from faebryk.libs.exceptions import (
     iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats import (
-    C_kicad_footprint_file,
     C_kicad_fp_lib_table_file,
     C_kicad_pcb_file,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import KeyErrorAmbiguous, cast_assert, once
+from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +110,7 @@ def build(app: Module) -> None:
     # Use standard footprints for known packages regardless of
     # what's otherwise been specified.
     # FIXME: this currently includes explicitly set footprints, but shouldn't
-    standardize_footprints(app, solver)
+    F.has_package.standardize_footprints(app, solver)
     create_footprint_library(app)
 
     # Pre-netlist preparation ---------------------------------------------------
@@ -338,45 +335,6 @@ def generate_variable_report(app: Module) -> None:
     export_parameters_to_file(
         app, config.build.paths.output_base.with_suffix(".variables.md")
     )
-
-
-def standardize_footprints(app: Module, solver: Solver) -> None:
-    """
-    Attach standard footprints for known packages
-
-    This must be done before the create_footprint_library is run
-    """
-    from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
-
-    gf = GraphFunctions(app.get_graph())
-
-    # TODO: make this caching global. Shit takes time
-    @once
-    def _get_footprint(fp_path: Path) -> C_kicad_footprint_file:
-        return C_kicad_footprint_file.loads(fp_path)
-
-    for node, pkg_t in gf.nodes_with_trait(F.has_package):
-        package_superset = solver.inspect_get_known_supersets(pkg_t.package)
-        if package_superset.is_empty():
-            logger.warning("%s has a package requirement but no candidates", node)
-            continue
-        elif not package_superset.is_single_element():
-            logger.warning("%s has multiple package candidates", node)
-            continue
-
-        # Skip nodes with footprints already
-        if node.has_trait(F.has_footprint):
-            continue
-
-        # We have guaranteed `.any()` returns only one thing
-        package = cast_assert(F.has_package.Package, package_superset.any())
-
-        if fp_path := KNOWN_PACKAGES_TO_FOOTPRINT.get(package):
-            if can_attach_t := node.try_get_trait(F.can_attach_to_footprint):
-                fp = _get_footprint(fp_path)
-                kicad_fp = F.KicadFootprint.from_file(fp)
-                kicad_fp.add(F.KicadFootprint.has_file(fp_path))
-                can_attach_t.attach(kicad_fp)
 
 
 def consolidate_footprints(app: Module) -> None:
