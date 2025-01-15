@@ -116,7 +116,7 @@ class DefaultSolver(Solver):
                 convert_operable_aliased_to_single_into_literal,
             ),
             ("Remove congruent expressions", remove_congruent_expressions),
-            ("Alias classes", resolve_alias_classes),
+            # ("Alias classes", resolve_alias_classes),
             (
                 "Inequality with literal to subset",
                 convert_inequality_with_literal_to_subset,
