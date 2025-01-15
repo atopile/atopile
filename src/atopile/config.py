@@ -464,7 +464,7 @@ class ProjectConfig(BaseConfigModel):
         except Exception as e:
             raise UserConfigurationError(f"Failed to load project config: {e}") from e
 
-        file_contents["paths"].setdefault("root", path)
+        file_contents.setdefault("paths", {}).setdefault("root", path)
         return _try_construct_config(
             ProjectConfig, identifier=config_file, **file_contents
         )

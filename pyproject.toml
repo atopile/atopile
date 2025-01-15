@@ -281,10 +281,6 @@ per-file-ignores = {}
 # Allow unused variables when underscore-prefixed.
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
-[tool.pylint.main]
-# TODO: consider removing pylint as a dep. ruff's mostly better
-ignore-paths = ["tests", "src/atopile/parser/"]
-
 [tool.black]
 line-length = 88
 target-version = ['py313']
