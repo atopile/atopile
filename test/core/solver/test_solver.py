@@ -554,6 +554,84 @@ def test_transitive_subset():
     assert result.try_get_literal(A, allow_subset=True) == Range(0, 10)
 
 
+def test_nested_additions():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+    D = Parameter()
+
+    A.alias_is(Quantity_Interval_Disjoint.from_value(1))
+    B.alias_is(Quantity_Interval_Disjoint.from_value(1))
+    C.alias_is(A + B)
+    D.alias_is(C + A)
+
+    solver = DefaultSolver()
+    result, _ = solver.phase_1_simplify_analytically(A.get_graph())
+    assert result.try_get_literal(A) == Quantity_Interval_Disjoint.from_value(1)
+    assert result.try_get_literal(B) == Quantity_Interval_Disjoint.from_value(1)
+    assert result.try_get_literal(C) == Quantity_Interval_Disjoint.from_value(2)
+    assert result.try_get_literal(D) == Quantity_Interval_Disjoint.from_value(3)
+
+
+def test_voltage_divider_find_vout():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+
+    v_in.alias_is(Range(9 * P.V, 10 * P.V))
+    r_top.alias_is(Range(10 * P.ohm, 100 * P.ohm))
+    r_bottom.alias_is(Range(10 * P.ohm, 100 * P.ohm))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    result, _ = solver.phase_1_simplify_analytically(v_out.get_graph())
+
+    assert result.try_get_literal(v_out) == Range(0.45 * P.V, 50 * P.V)
+
+
+def test_voltage_divider_find_resistances():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+    r_total = Parameter(units=P.ohm)
+
+    v_in.alias_is(Range(9 * P.V, 10 * P.V))
+    v_out.alias_is(Range(0.9 * P.V, 1 * P.V))
+    r_total.alias_is(Quantity_Interval_Disjoint.from_value(100 * P.ohm))
+    r_total.alias_is(r_top + r_bottom)
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    result, _ = solver.phase_1_simplify_analytically(v_out.get_graph())
+
+    assert result.try_get_literal(v_out) == Range(0.45 * P.V, 50 * P.V)
+
+    # TODO: specify r_top (with tolerance), finish solving to find r_bottom
+
+
+def test_voltage_divider_find_single_resistance():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+    r_total = Parameter(units=P.ohm)
+
+    v_in.alias_is(Range(9 * P.V, 10 * P.V))
+    v_out.alias_is(Range(0.9 * P.V, 1 * P.V))
+
+    r_top.alias_is(Quantity_Interval_Disjoint.from_value(30 * P.ohm))
+
+    r_total.alias_is(r_top + r_bottom)
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    result, _ = solver.phase_1_simplify_analytically(v_out.get_graph())
+
+    assert result.try_get_literal(r_bottom) == "TODO"  # TODO
+
+
 def test_base_unit_switch():
     A = Parameter(units=P.mAh)
     A.alias_is(Range(100 * P.mAh, 600 * P.mAh))
