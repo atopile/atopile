@@ -373,8 +373,8 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
     lit = try_extract_literal(op, allow_subset=False)
     if lit is None:
         return None
-    if not lit.is_single_element():
-        return None
+    # if not lit.is_single_element():
+    # return None
     return lit
 
 
