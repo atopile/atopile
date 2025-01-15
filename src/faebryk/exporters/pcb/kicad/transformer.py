@@ -330,9 +330,9 @@ class PCB_Transformer:
                 logger.warning(f"No PCB pads for pad in design: {fpad}")
             fpad.add(self.has_linked_kicad_pad(pcb_fp, pads, self))
 
-        # Check for unlinked PCB pads
-        if pcb_pads:
-            logger.warning(f"No pads in design for PCB pads: {pcb_pads}")
+        # This may leave some pads on the PCB unlinked to the design
+        # This is useful for things like mounting holes, but checks
+        # linking less robustly
 
     def map_nets(self, match_threshold: float = 0.8) -> dict[F.Net, Net]:
         """
