@@ -163,6 +163,10 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
 
 
 class ProjectPaths(BaseConfigModel):
+    """
+    Project global paths
+    """
+
     root: Path
     """Project root directory (where the ato.yaml file is located)"""
 
@@ -221,31 +225,38 @@ class ProjectPaths(BaseConfigModel):
         return self.component_lib / "footprints" / f"{lib_name}.pretty"
 
 
-class BuildPaths(BaseConfigModel):
+class BuildTargetPaths(BaseConfigModel):
+    """
+    Build-target specific paths
+    """
+
     layout: Path
-    """Build layout file"""
+    """Build-target layout file"""
 
     output_base: Path
     """Extension-less filename for build artifacts"""
 
     netlist: Path
-    """Build netlist file"""
+    """Build-target netlist file"""
 
     fp_lib_table: Path
     """Project footprint library table file"""
 
     kicad_project: Path
-    """Build KiCAD project file"""
+    """Build-target KiCAD project file"""
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         data.setdefault(
             "layout",
-            BuildPaths.find_layout(project_paths.root / project_paths.layout / name),
+            BuildTargetPaths.find_layout(
+                project_paths.root / project_paths.layout / name
+            ),
         )
         data.setdefault("output_base", project_paths.build / name)
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
-        data.setdefault("fp_lib_table", project_paths.layout.parent / "fp-lib-table")
+        data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
+        # We deliberately don't set a root for an individual build
         super().__init__(**data)
 
     @classmethod
@@ -257,7 +268,9 @@ class BuildPaths(BaseConfigModel):
 
         elif layout_base.is_dir():
             layout_candidates = list(
-                filter(BuildPaths.match_user_layout, layout_base.glob("*.kicad_pcb"))
+                filter(
+                    BuildTargetPaths.match_user_layout, layout_base.glob("*.kicad_pcb")
+                )
             )
 
             if len(layout_candidates) == 1:
@@ -301,7 +314,7 @@ class BuildPaths(BaseConfigModel):
         return True
 
 
-class BuildConfig(BaseConfigModel):
+class BuildTargetConfig(BaseConfigModel):
     _project_paths: ProjectPaths
 
     name: str
@@ -313,7 +326,7 @@ class BuildConfig(BaseConfigModel):
     keep_picked_parts: bool = Field(default=False)
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
-    paths: BuildPaths
+    paths: BuildTargetPaths
 
     def __init__(self, **data: Any):
         super().__init__(**data)
@@ -323,12 +336,12 @@ class BuildConfig(BaseConfigModel):
     def init_paths(cls, data: dict) -> dict:
         match data.get("paths"):
             case dict() | None:
-                data["paths"] = BuildPaths(
+                data["paths"] = BuildTargetPaths(
                     name=data["name"],
                     project_paths=data["_project_paths"],
                     **data.get("paths", {}),
                 )
-            case BuildPaths():
+            case BuildTargetPaths():
                 pass
             case _:
                 raise ValueError(f"Invalid build paths: {data.get('paths')}")
@@ -426,7 +439,7 @@ class ProjectConfig(BaseConfigModel):
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
     entry: str | None = Field(default=None)
-    builds: dict[str, BuildConfig] = Field(default_factory=dict)
+    builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     pcbnew_auto: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
@@ -455,11 +468,11 @@ class ProjectConfig(BaseConfigModel):
 
     @field_validator("builds", mode="before")
     def init_builds(
-        cls, value: dict[str, dict[str, Any] | BuildConfig], info: ValidationInfo
+        cls, value: dict[str, dict[str, Any] | BuildTargetConfig], info: ValidationInfo
     ) -> dict[str, Any]:
         for build_name, data in value.items():
             match data:
-                case BuildConfig():
+                case BuildTargetConfig():
                     data.name = build_name
                 case dict():
                     data.setdefault("name", build_name)
@@ -518,11 +531,11 @@ class ProjectConfig(BaseConfigModel):
             paths=project_paths,
             entry=entry,
             builds={
-                "default": BuildConfig(
+                "default": BuildTargetConfig(
                     _project_paths=project_paths,
                     name="default",
                     entry="",
-                    paths=BuildPaths(name="default", project_paths=project_paths),
+                    paths=BuildTargetPaths(name="default", project_paths=project_paths),
                 )
             },
         )
@@ -566,7 +579,7 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
         )
 
 
-_current_build_cfg: ContextVar[BuildConfig | None] = ContextVar(
+_current_build_cfg: ContextVar[BuildTargetConfig | None] = ContextVar(
     "current_build_cfg", default=None
 )
 
@@ -669,7 +682,7 @@ class Config:
         return (_build_context(self, name) for name in self.selected_builds)
 
     @property
-    def build(self) -> BuildConfig:
+    def build(self) -> BuildTargetConfig:
         if current := self._current_build:
             return current
         raise RuntimeError("No build config is currently active")
@@ -683,7 +696,7 @@ class Config:
         return (project_dir / PROJECT_CONFIG_FILENAME).exists()
 
     @property
-    def _current_build(self) -> BuildConfig | None:
+    def _current_build(self) -> BuildTargetConfig | None:
         return _current_build_cfg.get()
 
     def _setup_standalone(self, entry: str | None, entry_arg_file_path: Path) -> None:
