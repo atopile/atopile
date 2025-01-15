@@ -606,7 +606,7 @@ def test_voltage_divider_find_resistances():
     solver = DefaultSolver()
     result, _ = solver.phase_1_simplify_analytically(v_out.get_graph())
 
-    assert result.try_get_literal(v_out) == Range(0.45 * P.V, 50 * P.V)
+    assert result.try_get_literal(v_out) == Range(0.9 * P.V, 1 * P.V)
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
