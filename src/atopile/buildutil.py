@@ -176,8 +176,9 @@ def build(app: Module) -> None:
             f"Original layout: {original_relative}\n"
             f"Updated layout: {updated_relative}\n"
             "You can see the changes by running:\n"
-            f'diff --color "{original_relative}" "{updated_relative}"',
+            f'`diff --color "{original_relative}" "{updated_relative}"`',
             title="Frozen failed",
+            # No markdown=False here because we have both a command and paths
         )
     else:
         backup_file = config.build.paths.output_base.with_suffix(

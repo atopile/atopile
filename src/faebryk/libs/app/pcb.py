@@ -242,7 +242,8 @@ def create_footprint_library(app: Module) -> None:
                 except ValueError as ex:
                     raise UserResourceException(
                         f"Footprint file {has_file_t.file} is outside the project"
-                        " directory. Footprint files must be in the project directory."
+                        " directory. Footprint files must be in the project directory.",
+                        markdown=False,
                     ) from ex
 
                 lib_path, fp_path = _ensure_fp(path)
