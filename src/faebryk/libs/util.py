@@ -19,7 +19,7 @@ import uuid
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from enum import Enum, StrEnum
 from functools import wraps
 from genericpath import commonprefix
@@ -1057,10 +1057,6 @@ def join_if_non_empty(sep: str, *args):
     return sep.join(s for arg in args if (s := str(arg)))
 
 
-def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
-    return {f.name: getattr(obj, f.name) for f in fields(obj)}
-
-
 class RecursionGuard:
     def __init__(self, limit: int = 10000):
         self.limit = limit
@@ -1106,19 +1102,25 @@ class FuncSet[T, H: Hashable = int](collections.abc.MutableSet[T]):
         for item in data:
             self._deref[self._hasher(item)].append(item)
 
-    def add(self, item: T):
-        if item not in self._deref[self._hasher(item)]:
-            self._deref[self._hasher(item)].append(item)
+    def add(self, value: T):
+        if value not in self._deref[self._hasher(value)]:
+            self._deref[self._hasher(value)].append(value)
 
-    def discard(self, item: T):
-        hashed = self._hasher(item)
-        if hashed in self._deref and item in self._deref[hashed]:
-            self._deref[hashed].remove(item)
+    def discard(self, value: T):
+        hashed = self._hasher(value)
+        if hashed in self._deref and value in self._deref[hashed]:
+            self._deref[hashed].remove(value)
             if not self._deref[hashed]:
                 del self._deref[hashed]
 
-    def __contains__(self, item: T):
-        return item in self._deref[self._hasher(item)]
+    def __contains__(self, value: object):
+        try:
+            # Allow something of broader type than typically allowed
+            # but ultimately behave the same
+            hash_value = self._hasher(value)  # type: ignore
+        except Exception:
+            return False
+        return value in self._deref[hash_value]
 
     def __iter__(self) -> Iterator[T]:
         yield from chain.from_iterable(self._deref.values())

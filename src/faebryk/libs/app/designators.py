@@ -106,13 +106,3 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
             node.add(F.has_designator(designator))
 
     return known_designators
-
-
-def override_names_with_designators(graph: Graph):
-    for n, t in GraphFunctions(graph).nodes_with_trait(F.has_designator):
-        name = t.get_designator()
-        if n.has_trait(F.has_overriden_name):
-            logger.warning(
-                f"Renaming: {n.get_trait(F.has_overriden_name).get_name()} -> {name}"
-            )
-        n.add(F.has_overriden_name_defined(name))

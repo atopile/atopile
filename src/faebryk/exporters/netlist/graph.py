@@ -3,7 +3,6 @@
 
 import logging
 import re
-from abc import abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
@@ -16,38 +15,14 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
-from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, try_or
+from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby
 
 logger = logging.getLogger(__name__)
 
 
-class can_represent_kicad_footprint(F.Footprint.TraitT):
+class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
     kicad_footprint = FBRKNetlist.Component
 
-    @abstractmethod
-    def get_name_and_value(self) -> tuple[str, str]: ...
-
-    @abstractmethod
-    def get_kicad_obj(self) -> kicad_footprint: ...
-
-    @abstractmethod
-    def get_pin_name(self, pin: F.Pad) -> str: ...
-
-
-def ensure_ref_and_value(c: Module):
-    value = (
-        c.get_trait(F.has_simple_value_representation).get_value()
-        if c.has_trait(F.has_simple_value_representation)
-        else type(c).__name__
-    )
-
-    # At this point, all components MUST have a designator
-    return c.get_trait(F.has_designator).get_designator(), value
-
-
-class can_represent_kicad_footprint_via_attached_component(
-    can_represent_kicad_footprint.impl()
-):
     def __init__(self, component: Module, graph: Graph) -> None:
         """
         graph has to be electrically closed
@@ -76,17 +51,7 @@ class can_represent_kicad_footprint_via_attached_component(
                     c.get_trait(F.has_descriptive_properties).get_properties()
                 )
 
-        # FIXME: this should be a part of the Node.get_full_name(),
-        # but it's not yet implemented, so we're patching in the same
-        # functionality here. See: https://github.com/atopile/atopile/issues/547
-        if root_trait := try_or(
-            lambda: self.component.get_parent_with_trait(F.is_app_root)
-        ):
-            root, _ = root_trait
-            address = self.component.relative_address(root)
-        else:
-            address = self.component.get_full_name()
-        properties["atopile_address"] = address
+        properties["atopile_address"] = self.component.get_full_name()
 
         name, value = self.get_name_and_value()
 
@@ -97,6 +62,17 @@ class can_represent_kicad_footprint_via_attached_component(
         )
 
 
+def ensure_ref_and_value(c: Module):
+    value = (
+        c.get_trait(F.has_simple_value_representation).get_value()
+        if c.has_trait(F.has_simple_value_representation)
+        else type(c).__name__
+    )
+
+    # At this point, all components MUST have a designator
+    return c.get_trait(F.has_designator).get_designator(), value
+
+
 def add_or_get_nets(*interfaces: F.Electrical):
     buses = ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
@@ -105,12 +81,14 @@ def add_or_get_nets(*interfaces: F.Electrical):
         nets_on_bus = {
             net
             for mif in connected_mifs
-            if (net := F.Net.from_part_of_mif(mif)) is not None
+            if (net := F.Net.find_from_part_of_mif(mif)) is not None
         }
+
         if not nets_on_bus:
             net = F.Net()
             net.part_of.connect(bus_repr)
             nets_on_bus = {net}
+
         if len(nets_on_bus) > 1:
             raise KeyErrorAmbiguous(list(nets_on_bus), "Multiple nets interconnected")
 
@@ -119,36 +97,15 @@ def add_or_get_nets(*interfaces: F.Electrical):
     return nets_out
 
 
-def attach_nets_and_kicad_info(G: Graph) -> set[F.Net]:
-    # group comps & fps
-    node_fps = {
-        n: t.get_footprint()
-        # TODO maybe nicer to just look for footprints
-        # and get their respective components instead
-        for n, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
-        if isinstance(n, Module)
-    }
-
-    logger.info(f"Found {len(node_fps)} components with footprints")
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"node_fps: {node_fps}")
-
-    # add trait/info to footprints
-    for n, fp in node_fps.items():
-        if fp.has_trait(can_represent_kicad_footprint):
-            continue
-        fp.add(can_represent_kicad_footprint_via_attached_component(n, G))
-
-    mifs = [
-        mif.net
-        for fp in node_fps.values()
-        for mif in fp.get_children(direct_only=True, types=F.Pad)
-    ]
-    nets = add_or_get_nets(*mifs)
-
+def attach_nets(G: Graph) -> set[F.Net]:
+    """Create nets for all the pads in the graph."""
+    pad_mifs = [pad.net for pad in GraphFunctions(G).nodes_of_type(F.Pad)]
+    nets = add_or_get_nets(*pad_mifs)
     return nets
 
 
+# FIXME: this belongs at most in the KiCAD netlist generator
+# and should likely just return the properties rather than mutating the graph
 @dataclass
 class _NetName:
     base_name: str | None = None
