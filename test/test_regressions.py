@@ -23,9 +23,6 @@ class BuildError(Exception):
     """Failed to build the project."""
 
 
-@pytest.mark.xfail(
-    reason="Projects require update to use the latest version of atopile"
-)
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
