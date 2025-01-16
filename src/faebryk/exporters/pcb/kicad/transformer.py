@@ -1499,38 +1499,6 @@ class PCB_Transformer:
 
         logger.warning(f"Flipping {ref} side. Scrutinize this footprint in the PCB.")
 
-        def _backup_flip(obj):
-            """Shitty flip function which should only be used as a backup."""
-            if obj is None:
-                return
-
-            for obj, path, name_path in dataclass_dfs(obj):
-                # This only works for strings, so skip everything else
-                if not isinstance(obj, str):
-                    continue
-
-                # path ends with: [..., container, str]
-                container = path[-2]
-
-                # objects that have a "layer" property
-                if name_path[-2] == "layer" and hasattr(container, "layer"):
-                    container.layer = _flip(obj)
-
-                # dicts which have a "layer" key
-                elif name_path[-2] == "[layer]" and isinstance(container, dict):
-                    container["layer"] = _flip(obj)
-
-                # lists which have a "layer" key
-                # name_path ends with: [..., "layer", list, str]
-                elif name_path[-3] in [
-                    "layer",
-                    "layers",
-                    "[layer]",
-                    "[layers]",
-                ] and isinstance(container, list):
-                    # Replace the layer string with the flipped one
-                    container[container.index(obj)] = _flip(obj)
-
         # Otherwise, flip the footprint to the other side
         # FIXME: we're flipping based on the naming conventiong of "F." and "B."
         # there are no guarantees that this will be robust with new versions of KiCAD
@@ -1542,6 +1510,48 @@ class PCB_Transformer:
 
             # User.* layers, for example, aren't flipped and that's fine
             return layer
+
+        def _backup_flip(obj):
+            """Shitty flip function which should only be used as a backup."""
+            if obj is None:
+                return
+
+            for obj, path, name_path in dataclass_dfs(obj):
+                # This only works for strings, so skip everything else
+                if not isinstance(obj, str):
+                    continue
+
+                if len(name_path) < 2:
+                    continue
+
+                # path ends with: [..., container, str]
+                container = path[-2]
+
+                # objects that have a "layer" property
+                if name_path[-2] == "layer" and hasattr(container, "layer"):
+                    container.layer = _flip(obj)
+
+                # dicts which have a "layer" key
+                elif name_path[-2] == "[layer]" and isinstance(container, dict):
+                    # This is based on how dataclass_dfs serialises names
+                    assert "layer" in container
+                    container["layer"] = _flip(obj)
+
+                # lists which have a "layer" key
+                # name_path ends with: [..., "layer", list, str]
+                elif (
+                    len(name_path) > 2
+                    and name_path[-3]
+                    in [
+                        "layer",
+                        "layers",
+                        "[layer]",
+                        "[layers]",
+                    ]
+                    and isinstance(container, list)
+                ):
+                    # Replace the layer string with the flipped one
+                    container[container.index(obj)] = _flip(obj)
 
         # Flip the pads
         for pad in footprint.pads:
@@ -1696,6 +1706,13 @@ class PCB_Transformer:
             hide=hide,
         )
 
+    INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB = {
+        "LCSC",
+        "Partnumber",
+        "Manufacturer",
+        "JLCPCB description",
+    }
+
     def _update_footprint_from_node(
         self,
         component: Module,
@@ -1769,7 +1786,12 @@ class PCB_Transformer:
 
         # Take any descriptive properties defined on the component
         if c_props_t := component.try_get_trait(F.has_descriptive_properties):
-            property_values.update(c_props_t.get_properties())
+            for prop_name, prop_value in c_props_t.get_properties().items():
+                if prop_name in self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB:
+                    property_values[prop_name] = prop_value
+
+        if c_props_t := component.try_get_trait(F.has_datasheet):
+            property_values["Datasheet"] = c_props_t.get_datasheet()
 
         property_values["Reference"] = ref
         property_values["Footprint"] = pcb_fp.name
