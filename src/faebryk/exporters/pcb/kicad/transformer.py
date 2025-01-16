@@ -333,6 +333,8 @@ class PCB_Transformer:
         # This may leave some pads on the PCB unlinked to the design
         # This is useful for things like mounting holes, but checks
         # linking less robustly
+        if pcb_pads and logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
     def map_nets(self, match_threshold: float = 0.8) -> dict[F.Net, Net]:
         """
