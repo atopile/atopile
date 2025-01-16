@@ -195,6 +195,10 @@ def create_footprint_library(app: Module) -> None:
     Check all of the KicadFootprints have a manual identifier. Raise an error if they
     don't.
     """
+    from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
+
+    package_fp_paths = set(KNOWN_PACKAGES_TO_FOOTPRINT.values())
+
     LIB_NAME = "atopile"
 
     # Create the library it doesn't exist
@@ -203,21 +207,7 @@ def create_footprint_library(app: Module) -> None:
     ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
 
     # Cache the mapping from path to identifier and the path to the new file
-    path_to_fp_id: dict[Path, str] = {}
-    path_map: dict[Path, Path] = {}
-
-    def _ensure_fp(path: Path) -> tuple[str, Path]:
-        """
-        Ensure the footprint is in the library
-        Return the identifier and the path to the new file
-        """
-        if path not in path_to_fp_id:
-            mini_hash = hash_string(str(path))[:6]
-            path_to_fp_id[path] = f"{LIB_NAME}:{path.stem}-{mini_hash}"
-            path_map[path] = atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
-            shutil.copy(path, path_map[path])
-
-        return path_to_fp_id[path], path_map[path]
+    path_map: dict[Path, tuple[str, Path]] = {}
 
     for fp in app.get_children(direct_only=False, types=F.KicadFootprint):
         # has_kicad_identifier implies has_kicad_footprint, but not the other way around
@@ -228,28 +218,46 @@ def create_footprint_library(app: Module) -> None:
             pass
         else:
             if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
-                # Copy the footprint to the new library with a
-                # pseudo-guaranteed unique name
+                path = has_file_t.file
+                # We priverliage packages and assume this is what's dribing
+                if path in package_fp_paths:
+                    if path in path_map:
+                        id_, new_path = path_map[path]
+                    else:
+                        id_ = f"{LIB_NAME}:{path.stem}"
+                        new_path = atopile_fp_dir / path.name
+                        shutil.copy(path, new_path)
+                        path_map[path] = (id_, new_path)
 
-                # These should be relative to the project directory
-                # so the hashes are stable across machines
-                try:
-                    path = (
-                        Path(has_file_t.file)
-                        .resolve()
-                        .relative_to(config.project.paths.root)
-                    )
-                except ValueError as ex:
-                    raise UserResourceException(
-                        f"Footprint file {has_file_t.file} is outside the project"
-                        " directory. Footprint files must be in the project directory.",
-                        markdown=False,
-                    ) from ex
+                else:
+                    try:
+                        path = path.relative_to(config.project.paths.root)
 
-                lib_path, fp_path = _ensure_fp(path)
-                fp.add(F.KicadFootprint.has_file(fp_path))  # Override with new path
+                    # Raised when the file isn't relative to the project directory
+                    except ValueError as ex:
+                        raise UserResourceException(
+                            f"Footprint file {path} is outside the project"
+                            " directory. Footprint files must be in the project"
+                            " directory.",
+                            markdown=False,
+                        ) from ex
+
+                    # Copy the footprint to the new library with a
+                    # pseudo-guaranteed unique name
+                    if path in path_map:
+                        id_, new_path = path_map[path]
+                    else:
+                        mini_hash = hash_string(str(path))[:6]
+                        id_ = f"{LIB_NAME}:{path.stem}-{mini_hash}"
+                        new_path = (
+                            atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
+                        )
+                        shutil.copy(path, new_path)
+                        path_map[path] = (id_, new_path)
+
+                fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
                 # Attach the newly minted identifier
-                fp.add(F.KicadFootprint.has_kicad_identifier(lib_path))
+                fp.add(F.KicadFootprint.has_kicad_identifier(id_))
             else:
                 # This shouldn't happen
                 # KicadFootprint should always have a file, or an identifier

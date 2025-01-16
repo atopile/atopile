@@ -9,7 +9,7 @@ from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import EnumDomain, EnumSet, Parameter
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.util import once
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, once
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +39,38 @@ class has_package(Module.TraitT.decless()):
         self.package = Parameter(domain=EnumDomain(self.Package))
         self.package.constrain_subset(EnumSet(*self._enum_set))
 
+        # Cache the resolved package
+        self._package: "has_package.Package | None" = None
+
+    def get_package(self, solver: Solver) -> Package:
+        if self._package is not None:
+            return self._package
+
+        package_superset = solver.inspect_get_known_supersets(self.package)
+
+        if package_superset.is_empty():
+            raise KeyErrorNotFound()
+
+        if not package_superset.is_single_element():
+            # TODO: add the actual candidates to the exception
+            raise KeyErrorAmbiguous([])
+
+        # We have guaranteed `.any()` returns only one thing
+        # package_superset.any() is a similar enum to a package, however it's not
+        # actually a member of the has_package.Package enum.
+        self._package = self.Package(package_superset.any().value)
+
+        return self._package
+
+    def try_get_package(self, solver: Solver | None = None) -> Package | None:
+        if solver is None:
+            return self._package
+
+        try:
+            return self.get_package(solver)
+        except (KeyErrorNotFound, KeyErrorAmbiguous):
+            return None
+
     @classmethod
     def standardize_footprints(cls, app: Module, solver: Solver) -> None:
         """
@@ -58,22 +90,14 @@ class has_package(Module.TraitT.decless()):
             return C_kicad_footprint_file.loads(fp_path)
 
         for node, pkg_t in gf.nodes_with_trait(cls):
-            package_superset = solver.inspect_get_known_supersets(pkg_t.package)
-            if package_superset.is_empty():
-                logger.warning("%s has a package requirement but no candidates", node)
-                continue
-            elif not package_superset.is_single_element():
-                logger.warning("%s has multiple package candidates", node)
+            package = pkg_t.try_get_package(solver)
+            if package is None:
                 continue
 
             # Skip nodes with footprints already
-            if node.has_trait(cls):
+            # TODO: consider elevating this to an exception
+            if node.has_trait(F.has_footprint):
                 continue
-
-            # We have guaranteed `.any()` returns only one thing
-            # package_superset.any() is a similar enum to a package, however it's not
-            # actually a member of the has_package.Package enum.
-            package = cls.Package(package_superset.any().value)
 
             if fp_path := KNOWN_PACKAGES_TO_FOOTPRINT.get(package):
                 if can_attach_t := node.try_get_trait(F.can_attach_to_footprint):
