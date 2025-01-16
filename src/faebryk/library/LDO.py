@@ -43,7 +43,7 @@ class LDO(Module):
         likely_constrained=True,
         soft_set=L.Range(1 * P.mV, 100 * P.mV),
     )
-    psrr = L.p_field(
+    ripple_rejection_ratio = L.p_field(
         units=P.dB,
         likely_constrained=True,
         soft_set=L.Range(quantity(1, P.dB), quantity(100, P.dB)),
@@ -96,7 +96,7 @@ class LDO(Module):
         return F.has_simple_value_representation_based_on_params_chain(
             S(self.output_voltage, tolerance=True),
             S(self.output_current),
-            S(self.psrr),
+            S(self.ripple_rejection_ratio),
             S(self.dropout_voltage),
             S(self.max_input_voltage, prefix="Vin max"),
             S(self.quiescent_current, prefix="Iq"),
