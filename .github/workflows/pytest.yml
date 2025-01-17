@@ -43,6 +43,9 @@ jobs:
         -m "not not_in_ci and not slow and not regression"
         --timeout=300
       env:
+        GH_TOKEN: ${{ github.token }}
+        PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
+        PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
         COLUMNS: 150  # rich console width will be pulled from this
 
     - name: Upload all test logs
