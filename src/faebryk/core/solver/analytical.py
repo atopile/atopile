@@ -683,3 +683,34 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
             continue
 
         mutator.mutate_expression(e, operands=ops)
+
+
+def alias_literal_subset_expressions(mutator: Mutator):
+    """
+    A op Lit1, A is Lit2, A op B ss X -> A op B is X
+
+
+    An expression consisting only of literals and aliases to literals, which is a
+    subset of another literal, can be aliased to the subset literal
+    """
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+        if try_extract_literal(expr) is not None:
+            continue
+
+        only_literals_or_aliases = all(
+            isinstance(op, P_Set) or try_extract_literal(op) is not None
+            for op in expr.operands
+        )
+
+        if not only_literals_or_aliases:
+            continue
+
+        if (subset := try_extract_literal(expr, allow_subset=True)) is None:
+            continue
+
+        alias = mutator.create_expression(Is, expr, subset)
+
+        # FIXME: expr is not the subset expression
+        # if isinstance(expr, ConstrainableExpression) and expr.constrained:
+        alias.constrain()
