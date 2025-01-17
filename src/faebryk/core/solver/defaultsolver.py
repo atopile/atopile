@@ -201,6 +201,14 @@ class DefaultSolver(Solver):
             else:
                 algos = iterative_algorithms
 
+            if iterno == 0:
+                # Build initial subset literals
+                param_ops_subset_literals = {
+                    po: try_extract_literal(po, allow_subset=True)
+                    for G in graphs
+                    for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
+                }
+
             iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
             iteration_dirty = {}
             for phase_name, (algo_name, algo) in enumerate(algos):
@@ -220,17 +228,8 @@ class DefaultSolver(Solver):
                 *iteration_repr_maps.values(),
             )
 
-            if not any_dirty:
-                continue
-
             # subset -------------------------------------------------------------------
-            if iterno == 0:
-                # Build initial subset literals
-                param_ops_subset_literals = {
-                    po: try_extract_literal(po, allow_subset=True)
-                    for G in graphs
-                    for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-                }
+            if iterno == 0 or not any_dirty:
                 continue
 
             # check which subset literals have changed for our old paramops
