@@ -53,6 +53,7 @@ from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
     cast_assert,
+    dataclass_as_kwargs,
     find,
     get_key,
     hash_string,
@@ -1456,7 +1457,8 @@ class PCB_Transformer:
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
                 net=None,
                 **{
-                    **asdict(p),
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
@@ -1608,7 +1610,8 @@ class PCB_Transformer:
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
                 net=None,
                 **{
-                    **asdict(p),
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + footprint.at.r),
@@ -1727,8 +1730,7 @@ class PCB_Transformer:
         f_fp = component.get_trait(F.has_footprint).get_footprint()
 
         # At this point, all footprints MUST have a KiCAD identifier
-        kicad_if_t = f_fp.get_trait(F.KicadFootprint.has_kicad_identifier)
-        fp_id = kicad_if_t.kicad_identifier
+        fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
 
         # This is the component which is being stuck on the board
         address = component.get_full_name()
