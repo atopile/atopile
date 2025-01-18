@@ -18,7 +18,6 @@ ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 
 
 # FIXME: Test ato examples too
-@pytest.mark.slow
 @pytest.mark.parametrize(
     "example",
     FABLL_EXAMPLES,
