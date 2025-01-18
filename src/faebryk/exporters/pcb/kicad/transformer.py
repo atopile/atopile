@@ -1727,8 +1727,7 @@ class PCB_Transformer:
         f_fp = component.get_trait(F.has_footprint).get_footprint()
 
         # At this point, all footprints MUST have a KiCAD identifier
-        kicad_if_t = f_fp.get_trait(F.KicadFootprint.has_kicad_identifier)
-        fp_id = kicad_if_t.kicad_identifier
+        fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
 
         # This is the component which is being stuck on the board
         address = component.get_full_name()
