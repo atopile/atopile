@@ -6,6 +6,7 @@ import logging
 from collections import Counter, defaultdict
 from functools import partial
 from itertools import combinations
+from types import NoneType
 from typing import cast
 
 from faebryk.core.graph import GraphFunctions
@@ -22,6 +23,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
     S_LOG,
+    CanonicalNumber,
     CanonicalOperation,
     ContradictionByLiteral,
     FullyAssociative,
@@ -699,7 +701,11 @@ def alias_literal_subset_expressions(mutator: Mutator):
             continue
 
         only_literals_or_aliases = all(
-            isinstance(op, P_Set) or try_extract_literal(op) is not None
+            isinstance(op, (CanonicalNumber, BoolSet, P_Set, NoneType))
+            or (
+                isinstance(op, ParameterOperatable)
+                and try_extract_literal(op) is not None
+            )
             for op in expr.operands
         )
 

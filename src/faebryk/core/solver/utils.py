@@ -137,7 +137,9 @@ def make_lit(val):
     return P_Set.from_value(val)
 
 
-def try_extract_literal(po, allow_subset: bool = False) -> SolverLiteral | None:
+def try_extract_literal(
+    po: ParameterOperatable, allow_subset: bool = False
+) -> SolverLiteral | None:
     try:
         lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
     except KeyErrorAmbiguous as e:

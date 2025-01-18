@@ -119,7 +119,7 @@ def _collect_factors[T: Multiply | Power](
 
         same_literal_factors[paramop].append(collect_op)
         if paramop not in factors:
-            factors[paramop] = 0
+            factors[paramop] = make_lit(0)
         del factors[collect_op]
 
     new_factors = {}
@@ -139,7 +139,7 @@ def _collect_factors[T: Multiply | Power](
             old_factors.append(var)
             continue
 
-        new_factors[var] = sum(mul_lits) + count  # type: ignore
+        new_factors[var] = sum(mul_lits) + make_lit(count)  # type: ignore
 
     return new_factors, old_factors
 
