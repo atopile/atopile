@@ -20,7 +20,7 @@ ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 # FIXME: Test ato examples too
 @pytest.mark.parametrize(
     "example",
-    FABLL_EXAMPLES,
+    FABLL_EXAMPLES + ATO_EXAMPLES,
     ids=lambda p: p.stem,
 )
 def test_examples_build(
@@ -32,7 +32,7 @@ def test_examples_build(
     example_copy.write_text(example.read_text())
     example = example_copy
 
-    # Copy dependencies
+    # Copy dependencies to the tmp dir directly because standalone mode doens't include
     shutil.copytree(repo_root / "examples" / ".ato", tmp_path / ".ato")
 
     # Make the noise

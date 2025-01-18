@@ -1,5 +1,7 @@
-from "generics/resistors.ato" import Resistor
-from "generics/capacitors.ato" import Capacitor
+# These imports are weird because standalone builds don't include
+# the regular search paths
+from ".ato/modules/generics/resistors.ato" import Resistor
+from ".ato/modules/generics/capacitors.ato" import Capacitor
 
 module App:
     r1 = new Resistor
