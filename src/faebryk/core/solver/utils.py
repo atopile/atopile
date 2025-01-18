@@ -55,6 +55,7 @@ from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
     ConfigFlag,
+    ConfigFlagInt,
     KeyErrorAmbiguous,
     cast_assert,
     groupby,
@@ -76,6 +77,9 @@ SHOW_SS_IS = ConfigFlag(
     descr="Show subset/is predicates in graph print",
 )
 PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of solver")
+MAX_ITERATIONS = int(
+    ConfigFlagInt("SMAX_ITERATIONS", default=10, descr="Max iterations")
+)
 # --------------------------------------------------------------------------------------
 
 if S_LOG:

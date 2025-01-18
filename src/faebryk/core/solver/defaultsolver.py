@@ -37,6 +37,7 @@ from faebryk.core.solver.canonical import (
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
+    MAX_ITERATIONS,
     PRINT_START,
     S_LOG,
     Contradiction,
@@ -183,7 +184,7 @@ class DefaultSolver(Solver):
         while any_dirty and len(graphs) > 0:
             iterno += 1
             # TODO remove
-            if iterno > 10:
+            if iterno > MAX_ITERATIONS:
                 raise Exception("Too many iterations")
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
