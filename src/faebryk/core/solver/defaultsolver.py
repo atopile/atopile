@@ -101,8 +101,7 @@ class DefaultSolver(Solver):
 
         # TODO move into comment here
         # strategies
-        # https://www.notion.so/
-        # Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
+        # https://www.notion.so/Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
         pre_algorithms = [
             ("Constrain within and domain", constrain_within_domain),

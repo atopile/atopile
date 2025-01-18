@@ -600,7 +600,10 @@ class Mutator:
 
         for op in new_operands:
             if isinstance(op, ParameterOperatable):
-                assert op.get_graph() == new_expr.get_graph()
+                assert (
+                    op.get_graph() == new_expr.get_graph()
+                ), f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+
         if isinstance(expr, ConstrainableExpression):
             new_expr = cast_assert(ConstrainableExpression, new_expr)
             new_expr.constrained = expr.constrained
@@ -895,7 +898,7 @@ class Mutators:
                 f"Mutators created/destroyed graphs: "
                 f"{len(self.mutators)} -> {len(graphs)}"
             )
-            # print_all(graphs, context_new)
+            # Mutators.print_all(*graphs, context=context_new)
 
         return context_new
 
