@@ -33,6 +33,16 @@ jobs:
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v2
 
+    # Required by examples
+    # TODO: remove dependency on global fp-lib-table
+    - name: Prepare test environment
+      run: |
+        mkdir -p ~/.config/kicad/8.0/
+        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-fp-lib-table" ~/.config/kicad/8.0/fp-lib-table
+
+        mkdir -p /usr/share/kicad/
+        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
+
     - name: Run pytest
       id: pytest
       continue-on-error: true
