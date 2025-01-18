@@ -53,6 +53,7 @@ from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
     cast_assert,
+    dataclass_as_kwargs,
     find,
     get_key,
     hash_string,
@@ -1456,7 +1457,8 @@ class PCB_Transformer:
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
                 net=None,
                 **{
-                    **asdict(p),
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
@@ -1608,7 +1610,8 @@ class PCB_Transformer:
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
                 net=None,
                 **{
-                    **asdict(p),
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + footprint.at.r),
