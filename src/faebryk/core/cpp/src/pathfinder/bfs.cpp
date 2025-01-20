@@ -118,7 +118,7 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
 
         if (path->wake_signal) {
             for (auto it = hibernated_paths.begin(); it != hibernated_paths.end();) {
-                if (!it->get()->filtered) {
+                if (it->get()->filtered) {
                     hibernated_paths.erase(it);
                 } else if (!it->get()->hibernated) {
                     open_path_queue.push_back(*it);
