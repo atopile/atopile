@@ -1891,8 +1891,12 @@ class PCB_Transformer:
                 if ref_prop := pcb_fp.propertys.get("Reference"):
                     removed_fp_ref = ref_prop.value
                 else:
+                    # This should practically never occur
                     removed_fp_ref = "<no reference>"
-                logger.info(f"Removing `{removed_fp_ref}`", extra={"markdown": True})
+                logger.info(
+                    f"Removing outdated component with Reference `{removed_fp_ref}`",
+                    extra={"markdown": True},
+                )
                 self.remove_footprint(pcb_fp)
 
         # Update nets
