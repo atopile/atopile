@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Also in C++
 INDIV_MEASURE = ConfigFlag(
-    "INDIV_MEASURE", default=True, descr="Measure individual paths"
+    "INDIV_MEASURE", default=False, descr="Measure individual paths"
 )
 set_indiv_measure(bool(INDIV_MEASURE))
 
@@ -36,8 +36,8 @@ set_max_paths(int(MAX_PATHS), int(MAX_PATHS_NO_NEW_WEAK), int(MAX_PATHS_NO_WEAK)
 def find_paths(src: Node, dst: Sequence[Node]) -> Sequence[Path]:
     paths, counters = find_paths_cpp(src, dst)
 
-    if logger.isEnabledFor(logging.INFO):
-        logger.info(Counters(counters))
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(Counters(counters))
     return paths
 
 

@@ -282,7 +282,6 @@ class TestPerformance(unittest.TestCase):
         logger.info(f"\n{timings}")
 
 
-# TODO dont commit
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 def test_complex_module_full():
@@ -313,7 +312,6 @@ def test_complex_module_full():
 
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
-@pytest.mark.xfail(reason="TODO")
 def test_very_complex_module_full():
     timings = Times()
 
