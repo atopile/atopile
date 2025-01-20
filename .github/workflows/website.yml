@@ -3,27 +3,64 @@ on:
   push:
     branches:
       - main
+  release:
+    types: [published]
+
 permissions:
   contents: write
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: github-pages
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for mike to work with git history
+
       - name: Configure Git Credentials
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-      - uses: actions/setup-python@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          python-version: 3.x
-      - run: echo "cache_id=$(date --utc '+%V')" >> $GITHUB_ENV
-      - uses: actions/cache@v4
+          python-version-file: 'pyproject.toml'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
         with:
-          key: mkdocs-material-${{ env.cache_id }}
-          path: .cache
-          restore-keys: |
-            mkdocs-material-
-      - run: pip install mkdocs-material
-      - run: pip install mkdocs-drawio-file
-      - run: mkdocs gh-deploy --force
+          version: '0.5.5'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Get version
+        id: get_version
+        # Uses hatch rather than ato to get the version
+        # because currently ato might also produce logging output
+        # which contaminates stdout
+        run: |
+          VERSION=$(uv run --dev hatch version)
+          MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
+
+      # FIXME: enable deployment access restrictions
+      # - enforce https://github.com/atopile/atopile/settings/rules/3213715
+      # - specify the --remote in `mike deploy` to include the app token https://stackoverflow.com/questions/18935539/authenticate-with-github-using-a-token
+      # - uses: actions/create-github-app-token@v1
+      #   id: app-token
+      #   with:
+      #     app-id: ${{ vars.WEBSITE_DEPLOYER_APP_ID }}
+      #     private-key: ${{ secrets.WEBSITE_DEPLOYER_KEY }}
+
+      - name: Deploy development docs
+        if: github.event_name == 'push'
+        # TODO: it'd be nice to have the upcoming version number here as well
+        # but it clobbers the latest release in case they're the same
+        run: uv run mike deploy --push --update-aliases dev
+
+      - name: Deploy release docs
+        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
+        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest

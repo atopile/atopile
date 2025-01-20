@@ -1,0 +1,186 @@
+# Taken from https://github.com/pybind/scikit_build_example/blob/master/.github/workflows/wheels.yml
+
+name: deploy
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+  release:
+    types:
+      - published
+
+env:
+  FORCE_COLOR: 3
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build_sdist:
+    name: Build SDist
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: '0.5.5'
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: Build SDist
+      run: uv build --sdist
+
+    - name: Check metadata
+      run: uv tool run twine check dist/*
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cibw-sdist
+        path: dist/*.tar.gz
+
+
+  build_wheels:
+    name: Wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          #TODO
+          #- windows-latest
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - uses: astral-sh/setup-uv@v4
+      with:
+        version: '0.5.5'
+
+    - uses: pypa/cibuildwheel@v2.22
+      env:
+        CIBW_ARCHS_MACOS: x86_64 arm64
+        CIBW_ARCHS_LINUX: x86_64 # aarch64
+        # Force GLIBC 2.28 for C++ 20
+        CIBW_MANYLINUX_X86_64_IMAGE: manylinux_2_28
+        CIBW_MANYLINUX_AARCH64_IMAGE: manylinux_2_28
+        CIBW_MANYLINUX_PYPY_X86_64_IMAGE: manylinux_2_28
+        CIBW_MANYLINUX_PYPY_AARCH64_IMAGE: manylinux_2_28
+
+    - name: Verify clean directory
+      run: git diff --exit-code
+      shell: bash
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: cibw-wheels-${{ matrix.os }}
+        path: wheelhouse/*.whl
+
+
+  publish_wheels:
+    name: Publish Wheels
+    needs: [build_wheels, build_sdist]
+    runs-on: ubuntu-latest
+    # Publish wheels properly on release
+    # or to testpypi on main branch pushes to validate the workflow
+    if: github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: pypi
+    permissions:
+      id-token: write
+      attestations: write
+
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: cibw-*
+        merge-multiple: true
+        path: dist
+
+    - name: Generate artifact attestation for sdist and wheels
+      uses: actions/attest-build-provenance@v2
+      with:
+        subject-path: "dist/*"
+
+    - name: Publish to TestPyPI
+      if: github.event_name != 'release'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        repository-url: https://test.pypi.org/legacy/
+        skip-existing: true
+        attestations: false
+
+    - name: Publish to PyPI
+      if: github.event_name == 'release' && github.event.action == 'published'
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        attestations: true
+
+
+  docker:
+    name: Docker Build and Publish
+    runs-on: ubuntu-latest
+    needs: build_wheels
+
+    strategy:
+      matrix:
+        include:
+          - dockerfile: "Dockerfile.kicad"
+            image: "atopile-kicad"
+
+    # Sets the permissions granted to the `GITHUB_TOKEN`
+    # for the actions in this job.
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download wheel artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: cibw-*
+          merge-multiple: true
+          path: dist
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/atopile/${{ matrix.image }}
+          flavor: |
+            latest=${{github.event_name == 'release' && github.event.action == 'published' && !github.event.release.prerelease && !github.event.release.draft}}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: dockerfiles/${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

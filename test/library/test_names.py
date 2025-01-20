@@ -2,8 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 import ast
-import unittest
 from pathlib import Path
+
+import pytest
+
+from faebryk.libs.util import repo_root as _repo_root
 
 
 def _extract_classes_from_file(filepath: Path):
@@ -13,20 +16,19 @@ def _extract_classes_from_file(filepath: Path):
     return classes
 
 
-class TestClassNames(unittest.TestCase):
-    def test_class_name(self):
-        root_dir = Path(__file__).parent.parent.parent
-        source_directory = root_dir / Path("src/faebryk/library/")
-
-        for py_file in source_directory.glob("**/*.py"):
-            classes = _extract_classes_from_file(py_file)
-            for cls in classes:
-                file_name = py_file.stem
-                class_name = cls.name
-                if class_name.startswith("_"):
-                    continue
-                self.assertEqual(class_name, file_name, f"In {py_file}")
-
-
-if __name__ == "__main__":
-    unittest.main()
+@pytest.mark.parametrize(
+    "py_file",
+    [
+        p
+        for p in (_repo_root() / "src" / "faebryk" / "library").glob("**/*.py")
+        if p.is_file()
+    ],
+    ids=lambda p: p.stem,
+)
+def test_class_name(py_file: Path):
+    """Test that class names match their file names in the library directory."""
+    classes = _extract_classes_from_file(py_file)
+    for cls in classes:
+        if cls.name.startswith("_"):
+            continue
+        assert cls.name == py_file.stem, f"Class name mismatch in {py_file}"

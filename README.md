@@ -85,19 +85,6 @@ module Blinky:
 
     led_indicator.v_in = 3.3volt +/-10%
 ```
-Generate a **block diagram** from code
-<h1 align="center">
-    <picture>
-    <img alt="Schematics example" src="docs/assets/images/block_diagram_example.png" style="width: 80%;">
-    </picture>
-</h1>
-
-Produce **schematics** for documentation
-<h1 align="center">
-    <picture>
-    <img alt="Schematics example" src="docs/assets/images/schematic_example.png" style="width: 80%;">
-    </picture>
-</h1>
 
 ### Discover Full Projects
 
@@ -109,11 +96,18 @@ Find our [documentation](https://atopile.io/), [installation video](https://www.
 
 `atopile` is on pypi.org: https://pypi.org/project/atopile/
 
-### Most Basic Installation
+### Installation
 
-`atopile` requires *python3.11* or later, which you can install using your package manager or from [python.org](https://www.python.org/downloads/).
+`atopile` is published to [pypi.org](https://pypi.org/project/atopile/). We recommend installing into an isolated environment, e.g. with `uv`:
 
-Then just `pipx install atopile` and you're good to go!
+```sh
+uv tool install atopile
+```
+
+Or with `pipx` (requires Python 3.13):
+```sh
+pipx install atopile
+```
 
 ## ❓ Why Atopile?
 

@@ -122,14 +122,8 @@ GraphInterface::get_connected_nodes(std::vector<nb::type_object> types) {
     for (auto [to, link] : edges) {
         if (auto direct_link = std::dynamic_pointer_cast<LinkDirect>(link)) {
             auto node = to->get_node();
-            for (auto type : types) {
-                auto py_handle = node->get_py_handle();
-                if (!py_handle) {
-                    continue;
-                }
-                if (pyutil::isinstance(py_handle.value(), type)) {
-                    nodes.insert(node);
-                }
+            if (node->isinstance(types)) {
+                nodes.insert(node);
             }
         }
     }

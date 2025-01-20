@@ -4,14 +4,18 @@
 import itertools
 import logging
 
-from faebryk.exporters.netlist.netlist import T2Netlist
+import faebryk.library._F as F
+from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.module import Module
+from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
+from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
 from faebryk.libs.util import duplicates
 
 logger = logging.getLogger(__name__)
 
 
-def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
+def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
     tstamp = itertools.count(1)
     net_code = itertools.count(1)
 
@@ -22,7 +26,7 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
     #   - net_code can be generated (ascending, continuous)
     #   - components unique
 
-    dupes = duplicates(t2_netlist.comps, lambda comp: comp.name)
+    dupes = duplicates(fbrk_netlist.comps, lambda comp: comp.name)
     assert not dupes, f"Duplicate comps {dupes}"
 
     NetlistFile = C_kicad_netlist_file
@@ -46,13 +50,13 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
             ),
         )
         # sort because tstamp determined by pos
-        for comp in sorted(t2_netlist.comps, key=lambda comp: comp.name)
+        for comp in sorted(fbrk_netlist.comps, key=lambda comp: comp.name)
     ]
 
     # check if all vertices have a component in pre_comps
     # not sure if this is necessary
-    pre_comp_names = {comp.name for comp in t2_netlist.comps}
-    for net in t2_netlist.nets:
+    pre_comp_names = {comp.name for comp in fbrk_netlist.comps}
+    for net in fbrk_netlist.nets:
         for vertex in net.vertices:
             assert (
                 vertex.component.name in pre_comp_names
@@ -72,7 +76,7 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
             ],
         )
         # sort because code determined by pos
-        for net in sorted(t2_netlist.nets, key=lambda net: net.properties["name"])
+        for net in sorted(fbrk_netlist.nets, key=lambda net: net.properties["name"])
     ]
 
     return NetlistFile(
@@ -82,3 +86,25 @@ def from_faebryk_t2_netlist(t2_netlist: T2Netlist):
             nets=NetlistFile.C_netlist.C_nets(nets=nets),
         )
     )
+
+
+def attach_kicad_info(G: Graph) -> None:
+    """Attach kicad info to the footprints in the graph."""
+    # group comps & fps
+    node_fps = {
+        n: t.get_footprint()
+        # TODO maybe nicer to just look for footprints
+        # and get their respective components instead
+        for n, t in GraphFunctions(G).nodes_with_trait(F.has_footprint)
+        if isinstance(n, Module)
+    }
+
+    logger.info(f"Found {len(node_fps)} components with footprints")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"node_fps: {node_fps}")
+
+    # add trait/info to footprints
+    for n, fp in node_fps.items():
+        if fp.has_trait(can_represent_kicad_footprint):
+            continue
+        fp.add(can_represent_kicad_footprint(n, G))

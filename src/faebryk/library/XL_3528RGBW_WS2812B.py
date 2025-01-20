@@ -4,15 +4,14 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 
 class XL_3528RGBW_WS2812B(Module):
     class _ws2812b_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD
+        update_interval = L.p_field(units=P.s, tolerance_guess=0)
 
         def get_config(self) -> dict:
-            assert isinstance(self.update_interval, F.Constant)
-
             obj = self.get_obj(XL_3528RGBW_WS2812B)
 
             data_pin = F.is_esphome_bus.find_connected_bus(obj.di.signal)
@@ -21,7 +20,7 @@ class XL_3528RGBW_WS2812B(Module):
                 "light": [
                     {
                         "platform": "esp32_rmt_led_strip",
-                        "update_interval": f"{self.update_interval.value.to('s')}",
+                        "update_interval": self.update_interval,
                         "num_leds": 1,  # TODO: make dynamic
                         "rmt_channel": 0,  # TODO: make dynamic
                         "chipset": "WS2812",
@@ -32,19 +31,13 @@ class XL_3528RGBW_WS2812B(Module):
                 ]
             }
 
-        def is_implemented(self):
-            return (
-                isinstance(self.update_interval.get_most_narrow(), F.Constant)
-                and super().is_implemented()
-            )
-
     # interfaces
 
     power: F.ElectricPower
     do: F.ElectricLogic
     di: F.ElectricLogic
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.LED
     )
 
@@ -78,6 +71,7 @@ class XL_3528RGBW_WS2812B(Module):
         # ------------------------------
         #          connections
         # ------------------------------
-        self.power.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         F.ElectricLogic.connect_all_module_references(self, exclude=[self.power])

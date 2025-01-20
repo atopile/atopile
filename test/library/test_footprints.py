@@ -71,7 +71,3 @@ class TestFootprints(unittest.TestCase):
                 has_thermal_vias=False,
             ),
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

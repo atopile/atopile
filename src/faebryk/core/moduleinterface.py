@@ -4,11 +4,10 @@ import logging
 from itertools import pairwise
 from typing import (
     Iterable,
+    Self,
     Sequence,
     cast,
 )
-
-from typing_extensions import Self
 
 from faebryk.core.cpp import (
     GraphInterfaceModuleConnection,
@@ -235,3 +234,18 @@ class ModuleInterface(Node):
         path = self._path_with_least_conditionals(paths)
 
         self.connect(other, link=LinkDirectDerived(path))
+
+    @staticmethod
+    def _group_into_buses[T: ModuleInterface](mifs: Iterable[T]) -> dict[T, set[T]]:
+        """
+        returns dict[BusRepresentative, set[MIFs in Bus]]
+        """
+        to_check = set(mifs)
+        buses = {}
+        while to_check:
+            interface = to_check.pop()
+            ifs = interface.get_connected(include_self=True)
+            buses[interface] = ifs
+            to_check.difference_update(ifs.keys())
+
+        return buses

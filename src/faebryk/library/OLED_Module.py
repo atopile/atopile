@@ -38,16 +38,24 @@ class OLED_Module(Module):
     power: F.ElectricPower
     i2c: F.I2C
 
-    display_resolution: F.TBD
-    display_controller: F.TBD
-    display_size: F.TBD
+    display_resolution = L.p_field(domain=L.Domains.ENUM(DisplayResolution))
+    display_controller = L.p_field(domain=L.Domains.ENUM(DisplayController))
+    display_size = L.p_field(domain=L.Domains.ENUM(DisplaySize))
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range(3.0 * P.V, 5 * P.V))
-        self.power.decoupled.decouple().capacitance.merge(
-            F.Range(100 * P.uF, 220 * P.uF)
-        )
+        self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5 * P.V))
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.DS
     )
+
+    @L.rt_field
+    def can_be_decoupled(self):
+        class _(F.can_be_decoupled.impl()):
+            def decouple(self, owner: Module):
+                obj = self.get_obj(OLED_Module)
+                obj.power.decoupled.decouple(owner=owner).capacitance.constrain_subset(
+                    L.Range(100 * P.uF, 220 * P.uF)
+                )
+
+        return _()

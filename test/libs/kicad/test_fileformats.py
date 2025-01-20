@@ -2,11 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
+from dataclasses_json import CatchAll
 
-import faebryk.library._F as F  # noqa: F401
+import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
 from faebryk.libs.kicad.fileformats import (
     C_effects,
     C_footprint,
@@ -17,27 +19,35 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_project_file,
 )
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file, C_kicad_sym_file
+from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.sexp.dataclass_sexp import (
     JSON_File,
     SEXP_File,
     dataclass_dfs,
+    dumps,
+    loads,
+)
+from faebryk.libs.test.fileformats import (
+    _FP_DIR,
+    _FPLIB_DIR,  # noqa: F401
+    _NETLIST_DIR,  # noqa: F401
+    _PCB_DIR,  # noqa: F401
+    _PRJ_DIR,  # noqa: F401
+    _SCH_DIR,  # noqa: F401
+    _SYM_DIR,  # noqa: F401
+    _VERSION_DIR,  # noqa: F401
+    DEFAULT_VERSION,  # noqa: F401
+    FPFILE,
+    FPLIBFILE,
+    NETFILE,
+    PCBFILE,
+    PRJFILE,
+    SCHFILE,
+    SYMFILE,
 )
 from faebryk.libs.util import ConfigFlag, find, not_none
 
 logger = logging.getLogger(__name__)
-
-TEST_DIR = find(
-    Path(__file__).parents,
-    lambda p: p.name == "test" and (p / "common/resources").is_dir(),
-)
-TEST_FILES = TEST_DIR / "common/resources"
-PRJFILE = TEST_FILES / "test.kicad_pro"
-PCBFILE = TEST_FILES / "test.kicad_pcb"
-FPFILE = TEST_FILES / "test.kicad_mod"
-NETFILE = TEST_FILES / "test_e.net"
-FPLIBFILE = TEST_FILES / "fp-lib-table"
-SCHFILE = TEST_FILES / "test.kicad_sch"
-SYMFILE = TEST_FILES / "test.kicad_sym"
 
 DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
@@ -212,3 +222,86 @@ def test_sexp():
     for obj, path, name_path in level2:
         name = "".join(name_path)
         logger.debug(f"{name:70}  {[type(p).__name__ for p in path + [obj]]}")
+
+
+def _unformat(s: str) -> str:
+    return s.replace("\n", "").replace(" ", "")
+
+
+def test_no_unknowns():
+    @dataclass
+    class Container:
+        @dataclass
+        class SomeDataclass:
+            a: int
+            b: str
+
+        some_dataclass: SomeDataclass
+
+    container = Container(some_dataclass=Container.SomeDataclass(a=1, b="hello"))
+    cereal = dumps(container)
+
+    assert _unformat(cereal) == _unformat('(some_dataclass (a 1) (b "hello"))')
+
+    assert loads(cereal, Container) == container
+
+
+def test_empty_unknowns():
+    @dataclass
+    class Container:
+        @dataclass
+        class SomeDataclass:
+            a: int
+            b: str
+            unknown: CatchAll = None
+
+        some_dataclass: SomeDataclass
+
+    container = Container(some_dataclass=Container.SomeDataclass(a=1, b="hello"))
+
+    cereal = dumps(container)
+
+    assert _unformat(cereal) == _unformat('(some_dataclass (a 1) (b "hello"))')
+
+    assert loads(cereal, Container) == container
+
+
+def test_unknowns():
+    @dataclass
+    class Container:
+        @dataclass
+        class SomeDataclass:
+            a: int
+            b: str
+            unknown: CatchAll = None
+
+        some_dataclass: SomeDataclass
+
+    cereal = (
+        '(some_dataclass (a 1) (b "hello") gibberish (thingo) (random_key'
+        ' "random_value") (whats_this (who_even_knows True)))'
+    )
+
+    container = loads(cereal, Container)
+
+    assert container.some_dataclass.a == 1
+    assert container.some_dataclass.b == "hello"
+    assert container.some_dataclass.unknown  # there is content
+
+    assert _unformat(dumps(container)) == _unformat(cereal)
+
+
+@pytest.mark.parametrize(
+    "fp_path", _FP_DIR(5).glob("*.kicad_mod"), ids=lambda p: p.stem
+)
+def test_v5_fp_convert(fp_path: Path):
+    fp = kicad_footprint_file(fp_path)
+    assert fp.footprint.name.split(":")[-1] == fp_path.stem
+
+
+@pytest.mark.parametrize(
+    "fp_path", _FP_DIR(6).glob("*.kicad_mod"), ids=lambda p: p.stem
+)
+def test_v6_fp_convert(fp_path: Path):
+    fp = kicad_footprint_file(fp_path)
+    assert fp.footprint.name.split(":")[-1] == fp_path.stem

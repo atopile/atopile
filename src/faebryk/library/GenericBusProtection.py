@@ -63,14 +63,14 @@ class GenericBusProtection(Module):
         for (power_unprotected, power_protected), fuse in zip(power, fuse):
             power_unprotected.hv.connect_via(fuse, power_protected.hv)
             # TODO maybe shallow connect?
-            power_protected.voltage.merge(power_unprotected.voltage)
+            power_protected.voltage.alias_is(power_unprotected.voltage)
 
         # TVS
         if self.bus_protected.has_trait(F.can_be_surge_protected):
-            self.bus_protected.get_trait(F.can_be_surge_protected).protect()
+            self.bus_protected.get_trait(F.can_be_surge_protected).protect(self)
         else:
             for line_unprotected, line_protected in signals + power + raw:
-                line_protected.get_trait(F.can_be_surge_protected).protect()
+                line_protected.get_trait(F.can_be_surge_protected).protect(self)
 
         # TODO add shallow connect
 

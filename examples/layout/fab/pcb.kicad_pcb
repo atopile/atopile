@@ -1,0 +1,450 @@
+(kicad_pcb 
+    (version 20240108)
+    (generator "pcbnew")
+    (generator_version "8.0")
+    (general
+        (thickness 1.6)
+        (legacy_teardrops no))
+    (paper "A4")
+    (layers
+        (0 "F.Cu" signal)
+        (31 "B.Cu" signal)
+        (32 "B.Adhes" user "B.Adhesive")
+        (33 "F.Adhes" user "F.Adhesive")
+        (34 "B.Paste" user)
+        (35 "F.Paste" user)
+        (36 "B.SilkS" user "B.Silkscreen")
+        (37 "F.SilkS" user "F.Silkscreen")
+        (38 "B.Mask" user)
+        (39 "F.Mask" user)
+        (40 "Dwgs.User" user "User.Drawings")
+        (41 "Cmts.User" user "User.Comments")
+        (42 "Eco1.User" user "User.Eco1")
+        (43 "Eco2.User" user "User.Eco2")
+        (44 "Edge.Cuts" user)
+        (45 "Margin" user)
+        (46 "B.CrtYd" user "B.Courtyard")
+        (47 "F.CrtYd" user "F.Courtyard")
+        (48 "B.Fab" user)
+        (49 "F.Fab" user)
+        (50 "User.1" user)
+        (51 "User.2" user)
+        (52 "User.3" user)
+        (53 "User.4" user)
+        (54 "User.5" user)
+        (55 "User.6" user)
+        (56 "User.7" user)
+        (57 "User.8" user)
+        (58 "User.9" user))
+    (setup
+        (pad_to_mask_clearance 0)
+        (allow_soldermask_bridges_in_footprints no)
+        (pcbplotparams
+            (layerselection "0x00010fc_ffffffff")
+            (plot_on_all_layers_selection "0x0000000_00000000")
+            (disableapertmacros no)
+            (usegerberextensions no)
+            (usegerberattributes yes)
+            (usegerberadvancedattributes yes)
+            (creategerberjobfile yes)
+            (dashed_line_dash_ratio 12)
+            (dashed_line_gap_ratio 3)
+            (svgprecision 4)
+            (plotframeref no)
+            (viasonmask no)
+            (mode 1)
+            (useauxorigin no)
+            (hpglpennumber 1)
+            (hpglpenspeed 20)
+            (hpglpendiameter 15)
+            (pdf_front_fp_property_popups yes)
+            (pdf_back_fp_property_popups yes)
+            (dxfpolygonmode yes)
+            (dxfimperialunits yes)
+            (dxfusepcbnewfont yes)
+            (psnegative no)
+            (psa4output no)
+            (plotreference yes)
+            (plotvalue yes)
+            (plotfptext yes)
+            (plotinvisibletext no)
+            (sketchpadsonfab no)
+            (subtractmaskfromsilk no)
+            (outputformat 1)
+            (mirror no)
+            (drillshape 1)
+            (scaleselection 1)
+            (outputdirectory "")))
+    (net 0 "")
+    (net 1 "hv")
+    (net 2 "cathode")
+    (net 3 "lv")
+    (footprint "lcsc:LED0603-RD-YELLOW"
+        (layer "F.Cu")
+        (uuid "098e9cfb-860c-4cd7-b9a4-4a61539fc188")
+        (at 0 0 0)
+        (property "Reference" "D1"
+            (at 0 -4 0)
+            (layer "F.SilkS")
+            (hide no)
+            (uuid "97428510-1ee6-4c19-8884-abc0bf8292b5")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (property "Value" "PoweredLED"
+            (at 0 4 0)
+            (layer "F.Fab")
+            (hide no)
+            (uuid "fd8cc104-9c86-4ddb-a5a0-879ddbb4ae97")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (property "faebryk module name" "*0458.led"
+            (at 0 0 0)
+            (layer "User.9")
+            (hide no)
+            (uuid "f64c87df-ffd2-492a-98ca-61f353cfbd17")
+            (effects
+                (font
+                    (size 1.27 1.27)
+                    (thickness 0.15))
+                (hide yes)))
+        (property "LCSC" "C72038"
+            (at 0 0 0)
+            (layer "User.9")
+            (hide no)
+            (uuid "a8a36578-0ea1-4355-be1b-cf3d87f13d1e")
+            (effects
+                (font
+                    (size 1.27 1.27)
+                    (thickness 0.15))
+                (hide yes)))
+        (property "atopile_address" "led"
+            (at 0 0 0)
+            (layer "User.9")
+            (hide no)
+            (uuid "92e12c8d-293f-4ef6-8688-5fbb95bd130f")
+            (effects
+                (font
+                    (size 1.27 1.27)
+                    (thickness 0.15))
+                (hide yes)))
+        (attr smd)
+        (fp_line
+            (start 0.22 0.33)
+            (end 0.21 0.33)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "39031c87-30eb-4a12-afb1-a5651f70acad"))
+        (fp_line
+            (start 0.21 0.33)
+            (end -0.12 0)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "467459e6-3899-4582-a442-a9140aea2c10"))
+        (fp_line
+            (start 0.22 -0.35)
+            (end 0.22 -0.34)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "7beddfdd-c751-49a7-ad2d-58ec416d4ef7"))
+        (fp_line
+            (start 0.22 -0.34)
+            (end -0.12 0)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "c4a064b4-433f-4b0d-ace4-9d334cca0050"))
+        (fp_line
+            (start 0.22 -0.35)
+            (end 0.22 0.33)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "d304a6a9-23c1-4902-9f25-dea87ead3b51"))
+        (fp_line
+            (start 0.24 -0.75)
+            (end 1.39 -0.75)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "2a52586e-140d-4dbc-bd37-214997ce00ed"))
+        (fp_line
+            (start 0.24 0.75)
+            (end 1.39 0.75)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "aeb48a44-0962-4665-96d8-c3d751ab4c13"))
+        (fp_line
+            (start 1.39 -0.75)
+            (end 1.39 0.73)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "21f5fa4a-1d23-49ef-9ec6-945c2722b01d"))
+        (fp_line
+            (start -0.14 0.75)
+            (end -1.19 0.75)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "555829bb-6c20-4d87-bace-936c88a80d9d"))
+        (fp_line
+            (start -1.49 0.35)
+            (end -1.49 0.45)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "d5f87439-1458-4526-95ce-38f364cdee7f"))
+        (fp_line
+            (start -1.49 0.45)
+            (end -1.19 0.75)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "6f6d50bd-b275-4518-beaf-b5b8c483334e"))
+        (fp_line
+            (start -1.49 -0.35)
+            (end -1.49 0.35)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "20a67a94-d5c1-4e7c-a61c-fc23a68ed102"))
+        (fp_line
+            (start -1.49 -0.35)
+            (end -1.49 -0.45)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "173194fe-0130-46c5-8795-c85f42e13ee8"))
+        (fp_line
+            (start -1.49 -0.45)
+            (end -1.19 -0.75)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "2b7f004f-10de-4dcd-b63b-109f3c7c4d0a"))
+        (fp_line
+            (start -0.14 -0.75)
+            (end -1.19 -0.75)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "a1f18cf6-18a9-4fa8-9638-8a6f789168c7"))
+        (fp_line
+            (start 0.22 0)
+            (end -0.12 0)
+            (stroke
+                (width 0.15)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "de6da3e7-1602-458b-bb02-fe457c08595c"))
+        (fp_circle
+            (center -0.8 0.4)
+            (end -0.77 0.4)
+            (stroke
+                (width 0.06)
+                (type solid))
+            (fill none)
+            (layer "F.Fab")
+            (uuid "32a12918-46ab-49d1-86a9-8bd6eff29d9a"))
+        (fp_text user "%R"
+            (at 0 0 0)
+            (layer "F.Fab")
+            (uuid "491986d5-3d18-4129-aa0c-65ae8085d11f")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (fp_text user "${REFERENCE}"
+            (at 0 -4 0)
+            (layer "F.SilkS")
+            (uuid "97428510-1ee6-4c19-8884-abc0bf8292b5")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (pad "1" smd rect
+            (at -0.8 0 90)
+            (size 0.8 0.8)
+            (layers "F.Cu" "F.Paste" "F.Mask")
+            (remove_unused_layers no)
+            (uuid "0cdc9943-2d42-4e9f-9761-7a71fafa7cea")
+            (net 2 "cathode"))
+        (pad "2" smd rect
+            (at 0.8 0 90)
+            (size 0.8 0.8)
+            (layers "F.Cu" "F.Paste" "F.Mask")
+            (remove_unused_layers no)
+            (uuid "edd540a8-b17b-4f61-bfad-7e04aa079356")
+            (net 1 "hv"))
+        (model "${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes/LED0603-RD-YELLOW.wrl"
+            (offset
+                (xyz 0 0 0))
+            (scale
+                (xyz 1 1 1))
+            (rotate
+                (xyz 0 0 0))))
+    (footprint "lcsc:BAT-TH_BS-02-A1AJ010"
+        (layer "F.Cu")
+        (uuid "1aab55bb-6178-4fe9-b5a0-6191cf7c3413")
+        (at 0 0 0)
+        (property "Reference" "B1"
+            (at 0 -4 0)
+            (layer "F.SilkS")
+            (hide no)
+            (uuid "5a7ed4e5-ba81-4b7d-af85-9fa45b9311dd")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (property "Value" "Battery"
+            (at 0 4 0)
+            (layer "F.Fab")
+            (hide no)
+            (uuid "dbb8ae72-3519-43ab-9e33-c26db1ed6b38")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (property "faebryk module name" "*0458.battery"
+            (at 0 0 0)
+            (layer "User.9")
+            (hide no)
+            (uuid "51b05558-6f85-44ef-b2fa-694abe5918f2")
+            (effects
+                (font
+                    (size 1.27 1.27)
+                    (thickness 0.15))
+                (hide yes)))
+        (property "LCSC" "C5239862"
+            (at 0 0 0)
+            (layer "User.9")
+            (hide no)
+            (uuid "78b12f33-5b51-4592-898c-f73c7166b242")
+            (effects
+                (font
+                    (size 1.27 1.27)
+                    (thickness 0.15))
+                (hide yes)))
+        (property "atopile_address" "battery"
+            (at 0 0 0)
+            (layer "User.9")
+            (hide no)
+            (uuid "67079877-cfac-4c86-8990-3420d7c26401")
+            (effects
+                (font
+                    (size 1.27 1.27)
+                    (thickness 0.15))
+                (hide yes)))
+        (attr through_hole)
+        (fp_line
+            (start 8.32 -3.8)
+            (end 11.36 -3.8)
+            (stroke
+                (width 0.25)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "c5fd6b40-bf18-44b6-856a-af3ac9490506"))
+        (fp_line
+            (start 11.36 -3.8)
+            (end 11.36 3.81)
+            (stroke
+                (width 0.25)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "8d8c02ab-665d-401b-bac7-ffb07b1ad410"))
+        (fp_line
+            (start 11.36 3.81)
+            (end 8.31 3.81)
+            (stroke
+                (width 0.25)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "fd072239-8d07-457c-acf9-5193699c2a42"))
+        (fp_arc
+            (start 8.32 3.78)
+            (mid -13.187853704027743 -0.010487932620405474)
+            (end 8.320333525484555 -3.799082899286133)
+            (stroke
+                (width 0.25)
+                (type solid))
+            (layer "F.SilkS")
+            (uuid "dc641a94-88a9-4c88-8c4a-76834faf728a"))
+        (fp_circle
+            (center -13.15 11.07)
+            (end -13.12 11.07)
+            (stroke
+                (width 0.06)
+                (type solid))
+            (fill none)
+            (layer "F.Fab")
+            (uuid "d73af36a-4e78-4bc1-a509-0679b8612a71"))
+        (fp_text user "%R"
+            (at 0 0 0)
+            (layer "F.Fab")
+            (uuid "ccc6b6cf-0137-4a09-ac65-20bca9f2d9e0")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (fp_text user "${REFERENCE}"
+            (at 0 -4 0)
+            (layer "F.SilkS")
+            (uuid "5a7ed4e5-ba81-4b7d-af85-9fa45b9311dd")
+            (effects
+                (font
+                    (size 1 1)
+                    (thickness 0.15))
+                (hide no)))
+        (pad "1" thru_hole circle
+            (at -10 0 0)
+            (size 1.8 1.8)
+            (drill 1.1999975999999999)
+            (layers "*.Cu" "*.Mask")
+            (remove_unused_layers no)
+            (uuid "a7ff3154-652f-4c3b-9592-62a14f8a80a3")
+            (net 3 "lv"))
+        (pad "2" thru_hole circle
+            (at 10 0 0)
+            (size 1.8 1.8)
+            (drill 1.1999975999999999)
+            (layers "*.Cu" "*.Mask")
+            (remove_unused_layers no)
+            (uuid "9ac89135-e0ff-4fbd-8438-c292d576373c")
+            (net 1 "hv"))
+        (model "${KIPRJMOD}/../libs/3dmodels/lcsc.3dshapes/BAT-TH_BS-02-A1AJ010.wrl"
+            (offset
+                (xyz -0.85 0 0))
+            (scale
+                (xyz 1 1 1))
+            (rotate
+                (xyz 0 0 0)))))

@@ -1,26 +1,32 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import itertools
 import logging
-import unittest
+
+import pytest
 
 import faebryk.library._F as F
-from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
-from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-from faebryk.exporters.netlist.netlist import make_t2_netlist_from_graph
+from faebryk.exporters.netlist.graph import attach_nets
+from faebryk.exporters.netlist.kicad.netlist_kicad import (
+    attach_kicad_info,
+    faebryk_netlist_to_kicad,
+)
+from faebryk.exporters.netlist.netlist import FBRKNetlist, make_fbrk_netlist_from_graph
 from faebryk.libs.app.designators import (
     attach_random_designators,
-    override_names_with_designators,
 )
+from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
 
 # Netlists --------------------------------------------------------------------
-def _test_netlist_graph():
-    resistor1 = F.Resistor().builder(lambda r: r.resistance.merge(100 * P.ohm))
-    resistor2 = F.Resistor().builder(lambda r: r.resistance.merge(200 * P.ohm))
+@pytest.fixture
+def netlist_graph():
+    resistor1 = F.Resistor().builder(lambda r: r.resistance.alias_is(100 * P.ohm))
+    resistor2 = F.Resistor().builder(lambda r: r.resistance.alias_is(200 * P.ohm))
     power = F.ElectricPower()
 
     # net labels
@@ -41,7 +47,7 @@ def _test_netlist_graph():
             F.SMDTwoPin(F.SMDTwoPin.Type._0805)
         )
         r.add(
-            F.has_designator_defined(
+            F.has_designator(
                 resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
             )
         )
@@ -49,32 +55,15 @@ def _test_netlist_graph():
     # make netlist
     G = resistor1.get_graph
     attach_random_designators(G())
-    override_names_with_designators(G())
-    attach_nets_and_kicad_info(G())
-    t2 = make_t2_netlist_from_graph(G())
-    for comp in t2.comps:
-        del comp.properties["faebryk_name"]
-    netlist = from_faebryk_t2_netlist(t2)
-
-    # test
-    _, netlist_t2 = _test_netlist_t2()
-    kicad_netlist_t2 = from_faebryk_t2_netlist(netlist_t2)
-    success = netlist.dumps() == kicad_netlist_t2.dumps()
-    if not success:
-        logger.error("Graph != T2")
-        logger.error("T2: %s", kicad_netlist_t2)
-        logger.error("Gr: %s", netlist)
-
-    return success, netlist
+    attach_nets(G())
+    attach_kicad_info(G())
+    return make_fbrk_netlist_from_graph(G())
 
 
-def _test_netlist_t2():
-    from faebryk.exporters.netlist.kicad.netlist_kicad import from_faebryk_t2_netlist
-    from faebryk.exporters.netlist.netlist import T2Netlist
-
+@pytest.fixture
+def netlist_t2():
     # t2_netlist = [(properties, vertices=[comp=(name, value, properties), pin)])]
-
-    resistor1 = T2Netlist.Component(
+    resistor1 = FBRKNetlist.Component(
         name="R1",
         value="100Ω",
         properties={
@@ -82,7 +71,7 @@ def _test_netlist_t2():
         },
     )
 
-    resistor2 = T2Netlist.Component(
+    resistor2 = FBRKNetlist.Component(
         name="R2",
         value="200Ω",
         properties={
@@ -90,33 +79,33 @@ def _test_netlist_t2():
         },
     )
 
-    netlist = T2Netlist(
+    return FBRKNetlist(
         nets=[
-            T2Netlist.Net(
+            FBRKNetlist.Net(
                 properties={
                     "name": "GND",
                 },
                 vertices=[
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor1,
                         pin="2",
                     ),
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor2,
                         pin="2",
                     ),
                 ],
             ),
-            T2Netlist.Net(
+            FBRKNetlist.Net(
                 properties={
                     "name": "+3V3",
                 },
                 vertices=[
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor1,
                         pin="1",
                     ),
-                    T2Netlist.Net.Vertex(
+                    FBRKNetlist.Net.Vertex(
                         component=resistor2,
                         pin="1",
                     ),
@@ -125,24 +114,10 @@ def _test_netlist_t2():
         ],
         comps=[resistor1, resistor2],
     )
-    logger.debug("T2 netlist:", netlist)
-
-    kicad_net = from_faebryk_t2_netlist(netlist)
-    kicad_net_manu = _test_netlist_manu()
-
-    success = kicad_net.dumps() == kicad_net_manu.dumps()
-    if not success:
-        logger.error("T2 != Manu")
-        logger.error(kicad_net_manu)
-
-    return success, netlist
 
 
-def _test_netlist_manu():
-    import itertools
-
-    from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
-
+@pytest.fixture
+def netlist_manu():
     # Footprint pins are just referenced by number through netlist of symbol
     # Careful comps need distinct timestamps
     tstamp = itertools.count(1)
@@ -207,10 +182,16 @@ def _test_netlist_manu():
     )
 
 
-class TestNetlist(unittest.TestCase):
-    def test_netlist(self):
-        ok, _ = _test_netlist_t2()
-        self.assertTrue(ok)
+def test_netlist_t2(netlist_t2, netlist_manu):
+    netlist_t2 = faebryk_netlist_to_kicad(netlist_t2)
+    assert netlist_t2.dumps() == netlist_manu.dumps()
 
-        ok, _ = _test_netlist_graph()
-        self.assertTrue(ok)
+
+def test_netlist_graph(netlist_graph, netlist_t2):
+    for comp in netlist_graph.comps:
+        assert isinstance(comp.properties, dict)
+        comp.properties.pop("atopile_address", None)
+
+    netlist_graph = faebryk_netlist_to_kicad(netlist_graph)
+    netlist_t2 = faebryk_netlist_to_kicad(netlist_t2)
+    assert netlist_graph.dumps() == netlist_t2.dumps()

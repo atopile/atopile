@@ -20,7 +20,7 @@ class TD541S485H(Module):
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -51,12 +51,14 @@ class TD541S485H(Module):
     )
 
     def __preinit__(self):
-        self.power.decoupled.decouple()
-        self.power_iso_in.decoupled.decouple()
-        self.power_iso_out.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
+        # self.power_iso_in.decoupled.decouple()
+        # self.power_iso_out.decoupled.decouple()
 
         self.power_iso_in.lv.connect(self.power_iso_out.lv)
-        self.power_iso_out.voltage.merge(5 * P.V)
+        # TODO tolerance
+        self.power_iso_out.voltage.constrain_superset(5 * P.V)
 
         F.ElectricLogic.connect_all_module_references(
             self,

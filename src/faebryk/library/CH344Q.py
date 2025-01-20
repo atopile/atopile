@@ -23,42 +23,44 @@ class CH344Q(F.CH344):
         tnow: F.ElectricLogic
 
         @assert_once
-        def enable_tnow_mode(self):
+        def enable_tnow_mode(self, owner: Module):
             """
             Set TNOW mode for specified UART for use with RS485 tranceivers.
             The TNOW pin can be connected to the tx_enable and rx_enable
             pins of the RS485 tranceiver for automatic half-duplex control.
             """
-            self.uart.dtr.set_weak(on=False)
+            self.uart.dtr.set_weak(on=False, owner=owner)
             self.uart.dtr.connect(self.tnow)
 
     uartwrapper = L.list_field(4, UARTWrapper)
 
     @assert_once
-    def enable_chip_default_settings(self):
+    def enable_chip_default_settings(self, owner: Module):
         """
         Use the chip default settings instead of the ones stored in the internal EEPROM
         """
-        self.uart[0].rts.set_weak(on=False)
+        self.uart[0].rts.set_weak(on=False, owner=owner)
 
     @assert_once
-    def enable_status_or_modem_signals(self, modem_signals: bool = False):
+    def enable_status_or_modem_signals(
+        self, owner: Module, modem_signals: bool = False
+    ):
         """
         Enable rx, tx and usb status signal outputs instead of UART modem signals.
         """
         if modem_signals:
-            self.uart[3].rts.set_weak(on=False)
+            self.uart[3].rts.set_weak(on=False, owner=owner)
             return
         self.act.connect(self.uart[3].dcd)
         self.indicator_tx.connect(self.uart[3].ri)
         self.indicator_rx.connect(self.uart[3].dsr)
 
     @assert_once
-    def enable_hardware_flow_conrol(self):
+    def enable_hardware_flow_conrol(self, owner: Module):
         """
         Enable UART hardware flow control
         """
-        self.uart[3].dcd.set_weak(on=False)
+        self.uart[3].dcd.set_weak(on=False, owner=owner)
         # TODO: check if this should just be connected to gnd as there is an
         # internal pull-up resistor
 
@@ -72,7 +74,7 @@ class CH344Q(F.CH344):
     def descriptive_properties(self):
         return F.has_descriptive_properties_defined(
             {
-                DescriptiveProperties.manufacturer.value: "WCH",
+                DescriptiveProperties.manufacturer: "WCH",
                 DescriptiveProperties.partno: "CH344Q",
             },
         )

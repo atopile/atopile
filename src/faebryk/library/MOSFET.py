@@ -6,6 +6,7 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 
 class MOSFET(Module):
@@ -17,20 +18,22 @@ class MOSFET(Module):
         ENHANCEMENT = auto()
         DEPLETION = auto()
 
-    channel_type: F.TBD
-    saturation_type: F.TBD
-    gate_source_threshold_voltage: F.TBD
-    max_drain_source_voltage: F.TBD
-    max_continuous_drain_current: F.TBD
-    on_resistance: F.TBD
+    channel_type = L.p_field(domain=L.Domains.ENUM(ChannelType))
+    saturation_type = L.p_field(domain=L.Domains.ENUM(SaturationType))
+    gate_source_threshold_voltage = L.p_field(units=P.V)
+    max_drain_source_voltage = L.p_field(units=P.V)
+    max_continuous_drain_current = L.p_field(units=P.A)
+    on_resistance = L.p_field(units=P.ohm)
 
     source: F.Electrical
     gate: F.Electrical
     drain: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.Q
     )
+
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.MOSFET)
 
     # TODO pretty confusing
     @L.rt_field

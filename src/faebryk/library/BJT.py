@@ -6,7 +6,6 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import rt_field
-from faebryk.core.parameter import Parameter
 from faebryk.libs.library import L
 
 
@@ -22,14 +21,14 @@ class BJT(Module):
         SATURATION = auto()
         CUT_OFF = auto()
 
-    doping_type: Parameter
-    operation_region: Parameter
+    doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
+    operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
 
     emitter: F.Electrical
     base: F.Electrical
     collector: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.Q
     )
 

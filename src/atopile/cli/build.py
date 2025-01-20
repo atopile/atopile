@@ -1,247 +1,148 @@
 """CLI command definition for `ato build`."""
 
-import itertools
-import json
 import logging
-import shutil
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Annotated
 
-import click
+import typer
 
-import atopile.assertions
-import atopile.bom
-import atopile.config
-import atopile.front_end
-import atopile.layout
-import atopile.manufacturing_data
-import atopile.netlist
-import atopile.variable_report
-from atopile.cli.common import project_options
-from atopile.components import download_footprint
-from atopile.config import BuildContext
-from atopile.errors import ExceptionAccumulator
-from atopile.instance_methods import all_descendants, match_components
-from atopile.netlist import get_netlist_as_str
+from atopile import errors
+from atopile.config import config
 
-log = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from faebryk.core.module import Module
+
+logger = logging.getLogger(__name__)
 
 
-@click.command()
-@project_options
-def build(build_ctxs: list[BuildContext]):
+def build(
+    entry: Annotated[str | None, typer.Argument()] = None,
+    selected_builds: Annotated[
+        list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")
+    ] = [],
+    target: Annotated[
+        list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    option: Annotated[
+        list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
+    ] = [],
+    frozen: Annotated[
+        bool | None,
+        typer.Option(
+            help="PCB must be rebuilt without changes. Useful in CI",
+            envvar="ATO_FROZEN",
+        ),
+    ] = None,
+    keep_picked_parts: bool | None = None,
+    keep_net_names: bool | None = None,
+    standalone: bool = False,
+):
     """
     Build the specified --target(s) or the targets specified by the build config.
-    Specify the root source file with the argument SOURCE.
+    Optionally specify a different entrypoint with the argument ENTRY.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
-    with ExceptionAccumulator() as accumulator:
-        for build_ctx in build_ctxs:
-            log.info("Building %s", build_ctx.name)
-            with accumulator.collect():
-                _do_build(build_ctx)
+    from atopile import buildutil
+    from atopile.config import BuildType
+    from faebryk.library import _F as F
+    from faebryk.libs.exceptions import accumulate, log_user_errors
 
-        with accumulator.collect():
-            project_context = atopile.config.get_project_context()
-
-            # FIXME: this should be done elsewhere, but there's no other "overview"
-            # that can see all the builds simultaneously
-            manifest = {}
-            manifest["version"] = "2.0"
-            for ctx in build_ctxs:
-                if ctx.layout_path:
-                    by_layout_manifest = manifest.setdefault(
-                        "by-layout", {}
-                    ).setdefault(str(ctx.layout_path), {})
-                    by_layout_manifest["layouts"] = str(
-                        ctx.output_base.with_suffix(".layouts.json")
-                    )
-
-            manifest_path = project_context.project_path / "build" / "manifest.json"
-            manifest_path.parent.mkdir(exist_ok=True, parents=True)
-            with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f)
-
-    log.info("Build complete!")
-
-
-def do_prebuild(build_ctx: BuildContext) -> None:
-    with ExceptionAccumulator() as accumulator:
-        # Solve the unknown variables
-        if not build_ctx.dont_solve_equations:
-            with accumulator.collect():
-                atopile.assertions.simplify_expressions(build_ctx.entry)
-                atopile.assertions.solve_assertions(build_ctx)
-                atopile.assertions.simplify_expressions(build_ctx.entry)
-
-
-def _do_build(build_ctx: BuildContext) -> None:
-    """Execute a specific build."""
-    do_prebuild(build_ctx)
-
-    with ExceptionAccumulator() as accumulator:
-        # Ensure the build directory exists
-        log.info("Writing outputs to %s", build_ctx.build_path)
-        build_ctx.build_path.mkdir(parents=True, exist_ok=True)
-
-        # Figure out what targets to build
-        if build_ctx.targets == ["__default__"]:
-            targets = muster.do_by_default
-        elif build_ctx.targets == ["*"] or build_ctx.targets == ["all"]:
-            targets = list(muster.targets.keys())
-        else:
-            targets = build_ctx.targets
-
-        # Remove targets we don't know about, or are excluded
-        excluded_targets = set(build_ctx.exclude_targets)
-        known_targets = set(muster.targets.keys())
-        targets = set(targets) - excluded_targets & known_targets
-
-        # Ensure the output directory exists
-        build_ctx.output_base.parent.mkdir(parents=True, exist_ok=True)
-
-        # Make the noise
-        built_targets = []
-        for target_name in targets:
-            log.info(f"Building '{target_name}' for '{build_ctx.name}' config")
-            with accumulator.collect():
-                muster.targets[target_name](build_ctx)
-            built_targets.append(target_name)
-
-    log.info(
-        f"Successfully built '{', '.join(built_targets)}' for '{build_ctx.name}' config"
+    config.apply_options(
+        entry=entry,
+        selected_builds=selected_builds,
+        target=target,
+        option=option,
+        standalone=standalone,
     )
 
+    for build_cfg in config.project.builds.values():
+        if keep_picked_parts is not None:
+            build_cfg.keep_picked_parts = keep_picked_parts
 
-TargetType = Callable[[BuildContext], None]
+        if keep_net_names is not None:
+            build_cfg.keep_net_names = keep_net_names
 
+        if frozen is not None:
+            build_cfg.frozen = frozen
+            if frozen:
+                if keep_picked_parts is False:  # is, ignores None
+                    raise errors.UserBadParameterError(
+                        "`--keep-picked-parts` conflict with `--frozen`"
+                    )
 
-class Muster:
-    """A class to register targets to."""
+                build_cfg.keep_picked_parts = True
 
-    def __init__(self, logger: Optional[logging.Logger] = None) -> None:
-        self.targets = {}
-        self.do_by_default = []
-        self.log = logger or logging.getLogger(__name__)
+                if keep_net_names is False:  # is, ignores None
+                    raise errors.UserBadParameterError(
+                        "`--keep-net-names` conflict with `--frozen`"
+                    )
 
-    def add_target(
-        self, func: TargetType, name: Optional[str] = None, default: bool = True
-    ):
-        """Register a function as a target."""
-        name = name or func.__name__
-        self.targets[name] = func
-        if default:
-            self.do_by_default.append(name)
-        return func
+                build_cfg.keep_net_names = True
 
-    def register(self, name: Optional[str] = None, default: bool = True):
-        """Register a target under a given name."""
+    with accumulate() as accumulator:
+        for build in config.builds:
+            with accumulator.collect(), log_user_errors(logger), build:
+                logger.info("Building '%s'", config.build.name)
+                match config.build.build_type:
+                    case BuildType.ATO:
+                        app = _init_ato_app()
+                    case BuildType.PYTHON:
+                        app = _init_python_app()
+                        app.add(F.is_app_root())
+                    case _:
+                        raise ValueError(
+                            f"Unknown build type: {config.build.build_type}"
+                        )
 
-        def decorator(func: TargetType):
-            self.add_target(func, name, default)
-            return func
+                # TODO: add a way to override the following with custom build machinery
+                buildutil.build(app)
 
-        return decorator
-
-
-muster = Muster()
-
-
-@muster.register("copy-footprints")
-def consolidate_footprints(build_args: BuildContext) -> None:
-    """Consolidate all the project's footprints into a single directory."""
-    fp_target = build_args.build_path / "footprints" / "footprints.pretty"
-    fp_target_step = build_args.build_path / "footprints" / "footprints.3dshapes"
-    fp_target.mkdir(exist_ok=True, parents=True)
-
-    for fp in atopile.config.get_project_context().project_path.glob("**/*.kicad_mod"):
-        try:
-            shutil.copy(fp, fp_target)
-        except shutil.SameFileError:
-            log.debug("Footprint %s already exists in the target directory", fp)
-
-    # Post-process all the footprints in the target directory
-    for fp in fp_target.glob("**/*.kicad_mod"):
-        with open(fp, "r+", encoding="utf-8") as file:
-            content = file.read()
-            content = content.replace("{build_dir}", str(fp_target_step))
-            file.seek(0)
-            file.write(content)
-            file.truncate()
+    logger.info("Build successful! 🚀")
 
 
-@muster.register("copy-3dmodels")
-def consolidate_3dmodels(build_args: BuildContext) -> None:
-    """Consolidate all the project's 3d models into a single directory."""
-    fp_target = build_args.build_path / "footprints" / "footprints.3dshapes"
-    fp_target.mkdir(exist_ok=True, parents=True)
+def _init_python_app() -> "Module":
+    """Initialize a specific .py build."""
 
-    prj_path = atopile.config.get_project_context().project_path
+    from atopile import errors
+    from faebryk.libs.util import import_from_path
 
-    for fp in itertools.chain(prj_path.glob("**/*.step"), prj_path.glob("**/*.wrl")):
-        try:
-            shutil.copy(fp, fp_target)
-        except shutil.SameFileError:
-            log.debug("Footprint %s already exists in the target directory", fp)
+    try:
+        app_class = import_from_path(
+            config.build.entry_file_path, config.build.entry_section
+        )
+    except FileNotFoundError as e:
+        raise errors.UserFileNotFoundError(
+            f"Cannot find build entry {config.build.address}"
+        ) from e
+    except Exception as e:
+        raise errors.UserPythonModuleError(
+            f"Cannot import build entry {config.build.address}"
+        ) from e
 
-
-@muster.register("netlist")
-def generate_netlist(build_args: BuildContext) -> None:
-    """Generate a netlist for the project."""
-    with open(build_args.output_base.with_suffix(".net"), "w", encoding="utf-8") as f:
-        f.write(get_netlist_as_str(build_args.entry))
-
-
-@muster.register("bom")
-def generate_bom(build_args: BuildContext) -> None:
-    """Generate a BOM for the project."""
-    with open(build_args.output_base.with_suffix(".csv"), "w", encoding="utf-8") as f:
-        f.write(atopile.bom.generate_bom(build_args.entry))
-
-
-@muster.register("designator-map")
-def generate_designator_map(build_args: BuildContext) -> None:
-    """Generate a designator map for the project."""
-    atopile.bom.generate_designator_map(build_args.entry)
-
-
-@muster.register("mfg-data", default=False)
-def generate_manufacturing_data(build_ctx: BuildContext) -> None:
-    """Generate a designator map for the project."""
-    atopile.manufacturing_data.generate_manufacturing_data(build_ctx)
-
-
-@muster.register("drc", default=False)
-def generate_drc_report(build_ctx: BuildContext) -> None:
-    """Generate a designator map for the project."""
-    atopile.manufacturing_data.generate_drc_report(build_ctx)
-
-
-@muster.register("clone-footprints")
-def clone_footprints(build_args: BuildContext) -> None:
-    """Clone the footprints for the project."""
-    all_components = filter(match_components, all_descendants(build_args.entry))
-
-    for component in all_components:
-        log.debug("Cloning footprint for %s", component)
-        download_footprint(
-            component,
-            footprint_dir=build_args.build_path / "footprints/footprints.pretty",
+    if not isinstance(app_class, type):
+        raise errors.UserPythonLoadError(
+            f"Build entry {config.build.address} is not a module we can instantiate"
         )
 
+    try:
+        app = app_class()
+    except Exception as e:
+        raise errors.UserPythonConstructionError(
+            f"Cannot construct build entry {config.build.address}"
+        ) from e
 
-@muster.register("layout-module-map")
-def generate_module_map(build_args: BuildContext) -> None:
-    """Generate a designator map for the project."""
-    atopile.layout.generate_module_map(build_args)
-
-
-@muster.register("assertions-report")
-def generate_assertion_report(build_ctx: BuildContext) -> None:
-    """Generate a report based on assertions made in the source code."""
-    atopile.assertions.generate_assertion_report(build_ctx)
+    return app
 
 
-@muster.register("variable-report")
-def generate_variable_report(build_ctx: BuildContext) -> None:
-    """Generate a report of all the variable values in the design."""
-    atopile.variable_report.generate(build_ctx)
+def _init_ato_app() -> "Module":
+    """Initialize a specific .ato build."""
+
+    from atopile import front_end
+    from atopile.datatypes import Ref
+    from faebryk.libs.library import L
+
+    node = front_end.bob.build_file(
+        config.build.entry_file_path,
+        Ref(config.build.entry_section.split(".")),
+    )
+    assert isinstance(node, L.Module)
+    return node

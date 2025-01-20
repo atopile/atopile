@@ -17,6 +17,7 @@ from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 
 import faebryk.library._F as F
+from atopile.config import config
 from faebryk.core.module import Module
 from faebryk.libs.picker.picker import (
     Part,
@@ -31,10 +32,7 @@ CRAWL_DATASHEET = ConfigFlag(
     "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
 
-# TODO dont hardcode relative paths
-BUILD_FOLDER = Path("./build")
-LIB_FOLDER = Path("./src/kicad/libs")
-MODEL_PATH: str | None = "${KIPRJMOD}/../libs/"
+EASYEDA_CACHE_FOLDER = Path("cache/easyeda")
 
 EXPORT_NON_EXISTING_MODELS = False
 
@@ -56,6 +54,9 @@ WORKAROUND_THT_INCH_MM_SWAP_FIX = False
 
 
 def _fix_3d_model_offsets(ki_footprint):
+    if ki_footprint.output.model_3d is None:
+        return
+
     if WORKAROUND_SMD_3D_MODEL_FIX:
         if ki_footprint.input.info.fp_type == "smd":
             ki_footprint.output.model_3d.translation.x = 0
@@ -66,14 +67,13 @@ def _fix_3d_model_offsets(ki_footprint):
             ki_footprint.output.model_3d.translation.y *= 2.54
 
 
-def cache_base_path():
-    return BUILD_FOLDER / Path("cache/easyeda")
-
-
 class LCSCException(Exception):
     def __init__(self, partno: str, *args: object) -> None:
         self.partno = partno
         super().__init__(*args)
+
+    def __str__(self) -> str:
+        return f"{type(self).__name__}: {self.partno} - {self.args}"
 
 
 class LCSC_NoDataException(LCSCException): ...
@@ -82,16 +82,16 @@ class LCSC_NoDataException(LCSCException): ...
 class LCSC_PinmapException(LCSCException): ...
 
 
-def get_raw(partno: str):
+def get_raw(lcsc_id: str):
     api = EasyedaApi()
 
-    cache_base = cache_base_path()
+    cache_base = config.project.paths.build / EASYEDA_CACHE_FOLDER
     cache_base.mkdir(parents=True, exist_ok=True)
 
-    comp_path = cache_base.joinpath(partno)
+    comp_path = cache_base.joinpath(lcsc_id)
     if not comp_path.exists():
-        logger.debug(f"Did not find component {partno} in cache, downloading...")
-        cad_data = api.get_cad_data_of_component(lcsc_id=partno)
+        logger.debug(f"Did not find component {lcsc_id} in cache, downloading...")
+        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
         serialized = json.dumps(cad_data)
         comp_path.write_text(serialized)
 
@@ -100,15 +100,15 @@ def get_raw(partno: str):
     # API returned no data
     if not data:
         raise LCSC_NoDataException(
-            partno, f"Failed to fetch data from EasyEDA API for part {partno}"
+            lcsc_id, f"Failed to fetch data from EasyEDA API for part {lcsc_id}"
         )
 
     return data
 
 
-def download_easyeda_info(partno: str, get_model: bool = True):
+def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     # easyeda api access & caching --------------------------------------------
-    data = get_raw(partno)
+    data = get_raw(lcsc_id)
 
     easyeda_footprint = EasyedaFootprintImporter(
         easyeda_cp_cad_data=data
@@ -118,16 +118,16 @@ def download_easyeda_info(partno: str, get_model: bool = True):
 
     # paths -------------------------------------------------------------------
     name = easyeda_footprint.info.name
-    out_base_path = LIB_FOLDER
-    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"
+    out_base_path = config.project.paths.component_lib
+    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"  # TODO: config property
     sym_base_path = out_base_path / "lcsc.kicad_sym"
+    model_base_path = out_base_path / "lcsc"
     fp_base_path.mkdir(exist_ok=True, parents=True)
     footprint_filename = f"{name}.kicad_mod"
     footprint_filepath = fp_base_path.joinpath(footprint_filename)
 
     # The base_path has to be split from the full path, because the exporter
     # will append .3dshapes to it
-    model_base_path = out_base_path / "3dmodels" / "lcsc"
     model_base_path_full = model_base_path.with_suffix(".3dshapes")
     model_base_path_full.mkdir(exist_ok=True, parents=True)
 
@@ -158,16 +158,24 @@ def download_easyeda_info(partno: str, get_model: bool = True):
 
         if not model_path.exists() and not EXPORT_NON_EXISTING_MODELS:
             ki_footprint.output.model_3d = None
-    else:
-        logger.warn(f"No 3D model for {name}")
+    elif get_model:
+        logger.warning(f"No 3D model for '{name}'")
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
-        kicad_model_path = (
-            f"{MODEL_PATH}/3dmodels/lcsc.3dshapes"
-            if MODEL_PATH
-            else str(model_base_path_full.resolve())
-        )
+        try:
+            kicad_model_path = str(
+                "${KIPRJMOD}"
+                / model_base_path_full.relative_to(
+                    config.build.paths.kicad_project.parent, walk_up=True
+                )
+            )
+        except RuntimeError:
+            # FIXME: this shouldn't need to exist
+            # It's a workaround that'll only work for a single user.
+            kicad_model_path = str(model_base_path_full.resolve())
+
+        logger.debug(f"Exporting 3D model to: {kicad_model_path}")
         ki_footprint.export(
             footprint_full_path=str(footprint_filepath),
             model_3d_path=kicad_model_path,
@@ -177,7 +185,14 @@ def download_easyeda_info(partno: str, get_model: bool = True):
         logger.debug(f"Exporting symbol {sym_base_path}")
         ki_symbol.export(str(sym_base_path))
 
-    return ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol
+    return (
+        ki_footprint,
+        ki_model,
+        easyeda_footprint,
+        easyeda_model,
+        easyeda_symbol,
+        footprint_filepath,
+    )
 
 
 def get_datasheet_url(part: EeSymbol):
@@ -196,37 +211,55 @@ def get_datasheet_url(part: EeSymbol):
         return None
     # make requests act like curl
     lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
-    partno = part.info.lcsc_id
+    lcsc_id = part.info.lcsc_id
     # find _{partno}.pdf in html
-    match = re.search(f'href="(https://[^"]+_{partno}.pdf)"', lcsc_site.text)
+    match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
     if match:
         pdfurl = match.group(1)
-        logger.debug(f"Found datasheet for {partno} at {pdfurl}")
+        logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
         return pdfurl
     else:
         return None
 
 
-def attach(component: Module, partno: str, get_model: bool = True):
-    ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol = (
-        download_easyeda_info(partno, get_model=get_model)
-    )
-
-    # symbol
+def check_attachable(component: Module):
     if not component.has_trait(F.has_footprint):
         if not component.has_trait(F.can_attach_to_footprint):
             if not component.has_trait(F.has_pin_association_heuristic):
-                raise LCSCException(
-                    partno,
+                raise LCSC_PinmapException(
+                    "",
                     f"Need either F.can_attach_to_footprint or "
                     "F.has_pin_association_heuristic"
-                    f" for {component} with partno {partno}",
+                    f" for {component}",
                 )
 
+
+def attach(
+    component: Module, partno: str, get_model: bool = True, check_only: bool = False
+):
+    try:
+        _, _, easyeda_footprint, _, easyeda_symbol, footprint_filepath = (
+            download_easyeda_info(partno, get_model=get_model)
+        )
+    except LCSC_NoDataException:
+        if component.has_trait(F.has_footprint):
+            easyeda_symbol = None
+            easyeda_footprint = None
+            footprint_filepath = None
+        else:
+            raise
+
+    # TODO maybe check the symbol matches, even if a footprint is already attached?
+    if not component.has_trait(F.has_footprint):
+        assert easyeda_symbol is not None
+        assert easyeda_footprint is not None
+        assert footprint_filepath is not None
+        if not component.has_trait(F.can_attach_to_footprint):
             # TODO make this a trait
             pins = [
                 (pin.settings.spice_pin_number, pin.name.text)
-                for pin in easyeda_symbol.pins
+                for unit in easyeda_symbol.units
+                for pin in unit.pins
             ]
             try:
                 pinmap = component.get_trait(F.has_pin_association_heuristic).get_pins(
@@ -234,23 +267,32 @@ def attach(component: Module, partno: str, get_model: bool = True):
                 )
             except F.has_pin_association_heuristic.PinMatchException as e:
                 raise LCSC_PinmapException(partno, f"Failed to get pinmap: {e}") from e
+
+            if check_only:
+                return
+
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
             sym = F.Symbol.with_component(component, pinmap)
             sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
 
+        if check_only:
+            return
+
         # footprint
-        fp = F.KicadFootprint(
-            f"lcsc:{easyeda_footprint.info.name}",
-            [p.number for p in easyeda_footprint.pads],
-        )
+        fp = F.KicadFootprint([p.number for p in easyeda_footprint.pads])
+        fp.add(F.KicadFootprint.has_file(footprint_filepath))
         component.get_trait(F.can_attach_to_footprint).attach(fp)
+
+    if check_only:
+        return
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 
-    datasheet = get_datasheet_url(easyeda_symbol)
-    if datasheet:
-        component.add(F.has_datasheet_defined(datasheet))
+    if easyeda_symbol is not None:
+        datasheet = get_datasheet_url(easyeda_symbol)
+        if datasheet:
+            component.add(F.has_datasheet_defined(datasheet))
 
     # model done by kicad (in fp)
 

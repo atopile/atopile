@@ -1,0 +1,8 @@
+(fp_lib_table 
+    (version 7)
+    (lib
+        (name "lcsc")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../build/kicad/libs/footprints/lcsc.pretty")
+        (options "")
+        (descr "atopile: project LCSC footprints")))

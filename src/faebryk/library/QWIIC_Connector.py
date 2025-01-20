@@ -22,7 +22,7 @@ class QWIIC_Connector(Module):
     power: F.ElectricPower
     i2c: F.I2C
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.X
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -60,5 +60,7 @@ class QWIIC_Connector(Module):
         )
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
-        self.power.max_current.merge(F.Range.from_center_rel(226 * P.mA, 0.05))
+        self.power.voltage.constrain_subset(L.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        # self.power.max_current.constrain_subset(
+        #    L.Range.from_center_rel(226 * P.mA, 0.05)
+        # )

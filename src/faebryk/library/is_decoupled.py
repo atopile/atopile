@@ -2,14 +2,18 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from abc import abstractmethod
 
 import faebryk.library._F as F
-from faebryk.core.trait import Trait
+import faebryk.libs.library.L as L
 
 logger = logging.getLogger(__name__)
 
 
-class is_decoupled(Trait):
-    @abstractmethod
-    def get_capacitor(self) -> F.Capacitor: ...
+class is_decoupled(L.Trait.decless()):
+    def __init__(self, capacitor: F.Capacitor):
+        super().__init__()
+        self._capacitor = capacitor
+
+    @property
+    def capacitor(self) -> F.Capacitor:
+        return self._capacitor

@@ -23,7 +23,7 @@ Instead of all shaking hands and totally agreeing that this local export named "
 
 ... and stamp them with the precise version of the source-code used to create them!
 
-![githash](/assets/images/ci-generated-gerbers-githash.png)
+![CI generated gerbers](../../assets/images/ci-generated-gerbers-githash.png)
 
 No more export mistakes 👌. Plus, it makes ordering boards super easy!
 

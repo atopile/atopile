@@ -85,14 +85,10 @@ class SignalElectrical(F.Signal):
     @L.rt_field
     def surge_protected(self):
         class _can_be_surge_protected_defined(F.can_be_surge_protected_defined):
-            def protect(_self):
-                return [
-                    tvs.builder(
-                        lambda t: t.reverse_working_voltage.merge(
-                            self.reference.voltage
-                        )
-                    )
-                    for tvs in super().protect()
-                ]
+            def protect(_self, owner: Module):
+                out = super().protect(owner)
+                for tvs in out.get_children(direct_only=False, types=F.TVS):
+                    tvs.reverse_working_voltage.alias_is(self.reference.voltage)
+                return out
 
         return _can_be_surge_protected_defined(self.reference.lv, self.signal)

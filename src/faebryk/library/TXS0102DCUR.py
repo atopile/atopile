@@ -35,8 +35,9 @@ class TXS0102DCUR(Module):
         gnd = self.voltage_a_power.lv
         gnd.connect(self.voltage_b_power.lv)
 
-        self.voltage_a_power.decoupled.decouple()
-        self.voltage_b_power.decoupled.decouple()
+        # FIXME
+        # self.voltage_a_power.decoupled.decouple()
+        # self.voltage_b_power.decoupled.decouple()
 
         # eo is referenced to voltage_a_power (active high)
         self.n_oe.reference.connect(self.voltage_a_power)
@@ -49,7 +50,7 @@ class TXS0102DCUR(Module):
             # side_b.reference.connect(self.voltage_b_power)
             side_b.add(F.has_single_electric_reference_defined(self.voltage_b_power))
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(

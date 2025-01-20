@@ -27,7 +27,7 @@ class SNx4LVC541A(Module):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
@@ -38,7 +38,7 @@ class SNx4LVC541A(Module):
         # ----------------------------------------
         #                parameters
         # ----------------------------------------
-        self.power.voltage.merge(F.Range.upper_bound(3.6 * P.V))
+        self.power.voltage.constrain_le(3.6 * P.V)
 
         # ----------------------------------------
         #                aliases
@@ -47,7 +47,8 @@ class SNx4LVC541A(Module):
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        self.power.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
 
     @L.rt_field
     def single_electric_reference(self):

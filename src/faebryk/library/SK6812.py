@@ -35,7 +35,7 @@ class SK6812(Module):
         return F.can_bridge_defined(self.data_in, self.data_out)
 
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C5378720"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.LED
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -65,11 +65,12 @@ class SK6812(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.power.decoupled.decouple()
+        # FIXME
+        # self.power.decoupled.decouple()
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         F.ElectricLogic.connect_all_module_references(self, exclude=[self.power])
 
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(3.3 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(3.3 * P.V, 5.5 * P.V))

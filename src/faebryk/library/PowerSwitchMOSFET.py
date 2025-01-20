@@ -21,15 +21,13 @@ class PowerSwitchMOSFET(F.PowerSwitch):
     mosfet: F.MOSFET
 
     def __preinit__(self):
-        self.mosfet.channel_type.merge(
-            F.Constant(
-                F.MOSFET.ChannelType.N_CHANNEL
-                if self._lowside
-                else F.MOSFET.ChannelType.P_CHANNEL
-            )
+        self.mosfet.channel_type.constrain_subset(
+            F.MOSFET.ChannelType.N_CHANNEL
+            if self._lowside
+            else F.MOSFET.ChannelType.P_CHANNEL
         )
-        self.mosfet.saturation_type.merge(
-            F.Constant(F.MOSFET.SaturationType.ENHANCEMENT)
+        self.mosfet.saturation_type.constrain_subset(
+            F.MOSFET.SaturationType.ENHANCEMENT
         )
 
         # pull gate
@@ -38,7 +36,7 @@ class PowerSwitchMOSFET(F.PowerSwitch):
         # True        False             False
         # False       True              False
         # False       False             True
-        self.logic_in.pulled.pull(self._lowside == self._normally_closed)
+        self.logic_in.pulled.pull(self._lowside == self._normally_closed, owner=self)
 
         # connect gate to logic
         self.logic_in.signal.connect(self.mosfet.gate)

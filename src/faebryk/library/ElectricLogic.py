@@ -6,6 +6,7 @@ from enum import Enum, auto
 from typing import Self
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.libs.library import L
 
 
@@ -25,7 +26,7 @@ class ElectricLogic(F.SignalElectrical):
 
     class can_be_pulled(F.Logic.TraitT):
         @abstractmethod
-        def pull(self, up: bool) -> F.Resistor: ...
+        def pull(self, up: bool, owner: Module) -> F.Resistor: ...
 
     class can_be_pulled_defined(can_be_pulled.impl()):
         def __init__(self, signal: F.Electrical, ref: F.ElectricPower) -> None:
@@ -33,7 +34,7 @@ class ElectricLogic(F.SignalElectrical):
             self.ref = ref
             self.signal = signal
 
-        def pull(self, up: bool):
+        def pull(self, up: bool, owner: Module):
             obj = self.obj
 
             up_r, down_r = None, None
@@ -46,11 +47,13 @@ class ElectricLogic(F.SignalElectrical):
                 return down_r
 
             resistor = F.Resistor()
+            name = obj.get_name(accept_no_parent=True)
+            # TODO handle collisions
             if up:
-                obj.add(resistor, "pull_up")
+                owner.add(resistor, f"pull_up_{name}")
                 up_r = resistor
             else:
-                obj.add(resistor, "pull_down")
+                owner.add(resistor, f"pull_down_{name}")
                 down_r = resistor
 
             self.signal.connect_via(resistor, self.ref.hv if up else self.ref.lv)
@@ -89,7 +92,9 @@ class ElectricLogic(F.SignalElectrical):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    push_pull: F.TBD
+    push_pull = L.p_field(
+        domain=L.Domains.ENUM(PushPull),
+    )
 
     # ----------------------------------------
     #                 traits
@@ -110,11 +115,11 @@ class ElectricLogic(F.SignalElectrical):
         r = self.reference
         self.signal.connect(r.hv if on else r.lv)
 
-    def set_weak(self, on: bool):
+    def set_weak(self, on: bool, owner: Module):
         """
         Set the logic signal by connecting to the reference via a pull resistor.
         """
-        return self.get_trait(self.can_be_pulled).pull(up=on)
+        return self.get_trait(self.can_be_pulled).pull(up=on, owner=owner)
 
     def connect_shallow(
         self,

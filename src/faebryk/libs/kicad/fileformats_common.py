@@ -4,7 +4,15 @@ from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
-from faebryk.libs.sexp.dataclass_sexp import Symbol, SymEnum, netlist_type, sexp_field
+from dataclasses_json.undefined import CatchAll
+
+from faebryk.libs.sexp.dataclass_sexp import (
+    SEXP_File,
+    Symbol,
+    SymEnum,
+    netlist_type,
+    sexp_field,
+)
 from faebryk.libs.util import KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
@@ -145,6 +153,19 @@ class C_effects:
 @dataclass
 class C_pts:
     xys: list[C_xy] = field(**sexp_field(multidict=True), default_factory=list)
+
+
+@dataclass(kw_only=True)
+class C_kicad_footprint_file_header(SEXP_File):
+    @dataclass(kw_only=True)
+    class C_footprint_file_header:
+        name: str = field(**sexp_field(positional=True))
+        version: int = field(default=20240108)
+        generator: str = ""
+        generator_version: str = ""
+        unknown: CatchAll = None
+
+    footprint: C_footprint_file_header
 
 
 def gen_uuid(mark: str = ""):

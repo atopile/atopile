@@ -4,8 +4,9 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import Add, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
+from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,9 @@ class MultiCapacitor(F.Capacitor):
         super().__init__()
         self._count = count
 
+    # Not pickable
+    pickable = None
+
     @L.rt_field
     def capacitors(self) -> list[F.Capacitor]:
         return times(self._count, F.Capacitor)
@@ -43,13 +47,35 @@ class MultiCapacitor(F.Capacitor):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.capacitance.merge(sum(c.capacitance for c in self.capacitors))
+        self.capacitance.alias_is(Add(*(c.capacitance for c in self.capacitors)))
+        for c in self.capacitors:
+            # TODO use min once available
+            self.max_voltage.constrain_le(c.max_voltage)
+            self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
 
-    def set_equal_capacitance(self, capacitance: Parameter):
+    def set_equal_capacitance(self, capacitance: ParameterOperatable):
         op = capacitance / self._count
 
         self.set_equal_capacitance_each(op)
 
-    def set_equal_capacitance_each(self, capacitance: Parameter):
+    def set_equal_capacitance_each(self, capacitance: ParameterOperatable.NumberLike):
         for c in self.capacitors:
-            c.capacitance.merge(capacitance)
+            c.capacitance.constrain_subset(capacitance)
+
+    # TODO kinda weird
+    def explicit(
+        self,
+        nominal_capacitance: Quantity | None = None,
+        tolerance: float | None = None,
+        footprint: str | None = None,
+    ):
+        for c in self.capacitors:
+            c.explicit(nominal_capacitance, tolerance, footprint)
+
+    @classmethod
+    def from_capacitors(cls, *capacitors: F.Capacitor):
+        # TODO consider merging them more flatly (for multicaps)
+        obj = cls(len(capacitors))
+        for c_old, c_new in zip(capacitors, obj.capacitors):
+            c_new.specialize(c_old)
+        return obj

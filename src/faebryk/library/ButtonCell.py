@@ -5,7 +5,7 @@
 from enum import IntEnum, StrEnum
 
 import faebryk.library._F as F
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -21,15 +21,15 @@ class ButtonCell(F.Battery):
         NickelMetalHydride = "H"
 
         @property
-        def voltage(self) -> Parameter:
+        def voltage(self) -> ParameterOperatable.NumberLike:
             return {
-                self.Alkaline: F.Constant(1.5 * P.V),
-                self.SilverOxide: F.Constant(1.55 * P.V),
-                self.ZincAir: F.Constant(1.65 * P.V),
-                self.Lithium: F.Constant(3.0 * P.V),
-                self.Mercury: F.Constant(1.35 * P.V),
-                self.NickelCadmium: F.Constant(1.2 * P.V),
-                self.NickelMetalHydride: F.Constant(1.2 * P.V),
+                self.Alkaline: 1.5 * P.V,
+                self.SilverOxide: 1.55 * P.V,
+                self.ZincAir: 1.65 * P.V,
+                self.Lithium: 3.0 * P.V,
+                self.Mercury: 1.35 * P.V,
+                self.NickelCadmium: 1.2 * P.V,
+                self.NickelMetalHydride: 1.2 * P.V,
             }[self]
 
     class Shape(StrEnum):
@@ -53,11 +53,17 @@ class ButtonCell(F.Battery):
         N_2430 = 2430
         N_2450 = 2450
 
-    material: F.TBD
-    shape: F.TBD
-    size: F.TBD
+    material = L.p_field(
+        domain=L.Domains.ENUM(Material),
+    )
+    shape = L.p_field(
+        domain=L.Domains.ENUM(Shape),
+    )
+    size = L.p_field(
+        domain=L.Domains.ENUM(Size),
+    )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.B
     )
 

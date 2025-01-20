@@ -23,6 +23,15 @@ logger = logging.getLogger(__name__)
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
+# Release dates for reference:
+# KiCad 8.0.0 - January 31, 2024
+# KiCad 7.0.0 - March 1, 2023
+# KiCad 6.0.0 - December 15, 2021
+# KiCad 5.1.0 - May 22, 2019
+# KiCad 5.0.0 - July 21, 2018
+
+KICAD_PCB_VERSION = 20240108
+
 
 @dataclass_json(undefined=Undefined.INCLUDE)
 @dataclass
@@ -548,6 +557,7 @@ class C_fp_text:
     layer: C_text_layer
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_effects
+    unlocked: bool = False
 
 
 @dataclass(kw_only=True)
@@ -578,13 +588,17 @@ class C_footprint:
 
     @dataclass(kw_only=True)
     class C_property:
+        @dataclass(kw_only=True)
+        class C_footprint_property_effects(C_effects):
+            hide: Optional[bool] = None
+
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_effects
+        effects: C_footprint_property_effects
 
     @dataclass
     class C_footprint_polygon(C_polygon):
@@ -633,18 +647,6 @@ class C_footprint:
             size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
             offset: Optional[C_xy] = None
 
-        # TODO: replace with generic gr item
-        @dataclass(kw_only=True)
-        class C_gr:
-            @dataclass
-            class C_gr_poly(C_polygon):
-                width: float
-                fill: bool
-
-            gr_poly: list[C_gr_poly] = field(
-                **sexp_field(multidict=True), default_factory=list
-            )
-
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
@@ -656,8 +658,9 @@ class C_footprint:
         roundrect_rratio: Optional[float] = None
         die_length: Optional[float] = None
         options: Optional[C_options] = None
-        primitives: Optional[C_gr] = None
+        uuid: UUID = field(default_factory=gen_uuid)
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
+        unknown: CatchAll = None
 
     @dataclass
     class C_model:
@@ -678,6 +681,7 @@ class C_footprint:
         offset: C_offset
         scale: C_scale
         rotate: C_rotate
+        unknown: CatchAll = None
 
     name: str = field(**sexp_field(positional=True))
     layer: str = field(**sexp_field(order=-20))
@@ -715,11 +719,15 @@ class C_kicad_pcb_file(SEXP_File):
             class E_type(SymEnum):
                 signal = auto()
                 user = auto()
+                mixed = auto()
+                jumper = auto()
+                power = auto()
 
             number: int = field(**sexp_field(positional=True))
             name: str = field(**sexp_field(positional=True))
             type: E_type = field(**sexp_field(positional=True))
             alias: Optional[str] = field(**sexp_field(positional=True), default=None)
+            unknown: CatchAll = None
 
         @dataclass(kw_only=True)
         class C_setup:
@@ -760,6 +768,7 @@ class C_kicad_pcb_file(SEXP_File):
                 drillshape: int = 1
                 scaleselection: int = 1
                 outputdirectory: str = ""
+                unknown: CatchAll = None
 
             @dataclass
             class C_stackup:
@@ -772,6 +781,7 @@ class C_kicad_pcb_file(SEXP_File):
                     material: Optional[str] = None
                     epsilon_r: Optional[float] = None
                     loss_tangent: Optional[float] = None
+                    unknown: CatchAll = None
 
                 class E_edge_connector_type(SymEnum):
                     edge_connector_bevelled = "bevelled"
@@ -800,11 +810,13 @@ class C_kicad_pcb_file(SEXP_File):
                 edge_connector: Optional[E_edge_connector_type] = None
                 castellated_pads: Optional[bool] = None
                 edge_plating: Optional[bool] = None
+                unknown: CatchAll = None
 
             stackup: Optional[C_stackup] = None
             pad_to_mask_clearance: int = 0
             allow_soldermask_bridges_in_footprints: bool = False
             pcbplotparams: C_pcbplotparams = field(default_factory=C_pcbplotparams)
+            unknown: CatchAll = None
 
         @dataclass
         class C_net:
@@ -821,13 +833,14 @@ class C_kicad_pcb_file(SEXP_File):
                     name: str = field(**sexp_field(positional=True))
 
                 net: Optional[C_net] = None
-                uuid: UUID = field(default_factory=gen_uuid)
 
             uuid: UUID = field(**sexp_field(order=-15))
             at: C_xyr = field(**sexp_field(order=-10))
             pads: list[C_pad] = field(
                 **sexp_field(multidict=True), default_factory=list
             )
+            path: Optional[str] = None
+            unknown: CatchAll = None
 
         @dataclass
         class C_via:
@@ -837,6 +850,7 @@ class C_kicad_pcb_file(SEXP_File):
             net: int
             uuid: UUID
             layers: list[str] = field(default_factory=list)
+            unknown: CatchAll = None
 
         @dataclass(kw_only=True)
         class C_zone:
@@ -849,6 +863,7 @@ class C_kicad_pcb_file(SEXP_File):
 
                 mode: E_mode = field(**sexp_field(positional=True))
                 pitch: float = field(**sexp_field(positional=True))
+                unknown: CatchAll = None
 
             @dataclass(kw_only=True)
             class C_connect_pads:
@@ -862,9 +877,13 @@ class C_kicad_pcb_file(SEXP_File):
                     **sexp_field(positional=True), default=None
                 )
                 clearance: float
+                unknown: CatchAll = None
 
             @dataclass(kw_only=True)
             class C_fill:
+                class E_yes(SymEnum):
+                    yes = "yes"
+
                 class E_mode(SymEnum):
                     hatch = auto()
 
@@ -879,7 +898,9 @@ class C_kicad_pcb_file(SEXP_File):
                     do_not_remove = 1
                     below_area_limit = 2
 
-                enable: bool = field(**sexp_field(positional=True), default=False)
+                enable: Optional[E_yes] = field(
+                    **sexp_field(positional=True), default=None
+                )
                 mode: Optional[E_mode] = None
                 hatch_thickness: Optional[float] = None
                 hatch_gap: Optional[float] = None
@@ -894,6 +915,7 @@ class C_kicad_pcb_file(SEXP_File):
                 radius: Optional[float] = None
                 island_removal_mode: Optional[E_island_removal_mode] = None
                 island_area_min: Optional[float] = None
+                unknown: CatchAll = None
 
             @dataclass
             class C_keepout:
@@ -906,6 +928,7 @@ class C_kicad_pcb_file(SEXP_File):
                 pads: E_keepout_bool
                 copperpour: E_keepout_bool
                 footprints: E_keepout_bool
+                unknown: CatchAll = None
 
             @dataclass(kw_only=True)
             class C_filled_polygon:
@@ -914,6 +937,7 @@ class C_kicad_pcb_file(SEXP_File):
                     **sexp_field(positional=True), default=None
                 )
                 pts: C_pts
+                unknown: CatchAll = None
 
             net: int
             net_name: str
@@ -922,7 +946,7 @@ class C_kicad_pcb_file(SEXP_File):
             # NOTE: if zones is both front and back Cu layer then layer="F&B.Cu"
             # else layer="F.Cu" "B.Cu" "In1.Cu" ...
             uuid: UUID
-            name: str
+            name: Optional[str] = None
             locked: Optional[bool] = None
             hatch: C_hatch
             priority: Optional[int] = None
@@ -935,6 +959,7 @@ class C_kicad_pcb_file(SEXP_File):
             filled_polygon: list[C_filled_polygon] = field(
                 **sexp_field(multidict=True), default_factory=list
             )
+            unknown: CatchAll = None
 
         @dataclass
         class C_segment:
@@ -955,8 +980,9 @@ class C_kicad_pcb_file(SEXP_File):
             uuid: UUID
             locked: Optional[bool] = None
             members: list[UUID]
+            unknown: CatchAll = None
 
-        version: int = field(**sexp_field(assert_value=20240108))
+        version: int = field(**sexp_field(assert_value=KICAD_PCB_VERSION))
         generator: str
         generator_version: str
         general: C_general = field(default_factory=C_general)
@@ -1156,8 +1182,23 @@ class C_kicad_pcb_file(SEXP_File):
         groups: list[C_group] = field(
             **sexp_field(multidict=True), default_factory=list
         )
+        unknown: CatchAll = None
 
     kicad_pcb: C_kicad_pcb
+
+    @staticmethod
+    def skeleton(
+        generator: str,
+        generator_version: str,
+        version: int = KICAD_PCB_VERSION,
+    ) -> "C_kicad_pcb_file":
+        return C_kicad_pcb_file(
+            kicad_pcb=C_kicad_pcb_file.C_kicad_pcb(
+                version=version,
+                generator=generator,
+                generator_version=generator_version,
+            )
+        )
 
 
 @dataclass
@@ -1170,6 +1211,7 @@ class C_kicad_footprint_file(SEXP_File):
         generator: str
         generator_version: str = ""
         tedit: Optional[str] = None
+        unknown: CatchAll = None
 
     footprint: C_footprint_in_file
 
@@ -1347,3 +1389,7 @@ class C_kicad_fp_lib_table_file(SEXP_File):
         libs: list[C_lib] = field(**sexp_field(multidict=True), default_factory=list)
 
     fp_lib_table: C_fp_lib_table
+
+    @classmethod
+    def skeleton(cls, version: int = 7) -> "C_kicad_fp_lib_table_file":
+        return cls(cls.C_fp_lib_table(version=version, libs=[]))

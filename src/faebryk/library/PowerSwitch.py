@@ -30,4 +30,4 @@ class PowerSwitch(Module):
         )
 
     def __preinit__(self):
-        self.switched_power_out.voltage.merge(self.power_in.voltage)
+        self.switched_power_out.voltage.alias_is(self.power_in.voltage)

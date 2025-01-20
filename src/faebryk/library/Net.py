@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.library import L
 
 logger = logging.getLogger(__name__)
 
@@ -13,35 +12,8 @@ logger = logging.getLogger(__name__)
 class Net(Module):
     part_of: F.Electrical
 
-    @L.rt_field
-    def overriden_name(self):
-        class _(F.has_overriden_name.impl()):
-            def get_name(_self):
-                from faebryk.exporters.netlist.graph import (
-                    can_represent_kicad_footprint,
-                )
-
-                name = "-".join(
-                    sorted(
-                        (
-                            t := fp.get_trait(can_represent_kicad_footprint)
-                        ).get_name_and_value()[0]
-                        + "-"
-                        + t.get_pin_name(pad)
-                        for pad, fp in self.get_fps().items()
-                        if fp.has_trait(can_represent_kicad_footprint)
-                    )
-                )
-
-                # kicad can't handle long net names
-                if len(name) > 255:
-                    name = name[:200] + "..." + name[-52:]
-
-                return name
-
-        return _()
-
-    def get_fps(self):
+    def get_connected_pads(self) -> dict[F.Pad, F.Footprint]:
+        """Return a dict of pads connected to this net"""
         return {
             pad: fp
             for mif in self.get_connected_interfaces()
@@ -54,6 +26,8 @@ class Net(Module):
         return {
             mif
             for mif in self.part_of.get_connected()
+            # TODO: this should be removable since,
+            # only mifs of the same type can connect
             if isinstance(mif, type(self.part_of))
         }
 
@@ -69,3 +43,13 @@ class Net(Module):
         n = cls()
         n.add(F.has_overriden_name_defined(name))
         return n
+
+    @classmethod
+    def find_from_part_of_mif(cls, mif: F.Electrical) -> "Net | None":
+        """Return the Net that this "part_of" mif represents"""
+        parent = mif.get_parent()
+        if parent is None:
+            return None
+        if isinstance(parent[0], cls):
+            return parent[0]
+        return None

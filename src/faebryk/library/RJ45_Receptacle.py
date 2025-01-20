@@ -18,7 +18,7 @@ class RJ45_Receptacle(Module):
     pin = L.list_field(8, F.Electrical)
     shield: F.Electrical
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )
-    mounting: F.TBD
+    mounting = L.p_field(domain=L.Domains.ENUM(Mounting))

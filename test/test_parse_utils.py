@@ -1,11 +1,11 @@
-import textwrap
+from pathlib import Path
 
 import pytest
-from antlr4 import TokenStream
 
 import atopile
 import atopile.parse
 import atopile.parse_utils
+from faebryk.libs.util import repo_root as _repo_root
 
 
 def _parser(src: str):
@@ -27,21 +27,63 @@ def test_reconstructor_simple_stmt(txt: str):
     assert atopile.parse_utils.reconstruct(_parser(txt).simple_stmt()) == txt
 
 
-def test_get_comments():
-    module = atopile.parse.parse_text_as_file(
-        textwrap.dedent(
-            """
-        # Test
-        module Test:
-            a = 1  # A is a variable
+repo_root = _repo_root()
+EXAMPLES_DIR = repo_root / "examples"
 
-        """
+
+@pytest.mark.slow
+@pytest.mark.parametrize(
+    "example",
+    [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()],
+    ids=lambda p: p.stem,
+)
+def test_example_reconstruction(example: Path):
+    assert example.exists()
+    file_ast = atopile.parse.parse_file(example)
+    assert atopile.parse_utils.reconstruct(file_ast) == example.read_text()
+
+
+def test_partial_reconstruction():
+    code = "a=1;b=2"
+    file_ast = atopile.parse.parse_text_as_file(code)
+    assert (
+        atopile.parse_utils.reconstruct(
+            file_ast.stmt()[0].simple_stmts().simple_stmt()[1]
         )
+        == "b=2"
     )
 
-    token_stream: TokenStream = module.parser.getTokenStream()
 
-    token_by_line = {token.line: token for token in token_stream.tokens}
+@pytest.fixture
+def abcde():
+    code = {
+        "a": "a=1",
+        "b": "b=2",
+        "c": "c=3",
+        "d": "d=4",
+        "e": "e=5",
+    }
+    src = "a=1;b=2\nc=3;d=4\ne=5"
+    file_ast = atopile.parse.parse_text_as_file(src)
+    stmts = {
+        "a": file_ast.stmt()[0].simple_stmts().simple_stmt()[0],
+        "b": file_ast.stmt()[0].simple_stmts().simple_stmt()[1],
+        "c": file_ast.stmt()[1].simple_stmts().simple_stmt()[0],
+        "d": file_ast.stmt()[1].simple_stmts().simple_stmt()[1],
+        "e": file_ast.stmt()[2].simple_stmts().simple_stmt()[0],
+    }
+    return file_ast, stmts, code
 
-    c = atopile.parse_utils.get_comment_from_token(token_by_line[4])
-    assert c == "A is a variable"
+
+def test_reconstruct_expand(abcde):
+    _, stmts, _ = abcde
+    assert atopile.parse_utils.reconstruct(stmts["c"]) == "c=3"
+    assert atopile.parse_utils.reconstruct(stmts["c"], expand_before=0) == "c=3"
+    assert (
+        atopile.parse_utils.reconstruct(stmts["c"], expand_before=1) == "a=1;b=2\nc=3"
+    )
+    assert atopile.parse_utils.reconstruct(stmts["c"], expand_after=0) == "c=3;d=4"
+    assert atopile.parse_utils.reconstruct(stmts["c"], expand_after=1) == "c=3;d=4\ne=5"
+    assert atopile.parse_utils.reconstruct(stmts["d"]) == "d=4"
+    assert atopile.parse_utils.reconstruct(stmts["d"], expand_after=0) == "d=4"
+    assert atopile.parse_utils.reconstruct(stmts["d"], expand_before=0) == "c=3;d=4"

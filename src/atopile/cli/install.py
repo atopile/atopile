@@ -10,17 +10,18 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 from urllib.parse import urlparse
 
-import click
 import requests
 import ruamel.yaml
+import typer
 from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
 
-import atopile.config
+import faebryk.libs.exceptions
 from atopile import errors, version
-from atopile.utils import robustly_rm_dir
+from atopile.config import Dependency, config
+from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
 
@@ -28,19 +29,19 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-@click.command("install")
-@click.argument("to_install", required=False)
-@click.option("--jlcpcb", is_flag=True, help="JLCPCB component ID")
-@click.option("--link", is_flag=True, help="Keep this dependency linked to the source")
-@click.option("--upgrade", is_flag=True, help="Upgrade dependencies")
-@errors.muffle_fatalities()
-@errors.log_ato_errors()
 def install(
-    to_install: str,
-    jlcpcb: bool,
-    link: bool,
-    upgrade: bool,
-    path: Optional[Path] = None,
+    to_install: Annotated[str | None, typer.Argument()] = None,
+    jlcpcb: Annotated[
+        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID")
+    ] = False,
+    link: Annotated[
+        bool,
+        typer.Option("--link", "-l", help="Keep this dependency linked to the source"),
+    ] = False,
+    upgrade: Annotated[
+        bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
+    ] = False,
+    path: Annotated[Path | None, typer.Argument()] = None,
 ):
     """
     Install atopile packages or components from jlcpcb.com/parts
@@ -49,93 +50,32 @@ def install(
 
 
 def do_install(
-    to_install: str,
-    jlcpcb: bool,
-    link: bool,
-    upgrade: bool,
-    path: Optional[Path] = None,
+    to_install: str | None, jlcpcb: bool, link: bool, upgrade: bool, path: Path | None
 ):
     """
     Actually do the installation of the dependencies.
     This is split in two so that it can be called from `install` and `create`
     """
 
-    current_path = Path.cwd()
-    config = atopile.config.get_project_config_from_path(Path(path or current_path))
-    ctx = atopile.config.ProjectContext.from_config(config)
-    top_level_path = config.location
+    if path is not None:
+        config.project_dir = path
 
-    log.info(f"Installing {to_install} in {top_level_path}")
+    log.info(
+        f"Installing {to_install}{' ' if to_install else ''}"
+        f"in {config.project.paths.root}"
+    )
 
-    # with errors.handle_ato_errors():
-    if jlcpcb:  # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install, top_level_path)
-        return
-
-    if to_install:  # eg. "ato install some-atopile-module"
-        dependency = atopile.config.Dependency.from_str(to_install)
-        name = _name_and_clone_url_helper(dependency.name)[0]
-        if link:
-            dependency.link_broken = False
-            abs_path = ctx.module_path / name
-            dependency.path = abs_path.relative_to(ctx.project_path)
-        else:
-            abs_path = ctx.src_path / name
-            dependency.path = abs_path.relative_to(ctx.project_path)
-            dependency.link_broken = True
-
-        try:
-            installed_version = install_dependency(dependency, upgrade, abs_path)
-        except GitCommandError as ex:
-            if "already exists and is not an empty directory" in ex.stderr:
-                # FIXME: shouldn't `--upgrade` do this already?
-                raise errors.AtoError(
-                    f"Directory {abs_path} already exists and is not empty. "
-                    "Please move or remove it before installing this new content."
-                ) from ex
-            raise
-        # If the link's broken, remove the .git directory so git treats it as copy-pasted code
-        if dependency.link_broken:
-            try:
-                robustly_rm_dir(abs_path / ".git")
-            except (PermissionError, OSError, FileNotFoundError) as ex:
-                errors.AtoError(f"Failed to remove .git directory: {repr(ex)}").log(
-                    log, logging.WARNING
-                )
-
-        if dependency.version_spec is None and installed_version:
-            # If the user didn't specify a version, we'll
-            # use the one we just installed as a basis
-            dependency.version_spec = f"@{installed_version}"
-
-        names = {dep.name: i for i, dep in enumerate(config.dependencies)}
-        if dependency.name in names:
-            config.dependencies[names[dependency.name]] = dependency
-        else:
-            config.dependencies.append(dependency)
-        config.save_changes()
-
-    else:  # eg. "ato install"
-        for _ctx, dependency in errors.iter_through_errors(config.dependencies):
-            with _ctx():
-                if not dependency.link_broken:
-                    # FIXME: these dependency objects are a little too entangled
-                    name = _name_and_clone_url_helper(dependency.name)[0]
-                    abs_path = ctx.module_path / name
-                    dependency.path = abs_path.relative_to(ctx.project_path)
-
-                    try:
-                        installed_version = install_dependency(
-                            dependency, upgrade, abs_path
-                        )
-                    except GitCommandError as ex:
-                        if "already exists and is not an empty directory" in ex.stderr:
-                            # FIXME: shouldn't `--upgrade` do this already?
-                            raise errors.AtoError(
-                                f"Directory {abs_path} already exists and is not empty. "
-                                "Please move or remove it before installing this new content."
-                            ) from ex
-                        raise
+    if jlcpcb:
+        if to_install is None:
+            raise errors.UserBadParameterError("No component ID specified")
+        # eg. "ato install --jlcpcb=C123"
+        install_jlcpcb(to_install, config.project.paths.root)
+    elif to_install:
+        # eg. "ato install some-atopile-module"
+        install_single_dependency(to_install, link, upgrade)
+    else:
+        # eg. "ato install"
+        install_project_dependencies(upgrade)
 
     log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
@@ -146,28 +86,107 @@ def get_package_repo_from_registry(module_name: str) -> str:
     """
     try:
         response = requests.post(
-            "https://get-package-atsuhzfd5a-uc.a.run.app",
+            config.project.services.packages.url,
             json={"name": module_name},
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
-        raise errors.AtoInfraError(
+        raise errors.UserInfraError(
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
     if response.status_code == 500:
-        raise errors.AtoError(f"Could not find package '{module_name}' in registry.")
+        raise errors.UserException(
+            f"Could not find package '{module_name}' in registry."
+        )
     response.raise_for_status()
     return_data = response.json()
     try:
         return_url = return_data["data"]["repo_url"]
     except KeyError as ex:
-        raise errors.AtoError(f"No repo_url found for package '{module_name}'") from ex
+        raise errors.UserException(
+            f"No repo_url found for package '{module_name}'"
+        ) from ex
     return return_url
 
 
+def install_single_dependency(to_install: str, link: bool, upgrade: bool):
+    dependency = Dependency.from_str(to_install)
+    name = _name_and_clone_url_helper(dependency.name)[0]
+    if link:
+        dependency.link_broken = False
+        abs_path = config.project.paths.modules / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
+    else:
+        abs_path = config.project.paths.src / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
+        dependency.link_broken = True
+
+    try:
+        installed_version = install_dependency(dependency, upgrade, abs_path)
+    except GitCommandError as ex:
+        if "already exists and is not an empty directory" in ex.stderr:
+            # FIXME: shouldn't `--upgrade` do this already?
+            raise errors.UserException(
+                f"Directory {abs_path} already exists and is not empty. "
+                "Please move or remove it before installing this new content."
+            ) from ex
+        raise
+    # If the link's broken, remove the .git directory so git treats it as copy-pasted code # noqa: E501  # pre-existing
+    if dependency.link_broken:
+        try:
+            robustly_rm_dir(abs_path / ".git")
+        except (PermissionError, OSError, FileNotFoundError) as ex:
+            with faebryk.libs.exceptions.downgrade(errors.UserException):
+                raise errors.UserException(
+                    f"Failed to remove .git directory: {repr(ex)}"
+                ) from ex
+
+    if dependency.version_spec is None and installed_version:
+        # If the user didn't specify a version, we'll
+        # use the one we just installed as a basis
+        dependency.version_spec = f"@{installed_version}"
+
+    def add_dependency(config_data, new_data):
+        if config_data.get("dependencies") is None:
+            config_data["dependencies"] = []
+
+        for i, dep in enumerate(config_data["dependencies"]):
+            if dep["name"] == new_data["name"]:
+                config_data["dependencies"][i] = new_data
+                break
+        else:
+            config_data["dependencies"] = config_data["dependencies"] + [new_data]
+        return config_data
+
+    config.update_project_config(add_dependency, dependency.model_dump())
+
+
+def install_project_dependencies(upgrade: bool):
+    for _ctx, dependency in faebryk.libs.exceptions.iter_through_errors(
+        config.project.dependencies or []
+    ):
+        with _ctx():
+            if not dependency.link_broken:
+                # FIXME: these dependency objects are a little too entangled
+                name = _name_and_clone_url_helper(dependency.name)[0]
+                abs_path = config.project.paths.modules / name
+                dependency.path = abs_path.relative_to(config.project.paths.root)
+
+                try:
+                    install_dependency(dependency, upgrade, abs_path)
+                except GitCommandError as ex:
+                    if "already exists and is not an empty directory" in ex.stderr:
+                        # FIXME: shouldn't `--upgrade` do this already?
+                        raise errors.UserException(
+                            f"Directory {abs_path} already exists and is not empty. "
+                            "Please move or remove it before installing this new content."  # noqa: E501  # pre-existing
+                        ) from ex
+                    raise
+
+
 def install_dependency(
-    dependency: atopile.config.Dependency, upgrade: bool, abs_path: Path
+    dependency: Dependency, upgrade: bool, abs_path: Path
 ) -> Optional[str]:
     """
     Install a dependency of the name "module_name"
@@ -186,7 +205,13 @@ def install_dependency(
         # Directory does not contain a valid repo, clone into it
         log.info(f"Installing dependency {module_name}")
         repo = Repo.clone_from(clone_url, abs_path)
-        repo.active_branch.tracking_branch().checkout()
+        tracking = repo.active_branch.tracking_branch()
+        if tracking:
+            tracking.checkout()
+        else:
+            log.warning(
+                f"No tracking branch found for {module_name}, using current branch"
+            )
     else:
         # In this case the directory exists and contains a valid repo
         if upgrade:
@@ -196,7 +221,7 @@ def install_dependency(
             log.info(
                 f"{module_name} already exists. If you wish to upgrade, use --upgrade"
             )
-            # here we're done because we don't want to play with peoples' deps under them
+            # here we're done because we don't want to play with peoples' deps under them # noqa: E501  # pre-existing
             return
 
     # Figure out what version of this thing we need
@@ -205,7 +230,7 @@ def install_dependency(
     for tag in repo.tags:
         try:
             semver_to_tag[version.parse(tag.name)] = tag
-        except errors.AtoError:
+        except errors.UserException:
             log.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
 
     if "@" in module_spec:
@@ -215,7 +240,7 @@ def install_dependency(
         # Otherwise we're gonna find the best tag meeting the semver spec
         valid_versions = [v for v in semver_to_tag if version.match(module_spec, v)]
         if not valid_versions:
-            raise errors.AtoError(
+            raise errors.UserException(
                 f"No versions of {module_name} match spec {module_spec}.\n"
                 f"Available versions: {', '.join(map(str, semver_to_tag))}"
             )
@@ -223,14 +248,14 @@ def install_dependency(
         best_checkout = semver_to_tag[installed_semver]
     else:
         log.warning(
-            "No semver tags found for this module. Using latest default branch :hot_pepper:.",
+            "No semver tags found for this module. Using latest default branch :hot_pepper:.",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
         return None
 
     # If the repo is dirty, throw an error
     if repo.is_dirty():
-        raise errors.AtoError(
+        raise errors.UserException(
             f"Module {module_name} has uncommitted changes. Aborting."
         )
 
@@ -245,12 +270,12 @@ def install_dependency(
 
     if repo.head.commit == ref_before_checkout:
         log.info(
-            f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",
+            f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
     else:
         log.info(
-            f"Using :sparkles: [cyan bold]{best_checkout}[/] :sparkles: of {module_name}",
+            f"Using :sparkles: [cyan bold]{best_checkout}[/] :sparkles: of {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
 
@@ -261,18 +286,12 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
     """Install a component from JLCPCB"""
     component_id = component_id.upper()
     if not component_id.startswith("C") or not component_id[1:].isdigit():
-        raise errors.AtoError(f"Component id {component_id} is invalid. Aborting.")
+        raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
 
-    footprints_dir = (
-        top_level_path
-        / atopile.config.get_project_config_from_path(top_level_path).paths.footprints
-    )
+    footprints_dir = top_level_path / config.project.paths.footprints
     footprints_dir.mkdir(parents=True, exist_ok=True)
 
-    ato_src_dir = (
-        top_level_path
-        / atopile.config.get_project_config_from_path(top_level_path).paths.src
-    )
+    ato_src_dir = top_level_path / config.project.paths.src
     ato_src_dir.mkdir(parents=True, exist_ok=True)
 
     log.info(f"Footprints directory: {footprints_dir}")
@@ -299,7 +318,7 @@ def install_jlcpcb(component_id: str, top_level_path: Path):
         print("Command executed successfully")
     else:
         component_link = f"https://jlcpcb.com/partdetail/{component_id}"
-        raise errors.AtoError(
+        raise errors.UserException(
             "Oh no! Looks like this component doesnt have a model available. "
             f"More information about the component can be found here: {component_link}"
         )

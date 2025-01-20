@@ -1,0 +1,8 @@
+~*
+layout/**/lib
+*.kicad_prl
+fp-info-cache
+_autosave*
+layout/*
+!layout/ato/
+!layout/fab/

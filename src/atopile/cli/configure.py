@@ -2,13 +2,13 @@
 Configure the user's system for atopile development.
 """
 
+import logging
 from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
-import click
+import questionary
 import rich
-import rich.prompt
 from attrs import asdict, define
 from ruamel.yaml import YAML, YAMLError
 
@@ -17,6 +17,9 @@ import atopile.version
 yaml = YAML()
 
 CONFIGURED_FOR_PATH = Path("~/.atopile/configured_for.yaml").expanduser().absolute()
+
+
+logger = logging.getLogger(__name__)
 
 
 @define
@@ -50,17 +53,17 @@ def get_configured_for_version() -> atopile.version.Version:
     return atopile.version.clean_version(atopile.version.Version.parse(config.version))
 
 
-@click.command("configure")
 def configure() -> None:
     """
     Configure the user's system for atopile development.
     """
+    logger.setLevel(logging.INFO)
     _load_config()
-    do_configure(False)
+    do_configure()
 
 
 def do_configure_if_needed() -> None:
-    """Configure the user's system for atopile development if it's not already configured."""
+    """Configure the user's system for atopile development if it's not already configured."""  # noqa: E501  # pre-existing
     if not CONFIGURED_FOR_PATH.exists():
         rich.print(
             dedent(
@@ -83,20 +86,20 @@ def do_configure_if_needed() -> None:
         pass
 
     # Otherwise we're configured, but we might need to update
-    do_configure(True)
+    logger.setLevel(logging.WARNING)  # Quieten output for typical runs
+    do_configure()
 
 
-def do_configure(quiet: bool) -> None:
+def do_configure() -> None:
     """Perform system configuration required for atopile."""
-
     if config.install_kicad_plugin is None:
-        config.install_kicad_plugin = rich.prompt.Confirm.ask(
-            ":wrench: Install KiCAD plugin?", default="y"
-        )
+        config.install_kicad_plugin = questionary.confirm(
+            ":wrench: Install KiCAD plugin?", default=True
+        ).ask()
 
     if config.install_kicad_plugin:
         # FIXME: no idea what's up with this - but seem to help on Windows
-        install_kicad_plugin(quiet)
+        install_kicad_plugin()
 
     # final steps
     config.version = str(
@@ -105,7 +108,7 @@ def do_configure(quiet: bool) -> None:
     _save_config()
 
 
-def install_kicad_plugin(quiet: bool) -> None:
+def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
     # Find the path to kicad's plugin directory
     plugin_loader = f"""
@@ -132,16 +135,21 @@ def install_kicad_plugin(quiet: bool) -> None:
         plugin_loader_content = dedent(plugin_loader)
         plugin_loader_path = path / "atopile.py"
 
-        if not quiet:
-            rich.print(f"[yellow]Writing plugin loader to {plugin_loader_path}[/]")
-            print(plugin_loader_content)
+        logger.info("Writing plugin loader to %s", plugin_loader_path)
         with plugin_loader_path.open("w", encoding="utf-8") as f:
             f.write(plugin_loader_content)
 
-    for p in (
-        Path("~/Documents/KiCad/").expanduser().absolute().glob("*/scripting/plugins")
-    ):
-        try:
-            _write_plugin(p)
-        except FileNotFoundError:
-            _write_plugin(p)
+    kicad_config_search_path = ["~/Documents/KiCad/", "~/.local/share/kicad/"]
+    no_plugin_found = True
+    for sp in kicad_config_search_path:
+        config_path = Path(sp).expanduser().resolve()
+        if config_path.exists():
+            for p in config_path.glob("*/scripting/plugins"):
+                try:
+                    _write_plugin(p)
+                except FileNotFoundError:
+                    _write_plugin(p)
+                no_plugin_found = False
+
+    if no_plugin_found:
+        logger.warning("KiCAD config path not found. Couldn't install plugin!")

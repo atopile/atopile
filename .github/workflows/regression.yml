@@ -1,0 +1,94 @@
+name: regression
+
+on:
+  push:
+    branches: [main]  # Adjust this if your default branch has a different name
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:  # Add manual trigger capability
+
+jobs:
+  regression:
+    runs-on: blacksmith-4vcpu-ubuntu-2204
+    if: ${{
+        (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'regression-required')) ||
+        (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      }}
+    steps:
+    # FIXME: remove this once we're done debugging
+    - run: echo "Event " ${{ github.event_name }}
+    - run: echo "Event labels " ${{ github.event.pull_request.labels }}
+    - run: echo "run for pull_request " ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'regression-required')) }}
+    - run: echo "run else " ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Required due to a bug in the checkout action
+    # https://github.com/actions/checkout/issues/1471
+    - run: git fetch --prune --unshallow --tags
+
+    - name: Install uv
+      uses: useblacksmith/setup-uv@v4
+      with:
+        version: 0.5.5
+        enable-cache: true
+        cache-dependency-glob: "uv.lock"
+
+    - name: "Set up Python"
+      uses: useblacksmith/setup-python@v6
+      with:
+        python-version-file: "pyproject.toml"
+
+    - name: Setup cmake
+      uses: jwlawson/actions-setup-cmake@v2
+
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    # TODO: remove dependency on global fp-lib-table
+    - name: Prepare test environment
+      run: |
+        mkdir -p ~/.config/kicad/8.0/
+        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-fp-lib-table" ~/.config/kicad/8.0/fp-lib-table
+
+        mkdir -p /usr/share/kicad/
+        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
+
+    - name: Run pytest
+      id: pytest
+      continue-on-error: true
+      # Regular tests are run as part of the pytest workflow
+      run: |
+        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and regression" --timeout=900
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
+        PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
+        COLUMNS: 150  # rich console width will be pulled from this
+
+    - name: Upload all test artifacts
+      if: steps.pytest.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-artifacts
+        path: artifacts/**
+        if-no-files-found: warn
+
+    # Upload the report as a separate artifact
+    # to make it easier to find since it's typically
+    # the first place we look for the failure
+    - name: Upload all test report
+      if: steps.pytest.outcome == 'failure'
+      uses: actions/upload-artifact@v4
+      with:
+        name: test-report
+        path: artifacts/test-report.html
+
+    - name: Check pytest status
+      if: steps.pytest.outcome == 'failure'
+      run: exit 1

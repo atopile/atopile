@@ -25,8 +25,12 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         switch = L.f_field(F.Switch(F.Electrical))()
 
         def __preinit__(self):
-            self.resistor.resistance.merge(F.Range.from_center_rel(1 * P.kohm, 0.05))
-            self.logic_out.set_weak(True).resistance.merge(self.resistor.resistance)
+            self.resistor.resistance.constrain_subset(
+                L.Range.from_center_rel(1 * P.kohm, 0.05)
+            )
+            self.logic_out.set_weak(True, owner=self).resistance.alias_is(
+                self.resistor.resistance
+            )
             self.logic_out.signal.connect_via(
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
@@ -39,7 +43,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         swd: F.SWD
 
         lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C160389"})
-        designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        designator_prefix = L.f_field(F.has_designator_prefix)(
             F.has_designator_prefix.Prefix.J
         )
 
@@ -74,11 +78,11 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         #    return F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
         def __preinit__(self):
-            self.rc_filter.response.merge(F.Filter.Response.LOWPASS)
-            self.rc_filter.cutoff_frequency.merge(
-                F.Range.from_center_rel(360 * P.Hz, 0.1)
+            self.rc_filter.response.constrain_subset(F.Filter.Response.LOWPASS)
+            self.rc_filter.cutoff_frequency.constrain_subset(
+                L.Range.from_center_rel(360 * P.Hz, 0.1)
             )
-            # self.reference_out.voltage.merge(F.Range(2 * P.V, 3 * P.V))
+            # self.reference_out.voltage.constrain_subset(L.Range(2 * P.V, 3 * P.V))
 
             self.power_in.connect(self.rc_filter.in_.reference)
             self.power_in.hv.connect(self.rc_filter.in_.signal)
@@ -88,7 +92,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             # Specialize
             special = self.rc_filter.specialize(F.FilterElectricalRC())
             # Construct
-            special.get_trait(F.has_construction_dependency).construct()
+            special.build_lowpass()
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -132,21 +136,23 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         #            parametrization
         # ----------------------------------------
         # LDO
-        self.ldo.output_current.merge(F.Range.from_center_rel(600 * P.mA, 0.05))
-        self.ldo.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
+        self.ldo.output_current.constrain_subset(
+            L.Range.from_center_rel(600 * P.mA, 0.05)
         )
-        self.ldo.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
+        self.ldo.power_in.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(10 * P.uF, 0.05)
+        )
+        self.ldo.power_out.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(10 * P.uF, 0.05)
         )
 
         # XTAL
-        self.clock_source.crystal.load_capacitance.merge(
-            F.Range.from_center_rel(10 * P.pF, 0.05)
+        self.clock_source.crystal.load_capacitance.constrain_subset(
+            L.Range.from_center_rel(10 * P.pF, 0.05)
         )
 
-        self.clock_source.current_limiting_resistor.resistance.merge(
-            F.Range.from_center_rel(1 * P.kohm, 0.05)
+        self.clock_source.current_limiting_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.kohm, 0.05)
         )
         self.clock_source.crystal.add(
             F.has_descriptive_properties_defined(
@@ -158,59 +164,87 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         )
 
         # Status LED
-        self.status_led.led.led.color.merge(F.LED.Color.GREEN)
-        self.status_led.led.led.brightness.merge(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value.value
+        self.status_led.led.led.color.constrain_subset(F.LED.Color.GREEN)
+        self.status_led.led.led.brightness.constrain_subset(
+            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
         # USB
+        resistor_small = []
         terminated_usb = self.rp2040.usb.terminated()
         self.add(terminated_usb)
-        terminated_usb.impedance.merge(F.Range.from_center_rel(27.4 * P.ohm, 0.05))
+        terminated_usb.impedance.constrain_subset(
+            L.Range.from_center_rel(27.4 * P.ohm, 0.05)
+        )
+        resistor_small.extend(
+            terminated_usb.get_children(direct_only=True, types=F.Resistor)
+        )
 
         # Flash
-        self.flash.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
+        self.flash.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.05)
         )
 
         # Power rails
-        self.rp2040.power_io.decoupled.decouple().specialize(
-            F.MultiCapacitor(6)
-        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.rp2040.core_regulator.power_in.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
-        )
-        self.rp2040.power_adc.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
-        )
-        self.rp2040.power_usb_phy.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(100 * P.nF, 0.05)
-        )
-        power_3v3.get_trait(F.is_decoupled).get_capacitor().capacitance.merge(
-            F.Range.from_center_rel(10 * P.uF, 0.05)
-        )
-        self.rp2040.power_core.decoupled.decouple().specialize(
-            F.MultiCapacitor(2)
-        ).set_equal_capacitance_each(F.Range.from_center_rel(100 * P.nF, 0.05))
-        self.rp2040.core_regulator.power_out.decoupled.decouple().capacitance.merge(
-            F.Range.from_center_rel(1 * P.uF, 0.05)
+        cap_100nF = L.Range.from_center_rel(100 * P.nF, 0.05)
+
+        caps_small = []
+        caps_small.extend(
+            self.rp2040.power_io.decoupled.decouple(owner=self)
+            .specialize(
+                F.MultiCapacitor(6).builder(
+                    lambda mc: mc.set_equal_capacitance_each(cap_100nF)
+                )
+            )
+            .capacitors
         )
 
+        self.rp2040.core_regulator.power_in.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(1 * P.uF, 0.05))
+        caps_small.append(
+            self.rp2040.power_adc.decoupled.decouple(owner=self).builder(
+                lambda c: c.capacitance.constrain_subset(cap_100nF)
+            )
+        )
+        caps_small.append(
+            self.rp2040.power_usb_phy.decoupled.decouple(owner=self).builder(
+                lambda c: c.capacitance.constrain_subset(cap_100nF)
+            )
+        )
+        power_3v3.get_trait(F.is_decoupled).capacitor.capacitance.constrain_subset(
+            L.Range.from_center_rel(10 * P.uF, 0.05)
+        )
+        caps_small.extend(
+            self.rp2040.power_core.decoupled.decouple(owner=self)
+            .specialize(
+                F.MultiCapacitor(2).builder(
+                    lambda mc: mc.set_equal_capacitance_each(cap_100nF)
+                )
+            )
+            .capacitors
+        )
+        self.rp2040.core_regulator.power_out.decoupled.decouple(
+            owner=self
+        ).capacitance.constrain_subset(L.Range.from_center_rel(1 * P.uF, 0.05))
+
         for c in self.get_children_modules(types=F.Capacitor):
-            if F.Constant(100 * P.nF).is_subset_of(c.capacitance):
-                c.add(F.has_footprint_requirement_defined([("0201", 2)]))
+            if c in caps_small:
+                c.add(F.has_package(F.has_package.Package.C0201))
             else:
                 c.add(
-                    F.has_footprint_requirement_defined(
-                        [("0402", 2), ("0603", 2), ("0805", 2)]
+                    F.has_package(
+                        F.has_package.Package.C0402,
+                        F.has_package.Package.C0603,
+                        F.has_package.Package.C0805,
                     )
                 )
 
         for r in self.get_children_modules(types=F.Resistor):
-            if F.Constant(27.4 * P.ohm).is_subset_of(r.resistance):
-                r.add(F.has_footprint_requirement_defined([("0201", 2)]))
+            if r in resistor_small:
+                r.add(F.has_package(F.has_package.Package.R0201))
             else:
-                r.add(F.has_footprint_requirement_defined([("0402", 2)]))
+                r.add(F.has_package(F.has_package.Package.R0402))
 
         self.reset_button.add(F.has_descriptive_properties_defined({"LCSC": "C139797"}))
         self.boot_selector.switch.add(

@@ -2,24 +2,26 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import pprint
 import re
 from collections import defaultdict
-from pathlib import Path
 from typing import cast
+
+from natsort import natsorted
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.exporters.netlist.netlist import T2Netlist
-from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
-from faebryk.libs.util import duplicates, get_key, groupby
+from faebryk.exporters.pcb.kicad.transformer import PCB, PCB_Transformer
+from faebryk.libs.library import L
+from faebryk.libs.util import duplicates, groupby
 
 logger = logging.getLogger(__name__)
 
 
 def attach_random_designators(graph: Graph):
     """
-    sorts nodes by path and then sequentially assigns designators
+    Sorts nodes by path and then sequentially attaches designators
+
+    This ensures that everything which has a footprint must have a designator.
     """
 
     nodes = {n for n, _ in GraphFunctions(graph).nodes_with_trait(F.has_footprint)}
@@ -48,7 +50,7 @@ def attach_random_designators(graph: Graph):
                 return i + 1
         return len(used) + 1
 
-    nodes_sorted = sorted(nodes, key=lambda x: x.get_full_name())
+    nodes_sorted = natsorted(nodes, key=lambda x: x.get_full_name())
 
     for n in nodes_sorted:
         if n.has_trait(F.has_designator):
@@ -61,7 +63,7 @@ def attach_random_designators(graph: Graph):
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        n.add(F.has_designator_defined(designator))
+        n.add(F.has_designator(designator))
 
         assigned[prefix].append(next_num)
 
@@ -72,71 +74,35 @@ def attach_random_designators(graph: Graph):
     assert not dupes, f"Duplcicate designators: {dupes}"
 
 
-def override_names_with_designators(graph: Graph):
-    for n, t in GraphFunctions(graph).nodes_with_trait(F.has_designator):
-        name = t.get_designator()
-        if n.has_trait(F.has_overriden_name):
-            logger.warning(
-                f"Renaming: {n.get_trait(F.has_overriden_name).get_name()} -> {name}"
-            )
-        n.add(F.has_overriden_name_defined(name))
+def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
+    """
+    Load designators from attached footprints and attach them to the nodes.
+    """
 
+    def _get_reference(fp: PCB.C_pcb_footprint):
+        try:
+            return fp.propertys["Reference"].value
+        except KeyError:
+            return None
 
-def attach_hierarchical_designators(graph: Graph):
-    # TODO
-    raise NotImplementedError()
+    def _get_pcb_designator(fp_trait: PCB_Transformer.has_linked_kicad_footprint):
+        fp = fp_trait.get_fp()
+        if not fp.name:
+            return None
+        return _get_reference(fp)
 
+    nodes = GraphFunctions(graph).nodes_with_trait(
+        PCB_Transformer.has_linked_kicad_footprint
+    )
 
-def load_designators_from_netlist(
-    graph: Graph, t2_netlist_comps: dict[str, T2Netlist.Component]
-):
-    designators: dict[str, str] = {
-        comp.properties["faebryk_name"]: comp.name
-        for comp in t2_netlist_comps.values()
-        if "faebryk_name" in comp.properties
+    known_designators = {
+        node: ref
+        for node, trait in nodes
+        if (ref := _get_pcb_designator(trait)) is not None
     }
 
-    matched_nodes = {
-        node_name: (n, designators[node_name])
-        for n, node_name in graph.nodes_by_names(designators.keys())
-    }
+    if attach:
+        for node, designator in known_designators.items():
+            node.add(F.has_designator(designator))
 
-    for _, (n, designator) in matched_nodes.items():
-        logger.debug(f"Matched {n} to {designator}")
-        n.add(F.has_designator_defined(designator))
-
-    logger.info(f"Matched {len(matched_nodes)}/{len(designators)} designators")
-    nomatch = {
-        d: get_key(designators, d)
-        for d in (set(designators.values()) - {d for _, d in matched_nodes.values()})
-    }
-    if nomatch:
-        logger.info(f"Could not match: {pprint.pformat(nomatch, indent=4)}")
-
-
-def replace_faebryk_names_with_designators_in_kicad_pcb(graph: Graph, pcbfile: Path):
-    logger.info("Load PCB")
-    pcb = C_kicad_pcb_file.loads(pcbfile)
-    pcb.dumps(pcbfile.with_suffix(".bak"))
-
-    pattern = re.compile(r"^(.*)\[[^\]]*\]$")
-    translation = {
-        n.get_full_name(): t.get_name()
-        for n, t in GraphFunctions(graph).nodes_with_trait(F.has_overriden_name)
-    }
-
-    for fp in pcb.kicad_pcb.footprints:
-        ref_prop = fp.propertys["Reference"]
-        ref = ref_prop.value
-        m = pattern.match(ref)
-        if not m:
-            logger.warning(f"Could not match {ref}")
-            continue
-        name = m.group(1)
-        if name not in translation:
-            logger.warning(f"Could not translate {name}")
-            continue
-        logger.info(f"Translating {name} to {translation[name]}")
-        ref_prop.value = translation[name]
-
-    pcb.dumps(pcbfile)
+    return known_designators

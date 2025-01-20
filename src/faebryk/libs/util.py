@@ -1,46 +1,74 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import asyncio
 import collections.abc
+import hashlib
+import importlib.util
 import inspect
 import itertools
+import json
 import logging
 import os
 import select
+import shutil
+import stat
 import subprocess
 import sys
 import time
+import uuid
 from abc import abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from enum import StrEnum
-from itertools import chain
+from enum import Enum, StrEnum
+from functools import wraps
+from genericpath import commonprefix
+from importlib.metadata import Distribution
+from itertools import chain, pairwise
+from json import JSONEncoder
 from pathlib import Path
 from textwrap import indent
+from types import ModuleType
 from typing import (
     Any,
     Callable,
     Concatenate,
+    Container,
+    Generator,
     Hashable,
     Iterable,
     Iterator,
     List,
     Optional,
+    Protocol,
     Self,
     Sequence,
     SupportsFloat,
     SupportsInt,
     Type,
+    TypeGuard,
+    cast,
     get_origin,
+    get_type_hints,
+    overload,
+    override,
 )
 
 import psutil
-from tortoise import Model
-from tortoise.queryset import QuerySet
 
 logger = logging.getLogger(__name__)
+
+
+class Serializable(Protocol):
+    def serialize(self) -> dict: ...
+
+    @classmethod
+    def deserialize(cls, data: dict) -> Self: ...
+
+
+class SerializableJSONEncoder(JSONEncoder):
+    def default(self, o: Serializable | None):
+        return None if o is None else o.serialize()
 
 
 class lazy:
@@ -119,8 +147,13 @@ class KeyErrorAmbiguous[T](KeyError):
         super().__init__(*args)
         self.duplicates = duplicates
 
+    def __str__(self):
+        return f"KeyErrorAmbiguous: {self.duplicates}"
 
-def find[T](haystack: Iterable[T], needle: Callable[[T], Any]) -> T:
+
+def find[T](haystack: Iterable[T], needle: Callable[[T], Any] | None = None) -> T:
+    if needle is None:
+        needle = lambda x: x is not None  # noqa: E731
     results = [x for x in haystack if needle(x)]
     if not results:
         raise KeyErrorNotFound()
@@ -287,7 +320,31 @@ def not_none(x):
     return x
 
 
-def cast_assert[T](t: type[T], obj) -> T:
+@overload
+def cast_assert[T](t: type[T], obj) -> T: ...
+
+
+@overload
+def cast_assert[T1, T2](t: tuple[type[T1], type[T2]], obj) -> T1 | T2: ...
+
+
+@overload
+def cast_assert[T1, T2, T3](
+    t: tuple[type[T1], type[T2], type[T3]], obj
+) -> T1 | T2 | T3: ...
+
+
+@overload
+def cast_assert[T1, T2, T3, T4](
+    t: tuple[type[T1], type[T2], type[T3], type[T4]], obj
+) -> T1 | T2 | T3 | T4: ...
+
+
+def cast_assert(t, obj):
+    """
+    Assert that obj is an instance of type t and return it with proper type hints.
+    t can be either a single type or a tuple of types.
+    """
     assert isinstance(obj, t)
     return obj
 
@@ -450,6 +507,12 @@ def split_recursive_stack(
 CACHED_RECUSION_ERRORS = set()
 
 
+# TODO: now unused
+# Consider splitting into three functions
+# - A "lower_recursion_limit" contextmanager, should increase limit from current usage
+# - A "better_recursion_error" function, should improve recursion error messaging
+# - A separate composable "except" decorator which can be used to more generically
+#   return something in case of a function raising an error
 def try_avoid_endless_recursion(f: Callable[..., str]):
     import sys
 
@@ -713,7 +776,6 @@ class LazyMixin:
 
 class Lazy(LazyMixin):
     def __init_subclass__(cls) -> None:
-        print("SUBCLASS", cls)
         super().__init_subclass__()
         lazy_construct(cls)
 
@@ -863,7 +925,9 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         super().__init__(name, default, descr)
 
     def _convert(self, raw_val: str) -> int:
-        return int(raw_val)
+        if raw_val.startswith("0x"):
+            return int(raw_val, 16)
+        return int(float(raw_val))
 
     def __int__(self) -> int:
         return self.get()
@@ -872,25 +936,6 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
 def zip_dicts_by_key(*dicts):
     keys = {k for d in dicts for k in d}
     return {k: tuple(d.get(k) for d in dicts) for k in keys}
-
-
-def paginated_query[T: Model](page_size: int, q: QuerySet[T]) -> Iterator[T]:
-    page = 0
-
-    async def get_page(page: int):
-        offset = page * page_size
-        return await q.offset(offset).limit(page_size)
-
-    while True:
-        results = asyncio.run(get_page(page))
-
-        if not results:
-            break  # No more records to fetch, exit the loop
-
-        for r in results:
-            yield r
-
-        page += 1
 
 
 def factory[T, **P](con: Callable[P, T]) -> Callable[P, Callable[[], T]]:
@@ -952,18 +997,49 @@ class Tree[T](dict[T, "Tree[T]"]):
         out = ""
         next_levels = [self]
         while next_levels:
-            if any(next_levels):
-                out += indent("\n|\nv\n", " " * 12)
             for next_level in next_levels:
-                for p, _ in next_level.items():
-                    out += f"{p!r}"
+                out += " | ".join(f"{p!r}" for p in next_level.keys())
             next_levels = [
                 children
                 for next_level in next_levels
                 for _, children in next_level.items()
             ]
+            if any(next_levels):
+                out += indent("\n↓\n", " " * 12)
 
         return out
+
+    def copy(self) -> "Tree[T]":
+        return Tree({k: v.copy() for k, v in self.items()})
+
+    def flat(self) -> set[T]:
+        return {n for level in self.iter_by_depth() for n in level}
+
+    def leaves(self) -> Generator[T, None, None]:
+        for child, child_tree in self.items():
+            if not child_tree:
+                yield child
+            else:
+                yield from child_tree.leaves()
+
+    def get_subtree(self, node: T) -> "Tree[T]":
+        """
+        If not acyclic, will return the highest subtree containing the node.
+        """
+        trees = [self]
+        while trees:
+            tree = find_or(
+                trees,
+                lambda t: node in not_none(t),
+                default=None,
+                default_multi=lambda x: x[0],
+            )
+            if tree is not None:
+                return tree[node]
+
+            trees = [child for tree in trees for child in tree.values()]
+
+        raise KeyErrorNotFound(f"Node {node} not found in tree")
 
 
 # zip iterators, but if one iterators stops producing, the rest continue
@@ -982,6 +1058,10 @@ def join_if_non_empty(sep: str, *args):
 
 
 def dataclass_as_kwargs(obj: Any) -> dict[str, Any]:
+    """
+    Unlike dataclasses.asdict because it doesn't convert children dataclasses to dicts.
+    This is useful when reconstructing a dataclass from a dict.
+    """
     return {f.name: getattr(obj, f.name) for f in fields(obj)}
 
 
@@ -998,44 +1078,27 @@ class RecursionGuard:
         sys.setrecursionlimit(self.recursion_depth)
 
 
-@contextmanager
-def exceptions_to_log(
-    logger: logging.Logger = logger,
-    level: int = logging.WARNING,
-    mute=True,
-):
-    """
-    Send exceptions to the log at level and optionally re-raise.
-
-    The original motivation for this is to avoid raising exceptions
-    for debugging messages.
-    """
-    try:
-        yield
-    except Exception as e:
-        try:
-            logger.log(level, str(e), e)
-        except Exception:
-            logger.error(
-                "Exception occurred while logging exception. "
-                "Not re-stringifying exception to avoid the same"
-            )
-        if not mute:
-            raise
-
-
-def debugging() -> bool:
+def in_debug_session() -> bool:
     """
     Check if a debugger is connected.
     """
+    # short-cut so we don't end up with a bunch of useless warnings
+    # when just checking for debugpy in the import statement
+    if "debugpy" not in sys.modules:
+        return False
+
     try:
         import debugpy
+
+        return debugpy.is_client_connected()
+
     except (ImportError, ModuleNotFoundError):
-        return False
-    return debugpy.is_client_connected()
+        pass
+
+    return False
 
 
-class FuncSet[T, H: Hashable](collections.abc.Set[T]):
+class FuncSet[T, H: Hashable = int](collections.abc.MutableSet[T]):
     """
     A set by pre-processing the objects with the hasher function.
     """
@@ -1047,12 +1110,25 @@ class FuncSet[T, H: Hashable](collections.abc.Set[T]):
         for item in data:
             self._deref[self._hasher(item)].append(item)
 
-    def add(self, item: T):
-        if item not in self._deref[self._hasher(item)]:
-            self._deref[self._hasher(item)].append(item)
+    def add(self, value: T):
+        if value not in self._deref[self._hasher(value)]:
+            self._deref[self._hasher(value)].append(value)
 
-    def __contains__(self, item: T):
-        return item in self._deref[self._hasher(item)]
+    def discard(self, value: T):
+        hashed = self._hasher(value)
+        if hashed in self._deref and value in self._deref[hashed]:
+            self._deref[hashed].remove(value)
+            if not self._deref[hashed]:
+                del self._deref[hashed]
+
+    def __contains__(self, value: object):
+        try:
+            # Allow something of broader type than typically allowed
+            # but ultimately behave the same
+            hash_value = self._hasher(value)  # type: ignore
+        except Exception:
+            return False
+        return value in self._deref[hash_value]
 
     def __iter__(self) -> Iterator[T]:
         yield from chain.from_iterable(self._deref.values())
@@ -1067,7 +1143,7 @@ class FuncSet[T, H: Hashable](collections.abc.Set[T]):
         )
 
 
-class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
+class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
     """
     A dict by pre-processing the objects with the hasher function.
     """
@@ -1086,8 +1162,12 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
             self._keys[hashed_key].append(key)
             self._values[hashed_key].append(value)
 
-    def __contains__(self, item: T):
-        return item in self._keys[self._hasher(item)]
+    def __contains__(self, item: object):
+        try:
+            hashed = self._hasher(item)  # type: ignore
+        except TypeError:
+            return False
+        return item in self._keys[hashed]
 
     def keys(self) -> Iterator[T]:
         yield from chain.from_iterable(self._keys.values())
@@ -1154,12 +1234,151 @@ class FuncDict[T, U, H: Hashable](collections.abc.MutableMapping[T, U]):
             self[key] = default
         return default
 
+    def backwards(self) -> "FuncDict[U, T, H]":
+        return FuncDict(((v, k) for k, v in self.items()), hasher=self._hasher)
+
+
+def dict_map_values(d: dict, function: Callable[[Any], Any]) -> dict:
+    """recursively map all values in a dict"""
+
+    result = {}
+    for key, value in d.items():
+        if isinstance(value, dict):
+            result[key] = dict_map_values(value, function)
+        elif isinstance(value, list):
+            result[key] = [dict_map_values(v, function) for v in value]
+        else:
+            result[key] = function(value)
+    return result
+
+
+def merge_dicts(*dicts: dict) -> dict:
+    """merge a list of dicts into a single dict,
+    if same key is present and value is list, lists are merged
+    if same key is dict, dicts are merged recursively
+    """
+    result = {}
+    for d in dicts:
+        for k, v in d.items():
+            if k in result:
+                if isinstance(v, list):
+                    assert isinstance(
+                        result[k], list
+                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    result[k] += v
+                elif isinstance(v, dict):
+                    assert isinstance(result[k], dict)
+                    result[k] = merge_dicts(result[k], v)
+                else:
+                    result[k] = v
+            else:
+                result[k] = v
+    return result
+
+
+def abstract[T: type](cls: T) -> T:
+    """
+    Mark a class as abstract.
+    """
+
+    old_new = cls.__new__
+
+    def _new(cls_, *args, **kwargs):
+        if cls_ is cls:
+            raise TypeError(f"{cls.__name__} is abstract and cannot be instantiated")
+        return old_new(cls_, *args, **kwargs)
+
+    cls.__new__ = _new
+    return cls
+
+
+def typename(x: object | type) -> str:
+    if not isinstance(x, type):
+        x = type(x)
+    return x.__name__
+
+
+def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
+    for k, v in list(d.items()):
+        if isinstance(v, dict):
+            dict_value_visitor(v, visitor)
+        else:
+            d[k] = visitor(k, v)
+
+
+class DefaultFactoryDict[T, U](dict[T, U]):
+    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
+        self.factory = factory
+        super().__init__(*args, **kwargs)
+
+    def __missing__(self, key: T) -> U:
+        res = self.factory(key)
+        self[key] = res
+        return res
+
+
+class EquivalenceClasses[T: Hashable]:
+    def __init__(self, base: Iterable[T] | None = None):
+        self.classes: dict[T, set[T]] = DefaultFactoryDict(lambda k: {k})
+        for elem in base or []:
+            self.classes[elem]
+
+    def add_eq(self, *values: T):
+        if len(values) < 2:
+            return
+        val1 = values[0]
+        for val in values[1:]:
+            self.classes[val1].update(self.classes[val])
+            for v in self.classes[val]:
+                self.classes[v] = self.classes[val1]
+
+    def is_eq(self, a: T, b: T) -> bool:
+        return self.classes[a] is self.classes[b]
+
+    def get(self) -> list[set[T]]:
+        sets = {id(s): s for s in self.classes.values()}
+        return list(sets.values())
+
+
+def common_prefix_to_tree(iterable: list[str]) -> Iterable[str]:
+    """
+    Turns:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.voltage|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.max_current|Parameter
+    <760>|RP2040.adc[1]|ADC.reference|ElectricPower.voltage|Parameter
+
+    Into:
+
+    <760>|RP2040.adc[0]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+    -----------------1]|ADC.reference|ElectricPower.max_current|Parameter
+    -----------------------------------------------.voltage|Parameter
+
+    Notes:
+        Recommended to sort the iterable first.
+    """
+    yield iterable[0]
+
+    for s1, s2 in pairwise(iterable):
+        prefix = commonprefix([s1, s2])
+        prefix_length = len(prefix)
+        yield "-" * prefix_length + s2[prefix_length:]
+
+
+def ind[T: str | list[str]](lines: T) -> T:
+    prefix = "    "
+    if isinstance(lines, str):
+        return indent(lines, prefix=prefix)
+    if isinstance(lines, list):
+        return [f"{prefix}{line}" for line in lines]  # type: ignore
+
 
 def run_live(
     *args,
-    logger: logging.Logger = logger,
-    stdout_level: int | None = logging.DEBUG,
-    stderr_level: int | None = logging.ERROR,
+    stdout: Callable[[str], Any] = logger.debug,
+    stderr: Callable[[str], Any] = logger.error,
     **kwargs,
 ) -> tuple[str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1175,7 +1394,7 @@ def run_live(
 
     # Set up file descriptors to monitor
     reads = [process.stdout, process.stderr]
-    stdout = []
+    stdout_lines = []
     while reads and process.poll() is None:
         # Wait for output on either stream
         readable, _, _ = select.select(reads, [], [])
@@ -1187,12 +1406,12 @@ def run_live(
                 continue
 
             if stream == process.stdout:
-                stdout.append(line)
-                if stdout_level is not None:
-                    logger.log(stdout_level, line.rstrip())
+                stdout_lines.append(line)
+                if stdout:
+                    stdout(line.rstrip())
             else:
-                if stderr_level is not None:
-                    logger.log(stderr_level, line.rstrip())
+                if stderr:
+                    stderr(line.rstrip())
 
     # Ensure the process has finished
     process.wait()
@@ -1200,10 +1419,10 @@ def run_live(
     # Get return code and check for errors
     if process.returncode != 0:
         raise subprocess.CalledProcessError(
-            process.returncode, args[0], "".join(stdout)
+            process.returncode, args[0], "".join(stdout_lines)
         )
 
-    return "\n".join(stdout), process
+    return "\n".join(stdout_lines), process
 
 
 @contextmanager
@@ -1240,24 +1459,396 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
         lock_file_path.unlink(missing_ok=True)
 
 
-def typename(x: object | type) -> str:
-    if not isinstance(x, type):
-        x = type(x)
-    return x.__name__
-
-
 def consume(iter: Iterable, n: int) -> list:
     assert n >= 0
     out = list(itertools.islice(iter, n))
     return out if len(out) == n else []
 
 
-class DefaultFactoryDict[T, U](dict[T, U]):
-    def __init__(self, factory: Callable[[T], U], *args, **kwargs):
-        self.factory = factory
-        super().__init__(*args, **kwargs)
+def closest_base_class(cls: type, base_classes: list[type]) -> type:
+    """
+    Find the most specific (closest) base class from a list of potential base classes.
 
-    def __missing__(self, key: T) -> U:
-        res = self.factory(key)
-        self[key] = res
-        return res
+    Args:
+        cls: The class to find the closest base class for
+        base_classes: List of potential base classes to check
+
+    Returns:
+        The most specific base class from the list that cls inherits from
+
+    Raises:
+        ValueError: If cls doesn't inherit from any of the base classes
+    """
+    # Get all base classes in method resolution order (most specific first)
+    mro = cls.__mro__
+
+    # Find the first (most specific) base class that appears in the provided list
+    sort = sorted(base_classes, key=lambda x: mro.index(x))
+    return sort[0]
+
+
+def operator_type_check[**P, T](method: Callable[P, T]) -> Callable[P, T]:
+    @wraps(method)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+        hints = get_type_hints(
+            method, include_extras=True
+        )  # This resolves string annotations
+        sig = inspect.signature(method)
+        param_hints = {name: hint for name, hint in hints.items() if name != "return"}
+
+        bound_args = sig.bind(*args, **kwargs)
+        bound_args.apply_defaults()
+
+        for name, value in bound_args.arguments.items():
+            if name not in param_hints:
+                continue
+            expected_type = param_hints[name]
+            # Handle Union, Optional, etc.
+            if hasattr(expected_type, "__origin__"):
+                expected_type = expected_type.__origin__
+            if not isinstance(value, expected_type):
+                return NotImplemented
+
+        return method(*args, **kwargs)
+
+    return wrapper
+
+
+@overload
+def partition[Y, T](
+    pred: Callable[[T], TypeGuard[Y]], iterable: Iterable[T]
+) -> tuple[Iterable[T], Iterable[Y]]: ...
+
+
+@overload
+def partition[T](
+    pred: Callable[[T], bool], iterable: Iterable[T]
+) -> tuple[Iterable[T], Iterable[T]]: ...
+
+
+def partition(pred, iterable):  # type: ignore
+    from more_itertools import partition as p
+
+    return p(pred, iterable)
+
+
+def times_out(seconds: float):
+    # if running in debugger, don't timeout
+    if hasattr(sys, "gettrace") and sys.gettrace():
+        return lambda func: func
+
+    def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            import signal
+
+            def timeout_handler(signum, frame):
+                raise TimeoutError(
+                    f"Function {func.__name__} exceeded time limit of {seconds}s"
+                )
+
+            # Set up the signal handler
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            # Set alarm to trigger after specified seconds
+            signal.setitimer(signal.ITIMER_REAL, seconds)
+
+            try:
+                return func(*args, **kwargs)
+            finally:
+                # Cancel the alarm and restore the old signal handler
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, old_handler)
+
+        return wrapper
+
+    return decorator
+
+
+def hash_string(string: str) -> str:
+    """Spits out a uuid in hex from a string"""
+    return str(
+        uuid.UUID(
+            bytes=hashlib.blake2b(string.encode("utf-8"), digest_size=16).digest()
+        )
+    )
+
+
+def get_module_from_path(
+    file_path: os.PathLike, attr: str | None = None, allow_ambiguous: bool = False
+) -> ModuleType | None:
+    """
+    Return a module based on a file path if already imported, or return None.
+
+    If allow_ambiguous is True, and there are multiple modules with the same file path,
+    return the first one.
+    """
+    sanitized_file_path = Path(file_path).expanduser().resolve().absolute()
+
+    def _needle(m: ModuleType) -> bool:
+        try:
+            file = Path(getattr(m, "__file__"))
+        except Exception:
+            return False
+        return sanitized_file_path.samefile(file)
+
+    try:
+        module = find(sys.modules.values(), _needle)
+    except KeyErrorNotFound:
+        return None
+    except KeyErrorAmbiguous as e:
+        if allow_ambiguous:
+            module = e.duplicates[0]
+        else:
+            raise
+
+    if attr is None:
+        return module
+
+    return getattr(module, attr, None)
+
+
+def import_from_path(
+    file_path: os.PathLike, attr: str | None = None
+) -> ModuleType | Type:
+    """
+    Import a module from a file path.
+
+    If the module is already imported, return the existing module.
+    Otherwise, import the module and return the new module.
+
+    Raises FileNotFoundError if the file does not exist.
+    Raises AttributeError if the attr is not found in the module.
+    """
+    # custom unique name to avoid collisions
+    # we use this hasher to generate something terse and unique
+    module_name = hash_string(str(Path(file_path).expanduser().resolve().absolute()))
+
+    if module_name in sys.modules:
+        module = sys.modules[module_name]
+    else:
+        # setting to a sequence (and not None) indicates that the module is a package,
+        # which lets us use relative imports for submodules
+        submodule_search_locations = []
+
+        spec = importlib.util.spec_from_file_location(
+            module_name,
+            file_path,
+            submodule_search_locations=submodule_search_locations,
+        )
+        if spec is None:
+            raise ImportError(path=str(file_path))
+
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[module_name] = module
+
+        assert spec.loader is not None
+
+        spec.loader.exec_module(module)
+
+    if attr is None:
+        return module
+    else:
+        return getattr(module, attr)
+
+
+def has_attr_or_property(obj: object, attr: str) -> bool:
+    """Check if an object has an attribute or property by the name `attr`."""
+    return hasattr(obj, attr) or (
+        hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property)
+    )
+
+
+def write_only_property(func: Callable):
+    def raise_write_only(*args, **kwargs):
+        raise AttributeError(f"{func.__name__} is write-only")
+
+    return property(
+        fget=raise_write_only,
+        fset=func,
+    )
+
+
+def has_instance_settable_attr(obj: object, attr: str) -> bool:
+    """
+    Check if an object has an instance attribute that is settable.
+    """
+    # If we have a property, it's going to tell us all we need to know
+    if hasattr(type(obj), attr) and isinstance(getattr(type(obj), attr), property):
+        # If the property is settable, use it to set the value
+        if getattr(type(obj), attr).fset is not None:
+            return True
+        # If not, it's not settable, end here
+        return False
+
+    # If there's an instance only attribute, we can set it
+    if hasattr(obj, attr) and not hasattr(type(obj), attr):
+        return True
+
+    # If there's an instance attribute, that's unique compared to the class
+    # attribute, we can set it. We don't need to check for a property here
+    # because we already checked for that above.
+    if (
+        hasattr(obj, attr)
+        and hasattr(type(obj), attr)
+        and getattr(obj, attr) is not getattr(type(obj), attr)
+    ):
+        return True
+
+    return False
+
+
+AUTO_RECOMPILE = ConfigFlag(
+    "AUTO_RECOMPILE",
+    default=False,
+    descr="Automatically recompile source files if they have changed",
+)
+
+
+# Check if installed as editable
+def is_editable_install():
+    distro = Distribution.from_name("atopile")
+    return (
+        json.loads(distro.read_text("direct_url.json") or "")
+        .get("dir_info", {})
+        .get("editable", False)
+    )
+
+
+class SerializableEnum[E: Enum](Serializable):
+    class Value[E_: Enum](Serializable):
+        def __init__(self, enum: "SerializableEnum", value: E_):
+            self._value = value
+            self._enum = enum
+
+        @property
+        def name(self) -> str:
+            return self._value.name
+
+        @property
+        def value(self) -> E:
+            return self._value.value
+
+        @override
+        def serialize(self) -> dict:
+            return {"name": self._value.name}
+
+        def __eq__(self, other: "SerializableEnum.Value[E]") -> bool:
+            if not other._enum == self._enum:
+                return False
+            return (
+                other._value.name == self._value.name
+                and other._value.value == self._value.value
+            )
+
+        def __hash__(self) -> int:
+            return hash(self._value)
+
+        def __repr__(self) -> str:
+            return f"{self._enum.enum.__name__}.{self._value.name}"
+
+    def __init__(self, enum: type[Enum]):
+        self.enum = enum
+
+        class _Value(SerializableEnum.Value[E]):
+            @override
+            @staticmethod
+            def deserialize(data: dict) -> "_Value":
+                return _Value(self, self.enum[data["name"]])
+
+        self.value_cls = _Value
+
+    def serialize(self) -> dict:
+        enum = self.enum
+        # check enum values to all be ints or str
+        if not all(isinstance(e.value, (int, str, float)) for e in enum):
+            raise ValueError(f"Can't serialize {enum}: has non-primitive values")
+
+        enum_cls_serialized = {
+            "name": enum.__name__,
+            "values": {e.name: e.value for e in enum},
+        }
+
+        return enum_cls_serialized
+
+    @staticmethod
+    def deserialize(data: dict) -> "SerializableEnum":
+        enum_cls = Enum(data["name"], data["values"])
+        return SerializableEnum(cast(type[Enum], enum_cls))
+
+    def make_value(
+        self, value: "E | SerializableEnum.Value[E]"
+    ) -> "SerializableEnum.Value[E]":
+        if isinstance(value, SerializableEnum.Value):
+            return value
+        return self.value_cls(self, value)
+
+    def deserialize_value(self, data: dict) -> "SerializableEnum.Value[E]":
+        return self.value_cls.deserialize(data)
+
+    def __eq__(self, other: "SerializableEnum") -> bool:
+        return self.enum.__name__ == other.enum.__name__ and {
+            e.name: e.value for e in self.enum
+        } == {e.name: e.value for e in other.enum}
+
+
+def indented_container(
+    obj: Iterable | dict,
+    indent_level: int = 1,
+    recursive: bool = False,
+    use_repr: bool = True,
+) -> str:
+    kvs = obj.items() if isinstance(obj, dict) else enumerate(obj)
+
+    def format_v(v: Any) -> str:
+        if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
+            return repr(v) if use_repr else str(v)
+        return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
+
+    ind = "\n" + "  " * indent_level
+    inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
+    if kvs:
+        inside = f"{ind}{inside}\n"
+
+    return f"{{{inside}}}"
+
+
+def robustly_rm_dir(path: os.PathLike) -> None:
+    """Remove a directory and all its contents."""
+
+    path = Path(path)
+
+    def remove_readonly(func, path, excinfo):
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+
+    shutil.rmtree(path, onexc=remove_readonly)
+
+
+def yield_missing(existing: Container, candidates: Iterable | None = None):
+    if candidates is None:
+        candidates = range(10000)  # Prevent counting to infinity by default
+    for c in candidates:
+        if c not in existing:
+            yield c
+
+
+def try_relative_to(
+    target: os.PathLike, root: os.PathLike | None = None, walk_up: bool = False
+) -> Path:
+    target = Path(target)
+    root = Path(root) if root is not None else Path.cwd()
+    try:
+        return target.relative_to(root, walk_up=walk_up)
+    except FileNotFoundError:
+        return target
+
+
+def repo_root() -> Path:
+    repo_root = Path(__file__)
+    while not (repo_root / ".git").exists():
+        if parent := repo_root.parent:
+            repo_root = parent
+        else:
+            raise FileNotFoundError("Could not find repo root")
+    else:
+        return repo_root

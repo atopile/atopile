@@ -26,7 +26,7 @@ class USB_Type_C_Receptacle_14_pin_Vertical(Module):
 
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
         {
-            DescriptiveProperties.manufacturer.value: "Jing Extension of the Electronic Co.",  # noqa: E501
+            DescriptiveProperties.manufacturer: "Jing Extension of the Electronic Co.",  # noqa: E501
             DescriptiveProperties.partno: "918-418K2022Y40000",
         }
     )
@@ -53,6 +53,6 @@ class USB_Type_C_Receptacle_14_pin_Vertical(Module):
             }
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )

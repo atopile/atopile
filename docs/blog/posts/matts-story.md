@@ -12,7 +12,7 @@ links:
 
 My dad taught me the technical details of everything for as long as I can remember. For my 7th Christmas, I got a lawn-mower - to tear the engine off and turn into a go-kart. I was absolutely stoked.
 
-As [Narayan](/blog/posts/narayans-story) and I grew up, we spent every weekend building things. We were always scheming about the next project, and we were always building something. We built a CNC machine, a liquid-fueled rocket motor, and a drone. We were always trying to make things better, faster, and more efficient. We were always trying to make things work better.
+As [Narayan's story](narayans-story.md) and I grew up, we spent every weekend building things. We were always scheming about the next project, and we were always building something. We built a CNC machine, a liquid-fueled rocket motor, and a drone. We were always trying to make things better, faster, and more efficient. We were always trying to make things work better.
 
 More than any of the individual projects, the thing that I always got most stoked about was new tools. We converted a milling machine to CNC an axis at a time by first 3D printing and then machining each of the axes brackets. We had to take a second pass at the first two axes because the 3D printed parts were sloppy enough that the machined brackets they created still had too much play for comfort.
 Man, that was a great project. And the endeavour landed us more offers for contract work (as ~17 year-olds) than we could handle.

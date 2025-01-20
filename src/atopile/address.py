@@ -1,11 +1,13 @@
 """
 Addresses are references to a specific node.
 They take the form: "path/to/file.ato:Entry.Path::instance.path"
-Addresses go by other names in various files for historical reasons - but should be upgraded.
+Addresses go by other names in various files for historical reasons,
+but should be upgraded.
 
 This file provides utilities for working with addresses.
 """
 
+import os
 from functools import wraps
 from os import PathLike
 from pathlib import Path
@@ -16,6 +18,25 @@ class AddrStr(str):
     """
     Represents address strings
     """
+
+    @property
+    def file_path(self) -> Path:
+        return Path(get_file(self))
+
+    @property
+    def entry_section(self) -> str:
+        if entry_section := get_entry_section(self):
+            return entry_section
+        raise AddressError("No entry section in address")
+
+    @classmethod
+    def from_parts(
+        cls,
+        file: str | os.PathLike | None,
+        entry: str | None = None,
+        instance: str | None = None,
+    ) -> "AddrStr":
+        return cls(from_parts(file, entry, instance))
 
 
 class AddressError(ValueError):
@@ -69,7 +90,8 @@ def get_file(address: AddrStr) -> str:
 def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     """
     Extract the relative address starting with the .ato file
-    /abs/path/to/file.ato:Entry.Path::instance.path -> file.ato:Entry.Path::instance.path
+    /abs/path/to/file.ato:Entry.Path::instance.path
+        -> file.ato:Entry.Path::instance.path
 
     FIXME: this is the first and currently only place we're
     using these relative addresses. We should codify them
@@ -80,7 +102,7 @@ def get_relative_addr_str(address: AddrStr, base_path: PathLike) -> AddrStr:
     )
 
 
-def get_entry(address: AddrStr) -> AddrStr:
+def get_entry(address: AddrStr) -> str:
     """
     Extract the root path from an address.
     """
@@ -127,10 +149,10 @@ def add_instance(address: AddrStr, instance: str) -> AddrStr:
     current_instance_addr = get_instance_section(address)
     if current_instance_addr is not None:
         if current_instance_addr == "":
-            return address + instance
-        return address + "." + instance
+            return AddrStr(address + instance)
+        return AddrStr(address + "." + instance)
     elif get_entry_section(address):
-        return address + "::" + instance
+        return AddrStr(address + "::" + instance)
     else:
         raise AddressError("Cannot add instance to something without an entry section.")
 
@@ -155,9 +177,9 @@ def add_entry(address: AddrStr, entry: str) -> AddrStr:
         raise AddressError("Cannot add entry to an instance address.")
 
     if not get_entry_section(address):
-        return address + ":" + entry
+        return AddrStr(address + ":" + entry)
     else:
-        return address + "." + entry
+        return AddrStr(address + "." + entry)
 
 
 def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
@@ -171,12 +193,14 @@ def add_entries(address: AddrStr, entries: Iterable[str]) -> AddrStr:
 
 
 def from_parts(
-    file: str, entry: Optional[str] = None, instance: Optional[str] = None
+    file: str | None | os.PathLike,
+    entry: str | None = None,
+    instance: str | None = None,
 ) -> AddrStr:
     """
     Create an address from its parts.
     """
-    address = str(file)
+    address = AddrStr(file) if file else AddrStr("")
     if entry:
         address = add_entry(address, entry)
     if instance:
@@ -193,9 +217,9 @@ def get_parent_instance_addr(address: AddrStr) -> Optional[AddrStr]:
         return None
 
     if "." in instance_section:
-        return address.rsplit(".", 1)[0]
+        return AddrStr(address.rsplit(".", 1)[0])
 
-    return address.rsplit("::", 1)[0]
+    return AddrStr(address.rsplit("::", 1)[0])
 
 
 def get_instance_names(address: AddrStr) -> list[str]:

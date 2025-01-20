@@ -4,6 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 
 class EEPROM(Module):
@@ -24,7 +25,12 @@ class EEPROM(Module):
     #     modules, interfaces, parameters
     # ----------------------------------------
 
-    memory_size: F.TBD
+    memory_size = L.p_field(
+        units=P.bit,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.NATURAL(),
+        soft_set=L.Range(128 * P.bit, 1024 * P.kbit),
+    )
 
     power: F.ElectricPower
     i2c: F.I2C
@@ -35,7 +41,7 @@ class EEPROM(Module):
     #                traits
     # ----------------------------------------
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -44,10 +50,3 @@ class EEPROM(Module):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
-
-    def __preinit__(self):
-        # ----------------------------------------
-        #                connections
-        # ----------------------------------------
-        self.power.decoupled.decouple()
-        self.i2c.terminate()

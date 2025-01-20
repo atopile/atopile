@@ -29,24 +29,22 @@ class SP3243E_ReferenceDesign(Module):
         # ----------------------------------------
         #              connections
         # ----------------------------------------
-        self.sp3243e.power.decoupled.decouple()
+        self.sp3243e.power.decoupled.decouple(self)
         for pwr in [
             self.sp3243e.positive_charge_pump_power,
             self.sp3243e.negative_charge_pump_power,
             self.sp3243e.voltage_doubler_charge_pump_power,
             self.sp3243e.inverting_charge_pump_power,
         ]:
-            cap = pwr.decoupled.decouple()
+            cap = self.add(F.Capacitor())
             # TODO: min values according to self.power.voltage
             # 3.0V to 3.6V > C_all = 0.1μF
             # 4.5V to 5.5V > C1 = 0.047µF, C2,Cvp, Cvn = 0.33µF
             # 3.0V to 5.5V > C_all = 0.22μF
             #
-            cap.capacitance.merge(F.Range.from_center(0.22 * P.uF, 0.22 * 0.05 * P.uF))
+            cap.capacitance.constrain_subset(
+                L.Range.from_center(0.22 * P.uF, 0.22 * 0.05 * P.uF)
+            )
 
-            if isinstance(pwr.voltage.get_most_narrow(), F.TBD):
-                pwr.voltage.merge(
-                    F.Constant(8 * P.V)
-                    # F.Range.lower_bound(16 * P.V)
-                )  # TODO: fix merge
-                # TODO: merge conflict
+            pwr.voltage.constrain_superset(L.Range(0 * P.V, 16 * P.V))
+            cap.max_voltage.constrain_ge(16 * P.V)

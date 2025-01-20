@@ -37,8 +37,7 @@ class pf_74AHCT2G125(Module):
         )
 
     def __preinit__(self):
-        self.power.voltage.merge(F.Range(4.5 * P.V, 5.5 * P.V))
-        self.power.decoupled.decouple()
+        self.power.voltage.constrain_subset(L.Range(4.5 * P.V, 5.5 * P.V))
 
     @L.rt_field
     def single_electric_reference(self):
@@ -46,7 +45,7 @@ class pf_74AHCT2G125(Module):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -57,3 +56,12 @@ class pf_74AHCT2G125(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/2304140030_Nexperia-74AHCT1G125GV-125_C12494.pdf"
     )
+
+    @L.rt_field
+    def can_be_decoupled(self):
+        class _(F.can_be_decoupled.impl()):
+            def decouple(self, owner: Module):
+                obj = self.get_obj(pf_74AHCT2G125)
+                obj.power.decoupled.decouple(owner=owner)
+
+        return _()

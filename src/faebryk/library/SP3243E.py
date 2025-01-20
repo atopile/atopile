@@ -49,7 +49,7 @@ class SP3243E(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
@@ -60,7 +60,7 @@ class SP3243E(Module):
     def descriptive_properties(self):
         return F.has_descriptive_properties_defined(
             {
-                DescriptiveProperties.manufacturer.value: "MaxLinear",
+                DescriptiveProperties.manufacturer: "MaxLinear",
                 DescriptiveProperties.partno: "SP3243EBEA-L/TR",
             },
         )
@@ -106,14 +106,14 @@ class SP3243E(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(3.0 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5.5 * P.V))
 
-        self.uart.base_uart.baud.merge(F.Range.upper_bound(250 * P.kbaud))
+        self.uart.base_uart.baud.constrain_le(250 * P.kbaud)
 
         self.rs232.get_trait(
             F.has_single_electric_reference
-        ).get_reference().voltage.merge(
-            F.Range.from_center(3 * P.V, 15 * P.V)
+        ).get_reference().voltage.constrain_subset(
+            L.Range.from_center(3 * P.V, 15 * P.V)
         )  # TODO: Support negative numbers (-15 * P.V, 15 * P.V))
 
         # ------------------------------------
@@ -124,4 +124,4 @@ class SP3243E(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(3.0 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5.5 * P.V))

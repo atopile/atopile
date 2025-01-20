@@ -1,9 +1,11 @@
 name: pre-commit
 
 on:
-  pull_request:
+  push:
     branches:
-      - '**'
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   pre-commit:
@@ -11,15 +13,12 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
+        python-version-file: 'pyproject.toml'
 
-    - name: Install pre-commit
-      run: pip install pre-commit
-
-    - name: Run pre-commit
-      run: pre-commit run --all-files
+    - uses: pre-commit/action@v3.0.1
 
     - name: Fail on diff after pre-commit is run
       run: git diff --exit-code

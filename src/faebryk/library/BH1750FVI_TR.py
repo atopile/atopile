@@ -11,16 +11,18 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
-class BH1750FVI_TR(Module):
+class _BH1750FVI_TR(Module):
     class _bh1750_esphome_config(F.has_esphome_config.impl()):
-        update_interval: F.TBD
+        update_interval = L.p_field(
+            units=P.s,
+            soft_set=L.Range(100 * P.ms, 1 * P.day),
+            guess=1 * P.s,
+            tolerance_guess=0,
+        )
 
         def get_config(self) -> dict:
-            val = self.update_interval.get_most_narrow()
-            assert isinstance(val, F.Constant), "No update interval set!"
-
             obj = self.obj
-            assert isinstance(obj, BH1750FVI_TR)
+            assert isinstance(obj, _BH1750FVI_TR)
 
             i2c = F.is_esphome_bus.find_connected_bus(obj.i2c)
 
@@ -31,7 +33,7 @@ class BH1750FVI_TR(Module):
                         "name": "BH1750 Illuminance",
                         "address": "0x23",
                         "i2c_id": i2c.get_trait(F.is_esphome_bus).get_bus_id(),
-                        "update_interval": f"{val.value.to('s')}",
+                        "update_interval": self.update_interval,
                     }
                 ]
             }
@@ -59,19 +61,20 @@ class BH1750FVI_TR(Module):
     esphome_config: _bh1750_esphome_config
 
     def __preinit__(self):
-        self.dvi_capacitor.capacitance.merge(1 * P.uF)
-        self.dvi_resistor.resistance.merge(1 * P.kohm)
+        self.dvi_capacitor.capacitance.constrain_subset(
+            L.Range.from_center_rel(1 * P.uF, 0.1)
+        )
+        self.dvi_resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.kohm, 0.1)
+        )
 
-        self.i2c.terminate()
-
-        self.i2c.frequency.merge(
+        self.i2c.frequency.constrain_le(
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 
         # set constraints
-        self.power.voltage.merge(F.Range(2.4 * P.V, 3.6 * P.V))
+        self.power.voltage.constrain_subset(L.Range(2.4 * P.V, 3.6 * P.V))
 
-        self.power.decoupled.decouple().capacitance.merge(100 * P.nF)
         # TODO: self.dvi.low_pass(self.dvi_capacitor, self.dvi_resistor)
         self.dvi.signal.connect_via(self.dvi_capacitor, self.power.lv)
         self.dvi.signal.connect_via(self.dvi_resistor, self.power.hv)
@@ -82,7 +85,7 @@ class BH1750FVI_TR(Module):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -103,3 +106,15 @@ class BH1750FVI_TR(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/1811081611_ROHM-Semicon-BH1750FVI-TR_C78960.pdf"
     )
+
+
+# TODO should be a reference design
+class BH1750FVI_TR(Module):
+    ic: _BH1750FVI_TR
+
+    def __preinit__(self):
+        self.ic.i2c.terminate(self)
+
+        self.ic.power.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.1)
+        )

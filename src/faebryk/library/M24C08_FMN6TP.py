@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 # TODO remove generic stuff into EEPROM/i2c device etc
-class M24C08_FMN6TP(Module):
+class _M24C08_FMN6TP(Module):
     power: F.ElectricPower
     data: F.I2C
     write_protect: F.ElectricLogic
@@ -35,36 +35,43 @@ class M24C08_FMN6TP(Module):
             }
         )
 
-    def __preinit__(self):
-        F.ElectricLogic.connect_all_module_references(self)
+    mfn_pn = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "STMicroelectronics",
+            DescriptiveProperties.partno: "M24C08-FMN6TP",
+        }
+    )
 
+    designator_prefix = L.f_field(F.has_designator_prefix)(
+        F.has_designator_prefix.Prefix.U
+    )
+
+    datasheet = L.f_field(F.has_datasheet_defined)(
+        "https://eu.mouser.com/datasheet/2/389/m24c08_r-1849629.pdf"
+    )
+
+    @L.rt_field
+    def reference_defined(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricLogic.connect_all_module_references(self)
+        )
+
+    def __preinit__(self):
         self.attach_to_footprint.attach(
             F.SOIC(8, size_xy=(3.9 * P.mm, 4.9 * P.mm), pitch=1.27 * P.mm)
         )
 
-        self.data.terminate()
-        self.power.decoupled.decouple().capacitance.merge(
-            F.Range(10 * P.nF, 100 * P.nF)
-        )
+        self.power.voltage.constrain_subset(L.Range(1.7 * P.V, 5.5 * P.V))
 
-        self.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.manufacturer: "STMicroelectronics",
-                    DescriptiveProperties.partno: "M24C08-FMN6TP",
-                },
-            )
-        )
-
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
-        F.has_designator_prefix.Prefix.U
-    )
-
-    def enable_write_protection(self, protect=True):
+    def enable_write_protection(self, owner: Module, protect=True):
         if protect:
-            self.write_protect.get_trait(F.ElectricLogic.can_be_pulled).pull(up=True)
+            self.write_protect.get_trait(F.ElectricLogic.can_be_pulled).pull(
+                up=True, owner=owner
+            )
             return
-        self.write_protect.get_trait(F.ElectricLogic.can_be_pulled).pull(up=False)
+        self.write_protect.get_trait(F.ElectricLogic.can_be_pulled).pull(
+            up=False, owner=owner
+        )
 
     def set_address(self, addr: int):
         assert addr < (1 << len(self.address_pin))
@@ -72,6 +79,13 @@ class M24C08_FMN6TP(Module):
         for i, e in enumerate(self.address_pin):
             e.set(addr & (1 << i) != 0)
 
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://eu.mouser.com/datasheet/2/389/m24c08_r-1849629.pdf"
-    )
+
+# TODO rename to ReferenceDesign
+class M24C08_FMN6TP(Module):
+    ic: _M24C08_FMN6TP
+
+    def __preinit__(self):
+        self.ic.data.terminate(owner=self)
+        self.ic.power.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range(10 * P.nF, 100 * P.nF)
+        )

@@ -34,7 +34,7 @@ class Analog_Devices_ADM2587EBRWZ(Module):
     #                 traits
     # ----------------------------------------
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C12081"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -110,8 +110,10 @@ class Analog_Devices_ADM2587EBRWZ(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power_isolated_out.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.1))
-        self.power_unisolated.voltage.merge(F.Range(3.3 * P.V, 5 * P.V))
+        self.power_isolated_out.voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.1)
+        )
+        self.power_unisolated.voltage.constrain_subset(L.Range(3.3 * P.V, 5 * P.V))
 
         F.ElectricLogic.connect_all_module_references(
             self,

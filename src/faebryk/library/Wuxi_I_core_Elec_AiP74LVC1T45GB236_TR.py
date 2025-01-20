@@ -31,7 +31,7 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -82,12 +82,13 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power_a.voltage.merge(F.Range(1.2 * P.V, 5.5 * P.V))
-        self.power_b.voltage.merge(F.Range(1.2 * P.V, 5.5 * P.V))
+        self.power_a.voltage.constrain_subset(L.Range(1.2 * P.V, 5.5 * P.V))
+        self.power_b.voltage.constrain_subset(L.Range(1.2 * P.V, 5.5 * P.V))
 
-        self.power_a.decoupled.decouple().capacitance.merge(
-            F.Range.from_center(100 * P.nF, 10 * P.nF)
-        )
-        self.power_b.decoupled.decouple().capacitance.merge(
-            F.Range.from_center(100 * P.nF, 10 * P.nF)
-        )
+        # FIXME
+        # self.power_a.decoupled.decouple().capacitance.constrain_subset(
+        #     L.Range.from_center(100 * P.nF, 10 * P.nF)
+        # )
+        # self.power_b.decoupled.decouple().capacitance.constrain_subset(
+        #     L.Range.from_center(100 * P.nF, 10 * P.nF)
+        # )

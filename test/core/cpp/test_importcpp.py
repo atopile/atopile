@@ -175,11 +175,44 @@ def test_cpp_type():
     assert not LinkDirect.is_cloneable(obj2)
 
 
-if __name__ == "__main__":
-    # test_add()
-    # test_cobject()
-    # test_cnodes()
-    # test_link()
-    test_mif_link()
-    # test_pynode()
-    # test_derived_pynodes()
+def test_isinstance_base():
+    from faebryk.core.node import Node
+
+    assert Node._mro == []
+    assert Node._mro_ids == set()
+
+    n = Node()
+    assert n.isinstance(Node)
+    assert n.isinstance([Node])
+
+
+def test_isinstance_existing():
+    from faebryk.core.module import Module
+    from faebryk.core.node import Node
+
+    assert Module._mro == [Module, Node]
+    assert Module._mro_ids == {id(Module), id(Node)}
+
+    m = Module()
+    assert m.isinstance(Module)
+    assert m.isinstance(Node)
+
+
+def test_isinstance_new():
+    from faebryk.core.module import Module
+    from faebryk.core.node import Node
+
+    class A(Module):
+        pass
+
+    class B(Module):
+        pass
+
+    a = A()
+    assert a.isinstance(A)
+    assert a.isinstance(Module)
+    assert a.isinstance(Node)
+    assert not a.isinstance(B)
+
+    assert a.isinstance([A, Module, Node])
+    assert a.isinstance([B, Module])

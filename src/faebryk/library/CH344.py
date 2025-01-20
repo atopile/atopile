@@ -45,7 +45,7 @@ class CH344(Module):
         "https://wch-ic.com/downloads/CH344DS1_PDF.html"
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -70,9 +70,7 @@ class CH344(Module):
         self.gpio[14].connect(self.uart[0].dsr)
         self.gpio[15].connect(self.uart[1].dcd)
 
-        self.test.set_weak(on=False)
-
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range.from_center(3.3 * P.V, 0.3 * P.V))
+        self.power.voltage.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.1))

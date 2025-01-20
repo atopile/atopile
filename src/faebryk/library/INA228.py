@@ -76,7 +76,7 @@ class INA228(Module):
         }
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -110,4 +110,4 @@ class INA228(Module):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.power.voltage.merge(F.Range(2.7 * P.V, 5.5 * P.V))
+        self.power.voltage.constrain_subset(L.Range(2.7 * P.V, 5.5 * P.V))

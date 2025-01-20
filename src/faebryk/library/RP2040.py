@@ -43,8 +43,10 @@ class RP2040(Module):
             F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
             # TODO get tolerance
-            self.power_out.voltage.merge(F.Range.from_center_rel(1.1 * P.V, 0.05))
-            self.power_in.voltage.merge(F.Range(1.8 * P.V, 3.3 * P.V))
+            self.power_out.voltage.constrain_subset(
+                L.Range.from_center_rel(1.1 * P.V, 0.05)
+            )
+            self.power_in.voltage.constrain_subset(L.Range(1.8 * P.V, 3.3 * P.V))
 
         @L.rt_field
         def bridge(self):
@@ -108,10 +110,16 @@ class RP2040(Module):
 
     def __preinit__(self):
         # TODO get tolerance
-        self.power_adc.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
-        self.power_usb_phy.voltage.merge(F.Range.from_center_rel(3.3 * P.V, 0.05))
-        self.power_core.voltage.merge(F.Range.from_center_rel(1.1 * P.V, 0.05))
-        self.power_io.voltage.merge(F.Range(1.8 * P.V, 3.3 * P.V))
+        self.power_adc.voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.05)
+        )
+        self.power_usb_phy.voltage.constrain_subset(
+            L.Range.from_center_rel(3.3 * P.V, 0.05)
+        )
+        self.power_core.voltage.constrain_subset(
+            L.Range.from_center_rel(1.1 * P.V, 0.05)
+        )
+        self.power_io.voltage.constrain_subset(L.Range(1.8 * P.V, 3.3 * P.V))
 
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         F.ElectricLogic.connect_all_node_references(
@@ -154,7 +162,7 @@ class RP2040(Module):
     def decoupled(self):
         return F.can_be_decoupled_rails(self.power_io, self.power_core)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
@@ -190,9 +198,9 @@ class RP2040(Module):
                 "16": self.io[13],
                 "17": self.io[14],
                 "18": self.io[15],
-                "19": self.xtal_if.xin,
-                "20": self.xtal_if.xout,
-                "21": self.factory_test_enable,
+                "19": self.factory_test_enable,
+                "20": self.xtal_if.xin,
+                "21": self.xtal_if.xout,
                 "22": self.power_io.hv,
                 "23": self.power_core.hv,
                 "24": self.swd.clk.signal,

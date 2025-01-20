@@ -63,9 +63,9 @@ def test_match_tilde(version):
 
 
 def test_match_multiple(version):
-    assert match(">=1.2.0 <1.3.0", version)
-    assert match(">=1.2.0 <1.2.3", version) is False
-    assert match(">=1.2.0 <1.2.4", version)
+    assert match(">=1.2.0, <1.3.0", version)
+    assert match(">=1.2.0, <1.2.3", version) is False
+    assert match(">=1.2.0, <1.2.4", version)
 
 
 def test_match_union(version):
@@ -80,7 +80,7 @@ def test_match_negation(version):
 
 
 def test_syntax_error(version):
-    with pytest.raises(errors.AtoError):
+    with pytest.raises(errors.UserException):
         match("abc", version)
 
 

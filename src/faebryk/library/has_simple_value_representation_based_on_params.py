@@ -20,6 +20,6 @@ class has_simple_value_representation_based_on_params(
         assert all(isinstance(p, Parameter) for p in params)
         self.params = params
 
+    # TODO make this more useful
     def get_value(self) -> str:
-        params_const = tuple(param.get_most_narrow() for param in self.params)
-        return self.transformer(*params_const)
+        return self.transformer(*self.params)

@@ -5,7 +5,9 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 from faebryk.core.cpp import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
+from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
+from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import cast_assert, unique_ref
 
 if TYPE_CHECKING:
@@ -53,7 +55,6 @@ class Module(Node):
         include_root: bool = False,
         f_filter: Callable[[T], bool] | None = None,
         sort: bool = True,
-        special_filter: bool = True,
     ) -> set[T]:
         out = self.get_children(
             direct_only=direct_only,
@@ -62,12 +63,64 @@ class Module(Node):
             f_filter=f_filter,
             sort=sort,
         )
+        out_specialized = {
+            n.get_most_special()
+            for n in self.get_children(
+                direct_only=direct_only,
+                types=Module,
+                include_root=include_root,
+                f_filter=lambda x: x.get_most_special() != x,
+                sort=sort,
+            )
+        }
         if most_special:
-            out = {n.get_most_special() for n in out}
-            if special_filter and f_filter:
-                out = {n for n in out if f_filter(n)}
+            special_out = set()
+            todo = out_specialized
+            # TODO can be done more efficiently by just allowing in the graph search
+            # specialize edges
+            for n in out:
+                # Filter out children of specialized modules
+                has_specialized_parent = n.get_parent_f(
+                    lambda x: isinstance(x, Module) and x.get_most_special() != x
+                )
+                if has_specialized_parent:
+                    continue
+                n_special = n.get_most_special()
+                # Non-special can just pass
+                if n_special is n:
+                    special_out.add(n_special)
+                    continue
+                # Already processed
+                if n_special in out | special_out:
+                    continue
+                # To process children
+                todo.add(n)
+
+            for n_special in todo:
+                special_out.update(
+                    n_special.get_children_modules(
+                        types=types,
+                        most_special=True,
+                        direct_only=direct_only,
+                        include_root=True,
+                        f_filter=f_filter,
+                        sort=sort,
+                    )
+                )
+            out = special_out
 
         return out
+
+    class InvalidSpecializationError(Exception):
+        """Cannot specialize module with special"""
+
+        def __init__(
+            self, message: str, *args, module: "Module", special: "Module", **kwargs
+        ):
+            self.message = message
+            self.module = module
+            self.special = special
+            super().__init__(message, *args, **kwargs)
 
     def specialize[T: Module](
         self,
@@ -87,22 +140,35 @@ class Module(Node):
             matrix = get_node_prop_matrix(ModuleInterface)
 
         # TODO add warning if not all src interfaces used
-
         param_matrix = get_node_prop_matrix(Parameter)
 
+        err_acc = accumulate(self.InvalidSpecializationError)
+
         for src, dst in matrix:
-            if src is None:
-                continue
-            if dst is None:
-                raise Exception(f"Special module misses interface: {src.get_name()}")
-            src.specialize(dst)
+            with err_acc.collect():
+                if src is None:
+                    continue
+                if dst is None:
+                    raise self.InvalidSpecializationError(
+                        f"Special module misses interface: {src.get_name()}",
+                        module=self,
+                        special=special,
+                    )
+                src.specialize(dst)
 
         for src, dst in param_matrix:
-            if src is None:
-                continue
-            if dst is None:
-                raise Exception(f"Special module misses parameter: {src.get_name()}")
-            dst.merge(src)
+            with err_acc.collect():
+                if src is None:
+                    continue
+                if dst is None:
+                    raise self.InvalidSpecializationError(
+                        f"Special module misses parameter: {src.get_name()}",
+                        module=self,
+                        special=special,
+                    )
+                dst.alias_is(src)
+
+        err_acc.raise_errors()
 
         # TODO this cant work
         # for t in self.traits:
@@ -159,3 +225,6 @@ class Module(Node):
         type(self).connect_all_interfaces_by_name(
             self, dst, allow_partial=allow_partial
         )
+
+    def get_parameters(self) -> list[Parameter]:
+        return list(self.get_children(types=Parameter, direct_only=True))

@@ -3,19 +3,49 @@
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 
 class Diode(Module):
-    forward_voltage: F.TBD
-    max_current: F.TBD
-    current: F.TBD
-    reverse_working_voltage: F.TBD
-    reverse_leakage_current: F.TBD
+    forward_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.V, 1 * P.V),
+        tolerance_guess=10 * P.percent,
+    )
+    # Current at which the design is functional
+    current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
+        tolerance_guess=10 * P.percent,
+    )
+    reverse_working_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(10 * P.V, 100 * P.V),
+        tolerance_guess=10 * P.percent,
+    )
+    reverse_leakage_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.nA, 1 * P.µA),
+        tolerance_guess=10 * P.percent,
+    )
+    # Current at which the design may be damaged
+    # In some cases, this is useful to know, e.g. to calculate the brightness of an LED
+    max_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
+    )
 
     anode: F.Electrical
     cathode: F.Electrical
+
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Diode)
 
     @L.rt_field
     def can_bridge(self):
@@ -23,12 +53,12 @@ class Diode(Module):
 
     @L.rt_field
     def simple_value_representation(self):
-        return F.has_simple_value_representation_based_on_params(
-            (self.forward_voltage,),
-            lambda p: p.as_unit("V"),
+        S = F.has_simple_value_representation_based_on_params_chain.Spec
+        return F.has_simple_value_representation_based_on_params_chain(
+            S(self.forward_voltage),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.D
     )
 
@@ -43,7 +73,10 @@ class Diode(Module):
             case_sensitive=False,
         )
 
+    def __preinit__(self):
+        self.current.constrain_le(self.max_current)
+
     def get_needed_series_resistance_for_current_limit(
-        self, input_voltage_V: Parameter
-    ) -> Parameter:
+        self, input_voltage_V: ParameterOperatable
+    ):
         return (input_voltage_V - self.forward_voltage) / self.current

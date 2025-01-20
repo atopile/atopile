@@ -7,8 +7,11 @@ from types import UnionType
 from typing import Any, Callable, Iterator, Union, get_args, get_origin
 
 import sexpdata
+from dataclasses_json import CatchAll
+from dataclasses_json.utils import CatchAllVar
 from sexpdata import Symbol
 
+from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.sexp.util import prettify_sexp_string
 from faebryk.libs.util import cast_assert, duplicates, groupby, zip_non_locked
 
@@ -64,7 +67,7 @@ class sexp_field(dict[str, Any]):
 class SymEnum(StrEnum): ...
 
 
-class DecodeError(Exception):
+class DecodeError(UserResourceException):
     """Error during decoding"""
 
 
@@ -80,6 +83,7 @@ def _convert(
     stack: list[tuple[str, type]] | None = None,
     name: str | None = None,
     sp: sexp_field | None = None,
+    ignore_assertions: bool = False,
 ):
     if name is None:
         name = "<" + t.__name__ + ">"
@@ -96,23 +100,36 @@ def _convert(
         if (origin := get_origin(t)) is not None:
             args = get_args(t)
             if origin is list:
-                return [_convert(_val, args[0], substack) for _val in val]
+                return [
+                    _convert(
+                        _val, args[0], substack, ignore_assertions=ignore_assertions
+                    )
+                    for _val in val
+                ]
             if origin is tuple:
                 return tuple(
-                    _convert(_val, _t, substack) for _val, _t in zip(val, args)
+                    _convert(_val, _t, substack, ignore_assertions=ignore_assertions)
+                    for _val, _t in zip(val, args)
                 )
             if (
                 origin in (Union, UnionType)
                 and len(args) == 2
                 and args[1] is type(None)
             ):
-                return _convert(val, args[0], substack) if val is not None else None
+                # Optional[T] == Union[T, None]
+                return (
+                    _convert(
+                        val, args[0], substack, ignore_assertions=ignore_assertions
+                    )
+                    if val is not None
+                    else None
+                )
 
             raise NotImplementedError(f"{origin} not supported")
 
         #
         if is_dataclass(t):
-            return _decode(val, t, substack)
+            return _decode(val, t, substack, ignore_assertions=ignore_assertions)
 
         # Primitive
 
@@ -158,6 +175,7 @@ def _decode[T](
     sexp: netlist_type,
     t: type[T],
     stack: list[tuple[str, type]] | None = None,
+    ignore_assertions: bool = False,
 ) -> T:
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"parse into: {t.__name__} {'-'*40}")
@@ -169,6 +187,7 @@ def _decode[T](
         raise TypeError(f"{t} is not a dataclass type")
 
     value_dict = {}
+    unprocessed = {}
 
     # Fields
     fs = fields(t)
@@ -176,20 +195,28 @@ def _decode[T](
     positional_fields = {
         i: f for i, f in enumerate(fs) if sexp_field.from_field(f).positional
     }
+    catch_all_fields = [
+        f for f in fields(t) if f.type is CatchAllVar or f.type is CatchAll
+    ]
+    if len(catch_all_fields) == 0:
+        pass
+    elif len(catch_all_fields) == 1:
+        value_dict[catch_all_fields[0].name] = unprocessed
+    elif len(catch_all_fields) > 1:
+        raise ValueError(f"Multiple catch-all fields not allowed: {catch_all_fields}")
 
     # Values
-    unprocessed_indices = set()
     ungrouped_key_values = []
     # I'd prefer to do this through a filter/comprehension, but I don't see a good way
     for i, val in enumerate(sexp):
         if isinstance(val, list):
             if len(val):
                 if isinstance(key := val[0], Symbol):
-                    if str(key) + "s" in key_fields or str(key) in key_fields:
+                    if str(key) in key_fields or str(key) + "s" in key_fields:
                         ungrouped_key_values.append(val)
                         continue
 
-        unprocessed_indices.add(i)
+        unprocessed[i] = val
 
     key_values = groupby(
         ungrouped_key_values,
@@ -205,7 +232,6 @@ def _decode[T](
         # and i in positional_fields
         # and positional_fields[i].name not in value_dict
     }
-    unprocessed_indices = unprocessed_indices - set(pos_values.keys())
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"processing: {_prettify_stack(stack)}")
@@ -215,12 +241,7 @@ def _decode[T](
         )
         logger.debug(f"key_values: {list(key_values.keys())}")
         logger.debug(f"pos_values: {pos_values}")
-
-    if len(unprocessed_indices):
-        unprocessed_values = [sexp[i] for i in unprocessed_indices]
-        # This is separate from the above loop to make it easier to debug during dev
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"unprocessed values: {unprocessed_values}")
+        logger.debug(f"maybe unprocessed values (or positional): {unprocessed}")
 
     # Parse --------------------------------------------------------------
 
@@ -242,7 +263,15 @@ def _decode[T](
             if origin is list:
                 val_t = args[0]
                 value_dict[name] = [
-                    _convert(_val[1:], val_t, stack, name, sp) for _val in values
+                    _convert(
+                        _val[1:],
+                        val_t,
+                        stack,
+                        name,
+                        sp,
+                        ignore_assertions=ignore_assertions,
+                    )
+                    for _val in values
                 ]
             elif origin is dict:
                 if not sp.key:
@@ -250,7 +279,15 @@ def _decode[T](
                 key_t = args[0]
                 val_t = args[1]
                 converted_values = [
-                    _convert(_val[1:], val_t, stack, name, sp) for _val in values
+                    _convert(
+                        _val[1:],
+                        val_t,
+                        stack,
+                        name,
+                        sp,
+                        ignore_assertions=ignore_assertions,
+                    )
+                    for _val in values
                 ]
                 values_with_key = [(sp.key(_val), _val) for _val in converted_values]
 
@@ -268,37 +305,60 @@ def _decode[T](
                 )
         else:
             assert len(values) == 1, f"Duplicate key: {name}"
-            out = _convert(values[0][1:], f.type, stack, name, sp)
+            out = _convert(
+                values[0][1:],
+                f.type,
+                stack,
+                name,
+                sp,
+                ignore_assertions=ignore_assertions,
+            )
             # if val is None, use default
             if out is not None:
                 value_dict[name] = out
 
     # Positional
-    for f, v in (it := zip_non_locked(positional_fields.values(), pos_values.values())):
+    for f, (sexp_i, v) in (
+        it := zip_non_locked(positional_fields.values(), pos_values.items())
+    ):
         sp = sexp_field.from_field(f)
         # special case for missing positional empty StrEnum fields
-        if isinstance(f.type, type) and issubclass(f.type, StrEnum):
-            if "" in f.type and not isinstance(v, Symbol):
-                value_dict[f.name] = _convert(Symbol(""), f.type, stack, f.name, sp)
-                # only advance field iterator
-                # if no more positional fields, there shouldn't be any more values
-                if it.next(0) is None:
-                    raise ValueError(f"Unexpected symbol {v}")
-                continue
-
-        # positional list = var args
-        origin = get_origin(f.type)
-        if origin is list:
-            vs = []
-            next_val = v
-            # consume all values
-            while next_val is not None:
-                vs.append(next_val)
-                next_val = it.next(1, None)
-            out = _convert(vs, f.type, stack, f.name, sp)
+        if (
+            isinstance(f.type, type)
+            and issubclass(f.type, StrEnum)
+            and "" in f.type
+            and not isinstance(v, Symbol)
+        ):
+            out = _convert(
+                Symbol(""),
+                f.type,
+                stack,
+                f.name,
+                sp,
+                ignore_assertions=ignore_assertions,
+            )
+            # only advance field iterator
+            # if no more positional fields, there shouldn't be any more values
+            if it.next(0) is None:
+                raise ValueError(f"Unexpected symbol {v}")
         else:
-            out = _convert(v, f.type, stack, f.name, sp)
+            # positional list = var args
+            origin = get_origin(f.type)
+            if origin is list:
+                vs = [v]
+                # consume all values
+                while (next_val := it.next(1, None)) is not None:
+                    vs.append(next_val[1])
 
+                out = _convert(
+                    vs, f.type, stack, f.name, sp, ignore_assertions=ignore_assertions
+                )
+            else:
+                out = _convert(
+                    v, f.type, stack, f.name, sp, ignore_assertions=ignore_assertions
+                )
+
+        unprocessed.pop(sexp_i, None)
         value_dict[f.name] = out
 
     # Check assertions ----------------------------------------------------
@@ -310,13 +370,18 @@ def _decode[T](
                 f" {sp.assert_value} but is {value_dict[f.name]}"
             )
 
+    # Unprocessed values should be None is there aren't any,
+    # so they don't get reproduced etc...
+    if catch_all_fields and not unprocessed:
+        value_dict[catch_all_fields[0].name] = None
+
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"value_dict: {value_dict}")
 
     try:
         out = t(**value_dict)
         # set parent pointers for all dataclasses in the tree
-        for k, v in value_dict.items():
+        for v in value_dict.values():
             if isinstance(v, list):
                 vs = v
             else:
@@ -371,7 +436,17 @@ def _encode(t) -> netlist_type:
             return
         sexp.append(_val)
 
-    fs = [(f, sexp_field.from_field(f)) for f in fields(t)]
+    catch_all_fields = [
+        f for f in fields(t) if f.type is CatchAllVar or f.type is CatchAll
+    ]
+    if len(catch_all_fields) == 0:
+        catch_all_field = None
+    elif len(catch_all_fields) == 1:
+        catch_all_field = catch_all_fields[0]
+    else:
+        raise ValueError(f"Multiple catch-all fields not allowed: {catch_all_fields}")
+
+    fs = [(f, sexp_field.from_field(f)) for f in fields(t) if f != catch_all_field]
 
     for f, sp in sorted(fs, key=lambda x: (not x[1].positional, x[1].order)):
         name = f.name
@@ -409,6 +484,11 @@ def _encode(t) -> netlist_type:
         else:
             _append_kv(f.name, val)
 
+    if catch_all_field is not None:
+        catch_all: dict[int, Any] = getattr(t, catch_all_field.name, {}) or {}
+        for i, v in catch_all.items():
+            sexp.insert(i + 1, v)
+
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Dumping {type(t).__name__} {'-'*40}")
         logger.debug(f"Obj: {t}")
@@ -417,15 +497,18 @@ def _encode(t) -> netlist_type:
     return sexp
 
 
-def loads[T](s: str | Path | list, t: type[T]) -> T:
+def loads[T](s: str | Path | list, t: type[T], ignore_assertions: bool = False) -> T:
     text = s
     sexp = s
     if isinstance(s, Path):
         text = s.read_text()
     if isinstance(text, str):
-        sexp = sexpdata.loads(text)
+        try:
+            sexp = sexpdata.loads(text)
+        except Exception as e:
+            raise DecodeError(f"Failed to parse sexp: {text}") from e
 
-    return _decode([sexp], t)
+    return _decode([sexp], t, ignore_assertions=ignore_assertions)
 
 
 def dumps(obj, path: PathLike | None = None) -> str:

@@ -20,10 +20,18 @@ class MCP2221A(Module):
     usb: F.USB2_0
 
     def __preinit__(self):
-        self.power.decoupled.decouple()
-        self.power_vusb.decoupled.decouple()
         self.power.lv.connect(self.power_vusb.lv)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
+
+    @L.rt_field
+    def can_be_decoupled(self):
+        class _(F.can_be_decoupled.impl()):
+            def decouple(self, owner: Module):
+                obj = self.get_obj(MCP2221A)
+                obj.power.decoupled.decouple(owner=owner)
+                obj.power_vusb.decoupled.decouple(owner=owner)
+
+        return _()

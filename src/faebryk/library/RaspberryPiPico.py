@@ -37,7 +37,7 @@ class RaspberryPiPico(Module):
 
     @L.rt_field
     def designator_prefix(self):
-        return F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.MOD)
+        return F.has_designator_prefix(F.has_designator_prefix.Prefix.MOD)
 
     @L.rt_field
     def pcb_layout(self):
@@ -108,7 +108,7 @@ class RaspberryPiPico(Module):
             elif i == 15:
                 pin.connect(power_3v3.hv)
             elif i == 16:
-                pin.connect(self.base.ldo.enable.signal)
+                pin.connect(self.base.ldo.enable.get_enable_signal())
             elif i == 18:
                 pin.connect(self.base.ldo.power_in.hv)
             elif i == 19:
@@ -124,8 +124,10 @@ class RaspberryPiPico(Module):
         #          parametrization
         # ------------------------------------
         for header in self.header:
-            header.pin_pitch.merge(2.54 * P.mm)
-            header.mating_pin_lenght.merge(F.Range.from_center_rel(6 * P.mm, 0.1))
-            header.pad_type.merge(F.Header.PadType.THROUGH_HOLE)
-            header.pin_type.merge(F.Header.PinType.MALE)
-            header.angle.merge(F.Header.Angle.STRAIGHT)
+            header.pin_pitch.constrain_subset(2.54 * P.mm)
+            header.mating_pin_length.constrain_subset(
+                L.Range.from_center_rel(6 * P.mm, 0.1)
+            )
+            header.pad_type.constrain_subset(F.Header.PadType.THROUGH_HOLE)
+            header.pin_type.constrain_subset(F.Header.PinType.MALE)
+            header.angle.constrain_subset(F.Header.Angle.STRAIGHT)

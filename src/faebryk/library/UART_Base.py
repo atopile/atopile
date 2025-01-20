@@ -4,14 +4,14 @@
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.util import cast_assert
+from faebryk.libs.units import P
 
 
 class UART_Base(ModuleInterface):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 
-    baud: F.TBD
+    baud = L.p_field(units=P.baud)
 
     @L.rt_field
     def single_electric_reference(self):
@@ -20,6 +20,4 @@ class UART_Base(ModuleInterface):
         )
 
     def __preinit__(self) -> None:
-        self.baud.add(
-            F.is_dynamic_by_connections(lambda mif: cast_assert(UART_Base, mif).baud)
-        )
+        self.baud.add(F.is_bus_parameter())

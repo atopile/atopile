@@ -2,51 +2,85 @@
 # SPDX-License-Identifier: MIT
 
 
-import math
-
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.core.parameter import Add
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from faebryk.libs.util import cast_assert
 
 
 class ElectricPower(F.Power):
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
-        def on_obj_set(self):
+        def decouple(
+            self,
+            owner: Module,
+            count: int = 1,
+        ):
             obj = self.get_obj(ElectricPower)
-            self.hv = obj.hv
-            self.lv = obj.lv
 
-        def decouple(self):
-            obj = self.get_obj(ElectricPower)
-            return F.can_be_decoupled_defined.decouple(self).builder(
-                lambda c: c.rated_voltage.merge(
-                    F.Range(obj.voltage * 2.0, math.inf * P.V)
+            capacitor = F.MultiCapacitor(count)
+
+            # FIXME seems to cause contradictions
+            capacitor.max_voltage.constrain_ge(obj.voltage * 1.5)
+
+            obj.hv.connect_via(capacitor, obj.lv)
+
+            name = f"decoupling_{obj.get_name(accept_no_parent=True)}"
+            new_capacitor = capacitor
+            # Merge
+            if obj.has_trait(F.is_decoupled):
+                old_capacitor = obj.get_trait(F.is_decoupled).capacitor
+                capacitor = F.MultiCapacitor.from_capacitors(
+                    old_capacitor,
+                    new_capacitor,
                 )
-            )
+                name = old_capacitor.get_name(accept_no_parent=True) + "'"
+
+            # TODO improve
+            if name in owner.runtime:
+                name += "_"
+            owner.add(capacitor, name=name)
+            obj.add(F.is_decoupled(capacitor))
+
+            return new_capacitor
 
     class can_be_surge_protected_power(F.can_be_surge_protected.impl()):
-        def on_obj_set(self):
+        def protect(self, owner: Module):
             obj = self.get_obj(ElectricPower)
-            self.lv = obj.lv
-            self.hv = obj.hv
-
-        def protect(self):
-            obj = self.get_obj(ElectricPower)
-            return [
-                tvs.builder(lambda t: t.reverse_working_voltage.merge(obj.voltage))
-                for tvs in F.can_be_surge_protected_defined.protect(self)
-            ]
+            surge_protection = F.SurgeProtection.from_interfaces(obj.lv, obj.hv)
+            owner.add(
+                surge_protection,
+                name=f"surge_protection_{obj.get_name(accept_no_parent=True)}",
+            )
+            obj.add(F.is_surge_protected_defined(surge_protection))
+            return surge_protection
 
     hv: F.Electrical
     lv: F.Electrical
 
-    voltage: F.TBD
-    max_current: F.TBD
+    voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(0 * P.V, 1000 * P.V),
+        tolerance_guess=5 * P.percent,
+    )
+    max_current = L.p_field(
+        units=P.A,
+        domain=L.Domains.Numbers.REAL(),
+    )
     """
+    WARNING!!!
     Only for this particular power interface
     Does not propagate to connections
+    """
+    bus_max_current_consumption_sum = L.p_field(
+        units=P.A, domain=L.Domains.Numbers.REAL()
+    )
+    """
+    Summed current for all connected power interfaces
+    Only available after resolve_bus_parameters
     """
 
     surge_protected: can_be_surge_protected_power
@@ -65,8 +99,11 @@ class ElectricPower(F.Power):
 
         self.connect_shallow(fused_power)
 
-        fuse.trip_current.merge(F.Constant(self.max_current))
-        # fused_power.max_current.merge(F.Range(0 * P.A, fuse.trip_current))
+        fuse.trip_current.constrain_subset(
+            self.max_current * L.Range.from_center_rel(1.0, 0.1)
+        )
+        # TODO maybe better bus_consumption
+        fused_power.max_current.constrain_le(fuse.trip_current)
 
         if attach_to is not None:
             attach_to.add(fused_power)
@@ -74,11 +111,13 @@ class ElectricPower(F.Power):
         return fused_power
 
     def __preinit__(self) -> None:
-        # self.voltage.merge(
+        ...
+        # self.voltage.alias_is(
         #    self.hv.potential - self.lv.potential
         # )
-        self.voltage.add(
-            F.is_dynamic_by_connections(
-                lambda mif: cast_assert(ElectricPower, mif).voltage
-            )
+        self.voltage.add(F.is_bus_parameter())
+        self.bus_max_current_consumption_sum.add(
+            F.is_bus_parameter(reduce=(self.max_current, Add))
         )
+
+        self.lv.add(F.has_net_name("gnd"))

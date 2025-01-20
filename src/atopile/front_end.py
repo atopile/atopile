@@ -1,556 +1,142 @@
 """
-This datamodel represents the code in a clean, simple and traversable way,
-but doesn't resolve names of things.
-In building this datamodel, we check for name collisions, but we don't resolve them yet.
+Build faebryk core objects from ato DSL.
 """
 
-import enum
+import itertools
 import logging
 import operator
-from collections import defaultdict, deque
-from contextlib import ExitStack, contextmanager
+import os
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass
 from itertools import chain
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import (
+    Any,
+    Iterable,
+    Sequence,
+    Type,
+    cast,
+)
 
-import pint
 from antlr4 import ParserRuleContext
-from attrs import define, field, resolve_types
+from pint import UndefinedUnitError
 
-from atopile import address, config, errors, expressions, parse_utils
-from atopile.address import AddrStr
-from atopile.datatypes import IDdSet, KeyOptItem, KeyOptMap, Ref, StackList
-from atopile.expressions import RangedValue
-from atopile.generic_methods import recurse
+import faebryk.library._F as F
+import faebryk.libs.library.L as L
+from atopile import address, errors
+from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
+from atopile.config import config
+from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
-from atopile.parse_utils import get_src_info_from_ctx
-from atopile.parser.AtopileParser import AtopileParser as ap
-from atopile.parser.AtopileParserVisitor import AtopileParserVisitor
+from atopile.parser.AtoParser import AtoParser as ap
+from atopile.parser.AtoParserVisitor import AtoParserVisitor
+from faebryk.core.node import NodeException
+from faebryk.core.parameter import (
+    Arithmetic,
+    ConstrainableExpression,
+    GreaterOrEqual,
+    GreaterThan,
+    IsSubset,
+    LessOrEqual,
+    LessThan,
+    Max,
+    Min,
+    Parameter,
+)
+from faebryk.core.trait import Trait
+from faebryk.libs.exceptions import (
+    accumulate,
+    downgrade,
+    iter_through_errors,
+    suppress_after_count,
+)
+from faebryk.libs.library.L import Range, Single
+from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
+from faebryk.libs.sets.sets import BoolSet
+from faebryk.libs.units import (
+    HasUnit,
+    P,
+    Quantity,
+    UnitCompatibilityError,
+    dimensionless,
+)
+from faebryk.libs.units import (
+    Unit as UnitType,
+)
+from faebryk.libs.util import (
+    FuncDict,
+    cast_assert,
+    has_attr_or_property,
+    has_instance_settable_attr,
+    import_from_path,
+)
+
+logger = logging.getLogger(__name__)
 
 
-@define
-class Base:
-    """Represent a base class for all things."""
-
-    src_ctx: Optional[ParserRuleContext] = field(kw_only=True, default=None)
+Numeric = Parameter | Arithmetic | Quantity_Set
 
 
-@define
-class Import(Base):
-    """Represent an import statement."""
-
-    obj_addr: AddrStr
-
-    def __repr__(self) -> str:
-        return f"<Import {self.obj_addr}>"
-
-
-@define
-class Replacement(Base):
-    """Represent a replacement statement."""
-
-    new_super_ref: Ref
-
-
-@define(repr=False)
-class ClassDef(Base):
-    """
-    Represent the definition or skeleton of an object
-    so we know where we can go to find the object later
-    without actually building the whole file.
-
-    This is mainly because we don't want to hit errors that
-    aren't relevant to the current build - instead leaving them
-    to be hit in the case we're actually building that object.
-    """
-
-    super_ref: Optional[Ref]
-    imports: Mapping[Ref, Import]
-
-    local_defs: Mapping[Ref, "ClassDef"]
-    replacements: Mapping[Ref, Replacement]
-
-    # attached immediately to the object post construction
-    closure: Optional[tuple["ClassDef"]] = None  # in order of lookup
-    address: Optional[AddrStr] = None
-
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} {self.address}>"
-
-
-class Assertion:
-    def __init__(
-        self,
-        lhs: expressions.Expression,
-        operator: str,
-        rhs: expressions.Expression,
-        src_ctx: Optional[ParserRuleContext] = None,
-    ):
-        self.lhs = lhs
-        self.operator = operator
-        self.rhs = rhs
+class from_dsl(Trait.decless()):
+    def __init__(self, src_ctx: ParserRuleContext) -> None:
+        super().__init__()
         self.src_ctx = src_ctx
 
-    def __str__(self) -> str:
-        return f"{self.lhs} {self.operator} {self.rhs}"
 
-
-_dimensionality_to_unit_map = {
-    "None": pint.Unit("dimensionless"),
-    "length": pint.Unit("m"),
-    "time": pint.Unit("s"),
-    "voltage": pint.Unit("V"),
-    "current": pint.Unit("A"),
-    "resistance": pint.Unit("ohm"),
-    "capacitance": pint.Unit("F"),
-    "inductance": pint.Unit("H"),
-    "frequency": pint.Unit("Hz"),
-    "power": pint.Unit("W"),
-    "energy": pint.Unit("J"),
-    "charge": pint.Unit("C"),
-}
-
-
-@define
-class Assignment(Base):
-    """Represent an assignment statement."""
-
-    name: str
-    value: Optional[Any]
-    given_type: Optional[str | pint.Unit]
-    value_is_derived: bool
-
-    @property
-    def unit(self) -> pint.Unit:
-        """Return a pint unit from an assignment, or raise an exception if there's no unit."""
-        if self.given_type is None:
-            # Handle an implicit type
-            try:
-                return self.value.unit
-            except AttributeError as ex:
-                raise errors.AtoTypeError(
-                    f"Assignment '{self.name}' has no unit"
-                ) from ex
-        try:
-            return _dimensionality_to_unit_map[self.given_type]
-        except KeyError as ex:
-            raise errors.AtoUnknownUnitError(
-                f"Unknown dimensionality '{self.given_type}'"
-            ) from ex
-
-    def __repr__(self) -> str:
-        return f"<Assignment {self.name} = {self.value}>"
-
-
-@define
-class SumCumulativeAssignment(Assignment):
-    """Represents a sum-cumulative assignment statement."""
-
-    value: expressions.Expression | RangedValue
-    value_is_derived: bool = True
-
-
-@define
-class SetCumulativeAssignment(Assignment):
-    """Represents a set-cumulative assignment statement."""
-
-    value: expressions.Expression | RangedValue
-    oring: expressions.Expression | RangedValue | None
-    anding: expressions.Expression | RangedValue | None
-    value_is_derived: bool = True
-
-
-@define(repr=False)
-class ClassLayer(Base):
-    """
-    Represent a layer in the object hierarchy.
-    This holds all the values assigned to the object.
-    """
-
-    # information about where this object is found in multiple forms
-    # this is redundant with one another (eg. you can compute one from the other)
-    # but it's useful to have all of them for different purposes
-    obj_def: ClassDef
-
-    # None indicates that this is a root object
-    super: Optional["ClassLayer"]
-
-    @property
-    def address(self) -> AddrStr:
-        return self.obj_def.address
-
-    def __repr__(self) -> str:
-        return f"<{self.__class__.__name__} {self.obj_def.address}>"
-
-
-resolve_types(ClassLayer)
-
-
-## The below datastructures are created from the above data-model as a second stage
-
-
-@define
-class Link(Base):
-    """Represent a connection between two connectable things."""
-
-    # TODO: we may not need this using loop-soup
-    # the reason this currently exists is to allow us to map joints between instances
-    # these make sense only in the context of the pins and signals, which aren't
-    # language fundamentals as much as net objects - eg. they're useful only from
-    # a specific electrical perspective
-    # origin_link: Link
-
-    parent: "Instance"
-    source: "Instance"
-    target: "Instance"
-
-    def __repr__(self) -> str:
-        return f"<Link {repr(self.source)} -> {repr(self.target)}>"
-
-
-@define
-class Instance(Base):
-    """
-    Represents the specific instance, capturing, the story you told of
-    how to get there in it's mapping stacks.
-    """
-
-    # origin information
-    # much of this information is redundant, however it's all highly referenced
-    # so it's useful to have it all at hand
-    addr: AddrStr
-    supers: list["ClassLayer"]
-
-    # TODO: flip this around to a list, rather than deque
-    assignments: Mapping[str, deque[Assignment]]
-    # Tracks which other instances this instance has it's assignments merged with from connections
-    parent: Optional["Instance"]
-
-    # created as supers' ASTs are walked
-    assertions: list[Assertion] = field(factory=list)
-    children: dict[str, "Instance"] = field(factory=dict)
-    links: list[Link] = field(factory=list)
-
-    # Populated by itself
-    assignments_merged_with: IDdSet["Instance"] = field(factory=IDdSet)
-
-    def __attrs_post_init__(self) -> None:
-        self.assignments_merged_with.add(self)
-
-    def __repr__(self) -> str:
-        return f"<Instance {self.addr}>"
-
-    @classmethod
-    def from_super(
-        cls,
-        addr: AddrStr,
-        super_: ClassLayer,
-        parent: Optional["Instance"],
-        src_ctx: Optional[ParserRuleContext] = None,
-    ) -> "Instance":
-        """Create an instance from a list of supers."""
-        supers = list(recurse(lambda x: x.super, super_))
-
-        assignments = defaultdict(deque)
-
-        return cls(
-            src_ctx=src_ctx,
-            addr=addr,
-            supers=supers,
-            assignments=assignments,
-            parent=parent,
-        )
-
-
-resolve_types(Instance)
-resolve_types(Link)
-
-
-class _Sentinel(enum.Enum):
-    NOTHING = enum.auto()
-
-
-NOTHING = _Sentinel.NOTHING
-
-
-def _make_obj_layer(address: AddrStr, super: Optional[ClassLayer] = None) -> ClassLayer:
-    """Create a new object layer from an address and a set of supers."""
-    obj_def = ClassDef(
-        address=address,
-        super_ref=Ref.empty(),
-        imports={},
-        local_defs={},
-        replacements={},
-    )
-    return ClassLayer(
-        obj_def=obj_def,
-        super=super,
-    )
-
-
-MODULE: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Module"))
-COMPONENT: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Component"), super=MODULE)
-PIN: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Pin"))
-SIGNAL: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Signal"))
-INTERFACE: ClassLayer = _make_obj_layer(AddrStr("<Built-in>:Interface"))
-
-
-BUILTINS_BY_REF = {
-    Ref.from_one("MODULE"): MODULE,
-    Ref.from_one("COMPONENT"): COMPONENT,
-    Ref.from_one("INTERFACE"): INTERFACE,
-    Ref.from_one("PIN"): PIN,
-    Ref.from_one("SIGNAL"): SIGNAL,
-}
-
-
-BUILTINS_BY_ADDR = {
-    MODULE.address: MODULE,
-    COMPONENT.address: COMPONENT,
-    PIN.address: PIN,
-    SIGNAL.address: SIGNAL,
-    INTERFACE.address: INTERFACE,
-}
-
-
-def _get_unit_from_ctx(ctx: ParserRuleContext) -> pint.Unit:
-    """Return a pint unit from a context."""
-    unit_str = ctx.getText()
-    try:
-        return pint.Unit(unit_str)
-    except pint.UndefinedUnitError as ex:
-        raise errors.AtoUnknownUnitError.from_ctx(
-            ctx, f"Unknown unit '{unit_str}'"
-        ) from ex
-
-
-class HandlesPrimaries(AtopileParserVisitor):
-    """
-    This class is a mixin to be used with the translator classes.
-    """
-
-    def visit_ref_helper(
-        self,
-        ctx: (
-            ap.NameContext
-            | ap.AttrContext
-            | ap.Name_or_attrContext
-            | ap.Totally_an_integerContext
-        ),
-    ) -> Ref:
-        """
-        Visit any referencey thing and ensure it's returned as a reference
-        """
-        return Ref(ctx.getText().split("."))
-
-    def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
-        if ctx.name():
-            name = self.visitName(ctx.name())
-            return Ref.from_one(name)
-        elif ctx.attr():
-            return self.visitAttr(ctx.attr())
-
-        raise errors.AtoError("Expected a name or attribute")
-
+class BasicsMixin:
     def visitName(self, ctx: ap.NameContext) -> str:
         """
-        If this is an int, convert it to one (for pins), else return the name as a string.
+        If this is an int, convert it to one (for pins),
+        else return the name as a string.
         """
         return ctx.getText()
 
     def visitAttr(self, ctx: ap.AttrContext) -> Ref:
-        return Ref(self.visitName(name) for name in ctx.name())
+        return Ref([self.visitName(name) for name in ctx.name()])
+
+    def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
+        if ctx.name():
+            return Ref.from_one(self.visitName(ctx.name()))
+        elif ctx.attr():
+            return self.visitAttr(ctx.attr())
+
+        raise errors.UserException.from_ctx(ctx, "Expected a name or attribute")
 
     def visitString(self, ctx: ap.StringContext) -> str:
-        return ctx.getText().strip("\"'")
+        raw: str = ctx.getText()
+        return raw.strip("\"'")
 
     def visitBoolean_(self, ctx: ap.Boolean_Context) -> bool:
-        return ctx.getText().lower() == "true"
+        raw: str = ctx.getText()
 
-    def visitLiteral_physical(self, ctx: ap.Literal_physicalContext) -> RangedValue:
-        """Yield a physical value from a physical context."""
-        if ctx.quantity():
-            return self.visitQuantity(ctx.quantity())
-        if ctx.bilateral_quantity():
-            return self.visitBilateral_quantity(ctx.bilateral_quantity())
-        if ctx.bound_quantity():
-            return self.visitBound_quantity(ctx.bound_quantity())
+        if raw.lower() == "true":
+            return True
+        elif raw.lower() == "false":
+            return False
 
-        raise ValueError  # this should be protected because it shouldn't be parseable
-
-    def visitQuantity(self, ctx: ap.QuantityContext) -> RangedValue:
-        """Yield a physical value from an implicit quantity context."""
-        text = ctx.NUMBER().getText()
-        if text.startswith("0x"):
-            value = int(text, 16)
-        else:
-            value = float(ctx.NUMBER().getText())
-
-        # Ignore the positive unary operator
-        if ctx.MINUS():
-            value = -value
-
-        if ctx.name():
-            unit = _get_unit_from_ctx(ctx.name())
-        else:
-            unit = pint.Unit("")
-
-        value = RangedValue(
-            val_a=value,
-            val_b=value,
-            unit=unit,
-            str_rep=parse_utils.reconstruct(ctx),
-            # We don't bother with other formatting info here
-            # because it's not used for un-toleranced values
-        )
-        setattr(value, "src_ctx", ctx)
-        return value
-
-    def visitBilateral_quantity(self, ctx: ap.Bilateral_quantityContext) -> RangedValue:
-        """Yield a physical value from a bilateral quantity context."""
-        nominal_quantity = self.visitQuantity(ctx.quantity())
-
-        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
-        tol_num = float(tol_ctx.NUMBER().getText())
-
-        # Handle proportional tolerances
-        if tol_ctx.PERCENT():
-            tol_divider = 100
-        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
-            tol_divider = 1e6
-        else:
-            tol_divider = None
-
-        if tol_divider:
-            if nominal_quantity == 0:
-                raise errors.AtoError.from_ctx(
-                    tol_ctx,
-                    "Can't calculate tolerance percentage of a nominal value of zero",
-                )
-
-            # In this case, life's a little easier, and we can simply multiply the nominal
-            value = RangedValue(
-                val_a=nominal_quantity.min_val
-                - (nominal_quantity.min_val * tol_num / tol_divider),
-                val_b=nominal_quantity.max_val
-                + (nominal_quantity.max_val * tol_num / tol_divider),
-                unit=nominal_quantity.unit,
-                str_rep=parse_utils.reconstruct(ctx),
-            )
-            setattr(value, "src_ctx", ctx)
-            return value
-
-        # Handle tolerances with units
-        if tol_ctx.name():
-            # In this case there's a named unit on the tolerance itself
-            # We need to make sure it's dimensionally compatible with the nominal
-            tol_quantity = RangedValue(
-                -tol_num, tol_num, _get_unit_from_ctx(tol_ctx.name()), tol_ctx
-            )
-
-            # If the nominal has no unit, then we take the unit's tolerance for the nominal
-            if nominal_quantity.unit == pint.Unit(""):
-                value = RangedValue(
-                    val_a=nominal_quantity.min_val + tol_quantity.min_val,
-                    val_b=nominal_quantity.max_val + tol_quantity.max_val,
-                    unit=tol_quantity.unit,
-                    str_rep=parse_utils.reconstruct(ctx),
-                )
-                setattr(value, "src_ctx", ctx)
-                return value
-
-            # If the nominal has a unit, then we rely on the ranged value's unit compatibility
-            try:
-                return nominal_quantity + tol_quantity
-            except pint.DimensionalityError as ex:
-                raise errors.AtoTypeError.from_ctx(
-                    tol_ctx.name(),
-                    f"Tolerance unit '{tol_quantity.unit}' is not dimensionally"
-                    f" compatible with nominal unit '{nominal_quantity.unit}'",
-                ) from ex
-
-        # If there's no unit or percent, then we have a simple tolerance in the same units
-        # as the nominal
-        value = RangedValue(
-            val_a=nominal_quantity.min_val - tol_num,
-            val_b=nominal_quantity.max_val + tol_num,
-            unit=nominal_quantity.unit,
-            str_rep=parse_utils.reconstruct(ctx),
-        )
-        setattr(value, "src_ctx", ctx)
-        return value
-
-    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> RangedValue:
-        """Yield a physical value from a bound quantity context."""
-
-        start = self.visitQuantity(ctx.quantity(0))
-        assert start.tolerance == 0
-        end = self.visitQuantity(ctx.quantity(1))
-        assert end.tolerance == 0
-
-        # If only one of them has a unit, take the unit from the one which does
-        if (start.unit == pint.Unit("")) ^ (end.unit == pint.Unit("")):
-            if start.unit == pint.Unit(""):
-                known_unit = end.unit
-            else:
-                known_unit = start.unit
-
-            value = RangedValue(
-                val_a=start.min_val,
-                val_b=end.min_val,
-                unit=known_unit,
-                str_rep=parse_utils.reconstruct(ctx),
-            )
-            setattr(value, "src_ctx", ctx)
-            return value
-
-        # If they've both got units, let the RangedValue handle
-        # the dimensional compatibility
-        try:
-            value = RangedValue(
-                val_a=start.min_qty,
-                val_b=end.min_qty,
-                str_rep=parse_utils.reconstruct(ctx),
-            )
-            setattr(value, "src_ctx", ctx)
-            return value
-        except pint.DimensionalityError as ex:
-            raise errors.AtoTypeError.from_ctx(
-                ctx,
-                f"Tolerance unit '{end.unit}' is not dimensionally"
-                f" compatible with nominal unit '{start.unit}'",
-            ) from ex
+        raise errors.UserException.from_ctx(ctx, f"Expected a boolean value, got {raw}")
 
 
-class HandlesGetTypeInfo:
-    def _get_type_info(
-        self, ctx: ap.Declaration_stmtContext | ap.Assign_stmtContext
-    ) -> Optional[ClassLayer | pint.Unit]:
-        """Return the type information from a type_info context."""
-        if type_ctx := ctx.type_info():
-            return type_ctx.name_or_attr().getText()
-        return None
-
-        # TODO: parse types properly
-        if type_info := ctx.type_info():
-            assert isinstance(type_info, ap.Type_infoContext)
-            type_info_str: str = type_info.name_or_attr().getText()
-
-            try:
-                return lookup_class_in_closure(
-                    self.class_def_scope.top,
-                    type_info_str,
-                )
-            except KeyError:
-                pass
-
-            # TODO: implement types for ints, floats, strings, etc.
-            # voltages, currents, lengths etc...
-
-        return None
+class NOTHING:
+    """A sentinel object to represent a "nothing" return value."""
 
 
-class HandleStmtsFunctional(AtopileParserVisitor):
+class SkipPriorFailedException(Exception):
+    """Raised to skip a statement in case a dependency already failed"""
+
+
+class DeprecatedException(errors.UserException):
+    """
+    Raised when a deprecated feature is used.
+    """
+
+    def get_frozen(self) -> tuple:
+        # TODO: this is a bit of a hack to make the logger de-dup these for us
+        return errors._BaseBaseUserException.get_frozen(self)
+
+
+class SequenceMixin:
     """
     The base translator is responsible for methods common to
     navigating from the top of the AST including how to process
@@ -571,794 +157,1329 @@ class HandleStmtsFunctional(AtopileParserVisitor):
         It is assumed the children are returning their own OptionallyNamedItems.
         """
 
-        def __visit():
-            for err_cltr, child in errors.iter_through_errors(children):
+        def _visit():
+            for err_cltr, child in iter_through_errors(
+                children,
+                errors._BaseBaseUserException,
+                SkipPriorFailedException,
+            ):
                 with err_cltr():
-                    child_result = self.visit(child)
+                    # Since we're in a SequenceMixin, we need to cast self to the visitor type # noqa: E501  # pre-existing
+                    child_result = cast(AtoParserVisitor, self).visit(child)
                     if child_result is not NOTHING:
                         yield child_result
 
-        child_results = chain.from_iterable(__visit())
-        child_results = list(item for item in child_results if item is not NOTHING)
+        child_results = chain.from_iterable(_visit())
+        child_results = filter(lambda x: x is not NOTHING, child_results)
         child_results = KeyOptMap(KeyOptItem(cr) for cr in child_results)
 
         return KeyOptMap(child_results)
 
-    def visitStmt(self, ctx: ap.StmtContext) -> KeyOptMap:
-        """
-        Ensure consistency of return type.
-        We choose to raise any below exceptions here, because stmts can be nested,
-        and raising exceptions serves as our collection mechanism.
-        """
-        if ctx.simple_stmts():
-            stmt_returns = self.visitSimple_stmts(ctx.simple_stmts())
-            return stmt_returns
-        elif ctx.compound_stmt():
-            item = self.visit(ctx.compound_stmt())
-            if item is NOTHING:
-                return KeyOptMap.empty()
-            assert isinstance(item, KeyOptItem)
-            return KeyOptMap.from_item(item)
-
-        raise TypeError("Unexpected statement type")
+    def visitFile_input(self, ctx: ap.File_inputContext) -> KeyOptMap:
+        return self.visit_iterable_helper(ctx.stmt())
 
     def visitSimple_stmts(self, ctx: ap.Simple_stmtsContext) -> KeyOptMap:
         return self.visit_iterable_helper(ctx.simple_stmt())
 
-    def visitBlock(self, ctx) -> KeyOptMap:
+    def visitBlock(self, ctx: ap.BlockContext) -> KeyOptMap:
         if ctx.stmt():
             return self.visit_iterable_helper(ctx.stmt())
         if ctx.simple_stmts():
             return self.visitSimple_stmts(ctx.simple_stmts())
+
         raise ValueError  # this should be protected because it shouldn't be parseable
 
 
-# TODO: actually capture src_ctx on expressions
-class Roley(HandlesPrimaries):
-    """
-    Roley is a green road roller who loves to make up songs and often ends his
-    sentences with "Rock and Roll!" He is enthusiastic and works alongside Bob
-    and the rest of the team on various construction projects. Roley's main job
-    is to smooth out roads and pavements, making sure they are flat and safe
-    for everyone. He takes great pride in creating perfect surfaces and is an
-    essential member of Bob's team, helping to complete construction tasks with
-    his unique abilities.
-
-    Roley's also builds expressions.
-    """
-
-    def __init__(self, addr: AddrStr) -> None:
-        self.addr = addr
-        super().__init__()
-
-    def visitArithmetic_expression(
-        self, ctx: ap.Arithmetic_expressionContext
-    ) -> expressions.NumericishTypes:
-        if ctx.OR_OP():
-            return expressions.defer_operation_factory(
-                operator.or_,
-                self.visit(ctx.arithmetic_expression()),
-                self.visit(ctx.sum_()),
-                src_ctx=ctx,
-            )
-
-        if ctx.AND_OP():
-            return expressions.defer_operation_factory(
-                operator.and_,
-                self.visit(ctx.arithmetic_expression()),
-                self.visit(ctx.sum_()),
-                src_ctx=ctx,
-            )
-
-        return self.visit(ctx.sum_())
-
-    def visitSum(self, ctx: ap.SumContext) -> expressions.NumericishTypes:
-        if ctx.ADD():
-            return expressions.defer_operation_factory(
-                operator.add,
-                self.visit(ctx.sum_()),
-                self.visit(ctx.term()),
-                src_ctx=ctx,
-            )
-
-        if ctx.MINUS():
-            return expressions.defer_operation_factory(
-                operator.sub,
-                self.visit(ctx.sum_()),
-                self.visit(ctx.term()),
-                src_ctx=ctx,
-            )
-
-        return self.visit(ctx.term())
-
-    def visitTerm(self, ctx: ap.TermContext) -> expressions.NumericishTypes:
-        if ctx.STAR():  # multiply
-            return expressions.defer_operation_factory(
-                operator.mul,
-                self.visit(ctx.term()),
-                self.visit(ctx.power()),
-                src_ctx=ctx,
-            )
-
-        if ctx.DIV():
-            return expressions.defer_operation_factory(
-                operator.truediv,
-                self.visit(ctx.term()),
-                self.visit(ctx.power()),
-                src_ctx=ctx,
-            )
-
-        return self.visit(ctx.power())
-
-    def visitPower(self, ctx: ap.PowerContext) -> expressions.NumericishTypes:
-        if ctx.POWER():
-            return expressions.defer_operation_factory(
-                operator.pow,
-                self.visit(ctx.functional(0)),
-                self.visit(ctx.functional(1)),
-                src_ctx=ctx,
-            )
-
-        return self.visit(ctx.functional(0))
-
-    def visitFunctional(self, ctx: ap.FunctionalContext) -> expressions.NumericishTypes:
-        """Parse a functional expression."""
-        if ctx.name():
-            name = ctx.name().getText()
-            if name == "min":
-                func = expressions.RangedValue.min
-            elif name == "max":
-                func = expressions.RangedValue.max
-            else:
-                raise errors.AtoNotImplementedError(f"Unknown function '{name}'")
-
-            values = tuple(map(self.visit, ctx.bound()))
-            return expressions.defer_operation_factory(func, *values)
-
-        return self.visit(ctx.bound(0))
-
-    def visitBound(self, ctx: ap.BoundContext):
-        # if ctx.arithmetic_group(0):
-        #     return expressions.RangedValue(
-        #         self.visit(ctx.arithmetic_group(0)),
-        #         self.visit(ctx.arithmetic_group(1))
-        #     )
-        return self.visit(ctx.atom())
-
-    def visitAtom(self, ctx: ap.AtomContext) -> expressions.NumericishTypes:
-        if ctx.arithmetic_group():
-            return self.visit(ctx.arithmetic_group().arithmetic_expression())
-
-        if ctx.literal_physical():
-            return self.visit(ctx.literal_physical())
-
-        if ctx.name_or_attr():
-            ref = self.visit_ref_helper(ctx.name_or_attr())
-            addr = address.add_instances(self.addr, ref)
-            return expressions.Symbol(addr)
-
-        raise ValueError
-
-
-class Scoop(HandleStmtsFunctional, HandlesPrimaries):
-    """Scoop's job is to map out all the object definitions in the code."""
-
-    def __init__(
-        self,
-        ast_getter: Callable[[str | Path], ParserRuleContext],
-    ) -> None:
-        self.ast_getter = ast_getter
-        self._output_cache: dict[AddrStr, ClassDef] = {}
-        super().__init__()
-
-    def get_search_paths(self) -> Iterable[Path]:
-        """Return the search paths."""
-        project_context = config.get_project_context()
-        return [project_context.src_path, project_context.module_path]
-
-    def ingest_file(self, file: str | Path) -> set[AddrStr]:
-        """Ingest a file into the cache."""
-        # TODO: should this have some protections on
-        # things that are already indexed?
-        file_ast = self.ast_getter(file)
-        obj = self.visitFile_input(file_ast)
-        assert isinstance(obj, ClassDef)
-        # this operation puts it and it's children in the cache
-        return self._register_obj_tree(obj, AddrStr(file), ())
-
-    def get_obj_def(self, addr: AddrStr) -> ClassDef:
-        """Returns the ObjectDef for a given address."""
-        if addr not in self._output_cache:
-            file = address.get_file(addr)
-            self.ingest_file(file)
-        try:
-            return self._output_cache[addr]
-        except KeyError as ex:
-            raise BlockNotFoundError(
-                f"No block named $addr in {address.get_file(addr)}", addr=addr
-            ) from ex
-
-    def _register_obj_tree(
-        self, obj: ClassDef, addr: AddrStr, closure: tuple[ClassDef]
-    ) -> set[AddrStr]:
-        """Register address info to the object, and add it to the cache."""
-        obj.address = addr
-        obj.closure = closure
-        child_closure = (obj,) + closure
-        self._output_cache[addr] = obj
-
-        addrs: set[AddrStr] = {addr}
-
-        for ref, child in obj.local_defs.items():
-            assert len(ref) == 1
-            assert isinstance(ref[0], str)
-            child_addr = address.add_entry(addr, ref[0])
-            addrs |= self._register_obj_tree(child, child_addr, child_closure)
-
-        return addrs
-
-    def visitFile_input(self, ctx: ap.File_inputContext) -> ClassDef:
-        """Visit a file input and return it's object."""
-        locals_ = self.visit_iterable_helper(ctx.stmt())
-
-        # FIXME: clean this up, and do much better name collision detection on it
-        local_defs = {}
-        imports = {}
-        for ref, local in locals_:
-            if isinstance(local, ClassDef):
-                local_defs[ref] = local
-            elif isinstance(local, Import):
-                assert ref is not None
-                imports[ref] = local
-            else:
-                raise errors.AtoError(f"Unexpected local type: {type(local)}")
-
-        file_obj = ClassDef(
-            src_ctx=ctx,
-            super_ref=Ref.from_one("MODULE"),
-            imports=imports,
-            local_defs=local_defs,
-            replacements={},
-        )
-
-        return file_obj
-
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> KeyOptItem[ClassDef]:
-        """Visit a blockdef and return it's object."""
-        if ctx.FROM():
-            if not ctx.name_or_attr():
-                raise errors.AtoSyntaxError("Expected a name or attribute after 'from'")
-            block_super_ref = self.visit_ref_helper(ctx.name_or_attr())
-        else:
-            block_super_ref = self.visitBlocktype(ctx.blocktype())
-
-        locals_ = self.visitBlock(ctx.block())
-
-        # FIXME: this needs far better name collision detection
-        local_defs = {}
-        imports = {}
-        replacements = {}
-        for ref, local in locals_:
-            if isinstance(local, ClassDef):
-                local_defs[ref] = local
-            elif isinstance(local, Import):
-                imports[ref] = local
-            elif isinstance(local, Replacement):
-                replacements[ref] = local
-            else:
-                raise errors.AtoError(f"Unexpected local type: {type(local)}")
-
-        block_obj = ClassDef(
-            src_ctx=ctx,
-            super_ref=block_super_ref,
-            imports=imports,
-            local_defs=local_defs,
-            replacements=replacements,
-        )
-
-        block_name = self.visit_ref_helper(ctx.name())
-
-        return KeyOptItem.from_kv(block_name, block_obj)
-
-    def _do_import(
-        self, ctx: ParserRuleContext, from_file: str, what_refs: list[str]
-    ) -> KeyOptMap:
-        """Return the import objects created by import statements."""
-
-        _errors = []
-
-        if not from_file:
-            _errors.append(
-                errors.AtoError("Expected a 'from <file-path>' after 'import'")
-            )
-
-        # get the current working directory
-        current_file, *_ = get_src_info_from_ctx(ctx)
-        current_file = Path(current_file)
-        if current_file.is_file():
-            search_paths = chain((current_file.parent,), self.get_search_paths())
-        else:
-            search_paths = self.get_search_paths()
-
-        for search_path in search_paths:
-            candidate_path: Path = (search_path / from_file).resolve().absolute()
-            if candidate_path.exists():
-                break
-        else:
-            raise errors.AtoImportNotFoundError.from_ctx(  # pylint: disable=raise-missing-from
-                ctx, f"File '{from_file}' not found."
-            )
-
-        imports = {}
-        for _what_ref in what_refs:
-            if not _what_ref:
-                _errors.append(
-                    errors.AtoError(
-                        "Expected a name or attribute to import after 'import'"
-                    )
-                )
-
-            if _what_ref == "*":
-                # import everything
-                raise NotImplementedError("import *")
-
-            import_addr = address.add_entries(str(candidate_path), _what_ref)
-
-            imports[_what_ref] = Import(
-                src_ctx=ctx,
-                obj_addr=import_addr,
-            )
-
-        return KeyOptMap(KeyOptItem.from_kv(k, v) for k, v in imports.items())
-
-    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> KeyOptMap:
-        """
-        Updated import statement: from "abcd.ato" import xyz
-        """
-        from_file: str = self.visitString(ctx.string())
-        what_refs = [
-            self.visit_ref_helper(name_of_attr) for name_of_attr in ctx.name_or_attr()
-        ]
-        return self._do_import(ctx, from_file, what_refs)
-
-    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> KeyOptMap:
-        """
-        DEPRECATED: import xyz from "abcd.ato"
-        """
-        from_file: str = self.visitString(ctx.string())
-        import_what_ref = self.visit_ref_helper(ctx.name_or_attr())
-        return self._do_import(ctx, from_file, [import_what_ref])
-
-    def visitBlocktype(self, ctx: ap.BlocktypeContext) -> Ref:
-        """Return the address of a block type."""
-        block_type_name = ctx.getText()
-        match block_type_name:
-            case "module":
-                return Ref.from_one("MODULE")
-            case "component":
-                return Ref.from_one("COMPONENT")
-            case "interface":
-                return Ref.from_one("INTERFACE")
-            case _:
-                raise errors.AtoError(f"Unknown block type '{block_type_name}'")
-
-    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext) -> KeyOptMap:
-        """TODO:"""
-        # TODO: we should check the validity of the replacement here
-
-        to_replace = self.visit_ref_helper(ctx.name_or_attr(0))
-        new_class = self.visit_ref_helper(ctx.name_or_attr(1))
-
-        replacement = Replacement(
-            src_ctx=ctx,
-            new_super_ref=new_class,
-        )
-
-        return KeyOptMap.from_kv(to_replace, replacement)
-
-    def visitSimple_stmt(
-        self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
-        """We have to be selective here to deal with the ignored children properly."""
-        if ctx.retype_stmt() or ctx.import_stmt() or ctx.dep_import_stmt():
-            return super().visitSimple_stmt(ctx)
-
-        return KeyOptMap.empty()
-
-
-def lookup_class_in_closure(context: ClassDef, ref: Ref) -> AddrStr:
-    """
-    This method finds an object in the closure of another object, traversing import statements.
-    """
-    assert context.closure is not None
-    for scope in context.closure:
-        obj_lead = scope.local_defs.get(ref[:1])
-        import_leads = {
-            imp_ref: imp
-            for imp_ref, imp in scope.imports.items()
-            if ref[0] == imp_ref[0]
-        }
-
-        if import_leads and obj_lead:
-            # TODO: improve error message with details about what items are conflicting
-            raise errors.AtoAmbiguousReferenceError.from_ctx(
-                scope.src_ctx, f"Name '{ref[0]}' is ambiguous in '{scope}'."
-            )
-
-        if obj_lead is not None:
-            if len(ref) > 1:
-                raise NotImplementedError
-            return obj_lead.address
-
-        if ref in scope.imports:
-            return scope.imports[ref].obj_addr
-
-    if ref in BUILTINS_BY_REF:
-        return BUILTINS_BY_REF[ref].address
-
-    raise errors.AtoKeyError.from_ctx(
-        context.src_ctx, f"Couldn't find '{ref}' in the scope of {context}"
-    )
-
-
-class BlockNotFoundError(errors.AtoKeyError):
+class BlockNotFoundError(errors.UserKeyError):
     """
     Raised when a block doesn't exist.
     """
 
 
-class Dizzy(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
+@dataclass
+class Context:
+    """~A metaclass to hold context/origin information on ato classes."""
+
+    @dataclass
+    class ImportPlaceholder:
+        ref: Ref
+        from_path: str
+        original_ctx: ParserRuleContext
+
+    # Location information re. the source of this module
+    file_path: Path | None
+
+    # Scope information
+    scope_ctx: ap.BlockdefContext | ap.File_inputContext
+    refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
+
+
+class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
-    Dizzy is responsible for creating object layers, mixing cement,
-    sand, aggregate, and water to create concrete.
-    Ref.: https://www.youtube.com/watch?v=drBge9JyloA
+    Wendy is Bob's business partner and fellow builder in the children's TV series
+    "Bob the Builder." She is a skilled construction worker who often manages the
+    business side of their building company while also participating in hands-on
+    construction work. Wendy is portrayed as capable, practical and level-headed,
+    often helping to keep projects organized and on track. She wears a green safety
+    helmet and work clothes, and is known for her competence in operating various
+    construction vehicles and equipment.
+
+    Wendy also knows where to find the best building supplies.
     """
 
-    def __init__(
-        self,
-        obj_def_getter: Callable[[AddrStr], ClassDef],
-    ) -> None:
-        self.obj_def_getter = obj_def_getter
-        self._output_cache: dict[AddrStr, ClassLayer] = {
-            k: v for k, v in BUILTINS_BY_ADDR.items()
-        }
-        self.class_def_scope: StackList[ClassDef] = StackList()
-        super().__init__()
-
-    def get_layer(self, addr: AddrStr) -> ClassLayer:
-        """Returns the ObjectLayer for a given address."""
-        if addr not in self._output_cache:
-            obj_def = self.obj_def_getter(addr)
-            obj = self.build_layer(obj_def)
-            assert isinstance(obj, ClassLayer)
-            self._output_cache[addr] = obj
-        try:
-            return self._output_cache[addr]
-        except KeyError as ex:
-            raise BlockNotFoundError(
-                f"No block named $addr in {address.get_file(addr)}", addr=addr
-            ) from ex
-
-    def _get_supers_layer(self, cls_def: ClassDef) -> Optional[ClassLayer]:
-        """Return the super object of a given object."""
-        if cls_def.super_ref is not None:
-            super_addr = lookup_class_in_closure(cls_def, cls_def.super_ref)
-            return self.get_layer(super_addr)
-        return None
-
-    def build_layer(self, cls_def: ClassDef) -> ClassLayer:
-        """Create an object layer from an object definition."""
-        ctx = cls_def.src_ctx
-        assert isinstance(ctx, (ap.File_inputContext, ap.BlockdefContext))
-
-        # NOTE: visiting the block here relies upon the fact that both
-        # file inputs and blocks have stmt children to be handled the same way.
-        if isinstance(ctx, ap.BlockdefContext):
-            ctx_with_stmts = ctx.block()
-        else:
-            ctx_with_stmts = ctx
-
-        with self.class_def_scope.enter(cls_def):
-            locals_ = self.visitBlock(ctx_with_stmts)
-
-        strainer = locals_.strain()
-
-        obj = ClassLayer(
-            src_ctx=ctx_with_stmts,  # here we save something that's "block-like"
-            obj_def=cls_def,
-            super=self._get_supers_layer(cls_def),
-        )
-
-        if strainer:
-            raise RuntimeError(
-                f"Unexpected items in ClassLayer locals: {', '.join(strainer)}"
+    def visitImport_stmt(
+        self, ctx: ap.Import_stmtContext
+    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Import_stmtContext]]:
+        if from_path := ctx.string():
+            lazy_imports = [
+                Context.ImportPlaceholder(
+                    ref=self.visitName_or_attr(name_or_attr),
+                    from_path=self.visitString(from_path),
+                    original_ctx=ctx,
+                )
+                for name_or_attr in ctx.name_or_attr()
+            ]
+            return KeyOptMap(
+                KeyOptItem.from_kv(li.ref, (li, ctx)) for li in lazy_imports
             )
 
-        return obj
+        else:
+            # Standard library imports are special, and don't require a from path
+            imports = []
+            for collector, name_or_attr in iter_through_errors(ctx.name_or_attr()):
+                with collector():
+                    ref = self.visitName_or_attr(name_or_attr)
+                    if len(ref) > 1:
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, "Standard library imports must be single-name"
+                        )
 
-    def visitFile_input(self, ctx: ap.File_inputContext) -> None:
-        """I'm not sure how we'd end up here, but if we do, don't go down here"""
-        raise RuntimeError("File inputs should not be visited")
+                    name = ref[0]
+                    if not hasattr(F, name) or not issubclass(
+                        getattr(F, name), (L.Module, L.ModuleInterface)
+                    ):
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, f"Unknown standard library module: '{name}'"
+                        )
 
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
-        """Don't go down blockdefs, they're just for defining objects."""
-        return NOTHING
+                    imports.append(KeyOptItem.from_kv(ref, (getattr(F, name), ctx)))
+
+            return KeyOptMap(imports)
+
+    # TODO: @v0.4 remove this deprecated import form
+    _suppressor_visitDep_import_stmt = suppress_after_count(
+        3,
+        DeprecatedException,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
+
+    def visitDep_import_stmt(
+        self, ctx: ap.Dep_import_stmtContext
+    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Dep_import_stmtContext]]:
+        lazy_import = Context.ImportPlaceholder(
+            ref=self.visitName_or_attr(ctx.name_or_attr()),
+            from_path=self.visitString(ctx.string()),
+            original_ctx=ctx,
+        )
+        with downgrade(DeprecatedException), self._suppressor_visitDep_import_stmt:
+            raise DeprecatedException.from_ctx(
+                ctx,
+                "`import <something> from <path>` is deprecated and"
+                " will be removed in a future version. Use "
+                f"`from {ctx.string().getText()} import {ctx.name_or_attr().getText()}`"
+                " instead.",
+            )
+        return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
+
+    def visitBlockdef(
+        self, ctx: ap.BlockdefContext
+    ) -> KeyOptMap[tuple[ap.BlockdefContext, ap.BlockdefContext]]:
+        ref = Ref.from_one(self.visitName(ctx.name()))
+        return KeyOptMap.from_kv(ref, (ctx, ctx))
 
     def visitSimple_stmt(
-        self, ctx: ap.Simple_stmtContext
-    ) -> Iterable[_Sentinel | KeyOptItem]:
-        """We have to be selective here to deal with the ignored children properly."""
-        return (NOTHING,)
+        self, ctx: ap.Simple_stmtContext | Any
+    ) -> (
+        KeyOptMap[
+            tuple[Context.ImportPlaceholder | ap.BlockdefContext, ParserRuleContext]
+        ]
+        | type[NOTHING]
+    ):
+        if ctx.import_stmt() or ctx.dep_import_stmt():
+            return super().visitChildren(ctx)
+        return NOTHING
+
+    # TODO: @v0.4: remove this shimming
+    @staticmethod
+    def _find_shim(file_path: Path | None, ref: Ref) -> tuple[Type[L.Node], str] | None:
+        if file_path is None:
+            return None
+
+        import_addr = address.AddrStr.from_parts(file_path, str(Ref(ref)))
+
+        for shim_addr in shim_map:
+            if import_addr.endswith(shim_addr):
+                return shim_map[shim_addr]
+
+        return None
+
+    @classmethod
+    def survey(
+        cls, file_path: Path | None, ctx: ap.BlockdefContext | ap.File_inputContext
+    ) -> Context:
+        surveyor = cls()
+        context = Context(file_path=file_path, scope_ctx=ctx, refs={})
+        for ref, (item, item_ctx) in surveyor.visit(ctx):
+            assert isinstance(item_ctx, ParserRuleContext)
+            if ref in context.refs:
+                # Downgrade the error in case we're shadowing things
+                # Not limiting the number of times we show this warning
+                # because they're pretty important and Wendy is well cached
+                with downgrade(errors.UserKeyError):
+                    raise errors.UserKeyError.from_ctx(
+                        item_ctx,
+                        f"`{ref}` already declared. Shadowing original."
+                        " In the future this may be an error",
+                    )
+
+            # TODO: @v0.4: remove this shimming
+            if shim := cls._find_shim(context.file_path, ref):
+                shim_cls, preferred = shim
+
+                if hasattr(item_ctx, "name"):
+                    dep_ctx = item_ctx.name()  # type: ignore
+                elif hasattr(item_ctx, "name_or_attr"):
+                    dep_ctx = item_ctx.name_or_attr()  # type: ignore
+                else:
+                    dep_ctx = item_ctx
+
+                # TODO: @v0.4 increase the level of this to WARNING
+                # when there's an alternative
+                with downgrade(DeprecatedException, to_level=logging.DEBUG):
+                    raise DeprecatedException.from_ctx(
+                        dep_ctx,
+                        f"`{ref}` is deprecated and will be removed in a future"
+                        f" version. Use `{preferred}` instead.",
+                    )
+
+                context.refs[ref] = shim_cls
+            else:
+                context.refs[ref] = item
+
+        return context
+
+
+def _is_int(name: str) -> bool:
+    try:
+        int(name)
+    except ValueError:
+        return False
+    return True
 
 
 @contextmanager
-def _translate_addr_key_errors(ctx: ParserRuleContext):
+def ato_error_converter():
     try:
         yield
-    except KeyError as ex:
-        addr = ex.args[0]
-        terse_addr = address.get_instance_section(addr)
-        raise errors.AtoKeyError.from_ctx(ctx, f"Couldn't find {terse_addr}") from ex
+    except NodeException as ex:
+        if from_dsl_ := ex.node.try_get_trait(from_dsl):
+            raise errors.UserException.from_ctx(from_dsl_.src_ctx, str(ex)) from ex
+        else:
+            raise ex
 
 
-def _src_location_str(ctx: ParserRuleContext) -> str:
-    """Return a string representation of a source location."""
-    file, line, col, *_ = get_src_info_from_ctx(ctx)
-    return f"{file}:{line}:{col}"
+@contextmanager
+def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleContext]):
+    try:
+        yield
+    except errors.UserException as ex:
+        if ex.origin is None:
+            ex.origin = ctx
+            # only attach traceback if we're also setting the origin
+            if ex.traceback is None:
+                ex.traceback = traceback
+        raise ex
 
 
-class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
-    """Lofty's job is to walk orthogonally down (or really up) the instance tree."""
+_declaration_domain_to_unit = {
+    "resistance": P.ohm,
+    "capacitance": P.farad,
+    "inductance": P.henry,
+    "voltage": P.volt,
+    "current": P.ampere,
+    "power": P.watt,
+    "frequency": P.hertz,
+}
 
-    def __init__(
-        self,
-        obj_layer_getter: Callable[[AddrStr], ClassLayer],
-    ) -> None:
-        self._output_cache: dict[AddrStr, Instance] = {}
-        # known replacements are represented as the reference of the instance
-        # to be replaced, and a tuple containing the length of the ref of the
-        # thing that called for that replacement, and the object that will replace it
-        self._known_replacements: dict[AddrStr, AddrStr] = {}
-        self.obj_layer_getter = obj_layer_getter
 
-        self._instance_addr_stack: StackList[AddrStr] = StackList()
-        self._class_addr_stack: StackList[AddrStr] = StackList()
+class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
+    """
+    Bob is a general contractor who runs his own construction company in the town
+    of Fixham Harbour (in earlier episodes, he was based in Bobsville). Recognizable
+    by his blue jeans, checked shirt, yellow hard hat, and tool belt, Bob is known
+    for his positive catchphrase "Can we fix it? Yes, we can!" He's portrayed as a
+    friendly, optimistic problem-solver who takes pride in helping his community
+    through various building and repair projects. Bob works closely with his team
+    of anthropomorphic construction vehicles and his business partner Wendy,
+    tackling each construction challenge with enthusiasm and determination. His
+    character embodies values of teamwork, perseverance, and taking pride in one's
+    work.
+    """
+
+    def __init__(self) -> None:
         super().__init__()
+        self._scopes = FuncDict[ParserRuleContext, Context]()
+        self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
+        self._node_stack = StackList[L.Node]()
+        self._traceback_stack = StackList[ParserRuleContext]()
+        # TODO: add tracebacks if we keep this
+        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
+        self._param_assignments = FuncDict[
+            Parameter,
+            tuple[
+                Range | Single | None,
+                ParserRuleContext | None,
+                Sequence[ParserRuleContext] | None,
+            ],
+        ]()
+        self.search_paths: list[os.PathLike] = []
+
+        # Keeps track of the nodes whose construction failed,
+        # so we don't report dud key errors when it was a higher failure
+        # that caused the node not to exist
+        self._failed_nodes = FuncDict[L.Node, set[str]]()
+
+    def build_ast(
+        self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
+    ) -> L.Node:
+        """Build a Module from an AST and reference."""
+        file_path = self._sanitise_path(file_path) if file_path else None
+        context = self._index_ast(ast, file_path)
+        return self._build(context, ref)
+
+    def build_file(self, path: Path, ref: Ref) -> L.Node:
+        """Build a Module from a file and reference."""
+        context = self._index_file(self._sanitise_path(path))
+        return self._build(context, ref)
 
     @property
-    def _current_instance(self) -> Instance:
-        """Return the current instance."""
-        return self._output_cache[self._instance_addr_stack.top]
+    def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
+        """Conceptually similar to `sys.modules`"""
 
-    def get_instance(self, addr: AddrStr) -> Instance:
-        """Return an instance object represented by the given address."""
-        if addr in self._output_cache:
-            return self._output_cache[addr]
+        # FIXME: this feels like a shit way to get addresses of the imported modules
+        def _get_addr(ctx: ParserRuleContext):
+            ref = tuple()
+            ctx_ = ctx
+            while ctx_ not in self._scopes:
+                if isinstance(ctx_, ap.BlockdefContext):
+                    ref = (ctx_.name().getText(),) + ref
+                ctx_ = ctx_.parentCtx
+                if ctx_ is None:
+                    return None
 
-        if address.get_instance_section(addr):
-            # Trigger build of the tree above the instance
-            self.get_instance(address.get_entry(addr))
+            return address.AddrStr.from_parts(
+                self._scopes[ctx_].file_path, str(Ref(ref))
+            )
 
-        obj_layer = self.obj_layer_getter(addr)
-        self.build_instance(addr, obj_layer)
-        assert isinstance(self._output_cache[addr], Instance)
+        return {
+            addr: cls
+            for ctx, cls in self._python_classes.items()
+            if (addr := _get_addr(ctx)) is not None
+        }
 
-        return self._output_cache[addr]
-
-    @contextmanager
-    def apply_replacements_from_objs(
-        self, objs: Iterable[ClassLayer]
-    ) -> Iterable[AddrStr]:
-        """
-        Apply the replacements defined in the given objects,
-        returning which replacements were applied
-        """
-        commanded_replacements = []
-
-        for obj in objs:
-            for ref, replacement in obj.obj_def.replacements.items():
-                to_be_replaced_addr = address.add_instances(
-                    self._instance_addr_stack.top, ref
-                )
-                if to_be_replaced_addr not in self._known_replacements:
-                    replace_with_addr = lookup_class_in_closure(
-                        obj.obj_def,
-                        replacement.new_super_ref,
-                    )
-
-                    self._known_replacements[to_be_replaced_addr] = replace_with_addr
-                    commanded_replacements.append(to_be_replaced_addr)
+    def _build(self, context: Context, ref: Ref) -> L.Node:
+        if ref not in context.refs:
+            raise errors.UserKeyError.from_ctx(
+                context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
+            )
         try:
-            yield
+            class_ = self._get_referenced_class(context.scope_ctx, ref)
+            if not isinstance(class_, ap.BlockdefContext):
+                raise errors.UserNotImplementedError(
+                    "Can't initialize a fabll directly like this"
+                )
+            with self._traceback_stack.enter(class_.name()):
+                with self._init_node(class_) as node:
+                    node.add(F.is_app_root())
+                return node
+        except* SkipPriorFailedException:
+            raise errors.UserException("Build failed")
         finally:
-            for ref in commanded_replacements:
-                self._known_replacements.pop(ref)
+            self._finish()
 
-    def check_name_uniqueness(self, name: str, current_scope: Instance):
-        """Check if the given name is unique within the current scope."""
-        if current_scope is None:
-            # If there's no current scope, we're at a global level where the check might not be applicable
-            return
-        if name in current_scope.children:
-            raise errors.AtoError(
-                f"Name '{name}' is already used in this scope. Address: {current_scope.addr}"
+    # TODO: @v0.4 remove this deprecated import form
+    _suppressor_finish = suppress_after_count(
+        3,
+        errors.UserActionWithoutEffectError,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
+
+    def _finish(self):
+        with accumulate(
+            errors._BaseBaseUserException, SkipPriorFailedException
+        ) as ex_acc:
+            for param, (value, ctx, traceback) in self._param_assignments.items():
+                with ex_acc.collect(), ato_error_converter():
+                    if value is None:
+                        ex = errors.UserKeyError.from_ctx(
+                            ctx,
+                            f"Parameter `{param}` never assigned",
+                            traceback=traceback,
+                        )
+                        if param in self._promised_params:
+                            raise ex
+                        else:
+                            with (
+                                downgrade(
+                                    errors.UserActionWithoutEffectError,
+                                    to_level=logging.DEBUG,
+                                ),
+                                self._suppressor_finish,
+                            ):
+                                raise errors.UserActionWithoutEffectError.from_ctx(
+                                    ctx,
+                                    f"Parameter `{param}` declared but never assigned.",
+                                    traceback=traceback,
+                                )
+                            continue
+
+                    if param in self._promised_params:
+                        del self._promised_params[param]
+
+                    # Set final value of parameter
+                    assert isinstance(
+                        ctx, ParserRuleContext
+                    )  # Since value and ctx should be None together
+
+                    try:
+                        param.constrain_subset(value)
+                    except UnitCompatibilityError as ex:
+                        raise errors.UserTypeError.from_ctx(
+                            ctx, str(ex), traceback=traceback
+                        ) from ex
+
+            for param, ctxs in self._promised_params.items():
+                for ctx in ctxs:
+                    with ex_acc.collect():
+                        raise errors.UserKeyError.from_ctx(
+                            ctx, f"Attribute `{param}` referenced, but never assigned"
+                        )
+
+    @property
+    def _current_node(self) -> L.Node:
+        return self._node_stack[-1]
+
+    def get_traceback(self) -> Sequence[ParserRuleContext]:
+        """Return the current traceback, with sequential duplicates removed"""
+        # Use dict ordering guarantees and key uniqueness to remove duplicates
+        return list(dict.fromkeys(self._traceback_stack).keys())
+
+    @staticmethod
+    def _sanitise_path(path: os.PathLike) -> Path:
+        return Path(path).expanduser().resolve().absolute()
+
+    def _index_ast(
+        self, ast: ap.File_inputContext, file_path: Path | None = None
+    ) -> Context:
+        if ast in self._scopes:
+            return self._scopes[ast]
+
+        context = Wendy.survey(file_path, ast)
+        self._scopes[ast] = context
+        return context
+
+    def _index_file(self, file_path: Path) -> Context:
+        ast = parser.get_ast_from_file(file_path)
+        return self._index_ast(ast, file_path)
+
+    def _get_search_paths(self, context: Context) -> list[Path]:
+        search_paths = [Path(p) for p in self.search_paths]
+
+        if context.file_path is not None:
+            search_paths.insert(0, context.file_path.parent)
+
+        if config.has_project:
+            search_paths += [config.project.paths.src, config.project.paths.modules]
+
+        return search_paths
+
+    def _import_item(
+        self, context: Context, item: Context.ImportPlaceholder
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        # Build up search paths to check for the import in
+        # Iterate though them, checking if any contains the thing we're looking for
+        search_paths = self._get_search_paths(context)
+        for search_path in search_paths:
+            candidate_from_path = search_path / item.from_path
+            if candidate_from_path.exists():
+                break
+        else:
+            raise errors.UserFileNotFoundError.from_ctx(
+                item.original_ctx,
+                f"Can't find {item.from_path} in {", ".join(map(str, search_paths))}",
             )
 
-    def build_instance(
-        self,
-        new_addr: AddrStr,
-        super_obj: ClassLayer,
-        src_ctx: Optional[ParserRuleContext] = None,
-    ) -> None:
-        """Create an instance from a reference and a super object layer."""
-
-        if self._instance_addr_stack:
-            # eg. we're not to the root
-            parent_instance = self._output_cache[self._instance_addr_stack.top]
-        else:
-            # eg. we're at the root
-            parent_instance = None
-
-        instance_name = address.get_name(new_addr)
-        self.check_name_uniqueness(instance_name, parent_instance)
-
-        new_instance = Instance.from_super(
-            new_addr, super_obj, parent=parent_instance, src_ctx=src_ctx
-        )
-        self._output_cache[new_addr] = new_instance
-
-        if self._instance_addr_stack:
-            child_addr = address.get_name(new_addr)
-            parent_instance.children[child_addr] = new_instance
-
-        try:
-            with ExitStack() as stack:
-                stack.enter_context(self._instance_addr_stack.enter(new_addr))
-                stack.enter_context(
-                    self.apply_replacements_from_objs(new_instance.supers)
-                )
-                for super_obj_ in reversed(new_instance.supers):
-                    stack.enter_context(
-                        self._class_addr_stack.enter(super_obj_.address)
-                    )
-                    if super_obj_.src_ctx is None:
-                        # FIXME: this is currently the case for the builtins
-                        continue
-
-                    # visit the internals (eg. all the new statements, overrides etc...)
-                    # of the things we're inheriting from
-                    self.visitBlock(super_obj_.src_ctx)
-        except Exception:
-            if new_addr in self._output_cache:
-                del self._output_cache[new_addr]
-            raise
-
-    def visitBlockdef(self, ctx: ap.BlockdefContext) -> _Sentinel:
-        """Don't go down blockdefs, they're just for defining objects."""
-        return NOTHING
-
-    def handle_new_assignment(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
-        """Specifically handle "something = new XYZ" assignments."""
-        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
-
-        assigned_name: str = assigned_ref[-1]
-        assignable_ctx = ctx.assignable()
-        assert isinstance(assignable_ctx, ap.AssignableContext)
-
-        # FIXME: this is a giant fucking mess
-        new_stmt = assignable_ctx.new_stmt()
-        assert isinstance(new_stmt, ap.New_stmtContext)
-        if len(assigned_ref) != 1:
-            raise errors.AtoError(
-                "Cannot assign a new object to a multi-part reference"
-            )
-
-        new_class_ref = self.visitName_or_attr(new_stmt.name_or_attr())
-
-        new_addr = address.add_instance(self._instance_addr_stack.top, assigned_name)
-
-        # Figure out what class to create the new instance from
-        if new_addr in self._known_replacements:
-            actual_super = self.obj_layer_getter(self._known_replacements[new_addr])
-        else:
+        from_path = self._sanitise_path(candidate_from_path)
+        if from_path.suffix == ".py":
             try:
-                current_obj_def = self.obj_layer_getter(
-                    self._class_addr_stack.top
-                ).obj_def
-                new_class_addr = lookup_class_in_closure(current_obj_def, new_class_ref)
-            except KeyError as ex:
-                raise errors.AtoKeyError.from_ctx(
-                    ctx, f"Couldn't find '{new_class_ref}'"
+                node = import_from_path(from_path)
+            except FileNotFoundError as ex:
+                raise errors.UserImportNotFoundError.from_ctx(
+                    item.original_ctx, str(ex)
                 ) from ex
 
-            try:
-                actual_super = self.obj_layer_getter(new_class_addr)
-            except (BlockNotFoundError, errors.AtoFileNotFoundError) as ex:
-                ex.set_src_from_ctx(ctx)
-                raise ex
+            for ref in item.ref:
+                try:
+                    node = getattr(node, ref)
+                except AttributeError as ex:
+                    raise errors.UserKeyError.from_ctx(
+                        item.original_ctx, f"No attribute `{ref}` found on {node}"
+                    ) from ex
 
-        # Create and register the new instance to the output cache
-        self.build_instance(new_addr, actual_super, ctx)
-        return KeyOptMap.empty()
+            assert isinstance(node, type) and issubclass(node, L.Node)
+            return node
 
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext) -> KeyOptMap:
-        """Handle declaration statements."""
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
-            raise errors.AtoSyntaxError(
-                f"Can't declare fields in a nested object {assigned_value_ref}"
+        elif from_path.suffix == ".ato":
+            context = self._index_file(from_path)
+            if item.ref not in context.refs:
+                raise errors.UserKeyError.from_ctx(
+                    item.original_ctx, f"No declaration of `{item.ref}` in {from_path}"
+                )
+            node = context.refs[item.ref]
+
+            if isinstance(node, Context.ImportPlaceholder):
+                raise errors.UserTypeError.from_ctx(
+                    item.original_ctx,
+                    "Importing a import is not supported",
+                )
+
+            assert (
+                isinstance(node, type)
+                and issubclass(node, L.Node)
+                or isinstance(node, ap.BlockdefContext | ap.File_inputContext)
             )
-        assigned_name = assigned_value_ref[0]
-        assignements = self._output_cache[self._instance_addr_stack.top].assignments[
-            assigned_name
-        ]
-        if assignements and assignements[0].value is not None:
-            errors.AtoError.from_ctx(
-                ctx, f"Field '{assigned_name}' already declared. Ignoring..."
-            ).log(to_level=logging.WARNING)
-            return KeyOptMap.empty()
+            return node
 
-        assignment = Assignment(
-            src_ctx=ctx,
-            name=assigned_value_ref[0],
-            value=None,
-            given_type=self._get_type_info(ctx),
-            value_is_derived=False,
+        else:
+            raise errors.UserImportNotFoundError.from_ctx(
+                item.original_ctx, f"Can't import file type {from_path.suffix}"
+            )
+
+    def _get_referenced_class(
+        self, ctx: ParserRuleContext, ref: Ref
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        """
+        Returns the class / object referenced by the given ref,
+        based on Bob's current context. The contextual nature
+        of this means that it's only useful during the build process.
+        """
+        # No change in position from the current context
+        # return self, eg the current parser context
+        if ref == tuple():
+            if isinstance(ctx, ap.BlockdefContext):
+                return ctx
+            else:
+                raise ValueError(f"Can't get class `{ref}` from {ctx}")
+
+        # Ascend the tree until we find a scope that has the ref within it
+        ctx_ = ctx
+        while ctx_ not in self._scopes:
+            if ctx_.parentCtx is None:
+                raise ValueError(f"No scope found for `{ref}`")
+            ctx_ = ctx_.parentCtx
+
+        context = self._scopes[ctx_]
+
+        # FIXME: there are more cases to check here,
+        # eg. if we have part of a ref resolved
+        if ref not in context.refs:
+            raise errors.UserKeyError.from_ctx(
+                ctx, f"No class or block definition found for `{ref}`"
+            )
+
+        item = context.refs[ref]
+        # Ensure the item is resolved, if not already
+        if isinstance(item, Context.ImportPlaceholder):
+            # TODO: search path for these imports
+            item = self._import_item(context, item)
+            context.refs[ref] = item
+
+        return item
+
+    @staticmethod
+    def get_node_attr(node: L.Node, name: str) -> L.Node:
+        if _is_int(name):
+            name = f"_{name}"
+
+        if has_attr_or_property(node, name):
+            # Build-time attributes are attached as real attributes
+            return getattr(node, name)
+        elif name in node.runtime:
+            # Runtime attributes are attached as runtime attributes
+            return node.runtime[name]
+        else:
+            # Wah wah wah - we don't know what this is
+            raise AttributeError(name=name, obj=node)
+
+    def _get_referenced_node(self, ref: Ref, ctx: ParserRuleContext) -> L.Node:
+        node = self._current_node
+        for i, name in enumerate(ref):
+            # Shim integer names to make valid python identifiers
+            if _is_int(name):
+                name = f"_{name}"
+
+            try:
+                node = self.get_node_attr(node, name)
+            except AttributeError as ex:
+                if name in self._failed_nodes.get(node, set()):
+                    raise SkipPriorFailedException() from ex
+                # Wah wah wah - we don't know what this is
+                if ref[:i]:
+                    msg = f"`{Ref(ref[:i])}` has no attribute `{name}`"
+                else:
+                    msg = f"No attribute `{name}`"
+                raise errors.UserKeyError.from_ctx(
+                    ctx, msg, traceback=self.get_traceback()
+                ) from ex
+
+        return node
+
+    def _try_get_referenced_node(
+        self, ref: Ref, ctx: ParserRuleContext
+    ) -> L.Node | None:
+        try:
+            return self._get_referenced_node(ref, ctx)
+        except errors.UserKeyError:
+            return None
+
+    def _new_node(
+        self,
+        item: ap.BlockdefContext | Type[L.Node],
+        promised_supers: list[ap.BlockdefContext],
+    ) -> tuple[L.Node, list[ap.BlockdefContext]]:
+        """
+        Kind of analogous to __new__ in Python, except that it's a factory
+
+        Descends down the class hierarchy until it finds a known base class.
+        As it descends, it logs all superclasses it encounters, as `promised_supers`.
+        These are accumulated lowest (base-class) to highest (what was initialised).
+
+        Once a base class is found, it creates a new class for each superclass that
+        isn't already known, attaching the __atopile_src_ctx__ attribute to the new
+        class.
+        """
+        if isinstance(item, type) and issubclass(item, L.Node):
+            super_class = item
+            for super_ctx in promised_supers:
+                if super_ctx in self._python_classes:
+                    super_class = self._python_classes[super_ctx]
+                    continue
+
+                assert issubclass(super_class, L.Node)
+
+                # Create a new type with a more descriptive name
+                type_name = super_ctx.name().getText()
+                type_qualname = f"{super_class.__module__}.{type_name}"
+
+                super_class = type(
+                    type_name,  # Class name
+                    (super_class,),  # Base classes
+                    {
+                        "__module__": super_class.__module__,
+                        "__qualname__": type_qualname,
+                        "__atopile_src_ctx__": super_ctx,
+                    },
+                )
+
+                self._python_classes[super_ctx] = super_class
+
+            assert issubclass(super_class, L.Node)
+            return super_class(), promised_supers
+
+        if isinstance(item, ap.BlockdefContext):
+            # Find the superclass of the new node, if there's one defined
+            block_type = item.blocktype()
+            if super_ctx := item.blockdef_super():
+                super_ref = self.visitName_or_attr(super_ctx.name_or_attr())
+                # Create a base node to build off
+                base_class = self._get_referenced_class(item, super_ref)
+            else:
+                # Create a shell of base-node to build off
+                assert isinstance(block_type, ap.BlocktypeContext)
+                if block_type.INTERFACE():
+                    base_class = L.ModuleInterface
+                elif block_type.COMPONENT():
+                    base_class = L.Module
+                elif block_type.MODULE():
+                    base_class = L.Module
+                else:
+                    raise ValueError(f"Unknown block type `{block_type.getText()}`")
+
+            # Descend into building the superclass. We've got no information
+            # on when the super-chain will be resolved, so we need to promise
+            # that this current blockdef will be visited as part of the init
+            result = self._new_node(
+                base_class,
+                promised_supers=[item] + promised_supers,
+            )
+
+            return result
+
+        # This should never happen
+        raise ValueError(f"Unknown item type `{item}`")
+
+    @contextmanager
+    def _init_node(
+        self, node_type: ap.BlockdefContext | Type[L.Node]
+    ) -> Generator[L.Node, None, None]:
+        """Kind of analogous to __init__ in Python, except that it's a factory"""
+        new_node, promised_supers = self._new_node(
+            node_type,
+            promised_supers=[],
         )
 
-        assignements.appendleft(assignment)
+        # Shim on component and module classes defined in ato
+        # Do not shim fabll modules, or interfaces
+        if isinstance(node_type, ap.BlockdefContext):
+            if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
+                # Some shims add the trait themselves
+                if not new_node.has_trait(has_ato_cmp_attrs):
+                    new_node.add(has_ato_cmp_attrs())
 
-        return KeyOptMap.empty()
+        yield new_node
 
-    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext) -> KeyOptMap:
+        with self._node_stack.enter(new_node):
+            for super_ctx in promised_supers:
+                # TODO: this would be better if we had the
+                # "from xyz" super in the traceback too
+                with self._traceback_stack.enter(super_ctx.name()):
+                    self.visitBlock(super_ctx.block())
+
+    def _get_or_promise_param(
+        self, node: L.Node, name: str, src_ctx: ParserRuleContext
+    ) -> Parameter:
+        """
+        Get a param from a node. If it doesn't exist, create it and promise to assign
+        it later. Used in forward-declaration.
+        """
+        try:
+            node = self.get_node_attr(node, name)
+        except AttributeError as ex:
+            if name in self._failed_nodes.get(node, set()):
+                raise SkipPriorFailedException() from ex
+            # Wah wah wah - we don't know what this is
+            raise errors.UserNotImplementedError.from_ctx(
+                src_ctx,
+                f"Parameter `{name}` not found and"
+                " forward-declared params are not yet implemented",
+                traceback=self.get_traceback(),
+            ) from ex
+
+        assert isinstance(node, Parameter)
+        return node
+
+    def _ensure_param(
+        self,
+        node: L.Node,
+        name: str,
+        unit: UnitType,
+        src_ctx: ParserRuleContext,
+    ) -> Parameter:
+        """
+        Ensure a node has a param with a given name
+        If it already exists, check the unit is compatible and return it
+        """
+        try:
+            param = self.get_node_attr(node, name)
+        except AttributeError:
+            # Here we attach only minimal information, so we can override it later
+            param = node.add(
+                Parameter(units=unit, domain=L.Domains.Numbers.REAL()), name=name
+            )
+        else:
+            if not isinstance(param, Parameter):
+                raise errors.UserTypeError.from_ctx(
+                    src_ctx,
+                    f"Cannot assign a parameter to `{name}` on `{node}` because its"
+                    f" type is `{param.__class__.__name__}`",
+                    traceback=self.get_traceback(),
+                )
+
+        if not param.units.is_compatible_with(unit):
+            raise errors.UserIncompatibleUnitError.from_ctx(
+                src_ctx,
+                f"Given units ({unit}) are incompatible"
+                f" with existing units ({param.units}).",
+                traceback=self.get_traceback(),
+            )
+
+        return param
+
+    def _record_failed_node(self, node: L.Node, name: str):
+        self._failed_nodes.setdefault(node, set()).add(name)
+
+    # TODO: @v0.4 remove this deprecated import form
+    _suppressor_visitAssign_stmt = suppress_after_count(
+        5,
+        errors.UserException,
+        logger=logger,
+        suppression_warning="Suppressing further warnings of this type",
+    )
+
+    def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
         assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
 
         assigned_name: str = assigned_ref[-1]
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
+        target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
 
         ########## Handle New Statements ##########
-        if assignable_ctx.new_stmt():
-            return self.handle_new_assignment(ctx)
+        if new_stmt_ctx := assignable_ctx.new_stmt():
+            if len(assigned_ref) > 1:
+                raise errors.UserSyntaxError.from_ctx(
+                    ctx,
+                    f"Can't declare fields in a nested object `{assigned_ref}`",
+                    traceback=self.get_traceback(),
+                )
 
-        ########## Handle Actual Assignments ##########
-        # Figure out what Instance object the assignment is being made to
-        instance_addr_assigned_to = address.add_instances(
-            self._instance_addr_stack.top, assigned_ref[:-1]
-        )
-        with _translate_addr_key_errors(ctx):
-            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
+            assert isinstance(new_stmt_ctx, ap.New_stmtContext)
+            ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
 
-        # Find the class associated with the assignment
-        # FIXME: wait a second... class associated with the assignment?
-        # I'm unconvinced this makes sense.
-        # TODO: de-triplicate this
-        given_type = self._get_type_info(ctx)
+            try:
+                with self._traceback_stack.enter(new_stmt_ctx):
+                    with self._init_node(
+                        self._get_referenced_class(ctx, ref)
+                    ) as new_node:
+                        self._current_node.add(new_node, name=assigned_name)
+                        new_node.add(from_dsl(ctx))
+            except Exception:
+                # Not a narrower exception because it's often an ExceptionGroup
+                self._record_failed_node(self._current_node, assigned_name)
+                raise
 
-        # TODO: enforce this more strongly: https://github.com/atopile/atopile/issues/433
-        if (
-            len(assigned_ref) > 1
-            and assigned_name not in instance_assigned_to.assignments
-        ):
-            # Raise a warning for now. Enforce this strongly if it's a real issue.
-            errors.ImplicitDeclarationFutureDeprecationWarning.from_ctx(
+            return NOTHING
+
+        ########## Handle Regular Assignments ##########
+        value = self.visit(assignable_ctx)
+        if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
+            unit = HasUnit.get_units(value)
+            if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+                if not provided_unit.is_compatible_with(unit):
+                    raise errors.UserIncompatibleUnitError.from_ctx(
+                        ctx,
+                        f"Implied units ({unit}) are incompatible"
+                        f" with explicit units ({provided_unit}).",
+                        traceback=self.get_traceback(),
+                    )
+            param = self._ensure_param(target, assigned_name, unit, ctx)
+            self._param_assignments[param] = (value, ctx, self.get_traceback())
+
+        elif assignable_ctx.string() or assignable_ctx.boolean_():
+            # Check if it's a property or attribute that can be set
+            if has_instance_settable_attr(target, assigned_name):
+                setattr(target, assigned_name, value)
+            elif (
+                # If ModuleShims has a settable property, use it
+                hasattr(GlobalShims, assigned_name)
+                and isinstance(getattr(GlobalShims, assigned_name), property)
+                and getattr(GlobalShims, assigned_name).fset
+            ):
+                prop = cast_assert(property, getattr(GlobalShims, assigned_name))
+                assert prop.fset is not None
+                with (
+                    downgrade(DeprecatedException, errors.UserNotImplementedError),
+                    self._suppressor_visitAssign_stmt,
+                    _attach_ctx_to_ex(ctx, self.get_traceback()),
+                ):
+                    prop.fset(target, value)
+            else:
+                # Strictly, these are two classes of errors that could use independent
+                # suppression, but we'll just suppress them both collectively for now
+                with downgrade(errors.UserException), self._suppressor_visitAssign_stmt:
+                    raise errors.UserException.from_ctx(
+                        ctx,
+                        f"Ignoring assignment of `{value}` to `{assigned_name}` "
+                        f"on `{target}`",
+                        traceback=self.get_traceback(),
+                    )
+
+        else:
+            raise ValueError(f"Unhandled assignable type `{assignable_ctx.getText()}`")
+
+        return NOTHING
+
+    # TODO: @v0.4 remove this deprecated import form
+    _suppression_get_mif_and_warn_when_exists = suppress_after_count(
+        3,
+        errors.UserAlreadyExistsError,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
+
+    def _get_mif_and_warn_when_exists(
+        self, name: str, ctx: ParserRuleContext
+    ) -> L.ModuleInterface | None:
+        try:
+            mif = self.get_node_attr(self._current_node, name)
+        except AttributeError:
+            return None
+
+        if isinstance(mif, L.ModuleInterface):
+            with (
+                downgrade(errors.UserAlreadyExistsError),
+                self._suppression_get_mif_and_warn_when_exists,
+            ):
+                raise errors.UserAlreadyExistsError(
+                    f"`{name}` already exists; skipping."
+                )
+        else:
+            raise errors.UserTypeError.from_ctx(
                 ctx,
-                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}."
-                " Declaring implicitly for now, but in the future this may become an error...",
-            ).log(to_level=logging.WARNING)
+                f"`{name}` already exists.",
+                traceback=self.get_traceback(),
+            )
 
-        assignment = Assignment(
-            src_ctx=ctx,
-            name=assigned_name,
-            value=self.visitAssignable(assignable_ctx),
-            given_type=given_type,
-            value_is_derived=False,
+        return mif
+
+    def visitPindef_stmt(
+        self, ctx: ap.Pindef_stmtContext
+    ) -> KeyOptMap[L.ModuleInterface]:
+        if ctx.name():
+            name = self.visitName(ctx.name())
+        elif ctx.totally_an_integer():
+            name = f"{ctx.totally_an_integer().getText()}"
+        elif ctx.string():
+            name = self.visitString(ctx.string())
+        else:
+            raise ValueError(f"Unhandled pin name type `{ctx}`")
+
+        if mif := self._get_mif_and_warn_when_exists(name, ctx):
+            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+
+        if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
+            mif = shims_t.add_pin(name)
+            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+
+        raise errors.UserTypeError.from_ctx(
+            ctx,
+            f"Can't declare pins on components of type {self._current_node}",
+            traceback=self.get_traceback(),
         )
 
-        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
+    def visitSignaldef_stmt(
+        self, ctx: ap.Signaldef_stmtContext
+    ) -> KeyOptMap[L.ModuleInterface]:
+        name = self.visitName(ctx.name())
+        # TODO: @v0.4: remove this protection
+        if mif := self._get_mif_and_warn_when_exists(name, ctx):
+            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        return KeyOptMap.empty()
+        mif = self._current_node.add(F.Electrical(), name=name)
+        return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+
+    # TODO: @v0.4 remove this deprecated import form
+    _suppression_connect = suppress_after_count(
+        3,
+        DeprecatedException,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
+
+    def _connect(
+        self, a: L.ModuleInterface, b: L.ModuleInterface, ctx: ParserRuleContext | None
+    ):
+        """
+        FIXME: In ato, we allowed duck-typing of connectables
+        We need to reconcile this with the strong typing
+        in faebryk's connect method
+        For now, we'll attempt to connect by name, and log a deprecation
+        warning if that succeeds, else, re-raise the exception emitted
+        by the connect method
+        """
+        try:
+            # Try a proper connection
+            a.connect(b)
+        except NodeException as top_ex:
+            # If that fails, try connecting via duck-typing
+            for name, (c_a, c_b) in a.zip_children_by_name_with(
+                b, L.ModuleInterface
+            ).items():
+                if c_a is None:
+                    if has_attr_or_property(a, name):
+                        c_a = getattr(a, name)
+                    else:
+                        raise
+
+                if c_b is None:
+                    if has_attr_or_property(b, name):
+                        c_b = getattr(b, name)
+                    else:
+                        raise
+
+                try:
+                    self._connect(c_a, c_b, None)
+                except NodeException:
+                    raise top_ex
+
+            else:
+                # If we connect everything via name (and tried in the first place)
+                # then we're good to go! We just need to tell everyone to probably not
+                # do that in the future - and we're off!
+                if ctx is not None:  # Check that this is the top-level _connect call
+                    # TODO: @v0.4 increase the level of this to WARNING
+                    # when there's an alternative
+                    with (
+                        downgrade(DeprecatedException, to_level=logging.DEBUG),
+                        self._suppression_connect,
+                    ):
+                        raise DeprecatedException.from_ctx(
+                            ctx,
+                            f"Connected `{a}` to `{b}` by duck-typing."
+                            "They should be of the same type.",
+                            traceback=self.get_traceback(),
+                        )
+
+    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
+        """Connect interfaces together"""
+        connectables = [self.visitConnectable(c) for c in ctx.connectable()]
+        for err_cltr, (a, b) in iter_through_errors(
+            itertools.pairwise(connectables),
+            errors._BaseBaseUserException,
+            SkipPriorFailedException,
+        ):
+            with err_cltr():
+                self._connect(a, b, ctx)
+
+        return NOTHING
+
+    def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
+        """Return the address of the connectable object."""
+        if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
+            (_, mif), *_ = self.visit(def_stmt)
+            return mif
+        elif name_or_attr_ctx := ctx.name_or_attr():
+            ref = self.visitName_or_attr(name_or_attr_ctx)
+            node = self._get_referenced_node(ref, ctx)
+            assert isinstance(node, L.ModuleInterface)
+            return node
+        elif numerical_ctx := ctx.numerical_pin_ref():
+            pin_name = numerical_ctx.getText()
+            ref = Ref(pin_name.split("."))
+            node = self._get_referenced_node(ref, ctx)
+            assert isinstance(node, L.ModuleInterface)
+            return node
+        else:
+            raise ValueError(f"Unhandled connectable type `{ctx}`")
+
+    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
+        from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
+        from_node = self._get_referenced_node(from_ref, ctx)
+        if not isinstance(from_node, L.Module):
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't specialize `{from_node}`",
+                traceback=self.get_traceback(),
+            )
+
+        # TODO: consider extending this w/ the ability to specialize to an instance
+        with self._traceback_stack.enter(ctx):
+            with self._init_node(
+                self._get_referenced_class(ctx, to_ref)
+            ) as specialized_node:
+                from_node.add(specialized_node)
+        assert isinstance(specialized_node, L.Module)
+
+        try:
+            from_node.specialize(specialized_node)
+        except* L.Module.InvalidSpecializationError as ex:
+            raise errors.UserException.from_ctx(
+                ctx,
+                f"Can't specialize `{from_ref}` with `{to_ref}`:\n"
+                + "\n".join(f" - {e.message}" for e in ex.exceptions),
+                traceback=self.get_traceback(),
+            ) from ex
+        return NOTHING
+
+    def visitBlockdef(self, ctx: ap.BlockdefContext):
+        """Do nothing. Handled in Surveyor."""
+        return NOTHING
+
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext):
+        """Do nothing. Handled in Surveyor."""
+        return NOTHING
+
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext):
+        """Do nothing. Handled in Surveyor."""
+        return NOTHING
+
+    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext):
+        comparisons = [c for _, c in self.visitComparison(ctx.comparison())]
+        for cmp in comparisons:
+            if isinstance(cmp, BoolSet):
+                if not cmp:
+                    raise errors.UserAssertionError.from_ctx(
+                        ctx,
+                        "Assertion failed",
+                        traceback=self.get_traceback(),
+                    )
+            elif isinstance(cmp, ConstrainableExpression):
+                cmp.constrain()
+            else:
+                raise ValueError(f"Unhandled comparison type {type(cmp)}")
+        return NOTHING
+
+    # Returns fab_param.ConstrainableExpression or BoolSet
+    def visitComparison(
+        self, ctx: ap.ComparisonContext
+    ) -> KeyOptMap[ConstrainableExpression | BoolSet]:
+        exprs = [
+            self.visitArithmetic_expression(c)
+            for c in [ctx.arithmetic_expression()]
+            + [cop.getChild(0).arithmetic_expression() for cop in ctx.compare_op_pair()]
+        ]
+        op_strs = [
+            cop.getChild(0).getChild(0).getText() for cop in ctx.compare_op_pair()
+        ]
+
+        predicates = []
+        for (lh, rh), op_str in zip(itertools.pairwise(exprs), op_strs):
+            match op_str:
+                case "<":
+                    op = LessThan
+                case ">":
+                    op = GreaterThan
+                case "<=":
+                    op = LessOrEqual
+                case ">=":
+                    op = GreaterOrEqual
+                case "within":
+                    op = IsSubset
+                case _:
+                    # We shouldn't be able to get here with parseable input
+                    raise ValueError(f"Unhandled operator `{op_str}`")
+
+            # TODO: should we be reducing here to a series of ANDs?
+            predicates.append(op(lh, rh))
+
+        return KeyOptMap([KeyOptItem.from_kv(None, p) for p in predicates])
+
+    def visitArithmetic_expression(
+        self, ctx: ap.Arithmetic_expressionContext
+    ) -> Numeric:
+        if ctx.OR_OP() or ctx.AND_OP():
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                "Logical operations are not supported",
+                traceback=self.get_traceback(),
+            )
+            lh = self.visitArithmetic_expression(ctx.arithmetic_expression())
+            rh = self.visitSum(ctx.sum_())
+
+            if ctx.OR_OP():
+                return operator.or_(lh, rh)
+            else:
+                return operator.and_(lh, rh)
+
+        return self.visitSum(ctx.sum_())
+
+    def visitSum(self, ctx: ap.SumContext) -> Numeric:
+        if ctx.ADD() or ctx.MINUS():
+            lh = self.visitSum(ctx.sum_())
+            rh = self.visitTerm(ctx.term())
+
+            if ctx.ADD():
+                return operator.add(lh, rh)
+            else:
+                return operator.sub(lh, rh)
+
+        return self.visitTerm(ctx.term())
+
+    def visitTerm(self, ctx: ap.TermContext) -> Numeric:
+        if ctx.STAR() or ctx.DIV():
+            lh = self.visitTerm(ctx.term())
+            rh = self.visitPower(ctx.power())
+
+            if ctx.STAR():
+                return operator.mul(lh, rh)
+            else:
+                return operator.truediv(lh, rh)
+
+        return self.visitPower(ctx.power())
+
+    def visitPower(self, ctx: ap.PowerContext) -> Numeric:
+        if ctx.POWER():
+            base, exp = map(self.visitFunctional, ctx.functional())
+            return operator.pow(base, exp)
+        else:
+            return self.visitFunctional(ctx.functional(0))
+
+    def visitFunctional(self, ctx: ap.FunctionalContext) -> Numeric:
+        if ctx.name():
+            name = self.visitName(ctx.name())
+            operands = [self.visitBound(b) for b in ctx.bound()]
+            if name == "min":
+                return Min(*operands)
+            elif name == "max":
+                return Max(*operands)
+            else:
+                raise errors.UserNotImplementedError.from_ctx(
+                    ctx, f"Unknown function `{name}`"
+                )
+        else:
+            return self.visitBound(ctx.bound(0))
+
+    def visitBound(self, ctx: ap.BoundContext) -> Numeric:
+        return self.visitAtom(ctx.atom())
+
+    def visitAtom(self, ctx: ap.AtomContext) -> Numeric:
+        if ctx.name_or_attr():
+            ref = self.visitName_or_attr(ctx.name_or_attr())
+            target = self._get_referenced_node(Ref(ref[:-1]), ctx)
+            return self._get_or_promise_param(target, ref[-1], ctx)
+
+        elif ctx.literal_physical():
+            return self.visitLiteral_physical(ctx.literal_physical())
+
+        elif group_ctx := ctx.arithmetic_group():
+            assert isinstance(group_ctx, ap.Arithmetic_groupContext)
+            return self.visitArithmetic_expression(group_ctx.arithmetic_expression())
+
+        raise ValueError(f"Unhandled atom type `{ctx}`")
+
+    def _get_unit_from_ctx(self, ctx: ParserRuleContext) -> UnitType:
+        """Return a pint unit from a context."""
+        unit_str = ctx.getText()
+        try:
+            return P.Unit(unit_str)
+        except UndefinedUnitError as ex:
+            raise errors.UserUnknownUnitError.from_ctx(
+                ctx,
+                f"Unknown unit `{unit_str}`",
+                traceback=self.get_traceback(),
+            ) from ex
+
+    def visitLiteral_physical(
+        self, ctx: ap.Literal_physicalContext
+    ) -> Quantity_Interval:
+        """Yield a physical value from a physical context."""
+        if ctx.quantity():
+            qty = self.visitQuantity(ctx.quantity())
+            value = Single(qty)
+        elif ctx.bilateral_quantity():
+            value = self.visitBilateral_quantity(ctx.bilateral_quantity())
+        elif ctx.bound_quantity():
+            value = self.visitBound_quantity(ctx.bound_quantity())
+        else:
+            # this should be protected because it shouldn't be parseable
+            raise ValueError
+        return value
+
+    def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
+        """Yield a physical value from an implicit quantity context."""
+        raw: str = ctx.NUMBER().getText()
+        if raw.startswith("0x"):
+            value = int(raw, 16)
+        else:
+            value = float(raw)
+
+        # Ignore the positive unary operator
+        if ctx.MINUS():
+            value = -value
+
+        if unit_ctx := ctx.name():
+            unit = self._get_unit_from_ctx(unit_ctx)
+        else:
+            unit = dimensionless
+
+        return Quantity(value, unit)  # type: ignore
+
+    def visitBilateral_quantity(
+        self, ctx: ap.Bilateral_quantityContext
+    ) -> Quantity_Interval:
+        """Yield a physical value from a bilateral quantity context."""
+        nominal_qty = self.visitQuantity(ctx.quantity())
+
+        tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
+        tol_num = float(tol_ctx.NUMBER().getText())
+
+        # Handle proportional tolerances
+        if tol_ctx.PERCENT():
+            tol_divider = 100
+        elif tol_ctx.name() and tol_ctx.name().getText() == "ppm":
+            tol_divider = 1e6
+        else:
+            tol_divider = None
+
+        if tol_divider:
+            if nominal_qty == 0:
+                raise errors.UserException.from_ctx(
+                    tol_ctx,
+                    "Can't calculate tolerance percentage of a nominal value of zero",
+                    traceback=self.get_traceback(),
+                )
+
+            # Calculate tolerance value from percentage/ppm
+            tol_value = tol_num / tol_divider
+            return Range.from_center_rel(nominal_qty, tol_value)
+
+        # Ensure the tolerance has a unit
+        if tol_name := tol_ctx.name():
+            # In this case there's a named unit on the tolerance itself
+            tol_qty = tol_num * self._get_unit_from_ctx(tol_name)
+        elif nominal_qty.unitless:
+            tol_qty = tol_num * dimensionless
+        else:
+            tol_qty = tol_num * nominal_qty.units
+
+        # Ensure units on the nominal quantity
+        if nominal_qty.unitless:
+            nominal_qty = nominal_qty * HasUnit.get_units(tol_qty)
+
+        # If the nominal has a unit, then we rely on the ranged value's unit compatibility # noqa: E501  # pre-existing
+        if not nominal_qty.is_compatible_with(tol_qty):
+            raise errors.UserTypeError.from_ctx(
+                tol_name,
+                f"Tolerance unit ({HasUnit.get_units(tol_qty)}) is not dimensionally"
+                f" compatible with nominal unit ({nominal_qty.units})",
+                traceback=self.get_traceback(),
+            )
+
+        return Range.from_center(nominal_qty, tol_qty)
+
+    def visitBound_quantity(self, ctx: ap.Bound_quantityContext) -> Quantity_Interval:
+        """Yield a physical value from a bound quantity context."""
+
+        start, end = map(self.visitQuantity, ctx.quantity())
+
+        # If only one of them has a unit, take the unit from the one which does
+        if start.unitless and not end.unitless:
+            start = start * end.units
+        elif not start.unitless and end.unitless:
+            end = end * start.units
+
+        elif not start.is_compatible_with(end):
+            # If they've both got units, let the RangedValue handle
+            # the dimensional compatibility
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Tolerance unit ({end.units}) is not dimensionally"
+                f" compatible with nominal unit ({start.units})",
+                traceback=self.get_traceback(),
+            )
+
+        return Range(start, end)
+
+    # TODO: @v0.4 remove this deprecated import form
+    _suppressor_visitCum_assign_stmt = suppress_after_count(
+        3,
+        DeprecatedException,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
 
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
@@ -1367,75 +1488,42 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
-        assigned_name: str = assigned_ref[-1]
-
-        # Figure out what Instance object the assignment is being made to
-        instance_addr_assigned_to = address.add_instances(
-            self._instance_addr_stack.top, assigned_ref[:-1]
-        )
-        with _translate_addr_key_errors(ctx):
-            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
-
-        # TODO: de-Nplicate this
-        given_type = self._get_type_info(ctx)
-
-        if assigned_name in instance_assigned_to.assignments:
-            old_assignment = instance_assigned_to.assignments[assigned_name][0]
-            existing_value = old_assignment.value
-        elif len(assigned_ref) > 1:
-            raise errors.AtoError.from_ctx(
-                ctx,
-                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}.",
-            )
+        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
+        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
+        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            old_assignment = None
-            existing_value = None
+            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
 
-        assignable = self.visitAssignable(ctx.cum_assignable())
-        if existing_value is None:
-            if ctx.cum_operator().ADD_ASSIGN():
-                new_value = assignable
-            elif ctx.cum_operator().SUB_ASSIGN():
-                new_value = expressions.defer_operation_factory(
-                    operator.sub,
-                    RangedValue(0, 0, assignable.unit),
-                    assignable,
-                    src_ctx=ctx,
-                )
-            else:
-                raise ValueError("Unexpected cumulative operator")
+        value = self.visitCum_assignable(ctx.cum_assignable())
+
+        # HACK: we have no way to check by what operator
+        # the param is dynamically resolved
+        # For now we assume any dynamic trait is sufficient
+        if ctx.cum_operator().ADD_ASSIGN():
+            assignee.alias_is(value)
+        elif ctx.cum_operator().SUB_ASSIGN():
+            assignee.alias_is(-value)
         else:
-            if not isinstance(old_assignment, SumCumulativeAssignment):
-                raise errors.AtoError.from_ctx(
-                    ctx,
-                    f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
-                    " Cumulative assignments can only be made on top of other cumulative assignments,"
-                    " nothing or undefined values."
-                    f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
-                )
+            # Syntax should protect from this
+            raise ValueError(f"Unhandled set assignment operator {ctx}")
 
-            if ctx.cum_operator().ADD_ASSIGN():
-                new_value = expressions.defer_operation_factory(
-                    operator.add, existing_value, assignable
-                )
-            elif ctx.cum_operator().SUB_ASSIGN():
-                new_value = expressions.defer_operation_factory(
-                    operator.sub, existing_value, assignable
-                )
-            else:
-                raise ValueError("Unexpected cumulative operator")
+        # TODO: @v0.4 increase the level of this to WARNING
+        # when there's an alternative
+        with (
+            downgrade(DeprecatedException, to_level=logging.DEBUG),
+            self._suppressor_visitCum_assign_stmt,
+        ):
+            raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
+        return NOTHING
 
-        assignment = SumCumulativeAssignment(
-            src_ctx=ctx,
-            name=assigned_name,
-            value=new_value,
-            given_type=given_type,
-        )
-
-        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
-
-        return KeyOptMap.empty()
+    # TODO: @v0.4 remove this deprecated import form
+    _suppressor_visitSet_assign_stmt = suppress_after_count(
+        3,
+        DeprecatedException,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
 
     def visitSet_assign_stmt(self, ctx: ap.Set_assign_stmtContext):
         """
@@ -1444,395 +1532,89 @@ class Lofty(HandleStmtsFunctional, HandlesPrimaries, HandlesGetTypeInfo):
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-
-        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
-        assigned_name: str = assigned_ref[-1]
-
-        # Figure out what Instance object the assignment is being made to
-        instance_addr_assigned_to = address.add_instances(
-            self._instance_addr_stack.top, assigned_ref[:-1]
-        )
-        with _translate_addr_key_errors(ctx):
-            instance_assigned_to = self._output_cache[instance_addr_assigned_to]
-
-        # TODO: de-Nplicate this
-        given_type = self._get_type_info(ctx)
-
-        if assigned_name in instance_assigned_to.assignments:
-            old_assignment = instance_assigned_to.assignments[assigned_name][0]
-            existing_value = old_assignment.value
-        elif len(assigned_ref) > 1:
-            raise errors.AtoError.from_ctx(
-                ctx,
-                f"Field '{assigned_name}' not declared for {instance_addr_assigned_to}.",
-            )
+        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
+        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
+        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            old_assignment = None
-            existing_value = None
+            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
 
-        assignable = self.visitAssignable(ctx.cum_assignable())
-        # TODO: check unit compatibility w/ declaration
-        if existing_value is None:
-            if ctx.AND_ASSIGN():
-                anding = assignable
-                oring = None
-            elif ctx.OR_ASSIGN():
-                anding = None
-                oring = assignable
+        value = self.visitCum_assignable(ctx.cum_assignable())
+
+        if ctx.OR_ASSIGN():
+            assignee.constrain_superset(value)
+        elif ctx.AND_ASSIGN():
+            assignee.constrain_subset(value)
+        else:
+            # Syntax should protect from this
+            raise ValueError(f"Unhandled set assignment operator {ctx}")
+
+        with downgrade(DeprecatedException), self._suppressor_visitSet_assign_stmt:
+            if ctx.OR_ASSIGN():
+                subset = ctx.cum_assignable().getText()
+                superset = ctx.name_or_attr().getText()
             else:
-                raise ValueError("Unexpected cumulative operator")
+                subset = ctx.name_or_attr().getText()
+                superset = ctx.cum_assignable().getText()
+            raise DeprecatedException(
+                f"Set assignment of `{assignee}` is deprecated."
+                f' Use "assert `{subset}` within `{superset}` "instead.'
+            )
+        return NOTHING
 
+    def _try_get_unit_from_type_info(
+        self, ctx: ap.Type_infoContext | None
+    ) -> UnitType | None:
+        if ctx is None:
+            return None
+        unit_ctx: ap.Name_or_attrContext = ctx.name_or_attr()
+        # TODO: @v0.4.0: remove this shim
+        unit_ref = self.visitName_or_attr(unit_ctx)
+        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
+            unit = _declaration_domain_to_unit[unit_ref[0]]
+            # TODO: consider deprecating this
         else:
-            # No existing value
-            if not isinstance(old_assignment, SetCumulativeAssignment):
-                raise errors.AtoError.from_ctx(
+            unit = self._get_unit_from_ctx(ctx.name_or_attr())
+        return unit
+
+    # TODO: @v0.4 remove this deprecated import form
+    _suppressor_visitDeclaration_stmt = suppress_after_count(
+        3,
+        errors.UserKeyError,
+        logger=logger,
+        suppression_warning="Suppressing further warnings of this type",
+    )
+
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext):
+        """Handle declaration statements."""
+        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
+        if len(assigned_value_ref) > 1:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't declare fields in a nested object `{assigned_value_ref}`",
+                traceback=self.get_traceback(),
+            )
+
+        assigned_name = assigned_value_ref[0]
+        unit = self._try_get_unit_from_type_info(ctx.type_info())
+        assert unit is not None, "Type info should be enforced by the parser"
+
+        param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
+        if param in self._param_assignments:
+            with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
+                raise errors.UserKeyError.from_ctx(
                     ctx,
-                    f"Field '{assigned_name}' already defined for {instance_addr_assigned_to}."
-                    " Cumulative assignments can only be made on top of other set-cumulative"
-                    " assignments (&= or |=), nothing or undefined values.\n"
-                    f"Previously assigned at {_src_location_str(old_assignment.src_ctx)}",
+                    f"Ignoring declaration of `{assigned_name}` "
+                    "because it's already defined",
+                    traceback=self.get_traceback(),
                 )
-
-            assert isinstance(old_assignment, SetCumulativeAssignment)
-            if ctx.AND_ASSIGN():
-                if old_assignment.anding is None:
-                    anding = assignable
-                else:
-                    anding = expressions.defer_operation_factory(
-                        operator.and_, old_assignment.anding, assignable, src_ctx=ctx
-                    )
-                oring = old_assignment.oring
-            elif ctx.OR_ASSIGN():
-                anding = old_assignment.anding
-                if old_assignment.oring is None:
-                    oring = assignable
-                else:
-                    oring = expressions.defer_operation_factory(
-                        operator.or_, old_assignment.oring, assignable, src_ctx=ctx
-                    )
-            else:
-                raise ValueError("Unexpected cumulative operator")
-
-        if anding and oring:
-            new_value = expressions.defer_operation_factory(
-                operator.and_, anding, oring, src_ctx=ctx
-            )
-        elif anding:
-            new_value = anding
-        elif oring:
-            new_value = oring
         else:
-            raise ValueError("Unexpected cumulative operator")
+            self._param_assignments[param] = (None, ctx, self.get_traceback())
 
-        assignment = SetCumulativeAssignment(
-            src_ctx=ctx,
-            name=assigned_name,
-            value=new_value,
-            given_type=given_type,
-            anding=anding,
-            oring=oring,
-        )
+        return NOTHING
 
-        instance_assigned_to.assignments[assigned_name].appendleft(assignment)
-
-        return KeyOptMap.empty()
-
-    def visit_pin_or_signal_helper(
-        self, ctx: ap.Pindef_stmtContext | ap.Signaldef_stmtContext
-    ) -> AddrStr:
-        """This function makes a pin or signal instance and sticks it in the instance tree."""
-        # NOTE: name has to come first because both have names,
-        # but only pins have a "totally an integer"
-        if ctx.name():
-            name = ctx.name().getText()
-        elif ctx.totally_an_integer():
-            name = ctx.totally_an_integer().getText()
-        elif ctx.string():
-            name = self.visitString(ctx.string())
-        else:
-            raise TypeError
-
-        current_instance_addr = self._instance_addr_stack.top
-        current_instance = self._output_cache[current_instance_addr]
-        new_addr = address.add_instance(current_instance_addr, name)
-
-        super_ = PIN if isinstance(ctx, ap.Pindef_stmtContext) else SIGNAL
-
-        pin_or_signal = Instance.from_super(
-            src_ctx=ctx,
-            addr=new_addr,
-            super_=super_,
-            parent=current_instance,
-        )
-
-        self._output_cache[new_addr] = current_instance.children[name] = pin_or_signal
-
-        return new_addr
-
-    def visitPindef_stmt(self, ctx: ap.Pindef_stmtContext) -> KeyOptMap:
-        """TODO:"""
-        return self.visit_pin_or_signal_helper(ctx)
-
-    def visitSignaldef_stmt(self, ctx: ap.Signaldef_stmtContext) -> KeyOptMap:
-        """TODO:"""
-        return self.visit_pin_or_signal_helper(ctx)
-
-    def visitConnect_stmt(self, ctx: ap.Connect_stmtContext) -> KeyOptMap:
-        """
-        Connect interfaces together
-        """
-        source_instance = self.visitConnectable(ctx.connectable(0))
-        target_instance = self.visitConnectable(ctx.connectable(1))
-
-        link = Link(
-            src_ctx=ctx,
-            parent=self._current_instance,
-            source=source_instance,
-            target=target_instance,
-        )
-
-        # Ohhh boy. Let's see how this goes!!!
-        # Here we're entangling the interfaces' attributes
-        # TODO: we might want to do this recursively down the children. For another day
-        # The easy stuff first - these aren't in conflict
-        new_attrs = defaultdict(deque)
-        new_attrs.update(
-            {
-                attr: source_instance.assignments[attr]
-                for attr in set(source_instance.assignments)
-                - set(target_instance.assignments)
-            }
-        )
-        new_attrs.update(
-            {
-                attr: target_instance.assignments[attr]
-                for attr in set(target_instance.assignments)
-                - set(source_instance.assignments)
-            }
-        )
-
-        # Combine the common attributes
-        for attr in set(source_instance.assignments) & set(target_instance.assignments):
-            source_attr = source_instance.assignments[attr][0]
-            target_attr = target_instance.assignments[attr][0]
-
-            # If one of them is just a declaration, accept the other and move on.
-            # Implicitly works if they're both declarations too
-            if source_attr.value is None:
-                new_attrs[attr] = target_instance.assignments[attr]
-                continue
-            elif target_attr.value is None:
-                new_attrs[attr] = source_instance.assignments[attr]
-                continue
-
-            # If they're both cumulative assignments, combine them
-            if isinstance(source_attr, SumCumulativeAssignment) and isinstance(
-                target_attr, SumCumulativeAssignment
-            ):
-                new_value = expressions.defer_operation_factory(
-                    operator.add, source_attr.value, target_attr.value, src_ctx=ctx
-                )
-                new_attrs[attr] = deque(
-                    [
-                        SumCumulativeAssignment(
-                            src_ctx=ctx,
-                            name=attr,
-                            value=new_value,
-                            given_type=source_attr.given_type,  # TODO: make this narrowing instead
-                        )
-                    ]
-                )
-                continue
-            elif isinstance(source_attr, SetCumulativeAssignment) and isinstance(
-                target_attr, SetCumulativeAssignment
-            ):
-                if source_attr.anding and target_attr.anding:
-                    anding = expressions.defer_operation_factory(
-                        operator.and_,
-                        source_attr.anding,
-                        target_attr.anding,
-                        src_ctx=ctx,
-                    )
-                elif source_attr.anding:
-                    anding = source_attr.anding
-                elif target_attr.anding:
-                    anding = target_attr.anding
-                else:
-                    anding = None
-
-                if source_attr.oring and target_attr.oring:
-                    oring = expressions.defer_operation_factory(
-                        operator.or_, source_attr.oring, target_attr.oring, src_ctx=ctx
-                    )
-                elif source_attr.oring:
-                    oring = source_attr.oring
-                elif target_attr.oring:
-                    oring = target_attr.oring
-                else:
-                    oring = None
-
-                if anding and oring:
-                    new_value = expressions.defer_operation_factory(
-                        operator.and_, anding, oring, src_ctx=ctx
-                    )
-                elif anding:
-                    new_value = anding
-                elif oring:
-                    new_value = oring
-                else:
-                    raise ValueError("Unexpected cumulative operator")
-
-                new_attrs[attr] = deque(
-                    [
-                        SetCumulativeAssignment(
-                            src_ctx=ctx,
-                            name=attr,
-                            value=new_value,
-                            given_type=source_attr.given_type,
-                            anding=anding,
-                            oring=oring,
-                        )
-                    ]
-                )
-                continue
-
-            # If they're both regular assignments, well then fuck.
-            raise errors.AtoError.from_ctx(
-                ctx,
-                "The source and target separately defined"
-                f' values for the attribute "{attr}"\n'
-                f"Source: {_src_location_str(source_attr.src_ctx)}\n"
-                f"Target: {_src_location_str(target_attr.src_ctx)}\n",
-            )
-
-        # Finally assign them back to the instances
-        assign_back_to = (
-            source_instance.assignments_merged_with
-            | target_instance.assignments_merged_with
-        )
-        for instance in assign_back_to:
-            assert isinstance(instance, Instance)
-            instance.assignments = new_attrs
-            instance.assignments_merged_with = assign_back_to
-
-        self._current_instance.links.append(link)
-
-        return KeyOptMap.empty()
-
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> Instance:
-        """Return the address of the connectable object."""
-        if ctx.name_or_attr() or ctx.numerical_pin_ref():
-            ref = self.visit_ref_helper(ctx.name_or_attr() or ctx.numerical_pin_ref())
-            addr = address.add_instances(self._instance_addr_stack.top, ref)
-        elif ctx.pindef_stmt() or ctx.signaldef_stmt():
-            addr = self.visitChildren(ctx)
-        else:
-            raise ValueError("Unexpected context in visitConnectable")
-
-        with _translate_addr_key_errors(ctx):
-            instance = self._output_cache[addr]
-
-        # check the instance is either a signal, pin or interface
-        from atopile.instance_methods import match_interfaces, match_pins_and_signals
-
-        if not match_interfaces(addr) and not match_pins_and_signals(addr):
-            raise errors.AtoError.from_ctx(
-                ctx,
-                f"Cannot connect to {addr} because it's not a pin signal or interface",
-                title="Not connectable",
-            )
-
-        return instance
-
-    # The following statements are handled exclusively by Dizzy
-    def visitRetype_stmt(self, ctx: ap.Retype_stmtContext | Any):
-        return KeyOptMap.empty()
-
-    def visitImport_stmt(self, ctx: ap.Import_stmtContext | Any):
-        return KeyOptMap.empty()
-
-    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext | Any):
-        return KeyOptMap.empty()
-
-    #########
-
-    def visitAssert_stmt(self, ctx: ap.Assert_stmtContext) -> KeyOptMap:
-        """Handle assertion statements."""
-        comparison_ctx: ap.ComparisonContext = ctx.comparison()
-        roley = Roley(self._instance_addr_stack.top)
-
-        expressions_ = []
-        operators = []
-
-        def _add_expr_from_context(ctx: ap.Arithmetic_expressionContext):
-            expr = expressions.Expression.from_numericish(roley.visit(ctx))
-            # TODO: this shouldn't be attached to the expression like this
-            # as the only means to pretty-print them
-            expr.src_ctx = ctx
-            expressions_.append(expr)
-
-        _add_expr_from_context(comparison_ctx.arithmetic_expression())
-
-        for comp_ctx in comparison_ctx.compare_op_pair():
-            assert isinstance(comp_ctx, ap.Compare_op_pairContext)
-            if child_ctx := comp_ctx.lt_arithmetic_or():
-                operators.append("<")
-            elif child_ctx := comp_ctx.gt_arithmetic_or():
-                operators.append(">")
-            elif child_ctx := comp_ctx.lt_eq_arithmetic_or():
-                operators.append("<=")
-            elif child_ctx := comp_ctx.gt_eq_arithmetic_or():
-                operators.append(">=")
-            elif child_ctx := comp_ctx.in_arithmetic_or():
-                operators.append("within")
-            else:
-                raise ValueError
-            _add_expr_from_context(child_ctx.arithmetic_expression())
-
-        assert len(expressions_) == len(operators) + 1
-
-        assertions_ = [
-            Assertion(
-                src_ctx=ctx,
-                lhs=expressions_[i],
-                operator=operators[i],
-                rhs=expressions_[i + 1],
-            )
-            for i in range(len(operators))
-        ]
-
-        self._current_instance.assertions.extend(assertions_)
-
-        return KeyOptMap.empty()
-
-    def visitArithmetic_expression(self, ctx: ap.Arithmetic_expressionContext):
-        """
-        Handle arithmetic expressions, yielding either a numeric value or callable expression
-
-        This sits here because we need to defer these to Roley,
-        with the context of the current instance.
-        """
-        return Roley(self._instance_addr_stack.top).visitArithmetic_expression(ctx)
+    def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
+        return NOTHING
 
 
-def reset_caches(file: Path | str):
-    """Remove a file from the cache."""
-    file_str = str(file)
-
-    if file_str in parser.cache:
-        del parser.cache[file_str]
-
-    def _clear_cache(cache: dict[str, Any]):
-        # We do this in two steps to avoid modifying
-        # the dict while iterating over it
-        for addr in list(filter(lambda addr: addr.startswith(file_str), cache)):
-            del cache[addr]
-
-    _clear_cache(scoop._output_cache)
-    _clear_cache(dizzy._output_cache)
-    lofty._output_cache.clear()
-
-
-scoop = Scoop(parser.get_ast_from_file)
-dizzy = Dizzy(scoop.get_obj_def)
-lofty = Lofty(dizzy.get_layer)
+bob = Bob()

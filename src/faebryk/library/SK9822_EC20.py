@@ -12,7 +12,7 @@ class SK9822_EC20(Module):
     (RGB) driving intelligent control circuit and
     the light emitting circuit in one of the LED light
     source control. Products containing a signal
-    decoding module, data buffer, a built-in F.Constant
+    decoding module, data buffer, a built-in Constant
     current circuit and RC oscillator; CMOS, low
     voltage, low power consumption; 256 level grayscale
     PWM adjustment and 32 brightness adjustment;
@@ -52,6 +52,6 @@ class SK9822_EC20(Module):
         "https://datasheet.lcsc.com/lcsc/2110250930_OPSCO-Optoelectronics-SK9822-EC20_C2909059.pdf"
     )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.LED
     )

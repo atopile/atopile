@@ -53,16 +53,17 @@ def write_bom_jlcpcb(components: set[Module], path: Path) -> None:
         rows = [vars(line) for line in bomlines]
         rename_column(rows, "LCSC_Partnumber", "LCSC Part #")
 
-        writer = csv.DictWriter(
-            bom_csv,
-            fieldnames=list(rows[0].keys()),
-            delimiter=",",
-            quotechar='"',
-            quoting=csv.QUOTE_MINIMAL,
-            lineterminator="\n",
-        )
-        writer.writeheader()
-        writer.writerows(rows)
+        if rows:
+            writer = csv.DictWriter(
+                bom_csv,
+                fieldnames=list(rows[0].keys()),
+                delimiter=",",
+                quotechar='"',
+                quoting=csv.QUOTE_MINIMAL,
+                lineterminator="\n",
+            )
+            writer.writeheader()
+            writer.writerows(rows)
 
 
 def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
@@ -111,7 +112,7 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
             F.has_designator,
         )
     ):
-        logger.warning(f"Missing fields on component {cmp}")
+        logger.warning(f"Missing fields on component '{cmp}'")
         return
 
     properties = cmp.get_trait(F.has_descriptive_properties).get_properties()
@@ -125,7 +126,7 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
     designator = cmp.get_trait(F.has_designator).get_designator()
 
     if not footprint.has_trait(F.has_kicad_footprint):
-        logger.warning(f"Missing kicad footprint on component {cmp}")
+        logger.warning(f"Missing kicad footprint on component '{cmp}'")
         return
 
     if "LCSC" not in properties:

@@ -16,6 +16,7 @@ from faebryk.core.link import (
     LinkParent,
     LinkSibling,
 )
+from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
@@ -110,6 +111,19 @@ class TestGraph(unittest.TestCase):
             x.get_full_name(), "[*][0-9A-F]{4}.i0.i1.i2.i3.i4.i5.i6.i7.i8.i9"
         )
 
+    def test_fab_ll_chain_tree_with_root(self):
+        root = Node()
+        root.no_include_parents_in_full_name = True
+        x = root
+        for i in range(10):
+            y = Node()
+            z = Node()
+            x.add(y, f"i{i}")
+            x.add(z, f"j{i}")
+            x = y
+
+        self.assertEqual(x.get_full_name(), "i0.i1.i2.i3.i4.i5.i6.i7.i8.i9")
+
     def test_link_eq_direct(self):
         gif1 = GraphInterface()
         gif2 = GraphInterface()
@@ -149,6 +163,110 @@ class TestGraph(unittest.TestCase):
 
         assert MIFType.LinkDirectShallow() is MIFType.LinkDirectShallow()
 
+    def test_node_preinit(self):
+        counter = 0
 
-if __name__ == "__main__":
-    unittest.main()
+        def assert_and_reset(target: int):
+            nonlocal counter
+            self.assertEqual(counter, target)
+            counter = 0
+
+        class N1(Node):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N11(N1):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N12(N1):
+            pass
+
+        class N111(N11):
+            def __preinit__(self):
+                nonlocal counter
+                counter += 1
+
+        class N112(N11):
+            pass
+
+        N1()
+        assert_and_reset(1)
+        N11()
+        assert_and_reset(2)
+        N12()
+        assert_and_reset(1)
+        N111()
+        assert_and_reset(3)
+        N112()
+        assert_and_reset(2)
+
+
+def test_get_children_modules_simple():
+    class App(Module):
+        m: Module
+
+    app = App()
+
+    mods = app.get_children_modules(types=Module)
+    assert mods == {app.m}
+
+
+def test_get_children_modules_specialized():
+    class App(Module):
+        m: Module
+
+    class ModuleSpecial(Module):
+        pass
+
+    app = App()
+    special = ModuleSpecial()
+    app.m.specialize(special)
+
+    mods = app.get_children_modules(types=ModuleSpecial)
+    assert mods == {special}
+
+
+def test_get_children_modules_specialized_chain():
+    class App(Module):
+        m: Module
+
+    class ModuleSpecial(Module):
+        m: Module
+
+    app = App()
+    special = ModuleSpecial()
+    app.m.specialize(special)
+
+    special2 = ModuleSpecial()
+    special.m.specialize(special2)
+
+    mods = app.get_children_modules(types=ModuleSpecial)
+    assert mods == {special, special2}
+
+    mods_raw = app.get_children_modules(
+        types=Module, f_filter=lambda x: type(x) is Module
+    )
+    assert mods_raw == {special2.m}
+
+
+def test_get_children_modules_tree():
+    import faebryk.library._F as F
+
+    cap1 = F.Capacitor()
+    cap2 = F.Capacitor()
+    cap_1 = F.MultiCapacitor.from_capacitors(cap1, cap2)
+    cap3 = F.MultiCapacitor(4)
+    cap_2 = F.MultiCapacitor.from_capacitors(cap_1, cap3)
+
+    mods = cap_1.get_children_modules(
+        types=F.Capacitor, f_filter=lambda x: type(x) is F.Capacitor
+    )
+    assert mods == {cap1, cap2}
+
+    mods = cap_2.get_children_modules(
+        types=F.Capacitor, f_filter=lambda x: type(x) is F.Capacitor
+    )
+    assert mods == {cap1, cap2, *cap3.capacitors}

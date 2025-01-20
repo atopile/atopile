@@ -5,27 +5,19 @@ import pytest
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.schematic.kicad.transformer import SchTransformer
-from faebryk.libs.exceptions import FaebrykException
+from faebryk.libs.exceptions import UserException
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sch_file
-from faebryk.libs.util import find
+from faebryk.libs.test.fileformats import FPLIBFILE, SCHFILE
 
 
 @pytest.fixture
-def test_dir():
-    return find(
-        Path(__file__).parents,
-        lambda p: p.name == "test" and (p / "common/resources").is_dir(),
-    )
+def fp_lib_path_path():
+    return FPLIBFILE
 
 
 @pytest.fixture
-def fp_lib_path_path(test_dir: Path):
-    return test_dir / "common/resources/fp-lib-table"
-
-
-@pytest.fixture
-def sch_file(test_dir: Path):
-    return C_kicad_sch_file.loads(test_dir / "common/resources/test.kicad_sch")
+def sch_file():
+    return C_kicad_sch_file.loads(SCHFILE)
 
 
 @pytest.fixture
@@ -66,7 +58,7 @@ def full_transformer(transformer: SchTransformer, fp_lib_path_path: Path):
 
 
 def test_get_symbol_file(full_transformer: SchTransformer):
-    with pytest.raises(FaebrykException):
+    with pytest.raises(UserException):
         full_transformer.get_symbol_file("notta-lib")
 
     sym_flie = full_transformer.get_symbol_file("test")
@@ -76,7 +68,7 @@ def test_get_symbol_file(full_transformer: SchTransformer):
     )
 
 
-def test_insert_symbol(full_transformer: SchTransformer, sch_file: C_kicad_sch_file):
+def test_insert_symbol(full_transformer: SchTransformer):
     start_symbol_count = len(full_transformer.sch.symbols)
 
     # mimicing typically design/user-space

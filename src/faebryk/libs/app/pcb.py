@@ -3,32 +3,27 @@
 
 import logging
 import os
+import shutil
 import sys
 from pathlib import Path
-from typing import Any, Callable
 
 import psutil
 
 import faebryk.library._F as F
-from faebryk.core.graph import Graph
+from atopile.config import config
+from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
-from faebryk.core.node import Node
+from faebryk.core.node import Node, NodeException
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
-from faebryk.libs.app.kicad_netlist import write_netlist
-from faebryk.libs.app.parameters import resolve_dynamic_parameters
+from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
-    C_kicad_pcb_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import ConfigFlag
+from faebryk.libs.util import hash_string, not_none, once
 
 logger = logging.getLogger(__name__)
-
-PCBNEW_AUTO = ConfigFlag(
-    "PCBNEW_AUTO", default=True, descr="Automatically open pcbnew when applying netlist"
-)
 
 
 def apply_layouts(app: Module):
@@ -68,105 +63,78 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
             apply_route_in_pcb(route, transformer)
 
 
-def apply_design(
-    pcb_path: Path,
-    netlist_path: Path,
-    G: Graph,
-    app: Module,
-    transform: Callable[[PCB_Transformer], Any] | None = None,
+def ensure_footprint_lib(
+    lib_name: str, fppath: os.PathLike, fptable: C_kicad_fp_lib_table_file | None = None
 ):
-    resolve_dynamic_parameters(G)
+    fppath = Path(fppath)
 
-    logger.info(f"Writing netlist to {netlist_path}")
-    changed = write_netlist(G, netlist_path, use_kicad_designators=True)
-    apply_netlist(pcb_path, netlist_path, changed)
-
-    logger.info("Load PCB")
-    pcb = C_kicad_pcb_file.loads(pcb_path)
-
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-
-    logger.info("Transform PCB")
-    if transform:
-        transform(transformer)
-
-    # set layout
-    apply_layouts(app)
-    transformer.move_footprints()
-    apply_routing(app, transformer)
-
-    logger.info(f"Writing pcbfile {pcb_path}")
-    pcb.dumps(pcb_path)
-
-    print("Reopen PCB in kicad")
-    if PCBNEW_AUTO:
+    if fptable is None:
         try:
-            open_pcb(pcb_path)
+            fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)
         except FileNotFoundError:
-            print(f"PCB location: {pcb_path}")
-        except RuntimeError as e:
-            print(f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter")
-    else:
-        print(f"PCB location: {pcb_path}")
+            fptable = C_kicad_fp_lib_table_file.skeleton()
 
-
-def include_footprints(pcb_path: Path):
-    fplibpath = pcb_path.parent / "fp-lib-table"
-    if fplibpath.exists():
-        fptable = C_kicad_fp_lib_table_file.loads(fplibpath)
-    else:
-        fptable = C_kicad_fp_lib_table_file(
-            C_kicad_fp_lib_table_file.C_fp_lib_table(version=7, libs=[])
-        )
-
-    # TODO make more generic, this is very lcsc specific
-    from faebryk.libs.picker.lcsc import LIB_FOLDER as LCSC_LIB_FOLDER
-
-    fppath = LCSC_LIB_FOLDER / "footprints/lcsc.pretty"
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
-            pcb_path.parent.resolve(), walk_up=True
+            config.build.paths.fp_lib_table.parent.resolve(), walk_up=True
         )
-        # check if not going up too much
-        if len([part for part in fppath_rel.parts if part == ".."]) > 5:
-            raise ValueError()
-        fppath = fppath_rel
+        # check if not going up outside the project directory
+        # relative_to raises a ValueError if it has to walk up to make a relative path
+        fppath.relative_to(not_none(config.project.paths.root))
     except ValueError:
         relative = False
+        with downgrade(UserResourceException):
+            raise UserResourceException(
+                f"Footprint path {fppath} is outside the project directory."
+                "This is unstable behavior and may be deprecated in the future."
+            )
+    else:
+        fppath = fppath_rel
 
     uri = str(fppath)
+
     if relative:
         assert not uri.startswith("/")
         assert not uri.startswith("${KIPRJMOD}")
         uri = "${KIPRJMOD}/" + uri
 
-    if not any(fplib.name == "lcsc" for fplib in fptable.fp_lib_table.libs):
-        fptable.fp_lib_table.libs.append(
-            C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
-                name="lcsc",
-                type="KiCad",
-                uri=uri,
-                options="",
-                descr="FBRK: LCSC footprints auto-downloaded",
-            )
-        )
-        logger.warning(
-            "Changed fp-lib-table to include lcsc library, need to restart pcbnew"
-        )
+    lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+        name=lib_name,
+        type="KiCad",
+        uri=uri,
+        options="",
+        descr=f"atopile: {lib_name} footprints",
+    )
 
-    fptable.dumps(fplibpath)
+    matching_libs = [
+        lib_ for lib_ in fptable.fp_lib_table.libs if lib_.name == lib.name
+    ]
+    lib_is_duplicated = len(matching_libs) != 1
+    lib_is_outdated = any(lib_ != lib for lib_ in matching_libs)
+
+    if lib_is_duplicated or lib_is_outdated:
+        fptable.fp_lib_table.libs = [
+            lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
+        ] + [lib]
+
+        logger.warning("pcbnew restart required (updated fp-lib-table)")
+
+    fptable.dumps(config.build.paths.fp_lib_table)
+
+    return fptable
 
 
+@once
 def find_pcbnew() -> os.PathLike:
     """Figure out what to call for the pcbnew CLI."""
     if sys.platform.startswith("linux"):
-        return "pcbnew"
+        return Path("pcbnew")
 
     if sys.platform.startswith("darwin"):
         base = Path("/Applications/KiCad/")
     elif sys.platform.startswith("win"):
-        base = Path(os.getenv("ProgramFiles")) / "KiCad"
+        base = Path(not_none(os.getenv("ProgramFiles"))) / "KiCad"
     else:
         raise NotImplementedError(f"Unsupported platform: {sys.platform}")
 
@@ -191,22 +159,108 @@ def open_pcb(pcb_path: os.PathLike):
     subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
 
 
-def apply_netlist(pcb_path: Path, netlist_path: Path, netlist_has_changed: bool = True):
-    from faebryk.exporters.pcb.kicad.pcb import PCB
-
-    include_footprints(pcb_path)
-
-    # Set netlist path in gui menu
-    prj_path = pcb_path.with_suffix(".kicad_pro")
-    if not prj_path.exists():
+def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
+    """
+    Set netlist path in gui menu
+    """
+    if not project_path.exists():
         project = C_kicad_project_file()
     else:
-        project = C_kicad_project_file.loads(prj_path)
+        project = C_kicad_project_file.loads(project_path)
     project.pcbnew.last_paths.netlist = str(
-        netlist_path.resolve().relative_to(pcb_path.parent.resolve(), walk_up=True)
+        netlist_path.resolve().relative_to(project_path.parent.resolve(), walk_up=True)
     )
-    project.dumps(prj_path)
+    project.dumps(project_path)
 
-    # Import netlist into pcb
-    logger.info(f"Apply netlist to {pcb_path}")
-    PCB.apply_netlist(pcb_path, netlist_path)
+
+def load_net_names(graph: Graph) -> None:
+    """
+    Load nets from attached footprints and attach them to the nodes.
+    """
+
+    gf = GraphFunctions(graph)
+    for net, pcb_net_t in gf.nodes_with_trait(PCB_Transformer.has_linked_kicad_net):
+        pcb_net = pcb_net_t.get_net()
+        net.add(F.has_overriden_name_defined(pcb_net.name))
+
+
+def create_footprint_library(app: Module) -> None:
+    """
+    Ensure all KicadFootprints have a kicad identifier (via the F.has_kicad_footprint
+    trait).
+
+    Create a footprint library for all the footprints with files and without KiCAD
+    identifiers.
+
+    Check all of the KicadFootprints have a manual identifier. Raise an error if they
+    don't.
+    """
+    from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
+
+    package_fp_paths = set(KNOWN_PACKAGES_TO_FOOTPRINT.values())
+
+    LIB_NAME = "atopile"
+
+    # Create the library it doesn't exist
+    atopile_fp_dir = config.project.paths.get_footprint_lib("atopile")
+    atopile_fp_dir.mkdir(parents=True, exist_ok=True)
+    ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
+
+    # Cache the mapping from path to identifier and the path to the new file
+    path_map: dict[Path, tuple[str, Path]] = {}
+
+    for fp in app.get_children(direct_only=False, types=F.KicadFootprint):
+        # has_kicad_identifier implies has_kicad_footprint, but not the other way around
+        if fp.has_trait(F.has_kicad_footprint):
+            # I started writing this and forgot where I was going
+            # So I'm going to leave it an attempt to prompt my or someone else's ideas
+            # as to what we were supposed to do here
+            pass
+        else:
+            if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
+                path = has_file_t.file
+                # We priverliage packages and assume this is what's dribing
+                if path in package_fp_paths:
+                    if path in path_map:
+                        id_, new_path = path_map[path]
+                    else:
+                        id_ = f"{LIB_NAME}:{path.stem}"
+                        new_path = atopile_fp_dir / path.name
+                        shutil.copy(path, new_path)
+                        path_map[path] = (id_, new_path)
+
+                else:
+                    try:
+                        path = path.relative_to(config.project.paths.root)
+
+                    # Raised when the file isn't relative to the project directory
+                    except ValueError as ex:
+                        raise UserResourceException(
+                            f"Footprint file {path} is outside the project"
+                            " directory. Footprint files must be in the project"
+                            " directory.",
+                            markdown=False,
+                        ) from ex
+
+                    # Copy the footprint to the new library with a
+                    # pseudo-guaranteed unique name
+                    if path in path_map:
+                        id_, new_path = path_map[path]
+                    else:
+                        mini_hash = hash_string(str(path))[:6]
+                        id_ = f"{LIB_NAME}:{path.stem}-{mini_hash}"
+                        new_path = (
+                            atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
+                        )
+                        shutil.copy(path, new_path)
+                        path_map[path] = (id_, new_path)
+
+                fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
+                # Attach the newly minted identifier
+                fp.add(F.KicadFootprint.has_kicad_identifier(id_))
+            else:
+                # This shouldn't happen
+                # KicadFootprint should always have a file, or an identifier
+                raise NodeException(
+                    fp, f"{fp.__class__.__name__} has no footprint identifier or file"
+                )
