@@ -1651,8 +1651,7 @@ class PCB_Transformer:
         # Disconnect pads on footprints
         for fp in self.pcb.footprints:
             for pad in fp.pads:
-                if pad.net == net:
-                    assert pad.net
+                if pad.net is not None and pad.net.number == net.number:
                     pad.net.name = ""
                     pad.net.number = 0
 
@@ -1669,19 +1668,18 @@ class PCB_Transformer:
 
     def rename_net(self, net: Net, new_name: str):
         """Rename a new, including all it's connected pads"""
-        old_name = net.name
+        # This is what does the renaming on the net at the top-level
         net.name = new_name
 
         # Update all the footprints
         for fp in self.pcb.footprints:
             for pad in fp.pads:
-                if pad.net == net:
-                    assert pad.net
+                if pad.net is not None and pad.net.number == net.number:
                     pad.net.name = new_name
 
         # Update zone names
         for zone in self.pcb.zones:
-            if zone.net == net.number and zone.net_name == old_name:
+            if zone.net == net.number:
                 zone.net_name = new_name
 
         # Vias and routing are attached only via number,
