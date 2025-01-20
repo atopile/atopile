@@ -435,9 +435,14 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
                     p.wake_signal = true;
                 }
 
+                // TODO this is an optimization, but it does not fully work like this
+                // we need to get woken up from somewhere in the case that this
+                // is not the merging point yet (test_split_chain)
+
                 // wait till branch complete, or woken up to advance to the next mif
                 // in-case this was not the merging point yet
-                p.hibernated = true;
+                // p.hibernated = true;
+
                 // no need to go lower in stack if not complete branch
                 return true;
             }
