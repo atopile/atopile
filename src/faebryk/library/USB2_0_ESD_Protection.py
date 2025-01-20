@@ -34,7 +34,7 @@ class USB2_0_ESD_Protection(Module):
     def can_bridge(self):
         return F.can_bridge_defined(self.usb[0], self.usb[1])
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

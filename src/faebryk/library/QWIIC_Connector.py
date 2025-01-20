@@ -22,7 +22,7 @@ class QWIIC_Connector(Module):
     power: F.ElectricPower
     i2c: F.I2C
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.X
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(

@@ -12,7 +12,10 @@ logger = logging.getLogger(__name__)
 class TraitNotFound(NodeException):
     def __init__(self, node: Node, trait: type["Trait"], *args: object) -> None:
         super().__init__(
-            node, *args, f"Trait {trait} not found in {type(node)}[{node}]"
+            node,
+            *args,
+            f"Trait `{trait.__qualname__}` not found in "
+            f"`{type(node).__qualname__}[{node}]`",
         )
         self.trait = trait
 
@@ -33,15 +36,16 @@ class TraitAlreadyExists(NodeException):
         super().__init__(
             node,
             *args,
-            f"Trait {trait_type} already exists in {node}: {node.get_trait(trait_type)}"
-            f", trying to add {trait}",
+            f"Trait `{trait_type.__qualname__}` already exists in "
+            f"`{node}`: `{node.get_trait(trait_type)}`"
+            f", trying to add `{trait.__qualname__}`",
         )
         self.trait = trait
 
 
 class TraitUnbound(NodeException):
     def __init__(self, node: Node, *args: object) -> None:
-        super().__init__(node, *args, f"Trait {node} is not bound to a node")
+        super().__init__(node, *args, f"Trait `{node}` is not bound to a node")
 
 
 class Trait(Node):

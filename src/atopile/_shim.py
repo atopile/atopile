@@ -8,13 +8,11 @@ import logging
 import re
 from typing import Type
 
-from more_itertools import first
-
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
-from atopile.errors import UserNotImplementedError
+from atopile.errors import UserBadParameterError, UserNotImplementedError
 from faebryk.core.trait import TraitImpl, TraitNotFound
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
@@ -57,20 +55,14 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         self.lib_reference = lib_reference
         self.pinmap = pinmap
 
-    def _try_get_footprint(self) -> F.Footprint | None:
-        if fps := self.obj.get_children(direct_only=True, types=F.Footprint):
-            return first(fps)
-        else:
-            return None
-
     def get_footprint(self) -> F.Footprint:
-        if fp := self._try_get_footprint():
+        if fp := self.try_get_footprint():
             return fp
         else:
             fp = F.KicadFootprint(
-                self.lib_reference,
                 pin_names=list(self.pinmap.keys()),
             )
+            fp.add(F.KicadFootprint.has_kicad_identifier(self.lib_reference))
             fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)
             self.set_footprint(fp)
             return fp
@@ -78,7 +70,7 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
     def handle_duplicate(
         self, old: "has_local_kicad_footprint_named_defined", _: fab_param.Node
     ) -> bool:
-        if old._try_get_footprint():
+        if old.try_get_footprint():
             raise RuntimeError("Too late to set footprint")
 
         # Update the existing trait...
@@ -96,9 +88,7 @@ class has_ato_cmp_attrs(L.Module.TraitT.decless()):
     def on_obj_set(self):
         self.module = self.get_obj(L.Module)
         self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
-        self.module.add(
-            F.has_designator_prefix_defined(F.has_designator_prefix.Prefix.U)
-        )
+        self.module.add(F.has_designator_prefix(F.has_designator_prefix.Prefix.U))
 
     def add_pin(self, name: str) -> F.Electrical:
         if _is_int(name):
@@ -167,11 +157,18 @@ class GlobalShims(L.Module):
 
     @write_only_property
     def designator_prefix(self, value: str):
-        self.add(F.has_designator_prefix_defined(value))
+        self.add(F.has_designator_prefix(value))
 
     @write_only_property
     def package(self, value: str):
-        self.add(F.has_package_requirement(value))
+        try:
+            self.add(F.has_package(value))
+        except ValueError:
+            raise UserBadParameterError(
+                f"Invalid package: '{value}'",
+                " Valid packages are: "
+                + ", ".join(k for k in F.has_package.Package.__members__.keys()),
+            )
 
     @write_only_property
     def footprint(self, value: str):
@@ -196,20 +193,21 @@ class GlobalShims(L.Module):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
 
-def _handle_footprint_shim(module: L.Module, value: str):
-    from atopile.front_end import DeprecatedException
-
-    if value.startswith(("R", "C")):
-        value = value[1:]
-        with downgrade(DeprecatedException):
-            raise DeprecatedException(
-                "`footprint` is deprecated for assignment of package. "
-                f"Use: `package = '{value}'`"
-            )
-        GlobalShims.package.fset(module, value)
-        return
-
-    GlobalShims.footprint.fset(module, value)
+def _handle_package_shim(module: L.Module, value: str, starts_with: str):
+    try:
+        pkg = F.has_package.Package(starts_with + value)
+    except ValueError:
+        raise UserBadParameterError(
+            f"Invalid package for {module.__class__.__name__}: " + value,
+            "Valid packages are: "
+            + ", ".join(
+                k
+                for k in F.has_package.Package.__members__.keys()
+                if k.startswith(starts_with)
+            ),
+        )
+    else:
+        module.add(F.has_package(pkg))
 
 
 class ShimElectrical(F.Electrical):
@@ -226,7 +224,7 @@ class ShimElectrical(F.Electrical):
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
 class ShimResistor(F.Resistor):
-    """Temporary shim to translate `value` to `resistance`."""
+    """Temporary shim to translate resistors."""
 
     @property
     def value(self):
@@ -238,7 +236,27 @@ class ShimResistor(F.Resistor):
 
     @write_only_property
     def footprint(self, value: str):
-        _handle_footprint_shim(self, value)
+        from atopile.front_end import DeprecatedException
+
+        if value.startswith("R"):
+            try:
+                self.package = value[1:]
+            except UserBadParameterError:
+                pass
+            else:
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        "`footprint` is deprecated for assignment of package. "
+                        f"Use: `package = '{value[1:]}'`"
+                    )
+                # Return here, to avoid additionally setting the footprint
+                return
+
+        GlobalShims.footprint.fset(self, value)
+
+    @write_only_property
+    def package(self, value: str):
+        _handle_package_shim(self, value, "R")
 
     @property
     def p1(self) -> F.Electrical:
@@ -287,8 +305,28 @@ class _CommonCap(F.Capacitor):
         self.capacitance.constrain_subset(value)
 
     @write_only_property
+    def package(self, value: str):
+        _handle_package_shim(self, value, "C")
+
+    @write_only_property
     def footprint(self, value: str):
-        _handle_footprint_shim(self, value)
+        from atopile.front_end import DeprecatedException
+
+        if value.startswith("C"):
+            try:
+                self.package = value[1:]
+            except UserBadParameterError:
+                pass
+            else:
+                with downgrade(DeprecatedException):
+                    raise DeprecatedException(
+                        "`footprint` is deprecated for assignment of package. "
+                        f"Use: `package = '{value[1:]}'`"
+                    )
+                # Return here, to avoid additionally setting the footprint
+                return
+
+        GlobalShims.footprint.fset(self, value)
 
     @property
     def p1(self) -> F.Electrical:
@@ -309,7 +347,7 @@ class _CommonCap(F.Capacitor):
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
 class ShimCapacitor(_CommonCap):
-    """Temporary shim to translate `value` to `capacitance`."""
+    """Temporary shim to translate capacitors."""
 
     @L.rt_field
     def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
@@ -380,6 +418,10 @@ class ShimInductor(F.Inductor):
         trait.pinmap["1"] = self.p1
         trait.pinmap["2"] = self.p2
         return trait
+
+    @write_only_property
+    def package(self, value: str):
+        _handle_package_shim(self, value, "L")
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")

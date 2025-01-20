@@ -28,6 +28,6 @@ class Relay(Module):
     contact_max_switching_current = L.p_field(units=P.A)
     contact_max_current = L.p_field(units=P.A)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.K
     )

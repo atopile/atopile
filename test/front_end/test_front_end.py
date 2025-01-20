@@ -20,14 +20,6 @@ def bob() -> Bob:
     return Bob()
 
 
-@pytest.fixture
-def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / "pyproject.toml").exists():
-        repo_root = repo_root.parent
-    return repo_root
-
-
 def test_empty_module_build(bob: Bob):
     text = dedent(
         """
@@ -150,7 +142,7 @@ def test_resistor(bob: Bob, repo_root: Path):
     assert isinstance(node, L.Module)
 
     r1 = Bob.get_node_attr(node, "r1")
-    assert r1.get_trait(F.has_package_requirement).get_package_candidates() == ["0805"]
+    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
 
 def test_standard_library_import(bob: Bob):
@@ -173,14 +165,31 @@ def test_standard_library_import(bob: Bob):
 
 
 @pytest.mark.parametrize(
-    "import_stmt,class_name",
+    "import_stmt,class_name,pkg_str,pkg",
     [
-        ("import Resistor", "Resistor"),
-        ("from 'generics/resistors.ato' import Resistor", "Resistor"),
-        ("from 'generics/capacitors.ato' import Capacitor", "Capacitor"),
+        ("import Resistor", "Resistor", "R0402", F.has_package.Package.R0402),
+        (
+            "from 'generics/resistors.ato' import Resistor",
+            "Resistor",
+            "0402",
+            F.has_package.Package.R0402,
+        ),
+        (
+            "from 'generics/capacitors.ato' import Capacitor",
+            "Capacitor",
+            "0402",
+            F.has_package.Package.C0402,
+        ),
     ],
 )
-def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: Path):
+def test_reserved_attrs(
+    bob: Bob,
+    import_stmt: str,
+    class_name: str,
+    pkg_str: str,
+    pkg: F.has_package.Package,
+    repo_root: Path,
+):
     bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
 
     text = dedent(
@@ -189,7 +198,7 @@ def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: 
 
         module A:
             a = new {class_name}
-            a.package = "0402"
+            a.package = "{pkg_str}"
             a.mpn = "1234567890"
         """
     )
@@ -200,7 +209,7 @@ def test_reserved_attrs(bob: Bob, import_stmt: str, class_name: str, repo_root: 
     assert isinstance(node, L.Module)
 
     a = Bob.get_node_attr(node, "a")
-    assert a.get_trait(F.has_package_requirement).get_package_candidates()[0] == "0402"
+    assert a.get_trait(F.has_package)._enum_set == {pkg}
     assert a.get_trait(F.has_descriptive_properties).get_properties() == {
         DescriptiveProperties.partno: "1234567890"
     }

@@ -1,18 +1,20 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import copy
 import logging
-import pprint
 import re
 import subprocess
-from abc import abstractmethod
-from dataclasses import fields
-from enum import Enum, auto
+from collections import defaultdict
+from dataclasses import asdict, fields
+from enum import Enum, StrEnum, auto
 from itertools import pairwise
-from typing import Any, Callable, Iterable, List, Optional, Sequence, TypeVar
+from pathlib import Path
+from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
 
 import numpy as np
 from deprecated import deprecated
+from more_itertools import first
 from shapely import Polygon
 
 import faebryk.library._F as F
@@ -48,11 +50,14 @@ from faebryk.libs.kicad.fileformats import (
 from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
+    FuncSet,
     KeyErrorNotFound,
     cast_assert,
+    dataclass_as_kwargs,
     find,
     get_key,
     hash_string,
+    yield_missing,
 )
 
 logger = logging.getLogger(__name__)
@@ -162,19 +167,13 @@ def get_all_geos(obj: PCB | Footprint) -> list[Geom]:
 
 
 class PCB_Transformer:
-    class has_linked_kicad_footprint(Module.TraitT):
+    class has_linked_kicad_footprint(Module.TraitT.decless()):
         """
-        Module has footprint (which has kicad footprint) and that footprint
-        is found in the current PCB file.
+        Link applied to:
+        - Modules which are represented in the PCB
+        - F.Footprint which are represented in the PCB
         """
 
-        @abstractmethod
-        def get_transformer(self) -> "PCB_Transformer": ...
-
-        @abstractmethod
-        def get_fp(self) -> Footprint: ...
-
-    class has_linked_kicad_footprint_defined(has_linked_kicad_footprint.impl()):
         def __init__(self, fp: Footprint, transformer: "PCB_Transformer") -> None:
             super().__init__()
             self.fp = fp
@@ -186,14 +185,7 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    class has_linked_kicad_pad(ModuleInterface.TraitT):
-        @abstractmethod
-        def get_pad(self) -> tuple[Footprint, list[Pad]]: ...
-
-        @abstractmethod
-        def get_transformer(self) -> "PCB_Transformer": ...
-
-    class has_linked_kicad_pad_defined(has_linked_kicad_pad.impl()):
+    class has_linked_kicad_pad(ModuleInterface.TraitT.decless()):
         def __init__(
             self, fp: Footprint, pad: list[Pad], transformer: "PCB_Transformer"
         ) -> None:
@@ -204,6 +196,18 @@ class PCB_Transformer:
 
         def get_pad(self):
             return self.fp, self.pad
+
+        def get_transformer(self):
+            return self.transformer
+
+    class has_linked_kicad_net(ModuleInterface.TraitT.decless()):
+        def __init__(self, net: Net, transformer: "PCB_Transformer") -> None:
+            super().__init__()
+            self.net = net
+            self.transformer = transformer
+
+        def get_net(self):
+            return self.net
 
         def get_transformer(self):
             return self.transformer
@@ -224,45 +228,53 @@ class PCB_Transformer:
         )
         self.font = FONT
 
+        self._net_number_generator = iter(
+            yield_missing({net.number for net in self.pcb.nets})
+        )
+        """Yield available net numbers"""
+
+        self.default_component_insert_point = C_xyr(x=0, y=0, r=0)
+
         if cleanup:
             self.cleanup()
         self.attach()
 
-    def attach(self, check_unattached: bool = False):
+    def attach(self):
+        """Bind footprints and nets from the PCB to the graph."""
         for node, fp in PCB_Transformer.map_footprints(self.graph, self.pcb).items():
-            self.bind_footprint(fp, node)
+            if node.has_trait(F.has_footprint):
+                self.bind_footprint(fp, node)
+            else:
+                node.add(self.has_linked_kicad_footprint(fp, self))
 
-        if check_unattached:
-            self.check_unattached()
+        for f_net, pcb_net in self.map_nets().items():
+            self.bind_net(pcb_net, f_net)
 
-    def check_unattached(self):
+    def check_unattached_fps(self):
+        """
+        Check that all the nodes with a footprint, have a linked footprint in the PCB
+        """
         unattached_nodes = {
             node
             for node, trait in GraphFunctions(self.graph).nodes_with_trait(
                 F.has_footprint
             )
-            if not trait.get_footprint().has_trait(F.has_kicad_footprint)
-            and not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
+            if not node.has_trait(PCB_Transformer.has_linked_kicad_footprint)
         }
         if unattached_nodes:
-            logger.error(f"Unattached: {pprint.pformat(unattached_nodes)}")
             raise UserException(
-                f"Failed to attach {len(unattached_nodes)} node(s) to footprints"
+                f"Failed to attach {len(unattached_nodes)} node(s) to footprints: "
+                f"{', '.join(f'`{node.get_full_name()}`' for node in unattached_nodes)}"
             )
 
-        # TODO: check other properties:
-        # fp_ref = node.get_trait(F.has_overriden_name).get_name()
-        # fp_name = g_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
-        # fp.propertys["atopile_address"] = node.get_full_name()
-
     @staticmethod
-    def map_footprints(graph: Graph, pcb: PCB) -> dict[Node, Footprint]:
+    def map_footprints(graph: Graph, pcb: PCB) -> dict[Module, Footprint]:
         """
         Attach as many nodes <> footprints as possible, and
         return the set of nodes that were missing footprints.
         """
         # Now, try to map between the footprints and the layout
-        footprint_map: dict[Node, Footprint] = {}
+        footprint_map: dict[Module, Footprint] = {}
         fps_by_atopile_addr = {
             f.propertys["atopile_address"].value: f
             for f in pcb.footprints
@@ -271,38 +283,119 @@ class PCB_Transformer:
         fps_by_path = {f.path: f for f in pcb.footprints if f.path is not None}
 
         # Also try nodes without footprints, because they might get them later
-        nodes = GraphFunctions(graph).nodes_of_type(Module)
-        for node in nodes:
-            atopile_addr = node.get_full_name()
-            hashed_addr = hash_string(atopile_addr)
+        for module in GraphFunctions(graph).nodes_of_type(Module):
+            atopile_addr = module.get_full_name()
+
+            # First, try to find the footprint by the atopile address
             if fp := fps_by_atopile_addr.get(atopile_addr):
-                footprint_map[node] = fp
+                footprint_map[module] = fp
+                continue
+
+            # Then, try to find the footprint by the path (which looks like a UUID)
+            hashed_addr = hash_string(atopile_addr)
             # TODO: @v0.4 remove this, it's a fallback for v0.2 designs
-            elif fp := fps_by_path.get(f"/{hashed_addr}/{hashed_addr}"):
+            if fp := fps_by_path.get(f"/{hashed_addr}/{hashed_addr}"):
                 with downgrade(DeprecatedException):
                     raise DeprecatedException(
-                        f"`{node.get_full_name()}` is linked to the layout using v0.2"
+                        f"`{module.get_full_name()}` is linked to the layout using v0.2"
                         " mechanism, please save the design to update."
                     )
-                footprint_map[node] = fp
+                footprint_map[module] = fp
+                continue
 
         return footprint_map
 
-    def bind_footprint(self, fp: Footprint, node: Node):
-        node.add(self.has_linked_kicad_footprint_defined(fp, self))
-        if not node.has_trait(F.has_footprint):
-            return
+    def bind_footprint(self, pcb_fp: Footprint, module: Module):
+        """
+        Generates links between:
+        - Module and PCB Footprint
+        - F.Footprint and PCB Footprint
+        - F.Pad and PCB Pads
+        """
+        module.add(self.has_linked_kicad_footprint(pcb_fp, self))
 
-        g_fp = node.get_trait(F.has_footprint).get_footprint()
-        g_fp.add(self.has_linked_kicad_footprint_defined(fp, self))
+        # By now, the node being bound MUST have a footprint
+        g_fp = module.get_trait(F.has_footprint).get_footprint()
+        g_fp.add(self.has_linked_kicad_footprint(pcb_fp, self))
         pin_names = g_fp.get_trait(F.has_kicad_footprint).get_pin_names()
+        # F.Pad is a ModuleInterface - don't be tricked
+        pcb_pads = FuncSet[Footprint.C_pad](pcb_fp.pads)
         for fpad in g_fp.get_children(direct_only=True, types=ModuleInterface):
             pads = [
                 pad
-                for pad in fp.pads
+                for pad in pcb_pads
                 if pad.name == pin_names[cast_assert(F.Pad, fpad)]
             ]
-            fpad.add(self.has_linked_kicad_pad_defined(fp, pads, self))
+            pcb_pads -= FuncSet(pads)
+            if not pads:
+                logger.warning(f"No PCB pads for pad in design: {fpad}")
+            fpad.add(self.has_linked_kicad_pad(pcb_fp, pads, self))
+
+        # This may leave some pads on the PCB unlinked to the design
+        # This is useful for things like mounting holes, but checks
+        # linking less robustly
+        if pcb_pads and logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
+
+    def map_nets(self, match_threshold: float = 0.8) -> dict[F.Net, Net]:
+        """
+        Create a mapping between the internal nets and the nets defined in the PCB file.
+
+        This relies on linking between the footprints and pads, so must be called after.
+        """
+        if match_threshold < 0.5:
+            # This is because we rely on being >50% sure to ensure we're the most
+            # likely match.
+            raise ValueError("match_threshold must be at least 0.5")
+
+        known_nets: dict[F.Net, Net] = {}
+        pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
+
+        for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
+            total_pads = 0
+            # map from net name to the number of pads we've
+            # linked corroborating it's accuracy
+            net_candidates: Mapping[str, int] = defaultdict(int)
+
+            for ato_pad, ato_fp in net.get_connected_pads().items():
+                if pcb_pad_t := ato_pad.try_get_trait(
+                    PCB_Transformer.has_linked_kicad_pad
+                ):
+                    # In the (strange) case something's handeled by another transformer,
+                    # we skip it without counting it towards the total pads.
+                    if pcb_pad_t.get_transformer() is not self:
+                        continue
+
+                    pcb_fp, pcb_pads = pcb_pad_t.get_pad()
+
+                    # This practically means that if the pads to which a net is
+                    # connected varies within a single component, we're going to ignore
+                    # it. This could probably be improved to be a little more subtle
+                    # within-component net matching, for later
+                    net_names = set(
+                        pcb_pad.net.name if pcb_pad.net is not None else None
+                        for pcb_pad in pcb_pads
+                    )
+                    if (
+                        len(net_names) == 1
+                        and (net_name := first(net_names)) is not None
+                    ):
+                        net_candidates[net_name] += 1
+
+                total_pads += 1
+
+            if net_candidates:
+                best_net_name = max(net_candidates, key=lambda x: net_candidates[x])
+                if (
+                    best_net_name
+                    and net_candidates[best_net_name] > total_pads * match_threshold
+                ):
+                    known_nets[net] = pcb_nets_by_name[best_net_name]
+
+        return known_nets
+
+    def bind_net(self, pcb_net: Net, net: F.Net):
+        net.add(self.has_linked_kicad_net(pcb_net, self))
 
     def cleanup(self):
         # delete faebryk objects in pcb
@@ -1318,3 +1411,551 @@ class PCB_Transformer:
             alignment=alignment,
             knockout=knockout,
         )
+
+    # Netlist application --------------------------------------------------------------
+    def _fp_common_fields_dict(self, lib_footprint: C_footprint) -> dict[str, Any]:
+        """Generate a dict of the common fields of a lib footprint and pcb footprint"""
+        return {
+            field.name: getattr(lib_footprint, field.name)
+            for field in fields(C_footprint)
+        }
+
+    @staticmethod
+    def _hash_lib_fp(lib_fp: C_footprint) -> str:
+        # Ignore the name field. It's not meaningful and we override it
+        dict_ = asdict(lib_fp)
+        dict_["name"] = ""
+        return hash_string(repr(dict_))
+
+    _FP_LIB_HASH = "__atopile_lib_fp_hash__"
+
+    def _set_lib_fp_hash(
+        self, footprint: Footprint, lib_footprint: C_footprint
+    ) -> None:
+        """Create a hidden property which stores the original lib footprint hash
+        so we can detect if the footprint has truly been updated, or if it's
+        merely been renamed"""
+        footprint.propertys[self._FP_LIB_HASH] = self._make_fp_property(
+            property_name=self._FP_LIB_HASH,
+            layer="User.9",
+            value=self._hash_lib_fp(lib_footprint),
+            uuid=self.gen_uuid(mark=True),
+        )
+
+    def insert_footprint(
+        self, lib_footprint: C_footprint, at: C_xyr | None = None
+    ) -> Footprint:
+        """Insert a footprint into the pcb, at optionally a specific position"""
+        if at is None:
+            # Copy the data structure so if we later mutate it we don't
+            # end up w/ those changes everywhere
+            at = copy.deepcopy(self.default_component_insert_point)
+
+        lib_attrs = self._fp_common_fields_dict(lib_footprint)
+
+        lib_attrs["pads"] = [
+            C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
+                net=None,
+                **{
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
+                    # We have to handle the rotation separately because
+                    # because it must consider the rotation of the parent footprint
+                    "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
+                },
+            )
+            for p in lib_footprint.pads
+        ]
+
+        footprint = Footprint(
+            uuid=self.gen_uuid(mark=True),
+            at=at,
+            **lib_attrs,
+        )
+
+        self._set_lib_fp_hash(footprint, lib_footprint)
+
+        self.pcb.footprints.append(footprint)
+
+        return footprint
+
+    class BoardSide(StrEnum):
+        FRONT = "F.Cu"
+        BACK = "B.Cu"
+
+    def _set_footprint_side(
+        self, footprint: Footprint, side: BoardSide, logger: logging.Logger
+    ) -> None:
+        """Set the side a footprint is on by mutating the footprint."""
+        # First, check the side the footprint's currently on
+        current_side = self.BoardSide(footprint.layer)
+
+        # If the side is the same, do nothing
+        if current_side == side:
+            return
+
+        # FIXME: this function is currently limited in it's ability to make these flips
+        # This means it's liable to mangle the footprint's data on update.
+        if ref_prop := footprint.propertys.get("Reference"):
+            ref = ref_prop.value
+        else:
+            ref = "Unknown"
+
+        logger.warning(f"Flipping {ref} side. Scrutinize this footprint in the PCB.")
+
+        # Otherwise, flip the footprint to the other side
+        # FIXME: we're flipping based on the naming conventiong of "F." and "B."
+        # there are no guarantees that this will be robust with new versions of KiCAD
+        def _flip(layer: str) -> str:
+            if layer.startswith("F."):
+                return layer.replace("F.", "B.", 1)
+            elif layer.startswith("B."):
+                return layer.replace("B.", "F.", 1)
+
+            # User.* layers, for example, aren't flipped and that's fine
+            return layer
+
+        def _backup_flip(obj):
+            """Shitty flip function which should only be used as a backup."""
+            if obj is None:
+                return
+
+            for obj, path, name_path in dataclass_dfs(obj):
+                # This only works for strings, so skip everything else
+                if not isinstance(obj, str):
+                    continue
+
+                if len(name_path) < 2:
+                    continue
+
+                # path ends with: [..., container, str]
+                container = path[-2]
+
+                # objects that have a "layer" property
+                if name_path[-2] == "layer" and hasattr(container, "layer"):
+                    container.layer = _flip(obj)
+
+                # dicts which have a "layer" key
+                elif name_path[-2] == "[layer]" and isinstance(container, dict):
+                    # This is based on how dataclass_dfs serialises names
+                    assert "layer" in container
+                    container["layer"] = _flip(obj)
+
+                # lists which have a "layer" key
+                # name_path ends with: [..., "layer", list, str]
+                elif (
+                    len(name_path) > 2
+                    and name_path[-3]
+                    in [
+                        "layer",
+                        "layers",
+                        "[layer]",
+                        "[layers]",
+                    ]
+                    and isinstance(container, list)
+                ):
+                    # Replace the layer string with the flipped one
+                    container[container.index(obj)] = _flip(obj)
+
+        # Flip the pads
+        for pad in footprint.pads:
+            pad.layers = [_flip(lay) for lay in pad.layers]
+
+            # Flip the primitives
+            # FIXME: flip pad primitives
+            _backup_flip(pad.unknown)
+
+        # Flip the properties
+        for prop in footprint.propertys.values():
+            prop.layer.layer = _flip(prop.layer.layer)
+
+        # Flip primitives
+        for line in footprint.fp_lines:
+            line.layer = _flip(line.layer)
+
+        for arc in footprint.fp_arcs:
+            arc.layer = _flip(arc.layer)
+
+        for circle in footprint.fp_circles:
+            circle.layer = _flip(circle.layer)
+
+        for rect in footprint.fp_rects:
+            rect.layer = _flip(rect.layer)
+
+        for text in footprint.fp_texts:
+            text.layer.layer = _flip(text.layer.layer)
+
+        for polygon in footprint.fp_poly:
+            polygon.layer = _flip(polygon.layer)
+
+        # Flip anything unknown
+        _backup_flip(footprint.unknown)
+
+        # Mark the footprint as being on the other side
+        footprint.layer = _flip(footprint.layer)
+
+    def update_footprint_from_lib(
+        self, footprint: Footprint, lib_footprint: C_footprint
+    ) -> Footprint:
+        """
+        Update a footprint with all the properties specified in the lib footprint.
+
+        This will disconnect the footprint from any nets - which subsequentially
+        must be reconnected.
+        """
+        original_side = self.BoardSide(footprint.layer)
+
+        updates = self._fp_common_fields_dict(lib_footprint)
+        updates["pads"] = [
+            C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
+                net=None,
+                **{
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
+                    # We have to handle the rotation separately because
+                    # because it must consider the rotation of the parent footprint
+                    "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + footprint.at.r),
+                },
+            )
+            for p in lib_footprint.pads
+        ]
+        updates["propertys"] = {
+            **footprint.propertys,
+            **updates["propertys"],
+        }
+        for name, update in updates.items():
+            setattr(footprint, name, update)
+
+        # Update the lib footprint hash, so we can avoid unnecessary updates later
+        self._set_lib_fp_hash(footprint, lib_footprint)
+
+        # Set the boardside of the footprint
+        self._set_footprint_side(footprint, original_side, logger)
+
+        return footprint
+
+    def remove_footprint(self, footprint: Footprint) -> None:
+        """Remove a footprint from the pcb"""
+        self.pcb.footprints.remove(footprint)
+
+    def insert_net(self, name: str) -> Net:
+        """Insert a net into the pcb and return it"""
+        net = Net(name=name, number=next(self._net_number_generator))
+        self.pcb.nets.append(net)
+        return net
+
+    def remove_net(self, net: Net):
+        """Remove a net from the pcb"""
+        self.pcb.nets.remove(net)
+
+        # Disconnect pads on footprints
+        for fp in self.pcb.footprints:
+            for pad in fp.pads:
+                if pad.net == net:
+                    assert pad.net
+                    pad.net.name = ""
+                    pad.net.number = 0
+
+        # Disconnect zones
+        for zone in self.pcb.zones:
+            if zone.net == net.number and zone.net_name == net.name:
+                zone.net_name = ""
+                zone.net = 0
+
+        # Disconnect vias, and routing
+        for route in self.pcb.segments + self.pcb.arcs + self.pcb.vias:
+            if route.net == net.number:
+                route.net = 0
+
+    def rename_net(self, net: Net, new_name: str):
+        """Rename a new, including all it's connected pads"""
+        old_name = net.name
+        net.name = new_name
+
+        # Update all the footprints
+        for fp in self.pcb.footprints:
+            for pad in fp.pads:
+                if pad.net == net:
+                    assert pad.net
+                    pad.net.name = new_name
+
+        # Update zone names
+        for zone in self.pcb.zones:
+            if zone.net == net.number and zone.net_name == old_name:
+                zone.net_name = new_name
+
+        # Vias and routing are attached only via number,
+        # so we don't need to do anything
+
+    def _make_fp_property(
+        self,
+        property_name: str,
+        layer: str,
+        value: str,
+        uuid: str,
+        hide: bool = True,
+    ) -> C_footprint.C_property:
+        return C_footprint.C_property(
+            name=property_name,
+            value=value,
+            layer=C_text_layer(layer=layer),
+            uuid=UUID(uuid),
+            effects=C_footprint.C_property.C_footprint_property_effects(
+                font=self.font,
+                # This inner hide should be None and the outer below drives things
+                # otherwise KiCAD will convert-on-save and you can get some weird
+                # behaviour
+                hide=None,
+            ),
+            at=C_xyr(x=0, y=0, r=0),
+            hide=hide,
+        )
+
+    INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB = {
+        "LCSC",
+        "Partnumber",
+        "Manufacturer",
+        "JLCPCB description",
+    }
+
+    def _update_footprint_from_node(
+        self,
+        component: Module,
+        fp_lib_path: Path,
+        logger: logging.Logger,
+        insert_point: C_xyr | None = None,
+    ) -> tuple[Footprint, bool]:
+        from faebryk.exporters.pcb.kicad.pcb import get_footprint
+
+        f_fp = component.get_trait(F.has_footprint).get_footprint()
+
+        # At this point, all footprints MUST have a KiCAD identifier
+        fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
+
+        # This is the component which is being stuck on the board
+        address = component.get_full_name()
+
+        # All modules MUST have a designator by this point
+        ref = component.get_trait(F.has_designator).get_designator()
+
+        ## Update existing footprint
+        if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
+            pcb_fp = pcb_fp_t.get_fp()
+            if fp_id != pcb_fp.name:
+                # Copy the data structure so if we later mutate it we don't
+                # end up w/ those changes everywhere
+                lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
+                if existing_hash_prop := pcb_fp.propertys.get(self._FP_LIB_HASH):
+                    existing_hash = existing_hash_prop.value
+                else:
+                    existing_hash = None
+
+                # If the hash never existed, or it's changed then update the footprint
+                if existing_hash is None or existing_hash != self._hash_lib_fp(lib_fp):
+                    logger.info(
+                        f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
+                        extra={"markdown": True},
+                    )
+                    # We need to manually override the name because the
+                    # footprint's data could've ultimately come from anywhere
+                    lib_fp.name = fp_id
+                    self.update_footprint_from_lib(pcb_fp, lib_fp)
+                    self.bind_footprint(pcb_fp, component)
+            new_fp = False
+
+        ## Add new footprint
+        else:
+            # Components and footprints MUST have the same linking by this point
+            # This should be enforced through attach, and bind_footprint
+            assert not component.has_trait(self.has_linked_kicad_footprint)
+
+            logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
+            # Copy the data structure so if we later mutate it we don't
+            # end up w/ those changes everywhere
+            lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
+            # We need to manually override the name because the
+            # footprint's data could've ultimately come from anywhere
+            lib_fp.name = fp_id
+            pcb_fp = self.insert_footprint(lib_fp, insert_point)
+            self.bind_footprint(pcb_fp, component)
+            new_fp = True
+
+        def _get_prop_uuid(name: str) -> str | None:
+            if name in pcb_fp.propertys:
+                return pcb_fp.propertys[name].uuid
+            return None
+
+        ## Apply propertys, Reference and atopile_address
+        property_values = {}
+
+        # Take any descriptive properties defined on the component
+        if c_props_t := component.try_get_trait(F.has_descriptive_properties):
+            for prop_name, prop_value in c_props_t.get_properties().items():
+                if prop_name in self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB:
+                    property_values[prop_name] = prop_value
+
+        if c_props_t := component.try_get_trait(F.has_datasheet):
+            property_values["Datasheet"] = c_props_t.get_datasheet()
+
+        property_values["Reference"] = ref
+        property_values["Footprint"] = pcb_fp.name
+
+        if value_t := component.try_get_trait(F.has_simple_value_representation):
+            property_values["Value"] = value_t.get_value()
+        else:
+            property_values["Value"] = ""
+
+        property_values["atopile_address"] = component.get_full_name()
+
+        for prop_name, prop_value in property_values.items():
+            ### Get old property value, representing non-existent properties as None
+            ### If the property value has changed, update it
+            if prop := pcb_fp.propertys.get(prop_name):
+                if prop_value != prop.value:
+                    logger.info(
+                        f"Updating `{prop_name}`->`{prop_value}` on"
+                        f" `{address}` ({ref})",
+                        extra={"markdown": True},
+                    )
+                    pcb_fp.propertys[prop_name].value = prop_value
+
+            ### If it's a new property, add it
+            else:
+                logger.info(
+                    f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
+                    extra={"markdown": True},
+                )
+                pcb_fp.propertys[prop_name] = self._make_fp_property(
+                    property_name=prop_name,
+                    layer="User.9",
+                    value=prop_value,
+                    uuid=_get_prop_uuid(prop_name) or self.gen_uuid(mark=True),
+                )
+
+        return pcb_fp, new_fp
+
+    def apply_design(self, fp_lib_path: Path, logger: logging.Logger = logger):
+        """Apply the design to the pcb"""
+        # Re-attach everything one more time
+        # We rely on this to reliably update the pcb
+        self.attach()
+
+        gf = GraphFunctions(self.graph)
+
+        # Update footprints
+        processed_fps = FuncSet[Footprint]()
+
+        # Spacing algorithm to neatly insert new footprints
+        # Each component group is clustered around their immediate parent
+        # Each new component in the cluster is inserted with one vertical spacing
+        # Each new cluster is inserted with one horizontal spacing
+
+        HORIZONTAL_SPACING = 10
+        VERTICAL_SPACING = -5
+
+        cluster_point = copy.deepcopy(self.default_component_insert_point)
+
+        def _new_cluster() -> C_xyr:
+            next_point = copy.deepcopy(cluster_point)
+            cluster_point.x += HORIZONTAL_SPACING
+            return next_point
+
+        cluster_points = defaultdict(_new_cluster)
+        cluster_points[None]  # Trigger top-level components, so they're at the top
+
+        def _increment_cluster_point(key):
+            cluster_points[key].y += VERTICAL_SPACING
+
+        for component, _ in gf.nodes_with_trait(F.has_footprint):
+            # FIXME: it'd be nice to allow query composition so
+            # we could ask for all the modules with footprints
+            assert isinstance(component, Module)
+
+            cluster_key = component.get_parent()
+            insert_point = cluster_points[cluster_key]
+            pcb_fp, new_fp = self._update_footprint_from_node(
+                component, fp_lib_path, logger, insert_point
+            )
+            # If we used that point, increment the cluster point
+            if new_fp:
+                _increment_cluster_point(cluster_key)
+
+            processed_fps.add(pcb_fp)
+
+        ## Remove footprints that aren't present in the design
+        # TODO: figure out how this should work with some
+        # concept of a --tidy flag or the likes
+        # Should this remove unmarked footprints?
+        for pcb_fp in self.pcb.footprints:
+            if pcb_fp not in processed_fps:
+                if ref_prop := pcb_fp.propertys.get("Reference"):
+                    removed_fp_ref = ref_prop.value
+                else:
+                    # This should practically never occur
+                    removed_fp_ref = "<no reference>"
+                logger.info(
+                    f"Removing outdated component with Reference `{removed_fp_ref}`",
+                    extra={"markdown": True},
+                )
+                self.remove_footprint(pcb_fp)
+
+        # Update nets
+        # All nets MUST have a name by this point
+        f_nets_by_name = {
+            n.get_trait(F.has_overriden_name).get_name(): n
+            for n in gf.nodes_of_type(F.Net)
+        }
+
+        processed_nets = FuncSet[Net]()
+        for net_name, f_net in f_nets_by_name.items():
+            ## Rename existing nets if needed
+            # We do this instead of ripping things up to:
+            # - update zones, vias etc...
+            # - minimally modify the PCB -> less chance we break something small
+            if linked_net_t := f_net.try_get_trait(self.has_linked_kicad_net):
+                pcb_net = linked_net_t.get_net()
+                if pcb_net.name != net_name:
+                    logger.info(
+                        f"Renaming net `{pcb_net.name}`->`{net_name}`",
+                        extra={"markdown": True},
+                    )
+                    self.rename_net(pcb_net, net_name)
+
+            ## Add missing nets
+            else:
+                logger.info(f"Adding net `{net_name}`", extra={"markdown": True})
+                pcb_net = self.insert_net(net_name)
+                self.bind_net(pcb_net, f_net)
+
+            ## Connect pads to nets
+            pads_on_net = list(f_net.get_connected_pads().keys())
+            if not pads_on_net:
+                logger.warning(f"No pads on net `{net_name}`.")
+
+            for f_pad in pads_on_net:
+                pcb_pads_connected_to_pad = f_pad.get_trait(
+                    self.has_linked_kicad_pad
+                ).get_pad()[1]
+                # We needn't check again here for a lack of pcb pads on the atopile pad
+                # because we've already raised a warning on binding of the trait
+                for pcb_pad in pcb_pads_connected_to_pad:
+                    pcb_pad.net = Footprint.C_pad.C_net(
+                        name=pcb_net.name,
+                        number=pcb_net.number,
+                    )
+
+            processed_nets.add(pcb_net)
+
+        ## Remove nets that aren't present in the design
+        for pcb_net in self.pcb.nets:
+            # Net number == 0 and name == "" are the default values
+            # They represent unconnected to nets, so skip them
+            if pcb_net.number == 0 and pcb_net.name == "":
+                continue
+
+            if pcb_net not in processed_nets:
+                logger.info(
+                    f"Removing net `{pcb_net.name}`",
+                    extra={"markdown": True},
+                )
+                self.remove_net(pcb_net)

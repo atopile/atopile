@@ -27,6 +27,6 @@ class UART_RS485(Module):
         # FIXME
         # self.power.decoupled.decouple()
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )

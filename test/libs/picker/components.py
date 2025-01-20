@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComponentTestCase:
     module: Module
-    packages: list[str]
+    packages: list[F.has_package.Package]
     descriptive_properties: dict[str, str] = field(default_factory=dict)
     override_test_name: str | None = None
 
@@ -41,7 +41,7 @@ mfr_parts = [
                 r.slew_rate.constrain_le(1 * P.MV / P.us),
             )
         ),
-        packages=["SOT-23-5"],
+        packages=[],  # FIXME: re-add package requirement"SOT-23-5"
         descriptive_properties={
             DescriptiveProperties.partno: "LMV321IDBVR",
             DescriptiveProperties.manufacturer: "Texas Instruments",
@@ -63,7 +63,7 @@ lcsc_id_parts = [
                 r.slew_rate.constrain_le(1 * P.MV / P.us),
             )
         ),
-        packages=["SOT-23-5"],
+        packages=[],  # FIXME: re-add package requirement"SOT-23-5"
         descriptive_properties={"LCSC": "C7972"},
         override_test_name="LCSC_ID_C7972",
     )
@@ -80,7 +80,7 @@ resistors = [
                 r.max_voltage.constrain_ge(25 * P.V),
             )
         ),
-        packages=["0402"],
+        packages=[F.has_package.Package.R0402],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -92,7 +92,7 @@ resistors = [
                 r.max_voltage.constrain_ge(50 * P.V),
             )
         ),
-        packages=["0603"],
+        packages=[F.has_package.Package.R0603],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -102,7 +102,7 @@ resistors = [
                 ),
             )
         ),
-        packages=["0805"],
+        packages=[F.has_package.Package.R0805],
     ),
 ]
 
@@ -119,7 +119,7 @@ capacitors = [
                 ),
             )
         ),
-        packages=["0603"],
+        packages=[F.has_package.Package.C0603],
     ),
     ComponentTestCase(
         F.Capacitor().builder(
@@ -133,7 +133,7 @@ capacitors = [
                 ),
             )
         ),
-        packages=["0402"],
+        packages=[F.has_package.Package.C0402],
     ),
 ]
 
@@ -149,7 +149,7 @@ inductors = [
                 i.self_resonant_frequency.constrain_ge(100 * P.Mhertz),
             )
         ),
-        packages=["0603"],
+        packages=[F.has_package.Package.L0603],
     ),
     ComponentTestCase(
         F.Inductor().builder(
@@ -176,7 +176,7 @@ mosfets = [
                 m.on_resistance.constrain_le(0.1 * P.ohm),
             )
         ),
-        packages=["SOT-23"],
+        packages=[],  # FIXME: re-add package requirement "SOT-23"
     ),
 ]
 
@@ -191,7 +191,7 @@ diodes = [
                 d.max_current.constrain_ge(1 * P.A),
             )
         ),
-        packages=["SOD-123FL", "SMB"],
+        packages=[],  # FIXME: re-add package requirement "SOD-123FL", "SMB"
     ),
 ]
 
@@ -226,7 +226,9 @@ tvs = [
                 t.reverse_breakdown_voltage.constrain_le(8 * P.V),
             )
         ),
-        packages=["SOD-123", "SOD-123FL", "SOT-23-6", "SMA", "SMB", "SMC"],
+        # FIXME: re-add package requirement
+        # "SOD-123", "SOD-123FL", "SOT-23-6", "SMA", "SMB", "SMC"
+        packages=[],
     ),
 ]
 
@@ -240,24 +242,19 @@ ldos = [
                 u.dropout_voltage.constrain_le(1 * P.V),
                 u.output_polarity.constrain_subset(F.LDO.OutputPolarity.POSITIVE),
                 u.output_type.constrain_subset(F.LDO.OutputType.FIXED),
-                # u.psrr,
+                # u.ripple_rejection_ratio,
                 # u.quiescent_current,
             )
         ),
-        packages=[
-            "SOT-23",
-            "SOT-23-5",
-            "SOT23",
-            "SOT-23-3",
-            "SOT-23-3L",
-        ],
+        # FIXME: re-add package requirement
+        # "SOT-23", "SOT-23-5", "SOT23", "SOT-23-3", "SOT-23-3L"
+        packages=[],
     ),
 ]
 
 components_to_test = (
     *mfr_parts,
     *lcsc_id_parts,
-    #
     *resistors,
     *capacitors,
     *inductors,

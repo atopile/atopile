@@ -16,9 +16,10 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
-from faebryk.exporters.netlist.graph import attach_net_names, attach_nets_and_kicad_info
-from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
-from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
+from faebryk.exporters.netlist.graph import (
+    attach_net_names,
+    attach_nets,
+)
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     export_dxf,
@@ -27,7 +28,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_pick_and_place,
     export_step,
 )
-from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, _get_footprint
+from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
@@ -37,14 +38,13 @@ from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
-    override_names_with_designators,
 )
 from faebryk.libs.app.pcb import (
     apply_layouts,
-    apply_netlist,
     apply_routing,
+    create_footprint_library,
     ensure_footprint_lib,
-    load_nets,
+    load_net_names,
     open_pcb,
 )
 from faebryk.libs.app.picking import load_descriptive_properties
@@ -54,7 +54,10 @@ from faebryk.libs.exceptions import (
     downgrade,
     iter_through_errors,
 )
-from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file, C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats import (
+    C_kicad_fp_lib_table_file,
+    C_kicad_pcb_file,
+)
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import KeyErrorAmbiguous
 
@@ -73,7 +76,8 @@ def build(app: Module) -> None:
     except KeyErrorAmbiguous as ex:
         raise UserException(
             "Unfortunately, there's a compiler bug at the moment that means that "
-            "this sometimes fails. Try again, and it'll probably work."
+            "this sometimes fails. Try again, and it'll probably work. "
+            "See https://github.com/atopile/atopile/issues/807"
         ) from ex
 
     logger.info("Running checks")
@@ -102,34 +106,33 @@ def build(app: Module) -> None:
     except PickError as ex:
         raise UserPickError.from_pick_error(ex) from ex
 
-    # fp-lib-table might need updating after footprints are downloaded during the
-    # picking process
-    ensure_footprint_lib(
-        "lcsc",
-        config.project.paths.component_lib
-        / "footprints"
-        / "lcsc.pretty",  # TODO: config property
-    )
+    # Footprints ----------------------------------------------------------------
+    # Use standard footprints for known packages regardless of
+    # what's otherwise been specified.
+    # FIXME: this currently includes explicitly set footprints, but shouldn't
+    F.has_package.standardize_footprints(app, solver)
+    create_footprint_library(app)
 
-    # Re-attach because picking might have added new footprints
-    # Many nodes gain their footprints from picking, meaning we'll gather more now
-    transformer.attach(check_unattached=True)
-
-    # Write Netlist ------------------------------------------------------------
+    # Pre-netlist preparation ---------------------------------------------------
     attach_random_designators(G)
-    override_names_with_designators(G)
-    nets = attach_nets_and_kicad_info(G)
+    nets = attach_nets(G)
+    # We have to re-attach the footprints, and subsequently nets, because the first
+    # attachment is typically done before the footprints have been created
+    # and therefore many nets won't be re-attached properly. Also, we just created
+    # and attached them to the design above, so they weren't even there to attach
+    transformer.attach()
     if config.build.keep_net_names:
-        load_nets(G, attach=True)
+        load_net_names(G)
     attach_net_names(nets)
-    netlist = faebryk_netlist_to_kicad(make_fbrk_netlist_from_graph(G))
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    apply_netlist(files=(pcb, netlist))
-
+    # We have to cleanup before applying the design, because otherwise we'll
+    # delete the things we're adding
     transformer.cleanup()
+    transformer.apply_design(config.build.paths.fp_lib_table)
+    transformer.check_unattached_fps()
 
     if transform_trait := app.try_get_trait(F.has_layout_transform):
         logger.info("Transforming PCB")
@@ -170,8 +173,9 @@ def build(app: Module) -> None:
             f"Original layout: {original_relative}\n"
             f"Updated layout: {updated_relative}\n"
             "You can see the changes by running:\n"
-            f'diff --color "{original_relative}" "{updated_relative}"',
+            f'`diff --color "{original_relative}" "{updated_relative}"`',
             title="Frozen failed",
+            # No markdown=False here because we have both a command and paths
         )
     else:
         backup_file = config.build.paths.output_base.with_suffix(
@@ -344,8 +348,8 @@ def consolidate_footprints(app: Module) -> None:
     fp_ids_to_check = []
     for fp_t in app.get_children(False, types=(F.has_footprint)):
         fp = fp_t.get_footprint()
-        if isinstance(fp, F.KicadFootprint):
-            fp_ids_to_check.append(fp.kicad_identifier)
+        if has_identifier_t := fp.try_get_trait(F.KicadFootprint.has_kicad_identifier):
+            fp_ids_to_check.append(has_identifier_t.kicad_identifier)
 
     try:
         fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)
@@ -414,7 +418,7 @@ def consolidate_footprints(app: Module) -> None:
     try:
         for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
             with err_collector():
-                _get_footprint(fp_id, config.build.paths.fp_lib_table)
+                get_footprint(fp_id, config.build.paths.fp_lib_table)
     except* (FileNotFoundError, LibNotInTable) as ex:
 
         def _make_user_resource_exception(e: Exception) -> UserResourceException:

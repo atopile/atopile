@@ -2,6 +2,10 @@ name: pytest
 
 on:
   push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   pytest:
@@ -29,12 +33,36 @@ jobs:
     - name: Setup cmake
       uses: jwlawson/actions-setup-cmake@v2
 
+    # Required by examples
+    # TODO: remove dependency on global fp-lib-table
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ secrets.AWS_REGION }}
+
+    - name: Prepare test environment
+      run: |
+        mkdir -p ~/.config/kicad/8.0/
+        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-fp-lib-table" ~/.config/kicad/8.0/fp-lib-table
+
+        mkdir -p /usr/share/kicad/
+        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
+
     - name: Run pytest
       id: pytest
       continue-on-error: true
-      run: |
-        uv run --dev --no-editable --frozen pytest -m "not not_in_ci and not slow and not regression" --timeout=300
+      run: >
+        uv run --dev --no-editable --frozen
+        --with pytest-github-actions-annotate-failures
+        pytest
+        -m "not not_in_ci and not slow and not regression"
+        --timeout=300
       env:
+        GH_TOKEN: ${{ github.token }}
+        PYTEST_HISTORY_EMAIL: ${{ vars.PYTEST_HISTORY_EMAIL }}
+        PYTEST_HISTORY_PASSWORD: ${{ secrets.PYTEST_HISTORY_PASSWORD }}
         COLUMNS: 150  # rich console width will be pulled from this
 
     - name: Upload all test logs

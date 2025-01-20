@@ -22,23 +22,6 @@ from faebryk.libs.util import Serializable, SerializableJSONEncoder
 logger = logging.getLogger(__name__)
 
 
-@dataclass_json
-@dataclass(frozen=True)
-class PackageCandidate:
-    package: str
-
-
-@dataclass_json
-@dataclass(frozen=True, kw_only=True)
-class BaseParams(Serializable):
-    package_candidates: frozenset[PackageCandidate]
-    qty: int
-    endpoint: str | None = None
-
-    def serialize(self) -> dict:
-        return self.to_dict()  # type: ignore
-
-
 @dataclass(frozen=True)
 class Interval:
     min: float | None
@@ -52,6 +35,17 @@ def SerializableField():
     return field(
         metadata=dataclass_json_config(encoder=SerializableJSONEncoder().default)
     )
+
+
+@dataclass_json
+@dataclass(frozen=True, kw_only=True)
+class BaseParams(Serializable):
+    package: ApiParamT = SerializableField()
+    qty: int
+    endpoint: str | None = None
+
+    def serialize(self) -> dict:
+        return self.to_dict()  # type: ignore
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -108,7 +102,7 @@ class LDOParams(BaseParams):
     output_voltage: ApiParamT = SerializableField()
     quiescent_current: ApiParamT = SerializableField()
     dropout_voltage: ApiParamT = SerializableField()
-    # psrr: ApiParamT = SerializableField()  # TODO
+    # ripple_rejection_ratio: ApiParamT = SerializableField()
     output_polarity: ApiParamT = SerializableField()
     output_type: ApiParamT = SerializableField()
     output_current: ApiParamT = SerializableField()

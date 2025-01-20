@@ -32,9 +32,6 @@ CRAWL_DATASHEET = ConfigFlag(
     "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
 
-# TODO: get appropriate value from config
-MODEL_PATH: str | None = "${KIPRJMOD}/../libs/"
-
 EASYEDA_CACHE_FOLDER = Path("cache/easyeda")
 
 EXPORT_NON_EXISTING_MODELS = False
@@ -124,13 +121,13 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     out_base_path = config.project.paths.component_lib
     fp_base_path = out_base_path / "footprints" / "lcsc.pretty"  # TODO: config property
     sym_base_path = out_base_path / "lcsc.kicad_sym"
+    model_base_path = out_base_path / "lcsc"
     fp_base_path.mkdir(exist_ok=True, parents=True)
     footprint_filename = f"{name}.kicad_mod"
     footprint_filepath = fp_base_path.joinpath(footprint_filename)
 
     # The base_path has to be split from the full path, because the exporter
     # will append .3dshapes to it
-    model_base_path = out_base_path / "3dmodels" / "lcsc"
     model_base_path_full = model_base_path.with_suffix(".3dshapes")
     model_base_path_full.mkdir(exist_ok=True, parents=True)
 
@@ -166,18 +163,19 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
 
     if not footprint_filepath.exists():
         logger.debug(f"Exporting footprint {footprint_filepath}")
-        kicad_model_path = (
-            f"{MODEL_PATH}/3dmodels/lcsc.3dshapes"
-            if MODEL_PATH
-            else str(
+        try:
+            kicad_model_path = str(
                 "${KIPRJMOD}"
                 / model_base_path_full.relative_to(
-                    config.project.paths.layout.parent, walk_up=True
+                    config.build.paths.kicad_project.parent, walk_up=True
                 )
             )
-            if config.project.paths.layout
-            else str(model_base_path_full.resolve())
-        )
+        except RuntimeError:
+            # FIXME: this shouldn't need to exist
+            # It's a workaround that'll only work for a single user.
+            kicad_model_path = str(model_base_path_full.resolve())
+
+        logger.debug(f"Exporting 3D model to: {kicad_model_path}")
         ki_footprint.export(
             footprint_full_path=str(footprint_filepath),
             model_3d_path=kicad_model_path,
@@ -187,7 +185,14 @@ def download_easyeda_info(lcsc_id: str, get_model: bool = True):
         logger.debug(f"Exporting symbol {sym_base_path}")
         ki_symbol.export(str(sym_base_path))
 
-    return ki_footprint, ki_model, easyeda_footprint, easyeda_model, easyeda_symbol
+    return (
+        ki_footprint,
+        ki_model,
+        easyeda_footprint,
+        easyeda_model,
+        easyeda_symbol,
+        footprint_filepath,
+    )
 
 
 def get_datasheet_url(part: EeSymbol):
@@ -233,13 +238,14 @@ def attach(
     component: Module, partno: str, get_model: bool = True, check_only: bool = False
 ):
     try:
-        _, _, easyeda_footprint, _, easyeda_symbol = download_easyeda_info(
-            partno, get_model=get_model
+        _, _, easyeda_footprint, _, easyeda_symbol, footprint_filepath = (
+            download_easyeda_info(partno, get_model=get_model)
         )
     except LCSC_NoDataException:
         if component.has_trait(F.has_footprint):
             easyeda_symbol = None
             easyeda_footprint = None
+            footprint_filepath = None
         else:
             raise
 
@@ -247,6 +253,7 @@ def attach(
     if not component.has_trait(F.has_footprint):
         assert easyeda_symbol is not None
         assert easyeda_footprint is not None
+        assert footprint_filepath is not None
         if not component.has_trait(F.can_attach_to_footprint):
             # TODO make this a trait
             pins = [
@@ -273,10 +280,8 @@ def attach(
             return
 
         # footprint
-        fp = F.KicadFootprint(
-            f"lcsc:{easyeda_footprint.info.name}",
-            [p.number for p in easyeda_footprint.pads],
-        )
+        fp = F.KicadFootprint([p.number for p in easyeda_footprint.pads])
+        fp.add(F.KicadFootprint.has_file(footprint_filepath))
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:

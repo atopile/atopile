@@ -42,7 +42,7 @@ class Capacitor(Module):
     )
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.C
     )
 
@@ -74,4 +74,4 @@ class Capacitor(Module):
             self.capacitance.constrain_subset(capacitance)
 
         if footprint is not None:
-            self.attach_to_footprint.add(F.has_package_requirement(footprint))
+            self.add(F.has_package(footprint))

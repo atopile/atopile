@@ -289,7 +289,7 @@ def check_missing_picks(module: Module):
         if no_fp:
             logger.warning(
                 f"No pickers and no footprint for {indented_container(no_fp)}."
-                "\nATTENTION: These modules will not apperar in netlist or pcb."
+                "\nATTENTION: These modules will not appear in netlist or pcb."
             )
 
 
