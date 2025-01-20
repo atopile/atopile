@@ -854,3 +854,61 @@ def test_jlcpcb_pick_powered_led():
     picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
     assert len(picked_parts) == 2
     print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
+
+
+@pytest.mark.parametrize(
+    "op, x_op_y, y, x_expected",
+    [
+        (
+            Add,
+            Range.from_center_rel(3, 0.01),
+            Range.from_center_rel(1, 0.01),
+            Range.from_center_rel(2, 0.02),
+        )
+    ],
+)
+def test_simple_parameter_isolation(
+    op: type[Arithmetic], x_op_y: Range, y: Range, x_expected: Range
+):
+    X = Parameter()
+    Y = Parameter()
+
+    op(X, Y).alias_is(x_op_y)
+    Y.alias_is(y)
+
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically((X + Y).get_graph())
+
+    assert solver.inspect_get_known_supersets(X) == x_expected
+
+
+def test_param_isolation():
+    X = Parameter()
+    Y = Parameter()
+
+    (X + Y).alias_is(Range.from_center_rel(3, 0.01))
+    Y.alias_is(Range.from_center_rel(1, 0.01))
+
+    solver = DefaultSolver()
+
+    params = (X, Y)
+    context = ParameterOperatable.ReprContext()
+    for p in params:
+        p.compact_repr(context)
+
+    result, context = solver.phase_1_simplify_analytically((X + Y).get_graph(), context)
+
+    from rich import print
+
+    print(
+        {
+            p.compact_repr(context): {
+                "id": p,
+                "literal": result.try_get_literal(p),
+                "supersets": solver.inspect_get_known_supersets(p),
+            }
+            for p in params
+        }
+    )
+
+    assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)

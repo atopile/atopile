@@ -20,6 +20,7 @@ from faebryk.core.solver.analytical import (
     convert_operable_aliased_to_single_into_literal,
     empty_set,
     fold_literals,
+    isolate_lone_params,
     merge_intersect_subsets,
     predicate_literal_deduce,
     predicate_unconstrained_operands_deduce,
@@ -135,6 +136,7 @@ class DefaultSolver(Solver):
                 "Alias subset expressions with literal operands",
                 alias_literal_subset_expressions,
             ),
+            ("Isolate lone parameters", isolate_lone_params),
             ("Remove empty graphs", remove_empty_graphs),
         ]
         subset_dirty_algorithms = [

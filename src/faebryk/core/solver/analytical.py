@@ -11,12 +11,14 @@ from typing import cast
 
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
+    Add,
     ConstrainableExpression,
     Domain,
     Expression,
     GreaterOrEqual,
     Is,
     IsSubset,
+    Multiply,
     Parameter,
     ParameterOperatable,
 )
@@ -36,6 +38,7 @@ from faebryk.core.solver.utils import (
     is_literal,
     is_replacable,
     is_replacable_by_literal,
+    make_lit,
     merge_parameters,
     no_other_constrains,
     remove_predicate,
@@ -720,3 +723,81 @@ def alias_literal_subset_expressions(mutator: Mutator):
         # FIXME: expr is not the subset expression
         # if isinstance(expr, ConstrainableExpression) and expr.constrained:
         alias.constrain()
+
+
+def isolate_lone_params(mutator: Mutator):
+    """
+    If an expression is aliased to a literal, and only one parameter in the expression
+    is not aliased to a literal, isolate the lone parameter on one side of the
+    expression.
+
+    Inversion operations must be constructed using canonical operators only.
+
+    A + B is Lit1, B is Lit2 -> A is Lit1 + (Lit2 * -1)
+    """
+    ctx = mutator.print_context
+
+    def find_unique_params(po: ParameterOperatable) -> set[ParameterOperatable]:
+        match po:
+            case Parameter():
+                return {po}
+            case Expression():
+                return {p for op in po.operands for p in find_unique_params(op)}
+            case _:
+                return set()
+
+    def isolate_param(expr: Expression, param: ParameterOperatable) -> (
+        tuple[ParameterOperatable, CanonicalOperation]
+        | tuple[CanonicalOperation, ParameterOperatable]
+        | tuple[ParameterOperatable, ParameterOperatable]
+    ) | None:
+        print(f"isolate {param.compact_repr(ctx)} from {expr.compact_repr(ctx)}")
+        assert len(expr.operands) == 2
+        lhs, rhs = expr.operands
+
+        param_in_lhs = param in find_unique_params(lhs)
+        assert param_in_lhs or param in find_unique_params(rhs)
+        op_with_param = lhs if param_in_lhs else rhs
+        op_without_param = rhs if param_in_lhs else lhs
+
+        match op_with_param, op_without_param:
+            # TODO: handle composite expressions (recurse)
+            case (Add(), _):
+                return (
+                    param,
+                    mutator.create_expression(
+                        Add,
+                        rhs,
+                        *[
+                            mutator.create_expression(Multiply, op, make_lit(-1))
+                            for op in op_with_param.operands
+                            if op is not param
+                        ],
+                    ),
+                )
+            case (_, _):
+                return None
+
+    exprs = GraphFunctions(mutator.G).nodes_of_type(Is)
+    for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+        if try_extract_literal(expr) is None:
+            continue
+
+        unaliased_params = {
+            p for p in find_unique_params(expr) if try_extract_literal(p) is None
+        }
+
+        if len(unaliased_params) != 1:
+            continue
+
+        param = unaliased_params.pop()
+
+        if param in expr.operands:
+            # TODO: also check that other oeprands don't contain param (recursively)
+            continue
+
+        if (result := isolate_param(expr, param)) is None:
+            continue
+
+        lhs, rhs = result
+        mutator.mutate_expression(expr, operands=(lhs, rhs))
