@@ -32,11 +32,11 @@ from faebryk.core.parameter import (
     SymmetricDifference,
     Union,
 )
+from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalNumber,
     CanonicalOperation,
     Contradiction,
-    Mutator,
     SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,

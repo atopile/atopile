@@ -23,7 +23,8 @@ from faebryk.core.parameter import (
     Xor,
 )
 from faebryk.core.solver.analytical import flatten_associative
-from faebryk.core.solver.utils import Associative, FullyAssociative, Mutator
+from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.utils import Associative, FullyAssociative
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, times

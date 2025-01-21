@@ -36,9 +36,9 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
+from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalOperation,
-    Mutator,
     NumericLiteralR,
     alias_is_literal,
     make_lit,

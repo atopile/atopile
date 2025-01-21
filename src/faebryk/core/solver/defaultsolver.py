@@ -35,14 +35,13 @@ from faebryk.core.solver.canonical import (
     convert_to_canonical_literals,
     convert_to_canonical_operations,
 )
+from faebryk.core.solver.mutator import Mutator, Mutators
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     MAX_ITERATIONS,
     PRINT_START,
     S_LOG,
     Contradiction,
-    Mutator,
-    Mutators,
     SolverLiteral,
     debug_name_mappings,
     get_graphs,

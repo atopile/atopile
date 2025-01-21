@@ -22,12 +22,12 @@ from faebryk.core.parameter import (
     Power,
 )
 from faebryk.core.solver.literal_folding import fold
+from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     S_LOG,
     CanonicalOperation,
     ContradictionByLiteral,
     FullyAssociative,
-    Mutator,
     SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
