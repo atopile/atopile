@@ -11,11 +11,10 @@ nav:
   - index.md
   - quickstart.md
   - CHANGELOG.md
-  - How-Tos:
-    - installation.md
+  - Guides:
+    - guides/installation.md
 - Development:
   - development.md
-  - roadmap.md
   - API Reference:
     - api/cli.md
     - api/solver.md

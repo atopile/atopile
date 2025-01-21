@@ -1,4 +1,4 @@
-# Installation
+# Alternative Installation
 
 !!! warning
     Check out the [quickstart guide](quickstart.md) for a step-by-step guide for the recommended way to install atopile.
