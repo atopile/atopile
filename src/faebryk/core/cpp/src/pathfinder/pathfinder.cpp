@@ -198,7 +198,7 @@ PathFinder::find_paths(Node_ref src, std::vector<Node_ref> dst) {
         dsts.insert(d);
     }
 
-    std::vector<BFSPath> valid_paths;
+    std::vector<std::shared_ptr<BFSPath>> valid_paths;
 
     Counter total_counter{.name = "total", .total_counter = true};
 
@@ -211,7 +211,7 @@ PathFinder::find_paths(Node_ref src, std::vector<Node_ref> dst) {
             return;
         }
 
-        valid_paths.push_back(p);
+        valid_paths.push_back(p.shared_from_this());
 
         if (p.get_path_data().not_complete) {
             return;
@@ -233,11 +233,11 @@ PathFinder::find_paths(Node_ref src, std::vector<Node_ref> dst) {
     // Complete paths
     Counter incomplete_counter{.name = "incomplete", .total_counter = false};
     std::vector<Path> complete_paths;
-    for (auto &p : valid_paths) {
-        if (!incomplete_counter.exec(this, &PathFinder::_filter_incomplete, p)) {
+    for (const auto &p : valid_paths) {
+        if (!incomplete_counter.exec(this, &PathFinder::_filter_incomplete, *p)) {
             continue;
         }
-        complete_paths.push_back(Path(std::move(p.get_path())));
+        complete_paths.push_back(Path(std::move(p->get_path())));
     }
 
     // Counters
