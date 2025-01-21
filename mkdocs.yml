@@ -13,6 +13,8 @@ nav:
   - CHANGELOG.md
   - Guides:
     - guides/installation.md
+    - guides/best-practices.md
+    - guides/faebryk.md
 - Development:
   - development.md
   - API Reference:
