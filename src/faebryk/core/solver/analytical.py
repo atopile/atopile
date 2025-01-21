@@ -6,7 +6,6 @@ import logging
 from collections import Counter, defaultdict
 from functools import partial
 from itertools import combinations
-from types import NoneType
 from typing import cast
 
 from faebryk.core.graph import GraphFunctions
@@ -26,13 +25,11 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
     S_LOG,
-    CanonicalNumber,
     CanonicalOperation,
     ContradictionByLiteral,
     FullyAssociative,
     Mutator,
     SolverLiteral,
-    SolverOperatable,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
@@ -692,41 +689,6 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         mutator.mutate_expression(e, operands=ops)
 
 
-def alias_literal_subset_expressions(mutator: Mutator):
-    """
-    A op Lit1, A is Lit2, A op B ss X -> A op B is X
-
-
-    An expression consisting only of literals and aliases to literals, which is a
-    subset of another literal, can be aliased to the subset literal
-    """
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
-    for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
-        if try_extract_literal(expr) is not None:
-            continue
-
-        only_literals_or_aliases = all(
-            isinstance(op, (CanonicalNumber, BoolSet, P_Set, NoneType))
-            or (
-                isinstance(op, ParameterOperatable)
-                and try_extract_literal(op) is not None
-            )
-            for op in expr.operands
-        )
-
-        if not only_literals_or_aliases:
-            continue
-
-        if (subset := try_extract_literal(expr, allow_subset=True)) is None:
-            continue
-
-        alias = mutator.create_expression(Is, expr, subset)
-
-        # FIXME: expr is not the subset expression
-        # if isinstance(expr, ConstrainableExpression) and expr.constrained:
-        alias.constrain()
-
-
 def isolate_lone_params(mutator: Mutator):
     """
     If an expression is aliased to a literal, and only one parameter in the expression
@@ -818,8 +780,10 @@ def isolate_lone_params(mutator: Mutator):
 
         if param_in_lhs and param_in_rhs:
             # TODO
-            # supporting this situation means committing to a strategy and sticking to it
-            # otherwise we might just make and undo changes until we run out of iterations
+            # supporting this situation means committing to a strategy and sticking to
+            # it
+            # otherwise we might just make and undo changes until we run out of
+            # iterations
             return None
 
         assert param_in_lhs or param_in_rhs

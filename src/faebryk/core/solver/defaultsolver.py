@@ -14,7 +14,6 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.analytical import (
-    alias_literal_subset_expressions,
     compress_associative,
     convert_inequality_with_literal_to_subset,
     convert_operable_aliased_to_single_into_literal,
@@ -132,10 +131,6 @@ class DefaultSolver(Solver):
             ),
             ("Empty set", empty_set),
             ("Transitive subset", transitive_subset),
-            (
-                "Alias subset expressions with literal operands",
-                alias_literal_subset_expressions,
-            ),
             ("Isolate lone parameters", isolate_lone_params),
             ("Remove empty graphs", remove_empty_graphs),
         ]

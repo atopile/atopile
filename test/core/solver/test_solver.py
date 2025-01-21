@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from operator import add, mul, sub, truediv
 from typing import Any, Iterable
 
 import pytest
@@ -645,7 +646,7 @@ def test_voltage_divider_find_resistances():
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
 
-def test_voltage_divider_find_single_resistance():
+def test_voltage_divider_find_single_resistance_full():
     r_top = Parameter(units=P.ohm)
     r_bottom = Parameter(units=P.ohm)
     v_in = Parameter(units=P.V)
@@ -654,6 +655,25 @@ def test_voltage_divider_find_single_resistance():
     v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
     v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
     r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically(r_bottom.get_graph())
+
+    assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
+        1 * P.ohm, 0.01
+    )
+
+
+def test_voltage_divider_find_single_resistance_simple():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+
+    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
+    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
+    r_bottom.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
@@ -896,7 +916,7 @@ def test_param_isolation():
     for p in params:
         p.compact_repr(context)
 
-    result, context = solver.phase_1_simplify_analytically((X + Y).get_graph(), context)
+    result, context = solver.phase_1_simplify_analytically(Y.get_graph(), context)
 
     from rich import print
 
@@ -912,3 +932,32 @@ def test_param_isolation():
     )
 
     assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        add,
+        mul,
+        sub,
+        truediv,
+    ],
+)
+def test_extracted_literal_folding(op):
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    lit1 = Range(0, 10)
+    lit2 = Range(10, 20)
+    lito = op(lit1, lit2)
+
+    A.alias_is(lit1)
+    B.alias_is(lit2)
+
+    op(A, B).alias_is(C)
+
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically(C.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == lito
