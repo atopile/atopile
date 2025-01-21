@@ -167,7 +167,7 @@ def test_up_connect_chain_multiple_mixed():
     assert high1.is_connected_to(high4)
 
 
-def test_split_chain():
+def test_split_chain_single():
     """
     Miro: Implied bus connection 2
     ```
@@ -192,6 +192,182 @@ def test_split_chain():
     high2.connect(high3)
 
     assert high1.is_connected_to(high3)
+
+
+# @pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+def test_split_chain_double_flat_no_inter():
+    """
+    ```
+    H1     H2 --> H3     H4
+     L1 --> L1     L1 --> L1
+     L2     L2     L2     L2
+      |                    ^
+      +--------------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class App(Module):
+        high = L.list_field(4, High)
+
+    app = App()
+
+    high1, high2, high3, high4 = app.high
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high4.lower2)
+    high2.connect(high3)
+    high3.lower1.connect(high4.lower1)
+
+    assert high1.lower1.is_connected_to(high4.lower1)
+    x = high1.is_connected_to(high3)
+    print(x)
+    assert not x
+    # assert not high1.is_connected_to(high3)
+    assert high1.is_connected_to(high4)
+
+    # TODO: See pathfinder.cpp:67 for failure
+
+
+def test_split_chain_double_flat_inter():
+    # TODO this test is not difficult enough
+    # the intermediate is trivially connected since the double split is resolved
+    # maybe insert extra node between H2 and H3?
+    """
+    ```
+    H1     H2 --> H3     H4
+     L1 --> L1     L1 --> L1
+     L2     L2     L2 --> L2
+      |                    ^
+      +--------------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class App(Module):
+        high = L.list_field(4, High)
+
+    app = App()
+
+    high1, high2, high3, high4 = app.high
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high4.lower2)
+    high2.connect(high3)
+    high3.lower1.connect(high4.lower1)
+    high3.lower2.connect(high4.lower2)
+
+    assert high1.lower1.is_connected_to(high4.lower1)
+    assert high1.is_connected_to(high3)
+    assert high1.is_connected_to(high4)
+
+
+# @pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+def test_split_chain_double_hierarchy():
+    """
+    ```
+                 R1 --> R2
+    H1     H2 --> H      H      H3
+     L1 --> L1     L1     L1 --> L1
+     L2     L2     L2     L2     L2
+      |                           ^
+      +---------------------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class Higher(ModuleInterface):
+        high: High
+
+    class App(Module):
+        high = L.list_field(3, High)
+        higher = L.list_field(2, Higher)
+
+    app = App()
+
+    high1, high2, high3 = app.high
+    higher1, higher2 = app.higher
+
+    high1.lower1.connect(higher1.high.lower1)
+    high1.lower2.connect(high3.lower2)
+    high2.connect(higher1.high)
+    higher1.connect_shallow(higher2)
+    higher2.high.lower1.connect(high3.lower1)
+
+    assert high1.lower1.is_connected_to(high3.lower1)
+    assert high1.is_connected_to(high3)
+
+
+def test_split_chain_flip():
+    """
+    Miro: Implied Double-Flip Bus Connection
+    ```
+    H1     H2 ==> H3     H4
+     L1 --> L2     L2 --> L1
+     L2 --> L1     L1 --> L2
+    ```
+    Note: Shallowness not important, just makes it harder
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class App(Module):
+        high = L.list_field(4, High)
+
+    app = App()
+
+    high1, high2, high3, high4 = app.high
+
+    high1.lower1.connect(high2.lower2)
+    high1.lower2.connect(high2.lower1)
+    high2.connect_shallow(high3)
+    high3.lower1.connect(high4.lower2)
+    high3.lower2.connect(high4.lower1)
+
+    assert high1.is_connected_to(high4)
+
+
+def test_split_flip_negative():
+    """
+    Miro: Implied Bus Non-Connection
+    ```
+    H1     H2
+     L1 --> L2
+     L2 --> L1
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    high1, high2 = times(2, High)
+
+    high1.lower1.connect(high2.lower2)
+    high1.lower2.connect(high2.lower1)
+
+    assert not high1.is_connected_to(high2)
 
 
 def test_up_connect_chain_multiple_mixed_simulate_realworld():

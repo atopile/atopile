@@ -123,7 +123,6 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
                 } else if (!it->get()->hibernated) {
                     open_path_queue.push_back(*it);
                     it = hibernated_paths.erase(it);
-                    //
                 } else {
                     ++it;
                 }

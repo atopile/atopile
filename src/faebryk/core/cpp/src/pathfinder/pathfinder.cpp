@@ -10,6 +10,12 @@
 #include <unordered_map>
 #include <unordered_set>
 
+// Debug Util --------------------------------------------------------------------------
+// TODO set to empty
+#define printf_split printf
+
+// -------------------------------------------------------------------------------------
+
 // Util --------------------------------------------------------------------------------
 GI_refs_weak get_split_children(GI_ref_weak split_point) {
     // TODO this can be optimized I think
@@ -54,16 +60,23 @@ std::optional<PathStackElement> _extend_path_hierarchy_stack(Edge &edge) {
 void _extend_fold_stack(PathStackElement &elem, UnresolvedStack &unresolved_stack,
                         PathStack &split_stack) {
     if (!unresolved_stack.empty() && unresolved_stack.back().match(elem)) {
-        // TODO why was this here?
-        // auto split = unresolved_stack.back().split;
-        // if (split) {
-        //     split_stack.push_back(elem);
-        // }
         unresolved_stack.pop_back();
     } else {
         bool multi_child = get_split_children(elem.parent_gif).size() > 1;
+
+        // FIXME: on it's own unfortunately not fully correct, because allows
+        //  intermediaries now to be marked strong
+        //  see: (test_split_chain_double_flat_no_inter)
+        //  maybe we need to mark it as split after all, and then treat it special
+        //  during handle_valid_split_branch's resolution
+        // check if any elem in split_stack has same parent type and name
+        bool in_same_split = std::any_of(
+            split_stack.begin(), split_stack.end(), [&](const PathStackElement &e) {
+                return e.parent_type == elem.parent_type && e.name == elem.name;
+            });
+
         // if down and multipath -> split
-        bool split = !elem.up && multi_child;
+        bool split = !elem.up && multi_child && !in_same_split;
 
         unresolved_stack.push_back(UnresolvedStackElement{elem, split});
         if (split) {
@@ -308,13 +321,14 @@ bool PathFinder::_build_path_stack_and_handle_splits(BFSPath &p) {
     // heuristic, stop weak paths after limit
     // no need to check for extension first, since growth of split results earlier in
     // stop
-    if (split_stack.size() > 0 && path_cnt > PATH_LIMITS.no_weak) {
+    if (split_cnt > 0 && path_cnt > PATH_LIMITS.no_weak) {
         return false;
     }
 
     _extend_fold_stack(elem.value(), unresolved_stack, split_stack);
+    size_t split_cnt_new = split_stack.size();
 
-    int split_growth = split_stack.size() - split_cnt;
+    int split_growth = split_cnt_new - split_cnt;
     p.confidence *= std::pow(0.5, split_growth);
 
     // heuristic, stop making weaker paths after limit
@@ -335,6 +349,8 @@ bool PathFinder::_build_path_stack_and_handle_splits(BFSPath &p) {
     Path split_prefix(std::vector(p.get_path().begin(), p.get_path().end() - 1));
     auto &splits = this->split[split_point];
 
+    printf_split("Split: %s\n", p.str().c_str());
+
     // check if split point already in split map
     // if yes, hibernate, wait till other branches complete
     if (splits.contains(split_prefix)) {
@@ -345,7 +361,13 @@ bool PathFinder::_build_path_stack_and_handle_splits(BFSPath &p) {
             assert(false);
             return false;
         }
-        if (!split_state.waiting) {
+        // if split has no valid paths yet (no waiting), but already exists
+        // it is either a deadend or still busy, thus hibernate and either wait for wake
+        // or never wake up
+        if (split_state.waiting) {
+            printf_split("Skip hibernate, being awated\n");
+        } else {
+            printf_split("Hibernate until scheduled\n");
             p.hibernated = true;
             split_state.wait_paths[elem->child_gif].push_back(p.shared_from_this());
         }
@@ -353,6 +375,7 @@ bool PathFinder::_build_path_stack_and_handle_splits(BFSPath &p) {
     }
 
     // make new split
+    printf_split("New split\n");
     splits.emplace(split_prefix, SplitState{p});
 
     return true;
@@ -389,6 +412,8 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
     //      - hibernate (no need to keep on searching if not complete yet)
     //      - awake branches from split
 
+    printf_split("Handle valid split branch: %s\n", p.str().c_str());
+
     for (auto &split_elem : std::ranges::reverse_view(split_stack)) {
         auto &split_point = split_elem.parent_gif;
         auto &splits_at_point = this->split[split_point];
@@ -404,6 +429,7 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
                 continue;
             }
 
+            printf_split("Check complete branch for %s\n", split_prefix.str().c_str());
             // check complete branch
             for (auto &[child_gif, paths] : split_state.suffix_complete_paths) {
                 // check if child complete (has path ending in same gif)
@@ -427,9 +453,11 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
                     // if not waiting paths we wait till they appear
                     // they will check themselves
                     split_state.waiting = true;
+                    printf_split("No waiting paths\n");
                 } else {
                     auto &back = wait_paths.back();
                     // TODO maybe use queue instead of vector
+                    printf_split("Wake up path: %s\n", back->str().c_str());
                     back->hibernated = false;
                     wait_paths.pop_back();
                     p.wake_signal = true;
@@ -447,6 +475,7 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
                 return true;
             }
 
+            printf_split("Complete branch found\n");
             split_state.complete = true;
             // remove all waiting paths
             for (auto &[child_gif, wait_paths] : split_state.wait_paths) {
@@ -459,6 +488,8 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
             break;
         }
     }
+
+    printf_split("All branches complete\n");
 
     auto root_split = this->split[split_stack.front().parent_gif];
     for (auto &[split_prefix, split_state] : root_split) {
@@ -474,6 +505,10 @@ bool PathFinder::_handle_valid_split_branch(BFSPath &p) {
                 data.split_stack.clear();
                 path->confidence = 1.0;
                 p.wake_signal = true;
+
+                printf_split("Mark strong %s\n", path->str().c_str());
+
+                // TODO question: are we marking the path elements strong somewhere now?
             }
         }
     }
@@ -534,88 +569,4 @@ bool PathFinder::_filter_conditional_link(BFSPath &p) {
 
 bool PathFinder::_filter_incomplete(BFSPath &p) {
     return !p.get_path_data().not_complete;
-}
-
-// Multi path filters
-// ------------------------------------------------------------------
-
-std::vector<BFSPath>
-PathFinder::_filter_paths_by_split_join(std::vector<BFSPath> &paths) {
-    // std::unordered_set</*const*/ BFSPath *> filtered;
-    // Map</*const*/ GI_ref_weak, std::vector</*const*/ BFSPath *>>
-    // split;
-
-    //// build split map
-    // for (auto &p : paths) {
-    //     auto &splits = p.get_path_data();
-    //     auto &unresolved_stack = splits.unresolved_stack;
-    //     auto &split_stack = splits.split_stack;
-
-    //    assert(unresolved_stack.empty());
-    //    assert(!split_stack.empty());
-
-    //    // printf("Path: %s\n", p.str().c_str());
-
-    //    for (auto &elem : split_stack) {
-    //        if (elem.up) {
-    //            // join
-    //            continue;
-    //        }
-    //        // split
-    //        split[elem.parent_gif].push_back(&p);
-    //    }
-    //}
-
-    //// printf("Split map: %zu\n", split.size());
-    //// for (auto &[start_gif, split_paths] : split) {
-    ////     printf("    Start gif[%zu]: %s\n", split_paths.size(),
-    ////            start_gif->get_full_name().c_str());
-    //// }
-
-    //// check split map
-    // for (auto &[start_gif, split_paths] : split) {
-    //     auto children = start_gif->get_node()->get_children(
-    //         true, {{node::type::get_moduleinterface_type()}}, false);
-    //     auto children_set =
-    //         std::unordered_set<Node_ref>(children.begin(), children.end());
-
-    //    assert(split_paths.size());
-    //    auto index = split_paths[0]->index(start_gif);
-
-    //    std::function</*const*/ GI_ref_weak(/*const*/ BFSPath *)> f =
-    //        [index](/*const*/ BFSPath *p) -> /*const*/ GI_ref_weak {
-    //        return p->last();
-    //    };
-    //    auto grouped_by_end = util::groupby(split_paths, f);
-
-    //    // printf("Grouped by end: %zu\n", grouped_by_end.size());
-    //    for (auto &[end_gif, grouped_paths] : grouped_by_end) {
-    //        // printf("    End gif[%zu]: %s\n", grouped_paths.size(),
-    //        //        end_gif->get_full_name().c_str());
-
-    //        std::unordered_set<Node_ref> covered_children;
-    //        for (auto &p : grouped_paths) {
-    //            covered_children.insert((*p)[index + 1]->get_node());
-    //        }
-    //        // printf("    Covered children: %zu/%zu\n", covered_children.size(),
-    //        //        children_set.size());
-
-    //        if (covered_children != children_set) {
-    //            filtered.insert(grouped_paths.begin(), grouped_paths.end());
-    //            continue;
-    //        }
-    //    }
-    //}
-
-    // std::vector<BFSPath> paths_out;
-    // for (BFSPath &p : paths) {
-    //     if (filtered.contains(&p)) {
-    //         continue;
-    //     }
-    //     p.confidence = 1.0;
-    //     paths_out.push_back(p);
-    // }
-    // printf("Filtered paths: %zu\n", paths_out.size());
-    // return paths_out;
-    return {};
 }
