@@ -4,7 +4,6 @@
 import logging
 from cmath import pi
 
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
     Add,
     And,
@@ -61,7 +60,7 @@ def constrain_within_domain(mutator: Mutator):
     #TODO: Alias predicates to True since we need to assume they are true.
     """
 
-    for param in GraphFunctions(mutator.G).nodes_of_type(Parameter):
+    for param in mutator.nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param)
         if param.within is not None:
             mutator.create_expression(IsSubset, new_param, param.within).constrain()
@@ -70,7 +69,7 @@ def constrain_within_domain(mutator: Mutator):
                 GreaterOrEqual, new_param, make_lit(quantity(0.0, new_param.units))
             ).constrain()
 
-    for predicate in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression):
+    for predicate in mutator.nodes_of_type(ConstrainableExpression):
         if predicate.constrained:
             new_predicate = cast_assert(
                 ConstrainableExpression, mutator.mutate_expression(predicate)
@@ -88,9 +87,9 @@ def convert_to_canonical_literals(mutator: Mutator):
     - Enum -> P_Set[Enum]
     """
 
-    param_ops = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    param_ops = mutator.nodes_of_type(ParameterOperatable, sort_by_depth=True)
 
-    for po in ParameterOperatable.sort_by_depth(param_ops, ascending=True):
+    for po in param_ops:
         # Parameter
         if isinstance(po, Parameter):
             mutator.mutate_parameter(
@@ -236,8 +235,8 @@ def convert_to_canonical_operations(mutator: Mutator):
         for Target, Convertible, Converter in MirroredExpressions
     }
 
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
-    for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
+    for e in exprs:
         # TODO move up, by implementing Parameter Target
         # Min, Max
         if isinstance(e, (Min, Max)):

@@ -8,7 +8,6 @@ from functools import partial
 from itertools import combinations
 from typing import cast
 
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
     Add,
     ConstrainableExpression,
@@ -76,14 +75,14 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 
     ge_exprs = {
         e
-        for e in GraphFunctions(mutator.G).nodes_of_type(GreaterOrEqual)
+        for e in mutator.nodes_of_type(GreaterOrEqual, sort_by_depth=True)
         # Look for expressions with only one non-literal operand
         if e.constrained
         and len(list(op for op in e.operands if isinstance(op, ParameterOperatable)))
         == 1
     }
 
-    for ge in ParameterOperatable.sort_by_depth(ge_exprs, ascending=True):
+    for ge in ge_exprs:
         is_left = ge.operands[0] is next(iter(ge.operatable_operands))
 
         if is_left:
@@ -109,7 +108,7 @@ def remove_unconstrained(mutator: Mutator):
     Remove all expressions that are not involved in any constrained predicates
     Note: Not possible for Parameters, want to keep those around for REPR
     """
-    objs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    objs = mutator.nodes_of_type(Expression)
     for obj in objs:
         if get_constrained_expressions_involved_in(obj):
             continue
@@ -128,7 +127,7 @@ def remove_congruent_expressions(mutator: Mutator):
     # No (Invalid): X1 = A + [0, 10], X2 = A + [0, 10]
     # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
 
-    all_exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    all_exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     exprs_by_type = groupby(all_exprs, type)
     full_eq = EquivalenceClasses[Expression](all_exprs)
 
@@ -141,7 +140,7 @@ def remove_congruent_expressions(mutator: Mutator):
                 full_eq.add_eq(e1, e2)
 
     repres = {}
-    for expr in ParameterOperatable.sort_by_depth(all_exprs, ascending=True):
+    for expr in all_exprs:
         eq_class = full_eq.classes[expr]
         if len(eq_class) <= 1:
             continue
@@ -179,9 +178,9 @@ def resolve_alias_classes(mutator: Mutator):
 
     # A is B, B is C, D is E, F, G is (A+B)
     # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
-    param_ops = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    param_ops = mutator.nodes_of_type(ParameterOperatable)
     full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
-    is_exprs = [e for e in GraphFunctions(mutator.G).nodes_of_type(Is) if e.constrained]
+    is_exprs = [e for e in mutator.nodes_of_type(Is) if e.constrained]
     for is_expr in is_exprs:
         full_eq.add_eq(*is_expr.operatable_operands)
     p_eq_classes = full_eq.get()
@@ -268,7 +267,7 @@ def resolve_alias_classes(mutator: Mutator):
     # remove eq_class Is (for non-literal alias classes)
     removed = {
         e
-        for e in GraphFunctions(mutator.G).nodes_of_type(Is)
+        for e in mutator.nodes_of_type(Is)
         if all(mutator.has_been_mutated(operand) for operand in e.operands)
         and not e.get_operations()
     }
@@ -294,9 +293,9 @@ def merge_intersect_subsets(mutator: Mutator):
     #   A < B, A < C -> A < (B | C)
     # Got to consider when to Intersect/Union is more useful than the associative
 
-    params = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    params = mutator.nodes_of_type(ParameterOperatable, sort_by_depth=True)
 
-    for param in ParameterOperatable.sort_by_depth(params, ascending=True):
+    for param in params:
         # TODO we can also propagate is subset from other param: x sub y sub range
         constrained_subset_ops_with_literal = [
             e
@@ -359,13 +358,13 @@ def compress_associative(mutator: Mutator):
     for +, *, and, or, &, |, ^
     """
     ops = cast(
-        set[FullyAssociative],
-        GraphFunctions(mutator.G).nodes_of_types(FullyAssociative),
+        list[FullyAssociative],
+        mutator.nodes_of_types(FullyAssociative, sort_by_depth=True),
     )
     # get out deepest expr in compressable tree
-    root_ops = {e for e in ops if type(e) not in {type(n) for n in e.get_operations()}}
+    root_ops = [e for e in ops if type(e) not in {type(n) for n in e.get_operations()}]
 
-    for expr in ParameterOperatable.sort_by_depth(root_ops, ascending=True):
+    for expr in root_ops:
         res = flatten_associative(expr, partial(is_replacable, mutator.repr_map))
         if not res.destroyed_operations:
             continue
@@ -382,7 +381,7 @@ def empty_set(mutator: Mutator):
     """
     A is {} -> False
     """
-    for e in GraphFunctions(mutator.G).nodes_of_type(Is):
+    for e in mutator.nodes_of_type(Is):
         lits = cast(dict[int, SolverLiteral], e.get_literal_operands())
         if not lits:
             continue
@@ -406,9 +405,9 @@ def fold_literals(mutator: Mutator):
     ```
     """
 
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
 
-    for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+    for expr in exprs:
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
@@ -465,7 +464,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     ```
     """
 
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
+    exprs = mutator.nodes_of_type(Expression)
     for expr in exprs:
         expr = cast(CanonicalOperation, expr)
         # In Is automatically by eq classes
@@ -501,9 +500,7 @@ def transitive_subset(mutator: Mutator):
     A ss! B, B is! X -> new A ss! X
     ```
     """
-    ss_ops = [
-        e for e in GraphFunctions(mutator.G).nodes_of_type(IsSubset) if e.constrained
-    ]
+    ss_ops = [e for e in mutator.nodes_of_type(IsSubset) if e.constrained]
 
     # don't add new IsSubset if already exists as Is or IsSubset
     ss_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(
@@ -514,9 +511,7 @@ def transitive_subset(mutator: Mutator):
     is_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(
         list
     )
-    for is_op in [
-        e for e in GraphFunctions(mutator.G).nodes_of_type(Is) if e.constrained
-    ]:
+    for is_op in [e for e in mutator.nodes_of_type(Is) if e.constrained]:
         for op in is_op.operands:
             is_lookup[op] += [n_op for n_op in is_op.operands if n_op is not op]
 
@@ -574,7 +569,7 @@ def remove_empty_graphs(mutator: Mutator):
 
     predicates = [
         p
-        for p in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+        for p in mutator.nodes_of_type(ConstrainableExpression)
         if p.constrained
         # TODO consider marking predicates as irrelevant or something
         # Ignore Is!!(P!!, True)
@@ -628,7 +623,7 @@ def predicate_literal_deduce(mutator: Mutator):
     P3!!(A, B)
     ```
     """
-    predicates = GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+    predicates = mutator.nodes_of_type(ConstrainableExpression)
     for p in predicates:
         if not p.constrained:
             continue
@@ -642,7 +637,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     A op! B | A or B unconstrained -> A op!! B
     """
 
-    preds = GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression)
+    preds = mutator.nodes_of_type(ConstrainableExpression)
     for p in preds:
         if not p.constrained:
             continue
@@ -666,8 +661,8 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     A is [True], A ^ B -> [True] ^ B
     """
 
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
-    for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
+    for e in exprs:
         ops = []
         found_literal = False
         for op in e.operands:
@@ -801,8 +796,8 @@ def isolate_lone_params(mutator: Mutator):
 
             # TODO: check for no further progress
 
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Is)
-    for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+    exprs = mutator.nodes_of_type(Is, sort_by_depth=True)
+    for expr in exprs:
         if try_extract_literal(expr) is None:
             continue
 

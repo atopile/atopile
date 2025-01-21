@@ -8,7 +8,7 @@ import sys
 from dataclasses import dataclass
 from enum import Enum
 from statistics import median
-from types import NoneType
+from types import NoneType, UnionType
 from typing import Callable, Iterable, Iterator, TypeGuard, cast
 
 from rich.console import Console
@@ -776,6 +776,25 @@ class Mutator:
             for g in get_graphs(self.repr_map.values())
             for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
+
+    def nodes_of_type[T: "ParameterOperatable"](
+        self, t: type[T], sort_by_depth: bool = False
+    ) -> list[T]:
+        out = GraphFunctions(self.G).nodes_of_type(t)
+        if sort_by_depth:
+            out = ParameterOperatable.sort_by_depth(out, ascending=True)
+        return list(out)
+
+    def nodes_of_types(
+        self,
+        t: tuple[type[ParameterOperatable], ...] | UnionType,
+        sort_by_depth: bool = False,
+    ) -> list:
+        out = GraphFunctions(self.G).nodes_of_types(t)
+        out = cast(set[ParameterOperatable], out)
+        if sort_by_depth:
+            out = ParameterOperatable.sort_by_depth(out, ascending=True)
+        return list(out)
 
 
 class Mutators:
