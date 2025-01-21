@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from operator import add, mul, sub, truediv
 from typing import Any, Iterable
 
@@ -657,6 +658,30 @@ def test_voltage_divider_find_single_resistance_full():
     r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
+    # TODO: Which constraints for a, b
+    # e.g |b| < 2?
+    # Prod(X, Sum(X, a)^-1, b) = Y
+    # ...
+    # X = <!X>
+
+    # Sum(X, Prod(X, a)^1, b) = Y
+    # Sum(1*a^-1, b/a, b/X) = Y
+    # Sum(1*a^-1, b/a) = Y  - b / X
+    # Sum(1*a^-1, b/a) - Y = - b / X
+    # (Sum(1*a^-1, b/a) - Y) / -b = 1 / X
+    # X = b / (Y - Sum(1*a^-1, b/a))
+
+    # e.g
+    # Z = V * B / (T + B)
+    # Z = V * B * (T + B)^-1
+    # Z * (T + B) = V * B
+    # T + B = V * B / Z
+    # T + B / B = V / Z
+    # T / B + 1 = V / Z
+    # T / B = V / Z - 1
+    # B / T = Z / V - 1
+    # B = T * (Z / V - 1)
+
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(r_bottom.get_graph())
 
@@ -900,6 +925,26 @@ def test_simple_parameter_isolation(
     solver.phase_1_simplify_analytically((X + Y).get_graph())
 
     assert solver.inspect_get_known_supersets(X) == x_expected
+
+
+def test_abstract_lowpass():
+    Li = Parameter(units=P.H)
+    C = Parameter(units=P.F)
+    fc = Parameter(units=P.Hz)
+
+    # formula
+    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+
+    # input
+    Li.alias_is(Range.from_center_rel(1 * P.uH, 0.01))
+    fc.alias_is(Range.from_center_rel(1000 * P.Hz, 0.01))
+
+    # solve
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically(fc.get_graph())
+
+    print(solver.inspect_get_known_supersets(C))
+    # assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(1000, 0.01)
 
 
 def test_param_isolation():
