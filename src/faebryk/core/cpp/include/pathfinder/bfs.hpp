@@ -45,9 +45,10 @@ namespace std {
 template <> struct hash<Path> {
     size_t operator()(const Path &p) const noexcept {
         const GI_refs_weak &path = p.get_path();
-        size_t hash = 0;
+        const uint64_t HASH_PRIME = 31;
+        uint64_t hash = 0;
         for (auto &gif : path) {
-            hash = hash * 31 + std::hash<GI_ref_weak>{}(gif);
+            hash = hash * HASH_PRIME + std::hash<GI_ref_weak>{}(gif);
         }
         return hash;
     }
