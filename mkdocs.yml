@@ -10,25 +10,9 @@ nav:
 - Getting Started:
   - index.md
   - quickstart.md
-  - upgrade-guide.md
-  - first_project.md
-  - config.md
-  - building.md
-  - install.md
-  - import.md
-  - types.md
-  - class.md
-  - maths.md
-  - component_selection.md
-  - doc-strings.md
-  - how-to.md
-  - View your project:
-    - view.md
-  - Layout on kicad:
-    - kicad.md
-  - Version control / Manufacturing:
-    - git.md
-    - ci.md
+  - CHANGELOG.md
+  - How-Tos:
+    - installation.md
 - Development:
   - development.md
   - roadmap.md
