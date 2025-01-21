@@ -172,6 +172,7 @@ class DefaultSolver(Solver):
                 )
                 print_context_ = mutators.debug_print()
             # TODO assert all new graphs
+
             return algo_repr_map, algo_graphs, algo_dirty
 
         any_dirty = True

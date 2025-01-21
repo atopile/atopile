@@ -21,6 +21,7 @@ from faebryk.core.parameter import (
     Multiply,
     Parameter,
     ParameterOperatable,
+    Power,
 )
 from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.utils import (
@@ -31,6 +32,7 @@ from faebryk.core.solver.utils import (
     FullyAssociative,
     Mutator,
     SolverLiteral,
+    SolverOperatable,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
@@ -746,41 +748,101 @@ def isolate_lone_params(mutator: Mutator):
             case _:
                 return set()
 
-    def isolate_param(expr: Expression, param: ParameterOperatable) -> (
-        tuple[ParameterOperatable, CanonicalOperation]
-        | tuple[CanonicalOperation, ParameterOperatable]
-        | tuple[ParameterOperatable, ParameterOperatable]
-    ) | None:
+    def op_or_create_expr(
+        operation: type[CanonicalOperation], *operands: ParameterOperatable.All
+    ) -> ParameterOperatable.All:
+        if len(operands) == 1:
+            return operands[0]
+
+        return mutator.create_expression(operation, *operands)
+
+    def _isolate_param(
+        param: ParameterOperatable,
+        op_with_param: ParameterOperatable,
+        op_without_param: ParameterOperatable,
+    ) -> tuple[ParameterOperatable.All, ParameterOperatable.All]:
+        if not isinstance(op_with_param, Expression):
+            return op_with_param, op_without_param
+
+        retained_ops = [
+            op for op in op_with_param.operands if param in find_unique_params(op)
+        ]
+
+        moved_ops = [
+            op for op in op_with_param.operands if param not in find_unique_params(op)
+        ]
+
+        match op_with_param, op_without_param:
+            case (Add(), _):
+                return (
+                    op_or_create_expr(Add, *retained_ops),
+                    op_or_create_expr(
+                        Add,
+                        op_without_param,
+                        *[
+                            op_or_create_expr(Multiply, op, make_lit(-1))
+                            for op in moved_ops
+                        ],
+                    ),
+                )
+            case (Multiply(), _):
+                return (
+                    op_or_create_expr(Multiply, *retained_ops),
+                    op_or_create_expr(
+                        Multiply,
+                        op_without_param,
+                        op_or_create_expr(
+                            Power, op_or_create_expr(Multiply, *moved_ops), make_lit(-1)
+                        ),
+                    ),
+                )
+            case (Power(), _):
+                return (
+                    op_with_param.operands[0],
+                    op_or_create_expr(
+                        Power, op_without_param, make_lit(-1)
+                    ),  # TODO: fix exponent
+                )
+            case (_, _):
+                return op_with_param, op_without_param
+
+    def isolate_param(
+        expr: Expression, param: ParameterOperatable
+    ) -> (tuple[ParameterOperatable.All, ParameterOperatable.All]) | None:
         print(f"isolate {param.compact_repr(ctx)} from {expr.compact_repr(ctx)}")
         assert len(expr.operands) == 2
         lhs, rhs = expr.operands
 
         param_in_lhs = param in find_unique_params(lhs)
-        assert param_in_lhs or param in find_unique_params(rhs)
+        param_in_rhs = param in find_unique_params(rhs)
+
+        if param_in_lhs and param_in_rhs:
+            # TODO
+            # supporting this situation means committing to a strategy and sticking to it
+            # otherwise we might just make and undo changes until we run out of iterations
+            return None
+
+        assert param_in_lhs or param_in_rhs
+
         op_with_param = lhs if param_in_lhs else rhs
         op_without_param = rhs if param_in_lhs else lhs
 
-        match op_with_param, op_without_param:
-            # TODO: handle composite expressions (recurse)
-            case (Add(), _):
-                return (
-                    param,
-                    mutator.create_expression(
-                        Add,
-                        rhs,
-                        *[
-                            mutator.create_expression(Multiply, op, make_lit(-1))
-                            for op in op_with_param.operands
-                            if op is not param
-                        ],
-                    ),
-                )
-            case (_, _):
-                return None
+        while True:
+            op_with_param, op_without_param = _isolate_param(
+                param, op_with_param, op_without_param
+            )
+
+            if op_with_param == param:
+                return op_with_param, op_without_param
+
+            # TODO: check for no further progress
 
     exprs = GraphFunctions(mutator.G).nodes_of_type(Is)
     for expr in ParameterOperatable.sort_by_depth(exprs, ascending=True):
         if try_extract_literal(expr) is None:
+            continue
+
+        if BoolSet(True) in expr.operands:
             continue
 
         unaliased_params = {
@@ -792,12 +854,15 @@ def isolate_lone_params(mutator: Mutator):
 
         param = unaliased_params.pop()
 
-        if param in expr.operands:
-            # TODO: also check that other oeprands don't contain param (recursively)
+        if param in expr.operands and not any(
+            op is not param and find_unique_params(op) == {param}
+            for op in expr.operands
+        ):
+            # already isolated
             continue
 
         if (result := isolate_param(expr, param)) is None:
             continue
 
-        lhs, rhs = result
-        mutator.mutate_expression(expr, operands=(lhs, rhs))
+        e = mutator.mutate_expression(expr, operands=result)
+        print(f"isolated: {e.compact_repr(ctx)}")
