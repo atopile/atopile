@@ -45,7 +45,6 @@ from faebryk.libs.app.pcb import (
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
-    open_pcb,
 )
 from faebryk.libs.app.picking import load_descriptive_properties
 from faebryk.libs.exceptions import (
@@ -187,15 +186,6 @@ def build(app: Module) -> None:
 
         logger.info(f"Updating layout {config.build.paths.layout}")
         pcb.dumps(config.build.paths.layout)
-        if config.project.pcbnew_auto:
-            try:
-                open_pcb(config.build.paths.layout)
-            except FileNotFoundError:
-                pass
-            except RuntimeError as e:
-                logger.info(
-                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
-                )
 
     # Build targets -----------------------------------------------------------
     logger.info("Building targets")
