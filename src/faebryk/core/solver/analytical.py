@@ -830,3 +830,7 @@ def isolate_lone_params(mutator: Mutator):
 
         e = mutator.mutate_expression(expr, operands=result)
         print(f"isolated: {e.compact_repr(ctx)}")
+
+
+# TODO def uncorrelated_alias_fold(mutator: Mutator):
+# A op1 B, A is! Lit1, B is! Lit2, A uncorrelated B -> A op1 B is! Lit1 op1 Lit2
