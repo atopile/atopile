@@ -7,8 +7,9 @@ site_description: >-
   Join us in this adventure!
 
 nav:
-- Docs:
+- Getting Started:
   - index.md
+  - quickstart.md
   - upgrade-guide.md
   - first_project.md
   - config.md
@@ -38,10 +39,7 @@ nav:
 - Example Projects:
   - spin.md
   - swoop.md
-- Blog:
-  - blog/index.md
 plugins:
-- blog
 - search
 - mkdocstrings:
     handlers:
