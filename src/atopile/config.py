@@ -283,7 +283,7 @@ class BuildTargetPaths(BaseConfigModel):
                 )
 
         else:
-            layout_path = layout_base.with_suffix(".kicad_pcb")
+            layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
 
             logger.warning("Creating new layout at %s", layout_path)
             layout_path.parent.mkdir(parents=True, exist_ok=True)
