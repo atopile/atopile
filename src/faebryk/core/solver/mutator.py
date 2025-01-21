@@ -22,6 +22,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
 )
 from faebryk.core.solver.utils import (
+    S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
     CanonicalOperation,
@@ -47,6 +48,9 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
 
 
 # TODO use Mutator everywhere instead of repr_maps
