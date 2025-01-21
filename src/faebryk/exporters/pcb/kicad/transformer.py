@@ -1651,8 +1651,7 @@ class PCB_Transformer:
         # Disconnect pads on footprints
         for fp in self.pcb.footprints:
             for pad in fp.pads:
-                if pad.net == net:
-                    assert pad.net
+                if pad.net is not None and pad.net.number == net.number:
                     pad.net.name = ""
                     pad.net.number = 0
 
@@ -1669,19 +1668,18 @@ class PCB_Transformer:
 
     def rename_net(self, net: Net, new_name: str):
         """Rename a new, including all it's connected pads"""
-        old_name = net.name
+        # This is what does the renaming on the net at the top-level
         net.name = new_name
 
         # Update all the footprints
         for fp in self.pcb.footprints:
             for pad in fp.pads:
-                if pad.net == net:
-                    assert pad.net
+                if pad.net is not None and pad.net.number == net.number:
                     pad.net.name = new_name
 
         # Update zone names
         for zone in self.pcb.zones:
-            if zone.net == net.number and zone.net_name == old_name:
+            if zone.net == net.number:
                 zone.net_name = new_name
 
         # Vias and routing are attached only via number,
@@ -1891,8 +1889,12 @@ class PCB_Transformer:
                 if ref_prop := pcb_fp.propertys.get("Reference"):
                     removed_fp_ref = ref_prop.value
                 else:
+                    # This should practically never occur
                     removed_fp_ref = "<no reference>"
-                logger.info(f"Removing `{removed_fp_ref}`", extra={"markdown": True})
+                logger.info(
+                    f"Removing outdated component with Reference `{removed_fp_ref}`",
+                    extra={"markdown": True},
+                )
                 self.remove_footprint(pcb_fp)
 
         # Update nets
@@ -1946,7 +1948,8 @@ class PCB_Transformer:
         for pcb_net in self.pcb.nets:
             # Net number == 0 and name == "" are the default values
             # They represent unconnected to nets, so skip them
-            if pcb_net.number == 0 and pcb_net.name == "":
+            if pcb_net.number == 0:
+                assert pcb_net.name == ""
                 continue
 
             if pcb_net not in processed_nets:
