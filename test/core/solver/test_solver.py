@@ -944,8 +944,8 @@ def test_param_isolation():
     ],
 )
 def test_extracted_literal_folding(op):
-    A = Parameter(domain=L.Domains.Numbers.REAL())
-    B = Parameter(domain=L.Domains.Numbers.REAL())
+    A = Parameter()
+    B = Parameter()
     C = Parameter(domain=L.Domains.Numbers.REAL())
 
     lit1 = Range(0, 10)

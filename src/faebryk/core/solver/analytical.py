@@ -697,7 +697,7 @@ def isolate_lone_params(mutator: Mutator):
 
     Inversion operations must be constructed using canonical operators only.
 
-    A + B is Lit1, B is Lit2 -> A is Lit1 + (Lit2 * -1)
+    A + B is Lit1, B is Lit2, A further uncorrelated B -> A is Lit1 + (Lit2 * -1)
     """
     ctx = mutator.print_context
 
@@ -806,6 +806,8 @@ def isolate_lone_params(mutator: Mutator):
         if try_extract_literal(expr) is None:
             continue
 
+        # TODO why? are we trying to do only arithmetic?
+        # Then why not do isinstance(expr, Arithmetic)?
         if BoolSet(True) in expr.operands:
             continue
 
@@ -813,6 +815,7 @@ def isolate_lone_params(mutator: Mutator):
             p for p in find_unique_params(expr) if try_extract_literal(p) is None
         }
 
+        # only handle single free var
         if len(unaliased_params) != 1:
             continue
 
@@ -834,3 +837,22 @@ def isolate_lone_params(mutator: Mutator):
 
 # TODO def uncorrelated_alias_fold(mutator: Mutator):
 # A op1 B, A is! Lit1, B is! Lit2, A uncorrelated B -> A op1 B is! Lit1 op1 Lit2
+
+
+# TODO consider general equation reordering (general case of isolate_lone_params)
+# Note: all expr have an alias to a parameter after alias_class resolution
+# A op B is C -> A is C inv_op_right B, B is C inv_op_left A
+# careful difference between occurence isolation and parameter isolation
+# (A + B) * A is C
+# occurence isolation: A is C / A - B
+# parameter isolation not possible
+
+
+# TODO consider flattening expressions
+# (A op B) op C -> A op B is X, X op C
+# Then also always extract expressions from parameters
+# Congruency very useful here
+# Gives us power of substitution (without having to commit to representation)
+# A is B + C, B is A + 5, B is C + 3
+# 1. -> A is C + 3 + C = 2C + 3
+# 2. -> A is A + 5 + C -> 0 is 5 + C -> C is -5
