@@ -196,7 +196,7 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("src", data["root"] / "elec" / "src")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data.setdefault("footprints", data["root"] / "elec" / "footprints")
-        data.setdefault("build", data["root"] / "build")
+        data["build"] = Path(data.get("build", data["root"] / "build"))
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("component_lib", data["build"] / "kicad" / "libs")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
@@ -248,7 +248,7 @@ class BuildTargetPaths(BaseConfigModel):
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         data.setdefault(
             "layout",
-            BuildTargetPaths.find_layout(
+            BuildTargetPaths.ensure_layout(
                 project_paths.root / project_paths.layout / name
             ),
         )
@@ -260,7 +260,7 @@ class BuildTargetPaths(BaseConfigModel):
         super().__init__(**data)
 
     @classmethod
-    def find_layout(cls, layout_base: Path) -> Path:
+    def ensure_layout(cls, layout_base: Path) -> Path:
         """Return the layout associated with a build."""
 
         if layout_base.with_suffix(".kicad_pcb").exists():
@@ -283,7 +283,7 @@ class BuildTargetPaths(BaseConfigModel):
                 )
 
         else:
-            layout_path = layout_base.with_suffix(".kicad_pcb")
+            layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
 
             logger.warning("Creating new layout at %s", layout_path)
             layout_path.parent.mkdir(parents=True, exist_ok=True)
@@ -634,10 +634,10 @@ class Config:
         return self._project_dir
 
     @project_dir.setter
-    def project_dir(self, value: Path) -> None:
+    def project_dir(self, value: os.PathLike) -> None:
         global _project_dir
-        _project_dir = value
-        self._project_dir = value
+        _project_dir = Path(value)
+        self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
 
     def update_project_config(
