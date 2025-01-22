@@ -191,6 +191,31 @@ class Mutator:
 
         return self._mutate(expr, new_expr)
 
+    def mutate_unpack_expression(self, expr: Expression) -> ParameterOperatable:
+        """
+        '''
+        op(A, ...) -> A
+        '''
+        """
+        unpacked = expr.operands[0]
+        if not isinstance(unpacked, ParameterOperatable):
+            raise ValueError("Unpacked operand can't be a literal")
+        return self._mutate(expr, unpacked)
+
+    def mutator_neutralize_expressions(self, expr: Expression) -> ParameterOperatable:
+        """
+        '''
+        op(op_inv(A), ...) -> A
+        '''
+        """
+        inner_expr = expr.operands[0]
+        if not isinstance(inner_expr, Expression):
+            raise ValueError("Inner operand must be an expression")
+        inner_operand = inner_expr.operands[0]
+        if not isinstance(inner_operand, ParameterOperatable):
+            raise ValueError("Unpacked operand can't be a literal")
+        return self._mutate(expr, inner_operand)
+
     def mutate_expression_with_op_map(
         self,
         expr: Expression,

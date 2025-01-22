@@ -838,11 +838,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
     # TODO: overall very slow with this enabled
 
     # TODO: all CanonicalOperation?
-    exprs = (
-        mutator.nodes_of_type(Add, sort_by_depth=True)
-        + mutator.nodes_of_type(Multiply, sort_by_depth=True)
-        + mutator.nodes_of_type(Power, sort_by_depth=True)
-    )
+    exprs = mutator.nodes_of_types((Add, Multiply, Power), sort_by_depth=True)
     for expr in exprs:
         # TODO: verify skip conditions (sometimes doesn't terminate?)
         if try_extract_literal(expr) is not None:

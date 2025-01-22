@@ -40,6 +40,7 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
+    is_numeric_literal,
     make_lit,
     remove_predicate,
     try_extract_all_literals,
@@ -192,7 +193,7 @@ def fold_add(
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
-        mutator._mutate(expr, mutator.get_copy(new_operands[0]))
+        mutator.mutate_unpack_expression(expr)
         return
 
     new_expr = mutator.mutate_expression(
@@ -245,7 +246,7 @@ def fold_multiply(
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
-        mutator._mutate(expr, mutator.get_copy(new_operands[0]))
+        mutator.mutate_unpack_expression(expr)
         return
 
     new_expr = mutator.mutate_expression(
@@ -277,15 +278,16 @@ def fold_pow(
 
     # TODO if (litex0)^negative -> new constraint
 
-    base, exp = map(try_extract_numeric_literal, expr.operands)
+    base, exp = expr.operands
+
     # All literals
-    if base is not None and exp is not None:
+    if is_numeric_literal(base) and is_numeric_literal(exp):
         alias_is_literal(expr, base**exp, mutator)
         return
 
-    if exp is not None:
+    if is_numeric_literal(exp):
         if exp == 1:
-            mutator._mutate(expr, mutator.get_copy(expr.operands[0]))
+            mutator.mutate_unpack_expression(expr)
             return
 
         # in python 0**0 is also 1
@@ -293,7 +295,7 @@ def fold_pow(
             alias_is_literal(expr, 1, mutator)
             return
 
-    if base is not None:
+    if is_numeric_literal(base):
         if base == 0:
             alias_is_literal(expr, 0, mutator)
             # FIXME: exp >! 0
@@ -317,8 +319,7 @@ def fold_intersect(
 
     # Intersection(A) -> A
     if not literal_operands and len(expr.operands) == 1:
-        op = cast_assert(ParameterOperatable, expr.operands[0])
-        mutator._mutate(expr, mutator.get_copy(op))
+        mutator.mutate_unpack_expression(expr)
         return
 
 
@@ -335,8 +336,7 @@ def fold_union(
 
     # Union(A) -> A
     if not literal_operands and len(expr.operands) == 1:
-        op = cast_assert(ParameterOperatable, expr.operands[0])
-        mutator._mutate(expr, mutator.get_copy(op))
+        mutator.mutate_unpack_expression(expr)
         return
 
 
@@ -389,11 +389,9 @@ def fold_or(
 
     # Or(P) -> P
     if len(expr.operands) == 1:
-        op = cast_assert(ParameterOperatable, expr.operands[0])
-        out = cast_assert(
-            ConstrainableExpression, mutator._mutate(expr, mutator.get_copy(op))
-        )
-        # Or(P!) -> P!
+        out = mutator.mutate_unpack_expression(expr)
+        assert isinstance(out, ConstrainableExpression)
+        # Or!(P) -> P!
         if expr.constrained:
             out.constrain()
         return
@@ -427,15 +425,22 @@ def fold_not(
         return
 
     op = expr.operands[0]
-    if isinstance(op, ConstrainableExpression) and op.constrained and expr.constrained:
-        raise Contradiction("¬!P!", involved=[expr])
+    # ¬P | P constrained -> False
+    if isinstance(op, ConstrainableExpression) and op.constrained:
+        # ¬!P! | P constrained -> Contradiction
+        if expr.constrained:
+            raise Contradiction("¬!P!", involved=[expr])
+        expr.alias_is(make_lit(False))
+        return
 
     if replacable_nonliteral_operands:
+        # ¬(¬A) -> A
         if isinstance(op, Not):
-            inner = op.operands[0]
-            # inner Not would have run first
-            assert not isinstance(inner, BoolSet)
-            mutator._mutate(expr, mutator.get_copy(inner))
+            out = mutator.mutator_neutralize_expressions(expr)
+            assert isinstance(out, ConstrainableExpression)
+            # ¬!(¬A) -> A
+            if expr.constrained:
+                out.constrain()
             return
 
         # TODO this is kinda ugly

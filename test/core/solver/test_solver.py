@@ -1020,3 +1020,65 @@ def test_extracted_literal_folding(op):
     solver.phase_1_simplify_analytically(C.get_graph())
 
     assert solver.inspect_get_known_supersets(C) == lito
+
+
+def test_fold_correlated():
+    """
+    ```
+    A is [5, 10], B is [10, 20]
+    B is A + 5
+    B - A | [10, 20] - [5, 10] = [5, 10] BUT SHOULD BE 5
+    ```
+
+    A and B correlated, thus B - A should do ss not alias
+    """
+
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    op = add
+    op_inv = sub
+
+    lit1 = Range(5, 10)
+    lit_operand = Single(5)
+    lit2 = op(lit1, lit_operand)
+
+    A.alias_is(lit1)
+    B.alias_is(lit2)
+    B.alias_is(op(A, lit_operand))
+
+    C.alias_is(op_inv(B, A))
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.phase_1_simplify_analytically(C.get_graph())
+
+    is_lit = repr_map.try_get_literal(C, allow_subset=False)
+    ss_lit = repr_map.try_get_literal(C, allow_subset=True)
+    assert ss_lit is not None
+
+    # Test for ss estimation
+    assert ss_lit.is_subset_of(op_inv(lit2, lit1))
+    # Test for not wrongful is estimation
+    assert is_lit != op_inv(lit2, lit1)
+    # Test for correct is estimation
+    assert is_lit == lit_operand
+
+
+def test_fold_pow():
+    # TODO: Fails because of missing uncorrelated fold
+
+    A = Parameter()
+    B = Parameter()
+
+    lit = RangeWithGaps(Range(5, 6))
+    lit_operand = 2
+
+    A.alias_is(lit)
+    B.alias_is(A**lit_operand)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.phase_1_simplify_analytically(B.get_graph())
+
+    res = repr_map.try_get_literal(B)
+    assert res == lit**lit_operand

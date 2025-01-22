@@ -901,6 +901,10 @@ class Power(Arithmetic):
         base_unit = HasUnit.get_units_or_dimensionless(base)
         units = dimensionless
         if not base_unit.is_compatible_with(dimensionless):
+            if isinstance(exponent, ParameterOperatable):
+                raise NotImplementedError(
+                    "exponent must be a literal for base with unit"
+                )
             exp_val = Quantity_Interval_Disjoint.from_value(exponent)
             if exp_val.min_elem != exp_val.max_elem:
                 raise ValueError(
