@@ -21,8 +21,6 @@ nav:
     - reference/attributes.md
 - Development:
   - development.md
-  - API Reference:
-    - api/cli.md
 - Packages: https://packages.atopile.io
 - Example Projects:
   - spin.md
