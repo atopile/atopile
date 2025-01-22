@@ -696,30 +696,6 @@ def test_voltage_divider_find_r_bottom():
     r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
-    # TODO: Which constraints for a, b
-    # e.g |b| < 2?
-    # Prod(X, Sum(X, a)^-1, b) = Y
-    # ...
-    # X = <!X>
-
-    # Sum(X, Prod(X, a)^1, b) = Y
-    # Sum(1*a^-1, b/a, b/X) = Y
-    # Sum(1*a^-1, b/a) = Y  - b / X
-    # Sum(1*a^-1, b/a) - Y = - b / X
-    # (Sum(1*a^-1, b/a) - Y) / -b = 1 / X
-    # X = b / (Y - Sum(1*a^-1, b/a))
-
-    # e.g
-    # Z = V * B / (T + B)
-    # Z = V * B * (T + B)^-1
-    # Z * (T + B) = V * B
-    # T + B = V * B / Z
-    # T + B / B = V / Z
-    # T / B + 1 = V / Z
-    # T / B = V / Z - 1
-    # B / T = Z / V - 1
-    # B = T * (Z / V - 1)
-
     solver = DefaultSolver()
     solver.phase_1_simplify_analytically(r_bottom.get_graph())
 

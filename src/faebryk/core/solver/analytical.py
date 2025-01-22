@@ -877,22 +877,3 @@ def uncorrelated_alias_fold(mutator: Mutator):
         if False:
             print("uncorrelated_alias_fold: ", expr.compact_repr(mutator.print_context))
             print("-> ", e.compact_repr(mutator.print_context))
-
-
-# TODO consider general equation reordering (general case of isolate_lone_params)
-# Note: all expr have an alias to a parameter after alias_class resolution
-# A op B is C -> A is C inv_op_right B, B is C inv_op_left A
-# careful difference between occurence isolation and parameter isolation
-# (A + B) * A is C
-# occurence isolation: A is C / A - B
-# parameter isolation not possible
-
-
-# TODO consider flattening expressions
-# (A op B) op C -> A op B is X, X op C
-# Then also always extract expressions from parameters
-# Congruency very useful here
-# Gives us power of substitution (without having to commit to representation)
-# A is B + C, B is A + 5, B is C + 3
-# 1. -> A is C + 3 + C = 2C + 3
-# 2. -> A is A + 5 + C -> 0 is 5 + C -> C is -5
