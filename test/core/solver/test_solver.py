@@ -591,7 +591,7 @@ def test_combined_add_and_multiply_with_ranges():
     assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(4, 0.01)
 
 
-def test_voltage_divider_find_vout_no_division():
+def test_voltage_divider_find_v_out_no_division():
     r_top = Parameter()
     r_bottom = Parameter()
     v_in = Parameter()
@@ -606,10 +606,12 @@ def test_voltage_divider_find_vout_no_division():
     solver.phase_1_simplify_analytically(v_out.get_graph())
 
     # dependency problem prevents finding precise solution of [9/11, 100/11]
+    # TODO: automatically rearrange expression to match
+    # v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
     assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
 
 
-def test_voltage_divider_find_vout_with_division():
+def test_voltage_divider_find_v_out_with_division():
     r_top = Parameter()
     r_bottom = Parameter()
     v_in = Parameter()
@@ -624,6 +626,42 @@ def test_voltage_divider_find_vout_with_division():
     solver.phase_1_simplify_analytically(v_out.get_graph())
 
     assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
+
+
+def test_voltage_divider_find_v_out_single_variable_occurrences():
+    r_top = Parameter()
+    r_bottom = Parameter()
+    v_in = Parameter()
+    v_out = Parameter()
+
+    v_in.alias_is(Range(9, 10))
+    r_top.alias_is(Range(10, 100))
+    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
+
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically(v_out.get_graph())
+
+    assert solver.inspect_get_known_supersets(v_out) == Range(9 / 11, 100 / 11)
+
+
+# FIXME: needs 12 iterations
+def test_voltage_divider_find_v_in():
+    r_top = Parameter()
+    r_bottom = Parameter()
+    v_in = Parameter()
+    v_out = Parameter()
+
+    v_out.alias_is(Range(9, 10))
+    r_top.alias_is(Range(10, 100))
+    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    solver.phase_1_simplify_analytically(v_in.get_graph())
+
+    # TODO: should find [9.9, 100]
+    assert solver.inspect_get_known_supersets(v_in) == Range(1.8, 200)
 
 
 def test_voltage_divider_find_resistances():
@@ -647,7 +685,7 @@ def test_voltage_divider_find_resistances():
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
 
-def test_voltage_divider_find_single_resistance_full():
+def test_voltage_divider_find_r_bottom():
     r_top = Parameter(units=P.ohm)
     r_bottom = Parameter(units=P.ohm)
     v_in = Parameter(units=P.V)
@@ -690,7 +728,7 @@ def test_voltage_divider_find_single_resistance_full():
     )
 
 
-def test_voltage_divider_find_single_resistance_simple():
+def test_voltage_divider_find_r_top():
     r_top = Parameter(units=P.ohm)
     r_bottom = Parameter(units=P.ohm)
     v_in = Parameter(units=P.V)
@@ -702,9 +740,9 @@ def test_voltage_divider_find_single_resistance_simple():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(r_bottom.get_graph())
+    solver.phase_1_simplify_analytically(r_top.get_graph())
 
-    assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
+    assert solver.inspect_get_known_supersets(r_top) == Range.from_center_rel(
         1 * P.ohm, 0.01
     )
 
