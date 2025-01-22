@@ -8,6 +8,7 @@ import sys
 from types import UnionType
 from typing import Callable, Iterable, Iterator, cast
 
+from attr import dataclass
 from rich.console import Console
 from rich.table import Table
 
@@ -52,11 +53,18 @@ logger = logging.getLogger(__name__)
 if S_LOG:
     logger.setLevel(logging.DEBUG)
 
+type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
+
+
+@dataclass
+class AlgoResult:
+    repr_map: REPR_MAP
+    graphs: list[Graph]
+    dirty: bool
+
 
 # TODO use Mutator everywhere instead of repr_maps
 class Mutator:
-    type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
-
     def __init__(
         self,
         G: Graph,
@@ -407,9 +415,9 @@ class Mutators:
         self.result_repr_map = {}
         self.print_context = print_context
 
-    def close(self) -> tuple[Mutator.REPR_MAP, list[Graph], bool]:
+    def close(self) -> AlgoResult:
         if not any(m.dirty for m in self.mutators):
-            return {}, [], False
+            return AlgoResult(repr_map={}, graphs=[], dirty=False)
 
         repr_map = {}
         for m in self.mutators:
@@ -419,7 +427,7 @@ class Mutators:
         assert not (set(m.G for m in self.mutators if m.needs_copy) & set(graphs))
         self.result_repr_map = repr_map
 
-        return repr_map, graphs, True
+        return AlgoResult(repr_map=repr_map, graphs=graphs, dirty=True)
 
     def run(self, algo: Callable[[Mutator], None]):
         for m in self.mutators:
@@ -571,7 +579,7 @@ class Mutators:
             print_out(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     @staticmethod
-    def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
+    def concat_repr_maps(*repr_maps: REPR_MAP) -> REPR_MAP:
         # TODO just removed assert
         if not repr_maps:
             return {}
@@ -602,7 +610,7 @@ class Mutators:
         return concatenated
 
     class ReprMap:
-        def __init__(self, repr_map: Mutator.REPR_MAP):
+        def __init__(self, repr_map: REPR_MAP):
             self.repr_map = repr_map
 
         def try_get_literal(
@@ -627,6 +635,9 @@ class Mutators:
         def __repr__(self) -> str:
             return f"ReprMap({self.repr_map})"
 
+        def __rich_repr__(self):
+            yield self.repr_map
+
     @staticmethod
-    def create_concat_repr_map(*repr_maps: Mutator.REPR_MAP) -> ReprMap:
+    def create_concat_repr_map(*repr_maps: REPR_MAP) -> ReprMap:
         return Mutators.ReprMap(Mutators.concat_repr_maps(*repr_maps))

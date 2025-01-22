@@ -3,6 +3,8 @@
 
 import logging
 import time
+from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Any, Callable, override
 
 from faebryk.core.graph import Graph, GraphFunctions
@@ -36,7 +38,7 @@ from faebryk.core.solver.canonical import (
     convert_to_canonical_literals,
     convert_to_canonical_operations,
 )
-from faebryk.core.solver.mutator import Mutator, Mutators
+from faebryk.core.solver.mutator import REPR_MAP, AlgoResult, Mutator, Mutators
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     MAX_ITERATIONS,
@@ -76,40 +78,13 @@ class DefaultSolver(Solver):
     # TODO actually use this...
     timeout: int = 1000
 
-    def __init__(self) -> None:
-        super().__init__()
-
-        self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
-
-    def has_no_solution(
-        self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
-    ) -> bool:
-        # any parameter is/subset literal is empyt (implcit constraint that we forgot)
-        # any constrained expression got mapped to False
-        # any constrained expression literal is False
-        raise NotImplementedError()
-
-    @times_out(120)
-    def phase_1_simplify_analytically(
-        self,
-        g: Graph,
-        print_context: ParameterOperatable.ReprContext | None = None,
-    ):
-        now = time.time()
-        if LOG_PICK_SOLVE:
-            logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
-
-        # TODO move into comment here
-        # strategies
-        # https://www.notion.so/Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
-
-        pre_algorithms = [
+    algorithms = SimpleNamespace(
+        pre=[
             ("Constrain within and domain", constrain_within_domain),
             ("Canonical literal form", convert_to_canonical_literals),
             ("Canonical expression form", convert_to_canonical_operations),
-        ]
-
-        iterative_algorithms = [
+        ],
+        iterative=[
             ("Remove unconstrained", remove_unconstrained),
             (
                 "Convert aliased singletons into literals",
@@ -134,170 +109,248 @@ class DefaultSolver(Solver):
             ("Isolate lone parameters", isolate_lone_params),
             ("Uncorrelated alias fold", uncorrelated_alias_fold),
             ("Remove empty graphs", remove_empty_graphs),
-        ]
-        subset_dirty_algorithms = [
+        ],
+        subset_dirty=[
             ("Upper estimation", upper_estimation_of_expressions_with_subsets),
-        ]
+        ],
+    )
+
+    @dataclass
+    class IterationData:
+        graphs: list[Graph]
+        total_repr_map: Mutators.ReprMap
+        param_ops_subset_literals: dict[ParameterOperatable, SolverLiteral | None]
+
+        def __rich_repr__(self):
+            yield "graphs", self.graphs
+            yield "total_repr_map", self.total_repr_map
+            yield "param_ops_subset_literals", self.param_ops_subset_literals
+
+        def _print(self):
+            from rich import print as rprint
+
+            rprint(self)
+
+    def __init__(self) -> None:
+        super().__init__()
+
+        self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
+
+    def has_no_solution(
+        self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
+    ) -> bool:
+        # any parameter is/subset literal is empty (implcit constraint that we forgot)
+        # any constrained expression got mapped to False
+        # any constrained expression literal is False
+        raise NotImplementedError()
+
+    @classmethod
+    def _run_algo(
+        cls,
+        iterno: int,
+        graphs: list[Graph],
+        phase_name: str,
+        algo_name: str,
+        algo: Callable[[Mutator], None],
+        print_context: ParameterOperatable.ReprContext,
+    ) -> tuple[AlgoResult, ParameterOperatable.ReprContext]:
+        if PRINT_START:
+            logger.debug(
+                f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
+                f" G:{len(graphs)}"
+            )
+        mutators = Mutators(*graphs, print_context=print_context)
+        mutators.run(algo)
+        algo_result = mutators.close()
+        # TODO remove
+        if algo_result.dirty:
+            logger.debug(
+                f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} "
+                f"G:{len(graphs)}"
+            )
+            print_context = mutators.debug_print() or print_context
+        # TODO assert all new graphs
+
+        return algo_result, print_context
+
+    @classmethod
+    def _run_algos(
+        cls,
+        iterno: int,
+        data: IterationData,
+        algos: list[tuple[str, Callable[[Mutator], None]]],
+        print_context: ParameterOperatable.ReprContext,
+        phase_offset: int = 0,
+    ):
+        iteration_repr_maps: dict[tuple[int, str], REPR_MAP] = {}
+        iteration_dirty = {}
+        for phase_name, (algo_name, algo) in enumerate(algos):
+            algo_result, print_context = cls._run_algo(
+                iterno=iterno,
+                graphs=data.graphs,
+                phase_name=str(phase_name + phase_offset),
+                algo_name=algo_name,
+                algo=algo,
+                print_context=print_context,
+            )
+
+            if not algo_result.dirty:
+                continue
+
+            iteration_dirty[(iterno, algo_name)] = algo_result.dirty
+            data.graphs = algo_result.graphs
+            iteration_repr_maps[(iterno, algo_name)] = algo_result.repr_map
+
+        data.total_repr_map = Mutators.create_concat_repr_map(
+            data.total_repr_map.repr_map, *iteration_repr_maps.values()
+        )
+
+        any_dirty = any(iteration_dirty.values())
+
+        return data, any_dirty, print_context
+
+    @classmethod
+    def _run_initial_iteration(
+        cls, data: IterationData, print_context: ParameterOperatable.ReprContext
+    ) -> tuple[IterationData, ParameterOperatable.ReprContext]:
+        data, _, print_context = DefaultSolver._run_algos(
+            iterno=0,
+            data=data,
+            algos=cls.algorithms.pre,
+            print_context=print_context,
+        )
+
+        # include new params generated by canonicalization
+        new_params = {
+            po: po
+            for G in data.graphs
+            for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
+            if po not in data.total_repr_map.repr_map.values()
+        }
+
+        data.total_repr_map = Mutators.create_concat_repr_map(
+            data.total_repr_map.repr_map | new_params
+        )
+
+        # Build initial subset literals
+        data.param_ops_subset_literals = {
+            po: data.total_repr_map.try_get_literal(po, allow_subset=True)
+            for po in data.total_repr_map.repr_map
+        }
+
+        if S_LOG:
+            Mutators.print_all(*data.graphs, context=print_context)
+
+        return data, print_context
+
+    @classmethod
+    def _run_iteration(
+        cls,
+        iterno: int,
+        data: IterationData,
+        print_context: ParameterOperatable.ReprContext,
+    ) -> tuple[IterationData, ParameterOperatable.ReprContext]:
+        data, any_dirty, print_context = DefaultSolver._run_algos(
+            iterno=iterno,
+            data=data,
+            algos=cls.algorithms.iterative,
+            print_context=print_context,
+        )
+
+        if any_dirty:
+            # check which subset literals have changed for our old paramops
+            subset_dirty = False
+            for po in data.param_ops_subset_literals:
+                if po not in data.total_repr_map.repr_map:
+                    continue
+
+                new_subset_literal = data.total_repr_map.try_get_literal(
+                    po, allow_subset=True
+                )
+
+                if new_subset_literal != data.param_ops_subset_literals[po]:
+                    logger.debug(
+                        f"Subset dirty {data.param_ops_subset_literals[po]} != "
+                        f"{new_subset_literal}"
+                    )
+                    data.param_ops_subset_literals[po] = new_subset_literal
+                    subset_dirty = True
+
+            if subset_dirty or iterno <= 1:
+                logger.debug(
+                    "Subset dirty, running subset dirty algorithms"
+                    if subset_dirty
+                    else "Iteration 1, running subset dirty algorithms"
+                )
+
+                data, _, print_context = DefaultSolver._run_algos(
+                    iterno=iterno,
+                    data=data,
+                    algos=cls.algorithms.subset_dirty,
+                    print_context=print_context,
+                    phase_offset=len(cls.algorithms.iterative),
+                )
+
+        if S_LOG:
+            Mutators.print_all(*data.graphs, context=print_context)
+
+        return data, print_context
+
+    @times_out(120)
+    def phase_1_simplify_analytically(
+        self, g: Graph, print_context: ParameterOperatable.ReprContext | None = None
+    ):
+        now = time.time()
+        if LOG_PICK_SOLVE:
+            logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
+
+        # TODO move into comment here
+        # strategies
+        # https://www.notion.so/Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
 
         print_context_ = print_context or ParameterOperatable.ReprContext()
-
         if S_LOG:
             debug_name_mappings(print_context_, g)
             Mutators.print_all(g, context=print_context_, type_filter=Expression)
 
-        def run_algo(
-            graphs: list[Graph],
-            phase_name: str,
-            algo_name: str,
-            algo: Callable[[Mutator], None],
-        ):
-            nonlocal print_context_
-            if PRINT_START:
-                logger.debug(
-                    f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
-                    f" G:{len(graphs)}"
-                )
-            mutators = Mutators(*graphs, print_context=print_context_)
-            mutators.run(algo)
-            algo_repr_map, algo_graphs, algo_dirty = mutators.close()
-            # TODO remove
-            if algo_dirty:
-                logger.debug(
-                    f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} "
-                    f"G:{len(graphs)}"
-                )
-                print_context_ = mutators.debug_print()
-            # TODO assert all new graphs
+        iter_data, print_context_ = DefaultSolver._run_initial_iteration(
+            data=DefaultSolver.IterationData(
+                graphs=[g],
+                total_repr_map=Mutators.ReprMap({}),
+                param_ops_subset_literals={},
+            ),
+            print_context=print_context_,
+        )
 
-            return algo_repr_map, algo_graphs, algo_dirty
-
+        iterno = 0
         any_dirty = True
-        iterno = -1
-        total_repr_map = Mutators.ReprMap({})
-        graphs = [g]
-
-        # subset specific
-        param_ops_subset_literals: dict[ParameterOperatable, SolverLiteral | None] = {}
-
-        while any_dirty and len(graphs) > 0:
+        while any_dirty and len(iter_data.graphs) > 0:
             iterno += 1
             # TODO remove
             if iterno > MAX_ITERATIONS:
                 raise Exception("Too many iterations")
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
-                for g in graphs
+                for g in iter_data.graphs
             )
             logger.debug(
-                f"Iteration {iterno} |graphs|: {len(graphs)}, |V|: {v_count}".ljust(
-                    80, "-"
-                )
+                (
+                    f"Iteration {iterno} "
+                    f"|graphs|: {len(iter_data.graphs)}, |V|: {v_count}"
+                ).ljust(80, "-")
             )
 
-            if iterno == 0:
-                algos = pre_algorithms
-            else:
-                algos = iterative_algorithms
-
-            iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
-            iteration_dirty = {}
-            for phase_name, (algo_name, algo) in enumerate(algos):
-                algo_repr_map, algo_graphs, algo_dirty = run_algo(
-                    graphs, str(phase_name), algo_name, algo
-                )
-                if not algo_dirty:
-                    continue
-                iteration_dirty[(iterno, algo_name)] = algo_dirty
-                graphs = algo_graphs
-                iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
-
-            any_dirty = any(iteration_dirty.values())
-
-            total_repr_map = Mutators.create_concat_repr_map(
-                *([total_repr_map.repr_map] if iterno > 0 else []),
-                *iteration_repr_maps.values(),
+            iter_data, print_context_ = DefaultSolver._run_iteration(
+                iterno, iter_data, print_context_
             )
-
-            # subset -------------------------------------------------------------------
-            if iterno == 0:
-                # include new params generated by canonicalization
-                new_params = {
-                    po
-                    for G in graphs
-                    for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-                    if po not in total_repr_map.repr_map.values()
-                }
-
-                total_repr_map = Mutators.create_concat_repr_map(
-                    total_repr_map.repr_map | {po: po for po in new_params},
-                )
-
-                # Build initial subset literals
-                param_ops_subset_literals = {
-                    po: total_repr_map.try_get_literal(po, allow_subset=True)
-                    for po in total_repr_map.repr_map
-                }
-
-                continue
-
-            if not any_dirty:
-                continue
-
-            # check which subset literals have changed for our old paramops
-            subset_dirty = False
-            param_ops_subset_literals = {
-                po: lit
-                for po, lit in param_ops_subset_literals.items()
-                if po in total_repr_map
-            }
-
-            for po in param_ops_subset_literals:
-                new_subset_literal = total_repr_map.try_get_literal(
-                    po, allow_subset=True
-                )
-                if new_subset_literal != param_ops_subset_literals[po]:
-                    logger.debug(
-                        f"Subset dirty {param_ops_subset_literals[po]} != "
-                        f"{new_subset_literal}"
-                    )
-                    param_ops_subset_literals[po] = new_subset_literal
-                    subset_dirty = True
-
-            iteration_repr_maps: dict[tuple[int, str], Mutator.REPR_MAP] = {}
-
-            if not subset_dirty and iterno > 1:
-                continue
-            if subset_dirty:
-                logger.debug("Subset dirty, running subset dirty algorithms")
-            else:
-                logger.debug("Iteration 1, running subset dirty algorithms")
-
-            phase_end = phase_name + 1
-            # Run subset dirty algorithms
-            for phase_name, (algo_name, algo) in enumerate(subset_dirty_algorithms):
-                algo_repr_map, algo_graphs, algo_dirty = run_algo(
-                    graphs, f"{phase_end}.{phase_name}", algo_name, algo
-                )
-                if not algo_dirty:
-                    continue
-                graphs = algo_graphs
-                iteration_repr_maps[(iterno, algo_name)] = algo_repr_map
-
-            total_repr_map = Mutators.create_concat_repr_map(
-                total_repr_map.repr_map,
-                *iteration_repr_maps.values(),
-            )
-            # --------------------------------------------------------------------------
-
-        if S_LOG:
-            Mutators.print_all(*graphs, context=print_context_)
 
         if LOG_PICK_SOLVE:
             logger.info(
                 f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
                 f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
-        return total_repr_map, print_context_
+
+        return iter_data.total_repr_map, print_context_
 
     @override
     def get_any_single(

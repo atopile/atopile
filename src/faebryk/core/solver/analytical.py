@@ -102,8 +102,6 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             expression_factory=IsSubset,
         )
 
-    return mutator
-
 
 def remove_unconstrained(mutator: Mutator):
     """
