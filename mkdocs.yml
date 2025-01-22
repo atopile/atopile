@@ -13,7 +13,7 @@ nav:
   - CHANGELOG.md
   - Guides:
     - guides/installation.md
-    - guides/best-practices.md
+    - guides/git.md
     - guides/faebryk.md
 - Development:
   - development.md
