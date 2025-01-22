@@ -8,7 +8,7 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, has_ato_cmp_attrs
+from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
@@ -81,7 +81,7 @@ def test_simple_new(bob: Bob):
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert child.has_trait(has_ato_cmp_attrs)
+    assert child.has_trait(_has_ato_cmp_attrs)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
@@ -398,11 +398,11 @@ def test_duck_type_connect(bob: Bob):
 
 
 def test_shim_power(bob: Bob):
-    from atopile._shim import ShimPower
+    from atopile.attributes import Power
 
     ctx = ParserRuleContext()
 
-    a = ShimPower()
+    a = Power()
     b = F.ElectricPower()
 
     bob._connect(a, b, ctx)

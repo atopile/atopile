@@ -11,15 +11,18 @@ nav:
   - index.md
   - quickstart.md
   - CHANGELOG.md
+  - Tutorial:
+    - tutorial/the-ato-language.md
   - Guides:
     - guides/installation.md
     - guides/git.md
     - guides/faebryk.md
+  - Reference:
+    - reference/attributes.md
 - Development:
   - development.md
   - API Reference:
     - api/cli.md
-    - api/solver.md
 - Packages: https://packages.atopile.io
 - Example Projects:
   - spin.md

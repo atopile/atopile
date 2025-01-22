@@ -1,7 +1,5 @@
 """
-This file exists to tide designs over from v0.2 to v0.3.
-
-It will be removed in v0.4.
+This file defines what attributes are available in `ato`.
 """
 
 import logging
@@ -16,7 +14,6 @@ from atopile.errors import UserBadParameterError, UserNotImplementedError
 from faebryk.core.trait import TraitImpl, TraitNotFound
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.util import write_only_property
 
 log = logging.getLogger(__name__)
 
@@ -40,7 +37,7 @@ def _is_int(name: str) -> bool:
     return True
 
 
-class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
+class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
     """
     This trait defers footprint creation until it's needed,
     which means we can construct the underlying pin map
@@ -68,7 +65,7 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
             return fp
 
     def handle_duplicate(
-        self, old: "has_local_kicad_footprint_named_defined", _: fab_param.Node
+        self, old: "_has_local_kicad_footprint_named_defined", _: fab_param.Node
     ) -> bool:
         if old.try_get_footprint():
             raise RuntimeError("Too late to set footprint")
@@ -80,7 +77,7 @@ class has_local_kicad_footprint_named_defined(F.has_footprint_impl):
         return False
 
 
-class has_ato_cmp_attrs(L.Module.TraitT.decless()):
+class _has_ato_cmp_attrs(L.Module.TraitT.decless()):
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.pinmap: dict[str, F.Electrical | None] = {}
@@ -108,13 +105,37 @@ class has_ato_cmp_attrs(L.Module.TraitT.decless()):
 
 # FIXME: this would ideally be some kinda of mixin,
 # however, we can't have multiple bases for Nodes
-class GlobalShims(L.Module):
-    @write_only_property
+class GlobalAttributes(L.Module):
+    """
+    These attributes are available to all modules and interfaces in a design.
+    """
+
+    @property
+    def lcsc_id(self):
+        """
+        Assign the LCSC ID of the module.
+
+        If set, this will tell the picker to select that part from LCSC for this block.
+        """
+        raise AttributeError("write-only")
+
+    @lcsc_id.setter
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
         self.add(F.has_descriptive_properties_defined({"LCSC": value}))
 
-    @write_only_property
+    @property
+    def manufacturer(self) -> str:
+        """
+        This module's manufacturer name, as a string.
+
+        Only exact matches on the manufacturer's name will be found by the picker.
+        It's recommended to fill this information based on what `ato create component`
+        provides.
+        """
+        raise AttributeError("write-only")
+
+    @manufacturer.setter
     def manufacturer(self, value: str):
         # handles duplicates gracefully
         self.add(
@@ -125,6 +146,12 @@ class GlobalShims(L.Module):
 
     @property
     def mpn(self) -> str:
+        """
+        This module's manufacturer part number, as a string.
+
+        For the picker to select the correct part from the manufacturer,
+        this must be set.
+        """
         try:
             return self.get_trait(F.has_descriptive_properties).get_properties()[
                 DescriptiveProperties.partno
@@ -155,11 +182,29 @@ class GlobalShims(L.Module):
                 "`mpn` is deprecated for assignment of LCSC IDs. Use `lcsc_id` instead."
             )
 
-    @write_only_property
+    @property
+    def designator_prefix(self):
+        """
+        The prefix used for automatically-generated designators on this module.
+        """
+        raise AttributeError("write-only")
+
+    @designator_prefix.setter
     def designator_prefix(self, value: str):
         self.add(F.has_designator_prefix(value))
 
-    @write_only_property
+    @property
+    def package(self) -> str:
+        """
+        The package of the module.
+
+        This drives which components can be selected, and what footprint is used.
+
+        Must exactly match a known package name.
+        """
+        raise AttributeError("write-only")
+
+    @package.setter
     def package(self, value: str):
         try:
             self.add(F.has_package(value))
@@ -170,17 +215,32 @@ class GlobalShims(L.Module):
                 + ", ".join(k for k in F.has_package.Package.__members__.keys()),
             )
 
-    @write_only_property
+    @property
+    def footprint(self) -> str:
+        """
+        Explicitly set the footprint to be used for this module.
+
+        Setting this will cause this component to be selected and placed on the PCB.
+
+        The footprint should be a string, naming the KiCAD ID of the footprint.
+        """
+        raise AttributeError("write-only")
+
+    @footprint.setter
     def footprint(self, value: str):
         self.add(
-            has_local_kicad_footprint_named_defined(
-                value, self.get_trait(has_ato_cmp_attrs).pinmap
+            _has_local_kicad_footprint_named_defined(
+                value, self.get_trait(_has_ato_cmp_attrs).pinmap
             )
         )
 
     # TODO: do not place
+    @property
+    def exclude_from_bom(self):
+        raise AttributeError("write-only")
+
     # See: https://github.com/atopile/atopile/pull/424/files#diff-63194bff2019ade91098b68b1c47e10ce94fb03258923f8c77f66fc5707a0c96
-    @write_only_property
+    @exclude_from_bom.setter
     def exclude_from_bom(self, value: bool):
         raise UserNotImplementedError(
             "`exclude_from_bom` is not yet implemented. "
@@ -189,6 +249,16 @@ class GlobalShims(L.Module):
             "See: https://github.com/atopile/atopile/issues/755"
         )
 
+    @property
+    def override_net_name(self):
+        """
+        When set on an interface, this will override the net name of the interface.
+
+        This is useful for renaming nets which are automatically generated.
+        """
+        raise AttributeError("write-only")
+
+    @override_net_name.setter
     def override_net_name(self, name: str):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
@@ -211,18 +281,27 @@ def _handle_package_shim(module: L.Module, value: str, starts_with: str):
 
 
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
-class ShimResistor(F.Resistor):
-    """Temporary shim to translate resistors."""
+class Resistor(F.Resistor):
+    """
+    This resistor is replaces `generics/resistors.ato:Resistor`
+    every times it's referenced.
+    """
 
     @property
     def value(self):
+        """Represents the resistance of the resistor."""
         return self.resistance
 
     @value.setter
     def value(self, value: L.Range):
         self.resistance.constrain_subset(value)
 
-    @write_only_property
+    @property
+    def footprint(self):
+        """See `GlobalAttributes.footprint`"""
+        raise AttributeError("write-only")
+
+    @footprint.setter
     def footprint(self, value: str):
         from atopile.front_end import DeprecatedException
 
@@ -240,18 +319,25 @@ class ShimResistor(F.Resistor):
                 # Return here, to avoid additionally setting the footprint
                 return
 
-        GlobalShims.footprint.fset(self, value)
+        GlobalAttributes.footprint.fset(self, value)
 
-    @write_only_property
+    @property
+    def package(self):
+        """See `GlobalAttributes.package`"""
+        raise AttributeError("write-only")
+
+    @package.setter
     def package(self, value: str):
         _handle_package_shim(self, value, "R")
 
     @property
     def p1(self) -> F.Electrical:
+        """One side of the resistor."""
         return self.unnamed[0]
 
     @property
     def p2(self) -> F.Electrical:
+        """The other side of the resistor."""
         return self.unnamed[1]
 
     @property
@@ -263,15 +349,20 @@ class ShimResistor(F.Resistor):
         return self.unnamed[1]
 
     @L.rt_field
-    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
-        trait = has_ato_cmp_attrs()
+    def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
+        """Ignore this field."""
+        trait = _has_ato_cmp_attrs()
         trait.pinmap["1"] = self.p1
         trait.pinmap["2"] = self.p2
         return trait
 
 
-class _CommonCap(F.Capacitor):
-    class has_power(L.Trait.decless()):
+class CommonCapacitor(F.Capacitor):
+    """
+    These attributes are common to both electrolytic and non-electrolytic capacitors.
+    """
+
+    class _has_power(L.Trait.decless()):
         """
         This trait is used to add power interfaces to
         capacitors who use them, keeping the interfaces
@@ -286,17 +377,28 @@ class _CommonCap(F.Capacitor):
 
     @property
     def value(self):
+        """Represents the capacitance of the capacitor."""
         return self.capacitance
 
     @value.setter
     def value(self, value: L.Range):
         self.capacitance.constrain_subset(value)
 
-    @write_only_property
+    @property
+    def package(self):
+        """See `GlobalAttributes.package`"""
+        raise AttributeError("write-only")
+
+    @package.setter
     def package(self, value: str):
         _handle_package_shim(self, value, "C")
 
-    @write_only_property
+    @property
+    def footprint(self):
+        """See `GlobalAttributes.footprint`"""
+        raise AttributeError("write-only")
+
+    @footprint.setter
     def footprint(self, value: str):
         from atopile.front_end import DeprecatedException
 
@@ -314,14 +416,16 @@ class _CommonCap(F.Capacitor):
                 # Return here, to avoid additionally setting the footprint
                 return
 
-        GlobalShims.footprint.fset(self, value)
+        GlobalAttributes.footprint.fset(self, value)
 
     @property
     def p1(self) -> F.Electrical:
+        """One side of the capacitor."""
         return self.unnamed[0]
 
     @property
     def p2(self) -> F.Electrical:
+        """The other side of the capacitor."""
         return self.unnamed[1]
 
     @property
@@ -334,24 +438,29 @@ class _CommonCap(F.Capacitor):
 
 
 @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class ShimCapacitor(_CommonCap):
-    """Temporary shim to translate capacitors."""
+class Capacitor(CommonCapacitor):
+    """
+    This capacitor is replaces `generics/capacitors.ato:Capacitor`
+    every times it's referenced.
+    """
 
     @L.rt_field
-    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
-        trait = has_ato_cmp_attrs()
+    def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
+        """Ignore this field."""
+        trait = _has_ato_cmp_attrs()
         trait.pinmap["1"] = self.p1
         trait.pinmap["2"] = self.p2
         return trait
 
     @property
     def power(self) -> F.ElectricPower:
-        if self.has_trait(self.has_power):
-            power = self.get_trait(self.has_power).power
+        """A `Power` interface, which is connected to the capacitor."""
+        if self.has_trait(self._has_power):
+            power = self.get_trait(self._has_power).power
         else:
             power = F.ElectricPower()
             power.hv.connect_via(self, power.lv)
-            self.add(self.has_power(power))
+            self.add(self._has_power(power))
 
         return power
 
@@ -359,7 +468,7 @@ class ShimCapacitor(_CommonCap):
 @_register_shim(
     "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
 )
-class ShimCapacitorElectrolytic(_CommonCap):
+class CapacitorElectrolytic(CommonCapacitor):
     """Temporary shim to translate capacitors."""
 
     anode: F.Electrical
@@ -369,27 +478,32 @@ class ShimCapacitorElectrolytic(_CommonCap):
 
     @property
     def power(self) -> F.ElectricPower:
-        if self.has_trait(self.has_power):
-            power = self.get_trait(self.has_power).power
+        if self.has_trait(self._has_power):
+            power = self.get_trait(self._has_power).power
         else:
             power = F.ElectricPower()
             power.hv.connect(self.anode)
             power.lv.connect(self.cathode)
-            self.add(self.has_power(power))
+            self.add(self._has_power(power))
 
         return power
 
 
 @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
-class ShimInductor(F.Inductor):
-    """Temporary shim to translate inductors."""
+class Inductor(F.Inductor):
+    """
+    This inductor is replaces `generics/inductors.ato:Inductor`
+    every times it's referenced.
+    """
 
     @property
     def p1(self) -> F.Electrical:
+        """Signal to one side of the inductor."""
         return self.unnamed[0]
 
     @property
     def p2(self) -> F.Electrical:
+        """Signal to the other side of the inductor."""
         return self.unnamed[1]
 
     @property
@@ -401,19 +515,25 @@ class ShimInductor(F.Inductor):
         return self.unnamed[1]
 
     @L.rt_field
-    def has_ato_cmp_attrs_(self) -> has_ato_cmp_attrs:
-        trait = has_ato_cmp_attrs()
+    def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
+        """Ignore this field."""
+        trait = _has_ato_cmp_attrs()
         trait.pinmap["1"] = self.p1
         trait.pinmap["2"] = self.p2
         return trait
 
-    @write_only_property
+    @property
+    def package(self):
+        """See `GlobalAttributes.package`"""
+        raise AttributeError("write-only")
+
+    @package.setter
     def package(self, value: str):
         _handle_package_shim(self, value, "L")
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")
-class ShimLED(F.LED):
+class LED(F.LED):
     """Temporary shim to translate LEDs."""
 
     @property
@@ -426,17 +546,24 @@ class ShimLED(F.LED):
 
 
 @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
-class ShimPower(F.ElectricPower):
+class Power(F.ElectricPower):
     """Temporary shim to translate `value` to `power`."""
 
     @property
     def vcc(self) -> F.Electrical:
+        """Higher-voltage side of the power interface."""
         return self.hv
 
     @property
     def gnd(self) -> F.Electrical:
+        """Lower-voltage side of the power interface."""
         return self.lv
 
     @property
     def current(self):
+        """
+        Maximum current the power interface can provide.
+
+        Negative is current draw.
+        """
         return self.max_current

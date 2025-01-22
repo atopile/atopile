@@ -25,7 +25,7 @@ from pint import UndefinedUnitError
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, errors
-from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
+from atopile.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
 from atopile.config import config
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
@@ -869,8 +869,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if isinstance(node_type, ap.BlockdefContext):
             if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
                 # Some shims add the trait themselves
-                if not new_node.has_trait(has_ato_cmp_attrs):
-                    new_node.add(has_ato_cmp_attrs())
+                if not new_node.has_trait(_has_ato_cmp_attrs):
+                    new_node.add(_has_ato_cmp_attrs())
 
         yield new_node
 
@@ -1008,11 +1008,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 setattr(target, assigned_name, value)
             elif (
                 # If ModuleShims has a settable property, use it
-                hasattr(GlobalShims, assigned_name)
-                and isinstance(getattr(GlobalShims, assigned_name), property)
-                and getattr(GlobalShims, assigned_name).fset
+                hasattr(GlobalAttributes, assigned_name)
+                and isinstance(getattr(GlobalAttributes, assigned_name), property)
+                and getattr(GlobalAttributes, assigned_name).fset
             ):
-                prop = cast_assert(property, getattr(GlobalShims, assigned_name))
+                prop = cast_assert(property, getattr(GlobalAttributes, assigned_name))
                 assert prop.fset is not None
                 with (
                     downgrade(DeprecatedException, errors.UserNotImplementedError),
@@ -1084,7 +1084,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if mif := self._get_mif_and_warn_when_exists(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
+        if shims_t := self._current_node.try_get_trait(_has_ato_cmp_attrs):
             mif = shims_t.add_pin(name)
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
