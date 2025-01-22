@@ -1067,6 +1067,9 @@ def test_fold_correlated():
 
 def test_fold_pow():
     # TODO: Fails because of missing uncorrelated fold
+    # - idea: maybe resolve_alias_classes needs to copy alias_is to lit accross all expr
+    #    in eq class instead of just repr param
+    # OR: when extracting literals we traverse whole eq class (cheap)
 
     A = Parameter()
     B = Parameter()

@@ -6,6 +6,7 @@ import io
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from itertools import pairwise
 from statistics import median
 from types import NoneType
 from typing import TYPE_CHECKING, Callable, Iterable, TypeGuard, cast
@@ -175,6 +176,15 @@ def try_extract_all_literals[T: P_Set](
     return cast(list[T], as_lits)
 
 
+def map_extract_literals(
+    expr: Expression,
+) -> list[SolverOperatable]:
+    return [
+        lit if (lit := try_extract_literal(op)) is not None else op
+        for op in expr.operands
+    ]
+
+
 def alias_is_literal(
     po: ParameterOperatable, literal: ParameterOperatable.Literal, mutator: "Mutator"
 ):
@@ -337,9 +347,10 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
-def get_constrained_expressions_involved_in(
+def get_expressions_involved_in[T: Expression](
     p: ParameterOperatable,
-) -> set[ConstrainableExpression]:
+    type_filter: type[T] = Expression,
+) -> set[T]:
     # p.self -> p.operated_on -> e1.operates_on -> e1.self
     dependants = p.bfs_node(
         lambda path: isinstance(path[-1].node, ParameterOperatable)
@@ -358,12 +369,47 @@ def get_constrained_expressions_involved_in(
             )
         )
     )
-    res = {
-        p
-        for p in dependants
-        if isinstance(p, ConstrainableExpression) and p.constrained
-    }
+    res = {p for p in dependants if isinstance(p, type_filter)}
     return res
+
+
+def get_constrained_expressions_involved_in[T: ConstrainableExpression](
+    p: ParameterOperatable,
+    type_filter: type[T] = ConstrainableExpression,
+) -> set[T]:
+    res = {p for p in get_expressions_involved_in(p, type_filter) if p.constrained}
+    return res
+
+
+def get_correlations(
+    operables: Iterable[ParameterOperatable] | Expression,
+    exclude: set[Expression] | None = None,
+):
+    # TODO: might want to check if expr has aliases because those are correlated too
+
+    if exclude is None:
+        exclude = set()
+
+    if isinstance(operables, Expression):
+        exclude.add(operables)
+        operables = [
+            o for o in operables.operands if isinstance(o, ParameterOperatable)
+        ]
+
+    excluded = {
+        e for e in exclude if isinstance(e, ConstrainableExpression) and e.constrained
+    }
+
+    op_set = set(operables)
+
+    exprs = {o: get_constrained_expressions_involved_in(o, Is) for o in op_set}
+    # check disjoint sets
+    for e1, e2 in pairwise(operables):
+        if e1 is e2:
+            return e1, e2
+        overlap = (exprs[e1] & exprs[e2]).difference(excluded)
+        if overlap:
+            yield e1, e2, overlap
 
 
 def is_replacable_by_literal(op: ParameterOperatable.All):
@@ -389,6 +435,8 @@ def make_if_doesnt_exist[T: Expression](
     if not non_lits:
         # TODO implement better
         return expr_factory(*operands)  # type: ignore #TODO
+
+    # TODO: might have to check in repr_map
     candidates = [
         expr for expr in non_lits[0].get_operations() if isinstance(expr, expr_factory)
     ]

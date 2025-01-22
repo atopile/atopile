@@ -280,9 +280,13 @@ def fold_pow(
 
     base, exp = expr.operands
 
+    # TODO: remove
+    print("fold_pow", expr.compact_repr(mutator.print_context))
+
     # All literals
     if is_numeric_literal(base) and is_numeric_literal(exp):
         alias_is_literal(expr, base**exp, mutator)
+        print("->", base**exp)
         return
 
     if is_numeric_literal(exp):

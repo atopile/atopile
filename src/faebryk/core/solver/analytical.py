@@ -33,10 +33,12 @@ from faebryk.core.solver.utils import (
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
     get_constrained_expressions_involved_in,
+    get_correlations,
     is_literal,
     is_replacable,
     is_replacable_by_literal,
     make_lit,
+    map_extract_literals,
     merge_parameters,
     no_other_constrains,
     remove_predicate,
@@ -832,44 +834,44 @@ def isolate_lone_params(mutator: Mutator):
 
 def uncorrelated_alias_fold(mutator: Mutator):
     """
-    A op1 B, A is! Lit1, B is! Lit2, A uncorrelated B -> A op1 B is! Lit1 op1 Lit2
+    If an operation contains only operands that are not correlated with each other,
+    we can replace the operands with their corresponding literals.
+    ```
+    op(As), no correlations in As outside of op, len(A is Lit in As) > 0
+    -> op(As) is! op(As replaced by corresponding lits)
+    ```
     """
 
-    # TODO: overall very slow with this enabled
-
-    # TODO: all CanonicalOperation?
-    exprs = mutator.nodes_of_types((Add, Multiply, Power), sort_by_depth=True)
+    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for expr in exprs:
-        # TODO: verify skip conditions (sometimes doesn't terminate?)
+        assert isinstance(expr, CanonicalOperation)
+        # TODO: is this correct?
+        if isinstance(expr, (Is, IsSubset)):
+            continue
+        # skip op is Lit
         if try_extract_literal(expr) is not None:
             continue
 
-        if any(try_extract_literal(op) is None for op in expr.operands):
+        # at least one operand is not a literal, else no point
+        if not any(isinstance(op, ParameterOperatable) for op in expr.operands):
             continue
 
-        if (expr_literals := try_extract_all_literals(expr)) is None:
+        # len(A is Lit in As) > 0
+        if not any(try_extract_literal(op) is not None for op in expr.operands):
             continue
 
-        # TODO: should solve faster if 3+ operands allowed
-        if len(expr.operands) != 2:
+        # TODO: we can weaken this to not replace correlated operands instead of
+        #   skipping the whole expression
+        # check if any correlations
+        if any(get_correlations(expr)):
             continue
 
-        if not all(isinstance(op, ParameterOperatable) for op in expr.operands):
-            continue
+        expr_resolved_operands = map_extract_literals(expr)
 
-        # TODO: faster method
-        if any(
-            is_expr.operands[0] == expr
-            and try_extract_literal(is_expr.operands[1]) is not None
-            for is_expr in mutator.nodes_of_type(Is, sort_by_depth=True)
-        ):
-            continue
-
-        # TODO: check if uncorrelated
-
-        literals_expr = mutator.create_expression(type(expr), *expr_literals)
+        literals_expr = mutator.create_expression(type(expr), *expr_resolved_operands)
         e = mutator.create_expression(Is, expr, literals_expr).constrain()
 
-        if False:
+        if True:
             print("uncorrelated_alias_fold: ", expr.compact_repr(mutator.print_context))
             print("-> ", e.compact_repr(mutator.print_context))
+            input()

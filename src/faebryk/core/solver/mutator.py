@@ -469,6 +469,13 @@ class Mutators:
             self.result_repr_map.values()
         )
 
+        # TODO remove
+        print(
+            "SKIBIDI",
+            {op for m in self.mutators for op in m._new_ops}
+            & set(self.result_repr_map.values()),
+        )
+
         rows: list[tuple[str, str]] = []
 
         for op in new_ops:
