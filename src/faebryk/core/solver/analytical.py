@@ -830,8 +830,53 @@ def isolate_lone_params(mutator: Mutator):
         print(f"isolated: {e.compact_repr(ctx)}")
 
 
-# TODO def uncorrelated_alias_fold(mutator: Mutator):
-# A op1 B, A is! Lit1, B is! Lit2, A uncorrelated B -> A op1 B is! Lit1 op1 Lit2
+def uncorrelated_alias_fold(mutator: Mutator):
+    """
+    A op1 B, A is! Lit1, B is! Lit2, A uncorrelated B -> A op1 B is! Lit1 op1 Lit2
+    """
+
+    # TODO: overall very slow with this enabled
+
+    # TODO: all CanonicalOperation?
+    exprs = (
+        mutator.nodes_of_type(Add, sort_by_depth=True)
+        + mutator.nodes_of_type(Multiply, sort_by_depth=True)
+        + mutator.nodes_of_type(Power, sort_by_depth=True)
+    )
+    for expr in exprs:
+        # TODO: verify skip conditions (sometimes doesn't terminate?)
+        if try_extract_literal(expr) is not None:
+            continue
+
+        if any(try_extract_literal(op) is None for op in expr.operands):
+            continue
+
+        if (expr_literals := try_extract_all_literals(expr)) is None:
+            continue
+
+        # TODO: should solve faster if 3+ operands allowed
+        if len(expr.operands) != 2:
+            continue
+
+        if not all(isinstance(op, ParameterOperatable) for op in expr.operands):
+            continue
+
+        # TODO: faster method
+        if any(
+            is_expr.operands[0] == expr
+            and try_extract_literal(is_expr.operands[1]) is not None
+            for is_expr in mutator.nodes_of_type(Is, sort_by_depth=True)
+        ):
+            continue
+
+        # TODO: check if uncorrelated
+
+        literals_expr = mutator.create_expression(type(expr), *expr_literals)
+        e = mutator.create_expression(Is, expr, literals_expr).constrain()
+
+        if False:
+            print("uncorrelated_alias_fold: ", expr.compact_repr(mutator.print_context))
+            print("-> ", e.compact_repr(mutator.print_context))
 
 
 # TODO consider general equation reordering (general case of isolate_lone_params)

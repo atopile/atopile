@@ -28,6 +28,7 @@ from faebryk.core.solver.analytical import (
     remove_unconstrained,
     resolve_alias_classes,
     transitive_subset,
+    uncorrelated_alias_fold,
     upper_estimation_of_expressions_with_subsets,
 )
 from faebryk.core.solver.canonical import (
@@ -131,6 +132,7 @@ class DefaultSolver(Solver):
             ("Empty set", empty_set),
             ("Transitive subset", transitive_subset),
             ("Isolate lone parameters", isolate_lone_params),
+            ("Uncorrelated alias fold", uncorrelated_alias_fold),
             ("Remove empty graphs", remove_empty_graphs),
         ]
         subset_dirty_algorithms = [
