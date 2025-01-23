@@ -242,8 +242,8 @@ def project(
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
 
 
-@create_app.command()
-def build(
+@create_app.command("build-target")
+def build_target(
     name: Annotated[str | None, typer.Argument()] = None,
 ):
     """
@@ -253,7 +253,7 @@ def build(
     """
     if not name:
         name = caseconverter.kebabcase(
-            questionary.text("Enter the build name").unsafe_ask()
+            questionary.text("Enter the build-target name").unsafe_ask()
         )
 
     try:
