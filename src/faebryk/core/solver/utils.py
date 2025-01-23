@@ -6,6 +6,7 @@ import io
 import logging
 from dataclasses import dataclass
 from enum import Enum
+from functools import wraps
 from itertools import pairwise
 from statistics import median
 from types import NoneType
@@ -538,3 +539,28 @@ def debug_name_mappings(
         console = Console(record=True, width=80, file=io.StringIO())
         console.print(table)
         print_out(console.export_text(styles=True))
+
+
+type SolverAlgorithmFunc = "Callable[[Mutator], None]"
+
+
+@dataclass
+class SolverAlgorithm:
+    name: str
+    func: SolverAlgorithmFunc
+
+    def __call__(self, *args, **kwargs):
+        return self.func(*args, **kwargs)
+
+
+def algorithm(
+    name: str,
+) -> Callable[[SolverAlgorithmFunc], SolverAlgorithm]:
+    def decorator(func: SolverAlgorithmFunc) -> SolverAlgorithm:
+        @wraps(func)
+        def wrapped(*args, **kwargs):
+            return func(*args, **kwargs)
+
+        return SolverAlgorithm(name=name, func=wrapped)
+
+    return decorator

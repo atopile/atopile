@@ -29,6 +29,7 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
     FullyAssociative,
     SolverLiteral,
+    algorithm,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
@@ -64,6 +65,7 @@ if S_LOG:
     logger.setLevel(logging.DEBUG)
 
 
+@algorithm("Convert inequality with literal to subset")
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
     # TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
     """
@@ -103,6 +105,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         )
 
 
+@algorithm("Remove unconstrained")
 def remove_unconstrained(mutator: Mutator):
     """
     Remove all expressions that are not involved in any constrained predicates
@@ -115,6 +118,7 @@ def remove_unconstrained(mutator: Mutator):
         mutator.remove(obj)
 
 
+@algorithm("Remove congruent expressions")
 def remove_congruent_expressions(mutator: Mutator):
     """
     Remove expressions that are congruent to other expressions
@@ -160,6 +164,7 @@ def remove_congruent_expressions(mutator: Mutator):
         mutator._mutate(expr, repres[eq_id])
 
 
+@algorithm("Alias classes")
 def resolve_alias_classes(mutator: Mutator):
     """
     Resolve alias classes
@@ -274,6 +279,7 @@ def resolve_alias_classes(mutator: Mutator):
     mutator.remove(*removed)
 
 
+@algorithm("Merge intersecting subsets")
 def merge_intersect_subsets(mutator: Mutator):
     """
     A subset L1
@@ -346,6 +352,7 @@ def merge_intersect_subsets(mutator: Mutator):
             alias_is_literal_and_check_predicate_eval(e, True, mutator)
 
 
+@algorithm("Associative expressions Full")
 def compress_associative(mutator: Mutator):
     """
     Makes
@@ -377,6 +384,7 @@ def compress_associative(mutator: Mutator):
         )
 
 
+@algorithm("Empty set")
 def empty_set(mutator: Mutator):
     """
     A is {} -> False
@@ -389,6 +397,7 @@ def empty_set(mutator: Mutator):
             alias_is_literal_and_check_predicate_eval(e, False, mutator)
 
 
+@algorithm("Fold literals")
 def fold_literals(mutator: Mutator):
     """
     Tries to do operations on literals or fold expressions.
@@ -447,6 +456,7 @@ def fold_literals(mutator: Mutator):
         )
 
 
+@algorithm("Upper estimation")
 def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
     If any operand in an expression has a subset literal,
@@ -493,6 +503,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         mutator.mark_predicate_true(ss)
 
 
+@algorithm("Transitive subset")
 def transitive_subset(mutator: Mutator):
     """
     ```
@@ -561,6 +572,7 @@ def transitive_subset(mutator: Mutator):
             ss_lookup[A].append(C_or_X)
 
 
+@algorithm("Remove empty graphs")
 def remove_empty_graphs(mutator: Mutator):
     """
     If there is only one predicate, it can be replaced by True
@@ -607,6 +619,7 @@ def remove_empty_graphs(mutator: Mutator):
     mutator.remove_graph()
 
 
+@algorithm("Predicate literal deduce")
 def predicate_literal_deduce(mutator: Mutator):
     """
     ```
@@ -632,6 +645,7 @@ def predicate_literal_deduce(mutator: Mutator):
             mutator.mark_predicate_true(p)
 
 
+@algorithm("Predicate unconstrained operands deduce")
 def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
     A op! B | A or B unconstrained -> A op!! B
@@ -655,6 +669,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
             return
 
 
+@algorithm("Convert aliased singletons into literals")
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
     A is ([5]), A + B -> ([5]) + B
@@ -684,6 +699,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         mutator.mutate_expression(e, operands=ops)
 
 
+@algorithm("Isolate lone parameters")
 def isolate_lone_params(mutator: Mutator):
     """
     If an expression is aliased to a literal, and only one parameter in the expression
@@ -830,6 +846,7 @@ def isolate_lone_params(mutator: Mutator):
         print(f"isolated: {e.compact_repr(ctx)}")
 
 
+@algorithm("Uncorrelated alias fold")
 def uncorrelated_alias_fold(mutator: Mutator):
     """
     If an operation contains only operands that are not correlated with each other,

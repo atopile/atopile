@@ -5,7 +5,7 @@ import logging
 import time
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import Any, Callable, override
+from typing import Any, override
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
@@ -15,36 +15,15 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver.analytical import (
-    compress_associative,
-    convert_inequality_with_literal_to_subset,
-    convert_operable_aliased_to_single_into_literal,
-    empty_set,
-    fold_literals,
-    isolate_lone_params,
-    merge_intersect_subsets,
-    predicate_literal_deduce,
-    predicate_unconstrained_operands_deduce,
-    remove_congruent_expressions,
-    remove_empty_graphs,
-    remove_unconstrained,
-    resolve_alias_classes,
-    transitive_subset,
-    uncorrelated_alias_fold,
-    upper_estimation_of_expressions_with_subsets,
-)
-from faebryk.core.solver.canonical import (
-    constrain_within_domain,
-    convert_to_canonical_literals,
-    convert_to_canonical_operations,
-)
-from faebryk.core.solver.mutator import REPR_MAP, AlgoResult, Mutator, Mutators
+from faebryk.core.solver import analytical, canonical
+from faebryk.core.solver.mutator import REPR_MAP, AlgoResult, Mutators
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     MAX_ITERATIONS,
     PRINT_START,
     S_LOG,
     Contradiction,
+    SolverAlgorithm,
     SolverLiteral,
     debug_name_mappings,
     get_graphs,
@@ -80,39 +59,28 @@ class DefaultSolver(Solver):
 
     algorithms = SimpleNamespace(
         pre=[
-            ("Constrain within and domain", constrain_within_domain),
-            ("Canonical literal form", convert_to_canonical_literals),
-            ("Canonical expression form", convert_to_canonical_operations),
+            canonical.constrain_within_domain,
+            canonical.convert_to_canonical_literals,
+            canonical.convert_to_canonical_operations,
         ],
         iterative=[
-            ("Remove unconstrained", remove_unconstrained),
-            (
-                "Convert aliased singletons into literals",
-                convert_operable_aliased_to_single_into_literal,
-            ),
-            ("Remove congruent expressions", remove_congruent_expressions),
-            ("Alias classes", resolve_alias_classes),
-            (
-                "Inequality with literal to subset",
-                convert_inequality_with_literal_to_subset,
-            ),
-            ("Associative expressions Full", compress_associative),
-            ("Fold literals", fold_literals),
-            ("Merge intersecting subsets", merge_intersect_subsets),
-            ("Predicate literal deduce", predicate_literal_deduce),
-            (
-                "Predicate unconstrained operands deduce",
-                predicate_unconstrained_operands_deduce,
-            ),
-            ("Empty set", empty_set),
-            ("Transitive subset", transitive_subset),
-            ("Isolate lone parameters", isolate_lone_params),
-            ("Uncorrelated alias fold", uncorrelated_alias_fold),
-            ("Remove empty graphs", remove_empty_graphs),
+            analytical.remove_unconstrained,
+            analytical.convert_operable_aliased_to_single_into_literal,
+            analytical.remove_congruent_expressions,
+            analytical.resolve_alias_classes,
+            analytical.convert_inequality_with_literal_to_subset,
+            analytical.compress_associative,
+            analytical.fold_literals,
+            analytical.merge_intersect_subsets,
+            analytical.predicate_literal_deduce,
+            analytical.predicate_unconstrained_operands_deduce,
+            analytical.empty_set,
+            analytical.transitive_subset,
+            analytical.isolate_lone_params,
+            analytical.uncorrelated_alias_fold,
+            analytical.remove_empty_graphs,
         ],
-        subset_dirty=[
-            ("Upper estimation", upper_estimation_of_expressions_with_subsets),
-        ],
+        subset_dirty=[analytical.upper_estimation_of_expressions_with_subsets],
     )
 
     @dataclass
@@ -150,13 +118,12 @@ class DefaultSolver(Solver):
         iterno: int,
         graphs: list[Graph],
         phase_name: str,
-        algo_name: str,
-        algo: Callable[[Mutator], None],
+        algo: SolverAlgorithm,
         print_context: ParameterOperatable.ReprContext,
     ) -> tuple[AlgoResult, ParameterOperatable.ReprContext]:
         if PRINT_START:
             logger.debug(
-                f"START Iteration {iterno} Phase 1.{phase_name}: {algo_name}"
+                f"START Iteration {iterno} Phase 1.{phase_name}: {algo.name}"
                 f" G:{len(graphs)}"
             )
         mutators = Mutators(*graphs, print_context=print_context)
@@ -165,7 +132,7 @@ class DefaultSolver(Solver):
         # TODO remove
         if algo_result.dirty:
             logger.debug(
-                f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo_name} "
+                f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
                 f"G:{len(graphs)}"
             )
             print_context = mutators.debug_print() or print_context
@@ -178,18 +145,17 @@ class DefaultSolver(Solver):
         cls,
         iterno: int,
         data: IterationData,
-        algos: list[tuple[str, Callable[[Mutator], None]]],
+        algos: list[SolverAlgorithm],
         print_context: ParameterOperatable.ReprContext,
         phase_offset: int = 0,
     ):
         iteration_repr_maps: dict[tuple[int, str], REPR_MAP] = {}
         iteration_dirty = {}
-        for phase_name, (algo_name, algo) in enumerate(algos):
+        for phase_name, algo in enumerate(algos):
             algo_result, print_context = cls._run_algo(
                 iterno=iterno,
                 graphs=data.graphs,
                 phase_name=str(phase_name + phase_offset),
-                algo_name=algo_name,
                 algo=algo,
                 print_context=print_context,
             )
@@ -197,9 +163,9 @@ class DefaultSolver(Solver):
             if not algo_result.dirty:
                 continue
 
-            iteration_dirty[(iterno, algo_name)] = algo_result.dirty
+            iteration_dirty[(iterno, algo.name)] = algo_result.dirty
             data.graphs = algo_result.graphs
-            iteration_repr_maps[(iterno, algo_name)] = algo_result.repr_map
+            iteration_repr_maps[(iterno, algo.name)] = algo_result.repr_map
 
         data.total_repr_map = Mutators.create_concat_repr_map(
             data.total_repr_map.repr_map, *iteration_repr_maps.values()

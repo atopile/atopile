@@ -40,6 +40,7 @@ from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalOperation,
     NumericLiteralR,
+    algorithm,
     alias_is_literal,
     make_lit,
 )
@@ -54,6 +55,7 @@ from faebryk.libs.util import cast_assert
 logger = logging.getLogger(__name__)
 
 
+@algorithm("Constrain within and domain")
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
@@ -79,6 +81,7 @@ def constrain_within_domain(mutator: Mutator):
             mutator.mark_predicate_false(new_predicate)
 
 
+@algorithm("Canonical literal form")
 def convert_to_canonical_literals(mutator: Mutator):
     """
     - remove units for NumberLike
@@ -138,6 +141,7 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_expression_with_op_map(po, mutate)
 
 
+@algorithm("Canonical expression form")
 def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add
