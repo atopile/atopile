@@ -12,7 +12,8 @@ nav:
   - quickstart.md
   - CHANGELOG.md
   - Tutorial:
-    - tutorial/the-ato-language.md
+    - tutorial/1-the-ato-language.md
+    - tutorial/2-the-ato-compiler.md
   - Guides:
     - guides/installation.md
     - guides/git.md
