@@ -88,7 +88,7 @@ def build(app: Module) -> None:
 
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app, cleanup=False)
+    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
     load_designators(G, attach=True)
 
     # Pre-run solver -----------------------------------------------------------
@@ -127,9 +127,6 @@ def build(app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    # We have to cleanup before applying the design, because otherwise we'll
-    # delete the things we're adding
-    transformer.cleanup()
     transformer.apply_design(config.build.paths.fp_lib_table)
     transformer.check_unattached_fps()
 
