@@ -55,6 +55,7 @@ from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagInt,
     KeyErrorAmbiguous,
+    find_or,
     partition,
     unique_ref,
 )
@@ -138,6 +139,20 @@ def try_extract_literal(
 ) -> SolverLiteral | None:
     try:
         lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
+        # find literal of representative parameter of expression
+        # related to alias classes
+        if lit is None and isinstance(po, Expression):
+            for e in po.get_operations(Is, constrained_only=True):
+                p = find_or(
+                    e.operatable_operands,
+                    lambda o: isinstance(o, Parameter),
+                    default=None,
+                )
+                if p is None:
+                    continue
+                lit = try_extract_literal(p, allow_subset=True)
+                if lit is not None:
+                    break
     except KeyErrorAmbiguous as e:
         raise ContradictionByLiteral(
             "Duplicate unequal is literals",
@@ -214,6 +229,10 @@ def is_literal(po: ParameterOperatable) -> TypeGuard[SolverLiteral]:
 
 def is_numeric_literal(po: ParameterOperatable) -> TypeGuard[CanonicalNumber]:
     return is_literal(po) and isinstance(po, CanonicalNumber)
+
+
+def is_literal_expression(po: ParameterOperatable) -> TypeGuard[Expression]:
+    return isinstance(po, Expression) and not po.get_involved_parameters()
 
 
 def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -582,6 +583,15 @@ class Expression(ParameterOperatable):
             i: ParameterOperatable.try_extract_literal(o)
             for i, o in enumerate(self.operands)
         }
+
+    def get_involved_parameters(self) -> Counter["Parameter"]:
+        params = [p for p in self.operands if isinstance(p, Parameter)] + [
+            p
+            for expr in self.operands
+            if isinstance(expr, Expression)
+            for p in expr.get_involved_parameters()
+        ]
+        return Counter(params)
 
     def depth(self) -> int:
         """

@@ -36,6 +36,7 @@ from faebryk.core.solver.utils import (
     get_constrained_expressions_involved_in,
     get_correlations,
     is_literal,
+    is_literal_expression,
     is_replacable,
     is_replacable_by_literal,
     make_lit,
@@ -235,7 +236,13 @@ def resolve_alias_classes(mutator: Mutator):
     for eq_class in p_eq_classes:
         if len(eq_class) <= 1:
             continue
-        alias_class_p_ops = [p for p in eq_class if isinstance(p, ParameterOperatable)]
+        alias_class_p_ops = [
+            p
+            for p in eq_class
+            if isinstance(p, ParameterOperatable)
+            # Literal expressions are basically literals
+            and not is_literal_expression(p)
+        ]
         alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
         alias_class_exprs = [p for p in alias_class_p_ops if isinstance(p, Expression)]
 
