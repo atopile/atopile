@@ -110,13 +110,8 @@ The most important three files in there are:
 
 Here's a simple example of atopile code:
 
-```
-from "generics/resistors.ato" import Resistor
-
-module Demo:
-    r1 = new Resistor           # Create a new resistor
-    r1.value = 100ohm +/- 10%   # Set the resistor value
-
+```ato
+--8<-- "examples/ch1_0_quickstart.ato"
 ```
 
 Update `demo.ato` (of whatever you've named your source file) with this code.
