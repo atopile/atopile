@@ -33,7 +33,12 @@ def test_examples_build(
     example = example_copy
 
     # Copy dependencies to the tmp dir directly because standalone mode doens't include
-    shutil.copytree(repo_root / "examples" / ".ato", tmp_path / ".ato")
+    example_modules = repo_root / "examples" / ".ato" / "modules"
+    for item in example_modules.glob("*"):
+        if item.is_dir():
+            shutil.copytree(item, tmp_path / item.name)
+        else:
+            shutil.copy(item, tmp_path / item.name)
 
     # Make the noise
     try:
