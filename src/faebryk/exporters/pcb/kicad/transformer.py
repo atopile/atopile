@@ -55,7 +55,6 @@ from faebryk.libs.util import (
     cast_assert,
     dataclass_as_kwargs,
     find,
-    get_key,
     hash_string,
     yield_missing,
 )
@@ -212,9 +211,7 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    def __init__(
-        self, pcb: PCB, graph: Graph, app: Module, cleanup: bool = True
-    ) -> None:
+    def __init__(self, pcb: PCB, graph: Graph, app: Module) -> None:
         self.pcb = pcb
         self.graph = graph
         self.app = app
@@ -235,8 +232,6 @@ class PCB_Transformer:
 
         self.default_component_insert_point = C_xyr(x=0, y=0, r=0)
 
-        if cleanup:
-            self.cleanup()
         self.attach()
 
     def attach(self):
@@ -396,22 +391,6 @@ class PCB_Transformer:
 
     def bind_net(self, pcb_net: Net, net: F.Net):
         net.add(self.has_linked_kicad_net(pcb_net, self))
-
-    def cleanup(self):
-        # delete faebryk objects in pcb
-
-        # find all objects with path_len 2 (direct children of a list in pcb)
-        candidates = [o for o in dataclass_dfs(self.pcb) if len(o[1]) == 2]
-        for obj, path, _ in candidates:
-            if not self.is_marked(obj):
-                continue
-
-            # delete object by removing it from the container they are in
-            holder = path[-1]
-            if isinstance(holder, list):
-                holder.remove(obj)
-            elif isinstance(holder, dict):
-                del holder[get_key(obj, holder)]
 
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
@@ -1868,6 +1847,11 @@ class PCB_Transformer:
             # FIXME: it'd be nice to allow query composition so
             # we could ask for all the modules with footprints
             assert isinstance(component, Module)
+
+            # If this component isn't the most special in it's chain of specialization
+            # then skip it. We should only pick components that are the most special.
+            if component is not component.get_most_special():
+                continue
 
             cluster_key = component.get_parent()
             insert_point = cluster_points[cluster_key]
