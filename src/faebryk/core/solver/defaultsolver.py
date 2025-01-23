@@ -99,6 +99,11 @@ class DefaultSolver(Solver):
 
             rprint(self)
 
+    @dataclass
+    class IterationState:
+        dirty: bool
+        subset_dirty: bool
+
     def __init__(self) -> None:
         super().__init__()
 
@@ -148,32 +153,54 @@ class DefaultSolver(Solver):
         algos: list[SolverAlgorithm],
         print_context: ParameterOperatable.ReprContext,
         phase_offset: int = 0,
-    ):
-        iteration_repr_maps: dict[tuple[int, str], REPR_MAP] = {}
-        iteration_dirty = {}
+    ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
+        iteration_state = DefaultSolver.IterationState(dirty=False, subset_dirty=False)
+        iteration_repr_maps: list[REPR_MAP] = []
+        tracked_param_ops = {
+            data.total_repr_map.repr_map[po]
+            for po in data.param_ops_subset_literals.keys()
+            if po in data.total_repr_map.repr_map
+        }
+
         for phase_name, algo in enumerate(algos):
-            algo_result, print_context = cls._run_algo(
-                iterno=iterno,
-                graphs=data.graphs,
-                phase_name=str(phase_name + phase_offset),
-                algo=algo,
+            phase_name = str(phase_name + phase_offset)
+
+            if PRINT_START:
+                logger.debug(
+                    f"START Iteration {iterno} Phase 2.{phase_name}: {algo.name}"
+                    f" G:{len(data.graphs)}"
+                )
+
+            mutators = Mutators(
+                *data.graphs,
+                tracked_param_ops=tracked_param_ops,
                 print_context=print_context,
             )
+            mutators.run(algo)
+            algo_result = mutators.close()
 
-            if not algo_result.dirty:
-                continue
+            # TODO remove
+            if algo_result.dirty:
+                logger.debug(
+                    f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
+                    f"G:{len(data.graphs)}"
+                )
+                print_context = mutators.debug_print() or print_context
 
-            iteration_dirty[(iterno, algo.name)] = algo_result.dirty
-            data.graphs = algo_result.graphs
-            iteration_repr_maps[(iterno, algo.name)] = algo_result.repr_map
+            # TODO assert all new graphs
+
+            iteration_state.dirty |= algo_result.dirty
+            iteration_state.subset_dirty |= algo_result.subset_dirty
+
+            if algo_result.dirty:
+                data.graphs = algo_result.graphs
+                iteration_repr_maps.append(algo_result.repr_map)
 
         data.total_repr_map = Mutators.create_concat_repr_map(
-            data.total_repr_map.repr_map, *iteration_repr_maps.values()
+            data.total_repr_map.repr_map, *iteration_repr_maps
         )
 
-        any_dirty = any(iteration_dirty.values())
-
-        return data, any_dirty, print_context
+        return data, iteration_state, print_context
 
     @classmethod
     def _run_initial_iteration(
@@ -215,15 +242,15 @@ class DefaultSolver(Solver):
         iterno: int,
         data: IterationData,
         print_context: ParameterOperatable.ReprContext,
-    ) -> tuple[IterationData, ParameterOperatable.ReprContext]:
-        data, any_dirty, print_context = DefaultSolver._run_algos(
+    ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
+        data, iteration_state, print_context = DefaultSolver._run_algos(
             iterno=iterno,
             data=data,
             algos=cls.algorithms.iterative,
             print_context=print_context,
         )
 
-        if any_dirty:
+        if iteration_state.dirty:
             # check which subset literals have changed for our old paramops
             subset_dirty = False
             for po in data.param_ops_subset_literals:
@@ -242,7 +269,11 @@ class DefaultSolver(Solver):
                     data.param_ops_subset_literals[po] = new_subset_literal
                     subset_dirty = True
 
-            if subset_dirty or iterno <= 1:
+            # TODO: remove (and remaining unused subset_dirty logic)
+            if iteration_state.subset_dirty != subset_dirty:
+                print("SUBSET DIRTY MISMATCH")
+
+            if iteration_state.subset_dirty or iterno <= 1:
                 logger.debug(
                     "Subset dirty, running subset dirty algorithms"
                     if subset_dirty
@@ -260,7 +291,7 @@ class DefaultSolver(Solver):
         if S_LOG:
             Mutators.print_all(*data.graphs, context=print_context)
 
-        return data, print_context
+        return data, iteration_state, print_context
 
     @times_out(120)
     def phase_1_simplify_analytically(
@@ -306,9 +337,11 @@ class DefaultSolver(Solver):
                 ).ljust(80, "-")
             )
 
-            iter_data, print_context_ = DefaultSolver._run_iteration(
+            iter_data, iteration_state, print_context_ = DefaultSolver._run_iteration(
                 iterno, iter_data, print_context_
             )
+
+            any_dirty = iteration_state.dirty
 
         if LOG_PICK_SOLVE:
             logger.info(

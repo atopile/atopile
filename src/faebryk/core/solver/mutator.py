@@ -5,10 +5,10 @@
 import io
 import logging
 import sys
+from dataclasses import dataclass
 from types import UnionType
 from typing import Callable, Iterable, Iterator, cast
 
-from attr import dataclass
 from rich.console import Console
 from rich.table import Table
 
@@ -27,6 +27,7 @@ from faebryk.core.solver.utils import (
     SHOW_SS_IS,
     VERBOSE_TABLE,
     CanonicalOperation,
+    SolverAlgorithm,
     SolverLiteral,
     SolverOperatable,
     get_graphs,
@@ -61,6 +62,7 @@ class AlgoResult:
     repr_map: REPR_MAP
     graphs: list[Graph]
     dirty: bool
+    subset_dirty: bool
 
 
 # TODO use Mutator everywhere instead of repr_maps
@@ -68,10 +70,12 @@ class Mutator:
     def __init__(
         self,
         G: Graph,
+        tracked_param_ops: set[ParameterOperatable],
         print_context: ParameterOperatable.ReprContext,
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self._G = G
+        self.tracked_param_ops = tracked_param_ops
         self.repr_map = repr_map or {}
         self.removed = set()
         self.copied = set()
@@ -313,6 +317,48 @@ class Mutator:
     def dirty(self) -> bool:
         return bool(self.needs_copy or self._new_ops or self.marked)
 
+    def get_new_literal_aliases(self, tracked_param_ops_only: bool = False):
+        """
+        Find new ops which are Is expressions between a ParameterOperatable and a
+        literal
+        """
+
+        def is_literal_alias(expr: ParameterOperatable) -> bool:
+            if not isinstance(expr, Is):
+                return False
+
+            po = next(
+                (op for op in expr.operands if isinstance(op, ParameterOperatable)),
+                None,
+            )
+
+            lit = next(
+                (op for op in expr.operands if try_extract_literal(op) is not None),
+                None,
+            )
+
+            return (
+                po is not None
+                and lit is not None
+                and (not tracked_param_ops_only or po in self.tracked_param_ops)
+            )
+
+        return (expr for expr in self._new_ops if is_literal_alias(expr))
+
+    @property
+    def subset_dirty(self) -> bool:
+        """
+        True if any ParameterOperatable (A) has been newly aliased to a literal, and A
+        is involved in an expression `A op B` with another ParameterOperatable (B)
+        """
+        # FIXME: this is probably wrong
+        # do we need to track the starting set of POs as with param_ops_subset_literals?
+
+        return (
+            next(self.get_new_literal_aliases(tracked_param_ops_only=True), None)
+            is not None
+        )
+
     @property
     def needs_copy(self) -> bool:
         # optimization: if just new_ops, no need to copy
@@ -353,17 +399,17 @@ class Mutator:
                     f"{indented_container(graphs)}"
                 )
 
-    def close(self) -> tuple[REPR_MAP, bool]:
+    def close(self) -> REPR_MAP:
         self.check_no_illegal_mutations()
         if not self.needs_copy:
             return {
                 po: po
                 for po in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
-            }, False
+            }
         self.copy_unmutated()
 
         assert self.G not in get_graphs(self.repr_map.values())
-        return self.repr_map, True
+        return self.repr_map
 
     def mark_predicate_true(self, pred: ConstrainableExpression):
         assert pred.constrained
@@ -410,26 +456,41 @@ class Mutator:
 
 
 class Mutators:
-    def __init__(self, *graphs: Graph, print_context: ParameterOperatable.ReprContext):
-        self.mutators = [Mutator(g, print_context=print_context) for g in graphs]
+    def __init__(
+        self,
+        *graphs: Graph,
+        tracked_param_ops: set[ParameterOperatable] | None = None,
+        print_context: ParameterOperatable.ReprContext,
+    ):
+        self.mutators = [
+            Mutator(g, tracked_param_ops=tracked_param_ops, print_context=print_context)
+            for g in graphs
+        ]
         self.result_repr_map = {}
         self.print_context = print_context
 
     def close(self) -> AlgoResult:
-        if not any(m.dirty for m in self.mutators):
-            return AlgoResult(repr_map={}, graphs=[], dirty=False)
+        result = AlgoResult(
+            repr_map={},
+            graphs=[],
+            dirty=any(m.dirty for m in self.mutators),
+            subset_dirty=any(m.subset_dirty for m in self.mutators),
+        )
 
-        repr_map = {}
-        for m in self.mutators:
-            repr_map.update(m.close()[0])
-        graphs = get_graphs(repr_map.values())
+        if result.dirty:
+            for m in self.mutators:
+                result.repr_map.update(m.close())
+            result.graphs = get_graphs(result.repr_map.values())
 
-        assert not (set(m.G for m in self.mutators if m.needs_copy) & set(graphs))
-        self.result_repr_map = repr_map
+            assert not (
+                set(m.G for m in self.mutators if m.needs_copy) & set(result.graphs)
+            )
 
-        return AlgoResult(repr_map=repr_map, graphs=graphs, dirty=True)
+            self.result_repr_map = result.repr_map
 
-    def run(self, algo: Callable[[Mutator], None]):
+        return result
+
+    def run(self, algo: SolverAlgorithm):
         for m in self.mutators:
             algo(m)
 
