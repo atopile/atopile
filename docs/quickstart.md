@@ -34,6 +34,9 @@ We recommend using Cursor. AI is already getting very good at writing `ato` code
 
 Download it here: https://www.cursor.com/
 
+We also strongly recommend installing the [atopile VSCode/Cursor extension](https://marketplace.visualstudio.com/items?itemName=atopile.atopile). It provides syntax highlighting and some LSP support.
+
+![atopile extension](assets/images/vscode-plugin.png)
 
 ## Installing KiCAD
 
