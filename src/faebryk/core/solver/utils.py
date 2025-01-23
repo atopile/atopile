@@ -216,6 +216,15 @@ def is_numeric_literal(po: ParameterOperatable) -> TypeGuard[CanonicalNumber]:
     return is_literal(po) and isinstance(po, CanonicalNumber)
 
 
+def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
+    return bool(
+        isinstance(po, Is)
+        and po.constrained
+        and po.get_literal_operands()
+        and po.operatable_operands
+    )
+
+
 def alias_is_literal_and_check_predicate_eval(
     expr: ConstrainableExpression, value: BoolSet | bool, mutator: "Mutator"
 ):

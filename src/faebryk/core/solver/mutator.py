@@ -31,7 +31,10 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     SolverOperatable,
     get_graphs,
+    is_alias_is_literal,
+    is_literal,
     make_if_doesnt_exist,
+    make_lit,
     try_extract_literal,
 )
 from faebryk.libs.exceptions import downgrade
@@ -317,6 +320,7 @@ class Mutator:
     def dirty(self) -> bool:
         return bool(self.needs_copy or self._new_ops or self.marked)
 
+    # TODO: consider making part of nodes_of_type(new_only=True)
     def get_new_literal_aliases(self, tracked_param_ops_only: bool = False):
         """
         Find new ops which are Is expressions between a ParameterOperatable and a
@@ -333,7 +337,7 @@ class Mutator:
             )
 
             lit = next(
-                (op for op in expr.operands if try_extract_literal(op) is not None),
+                (op for op in expr.operands if is_literal(op)),
                 None,
             )
 
@@ -343,14 +347,16 @@ class Mutator:
                 and (not tracked_param_ops_only or po in self.tracked_param_ops)
             )
 
+        # TODO using new_ops is a bit dangerous
         return (expr for expr in self._new_ops if is_literal_alias(expr))
 
     @property
     def subset_dirty(self) -> bool:
         """
-        True if any ParameterOperatable (A) has been newly aliased to a literal, and A
-        is involved in an expression `A op B` with another ParameterOperatable (B)
+        True if any ParameterOperatable (A) has been newly aliased/subsetted to a
+        literal that is narrower than before, and A is involved in an expression
         """
+
         # FIXME: this is probably wrong
         # do we need to track the starting set of POs as with param_ops_subset_literals?
 
@@ -529,30 +535,37 @@ class Mutators:
         context_new = self.get_new_print_context()
 
         table = Table(title="Mutations", show_lines=True)
-        table.add_column("Before")
+        table.add_column("Before/Created By")
         table.add_column("After")
 
         graphs = get_graphs(self.result_repr_map.values())
 
-        new_ops = {op for m in self.mutators for op in m._new_ops}.difference(
-            self.result_repr_map.values()
-        )
-
-        # TODO remove
-        print(
-            "SKIBIDI",
-            {op for m in self.mutators for op in m._new_ops}
-            & set(self.result_repr_map.values()),
-        )
+        new_ops = {op for m in self.mutators for op in m._new_ops}
 
         rows: list[tuple[str, str]] = []
 
         for op in new_ops:
+            if is_alias_is_literal(op):
+                expr = next(iter(op.operatable_operands))
+                lit = next(iter(op.get_literal_operands().values()))
+                rows.append(
+                    (
+                        (
+                            (
+                                "proven"
+                                if try_extract_literal(expr) == make_lit(True)
+                                else "disproven"
+                            )
+                            if isinstance(expr, ConstrainableExpression)
+                            else f"new_alias: {lit}"
+                        ),
+                        expr.compact_repr(context_new),
+                    )
+                )
+                continue
             rows.append(("new", op.compact_repr(context_new)))
 
-        marked = {op for m in self.mutators for op in m.marked}.difference(
-            new_ops, self.result_repr_map.values()
-        )
+        marked = {op for m in self.mutators for op in m.marked}.difference(new_ops)
         for op in marked:
             rows.append(("marked", op.compact_repr(context_new)))
 

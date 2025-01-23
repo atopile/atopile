@@ -16,7 +16,7 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver import analytical, canonical
-from faebryk.core.solver.mutator import REPR_MAP, AlgoResult, Mutators
+from faebryk.core.solver.mutator import REPR_MAP, Mutators
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     MAX_ITERATIONS,
@@ -118,34 +118,6 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     @classmethod
-    def _run_algo(
-        cls,
-        iterno: int,
-        graphs: list[Graph],
-        phase_name: str,
-        algo: SolverAlgorithm,
-        print_context: ParameterOperatable.ReprContext,
-    ) -> tuple[AlgoResult, ParameterOperatable.ReprContext]:
-        if PRINT_START:
-            logger.debug(
-                f"START Iteration {iterno} Phase 1.{phase_name}: {algo.name}"
-                f" G:{len(graphs)}"
-            )
-        mutators = Mutators(*graphs, print_context=print_context)
-        mutators.run(algo)
-        algo_result = mutators.close()
-        # TODO remove
-        if algo_result.dirty:
-            logger.debug(
-                f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
-                f"G:{len(graphs)}"
-            )
-            print_context = mutators.debug_print() or print_context
-        # TODO assert all new graphs
-
-        return algo_result, print_context
-
-    @classmethod
     def _run_algos(
         cls,
         iterno: int,
@@ -156,6 +128,7 @@ class DefaultSolver(Solver):
     ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
         iteration_state = DefaultSolver.IterationState(dirty=False, subset_dirty=False)
         iteration_repr_maps: list[REPR_MAP] = []
+        # TODO: what does this exactly do?
         tracked_param_ops = {
             data.total_repr_map.repr_map[po]
             for po in data.param_ops_subset_literals.keys()

@@ -884,9 +884,4 @@ def uncorrelated_alias_fold(mutator: Mutator):
         expr_resolved_operands = map_extract_literals(expr)
 
         literals_expr = mutator.create_expression(type(expr), *expr_resolved_operands)
-        e = mutator.create_expression(Is, expr, literals_expr).constrain()
-
-        if True:
-            print("uncorrelated_alias_fold: ", expr.compact_repr(mutator.print_context))
-            print("-> ", e.compact_repr(mutator.print_context))
-            input()
+        mutator.create_expression(Is, expr, literals_expr).constrain()
