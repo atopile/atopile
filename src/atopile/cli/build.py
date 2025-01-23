@@ -4,9 +4,11 @@ import logging
 from typing import TYPE_CHECKING, Annotated
 
 import typer
+from more_itertools import first
 
 from atopile import errors
 from atopile.config import config
+from faebryk.libs.app.pcb import open_pcb
 
 if TYPE_CHECKING:
     from faebryk.core.module import Module
@@ -35,6 +37,9 @@ def build(
     keep_picked_parts: bool | None = None,
     keep_net_names: bool | None = None,
     standalone: bool = False,
+    open_layout: Annotated[
+        bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
+    ] = None,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -53,6 +58,9 @@ def build(
         option=option,
         standalone=standalone,
     )
+
+    if open_layout is not None:
+        config.project.pcbnew_auto = open_layout
 
     for build_cfg in config.project.builds.values():
         if keep_picked_parts is not None:
@@ -97,6 +105,24 @@ def build(
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
+
+    if config.project.pcbnew_auto:
+        if len(config.project.builds) == 1:
+            build = first(config.project.builds.values())
+            try:
+                open_pcb(build.paths.layout)
+            except FileNotFoundError:
+                pass
+            except RuntimeError as e:
+                logger.info(
+                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
+                )
+
+        elif len(config.project.builds) > 1:
+            logger.warning(
+                "`--open` option is only supported when building"
+                "a single build. It will be ignored."
+            )
 
 
 def _init_python_app() -> "Module":

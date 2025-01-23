@@ -162,6 +162,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "antlr4-tools" },
+    { name = "atopile-mkdocs-plugin" },
     { name = "coverage" },
     { name = "dash" },
     { name = "dash-cytoscape" },
@@ -240,6 +241,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "antlr4-tools" },
+    { name = "atopile-mkdocs-plugin", editable = "tools/atopile_mkdocs_plugin" },
     { name = "coverage", specifier = ">=7.6.8" },
     { name = "dash", specifier = "~=2.18.1" },
     { name = "dash-cytoscape", specifier = "~=1.0.2" },
@@ -277,6 +279,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/72/37/6ffd9f76f0452b93e
 wheels = [
     { url = "https://files.pythonhosted.org/packages/26/4b/2236445330b125207ce8451bfc141f82ca7ce0959f24c289e64e3da98261/atopile_easyeda2kicad-0.9.4-py3-none-any.whl", hash = "sha256:a858505ba62b7a06dbee78e1f2b0228c439071fe71ca48584615ad58a23e03ac", size = 54693 },
 ]
+
+[[package]]
+name = "atopile-mkdocs-plugin"
+version = "0.0.1"
+source = { editable = "tools/atopile_mkdocs_plugin" }
 
 [[package]]
 name = "attrs"

@@ -174,7 +174,7 @@ class ProjectPaths(BaseConfigModel):
     """Project source code directory"""
 
     layout: Path
-    """Project layout directory"""
+    """Project layout directory where KiCAD projects are stored and searched for"""
 
     footprints: Path
     """Project footprints directory"""
@@ -196,7 +196,7 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("src", data["root"] / "elec" / "src")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data.setdefault("footprints", data["root"] / "elec" / "footprints")
-        data.setdefault("build", data["root"] / "build")
+        data["build"] = Path(data.get("build", data["root"] / "build"))
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("component_lib", data["build"] / "kicad" / "libs")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
@@ -248,7 +248,7 @@ class BuildTargetPaths(BaseConfigModel):
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         data.setdefault(
             "layout",
-            BuildTargetPaths.find_layout(
+            BuildTargetPaths.ensure_layout(
                 project_paths.root / project_paths.layout / name
             ),
         )
@@ -260,7 +260,7 @@ class BuildTargetPaths(BaseConfigModel):
         super().__init__(**data)
 
     @classmethod
-    def find_layout(cls, layout_base: Path) -> Path:
+    def ensure_layout(cls, layout_base: Path) -> Path:
         """Return the layout associated with a build."""
 
         if layout_base.with_suffix(".kicad_pcb").exists():
@@ -283,7 +283,7 @@ class BuildTargetPaths(BaseConfigModel):
                 )
 
         else:
-            layout_path = layout_base.with_suffix(".kicad_pcb")
+            layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
 
             logger.warning("Creating new layout at %s", layout_path)
             layout_path.parent.mkdir(parents=True, exist_ok=True)
@@ -319,6 +319,11 @@ class BuildTargetConfig(BaseConfigModel):
 
     name: str
     address: str | None = Field(alias="entry")
+    """
+    Entry point or root node for the build-target.
+    Everything that exists within this module will be built as part of this build-target
+    """
+
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
     exclude_targets: list[str] = Field(default=[])
     fail_on_drcs: bool = Field(default=False)
@@ -434,12 +439,29 @@ class ProjectConfig(BaseConfigModel):
     ato_version: str = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
-        default=f"^{version.get_installed_atopile_version()}",
+        default=f"{version.get_installed_atopile_version()}",
     )
+    """
+    The compiler version with which the project was developed.
+
+    This is used by the compiler to ensure the code in this project is
+    compatible with the compiler version.
+    """
+
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
+    """
+    Represents requirements on other projects.
+
+    Typically, you shouldn't modify this directly.
+
+    Instead, use the `ato install` command to install dependencies.
+    """
+
     entry: str | None = Field(default=None)
     builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
+    """A map of all the build targets (/ "builds") in this project."""
+
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     pcbnew_auto: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
@@ -634,10 +656,10 @@ class Config:
         return self._project_dir
 
     @project_dir.setter
-    def project_dir(self, value: Path) -> None:
+    def project_dir(self, value: os.PathLike) -> None:
         global _project_dir
-        _project_dir = value
-        self._project_dir = value
+        _project_dir = Path(value)
+        self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
 
     def update_project_config(

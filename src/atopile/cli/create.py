@@ -93,7 +93,7 @@ def _in_git_repo(path: Path) -> bool:
 
 @create_app.command()
 def project(
-    name: Annotated[str | None, typer.Argument()] = None,
+    name: Annotated[str | None, typer.Option("--name", "-n")] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
 ):  # pylint: disable=redefined-builtin
     """
@@ -233,10 +233,9 @@ def project(
     # Install dependencies listed in the ato.yaml, typically just generics
     do_install(
         to_install=None,
-        jlcpcb=False,
         link=True,
         upgrade=True,
-        path=repo_obj.working_tree_dir,
+        path=Path(repo_obj.working_tree_dir),
     )
 
     # Wew! New repo created!

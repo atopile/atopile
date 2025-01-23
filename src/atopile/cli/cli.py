@@ -1,6 +1,7 @@
 # excepthook must be installed before typer is imported
 import atopile.cli.excepthook  # noqa: F401, I001
 
+import json
 import logging
 import sys
 from importlib.metadata import version
@@ -107,17 +108,25 @@ app.command()(view.view)
 
 
 @app.command(hidden=True)
-def export_config_schema():
+def export_config_schema(pretty: bool = False):
     from atopile.config import ProjectConfig
 
-    print(ProjectConfig.model_json_schema())
+    config_schema = ProjectConfig.model_json_schema()
+
+    if pretty:
+        print(json.dumps(config_schema, indent=2))
+    else:
+        print(json.dumps(config_schema))
 
 
 @app.command(hidden=True)
-def dump_config():
+def dump_config(pretty: bool = False):
     from rich import print
 
-    print(config.project)
+    if pretty:
+        print(json.dumps(config.project, indent=2))
+    else:
+        print(json.dumps(config.project))
 
 
 def main():
