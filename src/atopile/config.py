@@ -174,7 +174,7 @@ class ProjectPaths(BaseConfigModel):
     """Project source code directory"""
 
     layout: Path
-    """Project layout directory"""
+    """Project layout directory where KiCAD projects are stored and searched for"""
 
     footprints: Path
     """Project footprints directory"""
@@ -319,6 +319,11 @@ class BuildTargetConfig(BaseConfigModel):
 
     name: str
     address: str | None = Field(alias="entry")
+    """
+    Entry point or root node for the build-target.
+    Everything that exists within this module will be built as part of this build-target
+    """
+
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
     exclude_targets: list[str] = Field(default=[])
     fail_on_drcs: bool = Field(default=False)
@@ -434,12 +439,29 @@ class ProjectConfig(BaseConfigModel):
     ato_version: str = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
-        default=f"^{version.get_installed_atopile_version()}",
+        default=f"{version.get_installed_atopile_version()}",
     )
+    """
+    The compiler version with which the project was developed.
+
+    This is used by the compiler to ensure the code in this project is
+    compatible with the compiler version.
+    """
+
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
+    """
+    Represents requirements on other projects.
+
+    Typically, you shouldn't modify this directly.
+
+    Instead, use the `ato install` command to install dependencies.
+    """
+
     entry: str | None = Field(default=None)
     builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
+    """A map of all the build targets (/ "builds") in this project."""
+
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     pcbnew_auto: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""

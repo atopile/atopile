@@ -19,6 +19,7 @@ nav:
     - guides/faebryk.md
   - Reference:
     - reference/attributes.md
+    - reference/config.md
 - Development:
   - development.md
 - Packages: https://packages.atopile.io
@@ -36,9 +37,6 @@ plugins:
           - griffe_typingdoc
           show_root_heading: true
           show_if_no_docstring: true
-          preload_modules:
-          - faebryk
-          - atopile
           inherited_members: true
           members_order: source
           separate_signature: true
@@ -51,6 +49,7 @@ plugins:
           show_symbol_type_heading: true
           show_symbol_type_toc: true
 - mike
+- atopile_json_schema
 
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile
