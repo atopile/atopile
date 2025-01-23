@@ -37,6 +37,7 @@ from faebryk.core.parameter import (
     ConstrainableExpression,
     GreaterOrEqual,
     GreaterThan,
+    Is,
     IsSubset,
     LessOrEqual,
     LessThan,
@@ -1328,6 +1329,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     op = GreaterOrEqual
                 case "within":
                     op = IsSubset
+                case "is":
+                    op = Is
                 case _:
                     # We shouldn't be able to get here with parseable input
                     raise ValueError(f"Unhandled operator `{op_str}`")

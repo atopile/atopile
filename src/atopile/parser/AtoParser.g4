@@ -89,6 +89,7 @@ gt_arithmetic_or: '>' arithmetic_expression;
 lt_eq_arithmetic_or: '<=' arithmetic_expression;
 gt_eq_arithmetic_or: '>=' arithmetic_expression;
 in_arithmetic_or: 'within' arithmetic_expression;
+is_arithmetic_or: 'is' arithmetic_expression;
 
 
 // Arithmetic operators
