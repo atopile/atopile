@@ -10,24 +10,28 @@
       
       
       
-        <link rel="canonical" href="https://docs.atopile.io/dev/CONTRIBUTING/">
+        <link rel="canonical" href="https://docs.atopile.io/dev/guides/faebryk/">
       
       
+        <link rel="prev" href="../git/">
       
       
-      <link rel="icon" href="../assets/logo/emblem.svg">
+        <link rel="next" href="../../reference/attributes/">
+      
+      
+      <link rel="icon" href="../../assets/logo/emblem.svg">
       <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
     
     
       
-        <title>Contributing guidelines - atopile</title>
+        <title>faebryk & fabll 🐍 - atopile</title>
       
     
     
-      <link rel="stylesheet" href="../assets/stylesheets/main.6f8fc17f.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.6f8fc17f.min.css">
       
         
-        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
       
       
 
@@ -46,18 +50,18 @@
       
     
     
-      <link rel="stylesheet" href="../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../stylesheets/extra.css">
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
     
-    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
     
     
     
-  <link rel="stylesheet" href="../assets/stylesheets/custom.css">
+  <link rel="stylesheet" href="../../assets/stylesheets/custom.css">
 
   </head>
   
@@ -78,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#contributing-guidelines" class="md-skip">
+        <a href="#faebryk-fabll" class="md-skip">
           Skip to content
         </a>
       
@@ -137,7 +141,7 @@
             <div class="md-banner__inner md-grid md-typeset">
               
   You're not viewing the latest version.
-  <a href="../..">
+  <a href="../../..">
     <strong>Click here to go to latest.</strong>
   </a>
 
@@ -152,9 +156,9 @@
 
 <header class="md-header" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href=".." title="atopile" class="md-header__button md-logo" aria-label="atopile" data-md-component="logo">
+    <a href="../.." title="atopile" class="md-header__button md-logo" aria-label="atopile" data-md-component="logo">
       
-  <img src="../assets/logo/emblem.svg" alt="logo">
+  <img src="../../assets/logo/emblem.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -171,7 +175,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Contributing guidelines
+              faebryk &amp; fabll 🐍
             
           </span>
         </div>
@@ -286,11 +290,13 @@
         
   
   
+    
+  
   
     
     
-      <li class="md-tabs__item">
-        <a href=".." class="md-tabs__link">
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../.." class="md-tabs__link">
           
   
   Getting Started
@@ -308,7 +314,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../development/" class="md-tabs__link">
+        <a href="../../development/" class="md-tabs__link">
           
   
   Development
@@ -343,7 +349,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../spin/" class="md-tabs__link">
+        <a href="../../spin/" class="md-tabs__link">
           
   
   Example Projects
@@ -376,9 +382,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href=".." title="atopile" class="md-nav__button md-logo" aria-label="atopile" data-md-component="logo">
+    <a href="../.." title="atopile" class="md-nav__button md-logo" aria-label="atopile" data-md-component="logo">
       
-  <img src="../assets/logo/emblem.svg" alt="logo">
+  <img src="../../assets/logo/emblem.svg" alt="logo">
 
     </a>
     atopile
@@ -402,25 +408,30 @@
       
   
   
+    
   
   
+  
     
     
     
+      
+        
+        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1" checked>
         
           
-          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_1" id="__nav_1_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -431,7 +442,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_1">
             <span class="md-nav__icon md-icon"></span>
             Getting Started
@@ -445,7 +456,7 @@
   
   
     <li class="md-nav__item">
-      <a href=".." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -466,7 +477,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../quickstart/" class="md-nav__link">
+      <a href="../../quickstart/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -487,7 +498,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../CHANGELOG/" class="md-nav__link">
+      <a href="../../CHANGELOG/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -513,17 +524,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_4" >
         
           
-          <label class="md-nav__link" for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_1_4" id="__nav_1_4_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -548,7 +562,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../tutorial/the-ato-language/" class="md-nav__link">
+      <a href="../../tutorial/the-ato-language/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -574,25 +588,30 @@
                 
   
   
+    
   
   
+  
     
     
     
       
       
-        
-      
-    
-    
-    <li class="md-nav__item md-nav__item--nested">
-      
-        
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_5" >
         
           
-          <label class="md-nav__link" for="__nav_1_5" id="__nav_1_5_label" tabindex="0">
+          
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_1_5" id="__nav_1_5_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -603,7 +622,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_1_5">
             <span class="md-nav__icon md-icon"></span>
             Guides
@@ -617,7 +636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../guides/installation/" class="md-nav__link">
+      <a href="../installation/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -638,7 +657,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../guides/git/" class="md-nav__link">
+      <a href="../git/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -656,10 +675,30 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../guides/faebryk/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    faebryk &amp; fabll 🐍
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   <span class="md-ellipsis">
@@ -668,6 +707,44 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#building-fabll-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      Building fabll code
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#importing-fabll-code" class="md-nav__link">
+    <span class="md-ellipsis">
+      Importing fabll code
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -693,17 +770,20 @@
       
       
         
+          
+          
+        
       
     
     
-    <li class="md-nav__item md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
         <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_1_6" >
         
           
-          <label class="md-nav__link" for="__nav_1_6" id="__nav_1_6_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_1_6" id="__nav_1_6_label" tabindex="">
             
   
   <span class="md-ellipsis">
@@ -728,7 +808,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/attributes/" class="md-nav__link">
+      <a href="../../reference/attributes/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -749,7 +829,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../reference/config/" class="md-nav__link">
+      <a href="../../reference/config/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -825,7 +905,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../development/" class="md-nav__link">
+      <a href="../../development/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -913,7 +993,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../spin/" class="md-nav__link">
+      <a href="../../spin/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -934,7 +1014,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../swoop/" class="md-nav__link">
+      <a href="../../swoop/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -982,36 +1062,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#contribution-process" class="md-nav__link">
+  <a href="#building-fabll-code" class="md-nav__link">
     <span class="md-ellipsis">
-      Contribution process
+      Building fabll code
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#creating-a-new-issue" class="md-nav__link">
+  <a href="#importing-fabll-code" class="md-nav__link">
     <span class="md-ellipsis">
-      Creating a new issue
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#creating-a-pull-request" class="md-nav__link">
-    <span class="md-ellipsis">
-      Creating a pull request
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#labels" class="md-nav__link">
-    <span class="md-ellipsis">
-      Labels
+      Importing fabll code
     </span>
   </a>
   
@@ -1035,30 +1097,21 @@
   
 
 
-<h1 id="contributing-guidelines">Contributing guidelines<a class="headerlink" href="#contributing-guidelines" title="Permanent link">&para;</a></h1>
-<h2 id="contribution-process">Contribution process<a class="headerlink" href="#contribution-process" title="Permanent link">&para;</a></h2>
-<p>Please follow these steps to make a contribution:</p>
-<ol>
-<li>If there is no issue yet, <a href="#creating-a-new-issue">make an issue</a> and follow the instructions of the issue template.</li>
-<li>Comment on the issue you are going to work on and say you are working on it.</li>
-<li>Fork our repository and create a branch.</li>
-<li>Write your code following our <a href="../CODING_GUIDELINES/">coding guidelines</a> and submit your pull request. Be sure to read and follow our pull request guidelines, otherwise it will not be accepted!</li>
-<li>Wait for your code to be reviewed and address any issues in a timely manner.</li>
-</ol>
-<p>We encourage people to review each others pull requests and issues, but please <a href="../CODE_OF_CONDUCT/"><strong>be kind, constructive and respectful to each other</strong></a>!</p>
-<h2 id="creating-a-new-issue">Creating a new issue<a class="headerlink" href="#creating-a-new-issue" title="Permanent link">&para;</a></h2>
-<p>To make it easy for you to fill in all the necessary information, we make use of <a href="https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/syntax-for-issue-forms">Github forms</a>.</p>
-<p>If you find a bug, or want to add or change a feature, go to <a href="https://github.com/atopile/atopile/issues">issues</a> page and follow the steps described there. Please be as elaborate as possible to have the issue resolved as soon as possible. We will add <a href="#labels">labels</a> to your issue when it's reviewed.</p>
-<p>When in doubt, ask a question on our <a href="https://discord.gg/95jYuPmnUW">Discord</a> community.</p>
-<h2 id="creating-a-pull-request">Creating a pull request<a class="headerlink" href="#creating-a-pull-request" title="Permanent link">&para;</a></h2>
-<p>Like with new issues, we use a template for creating pull requests. Please fill in the template and be elaborate so we can try to merge your pr as soon as possible.</p>
-<p><strong>Run the <a href="https://github.com/psf/black">Black</a> code formatting tool before creating the pr!!</strong>
-<code>python -m black {source_file_or_directory}</code></p>
-<p>Be sure there is an issue linked to your pr.</p>
-<h2 id="labels">Labels<a class="headerlink" href="#labels" title="Permanent link">&para;</a></h2>
-<p>Our labels are divided into three fields for ease of use. The format is as follows where ⎵ denotes a single space character:</p>
-<p>\<emoji>⎵\<category>:⎵\<name></p>
-<p>A list of labels can be found <a href="https://github.com/atopile/atopile/labels">here</a></p>
+<h1 id="faebryk-fabll"><code>faebryk</code> &amp; <code>fabll</code> 🐍<a class="headerlink" href="#faebryk-fabll" title="Permanent link">&para;</a></h1>
+<p><code>faebryk</code> is atopile's core. It's how we model the world.</p>
+<p><code>faebryk</code> is a Python module that uses a powerful and efficient core graph (nodes + edges) to represent every relationship in your design or circuit.</p>
+<p><code>fabll</code> is a Python framework to model circuits, much like <code>ato</code>. It unlocks a the whole Turing-complete power of Python to do design in + low-level procedural code and logic. Think of it like writing C for a Python module. It's focus is power - not ease of use like <code>ato</code>, so it's not recommended for most designs to start with.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p><code>fabll</code> is currently in a very early stage of development. It's not publicly supported yet.</p>
+</div>
+<h2 id="building-fabll-code">Building <code>fabll</code> code<a class="headerlink" href="#building-fabll-code" title="Permanent link">&para;</a></h2>
+<p>To build a <code>fabll</code> module with atopile, you just need to point to the module within your <code>ato.yaml</code> configuration file.</p>
+<p>When you run <code>ato build</code>, atopile will automatically build the <code>fabll</code> module and link it to your project.</p>
+<h2 id="importing-fabll-code">Importing <code>fabll</code> code<a class="headerlink" href="#importing-fabll-code" title="Permanent link">&para;</a></h2>
+<p>You can just import <code>fabll</code> modules in <code>ato</code> like any other import:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>from path/to/some/fabll.py import SomeModule
+</span></code></pre></div>
 
 
 
@@ -1083,6 +1136,44 @@
       
         <footer class="md-footer">
   
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../git/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Using git for Hardware">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Using git for Hardware
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../reference/attributes/" class="md-footer__link md-footer__link--next" aria-label="Next: Attributes in ato">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Attributes in ato
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
     
   
   <div class="md-footer-meta md-typeset">
@@ -1147,14 +1238,14 @@
     </div>
     
     
-    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "toc.follow", "navigation.footer", "header.autohide", "announce.dismiss"], "search": "../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+    <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.tabs", "navigation.sections", "toc.follow", "navigation.footer", "header.autohide", "announce.dismiss"], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
     
     
   
-      <script src="../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      <script src="../../assets/javascripts/bundle.88dd0f4e.min.js"></script>
       
     
-  <script src="../assets/javascripts/custom.129bd6ad.min.js"></script>
+  <script src="../../assets/javascripts/custom.129bd6ad.min.js"></script>
 
   </body>
 </html>
