@@ -41,7 +41,7 @@ paths:
 
 ```toml title="ato.yaml"
 paths:
-  src: "./"
+  layout: "./"
 ```
 
 ### [`dependencies`](#dependencies) {: #dependencies }
