@@ -537,6 +537,7 @@ class Mutator:
             rows.append(("marked", op.compact_repr(context_new)))
 
         copied = self.transformations.copied
+        printed = set()
 
         for s, d in self.transformations.mutated.items():
             if not VERBOSE_TABLE:
@@ -554,7 +555,25 @@ class Mutator:
                 new += "\n\n" + repr(d)
             if old == new:
                 continue
+            printed.add(s)
             rows.append((old, new))
+
+        merged = groupby(self.transformations.mutated.items(), key=lambda t: t[1])
+        non_single_merge = {k: v for k, v in merged.items() if len(v) > 1}
+        for d, sds in non_single_merge.items():
+            for s, _ in sds:
+                if s is d:
+                    continue
+                if s in printed:
+                    continue
+                old = s.compact_repr(context_old)
+                new = d.compact_repr(context_new)
+                # already printed above
+                if old != new:
+                    continue
+                if VERBOSE_TABLE:
+                    old += "\n\n" + repr(s)
+                rows.append((old, "merged"))
 
         for s in self.transformations.removed:
             old = s.compact_repr(context_old)
