@@ -66,6 +66,9 @@ if S_LOG:
     logger.setLevel(logging.DEBUG)
 
 
+# TODO: mark destructive=False where applicable
+
+
 @algorithm("Convert inequality with literal to subset")
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
     # TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
@@ -488,6 +491,26 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     ```
     """
 
+    # FIXME: implement this filter
+    # @property
+    # def subset_dirty(self) -> bool:
+    #     """
+    #     True if any ParameterOperatable (A) has been newly aliased/subsetted to a
+    #     literal that is narrower than before, and A is involved in an expression
+    #     """
+
+    #     # TODO: also subsets
+    #     for expr in self.get_new_literal_aliases():
+    #         involved_in = get_expressions_involved_in(
+    #             next(iter(expr.operatable_operands))
+    #         )
+    #         if involved_in is not None:
+    #             # TODO: only if narrower (only for subsets relevant)
+    #             return True
+
+    #     return False
+    return
+
     exprs = mutator.nodes_of_type(Expression)
     for expr in exprs:
         expr = cast(CanonicalOperation, expr)
@@ -586,12 +609,15 @@ def transitive_subset(mutator: Mutator):
             ss_lookup[A].append(C_or_X)
 
 
-@algorithm("Remove empty graphs")
+@algorithm("Remove empty graphs", destructive=True)
 def remove_empty_graphs(mutator: Mutator):
     """
     If there is only one predicate, it can be replaced by True
     If there are no predicates, the graph can be removed
     """
+
+    # FIXME: rewrite with multi graph support
+    return
 
     predicates = [
         p
@@ -870,6 +896,21 @@ def uncorrelated_alias_fold(mutator: Mutator):
     -> op(As) is! op(As replaced by corresponding lits)
     ```
     """
+
+    # FIXME: implement this filter
+    # @property
+    # def alias_fold_dirty(self) -> bool:
+    #     """
+    #     True if any new expression has been created that involves one or more
+    #     non-literal operands
+    #     """
+    #     # TODO: is this correct and sufficient? @iopapamanoglou
+    #     new_exprs = self.nodes_of_type(Expression, created_only=True)
+    #     return any(
+    #         any(try_extract_literal(op) is None for op in expr.operands)
+    #         for expr in new_exprs
+    #     )
+    return
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for expr in exprs:

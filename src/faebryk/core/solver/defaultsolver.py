@@ -4,6 +4,7 @@
 import logging
 import time
 from dataclasses import dataclass
+from itertools import count
 from types import SimpleNamespace
 from typing import Any, override
 
@@ -16,15 +17,14 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver import analytical, canonical
-from faebryk.core.solver.mutator import REPR_MAP, Mutators
+from faebryk.core.solver.mutator import REPR_MAP, Mutator
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
-    MAX_ITERATIONS,
+    MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
     Contradiction,
     SolverAlgorithm,
-    SolverLiteral,
     debug_name_mappings,
     get_graphs,
 )
@@ -58,6 +58,8 @@ class DefaultSolver(Solver):
     timeout: int = 1000
 
     algorithms = SimpleNamespace(
+        # TODO: get order from topo sort
+        # and types from decorator
         pre=[
             canonical.constrain_within_domain,
             canonical.convert_to_canonical_literals,
@@ -66,8 +68,8 @@ class DefaultSolver(Solver):
         iterative=[
             analytical.remove_unconstrained,
             analytical.convert_operable_aliased_to_single_into_literal,
-            analytical.remove_congruent_expressions,
             analytical.resolve_alias_classes,
+            analytical.remove_congruent_expressions,
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
             analytical.fold_literals,
@@ -78,23 +80,19 @@ class DefaultSolver(Solver):
             analytical.transitive_subset,
             analytical.isolate_lone_params,
             analytical.remove_empty_graphs,
-        ],
-        subset_dirty=[
             analytical.upper_estimation_of_expressions_with_subsets,
+            analytical.uncorrelated_alias_fold,
         ],
-        alias_fold_dirty=[analytical.uncorrelated_alias_fold],
     )
 
     @dataclass
     class IterationData:
         graphs: list[Graph]
-        total_repr_map: Mutators.ReprMap
-        param_ops_subset_literals: dict[ParameterOperatable, SolverLiteral | None]
+        total_repr_map: Mutator.ReprMap
 
         def __rich_repr__(self):
             yield "graphs", self.graphs
             yield "total_repr_map", self.total_repr_map
-            yield "param_ops_subset_literals", self.param_ops_subset_literals
 
         def _print(self):
             from rich import print as rprint
@@ -104,8 +102,6 @@ class DefaultSolver(Solver):
     @dataclass
     class IterationState:
         dirty: bool
-        subset_dirty: bool
-        alias_fold_dirty: bool
 
     def __init__(self) -> None:
         super().__init__()
@@ -121,7 +117,7 @@ class DefaultSolver(Solver):
         raise NotImplementedError()
 
     @classmethod
-    def _run_algos(
+    def _run_iteration(
         cls,
         iterno: int,
         data: IterationData,
@@ -129,9 +125,7 @@ class DefaultSolver(Solver):
         print_context: ParameterOperatable.ReprContext,
         phase_offset: int = 0,
     ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
-        iteration_state = DefaultSolver.IterationState(
-            dirty=False, subset_dirty=False, alias_fold_dirty=False
-        )
+        iteration_state = DefaultSolver.IterationState(dirty=False)
         iteration_repr_maps: list[REPR_MAP] = []
 
         for phase_name, algo in enumerate(algos):
@@ -143,12 +137,11 @@ class DefaultSolver(Solver):
                     f" G:{len(data.graphs)}"
                 )
 
-            mutators = Mutators(*data.graphs, print_context=print_context)
+            mutators = Mutator(*data.graphs, print_context=print_context)
             mutators.run(algo)
             algo_result = mutators.close()
 
-            # TODO remove
-            if algo_result.dirty:
+            if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
                     f"G:{len(data.graphs)}"
@@ -158,142 +151,53 @@ class DefaultSolver(Solver):
             # TODO assert all new graphs
 
             iteration_state.dirty |= algo_result.dirty
-            iteration_state.subset_dirty |= algo_result.subset_dirty
-            iteration_state.alias_fold_dirty |= algo_result.alias_fold_dirty
 
             if algo_result.dirty:
                 data.graphs = algo_result.graphs
                 iteration_repr_maps.append(algo_result.repr_map)
 
-        data.total_repr_map = Mutators.create_concat_repr_map(
+        data.total_repr_map = Mutator.create_concat_repr_map(
             data.total_repr_map.repr_map, *iteration_repr_maps
         )
 
         return data, iteration_state, print_context
 
-    @classmethod
-    def _run_initial_iteration(
-        cls, data: IterationData, print_context: ParameterOperatable.ReprContext
-    ) -> tuple[IterationData, ParameterOperatable.ReprContext]:
-        data, _, print_context = DefaultSolver._run_algos(
-            iterno=0,
-            data=data,
-            algos=cls.algorithms.pre,
-            print_context=print_context,
-        )
-
-        # include new params generated by canonicalization
-        new_params = {
-            po: po
-            for G in data.graphs
-            for po in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-            if po not in data.total_repr_map.repr_map.values()
-        }
-
-        data.total_repr_map = Mutators.create_concat_repr_map(
-            data.total_repr_map.repr_map | new_params
-        )
-
-        # Build initial subset literals
-        data.param_ops_subset_literals = {
-            po: data.total_repr_map.try_get_literal(po, allow_subset=True)
-            for po in data.total_repr_map.repr_map
-        }
-
-        if S_LOG:
-            Mutators.print_all(*data.graphs, context=print_context)
-
-        return data, print_context
-
-    @classmethod
-    def _run_iteration(
-        cls,
-        iterno: int,
-        data: IterationData,
-        print_context: ParameterOperatable.ReprContext,
-    ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
-        data, iteration_state, print_context = DefaultSolver._run_algos(
-            iterno=iterno,
-            data=data,
-            algos=cls.algorithms.iterative,
-            print_context=print_context,
-        )
-
-        if iteration_state.dirty:
-            if iteration_state.subset_dirty or iterno <= 1:
-                logger.debug(
-                    "Subset dirty, running subset dirty algorithms"
-                    if iteration_state.subset_dirty
-                    else "Iteration 1, running subset dirty algorithms"
-                )
-
-                data, _, print_context = DefaultSolver._run_algos(
-                    iterno=iterno,
-                    data=data,
-                    algos=cls.algorithms.subset_dirty,
-                    print_context=print_context,
-                    phase_offset=len(cls.algorithms.iterative),
-                )
-
-            if iteration_state.alias_fold_dirty or iterno <= 1:
-                logger.debug(
-                    "Alias fold dirty, running alias fold dirty algorithms"
-                    if iteration_state.alias_fold_dirty
-                    else "Iteration 1, running alias fold dirty algorithms"
-                )
-
-                data, _, print_context = DefaultSolver._run_algos(
-                    iterno=iterno,
-                    data=data,
-                    algos=cls.algorithms.alias_fold_dirty,
-                    print_context=print_context,
-                    phase_offset=len(cls.algorithms.iterative)
-                    + len(cls.algorithms.subset_dirty),
-                )
-
-        if S_LOG:
-            Mutators.print_all(*data.graphs, context=print_context)
-
-        return data, iteration_state, print_context
-
     @times_out(120)
-    def phase_1_simplify_analytically(
-        self, g: Graph, print_context: ParameterOperatable.ReprContext | None = None
-    ):
+    def simplify_symbolically(
+        self,
+        g: Graph,
+        print_context: ParameterOperatable.ReprContext | None = None,
+        destructive: bool = True,
+    ) -> tuple[Mutator.ReprMap, ParameterOperatable.ReprContext]:
+        """
+        Args:
+        - destructive: if False, no destructive algorithms are allowed
+        """
+        if not destructive:
+            raise NotImplementedError()
+
         now = time.time()
         if LOG_PICK_SOLVE:
             logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
 
-        # TODO move into comment here
-        # strategies
-        # https://www.notion.so/Phase1-136836dcad9480cbb037defe359934ee?pvs=4#136836dcad94807d93bccb14598e1ef0
-
         print_context_ = print_context or ParameterOperatable.ReprContext()
         if S_LOG:
             debug_name_mappings(print_context_, g)
-            Mutators.print_all(g, context=print_context_, type_filter=Expression)
+            Mutator.print_all(g, context=print_context_, type_filter=Expression)
 
-        iter_data, print_context_ = DefaultSolver._run_initial_iteration(
-            data=DefaultSolver.IterationData(
-                graphs=[g],
-                total_repr_map=Mutators.ReprMap(
-                    {
-                        po: po
-                        for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
-                    }
-                ),
-                param_ops_subset_literals={},
+        iter_data = DefaultSolver.IterationData(
+            graphs=[g],
+            total_repr_map=Mutator.ReprMap(
+                {po: po for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)}
             ),
-            print_context=print_context_,
         )
+        for iterno in count():
+            first_iter = iterno == 0
 
-        iterno = 0
-        any_dirty = True
-        while any_dirty and len(iter_data.graphs) > 0:
-            iterno += 1
-            # TODO remove
-            if iterno > MAX_ITERATIONS:
-                raise Exception("Too many iterations")
+            if iterno > MAX_ITERATIONS_HEURISTIC:
+                raise Exception(
+                    "Solver Bug: Too many iterations, likely stuck in a loop"
+                )
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
                 for g in iter_data.graphs
@@ -306,10 +210,19 @@ class DefaultSolver(Solver):
             )
 
             iter_data, iteration_state, print_context_ = DefaultSolver._run_iteration(
-                iterno, iter_data, print_context_
+                iterno=iterno,
+                data=iter_data,
+                algos=self.algorithms.pre if first_iter else self.algorithms.iterative,
+                print_context=print_context_,
             )
 
-            any_dirty = iteration_state.dirty
+            if S_LOG:
+                Mutator.print_all(*iter_data.graphs, context=print_context_)
+
+            if not iteration_state.dirty:
+                break
+            if not len(iter_data.graphs):
+                break
 
         if LOG_PICK_SOLVE:
             logger.info(
@@ -380,14 +293,14 @@ class DefaultSolver(Solver):
 
     def _inspect_get_known_supersets(
         self, param: Parameter
-    ) -> tuple[P_Set, Mutators.ReprMap | None]:
+    ) -> tuple[P_Set, Mutator.ReprMap | None]:
         lit = param.try_get_literal()
         if lit is not None:
             return P_Set.from_value(lit), None
 
         # run phase 1 solver
         # TODO caching
-        repr_map, print_context = self.phase_1_simplify_analytically(param.get_graph())
+        repr_map, print_context = self.simplify_symbolically(param.get_graph())
         if param not in repr_map.repr_map:
             if LOG_PICK_SOLVE:
                 logger.warning(f"Parameter {param} not in repr_map")
@@ -436,7 +349,7 @@ class DefaultSolver(Solver):
             assert not pred.constrained
             pred.constrained = True
             try:
-                repr_map, print_context_new = self.phase_1_simplify_analytically(
+                repr_map, print_context_new = self.simplify_symbolically(
                     pred.get_graph(), print_context=print_context
                 )
                 # FIXME: is this correct?
@@ -483,7 +396,7 @@ class DefaultSolver(Solver):
                             not_deducted, key=lambda p: p.get_graph()
                         )
                         for g, _ in not_deduced_grouped.items():
-                            Mutators.print_all(
+                            Mutator.print_all(
                                 g,
                                 context=print_context_new,
                                 print_out=logger.warning,

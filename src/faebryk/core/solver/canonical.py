@@ -55,11 +55,11 @@ from faebryk.libs.util import cast_assert
 logger = logging.getLogger(__name__)
 
 
-@algorithm("Constrain within and domain")
+@algorithm("Constrain within and domain", single=True, destructive=False)
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
-    #TODO: Alias predicates to True since we need to assume they are true.
+    Alias predicates to True since we need to assume they are true.
     """
 
     for param in mutator.nodes_of_type(Parameter):
@@ -81,7 +81,7 @@ def constrain_within_domain(mutator: Mutator):
             mutator.mark_predicate_false(new_predicate)
 
 
-@algorithm("Canonical literal form")
+@algorithm("Canonical literal form", single=True, destructive=False)
 def convert_to_canonical_literals(mutator: Mutator):
     """
     - remove units for NumberLike
@@ -141,7 +141,7 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_expression_with_op_map(po, mutate)
 
 
-@algorithm("Canonical expression form")
+@algorithm("Canonical expression form", single=True, destructive=False)
 def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add

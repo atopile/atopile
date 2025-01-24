@@ -7,7 +7,7 @@ import logging
 import sys
 from dataclasses import dataclass
 from types import UnionType
-from typing import Callable, Iterable, Iterator, cast
+from typing import Callable, Iterable, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -30,11 +30,8 @@ from faebryk.core.solver.utils import (
     SolverAlgorithm,
     SolverLiteral,
     SolverOperatable,
-    get_expressions_involved_in,
     get_graphs,
     is_alias_is_literal,
-    is_literal_expression,
-    is_numeric_literal,
     make_if_doesnt_exist,
     make_lit,
     try_extract_literal,
@@ -67,39 +64,53 @@ class AlgoResult:
     repr_map: REPR_MAP
     graphs: list[Graph]
     dirty: bool
-    subset_dirty: bool
-    alias_fold_dirty: bool
 
 
 # TODO use Mutator everywhere instead of repr_maps
 class Mutator:
+    @dataclass
+    class _Transformations:
+        mutated: REPR_MAP
+        removed: set[ParameterOperatable]
+        copied: set[ParameterOperatable]
+        created: set[ParameterOperatable]
+        # TODO make api for contraining
+        marked: set[ConstrainableExpression]
+
     def __init__(
         self,
-        G: Graph,
+        *Gs: Graph,
         print_context: ParameterOperatable.ReprContext,
         repr_map: REPR_MAP | None = None,
     ) -> None:
-        self._G = G
-        self.repr_map = repr_map or {}
-        self.removed = set()
-        self.copied = set()
+        self._G: list[Graph] = list(Gs)
         self.print_context = print_context
 
-        # TODO make api for contraining
-        # TODO involve marked & new_ops in printing
-        self.marked: list[ConstrainableExpression] = []
-        self._old_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        self._created_ops: set[ParameterOperatable] = set()
+        self._old_ops = set(self.nodes_of_type())
+        self.transformations = Mutator._Transformations(
+            mutated=repr_map or {},
+            removed=set(),
+            copied=set(),
+            created=set(),
+            marked=set(),
+        )
+
+        # TODO remove legacy
+        self._created_ops = self.transformations.created
+        self.repr_map = self.transformations.mutated
+        self.removed = self.transformations.removed
+        self.copied = self.transformations.copied
+        self.marked = self.transformations.marked
 
     @property
-    def G(self) -> Graph:
+    def G(self) -> list[Graph]:
+        # Handles C++ graph shenanigans on move
         g = self._G
-        if g.node_count > 0:
+        if all(g.node_count > 0 for g in g):
             return g
         # Handle graph merge
         gs = get_graphs(self._old_ops)
-        assert len(gs) == 1
-        self._G = gs[0]
+        self._G = gs
         return self._G
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
@@ -285,19 +296,22 @@ class Mutator:
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.removed.update(po)
 
-    def remove_graph(self):
+    def remove_graph(self, g: Graph):
         # TODO implementing graph removal has to be more explicit
         # e.g mark as no more use, and then future mutators ignore it for the algos
         # for now at least remove expressions
-        self.remove(*GraphFunctions(self.G).nodes_of_type(Expression))
+        assert g in self.G
+        self.remove(*GraphFunctions(g).nodes_of_type(Expression))
 
     def is_removed(self, po: ParameterOperatable) -> bool:
         return po in self.removed
 
-    def copy_unmutated(
+    def _copy_unmutated(
         self,
         exclude_filter: Callable[[ParameterOperatable], bool] | None = None,
     ):
+        # TODO: for graph that need no copy, just do {po: po}
+
         if exclude_filter is None:
             exclude_filter = self.is_removed
 
@@ -305,7 +319,9 @@ class Mutator:
         other_param_op = ParameterOperatable.sort_by_depth(
             (
                 p
-                for p in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
+                for G in self.G
+                if self.needs_copy(G)
+                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
                 if not self.has_been_mutated(p) and not exclude_filter(p)
             ),
             ascending=True,
@@ -319,73 +335,11 @@ class Mutator:
 
     @property
     def dirty(self) -> bool:
-        return bool(self.needs_copy or self._created_ops or self.marked)
+        return bool(self.removed or self.repr_map or self._created_ops or self.marked)
 
-    # TODO: consider making part of nodes_of_type(new_only=True)
-    def get_created_literal_aliases(self):
-        """
-        Find new ops which are Is expressions between a ParameterOperatable and a
-        literal
-        """
+    def needs_copy(self, g: Graph) -> bool:
+        # FIXME: multi graph support
 
-        def is_literal_alias(expr: Is) -> bool:
-            # TODO: is this the same as is_alias_is_literal?
-
-            a, b = expr.operands
-            return any(
-                (
-                    (
-                        isinstance(a, ParameterOperatable)
-                        and not is_literal_expression(a)
-                        and is_numeric_literal(b)
-                    ),
-                    (
-                        isinstance(b, ParameterOperatable)
-                        and not is_literal_expression(b)
-                        and is_numeric_literal(a)
-                    ),
-                )
-            )
-
-        return (
-            expr
-            for expr in self.nodes_of_type(Is, created_only=True)
-            if is_literal_alias(expr)
-        )
-
-    @property
-    def subset_dirty(self) -> bool:
-        """
-        True if any ParameterOperatable (A) has been newly aliased/subsetted to a
-        literal that is narrower than before, and A is involved in an expression
-        """
-
-        # TODO: also subsets
-        for expr in self.get_created_literal_aliases():
-            involved_in = get_expressions_involved_in(
-                next(iter(expr.operatable_operands))
-            )
-            if involved_in is not None:
-                # TODO: only if narrower (only for subsets relevant)
-                return True
-
-        return False
-
-    @property
-    def alias_fold_dirty(self) -> bool:
-        """
-        True if any new expression has been created that involves one or more
-        non-literal operands
-        """
-        # TODO: is this correct and sufficient? @iopapamanoglou
-        new_exprs = self.nodes_of_type(Expression, created_only=True)
-        return any(
-            any(try_extract_literal(op) is None for op in expr.operands)
-            for expr in new_exprs
-        )
-
-    @property
-    def needs_copy(self) -> bool:
         # optimization: if just new_ops, no need to copy
         return bool(self.removed or self.repr_map)
 
@@ -393,7 +347,7 @@ class Mutator:
         # TODO should only run during dev
 
         # Check modifications to original graph
-        post_mut_nodes = GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
+        post_mut_nodes = set(self.nodes_of_type())
         removed = self._old_ops.difference(post_mut_nodes, self.removed)
         added = post_mut_nodes.difference(self._old_ops, self._created_ops)
         removed_compact = [op.compact_repr(self.print_context) for op in removed]
@@ -424,24 +378,32 @@ class Mutator:
                     f"{indented_container(graphs)}"
                 )
 
-    def close(self) -> REPR_MAP:
-        self.check_no_illegal_mutations()
-        if not self.needs_copy:
-            return {
-                po: po
-                for po in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
-            }
-        self.copy_unmutated()
+    def close(self) -> AlgoResult:
+        result = AlgoResult(
+            repr_map={},
+            graphs=[],
+            dirty=self.dirty,
+        )
 
-        assert self.G not in get_graphs(self.repr_map.values())
-        return self.repr_map
+        if result.dirty:
+            self.check_no_illegal_mutations()
+            self._copy_unmutated()
+
+            result.repr_map = self.repr_map
+            result.graphs = get_graphs(result.repr_map.values())
+
+            # Check if original graphs ended up in result
+            # allowed if no copy was needed for graph
+            assert not ({g for g in self._G if self.needs_copy(g)} & set(result.graphs))
+
+        return result
 
     def mark_predicate_true(self, pred: ConstrainableExpression):
         assert pred.constrained
         if pred._solver_evaluates_to_true:
             return
         pred._solver_evaluates_to_true = True
-        self.marked.append(pred)
+        self.marked.add(pred)
 
     def is_predicate_true(self, pred: ConstrainableExpression) -> bool:
         return pred._solver_evaluates_to_true
@@ -451,7 +413,7 @@ class Mutator:
         if not pred._solver_evaluates_to_true:
             return
         pred._solver_evaluates_to_true = False
-        self.marked.append(pred)
+        self.marked.add(pred)
 
     def get_all_param_ops(self) -> set[ParameterOperatable]:
         return {
@@ -462,70 +424,51 @@ class Mutator:
 
     def nodes_of_type[T: "ParameterOperatable"](
         self,
-        t: type[T],
+        t: type[T] = ParameterOperatable,
         sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
-    ) -> list[T]:
+    ) -> list[T] | set[T]:
         # TODO: implement new_only
         # should return only ops created since last iteration
+        if new_only:
+            raise NotImplementedError("new_only not implemented")
 
         if created_only:
-            out = (n for n in self._created_ops if isinstance(n, t))
+            out = {n for n in self._created_ops if isinstance(n, t)}
         else:
-            out = GraphFunctions(self.G).nodes_of_type(t)
+            out = {n for G in self._G for n in GraphFunctions(G).nodes_of_type(t)}
 
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
 
-        return list(out)
+        return out
 
     def nodes_of_types(
         self,
         t: tuple[type[ParameterOperatable], ...] | UnionType,
         sort_by_depth: bool = False,
-    ) -> list:
-        out = GraphFunctions(self.G).nodes_of_types(t)
+    ) -> list[ParameterOperatable] | set[ParameterOperatable]:
+        out = {n for G in self._G for n in GraphFunctions(G).nodes_of_types(t)}
         out = cast(set[ParameterOperatable], out)
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
-        return list(out)
+        return out
 
+    def get_new_literal_aliases(self):
+        """
+        Find new ops which are Is expressions between a ParameterOperatable and a
+        literal
+        """
 
-class Mutators:
-    def __init__(self, *graphs: Graph, print_context: ParameterOperatable.ReprContext):
-        self.mutators = [Mutator(g, print_context=print_context) for g in graphs]
-        self.result_repr_map = {}
-        self.print_context = print_context
-
-    def close(self) -> AlgoResult:
-        result = AlgoResult(
-            repr_map={},
-            graphs=[],
-            dirty=any(m.dirty for m in self.mutators),
-            subset_dirty=any(m.subset_dirty for m in self.mutators),
-            alias_fold_dirty=any(m.alias_fold_dirty for m in self.mutators),
+        return (
+            expr
+            for expr in self.nodes_of_type(Is, new_only=True)
+            if is_alias_is_literal(expr)
         )
 
-        if result.dirty:
-            for m in self.mutators:
-                result.repr_map.update(m.close())
-            result.graphs = get_graphs(result.repr_map.values())
-
-            assert not (
-                set(m.G for m in self.mutators if m.needs_copy) & set(result.graphs)
-            )
-
-            self.result_repr_map = result.repr_map
-
-        return result
-
     def run(self, algo: SolverAlgorithm):
-        for m in self.mutators:
-            algo(m)
-
-    def __iter__(self) -> Iterator[Mutator]:
-        return iter(self.mutators)
+        algo(self)
 
     @once
     def get_new_print_context(self) -> ParameterOperatable.ReprContext:
@@ -534,7 +477,7 @@ class Mutators:
         context_new = ParameterOperatable.ReprContext()
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
 
-        for s, d in self.result_repr_map.items():
+        for s, d in self.repr_map.items():
             if isinstance(s, Parameter) and isinstance(d, Parameter):
                 s.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s]
@@ -545,7 +488,7 @@ class Mutators:
         return context_new
 
     def debug_print(self):
-        if not self.result_repr_map:
+        if not self.repr_map:
             return
 
         if getattr(sys, "gettrace", lambda: None)():
@@ -562,13 +505,13 @@ class Mutators:
         table.add_column("Before/Created By")
         table.add_column("After")
 
-        graphs = get_graphs(self.result_repr_map.values())
+        graphs = get_graphs(self.repr_map.values())
 
-        new_ops = {op for m in self.mutators for op in m._created_ops}
+        created_ops = self._created_ops
 
         rows: list[tuple[str, str]] = []
 
-        for op in new_ops:
+        for op in created_ops:
             if is_alias_is_literal(op):
                 expr = next(iter(op.operatable_operands))
                 lit = next(iter(op.get_literal_operands().values()))
@@ -589,13 +532,13 @@ class Mutators:
                 continue
             rows.append(("new", op.compact_repr(context_new)))
 
-        marked = {op for m in self.mutators for op in m.marked}.difference(new_ops)
+        marked = self.marked.difference(created_ops)
         for op in marked:
             rows.append(("marked", op.compact_repr(context_new)))
 
-        copied = {op for m in self.mutators for op in m.copied}
+        copied = self.copied
 
-        for s, d in self.result_repr_map.items():
+        for s, d in self.repr_map.items():
             if not VERBOSE_TABLE:
                 if s in copied:
                     continue
@@ -613,12 +556,11 @@ class Mutators:
                 continue
             rows.append((old, new))
 
-        for m in self.mutators:
-            for s in m.removed:
-                old = s.compact_repr(context_old)
-                if VERBOSE_TABLE:
-                    old += "\n\n" + repr(s)
-                rows.append((old, "removed"))
+        for s in self.removed:
+            old = s.compact_repr(context_old)
+            if VERBOSE_TABLE:
+                old += "\n\n" + repr(s)
+            rows.append((old, "removed"))
 
         if rows:
             rows.sort(key=lambda r: tuple(r))
@@ -629,10 +571,10 @@ class Mutators:
             log(console.export_text(styles=True))
 
         # TODO remove
-        if len(graphs) != len(self.mutators):
+        if len(graphs) != len(self._G):
             logger.debug(
                 f"Mutators created/destroyed graphs: "
-                f"{len(self.mutators)} -> {len(graphs)}"
+                f"{len(self._G)} -> {len(graphs)}"
             )
             # Mutators.print_all(*graphs, context=context_new)
 
@@ -738,4 +680,4 @@ class Mutators:
 
     @staticmethod
     def create_concat_repr_map(*repr_maps: REPR_MAP) -> ReprMap:
-        return Mutators.ReprMap(Mutators.concat_repr_maps(*repr_maps))
+        return Mutator.ReprMap(Mutator.concat_repr_maps(*repr_maps))

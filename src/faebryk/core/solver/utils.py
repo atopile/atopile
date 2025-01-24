@@ -74,7 +74,7 @@ SHOW_SS_IS = ConfigFlag(
     descr="Show subset/is predicates in graph print",
 )
 PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of solver")
-MAX_ITERATIONS = int(
+MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=10, descr="Max iterations")
 )
 # --------------------------------------------------------------------------------------
@@ -576,6 +576,8 @@ type SolverAlgorithmFunc = "Callable[[Mutator], None]"
 class SolverAlgorithm:
     name: str
     func: SolverAlgorithmFunc
+    single: bool
+    destructive: bool
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -583,12 +585,38 @@ class SolverAlgorithm:
 
 def algorithm(
     name: str,
+    single: bool = False,
+    destructive: bool = True,
 ) -> Callable[[SolverAlgorithmFunc], SolverAlgorithm]:
+    """
+    Decorator to wrap an algorithm function
+
+    Args:
+    - single: if True, the algorithm is only applied once in the beginning.
+        All other algorithms assume this one ran before
+    - destructive: Results are invalid if graph is mutated after solver is run
+    """
+
+    if not hasattr(algorithm, "_registered_algorithms"):
+        algorithm._registered_algorithms = []
+
     def decorator(func: SolverAlgorithmFunc) -> SolverAlgorithm:
         @wraps(func)
         def wrapped(*args, **kwargs):
             return func(*args, **kwargs)
 
-        return SolverAlgorithm(name=name, func=wrapped)
+        out = SolverAlgorithm(
+            name=name,
+            func=wrapped,
+            single=single,
+            destructive=destructive,
+        )
+        algorithm._registered_algorithms.append(out)
+
+        return out
 
     return decorator
+
+
+def get_algorithms() -> list[SolverAlgorithm]:
+    return algorithm._registered_algorithms
