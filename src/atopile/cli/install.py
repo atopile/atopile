@@ -32,13 +32,13 @@ def install(
     jlcpcb: Annotated[
         bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID", hidden=True)
     ] = False,
-    link: Annotated[
+    vendor: Annotated[
         bool,
         typer.Option(
-            "--link/--vendor",
-            help="Keep this dependency linked to the source or vendor it",
+            "--vendor",
+            help="Copy the contents of this dependency into the repo",
         ),
-    ] = True,
+    ] = False,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
     ] = False,
@@ -54,7 +54,7 @@ def install(
 
     config.apply_options(None)
 
-    do_install(to_install, link, upgrade, path)
+    do_install(to_install, not vendor, upgrade, path)
 
 
 def do_install(
