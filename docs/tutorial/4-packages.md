@@ -11,4 +11,30 @@ Alternatively, Google is your friend! Packages are often publicly available on g
 
 ## Installing packages
 
+Use `ato install` to install packages.
 
+For example, this command will install the package named `esp32-s3` from atopile's internal package repository.
+
+```bash
+ato install esp32-s3
+```
+
+You can also directly specify a git repo URL to install from:
+
+```bash
+ato install https://github.com/atopile/rp2040
+```
+
+This will install the `rp2040` package from the given repo.
+
+## Linked vs. Vendored
+
+By default, packages are linked to your project. This means that the dependency is installed
+
+You can also vendor a package. This will copy the package into your project's `vendor` directory.
+
+Use `--vendor` to vendor a package. This will copy the package into your project's `vendor` directory.
+
+```bash
+ato install --vendor esp32-s3
+```
