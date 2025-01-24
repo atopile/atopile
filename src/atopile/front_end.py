@@ -404,6 +404,7 @@ def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleCont
 
 
 _declaration_domain_to_unit = {
+    "dimensionless": dimensionless,
     "resistance": P.ohm,
     "capacitance": P.farad,
     "inductance": P.henry,
