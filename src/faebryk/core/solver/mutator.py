@@ -81,12 +81,19 @@ class Mutator:
         self,
         *Gs: Graph,
         print_context: ParameterOperatable.ReprContext,
+        algo: SolverAlgorithm,
+        last_run_operables: set[ParameterOperatable] | None = None,
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self._G: set[Graph] = set(Gs)
         self.print_context = print_context
 
-        self._old_ops = set(self.nodes_of_type())
+        if not last_run_operables:
+            last_run_operables = set()
+
+        self._last_run_operables = last_run_operables
+        self._starting_operables = set(self.nodes_of_type())
+        self._new_operables = self._starting_operables - self._last_run_operables
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
             removed=set(),
@@ -95,6 +102,13 @@ class Mutator:
             marked=set(),
         )
 
+        # TODO remove debug
+        # logger.debug(f"new ops ({algo.name}): {len(self._new_operables)}")
+        # for op in self._new_operables:
+        #     logger.debug(f"\t{hex(id(op))}| {op.compact_repr(self.print_context)}")
+
+        self.algo = algo
+
     @property
     def G(self) -> set[Graph]:
         # Handles C++ graph shenanigans on move
@@ -102,7 +116,7 @@ class Mutator:
         if all(g.node_count > 0 for g in g):
             return g
         # Handle graph merge
-        gs = get_graphs(self._old_ops)
+        gs = get_graphs(self._starting_operables)
         self._G = set(gs)
         return self._G
 
@@ -357,8 +371,12 @@ class Mutator:
 
         # Check modifications to original graph
         post_mut_nodes = set(self.nodes_of_type())
-        removed = self._old_ops.difference(post_mut_nodes, self.transformations.removed)
-        added = post_mut_nodes.difference(self._old_ops, self.transformations.created)
+        removed = self._starting_operables.difference(
+            post_mut_nodes, self.transformations.removed
+        )
+        added = post_mut_nodes.difference(
+            self._starting_operables, self.transformations.created
+        )
         removed_compact = [op.compact_repr(self.print_context) for op in removed]
         added_compact = [op.compact_repr(self.print_context) for op in added]
         assert (
@@ -425,7 +443,13 @@ class Mutator:
         pred._solver_evaluates_to_true = False
         self.transformations.marked.add(pred)
 
-    def get_all_param_ops(self) -> set[ParameterOperatable]:
+    def get_output_operables(self) -> set[ParameterOperatable]:
+        # It's enough to check for mutation graphs and not created ones
+        # because the created ones always connect to graphs of the mutated ones
+        # else they will be lost anyway
+        if not self.dirty:
+            return self._starting_operables
+
         return {
             op
             for g in get_graphs(self.transformations.mutated.values())
@@ -439,15 +463,14 @@ class Mutator:
         created_only: bool = False,
         new_only: bool = False,
     ) -> list[T] | set[T]:
-        # TODO: implement new_only
-        # should return only ops created since last iteration
-        if new_only:
-            raise NotImplementedError("new_only not implemented")
+        assert not new_only or not created_only
 
-        if created_only:
+        if new_only:
+            out = {n for n in self._new_operables if isinstance(n, t)}
+        elif created_only:
             out = {n for n in self.transformations.created if isinstance(n, t)}
         else:
-            out = {n for G in self._G for n in GraphFunctions(G).nodes_of_type(t)}
+            out = {n for G in self.G for n in GraphFunctions(G).nodes_of_type(t)}
 
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
@@ -477,8 +500,16 @@ class Mutator:
             if is_alias_is_literal(expr)
         )
 
-    def run(self, algo: SolverAlgorithm):
-        algo(self)
+    def get_new_literal_aliased(self):
+        ps = {
+            p: not_none(try_extract_literal(p))
+            for alias in self.get_new_literal_aliases()
+            for p in alias.operatable_operands
+        }
+        return ps
+
+    def run(self):
+        self.algo(self)
 
     @once
     def get_new_print_context(self) -> ParameterOperatable.ReprContext:

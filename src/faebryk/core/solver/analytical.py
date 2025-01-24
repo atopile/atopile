@@ -44,8 +44,10 @@ from faebryk.core.solver.utils import (
     merge_parameters,
     no_other_constrains,
     remove_predicate,
+    subset_literal,
     try_extract_all_literals,
     try_extract_literal,
+    try_extract_literal_info,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -54,6 +56,7 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     EquivalenceClasses,
+    cast_assert,
     find_or,
     groupby,
     not_none,
@@ -206,7 +209,13 @@ def resolve_alias_classes(mutator: Mutator):
         if len(eq_class) <= 1:
             continue
 
-        alias_class_p_ops = [p for p in eq_class if isinstance(p, ParameterOperatable)]
+        alias_class_p_ops = [
+            p
+            for p in eq_class
+            if isinstance(p, ParameterOperatable)
+            # Literal expressions are basically literals
+            and not is_literal_expression(p)
+        ]
         alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
         alias_class_exprs = {p for p in alias_class_p_ops if isinstance(p, Expression)}
 
@@ -218,7 +227,8 @@ def resolve_alias_classes(mutator: Mutator):
         if len(alias_class_params) == 1:
             # check if all in eq_class already aliased
             # Then no need to to create new representative
-            iss = alias_class_params[0].get_operations(Is)
+            _repr = alias_class_params[0]
+            iss = _repr.get_operations(Is)
             iss_exprs = {
                 o
                 for e in iss
@@ -232,7 +242,10 @@ def resolve_alias_classes(mutator: Mutator):
                     for operand in alias_class_exprs
                     for e in operand.get_operations()
                     # skip POps Is, because they create the alias classes
-                    if not isinstance(e, Is) or e.get_literal_operands()
+                    # or literal aliases (done by distribute algo)
+                    if not isinstance(e, Is)
+                    # skip literal subsets (done by distribute algo)
+                    and not (isinstance(e, IsSubset) and e.get_literal_operands())
                 }
                 if not class_expressions:
                     continue
@@ -294,6 +307,32 @@ def resolve_alias_classes(mutator: Mutator):
         and not e.get_operations()
     }
     mutator.remove(*removed)
+
+
+@algorithm("Distribute literals across alias classes", destructive=False)
+def distribute_literals_across_alias_classes(mutator: Mutator):
+    """
+    Distribute literals across alias classes
+
+    E is A, A is Lit -> E is Lit
+    E is A, A ss Lit -> E ss Lit
+
+    """
+    for p in mutator.nodes_of_type():
+        lit, is_alias = try_extract_literal_info(p)
+        if lit is None:
+            continue
+
+        non_lit_aliases = {
+            cast_assert(ParameterOperatable, e.get_other_operand(p))
+            for e in p.get_operations(Is, constrained_only=True)
+            if not e.get_literal_operands()
+        }
+        for alias in non_lit_aliases:
+            if is_alias:
+                alias_is_literal(alias, lit, mutator)
+            else:
+                subset_literal(alias, lit, mutator)
 
 
 @algorithm("Merge intersecting subsets")
@@ -389,7 +428,9 @@ def compress_associative(mutator: Mutator):
     root_ops = [e for e in ops if type(e) not in {type(n) for n in e.get_operations()}]
 
     for expr in root_ops:
-        res = flatten_associative(expr, partial(is_replacable, mutator.repr_map))
+        res = flatten_associative(
+            expr, partial(is_replacable, mutator.transformations.mutated)
+        )
         if not res.destroyed_operations:
             continue
 
@@ -886,7 +927,7 @@ def isolate_lone_params(mutator: Mutator):
         print(f"isolated: {e.compact_repr(ctx)}")
 
 
-@algorithm("Uncorrelated alias fold")
+@algorithm("Uncorrelated alias fold", destructive=True)
 def uncorrelated_alias_fold(mutator: Mutator):
     """
     If an operation contains only operands that are not correlated with each other,
@@ -895,48 +936,38 @@ def uncorrelated_alias_fold(mutator: Mutator):
     op(As), no correlations in As outside of op, len(A is Lit in As) > 0
     -> op(As) is! op(As replaced by corresponding lits)
     ```
+
+    Destructive because relies on missing correlations.
     """
 
-    # FIXME: implement this filter
-    # @property
-    # def alias_fold_dirty(self) -> bool:
-    #     """
-    #     True if any new expression has been created that involves one or more
-    #     non-literal operands
-    #     """
-    #     # TODO: is this correct and sufficient? @iopapamanoglou
-    #     new_exprs = self.nodes_of_type(Expression, created_only=True)
-    #     return any(
-    #         any(try_extract_literal(op) is None for op in expr.operands)
-    #         for expr in new_exprs
-    #     )
-    return
+    new_aliases = mutator.get_new_literal_aliased()
+    # bool expr always map to singles
+    new_aliases = {
+        k: v
+        for k, v in new_aliases.items()
+        if not isinstance(k, ConstrainableExpression)
+    }
 
-    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
-    for expr in exprs:
-        assert isinstance(expr, CanonicalOperation)
-        # TODO: is this correct?
-        if isinstance(expr, (Is, IsSubset)):
-            continue
-        # skip op is Lit
-        if try_extract_literal(expr) is not None:
-            continue
+    for alias in new_aliases.keys():
+        exprs = alias.get_operations()
+        for expr in exprs:
+            assert isinstance(expr, CanonicalOperation)
+            # TODO: is this correct?
+            if isinstance(expr, (Is, IsSubset)):
+                continue
+            # skip op is Lit
+            if try_extract_literal(expr) is not None:
+                continue
 
-        # at least one operand is not a literal, else no point
-        if not any(isinstance(op, ParameterOperatable) for op in expr.operands):
-            continue
+            # TODO: we can weaken this to not replace correlated operands instead of
+            #   skipping the whole expression
+            # check if any correlations
+            if any(get_correlations(expr)):
+                continue
 
-        # len(A is Lit in As) > 0
-        if all(try_extract_literal(op) is None for op in expr.operands):
-            continue
+            expr_resolved_operands = map_extract_literals(expr)
 
-        # TODO: we can weaken this to not replace correlated operands instead of
-        #   skipping the whole expression
-        # check if any correlations
-        if any(get_correlations(expr)):
-            continue
-
-        expr_resolved_operands = map_extract_literals(expr)
-
-        literals_expr = mutator.create_expression(type(expr), *expr_resolved_operands)
-        mutator.create_expression(Is, expr, literals_expr).constrain()
+            literals_expr = mutator.create_expression(
+                type(expr), *expr_resolved_operands
+            )
+            mutator.create_expression(Is, expr, literals_expr).constrain()

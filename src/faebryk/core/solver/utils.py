@@ -55,13 +55,12 @@ from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagInt,
     KeyErrorAmbiguous,
-    find_or,
     partition,
     unique_ref,
 )
 
 if TYPE_CHECKING:
-    from faebryk.core.solver.mutator import Mutator
+    from faebryk.core.solver.mutator import REPR_MAP, Mutator
 
 logger = logging.getLogger(__name__)
 
@@ -139,20 +138,6 @@ def try_extract_literal(
 ) -> SolverLiteral | None:
     try:
         lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
-        # find literal of representative parameter of expression
-        # related to alias classes
-        if lit is None and isinstance(po, Expression):
-            for e in po.get_operations(Is, constrained_only=True):
-                p = find_or(
-                    e.operatable_operands,
-                    lambda o: isinstance(o, Parameter),
-                    default=None,
-                )
-                if p is None:
-                    continue
-                lit = try_extract_literal(p, allow_subset=True)
-                if lit is not None:
-                    break
     except KeyErrorAmbiguous as e:
         raise ContradictionByLiteral(
             "Duplicate unequal is literals",
@@ -161,6 +146,19 @@ def try_extract_literal(
         ) from e
     assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set, NoneType))
     return lit
+
+
+def try_extract_literal_info(
+    po: ParameterOperatable,
+) -> tuple[SolverLiteral | None, bool]:
+    """
+    returns (literal, is_alias)
+    """
+    lit = try_extract_literal(po, allow_subset=False)
+    if lit is not None:
+        return lit, True
+    lit = try_extract_literal(po, allow_subset=True)
+    return lit, False
 
 
 def try_extract_numeric_literal(
@@ -202,7 +200,9 @@ def map_extract_literals(
 
 
 def alias_is_literal(
-    po: ParameterOperatable, literal: ParameterOperatable.Literal, mutator: "Mutator"
+    po: ParameterOperatable,
+    literal: ParameterOperatable.Literal | SolverLiteral,
+    mutator: "Mutator",
 ):
     literal = make_lit(literal)
     existing = try_extract_literal(po)
@@ -220,6 +220,30 @@ def alias_is_literal(
         if literal in po.get_literal_operands().values():
             return
     return mutator.create_expression(Is, po, literal).constrain()
+
+
+def subset_literal(
+    po: ParameterOperatable,
+    literal: ParameterOperatable.Literal | SolverLiteral,
+    mutator: "Mutator",
+):
+    literal = make_lit(literal)
+    existing_alias = try_extract_literal(po)
+    if existing_alias is not None:
+        if not existing_alias.is_subset_of(literal):  # type: ignore #TODO
+            raise ContradictionByLiteral(
+                "Tried subset to different literal",
+                involved=[po],
+                literals=[existing_alias, literal],
+            )
+        return
+
+    existing = try_extract_literal(po, allow_subset=True)
+    if existing is not None:
+        if existing.is_subset_of(literal):  # type: ignore #TODO
+            return
+
+    return mutator.create_expression(IsSubset, po, literal).constrain()
 
 
 def is_literal(po: ParameterOperatable) -> TypeGuard[SolverLiteral]:
@@ -354,7 +378,7 @@ def flatten_associative[T: Associative](
 
 
 def is_replacable(
-    repr_map: "Mutator.REPR_MAP",
+    repr_map: "REPR_MAP",
     to_replace: Expression,
     parent_expr: Expression,
 ) -> bool:
@@ -572,7 +596,7 @@ def debug_name_mappings(
 type SolverAlgorithmFunc = "Callable[[Mutator], None]"
 
 
-@dataclass
+@dataclass(frozen=True)
 class SolverAlgorithm:
     name: str
     func: SolverAlgorithmFunc

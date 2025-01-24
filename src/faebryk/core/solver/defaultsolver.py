@@ -69,6 +69,7 @@ class DefaultSolver(Solver):
             analytical.remove_unconstrained,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
+            analytical.distribute_literals_across_alias_classes,
             analytical.remove_congruent_expressions,
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
@@ -89,6 +90,7 @@ class DefaultSolver(Solver):
     class IterationData:
         graphs: list[Graph]
         total_repr_map: Mutator.ReprMap
+        output_operables: dict[SolverAlgorithm, set[ParameterOperatable]]
 
         def __rich_repr__(self):
             yield "graphs", self.graphs
@@ -137,24 +139,39 @@ class DefaultSolver(Solver):
                     f" G:{len(data.graphs)}"
                 )
 
-            mutators = Mutator(*data.graphs, print_context=print_context)
-            mutators.run(algo)
-            algo_result = mutators.close()
+            mutator = Mutator(
+                *data.graphs,
+                algo=algo,
+                print_context=print_context,
+                last_run_operables=data.output_operables.get(algo),
+            )
+            mutator.run()
+            algo_result = mutator.close()
 
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
                     f"G:{len(data.graphs)}"
                 )
-                print_context = mutators.debug_print() or print_context
+                print_context = mutator.debug_print() or print_context
 
             # TODO assert all new graphs
 
             iteration_state.dirty |= algo_result.dirty
+            # TODO: optimize so only dirty
+            if not algo.single:
+                data.output_operables[algo] = mutator.get_output_operables()
 
             if algo_result.dirty:
                 data.graphs = algo_result.graphs
                 iteration_repr_maps.append(algo_result.repr_map)
+                # TODO implement nicer
+                # map output_operables through new repr_map
+                for s, d in algo_result.repr_map.items():
+                    for v_ops in data.output_operables.values():
+                        if s in v_ops:
+                            v_ops.remove(s)
+                            v_ops.add(d)
 
         data.total_repr_map = Mutator.create_concat_repr_map(
             data.total_repr_map.repr_map, *iteration_repr_maps
@@ -190,6 +207,7 @@ class DefaultSolver(Solver):
             total_repr_map=Mutator.ReprMap(
                 {po: po for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)}
             ),
+            output_operables={},
         )
         for iterno in count():
             first_iter = iterno == 0
