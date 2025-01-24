@@ -1089,7 +1089,6 @@ def test_graph_split():
 
     app = App()
 
-    # TODO remove
     C = Parameter()
     D = Parameter()
     app.A.alias_is(C)

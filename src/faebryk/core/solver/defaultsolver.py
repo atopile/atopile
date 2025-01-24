@@ -216,13 +216,12 @@ class DefaultSolver(Solver):
                 print_context=print_context_,
             )
 
-            if S_LOG:
-                Mutator.print_all(*iter_data.graphs, context=print_context_)
-
             if not iteration_state.dirty:
                 break
             if not len(iter_data.graphs):
                 break
+            if S_LOG:
+                Mutator.print_all(*iter_data.graphs, context=print_context_)
 
         if LOG_PICK_SOLVE:
             logger.info(

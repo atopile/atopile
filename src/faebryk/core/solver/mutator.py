@@ -83,7 +83,7 @@ class Mutator:
         print_context: ParameterOperatable.ReprContext,
         repr_map: REPR_MAP | None = None,
     ) -> None:
-        self._G: list[Graph] = list(Gs)
+        self._G: set[Graph] = set(Gs)
         self.print_context = print_context
 
         self._old_ops = set(self.nodes_of_type())
@@ -96,14 +96,14 @@ class Mutator:
         )
 
     @property
-    def G(self) -> list[Graph]:
+    def G(self) -> set[Graph]:
         # Handles C++ graph shenanigans on move
         g = self._G
         if all(g.node_count > 0 for g in g):
             return g
         # Handle graph merge
         gs = get_graphs(self._old_ops)
-        self._G = gs
+        self._G = set(gs)
         return self._G
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
@@ -310,12 +310,14 @@ class Mutator:
         if exclude_filter is None:
             exclude_filter = self.is_removed
 
+        _touched_graphs = self._touched_graphs
+
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
             (
                 p
                 for G in self.G
-                if self.needs_copy(G)
+                if G in _touched_graphs
                 for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
                 if not self.has_been_mutated(p) and not exclude_filter(p)
             ),
@@ -323,6 +325,12 @@ class Mutator:
         )
         for o in other_param_op:
             self.get_copy(o)
+
+        # optimization: if just new_ops, no need to copy
+        # pass through untouched graphs
+        for g in self.G - _touched_graphs:
+            for p in GraphFunctions(g).nodes_of_type(ParameterOperatable):
+                self.transformations.mutated[p] = p
 
     def register_created_parameter(self, param: Parameter):
         self.transformations.created.add(param)
@@ -337,11 +345,12 @@ class Mutator:
             or self.transformations.marked
         )
 
-    def needs_copy(self, g: Graph) -> bool:
-        # FIXME: multi graph support
-
-        # optimization: if just new_ops, no need to copy
-        return bool(self.transformations.removed or self.transformations.mutated)
+    @property
+    def _touched_graphs(self) -> set[Graph]:
+        return {
+            n.get_graph()
+            for n in self.transformations.removed | self.transformations.mutated.keys()
+        }
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
@@ -386,6 +395,7 @@ class Mutator:
         )
 
         if result.dirty:
+            touched = self._touched_graphs
             self.check_no_illegal_mutations()
             self._copy_unmutated()
 
@@ -394,7 +404,7 @@ class Mutator:
 
             # Check if original graphs ended up in result
             # allowed if no copy was needed for graph
-            assert not ({g for g in self._G if self.needs_copy(g)} & set(result.graphs))
+            assert not (touched & set(result.graphs))
 
         return result
 
@@ -649,8 +659,7 @@ class Mutator:
         for original_obj in repr_maps[0].keys():
             chain_end = original_obj
             chain_interrupted = False
-            i = 0
-            for m in repr_maps:
+            for i, m in enumerate(repr_maps):
                 # CONSIDER: I think we can assert this
                 assert isinstance(chain_end, ParameterOperatable)
                 if chain_end not in m:
@@ -663,7 +672,6 @@ class Mutator:
                     chain_interrupted = True
                     break
                 chain_end = m[chain_end]
-                i += 1
             if not chain_interrupted:
                 concatenated[original_obj] = chain_end
         return concatenated
@@ -700,3 +708,6 @@ class Mutator:
     @staticmethod
     def create_concat_repr_map(*repr_maps: REPR_MAP) -> ReprMap:
         return Mutator.ReprMap(Mutator.concat_repr_maps(*repr_maps))
+
+    def __repr__(self) -> str:
+        return f"Mutator({self.transformations})"

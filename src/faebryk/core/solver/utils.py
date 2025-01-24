@@ -555,8 +555,8 @@ def debug_name_mappings(
     print_out: Callable[[str], None] = logger.debug,
 ):
     table = Table(title="Name mappings", show_lines=True)
-    table.add_column("Before")
-    table.add_column("After")
+    table.add_column("Variable name")
+    table.add_column("Node name")
 
     for p in sorted(
         GraphFunctions(g).nodes_of_type(Parameter), key=Parameter.get_full_name
