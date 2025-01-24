@@ -307,7 +307,7 @@ def generate_manifest(app: Module) -> None:
             manifest_path = config.project.paths.manifest
             manifest_path.parent.mkdir(exist_ok=True, parents=True)
             with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f)
+                json.dump(manifest, f, indent=4)
 
 
 @muster.register("layout-module-map")
