@@ -112,7 +112,7 @@ class _BaseUserException(_BaseBaseUserException):
         return instance
 
     @classmethod
-    def from_tokens[T](
+    def from_tokens[T: _BaseUserException](
         cls: type[T],
         token_stream: CommonTokenStream,
         origin_start: Token,
