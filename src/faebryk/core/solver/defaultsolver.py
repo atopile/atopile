@@ -77,10 +77,12 @@ class DefaultSolver(Solver):
             analytical.empty_set,
             analytical.transitive_subset,
             analytical.isolate_lone_params,
-            analytical.uncorrelated_alias_fold,
             analytical.remove_empty_graphs,
         ],
-        subset_dirty=[analytical.upper_estimation_of_expressions_with_subsets],
+        subset_dirty=[
+            analytical.upper_estimation_of_expressions_with_subsets,
+        ],
+        alias_fold_dirty=[analytical.uncorrelated_alias_fold],
     )
 
     @dataclass
@@ -103,6 +105,7 @@ class DefaultSolver(Solver):
     class IterationState:
         dirty: bool
         subset_dirty: bool
+        alias_fold_dirty: bool
 
     def __init__(self) -> None:
         super().__init__()
@@ -126,7 +129,9 @@ class DefaultSolver(Solver):
         print_context: ParameterOperatable.ReprContext,
         phase_offset: int = 0,
     ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
-        iteration_state = DefaultSolver.IterationState(dirty=False, subset_dirty=False)
+        iteration_state = DefaultSolver.IterationState(
+            dirty=False, subset_dirty=False, alias_fold_dirty=False
+        )
         iteration_repr_maps: list[REPR_MAP] = []
 
         for phase_name, algo in enumerate(algos):
@@ -154,6 +159,7 @@ class DefaultSolver(Solver):
 
             iteration_state.dirty |= algo_result.dirty
             iteration_state.subset_dirty |= algo_result.subset_dirty
+            iteration_state.alias_fold_dirty |= algo_result.alias_fold_dirty
 
             if algo_result.dirty:
                 data.graphs = algo_result.graphs
@@ -227,6 +233,22 @@ class DefaultSolver(Solver):
                     algos=cls.algorithms.subset_dirty,
                     print_context=print_context,
                     phase_offset=len(cls.algorithms.iterative),
+                )
+
+            if iteration_state.alias_fold_dirty or iterno <= 1:
+                logger.debug(
+                    "Alias fold dirty, running alias fold dirty algorithms"
+                    if iteration_state.alias_fold_dirty
+                    else "Iteration 1, running alias fold dirty algorithms"
+                )
+
+                data, _, print_context = DefaultSolver._run_algos(
+                    iterno=iterno,
+                    data=data,
+                    algos=cls.algorithms.alias_fold_dirty,
+                    print_context=print_context,
+                    phase_offset=len(cls.algorithms.iterative)
+                    + len(cls.algorithms.subset_dirty),
                 )
 
         if S_LOG:

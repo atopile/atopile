@@ -879,7 +879,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
             continue
 
         # len(A is Lit in As) > 0
-        if not any(try_extract_literal(op) is not None for op in expr.operands):
+        if all(try_extract_literal(op) is None for op in expr.operands):
             continue
 
         # TODO: we can weaken this to not replace correlated operands instead of

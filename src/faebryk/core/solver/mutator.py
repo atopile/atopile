@@ -68,6 +68,7 @@ class AlgoResult:
     graphs: list[Graph]
     dirty: bool
     subset_dirty: bool
+    alias_fold_dirty: bool
 
 
 # TODO use Mutator everywhere instead of repr_maps
@@ -371,6 +372,19 @@ class Mutator:
         return False
 
     @property
+    def alias_fold_dirty(self) -> bool:
+        """
+        True if any new expression has been created that involves one or more
+        non-literal operands
+        """
+        # TODO: is this correct and sufficient?
+        new_exprs = self.nodes_of_type(Expression, new_only=True)
+        return any(
+            any(try_extract_literal(op) is None for op in expr.operands)
+            for expr in new_exprs
+        )
+
+    @property
     def needs_copy(self) -> bool:
         # optimization: if just new_ops, no need to copy
         return bool(self.removed or self.repr_map)
@@ -483,6 +497,7 @@ class Mutators:
             graphs=[],
             dirty=any(m.dirty for m in self.mutators),
             subset_dirty=any(m.subset_dirty for m in self.mutators),
+            alias_fold_dirty=any(m.alias_fold_dirty for m in self.mutators),
         )
 
         if result.dirty:
