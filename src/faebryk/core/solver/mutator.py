@@ -89,7 +89,7 @@ class Mutator:
         # TODO involve marked & new_ops in printing
         self.marked: list[ConstrainableExpression] = []
         self._old_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        self._new_ops: set[ParameterOperatable] = set()
+        self._created_ops: set[ParameterOperatable] = set()
 
     @property
     def G(self) -> Graph:
@@ -130,7 +130,7 @@ class Mutator:
         """
         # TODO not sure this is the best way to handle ghost exprs
         if po in self.repr_map:
-            self._new_ops.add(self.repr_map[po])
+            self._created_ops.add(self.repr_map[po])
 
         self.repr_map[po] = new_po
 
@@ -276,7 +276,7 @@ class Mutator:
             expr = make_if_doesnt_exist(expr_factory, *operands)
         else:
             expr = expr_factory(*operands)  # type: ignore
-        self._new_ops.add(expr)
+        self._created_ops.add(expr)
         return expr
 
     def remove(self, *po: ParameterOperatable):
@@ -314,15 +314,15 @@ class Mutator:
             self.get_copy(o)
 
     def register_created_parameter(self, param: Parameter):
-        self._new_ops.add(param)
+        self._created_ops.add(param)
         return param
 
     @property
     def dirty(self) -> bool:
-        return bool(self.needs_copy or self._new_ops or self.marked)
+        return bool(self.needs_copy or self._created_ops or self.marked)
 
     # TODO: consider making part of nodes_of_type(new_only=True)
-    def get_new_literal_aliases(self):
+    def get_created_literal_aliases(self):
         """
         Find new ops which are Is expressions between a ParameterOperatable and a
         literal
@@ -349,7 +349,7 @@ class Mutator:
 
         return (
             expr
-            for expr in self.nodes_of_type(Is, new_only=True)
+            for expr in self.nodes_of_type(Is, created_only=True)
             if is_literal_alias(expr)
         )
 
@@ -361,12 +361,12 @@ class Mutator:
         """
 
         # TODO: also subsets
-        for expr in self.get_new_literal_aliases():
+        for expr in self.get_created_literal_aliases():
             involved_in = get_expressions_involved_in(
                 next(iter(expr.operatable_operands))
             )
             if involved_in is not None:
-                # TODO: only if narrower
+                # TODO: only if narrower (only for subsets relevant)
                 return True
 
         return False
@@ -377,8 +377,8 @@ class Mutator:
         True if any new expression has been created that involves one or more
         non-literal operands
         """
-        # TODO: is this correct and sufficient?
-        new_exprs = self.nodes_of_type(Expression, new_only=True)
+        # TODO: is this correct and sufficient? @iopapamanoglou
+        new_exprs = self.nodes_of_type(Expression, created_only=True)
         return any(
             any(try_extract_literal(op) is None for op in expr.operands)
             for expr in new_exprs
@@ -395,7 +395,7 @@ class Mutator:
         # Check modifications to original graph
         post_mut_nodes = GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
         removed = self._old_ops.difference(post_mut_nodes, self.removed)
-        added = post_mut_nodes.difference(self._old_ops, self._new_ops)
+        added = post_mut_nodes.difference(self._old_ops, self._created_ops)
         removed_compact = [op.compact_repr(self.print_context) for op in removed]
         added_compact = [op.compact_repr(self.print_context) for op in added]
         assert (
@@ -411,7 +411,7 @@ class Mutator:
             for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
         non_registered = all_new_params.difference(
-            self._new_ops, self.repr_map.values()
+            self._created_ops, self.repr_map.values()
         )
         if non_registered:
             compact = (op.compact_repr(self.print_context) for op in non_registered)
@@ -461,15 +461,22 @@ class Mutator:
         }
 
     def nodes_of_type[T: "ParameterOperatable"](
-        self, t: type[T], sort_by_depth: bool = False, new_only: bool = False
+        self,
+        t: type[T],
+        sort_by_depth: bool = False,
+        created_only: bool = False,
+        new_only: bool = False,
     ) -> list[T]:
-        out = GraphFunctions(self.G).nodes_of_type(t)
+        # TODO: implement new_only
+        # should return only ops created since last iteration
+
+        if created_only:
+            out = (n for n in self._created_ops if isinstance(n, t))
+        else:
+            out = GraphFunctions(self.G).nodes_of_type(t)
 
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
-
-        if new_only:
-            out = (n for n in out if n in self._new_ops)
 
         return list(out)
 
@@ -557,7 +564,7 @@ class Mutators:
 
         graphs = get_graphs(self.result_repr_map.values())
 
-        new_ops = {op for m in self.mutators for op in m._new_ops}
+        new_ops = {op for m in self.mutators for op in m._created_ops}
 
         rows: list[tuple[str, str]] = []
 

@@ -175,7 +175,14 @@ def resolve_alias_classes(mutator: Mutator):
     B alias C
     C alias D + E
     D + E < 5
-    -> A,B,C => R, R alias D + E, R < 5
+    D + E is 3
+    D + E + F < 10
+    -> A,B,C => R, R alias D + E, R < 5, R is 3, R + F < 10
+
+    # Notes:
+    D is 2, E is 5 -> D + E is 7, D + E is R, R is 3
+    (D + E) - (D + E) -> R - R
+    (D + E) + E -> R + E
 
     Careful: Aliases to literals will not be resolved due to loss
     of correlation information
