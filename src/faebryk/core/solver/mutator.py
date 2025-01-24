@@ -95,13 +95,6 @@ class Mutator:
             marked=set(),
         )
 
-        # TODO remove legacy
-        self._created_ops = self.transformations.created
-        self.repr_map = self.transformations.mutated
-        self.removed = self.transformations.removed
-        self.copied = self.transformations.copied
-        self.marked = self.transformations.marked
-
     @property
     def G(self) -> list[Graph]:
         # Handles C++ graph shenanigans on move
@@ -114,10 +107,10 @@ class Mutator:
         return self._G
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
-        return po in self.repr_map
+        return po in self.transformations.mutated
 
     def get_mutated(self, po: ParameterOperatable) -> ParameterOperatable:
-        return self.repr_map[po]
+        return self.transformations.mutated[po]
 
     def _mutate[T: ParameterOperatable](self, po: ParameterOperatable, new_po: T) -> T:
         """
@@ -131,7 +124,7 @@ class Mutator:
         if self.is_removed(po):
             raise ValueError("Object marked removed")
 
-        self.repr_map[po] = new_po
+        self.transformations.mutated[po] = new_po
         return new_po
 
     def _override_repr(self, po: ParameterOperatable, new_po: ParameterOperatable):
@@ -140,10 +133,10 @@ class Mutator:
         Honestly I don't.
         """
         # TODO not sure this is the best way to handle ghost exprs
-        if po in self.repr_map:
-            self._created_ops.add(self.repr_map[po])
+        if po in self.transformations.mutated:
+            self.transformations.created.add(self.transformations.mutated[po])
 
-        self.repr_map[po] = new_po
+        self.transformations.mutated[po] = new_po
 
     def mutate_parameter(
         self,
@@ -155,7 +148,7 @@ class Mutator:
         tolerance_guess: float | None = None,
         likely_constrained: bool | None = None,
     ) -> Parameter:
-        if param in self.repr_map:
+        if param in self.transformations.mutated:
             out = self.get_mutated(param)
             assert isinstance(out, Parameter)
             assert out.units == units
@@ -188,7 +181,7 @@ class Mutator:
         operands: Iterable[ParameterOperatable.All] | None = None,
         expression_factory: Callable[..., Expression] | None = None,
     ) -> Expression:
-        if expr in self.repr_map:
+        if expr in self.transformations.mutated:
             out = self.get_mutated(expr)
             assert isinstance(out, Expression)
             # TODO more checks
@@ -266,7 +259,7 @@ class Mutator:
             return self.get_mutated(obj)
 
         # purely for debug
-        self.copied.add(obj)
+        self.transformations.copied.add(obj)
 
         if isinstance(obj, Expression):
             return self.mutate_expression(obj)
@@ -287,14 +280,16 @@ class Mutator:
             expr = make_if_doesnt_exist(expr_factory, *operands)
         else:
             expr = expr_factory(*operands)  # type: ignore
-        self._created_ops.add(expr)
+        self.transformations.created.add(expr)
         return expr
 
     def remove(self, *po: ParameterOperatable):
-        assert not any(p in self.repr_map for p in po), "Object already in repr_map"
+        assert not any(
+            p in self.transformations.mutated for p in po
+        ), "Object already in repr_map"
         root_pos = [p for p in po if p.get_parent() is not None]
         assert not root_pos, f"should never remove root parameters: {root_pos}"
-        self.removed.update(po)
+        self.transformations.removed.update(po)
 
     def remove_graph(self, g: Graph):
         # TODO implementing graph removal has to be more explicit
@@ -304,7 +299,7 @@ class Mutator:
         self.remove(*GraphFunctions(g).nodes_of_type(Expression))
 
     def is_removed(self, po: ParameterOperatable) -> bool:
-        return po in self.removed
+        return po in self.transformations.removed
 
     def _copy_unmutated(
         self,
@@ -330,26 +325,31 @@ class Mutator:
             self.get_copy(o)
 
     def register_created_parameter(self, param: Parameter):
-        self._created_ops.add(param)
+        self.transformations.created.add(param)
         return param
 
     @property
     def dirty(self) -> bool:
-        return bool(self.removed or self.repr_map or self._created_ops or self.marked)
+        return bool(
+            self.transformations.removed
+            or self.transformations.mutated
+            or self.transformations.created
+            or self.transformations.marked
+        )
 
     def needs_copy(self, g: Graph) -> bool:
         # FIXME: multi graph support
 
         # optimization: if just new_ops, no need to copy
-        return bool(self.removed or self.repr_map)
+        return bool(self.transformations.removed or self.transformations.mutated)
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
 
         # Check modifications to original graph
         post_mut_nodes = set(self.nodes_of_type())
-        removed = self._old_ops.difference(post_mut_nodes, self.removed)
-        added = post_mut_nodes.difference(self._old_ops, self._created_ops)
+        removed = self._old_ops.difference(post_mut_nodes, self.transformations.removed)
+        added = post_mut_nodes.difference(self._old_ops, self.transformations.created)
         removed_compact = [op.compact_repr(self.print_context) for op in removed]
         added_compact = [op.compact_repr(self.print_context) for op in added]
         assert (
@@ -358,14 +358,14 @@ class Mutator:
         assert not added, f"Mutator {self.G} added {indented_container(added_compact)}"
 
         # don't need to check original graph, done above seperately
-        all_new_graphs = get_graphs(self.repr_map.values())
+        all_new_graphs = get_graphs(self.transformations.mutated.values())
         all_new_params = {
             op
             for g in all_new_graphs
             for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
         non_registered = all_new_params.difference(
-            self._created_ops, self.repr_map.values()
+            self.transformations.created, self.transformations.mutated.values()
         )
         if non_registered:
             compact = (op.compact_repr(self.print_context) for op in non_registered)
@@ -389,7 +389,7 @@ class Mutator:
             self.check_no_illegal_mutations()
             self._copy_unmutated()
 
-            result.repr_map = self.repr_map
+            result.repr_map = self.transformations.mutated
             result.graphs = get_graphs(result.repr_map.values())
 
             # Check if original graphs ended up in result
@@ -403,7 +403,7 @@ class Mutator:
         if pred._solver_evaluates_to_true:
             return
         pred._solver_evaluates_to_true = True
-        self.marked.add(pred)
+        self.transformations.marked.add(pred)
 
     def is_predicate_true(self, pred: ConstrainableExpression) -> bool:
         return pred._solver_evaluates_to_true
@@ -413,12 +413,12 @@ class Mutator:
         if not pred._solver_evaluates_to_true:
             return
         pred._solver_evaluates_to_true = False
-        self.marked.add(pred)
+        self.transformations.marked.add(pred)
 
     def get_all_param_ops(self) -> set[ParameterOperatable]:
         return {
             op
-            for g in get_graphs(self.repr_map.values())
+            for g in get_graphs(self.transformations.mutated.values())
             for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
 
@@ -435,7 +435,7 @@ class Mutator:
             raise NotImplementedError("new_only not implemented")
 
         if created_only:
-            out = {n for n in self._created_ops if isinstance(n, t)}
+            out = {n for n in self.transformations.created if isinstance(n, t)}
         else:
             out = {n for G in self._G for n in GraphFunctions(G).nodes_of_type(t)}
 
@@ -477,7 +477,7 @@ class Mutator:
         context_new = ParameterOperatable.ReprContext()
         context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
 
-        for s, d in self.repr_map.items():
+        for s, d in self.transformations.mutated.items():
             if isinstance(s, Parameter) and isinstance(d, Parameter):
                 s.compact_repr(context_old)
                 s_mapping = context_old.variable_mapping.mapping[s]
@@ -488,7 +488,7 @@ class Mutator:
         return context_new
 
     def debug_print(self):
-        if not self.repr_map:
+        if not self.transformations.mutated:
             return
 
         if getattr(sys, "gettrace", lambda: None)():
@@ -505,9 +505,9 @@ class Mutator:
         table.add_column("Before/Created By")
         table.add_column("After")
 
-        graphs = get_graphs(self.repr_map.values())
+        graphs = get_graphs(self.transformations.mutated.values())
 
-        created_ops = self._created_ops
+        created_ops = self.transformations.created
 
         rows: list[tuple[str, str]] = []
 
@@ -532,13 +532,13 @@ class Mutator:
                 continue
             rows.append(("new", op.compact_repr(context_new)))
 
-        marked = self.marked.difference(created_ops)
+        marked = self.transformations.marked.difference(created_ops)
         for op in marked:
             rows.append(("marked", op.compact_repr(context_new)))
 
-        copied = self.copied
+        copied = self.transformations.copied
 
-        for s, d in self.repr_map.items():
+        for s, d in self.transformations.mutated.items():
             if not VERBOSE_TABLE:
                 if s in copied:
                     continue
@@ -556,7 +556,7 @@ class Mutator:
                 continue
             rows.append((old, new))
 
-        for s in self.removed:
+        for s in self.transformations.removed:
             old = s.compact_repr(context_old)
             if VERBOSE_TABLE:
                 old += "\n\n" + repr(s)
