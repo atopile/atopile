@@ -8,7 +8,7 @@ from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
-from atopile.parse_utils import PygmentsLexerShim, get_src_info_from_ctx
+from atopile.parse_utils import PygmentsLexerReconstructor, get_src_info_from_ctx
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 
 if TYPE_CHECKING:
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 
 
 def _render_ctx(ctx: ParserRuleContext) -> list[ConsoleRenderable]:
-    lexer = PygmentsLexerShim.from_ctx(ctx, 1, 1)
+    lexer = PygmentsLexerReconstructor.from_ctx(ctx, 1, 1)
     (src_path, src_line, src_col, _, _) = get_src_info_from_ctx(ctx)
 
     # Make the path relative to the current working directory, if possible

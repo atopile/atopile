@@ -63,7 +63,7 @@ def expand(
 class IterableRewriter(TokenStreamRewriter):
     def iter_tokens_and_text(
         self, program_name, start: int | None = None, stop: int | None = None
-    ) -> Generator[tuple[int | None, str], None, None]:
+    ) -> Generator[tuple[Token | None, str], None, None]:
         """
         :return: the text in tokens[start, stop](closed interval)
         """
@@ -82,12 +82,12 @@ class IterableRewriter(TokenStreamRewriter):
             token = self.tokens.get(i)
             if op is None:
                 if token.type != Token.EOF:
-                    yield token.type, token.text
+                    yield token, token.text
                 i += 1
             else:
                 buf = StringIO()
                 i = op.execute(buf)
-                yield token.type, buf.getvalue()
+                yield token, buf.getvalue()
 
         if stop == len(self.tokens.tokens) - 1:
             for op in indexToOp.values():
@@ -100,11 +100,11 @@ class AtoRewriter(IterableRewriter):
 
     def iter_tokens_and_text(
         self, program_name, start: int | None = None, stop: int | None = None
-    ) -> Generator[tuple[int | None, str], None, None]:
+    ) -> Generator[tuple[Token | None, str], None, None]:
         for token, text in super().iter_tokens_and_text(program_name, start, stop):
-            if token in self.DROP_TOKENS:
+            if token and token.type in self.DROP_TOKENS:
                 continue
-            elif token is AtoLexer.NEWLINE:
+            elif token and token.type == AtoLexer.NEWLINE:
                 # FIXME: feels like we shouldn't have this
                 yield token, "\n"
             else:
@@ -119,7 +119,7 @@ class AtoRewriter(IterableRewriter):
         )
 
 
-class PygmentsLexerShim(pygments.lexer.Lexer):
+class PygmentsLexer(pygments.lexer.Lexer):
     TOKEN_TYPE_MAP = {
         AtoLexer.INDENT: pygments_token.Token,
         AtoLexer.DEDENT: pygments_token.Token,
@@ -162,7 +162,7 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
         AtoLexer.COLON: pygments_token.Token,
         AtoLexer.SEMI_COLON: pygments_token.Token,
         AtoLexer.POWER: pygments_token.Token,
-        AtoLexer.ASSIGN: pygments_token.Token,
+        AtoLexer.ASSIGN: pygments_token.Operator,
         AtoLexer.OPEN_BRACK: pygments_token.Token,
         AtoLexer.CLOSE_BRACK: pygments_token.Token,
         AtoLexer.OR_OP: pygments_token.Token,
@@ -177,13 +177,13 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
         AtoLexer.NOT_OP: pygments_token.Token,
         AtoLexer.OPEN_BRACE: pygments_token.Token,
         AtoLexer.CLOSE_BRACE: pygments_token.Token,
-        AtoLexer.LESS_THAN: pygments_token.Token,
-        AtoLexer.GREATER_THAN: pygments_token.Token,
-        AtoLexer.EQUALS: pygments_token.Token,
-        AtoLexer.GT_EQ: pygments_token.Token,
-        AtoLexer.LT_EQ: pygments_token.Token,
-        AtoLexer.NOT_EQ_1: pygments_token.Token,
-        AtoLexer.NOT_EQ_2: pygments_token.Token,
+        AtoLexer.LESS_THAN: pygments_token.Operator,
+        AtoLexer.GREATER_THAN: pygments_token.Operator,
+        AtoLexer.EQUALS: pygments_token.Operator,
+        AtoLexer.GT_EQ: pygments_token.Operator,
+        AtoLexer.LT_EQ: pygments_token.Operator,
+        AtoLexer.NOT_EQ_1: pygments_token.Operator,
+        AtoLexer.NOT_EQ_2: pygments_token.Operator,
         AtoLexer.AT: pygments_token.Token,
         AtoLexer.ARROW: pygments_token.Token,
         AtoLexer.ADD_ASSIGN: pygments_token.Token,
@@ -198,12 +198,39 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
         AtoLexer.RIGHT_SHIFT_ASSIGN: pygments_token.Token,
         AtoLexer.POWER_ASSIGN: pygments_token.Token,
         AtoLexer.IDIV_ASSIGN: pygments_token.Token,
-        AtoLexer.NEWLINE: pygments_token.Token,
+        AtoLexer.NEWLINE: pygments_token.Whitespace,
         AtoLexer.COMMENT: pygments_token.Comment,
-        AtoLexer.WS: pygments_token.Token,
+        AtoLexer.WS: pygments_token.Whitespace,
         AtoLexer.EXPLICIT_LINE_JOINING: pygments_token.Token,
         AtoLexer.ERRORTOKEN: pygments_token.Error,
     }
+
+    name = "atopile"
+
+    aliases = ["ato"]
+
+    filenames = ["*.ato"]
+
+    def get_tokens_unprocessed(self, text: str):
+        text_stream = InputStream(text)
+        lexer = AtoLexer(text_stream)
+        token_stream = CommonTokenStream(lexer)
+        token_stream.fill()
+        rewriter = AtoRewriter(token_stream)
+
+        for token, text in rewriter.iter_tokens_and_text(
+            TokenStreamRewriter.DEFAULT_PROGRAM_NAME
+        ):
+            if token is not None:
+                yield (
+                    token.start,
+                    PygmentsLexer.TOKEN_TYPE_MAP.get(token.type, pygments_token.Token),  # type: ignore  # obviously random other shit is why I'm using .get
+                    text,
+                )
+
+
+class PygmentsLexerReconstructor(pygments.lexer.Lexer):
+    """Reconstruct source-code from a ctx, and antlr4 rewriter"""
 
     def __init__(
         self,
@@ -225,10 +252,13 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
     def get_tokens(
         self, _: str
     ) -> Generator[tuple["pygments_token._TokenType", str], None, None]:
-        for token_type, text in self.rewriter.iter_tokens_and_text(
+        for token, text in self.rewriter.iter_tokens_and_text(
             TokenStreamRewriter.DEFAULT_PROGRAM_NAME, self.start, self.stop
         ):
-            yield self.TOKEN_TYPE_MAP.get(token_type, pygments_token.Token), text  # type: ignore  # obviously random other shit is why I'm using .get
+            yield (
+                PygmentsLexer.TOKEN_TYPE_MAP.get(token.type, pygments_token.Token),  # type: ignore  # obviously random other shit is why I'm using .get
+                text,
+            )
 
     @classmethod
     def from_ctx(
@@ -236,7 +266,7 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
         ctx: ParserRuleContext,
         expand_before: int | None = None,
         expand_after: int | None = None,
-    ) -> "PygmentsLexerShim":
+    ) -> "PygmentsLexerReconstructor":
         assert isinstance(ctx.parser, AtoParser)
         input_stream: CommonTokenStream = ctx.parser.getInputStream()
         rewriter = AtoRewriter(input_stream)
@@ -246,7 +276,7 @@ class PygmentsLexerShim(pygments.lexer.Lexer):
         )
         stop_index = expand(input_stream.tokens, ctx.stop.tokenIndex, 1, expand_after)
 
-        lexer = PygmentsLexerShim(ctx, rewriter, start_index, stop_index)
+        lexer = PygmentsLexerReconstructor(ctx, rewriter, start_index, stop_index)
 
         return lexer
 
@@ -274,4 +304,6 @@ def reconstruct(
         expand_after: The number of lines to expand after the mark.
             0 -> To the end of the current line
     """
-    return PygmentsLexerShim.from_ctx(ctx, expand_before, expand_after).get_code()
+    return PygmentsLexerReconstructor.from_ctx(
+        ctx, expand_before, expand_after
+    ).get_code()
