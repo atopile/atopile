@@ -548,11 +548,32 @@
   
   
     <li class="md-nav__item">
-      <a href="../../tutorial/the-ato-language/" class="md-nav__link">
+      <a href="../../tutorial/1-the-ato-language/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
     1. Basics of the ato language
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../tutorial/2-the-ato-compiler/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    2. The ato compiler
   </span>
   
 
@@ -1674,9 +1695,9 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#atopile.cli.create.build" class="md-nav__link">
+  <a href="#atopile.cli.create.build_target" class="md-nav__link">
     <span class="md-ellipsis">
-      <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;build
+      <code class="doc-symbol doc-symbol-toc doc-symbol-function"></code>&nbsp;build_target
     </span>
   </a>
   
@@ -5947,12 +5968,12 @@ eg. <code>ato build --target my_target path/to/source.ato:module.path</code></p>
 <div class="doc doc-object doc-function">
 
 
-<h4 id="atopile.cli.create.build" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">build</span>
+<h4 id="atopile.cli.create.build_target" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-function"></code>            <span class="doc doc-object-name doc-function-name">build_target</span>
 
 
-<a href="#atopile.cli.create.build" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">build</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<a href="#atopile.cli.create.build_target" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">build_target</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
 </span></code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6080,8 +6101,8 @@ eg. <code>ato build --target my_target path/to/source.ato:module.path</code></p>
 <span class="normal"><a href="#__codelineno-0-327">327</a></span>
 <span class="normal"><a href="#__codelineno-0-328">328</a></span>
 <span class="normal"><a href="#__codelineno-0-329">329</a></span>
-<span class="normal"><a href="#__codelineno-0-330">330</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-245"><a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="nd">@create_app</span><span class="o">.</span><span class="n">command</span><span class="p">()</span>
-</span><span id="__span-0-246"><a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="k">def</span> <span class="nf">build</span><span class="p">(</span>
+<span class="normal"><a href="#__codelineno-0-330">330</a></span></pre></div></td><td class="code"><div><pre><span></span><code><span id="__span-0-245"><a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="nd">@create_app</span><span class="o">.</span><span class="n">command</span><span class="p">(</span><span class="s2">&quot;build-target&quot;</span><span class="p">)</span>
+</span><span id="__span-0-246"><a id="__codelineno-0-246" name="__codelineno-0-246"></a><span class="k">def</span> <span class="nf">build_target</span><span class="p">(</span>
 </span><span id="__span-0-247"><a id="__codelineno-0-247" name="__codelineno-0-247"></a>    <span class="n">name</span><span class="p">:</span> <span class="n">Annotated</span><span class="p">[</span><span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">typer</span><span class="o">.</span><span class="n">Argument</span><span class="p">()]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 </span><span id="__span-0-248"><a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="p">):</span>
 </span><span id="__span-0-249"><a id="__codelineno-0-249" name="__codelineno-0-249"></a><span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -6091,7 +6112,7 @@ eg. <code>ato build --target my_target path/to/source.ato:module.path</code></p>
 </span><span id="__span-0-253"><a id="__codelineno-0-253" name="__codelineno-0-253"></a><span class="sd">    &quot;&quot;&quot;</span>
 </span><span id="__span-0-254"><a id="__codelineno-0-254" name="__codelineno-0-254"></a>    <span class="k">if</span> <span class="ow">not</span> <span class="n">name</span><span class="p">:</span>
 </span><span id="__span-0-255"><a id="__codelineno-0-255" name="__codelineno-0-255"></a>        <span class="n">name</span> <span class="o">=</span> <span class="n">caseconverter</span><span class="o">.</span><span class="n">kebabcase</span><span class="p">(</span>
-</span><span id="__span-0-256"><a id="__codelineno-0-256" name="__codelineno-0-256"></a>            <span class="n">questionary</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;Enter the build name&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">unsafe_ask</span><span class="p">()</span>
+</span><span id="__span-0-256"><a id="__codelineno-0-256" name="__codelineno-0-256"></a>            <span class="n">questionary</span><span class="o">.</span><span class="n">text</span><span class="p">(</span><span class="s2">&quot;Enter the build-target name&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">unsafe_ask</span><span class="p">()</span>
 </span><span id="__span-0-257"><a id="__codelineno-0-257" name="__codelineno-0-257"></a>        <span class="p">)</span>
 </span><span id="__span-0-258"><a id="__codelineno-0-258" name="__codelineno-0-258"></a>
 </span><span id="__span-0-259"><a id="__codelineno-0-259" name="__codelineno-0-259"></a>    <span class="k">try</span><span class="p">:</span>

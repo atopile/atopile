@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://docs.atopile.io/dev/tutorial/the-ato-language/">
+        <link rel="canonical" href="https://docs.atopile.io/dev/tutorial/1-the-ato-language/">
       
       
         <link rel="prev" href="../../CHANGELOG/">
       
       
-        <link rel="next" href="../../guides/installation/">
+        <link rel="next" href="../2-the-ato-compiler/">
       
       
       <link rel="icon" href="../../assets/logo/emblem.svg">
@@ -696,10 +696,40 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#imports" class="md-nav__link">
+    <span class="md-ellipsis">
+      Imports
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../2-the-ato-compiler/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    2. The ato compiler
+  </span>
+  
+
+      </a>
     </li>
   
 
@@ -1217,6 +1247,15 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#imports" class="md-nav__link">
+    <span class="md-ellipsis">
+      Imports
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1244,23 +1283,23 @@
 <p>A <code>component</code> is a subclass of a <code>module</code> that expects to represent a single physical component.</p>
 <p>You can also define you own types, in a similar way to define a <code>class</code> in Python.
 Like classes in most modern languages, we can subclass and inherit from blocks.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>module SomeModule:
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    signal some_signal
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    signal gnd
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    some_variable = &quot;some value&quot;
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">module</span><span class="w"> </span><span class="n">SomeModule</span>:
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="k">signal</span><span class="w"> </span><span class="n">some_signal</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="k">signal</span><span class="w"> </span><span class="n">gnd</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">some_variable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;some value&quot;</span>
 </span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>module SubclassedModule from SomeModule:
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    # inherits all the signals and variables from SomeModule
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    # we don&#39;t need to declare the signals again,
-</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    # but we will replace the value of some_variable
-</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    some_variable = &quot;some other value&quot;
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="k">module</span><span class="w"> </span><span class="n">SubclassedModule</span><span class="w"> </span><span class="k">from</span><span class="w"> </span><span class="n">SomeModule</span>:
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="c"># inherits all the signals and variables from SomeModule</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="c"># we don&#39;t need to declare the signals again,</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="c"># but we will replace the value of some_variable</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="n">some_variable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;some other value&quot;</span>
 </span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>
-</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>module Test:
-</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    signal gnd
-</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    # creates an instance of the SubclassedModule
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    subclased_module = new SubclassedModule
-</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    # connects the some_signal of the SubclassedModule to the gnd of Test
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    subclased_module.gnd ~ gnd
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="k">module</span><span class="w"> </span><span class="n">Test</span>:
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="k">signal</span><span class="w"> </span><span class="n">gnd</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="c"># creates an instance of the SubclassedModule</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="n">subclased_module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">SubclassedModule</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="c"># connects the some_signal of the SubclassedModule to the gnd of Test</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="n">subclased_module</span>.<span class="n">gnd</span><span class="w"> </span>~<span class="w"> </span><span class="n">gnd</span>
 </span></code></pre></div>
 <div class="admonition info">
 <p class="admonition-title">Info</p>
@@ -1268,14 +1307,14 @@ Like classes in most modern languages, we can subclass and inherit from blocks.<
 </div>
 <h2 id="configuring-blocks">Configuring blocks<a class="headerlink" href="#configuring-blocks" title="Permanent link">&para;</a></h2>
 <p>Configuration of a <code>module</code> or <code>interface</code> is done by assigning to it's attributes.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>some_instance.value = 100ohm +/- 10%
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">some_instance</span>.<span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">100</span><span class="n">ohm</span><span class="w"> </span><span class="o">+/-</span><span class="w"> </span><span class="m">10</span><span class="o">%</span>
 </span></code></pre></div>
 <p>Unlike Python, you don't need to state <code>self.</code> and instead any assignments you make within the scope of a block, are automatically assigned to the block.</p>
 <p>There are a number of built-in attributes that influence the behaviour of the compiler with respect to the block.</p>
 <p>Setting the <code>package</code> attribute, for example, will make the compiler select only components with the specified package to be used in that component's slot.</p>
 <h2 id="connecting-it-up">Connecting it up<a class="headerlink" href="#connecting-it-up" title="Permanent link">&para;</a></h2>
 <p>Any <code>interface</code> can be connected to any other interface of the same type using the <code>~</code> operator.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>some_signal ~ another
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">some_signal</span><span class="w"> </span>~<span class="w"> </span><span class="n">another</span>
 </span></code></pre></div>
 <h2 id="units-and-tolerances-assertions-and-maths">Units and tolerances, assertions and maths<a class="headerlink" href="#units-and-tolerances-assertions-and-maths" title="Permanent link">&para;</a></h2>
 <p>Remember how NASA slung a rocket straight into Mars because of a metric/imperial boo boo?</p>
@@ -1327,9 +1366,21 @@ Perhaps you've got a better method, but generally when I'm trying to find resist
 <p>atopile will automatically solve systems of constraints for you with free variables, and check that the values of attributes are within their tolerances.</p>
 <h2 id="specialization">Specialization<a class="headerlink" href="#specialization" title="Permanent link">&para;</a></h2>
 <p>The <code>-&gt;</code> operator will specialize a module from it's existing instance, to an instance of the type on the right hand side.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>some_instance -&gt; AnotherModuleType
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">some_instance</span><span class="w"> </span>-&gt;<span class="w"> </span><span class="n">AnotherModuleType</span>
 </span></code></pre></div>
 <p>This is useful for configuring a previously specified topology.</p>
+<h2 id="imports">Imports<a class="headerlink" href="#imports" title="Permanent link">&para;</a></h2>
+<p>You can import assets by specifying what you want to import and where you want to import it from using the following syntax within your <code>.ato</code> files:</p>
+<p><code>from "where.ato" import What, Why, Wow</code></p>
+<p>Notes on that statement:
+- add quotes on the "where.ato" - it's a string
+- <code>What</code>, <code>Why</code> and <code>Wow</code> are capitalised because they are in the source file. It has to match precisely - it's a type and types should be capitalised, though this isn't enforced and you can import things other than types from other files</p>
+<p>The import statements are with respect to the current project (the root of which is where your <code>ato.yaml</code> is placed), or within the standard library (<code>.ato/modules/</code>)</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>You'll likely see import statements in the form of <code>import XYZ from "abc.ato"</code>. This is a legacy syntax and will be removed in the future. Please use the new syntax.</p>
+<p>It also doesn't support importing multiple things on the same line.</p>
+</div>
 
 
 
@@ -1376,13 +1427,13 @@ Perhaps you've got a better method, but generally when I'm trying to find resist
         
         
           
-          <a href="../../guides/installation/" class="md-footer__link md-footer__link--next" aria-label="Next: Alternative Installation">
+          <a href="../2-the-ato-compiler/" class="md-footer__link md-footer__link--next" aria-label="Next: 2. The ato compiler">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Alternative Installation
+                2. The ato compiler
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -674,11 +674,32 @@
   
   
     <li class="md-nav__item">
-      <a href="../tutorial/the-ato-language/" class="md-nav__link">
+      <a href="../tutorial/1-the-ato-language/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
     1. Basics of the ato language
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tutorial/2-the-ato-compiler/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    2. The ato compiler
   </span>
   
 
@@ -1234,6 +1255,8 @@ See the <a href="installation.md">installation guide</a> for more details.</p>
 <p>atopile officially supports VSCode and Cursor.</p>
 <p>We recommend using Cursor. AI is already getting very good at writing <code>ato</code> code.</p>
 <p>Download it here: <a href="https://www.cursor.com/">https://www.cursor.com/</a></p>
+<p>We also strongly recommend installing the <a href="https://marketplace.visualstudio.com/items?itemName=atopile.atopile">atopile VSCode/Cursor extension</a>. It provides syntax highlighting and some LSP support.</p>
+<p><img alt="atopile extension" src="../assets/images/vscode-plugin.png" /></p>
 <h2 id="installing-kicad">Installing KiCAD<a class="headerlink" href="#installing-kicad" title="Permanent link">&para;</a></h2>
 <p>If you are on OSx, and you have <code>brew</code> installed, you can install KiCAD with:</p>
 <div class="language-sh highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>brew<span class="w"> </span>install<span class="w"> </span>kicad
@@ -1289,11 +1312,11 @@ See the <a href="installation.md">installation guide</a> for more details.</p>
 </ul>
 <h2 id="hello-world">Hello, World!<a class="headerlink" href="#hello-world" title="Permanent link">&para;</a></h2>
 <p>Here's a simple example of atopile code:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>from &quot;generics/resistors.ato&quot; import Resistor
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">from</span><span class="w"> </span><span class="s">&quot;generics/resistors.ato&quot;</span><span class="w"> </span><span class="k">import</span><span class="w"> </span><span class="n">Resistor</span>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>module Demo:
-</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    r1 = new Resistor           # Create a new resistor
-</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    r1.value = 100ohm +/- 10%   # Set the resistor value
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">module</span><span class="w"> </span><span class="n">App</span>:
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="n">r1</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">Resistor</span><span class="w">           </span><span class="c"># Create a new resistor</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="n">r1</span>.<span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">100</span><span class="n">ohm</span><span class="w"> </span><span class="o">+/-</span><span class="w"> </span><span class="m">10</span><span class="o">%</span><span class="w">   </span><span class="c"># Set the resistor value</span>
 </span></code></pre></div>
 <p>Update <code>demo.ato</code> (of whatever you've named your source file) with this code.</p>
 <p>To build it, run:</p>
