@@ -114,7 +114,7 @@ def export_config_schema(pretty: bool = False):
     config_schema = ProjectConfig.model_json_schema()
 
     if pretty:
-        print(json.dumps(config_schema, indent=2))
+        print(json.dumps(config_schema, indent=4))
     else:
         print(json.dumps(config_schema))
 
@@ -124,7 +124,7 @@ def dump_config(pretty: bool = False):
     from rich import print
 
     if pretty:
-        print(json.dumps(config.project, indent=2))
+        print(json.dumps(config.project, indent=4))
     else:
         print(json.dumps(config.project))
 
