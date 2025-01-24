@@ -49,6 +49,8 @@ def install(
             "--jlcpcb flag has been replaced by `ato create component`"
         )
 
+    config.apply_options(None)
+
     do_install(to_install, link, upgrade, path)
 
 
