@@ -34,8 +34,11 @@ def install(
     ] = False,
     link: Annotated[
         bool,
-        typer.Option("--link", "-l", help="Keep this dependency linked to the source"),
-    ] = False,
+        typer.Option(
+            "--link/--vendor",
+            help="Keep this dependency linked to the source or vendor it",
+        ),
+    ] = True,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
     ] = False,
@@ -155,7 +158,11 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
             config_data["dependencies"] = []
 
         for i, dep in enumerate(config_data["dependencies"]):
-            if dep["name"] == new_data["name"]:
+            if not isinstance(dep, dict):
+                continue
+
+            # Use .get here to avoid KeyErrors
+            if dep.get("name") == new_data["name"]:
                 config_data["dependencies"][i] = new_data
                 break
         else:
