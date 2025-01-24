@@ -112,6 +112,9 @@ dev = [
 ato = "atopile.cli.cli:main"
 faebryk = "faebryk.tools.main:__main__"
 
+[project.entry-points."pygments.lexers"]
+atopile_lexer = "atopile.parse_utils:PygmentsLexer"
+
 [tool.hatch]
 
 [tool.hatch.metadata]
