@@ -128,3 +128,47 @@ Let's fix that.
 ```
 
 Ooooo yeah! Now we're talking.
+
+Let's break it down.
+
+### More imports
+
+When possible, import from the standard library.
+
+```ato
+--8<-- "examples/ch1_2_good_voltage_divider.ato:1:2"
+```
+
+### Define a new `module`, named `VoltageDivider`
+
+This means we trivially have as many `VoltageDivider`'s as we want, all configured properly with all the same interfaces.
+
+```ato
+--8<-- "examples/ch1_2_good_voltage_divider.ato:4:4"
+```
+
+### Document with `"""`
+
+```ato
+--8<-- "examples/ch1_2_good_voltage_divider.ato:5:13"
+```
+
+### Place external interfaces somewhere obvious
+
+... and use sensible types, like `Power` to expose them.
+
+```ato
+--8<-- "examples/ch1_2_good_voltage_divider.ato:15:17"
+```
+
+### Embed the relationships between parameters with `assert`
+
+Read these statements as "make sure the following is true".
+
+```ato
+--8<-- "examples/ch1_2_good_voltage_divider.ato:25:27"
+```
+
+1. The output voltage will be within the range of the voltage divider ratio equation
+2. The input voltage must be greater than the output voltage
+3. The current through the bottom resistor must be within the allowed range of the maximum quiescent current
