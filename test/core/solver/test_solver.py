@@ -1108,3 +1108,18 @@ def test_graph_split():
     assert (
         repr_map.repr_map[app.A].get_graph() is not repr_map.repr_map[app.B].get_graph()
     )
+
+
+def test_ss_single_into_alias():
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(Range(5, 10))
+    B.operation_is_subset(5).constrain()
+    C = A + B
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(C.get_graph())
+
+    assert repr_map.try_get_literal(B) == 5
+    assert repr_map.try_get_literal(A) == Range(5, 10)
