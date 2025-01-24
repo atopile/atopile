@@ -107,6 +107,10 @@ class UserConfigurationError(UserException):
     """An error in the config file."""
 
 
+class UserConfigNotFoundError(UserException):
+    """No project config file was found."""
+
+
 class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
     def __init__(self, settings_cls: type[BaseSettings]):
         self.yaml_file_path = self.find_config_file()
@@ -659,6 +663,12 @@ class Config:
     def project_dir(self, value: os.PathLike) -> None:
         global _project_dir
         _project_dir = Path(value)
+
+        if not (_project_dir / PROJECT_CONFIG_FILENAME).is_file():
+            raise UserConfigNotFoundError(
+                f"No `{PROJECT_CONFIG_FILENAME}` found in the specified directory"
+            )
+
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
 
@@ -692,7 +702,7 @@ class Config:
 
     @property
     def selected_builds(self) -> Iterable[str]:
-        return self._selected_builds or self.project.builds.keys() or ["default"]
+        return self._selected_builds or self.project.builds.keys()
 
     @selected_builds.setter
     def selected_builds(self, value: list[str]) -> None:
@@ -823,7 +833,6 @@ class Config:
     def apply_options(
         self,
         entry: str | None,
-        entry_arg_file_path: Path = Path.cwd(),
         standalone: bool = False,
         option: Iterable[str] = (),
         target: Iterable[str] = (),
