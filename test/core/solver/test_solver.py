@@ -1025,9 +1025,9 @@ def test_extracted_literal_folding(op):
 def test_fold_correlated():
     """
     ```
-    A is [5, 10], B is [10, 20]
+    A is [5, 10], B is [10, 15]
     B is A + 5
-    B - A | [10, 20] - [5, 10] = [5, 10] BUT SHOULD BE 5
+    B - A | [10, 15] - [5, 10] = [0, 10] BUT SHOULD BE 5
     ```
 
     A and B correlated, thus B - A should do ss not alias
@@ -1050,8 +1050,12 @@ def test_fold_correlated():
 
     C.alias_is(op_inv(B, A))
 
+    context = ParameterOperatable.ReprContext()
+    for p in (A, B, C):
+        p.compact_repr(context)
+
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(C.get_graph())
+    repr_map, _ = solver.simplify_symbolically(C.get_graph(), context)
 
     is_lit = repr_map.try_get_literal(C, allow_subset=False)
     ss_lit = repr_map.try_get_literal(C, allow_subset=True)

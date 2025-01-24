@@ -532,29 +532,17 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     ```
     """
 
-    # FIXME: implement this filter
-    # @property
-    # def subset_dirty(self) -> bool:
-    #     """
-    #     True if any ParameterOperatable (A) has been newly aliased/subsetted to a
-    #     literal that is narrower than before, and A is involved in an expression
-    #     """
+    new_aliases = mutator.get_new_literal_aliased()
+    # bool expr always map to singles
+    new_aliases = {
+        k: v
+        for k, v in new_aliases.items()
+        if not isinstance(k, ConstrainableExpression)
+    }
 
-    #     # TODO: also subsets
-    #     for expr in self.get_new_literal_aliases():
-    #         involved_in = get_expressions_involved_in(
-    #             next(iter(expr.operatable_operands))
-    #         )
-    #         if involved_in is not None:
-    #             # TODO: only if narrower (only for subsets relevant)
-    #             return True
-
-    #     return False
-    return
-
-    exprs = mutator.nodes_of_type(Expression)
+    exprs = {e for alias in new_aliases.keys() for e in alias.get_operations()}
     for expr in exprs:
-        expr = cast(CanonicalOperation, expr)
+        assert isinstance(expr, CanonicalOperation)
         # In Is automatically by eq classes
         if isinstance(expr, Is):
             continue
@@ -954,9 +942,6 @@ def uncorrelated_alias_fold(mutator: Mutator):
             assert isinstance(expr, CanonicalOperation)
             # TODO: is this correct?
             if isinstance(expr, (Is, IsSubset)):
-                continue
-            # skip op is Lit
-            if try_extract_literal(expr) is not None:
                 continue
 
             # TODO: we can weaken this to not replace correlated operands instead of
