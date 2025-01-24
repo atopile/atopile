@@ -276,7 +276,12 @@ class DefaultSolver(Solver):
         iter_data, print_context_ = DefaultSolver._run_initial_iteration(
             data=DefaultSolver.IterationData(
                 graphs=[g],
-                total_repr_map=Mutators.ReprMap({}),
+                total_repr_map=Mutators.ReprMap(
+                    {
+                        po: po
+                        for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+                    }
+                ),
                 param_ops_subset_literals={},
             ),
             print_context=print_context_,
