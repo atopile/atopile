@@ -128,12 +128,6 @@ class DefaultSolver(Solver):
     ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
         iteration_state = DefaultSolver.IterationState(dirty=False, subset_dirty=False)
         iteration_repr_maps: list[REPR_MAP] = []
-        # TODO: what does this exactly do?
-        tracked_param_ops = {
-            data.total_repr_map.repr_map[po]
-            for po in data.param_ops_subset_literals.keys()
-            if po in data.total_repr_map.repr_map
-        }
 
         for phase_name, algo in enumerate(algos):
             phase_name = str(phase_name + phase_offset)
@@ -144,11 +138,7 @@ class DefaultSolver(Solver):
                     f" G:{len(data.graphs)}"
                 )
 
-            mutators = Mutators(
-                *data.graphs,
-                tracked_param_ops=tracked_param_ops,
-                print_context=print_context,
-            )
+            mutators = Mutators(*data.graphs, print_context=print_context)
             mutators.run(algo)
             algo_result = mutators.close()
 
@@ -224,32 +214,10 @@ class DefaultSolver(Solver):
         )
 
         if iteration_state.dirty:
-            # check which subset literals have changed for our old paramops
-            subset_dirty = False
-            for po in data.param_ops_subset_literals:
-                if po not in data.total_repr_map.repr_map:
-                    continue
-
-                new_subset_literal = data.total_repr_map.try_get_literal(
-                    po, allow_subset=True
-                )
-
-                if new_subset_literal != data.param_ops_subset_literals[po]:
-                    logger.debug(
-                        f"Subset dirty {data.param_ops_subset_literals[po]} != "
-                        f"{new_subset_literal}"
-                    )
-                    data.param_ops_subset_literals[po] = new_subset_literal
-                    subset_dirty = True
-
-            # TODO: remove (and remaining unused subset_dirty logic)
-            if iteration_state.subset_dirty != subset_dirty:
-                print("SUBSET DIRTY MISMATCH")
-
             if iteration_state.subset_dirty or iterno <= 1:
                 logger.debug(
                     "Subset dirty, running subset dirty algorithms"
-                    if subset_dirty
+                    if iteration_state.subset_dirty
                     else "Iteration 1, running subset dirty algorithms"
                 )
 

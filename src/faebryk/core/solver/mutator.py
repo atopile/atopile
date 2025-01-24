@@ -30,9 +30,11 @@ from faebryk.core.solver.utils import (
     SolverAlgorithm,
     SolverLiteral,
     SolverOperatable,
+    get_expressions_involved_in,
     get_graphs,
     is_alias_is_literal,
-    is_literal,
+    is_literal_expression,
+    is_numeric_literal,
     make_if_doesnt_exist,
     make_lit,
     try_extract_literal,
@@ -73,12 +75,10 @@ class Mutator:
     def __init__(
         self,
         G: Graph,
-        tracked_param_ops: set[ParameterOperatable],
         print_context: ParameterOperatable.ReprContext,
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self._G = G
-        self.tracked_param_ops = tracked_param_ops
         self.repr_map = repr_map or {}
         self.removed = set()
         self.copied = set()
@@ -321,34 +321,36 @@ class Mutator:
         return bool(self.needs_copy or self._new_ops or self.marked)
 
     # TODO: consider making part of nodes_of_type(new_only=True)
-    def get_new_literal_aliases(self, tracked_param_ops_only: bool = False):
+    def get_new_literal_aliases(self):
         """
         Find new ops which are Is expressions between a ParameterOperatable and a
         literal
         """
 
-        def is_literal_alias(expr: ParameterOperatable) -> bool:
-            if not isinstance(expr, Is):
-                return False
+        def is_literal_alias(expr: Is) -> bool:
+            # TODO: is this the same as is_alias_is_literal?
 
-            po = next(
-                (op for op in expr.operands if isinstance(op, ParameterOperatable)),
-                None,
+            a, b = expr.operands
+            return any(
+                (
+                    (
+                        isinstance(a, ParameterOperatable)
+                        and not is_literal_expression(a)
+                        and is_numeric_literal(b)
+                    ),
+                    (
+                        isinstance(b, ParameterOperatable)
+                        and not is_literal_expression(b)
+                        and is_numeric_literal(a)
+                    ),
+                )
             )
 
-            lit = next(
-                (op for op in expr.operands if is_literal(op)),
-                None,
-            )
-
-            return (
-                po is not None
-                and lit is not None
-                and (not tracked_param_ops_only or po in self.tracked_param_ops)
-            )
-
-        # TODO using new_ops is a bit dangerous
-        return (expr for expr in self._new_ops if is_literal_alias(expr))
+        return (
+            expr
+            for expr in self.nodes_of_type(Is, new_only=True)
+            if is_literal_alias(expr)
+        )
 
     @property
     def subset_dirty(self) -> bool:
@@ -357,13 +359,16 @@ class Mutator:
         literal that is narrower than before, and A is involved in an expression
         """
 
-        # FIXME: this is probably wrong
-        # do we need to track the starting set of POs as with param_ops_subset_literals?
+        # TODO: also subsets
+        for expr in self.get_new_literal_aliases():
+            involved_in = get_expressions_involved_in(
+                next(iter(expr.operatable_operands))
+            )
+            if involved_in is not None:
+                # TODO: only if narrower
+                return True
 
-        return (
-            next(self.get_new_literal_aliases(tracked_param_ops_only=True), None)
-            is not None
-        )
+        return False
 
     @property
     def needs_copy(self) -> bool:
@@ -442,11 +447,16 @@ class Mutator:
         }
 
     def nodes_of_type[T: "ParameterOperatable"](
-        self, t: type[T], sort_by_depth: bool = False
+        self, t: type[T], sort_by_depth: bool = False, new_only: bool = False
     ) -> list[T]:
         out = GraphFunctions(self.G).nodes_of_type(t)
+
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
+
+        if new_only:
+            out = (n for n in out if n in self._new_ops)
+
         return list(out)
 
     def nodes_of_types(
@@ -462,16 +472,8 @@ class Mutator:
 
 
 class Mutators:
-    def __init__(
-        self,
-        *graphs: Graph,
-        tracked_param_ops: set[ParameterOperatable] | None = None,
-        print_context: ParameterOperatable.ReprContext,
-    ):
-        self.mutators = [
-            Mutator(g, tracked_param_ops=tracked_param_ops, print_context=print_context)
-            for g in graphs
-        ]
+    def __init__(self, *graphs: Graph, print_context: ParameterOperatable.ReprContext):
+        self.mutators = [Mutator(g, print_context=print_context) for g in graphs]
         self.result_repr_map = {}
         self.print_context = print_context
 
