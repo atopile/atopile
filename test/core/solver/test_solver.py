@@ -255,7 +255,7 @@ def test_inspect_known_superranges():
 
 
 @pytest.mark.xfail(
-    "Behaviour not implemented https://github.com/atopile/atopile/issues/615"
+    reason="Behaviour not implemented https://github.com/atopile/atopile/issues/615"
 )
 def test_symmetric_inequality_uncorrelated():
     p0 = Parameter(units=P.V)
