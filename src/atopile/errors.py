@@ -99,12 +99,7 @@ class _BaseUserException(_BaseBaseUserException):
     ) -> T:
         """Create an error from a context."""
 
-        instance = cls(
-            message,
-            *args,
-            traceback=traceback,
-            **kwargs,
-        )
+        instance = cls(message, *args, traceback=traceback, **kwargs)
 
         if origin is not None:
             instance.attach_origin_from_ctx(origin)
