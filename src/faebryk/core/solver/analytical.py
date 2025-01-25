@@ -781,7 +781,6 @@ def isolate_lone_params(mutator: Mutator):
 
     A + B is Lit1, B is Lit2, A further uncorrelated B -> A is Lit1 + (Lit2 * -1)
     """
-    ctx = mutator.print_context
 
     def find_unique_params(po: ParameterOperatable) -> set[ParameterOperatable]:
         match po:
@@ -856,7 +855,6 @@ def isolate_lone_params(mutator: Mutator):
     def isolate_param(
         expr: Expression, param: ParameterOperatable
     ) -> (tuple[ParameterOperatable.All, ParameterOperatable.All]) | None:
-        print(f"isolate {param.compact_repr(ctx)} from {expr.compact_repr(ctx)}")
         assert len(expr.operands) == 2
         lhs, rhs = expr.operands
 
@@ -924,8 +922,7 @@ def isolate_lone_params(mutator: Mutator):
         if (result := isolate_param(expr, param)) is None:
             continue
 
-        e = mutator.mutate_expression(expr, operands=result)
-        print(f"isolated: {e.compact_repr(ctx)}")
+        mutator.mutate_expression(expr, operands=result)
 
 
 @algorithm("Uncorrelated alias fold", destructive=True)
