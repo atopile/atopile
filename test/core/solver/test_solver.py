@@ -14,8 +14,11 @@ from faebryk.core.parameter import (
     Add,
     And,
     Arithmetic,
+    GreaterOrEqual,
     Is,
     IsSubset,
+    IsSuperset,
+    LessOrEqual,
     Max,
     Multiply,
     Not,
@@ -958,8 +961,9 @@ def test_abstract_lowpass():
     solver = DefaultSolver()
     solver.simplify_symbolically(fc.get_graph())
 
-    print(solver.inspect_get_known_supersets(C))
-    # assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(1000, 0.01)
+    assert solver.inspect_get_known_supersets(C) == Range(
+        6.158765796 * P.GF, 6.410118344 * P.GF
+    )
 
 
 def test_param_isolation():
@@ -970,26 +974,7 @@ def test_param_isolation():
     Y.alias_is(Range.from_center_rel(1, 0.01))
 
     solver = DefaultSolver()
-
-    params = (X, Y)
-    context = ParameterOperatable.ReprContext()
-    for p in params:
-        p.compact_repr(context)
-
-    result, context = solver.simplify_symbolically(Y.get_graph(), context)
-
-    from rich import print
-
-    print(
-        {
-            p.compact_repr(context): {
-                "id": p,
-                "literal": result.try_get_literal(p),
-                "supersets": solver.inspect_get_known_supersets(p),
-            }
-            for p in params
-        }
-    )
+    solver.simplify_symbolically(Y.get_graph())
 
     assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)
 
@@ -1126,7 +1111,20 @@ def test_ss_single_into_alias():
     assert repr_map.try_get_literal(A) == Range(5, 10)
 
 
-def test_find_contradiction_by_ge():
+@pytest.mark.parametrize(
+    "op, invert",
+    [
+        (GreaterOrEqual, False),
+        (LessOrEqual, True),
+        (Is, True),
+        (Is, False),
+        (IsSubset, True),
+        (IsSubset, False),
+        (IsSuperset, True),
+        (IsSuperset, False),
+    ],
+)
+def test_find_contradiction_by_predicate(op, invert):
     """
     A > B, A is [0, 10], B is [20, 30], A further uncorrelated B
     -> [0,10] > [20, 30]
@@ -1138,7 +1136,10 @@ def test_find_contradiction_by_ge():
     A.alias_is(Range(0, 10))
     B.alias_is(Range(20, 30))
 
-    (A >= B).constrain()
+    if invert:
+        op(B, A).constrain()
+    else:
+        op(A, B).constrain()
 
     solver = DefaultSolver()
 
@@ -1159,3 +1160,18 @@ def test_find_contradiction_by_gt():
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
         solver.simplify_symbolically(A.get_graph())
+
+
+def test_can_add_parameters():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    A.alias_is(Range(10, 100))
+    B.alias_is(Range(10, 100))
+    C.alias_is((A + B))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(C.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == Range(20, 200)
