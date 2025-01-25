@@ -284,7 +284,12 @@ def fold_pow(
 
     # All literals
     if is_numeric_literal(base) and is_numeric_literal(exp):
-        alias_is_literal(expr, base**exp, mutator)
+        try:
+            result = base**exp
+        except NotImplementedError:
+            # TODO either fix or raise a warning
+            return
+        alias_is_literal(expr, result, mutator)
         return
 
     if is_numeric_literal(exp):
