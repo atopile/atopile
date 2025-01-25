@@ -65,7 +65,7 @@ def test_solve_phase_one():
     voltage3.alias_is(voltage1 + voltage2)
 
     voltage1.alias_is(Range(1 * P.V, 3 * P.V))
-    voltage3.alias_is(Range(4 * P.V, 6 * P.V))
+    voltage3.alias_is(Range(2 * P.V, 6 * P.V))
 
     solver.simplify_symbolically(voltage1.get_graph())
 
@@ -99,7 +99,7 @@ def test_simplify():
 
     acc = (acc - quantity(3, dimensionless)) - quantity(4, dimensionless)
     assert isinstance(acc, Subtract)
-    (acc < quantity(11, dimensionless)).constrain()
+    (acc <= quantity(11, dimensionless)).constrain()
 
     G = acc.get_graph()
     solver = DefaultSolver()

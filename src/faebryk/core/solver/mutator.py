@@ -225,16 +225,18 @@ class Mutator:
 
         return self._mutate(expr, new_expr)
 
-    def mutate_unpack_expression(self, expr: Expression) -> ParameterOperatable:
+    def mutate_unpack_expression(
+        self, expr: Expression, operands: list[ParameterOperatable] | None = None
+    ) -> ParameterOperatable:
         """
         '''
         op(A, ...) -> A
         '''
         """
-        unpacked = expr.operands[0]
+        unpacked = expr.operands[0] if operands is None else operands[0]
         if not isinstance(unpacked, ParameterOperatable):
             raise ValueError("Unpacked operand can't be a literal")
-        return self._mutate(expr, unpacked)
+        return self._mutate(expr, self.get_copy(unpacked))
 
     def mutator_neutralize_expressions(self, expr: Expression) -> ParameterOperatable:
         """
