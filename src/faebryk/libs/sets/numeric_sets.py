@@ -97,13 +97,34 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         Arithmetically multiplies two intervals.
         """
+
+        # if 0.0 * inf -> inf and 0.0
+        # if 0.0 * -inf -> -inf and 0.0
+        def guarded_mul(a: NumericT, b: NumericT) -> list[NumericT]:
+            if 0.0 in [a, b] and math.inf in [a, b]:
+                assert isinstance(a, float) or isinstance(b, float)
+                return [0.0, math.inf]
+            if 0.0 in [a, b] and -math.inf in [a, b]:
+                assert isinstance(a, float) or isinstance(b, float)
+                return [0.0, -math.inf]
+            prod = a * b
+            assert not math.isnan(prod)
+            return [prod]
+
         values = [
-            self._min * other._min,
-            self._min * other._max,
-            self._max * other._min,
-            self._max * other._max,
+            res
+            for a, b in [
+                (self._min, other._min),
+                (self._min, other._max),
+                (self._max, other._min),
+                (self._max, other._max),
+            ]
+            for res in guarded_mul(a, b)
         ]
-        return Numeric_Interval(min(values), max(values))
+        _min = min(values)
+        _max = max(values)
+
+        return Numeric_Interval(_min, _max)
 
     def op_pow_interval(
         self, other: "Numeric_Interval"
