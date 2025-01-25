@@ -276,7 +276,11 @@ def alias_is_literal_and_check_predicate_eval(
     if not expr.constrained:
         return
     # all predicates alias to True, so alias False will already throw
-    assert value == BoolSet(True)
+    if value != BoolSet(True):
+        raise Contradiction(
+            "Constrained predicate deduced to False",
+            involved=[expr],
+        )
     mutator.mark_predicate_true(expr)
 
     # TODO is this still needed?

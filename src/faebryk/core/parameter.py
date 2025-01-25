@@ -1375,12 +1375,26 @@ class LessThan(NumericPredicate):
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
 
+    def __init__(self, left, right):
+        # TODO we might allow it for integer domains at some point
+        raise NotImplementedError(
+            "'<' not supported, you very likely want to use '<=' instead"
+        )
+        super().__init__(left, right)
+
 
 class GreaterThan(NumericPredicate):
     REPR_STYLE = NumericPredicate.ReprStyle(
         symbol=">",
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
+
+    def __init__(self, left, right):
+        # TODO we might allow it for integer domains at some point
+        raise NotImplementedError(
+            "'>' not supported, you very likely want to use '>=' anyway"
+        )
+        super().__init__(left, right)
 
 
 class LessOrEqual(NumericPredicate):

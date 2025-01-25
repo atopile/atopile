@@ -26,7 +26,6 @@ from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     S_LOG,
     CanonicalOperation,
-    CanonicalPredicate,
     ContradictionByLiteral,
     FullyAssociative,
     SolverLiteral,
@@ -536,12 +535,12 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     new_aliases = mutator.get_new_literal_aliased()
     new_subsets = mutator.get_new_literal_subsets()
 
-    # bool expr always map to singles
     new_exprs = {
         k: v
-        for k, v in (new_aliases | new_subsets).items()
+        for k, v in new_aliases.items()
+        # bool expr always map to singles
         if not isinstance(k, ConstrainableExpression)
-    }
+    } | new_subsets
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     for expr in exprs:
@@ -943,12 +942,11 @@ def uncorrelated_alias_fold(mutator: Mutator):
     """
 
     new_aliases = mutator.get_new_literal_aliased()
-    new_subsets = mutator.get_new_literal_subsets()
 
     # bool expr always map to singles
     new_exprs = {
         k: v
-        for k, v in (new_aliases | new_subsets).items()
+        for k, v in new_aliases.items()
         if not isinstance(k, ConstrainableExpression)
     }
 
@@ -956,10 +954,6 @@ def uncorrelated_alias_fold(mutator: Mutator):
         exprs = alias.get_operations()
         for expr in exprs:
             assert isinstance(expr, CanonicalOperation)
-            # TODO: is this correct?
-            if isinstance(expr, CanonicalPredicate):
-                continue
-
             # TODO: we can weaken this to not replace correlated operands instead of
             #   skipping the whole expression
             # check if any correlations
@@ -967,6 +961,11 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 continue
 
             expr_resolved_operands = map_extract_literals(expr)
+
+            if isinstance(expr, Is) and expr.constrained:
+                # TODO: definitely need to do something
+                # just not the same what we do with the other types
+                continue
 
             literals_expr = mutator.create_expression(
                 type(expr), *expr_resolved_operands

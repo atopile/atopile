@@ -646,10 +646,8 @@ def fold_ge(
         return
 
     # X >= Y
-    # A{I|X} >= B{I|Y}
-    lits = try_extract_all_literals(expr, lit_type=Quantity_Interval_Disjoint)
-    if lits:
-        a, b = lits
+    if len(literal_operands) == 2:
+        a, b = literal_operands
         alias_is_literal_and_check_predicate_eval(expr, a >= b, mutator)
         return
 

@@ -450,7 +450,7 @@ def test_super_simple_literal_folding(
     expr = expr_type(*q_operands)
     solver = DefaultSolver()
 
-    (expr < 100.0).constrain()
+    (expr <= 100.0).constrain()
     G = expr.get_graph()
 
     repr_map, context = solver.simplify_symbolically(G)
@@ -1142,10 +1142,11 @@ def test_find_contradiction_by_ge():
 
     solver = DefaultSolver()
 
-    with pytest.raises(ContradictionByLiteral):
+    with pytest.raises(Contradiction):
         solver.simplify_symbolically(A.get_graph())
 
 
+@pytest.mark.xfail(reason="No support for GT")
 def test_find_contradiction_by_gt():
     A = Parameter()
     B = Parameter()
