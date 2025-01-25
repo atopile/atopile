@@ -712,14 +712,15 @@ def test_voltage_divider_find_r_top():
 
     v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
     v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
-    r_bottom.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
+    r_bottom.alias_is(Range.from_center_rel(1 * P.ohm, 0.01))
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+    # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
     solver.simplify_symbolically(r_top.get_graph())
 
-    assert solver.inspect_get_known_supersets(r_top) == Range.from_center_rel(
-        1 * P.ohm, 0.01
+    assert solver.inspect_get_known_supersets(r_top) == Range(
+        (10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99
     )
 
 
