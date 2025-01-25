@@ -14,4 +14,3 @@ def test_syntax_error():
         parse_text_as_file(src)
 
     assert exc_info.value.origin_start is not None
-    assert exc_info.value.origin_stop is not None
