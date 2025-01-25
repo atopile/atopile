@@ -37,12 +37,12 @@ class CH342K(F.CH342):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
                 self.power_3v.lv: ["GND"],
-                self.uart_base[0].rx.signal: ["RXD0"],
-                self.uart_base[0].tx.signal: ["TXD0"],
-                self.uart_base[1].rx.signal: ["RXD1"],
-                self.uart_base[1].tx.signal: ["TXD1"],
-                self.usb.usb_if.d.p.signal: ["UD+"],
-                self.usb.usb_if.d.n.signal: ["UD-"],
+                self.uart_base[0].rx.line: ["RXD0"],
+                self.uart_base[0].tx.line: ["TXD0"],
+                self.uart_base[1].rx.line: ["RXD1"],
+                self.uart_base[1].tx.line: ["TXD1"],
+                self.usb.usb_if.d.p.line: ["UD+"],
+                self.usb.usb_if.d.n.line: ["UD-"],
                 self.power_3v.hv: ["V3"],
                 self.integrated_regulator.power_in.hv: ["VDD5"],
                 self.power_io.hv: ["VIO"],

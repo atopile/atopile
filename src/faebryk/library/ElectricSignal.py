@@ -11,7 +11,7 @@ from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
 
 
-class SignalElectrical(F.Signal):
+class ElectricSignal(F.Signal):
     class LinkIsolatedReference(LinkDirectConditional):
         def test(self, node: CNode):
             return not isinstance(node, F.ElectricPower)
@@ -27,9 +27,7 @@ class SignalElectrical(F.Signal):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    # line is a better name, but for compatibility with Logic we use signal
-    # might change in future
-    signal: F.Electrical
+    line: F.Electrical
     reference: F.ElectricPower
 
     # ----------------------------------------
@@ -79,7 +77,7 @@ class SignalElectrical(F.Signal):
         )
 
     @staticmethod
-    def connect_all_references(ifs: Iterable["SignalElectrical"]) -> F.ElectricPower:
+    def connect_all_references(ifs: Iterable["ElectricSignal"]) -> F.ElectricPower:
         return F.ElectricPower.connect(*[x.reference for x in ifs])
 
     @L.rt_field
@@ -91,4 +89,4 @@ class SignalElectrical(F.Signal):
                     tvs.reverse_working_voltage.alias_is(self.reference.voltage)
                 return out
 
-        return _can_be_surge_protected_defined(self.reference.lv, self.signal)
+        return _can_be_surge_protected_defined(self.reference.lv, self.line)

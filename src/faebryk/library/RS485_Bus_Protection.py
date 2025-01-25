@@ -105,8 +105,8 @@ class RS485_Bus_Protection(Module):
             termination_resistor.resistance.constrain_subset(
                 L.Range.from_center_rel(120 * P.ohm, 0.05)
             )
-            self.rs485_ufp.diff_pair.p.signal.connect_via(
-                termination_resistor, self.rs485_ufp.diff_pair.n.signal
+            self.rs485_ufp.diff_pair.p.line.connect_via(
+                termination_resistor, self.rs485_ufp.diff_pair.n.line
             )
         if self._polarization:
             polarization_resistors = self.add_to_container(2, F.Resistor)
@@ -117,10 +117,10 @@ class RS485_Bus_Protection(Module):
             polarization_resistors[1].resistance.constrain_subset(
                 L.Range(380 * P.ohm, 420 * P.ohm)
             )
-            self.rs485_dfp.diff_pair.p.signal.connect_via(
+            self.rs485_dfp.diff_pair.p.line.connect_via(
                 polarization_resistors[0], self.power.hv
             )
-            self.rs485_dfp.diff_pair.n.signal.connect_via(
+            self.rs485_dfp.diff_pair.n.line.connect_via(
                 polarization_resistors[1], self.power.lv
             )
 
@@ -148,18 +148,18 @@ class RS485_Bus_Protection(Module):
         #               Connections
         # ----------------------------------------
         # rs485_in/out connections
-        self.rs485_dfp.diff_pair.n.signal.connect_via(
+        self.rs485_dfp.diff_pair.n.line.connect_via(
             [self.common_mode_filter.coil_a, self.current_limmiter_resistors[0]],
-            self.rs485_ufp.diff_pair.n.signal,
+            self.rs485_ufp.diff_pair.n.line,
         )
-        self.rs485_dfp.diff_pair.p.signal.connect_via(
+        self.rs485_dfp.diff_pair.p.line.connect_via(
             [self.common_mode_filter.coil_b, self.current_limmiter_resistors[1]],
-            self.rs485_ufp.diff_pair.p.signal,
+            self.rs485_ufp.diff_pair.p.line,
         )
 
         # gdt connections
-        self.rs485_ufp.diff_pair.p.signal.connect(self.gdt.tube_1)
-        self.rs485_ufp.diff_pair.n.signal.connect(self.gdt.tube_2)
+        self.rs485_ufp.diff_pair.p.line.connect(self.gdt.tube_1)
+        self.rs485_ufp.diff_pair.n.line.connect(self.gdt.tube_2)
 
         # earth connections
         self.power.lv.connect_via(self.gnd_couple_resistor, self.earth)

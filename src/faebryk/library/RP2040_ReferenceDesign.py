@@ -35,7 +35,7 @@ class RP2040_ReferenceDesign(Module):
             self.logic_out.set_weak(True, self).resistance.alias_is(
                 self.resistor.resistance
             )
-            self.logic_out.signal.connect_via(
+            self.logic_out.line.connect_via(
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
 

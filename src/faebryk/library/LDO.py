@@ -114,7 +114,7 @@ class LDO(Module):
                 self.power_in.hv: ["Vin", "Vi", "in"],
                 self.power_out.hv: ["Vout", "Vo", "out", "output"],
                 self.power_in.lv: ["GND", "V-", "ADJ/GND"],
-                self.enable.enable.signal: ["EN", "Enable"],
+                self.enable.enable.line: ["EN", "Enable"],
             },
             accept_prefix=False,
             case_sensitive=False,

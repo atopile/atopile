@@ -20,7 +20,7 @@ class Shenzhen_Kinghelm_Elec_KH_BNC75_3511(Module):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    signal: F.SignalElectrical
+    line: F.ElectricSignal
     shield: F.Electrical
 
     # ----------------------------------------
@@ -44,7 +44,7 @@ class Shenzhen_Kinghelm_Elec_KH_BNC75_3511(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.signal.signal: ["OUT"],
+                self.line.line: ["OUT"],
                 self.shield: ["2", "3", "4"],
             },
             accept_prefix=False,

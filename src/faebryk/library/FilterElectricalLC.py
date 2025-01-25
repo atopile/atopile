@@ -19,8 +19,8 @@ class FilterElectricalLC(F.Filter):
     Basic Electrical LC filter
     """
 
-    in_: F.SignalElectrical
-    out: F.SignalElectrical
+    in_: F.ElectricSignal
+    out: F.ElectricSignal
     capacitor: F.Capacitor
     inductor: F.Inductor
 
@@ -52,9 +52,9 @@ class FilterElectricalLC(F.Filter):
         fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
 
         # low pass
-        self.in_.signal.connect_via(
+        self.in_.line.connect_via(
             (self.inductor, self.capacitor),
             self.in_.reference.lv,
         )
 
-        self.in_.signal.connect_via(self.inductor, self.out.signal)
+        self.in_.line.connect_via(self.inductor, self.out.line)

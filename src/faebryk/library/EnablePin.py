@@ -34,4 +34,4 @@ class EnablePin(ModuleInterface):
 
     def get_enable_signal(self):
         self.make_required()
-        return self.enable.signal
+        return self.enable.line

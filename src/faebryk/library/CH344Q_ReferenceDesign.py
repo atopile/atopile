@@ -101,10 +101,8 @@ class CH344Q_ReferenceDesign(Module):
         self.usb_uart_converter.osc[0].connect(self.oscillator.xtal_if.xout)
         self.oscillator.xtal_if.gnd.connect(pwr_3v3.lv)
 
-        self.reset_lowpass.out.signal.connect(self.usb_uart_converter.reset.signal)
-        self.reset_lowpass.in_.signal.connect(
-            self.usb_uart_converter.reset.reference.hv
-        )
+        self.reset_lowpass.out.line.connect(self.usb_uart_converter.reset.line)
+        self.reset_lowpass.in_.line.connect(self.usb_uart_converter.reset.reference.hv)
         self.reset_lowpass.in_.reference.connect(
             self.usb_uart_converter.reset.reference
         )
