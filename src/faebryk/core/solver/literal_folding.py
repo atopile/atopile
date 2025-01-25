@@ -654,7 +654,7 @@ def fold_ge(
 
     # A >=! X | |X| > 1 -> A >=! X.max()
     # X >=! A | |X| > 1 -> X.min() >=! A
-    if literal_operands:
+    if literal_operands and expr.constrained:
         assert len(literal_operands) == 1
         lit = literal_operands[0]
         if not lit.is_single_element() and not lit.is_empty():
@@ -667,9 +667,9 @@ def fold_ge(
                 mutator.mutate_expression(expr, operands=[left, make_lit(lit.max_elem)])
         return
 
-    assert isinstance(left, ParameterOperatable) and isinstance(
-        right, ParameterOperatable
-    )
+    # assert isinstance(left, ParameterOperatable) and isinstance(
+    #     right, ParameterOperatable
+    # )
 
     # FIXME: only allowed if A uncorrelated B
     # if_operands_same_make_true covers some of this only
