@@ -76,6 +76,7 @@ PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of so
 MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=10, descr="Max iterations")
 )
+TIMEOUT = ConfigFlagInt("STIMEOUT", default=120, descr="Solver timeout").get()
 # --------------------------------------------------------------------------------------
 
 if S_LOG:

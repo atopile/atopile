@@ -23,6 +23,7 @@ from faebryk.core.solver.utils import (
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
+    TIMEOUT,
     Contradiction,
     SolverAlgorithm,
     debug_name_mappings,
@@ -54,8 +55,7 @@ class DefaultSolver(Solver):
     - Run with FRBK_SVERBOSE_TABLE=y for full expression names
     """
 
-    # TODO actually use this...
-    timeout: int = 1000
+    timeout = TIMEOUT
 
     algorithms = SimpleNamespace(
         # TODO: get order from topo sort
@@ -179,7 +179,7 @@ class DefaultSolver(Solver):
 
         return data, iteration_state, print_context
 
-    @times_out(120)
+    @times_out(TIMEOUT)
     def simplify_symbolically(
         self,
         g: Graph,
