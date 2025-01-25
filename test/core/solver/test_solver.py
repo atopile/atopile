@@ -1175,3 +1175,14 @@ def test_can_add_parameters():
     solver.simplify_symbolically(C.get_graph())
 
     assert solver.inspect_get_known_supersets(C) == Range(20, 200)
+
+
+def test_ss_estimation_ge():
+    A = Parameter()
+    B = Parameter()
+
+    A.operation_is_subset(Range(0, 10)).constrain()
+    (B >= A).constrain()
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(B.get_graph())
