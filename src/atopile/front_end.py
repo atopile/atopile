@@ -71,6 +71,7 @@ from faebryk.libs.util import (
     has_attr_or_property,
     has_instance_settable_attr,
     import_from_path,
+    is_type_pair,
 )
 
 logger = logging.getLogger(__name__)
@@ -1126,48 +1127,66 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         warning if that succeeds, else, re-raise the exception emitted
         by the connect method
         """
-        try:
-            # Try a proper connection
-            a.connect(b)
-        except NodeException as top_ex:
-            # If that fails, try connecting via duck-typing
-            for name, (c_a, c_b) in a.zip_children_by_name_with(
-                b, L.ModuleInterface
-            ).items():
-                if c_a is None:
-                    if has_attr_or_property(a, name):
-                        c_a = getattr(a, name)
-                    else:
-                        raise
+        # If we're attempting to connect an Electrical to a SignalElectrical
+        # (or ElectricLogic) then allow the connection, but issue a warning
+        if pair := is_type_pair(a, b, F.Electrical, F.ElectricSignal):
+            pair[0].connect(pair[1].line)
 
-                if c_b is None:
-                    if has_attr_or_property(b, name):
-                        c_b = getattr(b, name)
-                    else:
-                        raise
+            with downgrade(errors.UserTypeError, to_level=logging.DEBUG):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Connected `{pair[0]}`, a `signal` / `Electrical` to "
+                    f"`{pair[1]}.line`, because `{pair[1]}` is a `{type(pair[1])}`. "
+                    "This means that the reference isn't also connected through.",
+                    traceback=self.get_traceback(),
+                )
 
-                try:
-                    self._connect(c_a, c_b, None)
-                except NodeException:
-                    raise top_ex
+        else:
+            try:
+                # Try a proper connection
+                a.connect(b)
 
-            else:
-                # If we connect everything via name (and tried in the first place)
-                # then we're good to go! We just need to tell everyone to probably not
-                # do that in the future - and we're off!
-                if ctx is not None:  # Check that this is the top-level _connect call
-                    # TODO: @v0.4 increase the level of this to WARNING
-                    # when there's an alternative
-                    with (
-                        downgrade(DeprecatedException, to_level=logging.DEBUG),
-                        self._suppression_connect,
-                    ):
-                        raise DeprecatedException.from_ctx(
-                            ctx,
-                            f"Connected `{a}` to `{b}` by duck-typing."
-                            "They should be of the same type.",
-                            traceback=self.get_traceback(),
-                        )
+            except NodeException as top_ex:
+                # If that fails, try connecting via duck-typing
+                for name, (c_a, c_b) in a.zip_children_by_name_with(
+                    b, L.ModuleInterface
+                ).items():
+                    if c_a is None:
+                        if has_attr_or_property(a, name):
+                            c_a = getattr(a, name)
+                        else:
+                            raise
+
+                    if c_b is None:
+                        if has_attr_or_property(b, name):
+                            c_b = getattr(b, name)
+                        else:
+                            raise
+
+                    try:
+                        self._connect(c_a, c_b, None)
+                    except NodeException:
+                        raise top_ex
+
+                else:
+                    # If we connect everything via name (and tried in the first place)
+                    # then we're good to go! We just need to tell everyone to probably
+                    # not do that in the future - and we're off!
+                    if (
+                        ctx is not None
+                    ):  # Check that this is the top-level _connect call
+                        # TODO: @v0.4 increase the level of this to WARNING
+                        # when there's an alternative
+                        with (
+                            downgrade(DeprecatedException, to_level=logging.DEBUG),
+                            self._suppression_connect,
+                        ):
+                            raise DeprecatedException.from_ctx(
+                                ctx,
+                                f"Connected `{a}` to `{b}` by duck-typing."
+                                "They should be of the same type.",
+                                traceback=self.get_traceback(),
+                            )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
         """Connect interfaces together"""
