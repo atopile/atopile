@@ -1132,7 +1132,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if pair := is_type_pair(a, b, F.Electrical, F.ElectricSignal):
             pair[0].connect(pair[1].line)
 
-            with downgrade(errors.UserTypeError, to_level=logging.DEBUG):
+            with downgrade(errors.UserTypeError):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
                     f"Connected `{pair[0]}`, a `signal` / `Electrical` to "
