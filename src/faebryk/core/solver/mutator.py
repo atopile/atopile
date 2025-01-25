@@ -500,6 +500,23 @@ class Mutator:
             if is_alias_is_literal(expr)
         )
 
+    def get_new_literal_subsets(self):
+        new_literal_ss = (
+            expr
+            for expr in self.nodes_of_type(IsSubset, new_only=True)
+            if bool(
+                expr.constrained
+                and expr.get_literal_operands()
+                and expr.operatable_operands
+            )
+        )
+
+        return {
+            p: not_none(try_extract_literal(p, allow_subset=True))
+            for alias in new_literal_ss
+            for p in alias.operatable_operands
+        }
+
     def get_new_literal_aliased(self):
         ps = {
             p: not_none(try_extract_literal(p))

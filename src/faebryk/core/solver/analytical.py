@@ -533,14 +533,16 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
 
     new_aliases = mutator.get_new_literal_aliased()
+    new_subsets = mutator.get_new_literal_subsets()
+
     # bool expr always map to singles
-    new_aliases = {
+    new_exprs = {
         k: v
-        for k, v in new_aliases.items()
+        for k, v in (new_aliases | new_subsets).items()
         if not isinstance(k, ConstrainableExpression)
     }
 
-    exprs = {e for alias in new_aliases.keys() for e in alias.get_operations()}
+    exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     for expr in exprs:
         assert isinstance(expr, CanonicalOperation)
         # In Is automatically by eq classes
@@ -929,14 +931,16 @@ def uncorrelated_alias_fold(mutator: Mutator):
     """
 
     new_aliases = mutator.get_new_literal_aliased()
+    new_subsets = mutator.get_new_literal_subsets()
+
     # bool expr always map to singles
-    new_aliases = {
+    new_exprs = {
         k: v
-        for k, v in new_aliases.items()
+        for k, v in (new_aliases | new_subsets).items()
         if not isinstance(k, ConstrainableExpression)
     }
 
-    for alias in new_aliases.keys():
+    for alias in new_exprs.keys():
         exprs = alias.get_operations()
         for expr in exprs:
             assert isinstance(expr, CanonicalOperation)
