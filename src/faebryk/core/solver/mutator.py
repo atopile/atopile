@@ -250,7 +250,7 @@ class Mutator:
         inner_operand = inner_expr.operands[0]
         if not isinstance(inner_operand, ParameterOperatable):
             raise ValueError("Unpacked operand can't be a literal")
-        return self._mutate(expr, inner_operand)
+        return self._mutate(expr, self.get_copy(inner_operand))
 
     def mutate_expression_with_op_map(
         self,
