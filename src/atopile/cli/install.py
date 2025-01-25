@@ -164,15 +164,12 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
         ]
 
         for i, dep in enumerate(config_data["dependencies"]):
-            if not isinstance(dep, dict):
-                continue
-
-            # Use .get here to avoid KeyErrors
-            if dep.get("name") == new_data["name"]:
+            if dep["name"] == new_data["name"]:
                 config_data["dependencies"][i] = new_data
                 break
         else:
             config_data["dependencies"] = config_data["dependencies"] + [new_data]
+
         return config_data
 
     config.update_project_config(add_dependency, dependency.model_dump())
