@@ -817,6 +817,9 @@ def isolate_lone_params(mutator: Mutator):
             op for op in op_with_param.operands if param not in find_unique_params(op)
         ]
 
+        if not moved_ops:
+            return op_with_param, op_without_param
+
         match op_with_param, op_without_param:
             case (Add(), _):
                 return (
@@ -875,9 +878,17 @@ def isolate_lone_params(mutator: Mutator):
         op_without_param = rhs if param_in_lhs else lhs
 
         while True:
-            op_with_param, op_without_param = _isolate_param(
+            new_op_with_param, new_op_without_param = _isolate_param(
                 param, op_with_param, op_without_param
             )
+
+            if (
+                new_op_with_param == op_with_param
+                and new_op_without_param == op_without_param
+            ):
+                break
+
+            op_with_param, op_without_param = new_op_with_param, new_op_without_param
 
             if op_with_param == param:
                 return op_with_param, op_without_param
