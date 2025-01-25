@@ -18,7 +18,7 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 
 import faebryk.libs.exceptions
 from atopile import errors, version
-from atopile.config import Dependency, config
+from atopile.config import Dependency, ProjectConfig, config
 from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
@@ -154,8 +154,14 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
         dependency.version_spec = f"@{installed_version}"
 
     def add_dependency(config_data, new_data):
-        if config_data.get("dependencies") is None:
-            config_data["dependencies"] = []
+        config_data["dependencies"] = [
+            dep.model_dump()
+            # add_dependencies is the field validator that loads the dependencies
+            # from the config file. It ensures the format of the ato.yaml
+            for dep in ProjectConfig.add_dependencies(
+                config_data.get("dependencies"),
+            )  # type: ignore  add_dependencies is a classmethod
+        ]
 
         for i, dep in enumerate(config_data["dependencies"]):
             if not isinstance(dep, dict):
