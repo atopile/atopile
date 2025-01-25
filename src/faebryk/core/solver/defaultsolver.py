@@ -55,8 +55,6 @@ class DefaultSolver(Solver):
     - Run with FRBK_SVERBOSE_TABLE=y for full expression names
     """
 
-    timeout = TIMEOUT
-
     algorithms = SimpleNamespace(
         # TODO: get order from topo sort
         # and types from decorator
