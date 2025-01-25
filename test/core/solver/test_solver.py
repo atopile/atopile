@@ -1124,3 +1124,37 @@ def test_ss_single_into_alias():
 
     assert repr_map.try_get_literal(B) == 5
     assert repr_map.try_get_literal(A) == Range(5, 10)
+
+
+def test_find_contradiction_by_ge():
+    """
+    A > B, A is [0, 10], B is [20, 30], A further uncorrelated B
+    -> [0,10] > [20, 30]
+    """
+
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(Range(0, 10))
+    B.alias_is(Range(20, 30))
+
+    (A >= B).constrain()
+
+    solver = DefaultSolver()
+
+    with pytest.raises(ContradictionByLiteral):
+        solver.simplify_symbolically(A.get_graph())
+
+
+def test_find_contradiction_by_gt():
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(Range(0, 10))
+    B.alias_is(Range(20, 30))
+
+    (A > B).constrain()
+
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.simplify_symbolically(A.get_graph())
