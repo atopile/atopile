@@ -26,6 +26,7 @@ from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     S_LOG,
     CanonicalOperation,
+    CanonicalPredicate,
     ContradictionByLiteral,
     FullyAssociative,
     SolverLiteral,
@@ -945,7 +946,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         for expr in exprs:
             assert isinstance(expr, CanonicalOperation)
             # TODO: is this correct?
-            if isinstance(expr, (Is, IsSubset)):
+            if isinstance(expr, CanonicalPredicate):
                 continue
 
             # TODO: we can weaken this to not replace correlated operands instead of
