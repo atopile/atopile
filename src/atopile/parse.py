@@ -2,7 +2,7 @@ import logging
 from os import PathLike
 from pathlib import Path
 
-from antlr4 import CommonTokenStream, FileStream, InputStream
+from antlr4 import CommonTokenStream, FileStream, InputStream, Token
 from antlr4.error.ErrorListener import ErrorListener
 
 from atopile.parser.AtoLexer import AtoLexer
@@ -18,15 +18,26 @@ class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
 
     def syntaxError(
-        self, recognizer, offendingSymbol, line, column, msg, e: Exception | None
+        self,
+        recognizer,
+        offendingSymbol: Token,
+        line: int,
+        column: int,
+        msg: str,
+        e: Exception | None,
     ):
         if e is None:
             msg = msg
         else:
             msg = f"{str(e)} '{msg}'"
 
+        input_stream: CommonTokenStream = recognizer.getInputStream()
+        # This fill is required to get context past the offending symbol
+        # to accurately report the error
+        input_stream.fill()
+
         raise UserSyntaxError.from_tokens(
-            recognizer.getInputStream(), offendingSymbol, offendingSymbol, msg
+            input_stream, offendingSymbol, None, msg, markdown=False
         )
 
 

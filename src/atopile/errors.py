@@ -111,7 +111,7 @@ class _BaseUserException(_BaseBaseUserException):
         cls: type[T],
         token_stream: CommonTokenStream,
         origin_start: Token,
-        origin_stop: Token,
+        origin_stop: Token | None,
         message: str,
         *args,
         traceback: Sequence[ParserRuleContext | None] | None = None,
