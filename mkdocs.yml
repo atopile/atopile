@@ -7,41 +7,28 @@ site_description: >-
   Join us in this adventure!
 
 nav:
-- Docs:
+- Getting Started:
   - index.md
-  - upgrade-guide.md
-  - first_project.md
-  - config.md
-  - building.md
-  - install.md
-  - import.md
-  - types.md
-  - class.md
-  - maths.md
-  - component_selection.md
-  - doc-strings.md
-  - how-to.md
-  - View your project:
-    - view.md
-  - Layout on kicad:
-    - kicad.md
-  - Version control / Manufacturing:
-    - git.md
-    - ci.md
+  - quickstart.md
+  - CHANGELOG.md
+  - Tutorial:
+    - tutorial/1-the-ato-language.md
+    - tutorial/2-the-ato-compiler.md
+    - tutorial/3-ato-create-component.md
+  - Guides:
+    - guides/installation.md
+    - guides/git.md
+    - guides/faebryk.md
+  - Reference:
+    - reference/attributes.md
+    - reference/config.md
 - Development:
   - development.md
-  - roadmap.md
-  - API Reference:
-    - api/cli.md
-    - api/solver.md
 - Packages: https://packages.atopile.io
 - Example Projects:
   - spin.md
   - swoop.md
-- Blog:
-  - blog/index.md
 plugins:
-- blog
 - search
 - mkdocstrings:
     handlers:
@@ -52,9 +39,6 @@ plugins:
           - griffe_typingdoc
           show_root_heading: true
           show_if_no_docstring: true
-          preload_modules:
-          - faebryk
-          - atopile
           inherited_members: true
           members_order: source
           separate_signature: true
@@ -67,6 +51,7 @@ plugins:
           show_symbol_type_heading: true
           show_symbol_type_toc: true
 - mike
+- atopile_json_schema
 
 repo_name: atopile/atopile
 repo_url: https://github.com/atopile/atopile

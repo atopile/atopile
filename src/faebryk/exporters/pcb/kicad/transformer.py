@@ -53,8 +53,8 @@ from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
     cast_assert,
+    dataclass_as_kwargs,
     find,
-    get_key,
     hash_string,
     yield_missing,
 )
@@ -211,9 +211,7 @@ class PCB_Transformer:
         def get_transformer(self):
             return self.transformer
 
-    def __init__(
-        self, pcb: PCB, graph: Graph, app: Module, cleanup: bool = True
-    ) -> None:
+    def __init__(self, pcb: PCB, graph: Graph, app: Module) -> None:
         self.pcb = pcb
         self.graph = graph
         self.app = app
@@ -234,8 +232,6 @@ class PCB_Transformer:
 
         self.default_component_insert_point = C_xyr(x=0, y=0, r=0)
 
-        if cleanup:
-            self.cleanup()
         self.attach()
 
     def attach(self):
@@ -395,22 +391,6 @@ class PCB_Transformer:
 
     def bind_net(self, pcb_net: Net, net: F.Net):
         net.add(self.has_linked_kicad_net(pcb_net, self))
-
-    def cleanup(self):
-        # delete faebryk objects in pcb
-
-        # find all objects with path_len 2 (direct children of a list in pcb)
-        candidates = [o for o in dataclass_dfs(self.pcb) if len(o[1]) == 2]
-        for obj, path, _ in candidates:
-            if not self.is_marked(obj):
-                continue
-
-            # delete object by removing it from the container they are in
-            holder = path[-1]
-            if isinstance(holder, list):
-                holder.remove(obj)
-            elif isinstance(holder, dict):
-                del holder[get_key(obj, holder)]
 
     @staticmethod
     def flipped[T](input_list: list[tuple[T, int]]) -> list[tuple[T, int]]:
@@ -1456,7 +1436,8 @@ class PCB_Transformer:
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
                 net=None,
                 **{
-                    **asdict(p),
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
@@ -1608,7 +1589,8 @@ class PCB_Transformer:
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
                 net=None,
                 **{
-                    **asdict(p),
+                    # Cannot use asdict because it converts children dataclasses too
+                    **dataclass_as_kwargs(p),
                     # We have to handle the rotation separately because
                     # because it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + footprint.at.r),
@@ -1648,8 +1630,7 @@ class PCB_Transformer:
         # Disconnect pads on footprints
         for fp in self.pcb.footprints:
             for pad in fp.pads:
-                if pad.net == net:
-                    assert pad.net
+                if pad.net is not None and pad.net.number == net.number:
                     pad.net.name = ""
                     pad.net.number = 0
 
@@ -1666,19 +1647,18 @@ class PCB_Transformer:
 
     def rename_net(self, net: Net, new_name: str):
         """Rename a new, including all it's connected pads"""
-        old_name = net.name
+        # This is what does the renaming on the net at the top-level
         net.name = new_name
 
         # Update all the footprints
         for fp in self.pcb.footprints:
             for pad in fp.pads:
-                if pad.net == net:
-                    assert pad.net
+                if pad.net is not None and pad.net.number == net.number:
                     pad.net.name = new_name
 
         # Update zone names
         for zone in self.pcb.zones:
-            if zone.net == net.number and zone.net_name == old_name:
+            if zone.net == net.number:
                 zone.net_name = new_name
 
         # Vias and routing are attached only via number,
@@ -1727,8 +1707,7 @@ class PCB_Transformer:
         f_fp = component.get_trait(F.has_footprint).get_footprint()
 
         # At this point, all footprints MUST have a KiCAD identifier
-        kicad_if_t = f_fp.get_trait(F.KicadFootprint.has_kicad_identifier)
-        fp_id = kicad_if_t.kicad_identifier
+        fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
 
         # This is the component which is being stuck on the board
         address = component.get_full_name()
@@ -1869,6 +1848,11 @@ class PCB_Transformer:
             # we could ask for all the modules with footprints
             assert isinstance(component, Module)
 
+            # If this component isn't the most special in it's chain of specialization
+            # then skip it. We should only pick components that are the most special.
+            if component is not component.get_most_special():
+                continue
+
             cluster_key = component.get_parent()
             insert_point = cluster_points[cluster_key]
             pcb_fp, new_fp = self._update_footprint_from_node(
@@ -1889,8 +1873,12 @@ class PCB_Transformer:
                 if ref_prop := pcb_fp.propertys.get("Reference"):
                     removed_fp_ref = ref_prop.value
                 else:
+                    # This should practically never occur
                     removed_fp_ref = "<no reference>"
-                logger.info(f"Removing `{removed_fp_ref}`", extra={"markdown": True})
+                logger.info(
+                    f"Removing outdated component with Reference `{removed_fp_ref}`",
+                    extra={"markdown": True},
+                )
                 self.remove_footprint(pcb_fp)
 
         # Update nets
@@ -1944,7 +1932,8 @@ class PCB_Transformer:
         for pcb_net in self.pcb.nets:
             # Net number == 0 and name == "" are the default values
             # They represent unconnected to nets, so skip them
-            if pcb_net.number == 0 and pcb_net.name == "":
+            if pcb_net.number == 0:
+                assert pcb_net.name == ""
                 continue
 
             if pcb_net not in processed_nets:

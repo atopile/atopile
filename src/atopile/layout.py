@@ -137,4 +137,4 @@ def generate_module_map(app: Module) -> None:
         "w",
         encoding="utf-8",
     ) as f:
-        json.dump(module_map, f)
+        json.dump(module_map, f, indent=4)

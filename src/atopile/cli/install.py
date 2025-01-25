@@ -7,8 +7,6 @@ This CLI command provides the `ato install` command to:
 """
 
 import logging
-import subprocess
-import sys
 from pathlib import Path
 from typing import Annotated, Optional
 from urllib.parse import urlparse
@@ -32,7 +30,7 @@ log.setLevel(logging.INFO)
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[
-        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID")
+        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID", hidden=True)
     ] = False,
     link: Annotated[
         bool,
@@ -46,11 +44,21 @@ def install(
     """
     Install atopile packages or components from jlcpcb.com/parts
     """
-    do_install(to_install, jlcpcb, link, upgrade, path)
+    if jlcpcb:
+        raise errors.UserBadParameterError(
+            "--jlcpcb flag has been replaced by `ato create component`"
+        )
+
+    config.apply_options(None)
+
+    do_install(to_install, link, upgrade, path)
 
 
 def do_install(
-    to_install: str | None, jlcpcb: bool, link: bool, upgrade: bool, path: Path | None
+    to_install: str | None,
+    link: bool,
+    upgrade: bool,
+    path: Path | None,
 ):
     """
     Actually do the installation of the dependencies.
@@ -60,17 +68,12 @@ def do_install(
     if path is not None:
         config.project_dir = path
 
-    log.info(
-        f"Installing {to_install}{' ' if to_install else ''}"
-        f"in {config.project.paths.root}"
-    )
+    if to_install is None:
+        log.info(f"Installing all dependencies in {config.project.paths.root}")
+    else:
+        log.info(f"Installing {to_install} in {config.project.paths.root}")
 
-    if jlcpcb:
-        if to_install is None:
-            raise errors.UserBadParameterError("No component ID specified")
-        # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install, config.project.paths.root)
-    elif to_install:
+    if to_install:
         # eg. "ato install some-atopile-module"
         install_single_dependency(to_install, link, upgrade)
     else:
@@ -280,48 +283,6 @@ def install_dependency(
         )
 
     return repo.head.commit.hexsha
-
-
-def install_jlcpcb(component_id: str, top_level_path: Path):
-    """Install a component from JLCPCB"""
-    component_id = component_id.upper()
-    if not component_id.startswith("C") or not component_id[1:].isdigit():
-        raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
-
-    footprints_dir = top_level_path / config.project.paths.footprints
-    footprints_dir.mkdir(parents=True, exist_ok=True)
-
-    ato_src_dir = top_level_path / config.project.paths.src
-    ato_src_dir.mkdir(parents=True, exist_ok=True)
-
-    log.info(f"Footprints directory: {footprints_dir}")
-
-    command = [
-        sys.executable,
-        "-m",
-        "easyeda2kicad",
-        "--full",
-        f"--lcsc_id={component_id}",
-        f"--output={footprints_dir}",
-        "--overwrite",
-        "--ato",
-        f"--ato_file_path={ato_src_dir}",
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-
-    # The stdout and stderr are captured due to 'capture_output=True'
-    print("STDOUT:", result.stdout)
-    print("STDERR:", result.stderr)
-
-    # Check the return code to see if the command was successful
-    if result.returncode == 0:
-        print("Command executed successfully")
-    else:
-        component_link = f"https://jlcpcb.com/partdetail/{component_id}"
-        raise errors.UserException(
-            "Oh no! Looks like this component doesnt have a model available. "
-            f"More information about the component can be found here: {component_link}"
-        )
 
 
 def _name_and_clone_url_helper(name: str) -> tuple[str, str]:

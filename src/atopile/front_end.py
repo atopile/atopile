@@ -25,7 +25,7 @@ from pint import UndefinedUnitError
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, errors
-from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
+from atopile.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
 from atopile.config import config
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
@@ -36,6 +36,7 @@ from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
     GreaterOrEqual,
+    Is,
     IsSubset,
     LessOrEqual,
     Max,
@@ -401,6 +402,7 @@ def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleCont
 
 
 _declaration_domain_to_unit = {
+    "dimensionless": dimensionless,
     "resistance": P.ohm,
     "capacitance": P.farad,
     "inductance": P.henry,
@@ -708,18 +710,29 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     @staticmethod
     def get_node_attr(node: L.Node, name: str) -> L.Node:
+        """
+        Analogous to `getattr`
+
+        Returns the value if it exists, otherwise raises an AttributeError
+        Required because we're seeing attributes in both the attrs and runtime
+        """
         if _is_int(name):
             name = f"_{name}"
 
         if has_attr_or_property(node, name):
             # Build-time attributes are attached as real attributes
-            return getattr(node, name)
+            result = getattr(node, name)
         elif name in node.runtime:
             # Runtime attributes are attached as runtime attributes
-            return node.runtime[name]
+            result = node.runtime[name]
         else:
             # Wah wah wah - we don't know what this is
             raise AttributeError(name=name, obj=node)
+
+        if isinstance(result, L.Module):
+            return result.get_most_special()
+
+        return result
 
     def _get_referenced_node(self, ref: Ref, ctx: ParserRuleContext) -> L.Node:
         node = self._current_node
@@ -731,9 +744,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             try:
                 node = self.get_node_attr(node, name)
             except AttributeError as ex:
+                # If we know that a previous failure prevented the creation
+                # of this node, raise a SkipPriorFailedException to prevent
+                # error messages about it missing from polluting the output
                 if name in self._failed_nodes.get(node, set()):
                     raise SkipPriorFailedException() from ex
+
                 # Wah wah wah - we don't know what this is
+                # Build a nice error message
                 if ref[:i]:
                     msg = f"`{Ref(ref[:i])}` has no attribute `{name}`"
                 else:
@@ -832,7 +850,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _init_node(
         self, node_type: ap.BlockdefContext | Type[L.Node]
     ) -> Generator[L.Node, None, None]:
-        """Kind of analogous to __init__ in Python, except that it's a factory"""
+        """
+        Kind of analogous to __init__ in Python, except that it's a factory
+
+        Pre-yield it is analogous to __new__, where it creates the hollow instance
+        Post-yield it is analogous to __init__, where it fills in the details
+
+        This is to allow for it to be attached in the graph before it's filled,
+        and subsequently for errors to be raised in context of it's graph location.
+        """
         new_node, promised_supers = self._new_node(
             node_type,
             promised_supers=[],
@@ -843,8 +869,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if isinstance(node_type, ap.BlockdefContext):
             if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
                 # Some shims add the trait themselves
-                if not new_node.has_trait(has_ato_cmp_attrs):
-                    new_node.add(has_ato_cmp_attrs())
+                if not new_node.has_trait(_has_ato_cmp_attrs):
+                    new_node.add(_has_ato_cmp_attrs())
 
         yield new_node
 
@@ -982,11 +1008,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 setattr(target, assigned_name, value)
             elif (
                 # If ModuleShims has a settable property, use it
-                hasattr(GlobalShims, assigned_name)
-                and isinstance(getattr(GlobalShims, assigned_name), property)
-                and getattr(GlobalShims, assigned_name).fset
+                hasattr(GlobalAttributes, assigned_name)
+                and isinstance(getattr(GlobalAttributes, assigned_name), property)
+                and getattr(GlobalAttributes, assigned_name).fset
             ):
-                prop = cast_assert(property, getattr(GlobalShims, assigned_name))
+                prop = cast_assert(property, getattr(GlobalAttributes, assigned_name))
                 assert prop.fset is not None
                 with (
                     downgrade(DeprecatedException, errors.UserNotImplementedError),
@@ -1058,7 +1084,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if mif := self._get_mif_and_warn_when_exists(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
+        if shims_t := self._current_node.try_get_trait(_has_ato_cmp_attrs):
             mif = shims_t.add_pin(name)
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
@@ -1176,30 +1202,76 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
         from_node = self._get_referenced_node(from_ref, ctx)
+
+        # Only Modules can be specialized (since they're the only
+        # ones with specialization gifs).
+        # TODO: consider duck-typing this
         if not isinstance(from_node, L.Module):
             raise errors.UserTypeError.from_ctx(
                 ctx,
-                f"Can't specialize `{from_node}`",
+                f"Can't specialize `{from_node}` because it's not a `Module`",
                 traceback=self.get_traceback(),
             )
 
         # TODO: consider extending this w/ the ability to specialize to an instance
+        class_ = self._get_referenced_class(ctx, to_ref)
         with self._traceback_stack.enter(ctx):
-            with self._init_node(
-                self._get_referenced_class(ctx, to_ref)
-            ) as specialized_node:
-                from_node.add(specialized_node)
-        assert isinstance(specialized_node, L.Module)
+            with self._init_node(class_) as specialized_node:
+                pass
 
-        try:
-            from_node.specialize(specialized_node)
-        except* L.Module.InvalidSpecializationError as ex:
-            raise errors.UserException.from_ctx(
+        if not isinstance(specialized_node, L.Module):
+            raise errors.UserTypeError.from_ctx(
                 ctx,
-                f"Can't specialize `{from_ref}` with `{to_ref}`:\n"
-                + "\n".join(f" - {e.message}" for e in ex.exceptions),
+                f"Can't specialize with `{specialized_node}`"
+                " because it's not a `Module`",
                 traceback=self.get_traceback(),
-            ) from ex
+            )
+
+        # FIXME: this is an abuse of disconnect_parent. The graph isn't intended to be
+        # mutable like this, and it existed only for use in traits, however the
+        # alternatives I could come up with were worse:
+        # - an isinstance check to additionally run `get_most_special` on Modules +
+        #   more processing down the line when we want the full name of the node
+        # This is only be applied when specializing to a whole class, not an instance
+        try:
+            parent_deets = from_node.get_parent()
+            # We use from_node.get_name() rather than from_ref[-1] because we can
+            # ensure this reuses the exact name after any normalization
+            from_node_name = from_node.get_name()
+            assert parent_deets is not None, (
+                "uhh not sure how you get here without trying to replace the root node,"
+                " which you shouldn't ever have access to"
+            )
+            parent, _ = parent_deets
+            from_node.parent.disconnect_parent()
+            assert isinstance(parent, L.Module)
+
+            # We have to make sure the from_node was part of the runtime attrs
+            if not any(r is from_node for r in parent.runtime.values()):
+                raise errors.UserNotImplementedError.from_ctx(
+                    ctx,
+                    "We cannot properly specialize nodes within the base definition of"
+                    " a module. This limitation mostly applies to fabll modules today.",
+                    traceback=self.get_traceback(),
+                )
+
+            # Now, slot that badboi back in right where it's less-special brother's spot
+            del parent.runtime[from_node_name]
+            parent.add(specialized_node, name=from_node_name)
+
+            try:
+                from_node.specialize(specialized_node)
+            except* L.Module.InvalidSpecializationError as ex:
+                raise errors.UserException.from_ctx(
+                    ctx,
+                    f"Can't specialize `{from_ref}` with `{to_ref}`:\n"
+                    + "\n".join(f" - {e.message}" for e in ex.exceptions),
+                    traceback=self.get_traceback(),
+                ) from ex
+        except Exception:
+            # TODO: skip further errors about this node w/ self._record_failed_node()
+            raise
+
         return NOTHING
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):
@@ -1265,6 +1337,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     op = GreaterOrEqual
                 case "within":
                     op = IsSubset
+                case "is":
+                    op = Is
                 case _:
                     # We shouldn't be able to get here with parseable input
                     raise ValueError(f"Unhandled operator `{op_str}`")

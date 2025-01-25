@@ -20,7 +20,7 @@ ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 # FIXME: Test ato examples too
 @pytest.mark.parametrize(
     "example",
-    FABLL_EXAMPLES,
+    FABLL_EXAMPLES + ATO_EXAMPLES,
     ids=lambda p: p.stem,
 )
 def test_examples_build(
@@ -32,8 +32,13 @@ def test_examples_build(
     example_copy.write_text(example.read_text())
     example = example_copy
 
-    # Copy dependencies
-    shutil.copytree(repo_root / "examples" / ".ato", tmp_path / ".ato")
+    # Copy dependencies to the tmp dir directly because standalone mode doens't include
+    example_modules = repo_root / "examples" / ".ato" / "modules"
+    for item in example_modules.glob("*"):
+        if item.is_dir():
+            shutil.copytree(item, tmp_path / item.name)
+        else:
+            shutil.copy(item, tmp_path / item.name)
 
     # Make the noise
     try:

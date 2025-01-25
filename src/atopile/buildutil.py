@@ -45,7 +45,6 @@ from faebryk.libs.app.pcb import (
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
-    open_pcb,
 )
 from faebryk.libs.app.picking import load_descriptive_properties
 from faebryk.libs.exceptions import (
@@ -89,7 +88,7 @@ def build(app: Module) -> None:
 
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app, cleanup=False)
+    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
     load_designators(G, attach=True)
 
     # Pre-run solver -----------------------------------------------------------
@@ -128,9 +127,6 @@ def build(app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    # We have to cleanup before applying the design, because otherwise we'll
-    # delete the things we're adding
-    transformer.cleanup()
     transformer.apply_design(config.build.paths.fp_lib_table)
     transformer.check_unattached_fps()
 
@@ -187,15 +183,6 @@ def build(app: Module) -> None:
 
         logger.info(f"Updating layout {config.build.paths.layout}")
         pcb.dumps(config.build.paths.layout)
-        if config.project.pcbnew_auto:
-            try:
-                open_pcb(config.build.paths.layout)
-            except FileNotFoundError:
-                pass
-            except RuntimeError as e:
-                logger.info(
-                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
-                )
 
     # Build targets -----------------------------------------------------------
     logger.info("Building targets")
@@ -320,7 +307,7 @@ def generate_manifest(app: Module) -> None:
             manifest_path = config.project.paths.manifest
             manifest_path.parent.mkdir(exist_ok=True, parents=True)
             with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f)
+                json.dump(manifest, f, indent=4)
 
 
 @muster.register("layout-module-map")
