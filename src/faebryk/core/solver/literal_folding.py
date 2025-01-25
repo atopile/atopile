@@ -246,7 +246,8 @@ def fold_multiply(
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
-        mutator.mutate_unpack_expression(expr)
+        # TODO: other places too?
+        mutator.mutate_expression(expr, operands=new_operands)
         return
 
     new_expr = mutator.mutate_expression(
