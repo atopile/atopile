@@ -79,7 +79,11 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                         entries.setdefault(class_, set()).add(build.paths.layout)
 
                     # Check if the module is a known ato module
-                    elif class_ := ato_modules.get(AddrStr(build.address)):
+                    elif class_ := ato_modules.get(
+                        # This is the address w/ an absolute path to the entry file
+                        # which is the format also used by the frontend to key modules
+                        AddrStr.from_parts(build.entry_file_path, build.entry_section)
+                    ):
                         entries.setdefault(class_, set()).add(build.paths.layout)
 
     return entries
