@@ -18,7 +18,7 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 
 import faebryk.libs.exceptions
 from atopile import errors, version
-from atopile.config import Dependency, config
+from atopile.config import Dependency, ProjectConfig, config
 from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
@@ -32,9 +32,12 @@ def install(
     jlcpcb: Annotated[
         bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID", hidden=True)
     ] = False,
-    link: Annotated[
+    vendor: Annotated[
         bool,
-        typer.Option("--link", "-l", help="Keep this dependency linked to the source"),
+        typer.Option(
+            "--vendor",
+            help="Copy the contents of this dependency into the repo",
+        ),
     ] = False,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
@@ -51,12 +54,12 @@ def install(
 
     config.apply_options(None)
 
-    do_install(to_install, link, upgrade, path)
+    do_install(to_install, vendor, upgrade, path)
 
 
 def do_install(
     to_install: str | None,
-    link: bool,
+    vendor: bool,
     upgrade: bool,
     path: Path | None,
 ):
@@ -75,7 +78,7 @@ def do_install(
 
     if to_install:
         # eg. "ato install some-atopile-module"
-        install_single_dependency(to_install, link, upgrade)
+        install_single_dependency(to_install, vendor, upgrade)
     else:
         # eg. "ato install"
         install_project_dependencies(upgrade)
@@ -113,17 +116,17 @@ def get_package_repo_from_registry(module_name: str) -> str:
     return return_url
 
 
-def install_single_dependency(to_install: str, link: bool, upgrade: bool):
+def install_single_dependency(to_install: str, vendor: bool, upgrade: bool):
     dependency = Dependency.from_str(to_install)
     name = _name_and_clone_url_helper(dependency.name)[0]
-    if link:
+    if vendor:
+        dependency.link_broken = True
+        abs_path = config.project.paths.src / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
+    else:
         dependency.link_broken = False
         abs_path = config.project.paths.modules / name
         dependency.path = abs_path.relative_to(config.project.paths.root)
-    else:
-        abs_path = config.project.paths.src / name
-        dependency.path = abs_path.relative_to(config.project.paths.root)
-        dependency.link_broken = True
 
     try:
         installed_version = install_dependency(dependency, upgrade, abs_path)
@@ -151,8 +154,14 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
         dependency.version_spec = f"@{installed_version}"
 
     def add_dependency(config_data, new_data):
-        if config_data.get("dependencies") is None:
-            config_data["dependencies"] = []
+        config_data["dependencies"] = [
+            dep.model_dump()
+            # add_dependencies is the field validator that loads the dependencies
+            # from the config file. It ensures the format of the ato.yaml
+            for dep in ProjectConfig.add_dependencies(
+                config_data.get("dependencies"),
+            )  # type: ignore  add_dependencies is a classmethod
+        ]
 
         for i, dep in enumerate(config_data["dependencies"]):
             if dep["name"] == new_data["name"]:
@@ -160,6 +169,7 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
                 break
         else:
             config_data["dependencies"] = config_data["dependencies"] + [new_data]
+
         return config_data
 
     config.update_project_config(add_dependency, dependency.model_dump())

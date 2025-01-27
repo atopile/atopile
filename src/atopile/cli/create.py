@@ -232,7 +232,7 @@ def project(
 
     # Install dependencies listed in the ato.yaml, typically just generics
     do_install(
-        to_install=None,
+        to_install="generics",
         link=True,
         upgrade=True,
         path=Path(repo_obj.working_tree_dir),
