@@ -117,22 +117,30 @@ def generate_module_map(app: Module) -> None:
             ) from e
 
         # Build up a map of UUIDs of the children of the module
-        # The keys are instance UUIDs and the values are the corresponding UUIDs in the layout # noqa: E501  # pre-existing
+        # The keys are instance UUIDs and the values are the
+        # corresponding UUIDs in the layout
         uuid_map = {}
         addr_map = {}
         for inst_child in module_instance.get_children_modules(types=Module):
             if not inst_child.has_trait(F.has_footprint):
                 continue
-            uuid_map[_generate_uuid_from_string(inst_child.get_full_name())] = (
-                _generate_uuid_from_string(inst_child.relative_address(module_instance))
-            )
-            addr_map[inst_child.get_full_name()] = inst_child.relative_address(
-                module_instance
-            )
+
+            parent_addr = inst_child.get_full_name()
+            # This is a bit of a hack that makes assumptions based on the addressing
+            # scheme to get the child's address w/r/t to it's root module
+            child_addr = inst_child.relative_address(module_instance)
+
+            addr_map[parent_addr] = child_addr
+
+            for addr in (parent_addr, child_addr):
+                uuid_map[_generate_uuid_from_string(addr)] = addr
 
         module_map[module_instance.relative_address(app)] = {
             "layout_path": str(first(module_layouts[module_super])),
-            "uuid_map": uuid_map,
+            # This maps the UUIDs of footprints to their addresses
+            # for compatibility with the old layouts
+            # TODO: @v0.4 remove this
+            "uuid_to_addr_map": uuid_map,
             "addr_map": addr_map,
         }
 

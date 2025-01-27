@@ -7,10 +7,10 @@ from .common import (
     calculate_translation,
     get_group_footprints,
     get_layout_map,
+    log_exceptions,
     sync_drawing,
     sync_footprints,
     sync_track,
-    log_exceptions
 )
 
 log = logging.getLogger(__name__)
@@ -20,7 +20,10 @@ class PushGroup(pcbnew.ActionPlugin):
     def defaults(self):
         self.name = "Push Group"
         self.category = "Push Group Layout Atopile"
-        self.description = "Layout components on PCB in same spatial relationships as components on schematic"
+        self.description = (
+            "Layout components on PCB in same spatial"
+            " relationships as components on schematic"
+        )
         self.show_toolbar_button = True
         self.icon_file_name = str(Path(__file__).parent / "upload.png")
         self.dark_icon_file_name = self.icon_file_name
@@ -59,11 +62,19 @@ class PushGroup(pcbnew.ActionPlugin):
                 target_board.Remove(item)
 
             # Calculate offset before moving footprints
-            offset = calculate_translation(source_fps=get_group_footprints(g), target_fps=source_board.GetFootprints())
+            offset = calculate_translation(
+                source_fps=get_group_footprints(g),
+                target_fps=source_board.GetFootprints(),
+            )
+
+            layout_maps = known_layouts[g_name]
 
             # Push the layout
             sync_footprints(
-                source_board, target_board, known_layouts[g_name]["addr_map"]
+                source_board,
+                target_board,
+                layout_maps["addr_map"],
+                layout_maps["uuid_to_addr_map"],
             )
 
             for i in g.GetItems():
@@ -84,6 +95,7 @@ class PushGroup(pcbnew.ActionPlugin):
                 target_board.Save(target_board.GetFileName())
             else:
                 raise RuntimeWarning("Cannot push group. No groups selected")
+
 
 with log_exceptions():
     PushGroup().register()

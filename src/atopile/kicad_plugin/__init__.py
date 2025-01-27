@@ -1,3 +1,1 @@
-from . import pullgroup
-from . import pushgroup
-from . import reloadgroup
+from . import pullgroup, pushgroup, reloadgroup  # noqa: F401

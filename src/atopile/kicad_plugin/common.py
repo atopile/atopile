@@ -48,17 +48,36 @@ def groups_by_name(board: pcbnew.BOARD) -> dict[str, pcbnew.PCB_GROUP]:
     return {g.GetName(): g for g in board.Groups()}
 
 
-def get_footprint_addr(fp: pcbnew.FOOTPRINT) -> Optional[str]:
+def get_footprint_uuid(fp: pcbnew.FOOTPRINT) -> str:
+    """Return the UUID of a footprint."""
+    path = fp.GetPath().AsString()
+    return path.split("/")[-1]
+
+
+def get_footprint_addr(fp: pcbnew.FOOTPRINT, uuid_map: dict[str, str]) -> Optional[str]:
     """Return the property "atopile_address" of a footprint."""
     field: pcbnew.PCB_FIELD = fp.GetFieldByName("atopile_address")
     if field:
         return field.GetText()
+
+    # This is a backup to support old layouts which
+    # haven't yet got addresses in their properties
+    uuid = get_footprint_uuid(fp)
+    if uuid in uuid_map:
+        return uuid_map[uuid]
+
     return None
 
 
-def footprints_by_addr(board: pcbnew.BOARD) -> dict[str, pcbnew.FOOTPRINT]:
+def footprints_by_addr(
+    board: pcbnew.BOARD, uuid_map: dict[str, str]
+) -> dict[str, pcbnew.FOOTPRINT]:
     """Return a dict of footprints by "atopile_address"."""
-    return {addr: fp for fp in board.GetFootprints() if (addr := get_footprint_addr(fp))}
+    return {
+        addr: fp
+        for fp in board.GetFootprints()
+        if (addr := get_footprint_addr(fp, uuid_map))
+    }
 
 
 def get_layout_map(board_path: Path) -> dict[str, Any]:
@@ -75,9 +94,7 @@ def flip_dict(d: dict) -> dict:
 
 
 def sync_track(
-    source_board: pcbnew.BOARD,
-    track: pcbnew.PCB_TRACK,
-    target_board: pcbnew.BOARD
+    source_board: pcbnew.BOARD, track: pcbnew.PCB_TRACK, target_board: pcbnew.BOARD
 ) -> pcbnew.PCB_TRACK:
     """Sync a track to the target board."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
@@ -89,11 +106,10 @@ def sync_track(
     source_board.Remove(new_track)
     return new_track
 
+
 # also pull in any silkscreen items
 def sync_drawing(
-    source_board: pcbnew.BOARD,
-    drawing: pcbnew.DRAWINGS,
-    target_board: pcbnew.BOARD
+    source_board: pcbnew.BOARD, drawing: pcbnew.DRAWINGS, target_board: pcbnew.BOARD
 ) -> pcbnew.DRAWINGS:
     """Sync a drawing to the target board."""
     new_drawing: pcbnew.DRAWINGS = drawing.Duplicate().Cast()
@@ -111,11 +127,13 @@ def update_zone_net(
     target_zone: pcbnew.ZONE,
     target_board: pcbnew.BOARD,
     addr_map: dict[str, str],
+    uuid_map: dict[str, str],
 ):
     """Finds a pin connected to original zone, pulls pin net name from new board net"""
     source_netname = source_zone.GetNetname()
     log.info(
-        f"update_zone_net source_zone={source_zone} target_zone={target_zone} source_netname={source_netname}"
+        f"update_zone_net source_zone={source_zone}"
+        f" target_zone={target_zone} source_netname={source_netname}"
     )
     matched_fp = None
     matched_pad_index = None
@@ -126,13 +144,13 @@ def update_zone_net(
                 matched_pad_index = index
                 break
 
-        if matched_fp and matched_pad_index != None:
+        if matched_fp and matched_pad_index is not None:
             break
 
-    if matched_fp and matched_pad_index != None:
-        if matched_fp_addr := get_footprint_addr(matched_fp):
+    if matched_fp and matched_pad_index is not None:
+        if matched_fp_addr := get_footprint_addr(matched_fp, uuid_map):
             if target_fp_addr := addr_map.get(matched_fp_addr, None):
-                target_fps = footprints_by_addr(target_board)
+                target_fps = footprints_by_addr(target_board, uuid_map)
                 target_fp = target_fps.get(target_fp_addr, None)
                 if target_fp:
                     new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
@@ -156,13 +174,17 @@ def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
 
 
 def sync_footprints(
-    source: pcbnew.BOARD, target: pcbnew.BOARD, addr_map: dict[str, str]
+    source: pcbnew.BOARD,
+    target: pcbnew.BOARD,
+    addr_map: dict[str, str],
+    uuid_map: dict[str, str],
 ) -> list[str]:
     """Update the target board with the layout from the source board."""
     # Update the footprint position, orientation, and side to match the source
-    source_addrs = footprints_by_addr(source)
-    target_addrs = footprints_by_addr(target)
+    source_addrs = footprints_by_addr(source, uuid_map)
+    target_addrs = footprints_by_addr(target, uuid_map)
     missing_addrs = []
+
     for s_addr, t_addr in addr_map.items():
         try:
             target_fp = target_addrs[t_addr]
@@ -170,6 +192,7 @@ def sync_footprints(
         except KeyError:
             missing_addrs.append(s_addr)
             continue
+
         target_fp.SetPosition(source_fp.GetPosition())
         target_fp.SetOrientation(source_fp.GetOrientation())
         target_fp.SetLayer(source_fp.GetLayer())
@@ -192,7 +215,9 @@ def sync_footprints(
 
 
 def find_anchor_footprint(fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.FOOTPRINT:
-    """Return anchor footprint with largest pin count in board or group: tiebreaker size"""
+    """
+    Return anchor footprint with largest pin count in board or group: tiebreaker size
+    """
     # fps = layout.GetFootprints()
     # fps = [item for item in layout.GetItems() if isinstance(item, pcbnew.FOOTPRINT)]
     max_padcount = 0
@@ -213,7 +238,9 @@ def get_group_footprints(group: pcbnew.PCB_GROUP) -> list[pcbnew.FOOTPRINT]:
     return [item for item in group.GetItems() if isinstance(item, pcbnew.FOOTPRINT)]
 
 
-def calculate_translation(source_fps: Iterable[pcbnew.FOOTPRINT], target_fps: Iterable[pcbnew.FOOTPRINT]) -> pcbnew.VECTOR2I:
+def calculate_translation(
+    source_fps: Iterable[pcbnew.FOOTPRINT], target_fps: Iterable[pcbnew.FOOTPRINT]
+) -> pcbnew.VECTOR2I:
     """Calculate the translation vector between two groups of footprints."""
     source_anchor_fp = find_anchor_footprint(source_fps)
     source_offset = source_anchor_fp.GetPosition()
