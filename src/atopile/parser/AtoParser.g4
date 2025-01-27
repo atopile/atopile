@@ -82,7 +82,9 @@ compare_op_pair
     | gt_arithmetic_or
     | lt_eq_arithmetic_or
     | gt_eq_arithmetic_or
-    | in_arithmetic_or;
+    | in_arithmetic_or
+    | is_arithmetic_or
+    ;
 
 lt_arithmetic_or: '<' arithmetic_expression;
 gt_arithmetic_or: '>' arithmetic_expression;

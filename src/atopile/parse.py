@@ -47,6 +47,9 @@ def make_parser(src_stream: InputStream) -> AtoParser:
     stream = CommonTokenStream(lexer)
     parser = AtoParser(stream)
 
+    parser.removeErrorListeners()
+    parser.addErrorListener(ErrorListenerConverter())
+
     return parser
 
 
@@ -58,9 +61,6 @@ def parse_text_as_file(
     input.name = src_path
     parser = make_parser(input)
 
-    parser.removeErrorListeners()
-    parser.addErrorListener(ErrorListenerConverter())
-
     tree = parser.file_input()
 
     return tree
@@ -71,9 +71,6 @@ def parse_file(src_path: Path) -> AtoParser.File_inputContext:
     input = FileStream(str(src_path), encoding="utf-8")
     input.name = src_path
     parser = make_parser(input)
-
-    parser.removeErrorListeners()
-    parser.addErrorListener(ErrorListenerConverter())
 
     tree = parser.file_input()
 

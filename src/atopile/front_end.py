@@ -1002,6 +1002,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         f" with explicit units ({provided_unit}).",
                         traceback=self.get_traceback(),
                     )
+
             param = self._ensure_param(target, assigned_name, unit, ctx)
             self._param_assignments[param] = (value, ctx, self.get_traceback())
 
