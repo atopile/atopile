@@ -37,14 +37,14 @@ class Winbond_W25Q16JVUXIQ(F.SPIFlash):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.qspi.clock.signal: ["CLK"],
-                self.qspi.chip_select.signal: ["CS#"],
-                self.qspi.data[0].signal: ["DI(IO0)"],
-                self.qspi.data[1].signal: ["DO(IO1)"],
+                self.qspi.clock.line: ["CLK"],
+                self.qspi.chip_select.line: ["CS#"],
+                self.qspi.data[0].line: ["DI(IO0)"],
+                self.qspi.data[1].line: ["DO(IO1)"],
                 self.power.lv: ["GND", "EP"],
-                self.qspi.data[3].signal: ["HOLD#orRESET#(IO3)"],
+                self.qspi.data[3].line: ["HOLD#orRESET#(IO3)"],
                 self.power.hv: ["VCC"],
-                self.qspi.data[2].signal: ["WP#(IO2)"],
+                self.qspi.data[2].line: ["WP#(IO2)"],
             },
             accept_prefix=False,
             case_sensitive=False,

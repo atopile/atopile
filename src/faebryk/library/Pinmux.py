@@ -66,7 +66,7 @@ class Pinmux(Module):
         self, bus: ModuleInterface, pins: list[int | F.Electrical] | None = None
     ):
         signals = [
-            logic.signal
+            logic.line
             for logic in bus.get_children(
                 direct_only=False, types=F.ElectricLogic, include_root=True
             )

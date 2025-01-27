@@ -45,9 +45,9 @@ class TPS2116(F.PowerMux):
     @assert_once
     def set_mode(self, mode: Mode, switchover_voltage: SwitchoverVoltage):
         if mode == self.Mode.PRIORITY:
-            self.mode.signal.connect(self.power_in[1].hv)
+            self.mode.line.connect(self.power_in[1].hv)
             resistor_devider = self.select.add(F.ResistorVoltageDivider())
-            self.power_in[0].hv.connect_via(resistor_devider, self.select.signal)
+            self.power_in[0].hv.connect_via(resistor_devider, self.select.line)
             resistor_devider.node[2].connect(self.power_in[0].lv)
             if switchover_voltage != self.SwitchoverVoltage.CUSTOM:
                 resistor_devider.resistor[1].resistance.constrain_subset(
@@ -97,11 +97,11 @@ class TPS2116(F.PowerMux):
                 "1": self.power_out.lv,
                 "2": self.power_out.hv,
                 "3": self.power_in[0].hv,
-                "4": self.select.signal,
-                "5": self.mode.signal,
+                "4": self.select.line,
+                "5": self.mode.line,
                 "6": self.power_in[1].hv,
                 "7": self.power_out.hv,
-                "8": self.status.signal,
+                "8": self.status.line,
             },
         )
 
@@ -110,9 +110,9 @@ class TPS2116(F.PowerMux):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
                 self.power_in[0].lv: ["GND"],
-                self.mode.signal: ["MODE"],
-                self.select.signal: ["PR1"],
-                self.status.signal: ["ST"],
+                self.mode.line: ["MODE"],
+                self.select.line: ["PR1"],
+                self.status.line: ["ST"],
                 self.power_in[0].hv: ["VIN1"],
                 self.power_in[1].hv: ["VIN2"],
                 self.power_out.hv: ["VOUT"],

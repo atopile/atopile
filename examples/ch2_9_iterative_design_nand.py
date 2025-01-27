@@ -105,9 +105,7 @@ class App(Module):
         e_switch = F.Switch(F.Electrical)()
         e_switch = el_switch.specialize(
             e_switch,
-            matrix=[
-                (e, el.signal) for e, el in zip(e_switch.unnamed, el_switch.unnamed)
-            ],
+            matrix=[(e, el.line) for e, el in zip(e_switch.unnamed, el_switch.unnamed)],
         )
         e_switch.add(
             F.has_explicit_part.by_supplier(

@@ -49,8 +49,8 @@ class INA228(Module):
         # address looks like 0b100xxxx
 
         a1_connect, a0_connect = address_map.get(address, (gnd, gnd))
-        self.address_config_pin[0].signal.connect(a0_connect)
-        self.address_config_pin[1].signal.connect(a1_connect)
+        self.address_config_pin[0].line.connect(a0_connect)
+        self.address_config_pin[1].line.connect(a1_connect)
 
     # ----------------------------------------
     #     modules, interfaces, parameters
@@ -59,7 +59,7 @@ class INA228(Module):
     power: F.ElectricPower
     address_config_pin = L.list_field(2, F.ElectricLogic)
     alert: F.ElectricLogic
-    bus_voltage_sense: F.SignalElectrical
+    bus_voltage_sense: F.ElectricSignal
     shunt_input: F.DifferentialPair
 
     # ----------------------------------------
@@ -84,15 +84,15 @@ class INA228(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.address_config_pin[0].signal: ["A0"],
-                self.address_config_pin[1].signal: ["A1"],
-                self.alert.signal: ["ALERT"],
+                self.address_config_pin[0].line: ["A0"],
+                self.address_config_pin[1].line: ["A1"],
+                self.alert.line: ["ALERT"],
                 self.power.lv: ["GND"],
-                self.shunt_input.p.signal: ["IN+"],
-                self.shunt_input.n.signal: ["IN–"],
-                self.i2c.scl.signal: ["SCL"],
-                self.i2c.sda.signal: ["SDA"],
-                self.bus_voltage_sense.signal: ["VBUS"],
+                self.shunt_input.p.line: ["IN+"],
+                self.shunt_input.n.line: ["IN–"],
+                self.i2c.scl.line: ["SCL"],
+                self.i2c.sda.line: ["SDA"],
+                self.bus_voltage_sense.line: ["VBUS"],
                 self.power.hv: ["VS"],
             },
             accept_prefix=False,

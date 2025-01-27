@@ -39,8 +39,8 @@ class QWIIC_Connector(Module):
             mapping={
                 self.power.lv: ["1"],
                 self.power.lv: ["2"],
-                self.i2c.sda.signal: ["3"],
-                self.i2c.scl.signal: ["4"],
+                self.i2c.sda.line: ["3"],
+                self.i2c.scl.line: ["4"],
                 # n.c. ["5"],
                 # n.c. ["6"],
             },
@@ -54,8 +54,8 @@ class QWIIC_Connector(Module):
             {
                 "1": self.power.lv,
                 "2": self.power.hv,
-                "3": self.i2c.sda.signal,
-                "4": self.i2c.scl.signal,
+                "3": self.i2c.sda.line,
+                "4": self.i2c.scl.line,
             }
         )
 

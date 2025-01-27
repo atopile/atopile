@@ -60,10 +60,10 @@ class ISO1540(Module):
             mapping={
                 self.non_iso.power.lv: ["GND1"],
                 self.iso.power.lv: ["GND2"],
-                self.non_iso.i2c.scl.signal: ["SCL1"],
-                self.iso.i2c.scl.signal: ["SCL2"],
-                self.non_iso.i2c.sda.signal: ["SDA1"],
-                self.iso.i2c.sda.signal: ["SDA2"],
+                self.non_iso.i2c.scl.line: ["SCL1"],
+                self.iso.i2c.scl.line: ["SCL2"],
+                self.non_iso.i2c.sda.line: ["SDA1"],
+                self.iso.i2c.sda.line: ["SDA2"],
                 self.non_iso.power.hv: ["VCC1"],
                 self.iso.power.hv: ["VCC2"],
             },
@@ -76,12 +76,12 @@ class ISO1540(Module):
         return F.can_attach_to_footprint_via_pinmap(
             pinmap={
                 "1": self.non_iso.power.hv,
-                "2": self.non_iso.i2c.sda.signal,
-                "3": self.non_iso.i2c.scl.signal,
+                "2": self.non_iso.i2c.sda.line,
+                "3": self.non_iso.i2c.scl.line,
                 "4": self.non_iso.power.lv,
                 "5": self.iso.power.lv,
-                "6": self.iso.i2c.scl.signal,
-                "7": self.iso.i2c.sda.signal,
+                "6": self.iso.i2c.scl.line,
+                "7": self.iso.i2c.sda.line,
                 "8": self.iso.power.hv,
             }
         )

@@ -95,14 +95,14 @@ class RaspberryPiPico(Module):
             if i in [2, 7, 12, 17]:
                 pin.connect(gnd)
             else:
-                pin.connect(self.base.rp2040.gpio[gpio_count].signal)
+                pin.connect(self.base.rp2040.gpio[gpio_count].line)
                 self.base.rp2040.pinmux.enable(self.base.rp2040.gpio[gpio_count])
                 gpio_count += 1
         for i, pin in enumerate(self.header[1].contact):
             if i in [2, 7, 12, 17]:
                 pin.connect(gnd)
             elif i == 9:
-                pin.connect(self.base.rp2040.run.signal)
+                pin.connect(self.base.rp2040.run.line)
             elif i == 14:
                 ...  # TODO: ADC_VREF is not implemented
             elif i == 15:
@@ -116,7 +116,7 @@ class RaspberryPiPico(Module):
             else:
                 if gpio_count == 23:
                     gpio_count += 3  # skip 23, 24, 25
-                pin.connect(self.base.rp2040.gpio[gpio_count].signal)
+                pin.connect(self.base.rp2040.gpio[gpio_count].line)
                 self.base.rp2040.pinmux.enable(self.base.rp2040.gpio[gpio_count])
                 gpio_count += 1
 

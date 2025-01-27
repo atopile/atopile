@@ -353,7 +353,6 @@ def times[T](cnt: SupportsInt, lamb: Callable[[], T]) -> list[T]:
     return [lamb() for _ in range(int(cnt))]
 
 
-@staticmethod
 def is_type_pair[T, U](
     param1: Any, param2: Any, type1: type[T], type2: type[U]
 ) -> Optional[tuple[T, U]]:

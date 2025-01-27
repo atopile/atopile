@@ -71,9 +71,9 @@ class HLK_LD2410B_P(Module):
             {
                 "5": x.power.hv,
                 "4": x.power.lv,
-                "3": x.uart.rx.signal,
-                "2": x.uart.tx.signal,
-                "1": x.out.signal,
+                "3": x.uart.rx.line,
+                "2": x.uart.tx.line,
+                "1": x.out.line,
             }
         )
 

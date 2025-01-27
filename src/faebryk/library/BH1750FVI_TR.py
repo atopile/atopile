@@ -76,8 +76,8 @@ class _BH1750FVI_TR(Module):
         self.power.voltage.constrain_subset(L.Range(2.4 * P.V, 3.6 * P.V))
 
         # TODO: self.dvi.low_pass(self.dvi_capacitor, self.dvi_resistor)
-        self.dvi.signal.connect_via(self.dvi_capacitor, self.power.lv)
-        self.dvi.signal.connect_via(self.dvi_resistor, self.power.hv)
+        self.dvi.line.connect_via(self.dvi_capacitor, self.power.lv)
+        self.dvi.line.connect_via(self.dvi_resistor, self.power.hv)
 
     @L.rt_field
     def single_electric_reference(self):
@@ -94,12 +94,12 @@ class _BH1750FVI_TR(Module):
         return F.can_attach_to_footprint_via_pinmap(
             {
                 "1": self.power.hv,
-                "2": self.addr.signal,
+                "2": self.addr.line,
                 "3": self.power.lv,
-                "4": self.i2c.sda.signal,
-                "5": self.dvi.signal,
-                "6": self.i2c.scl.signal,
-                "7": self.ep.signal,
+                "4": self.i2c.sda.line,
+                "5": self.dvi.line,
+                "6": self.i2c.scl.line,
+                "7": self.ep.line,
             }
         )
 

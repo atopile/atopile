@@ -33,7 +33,7 @@ class INA228_ReferenceDesign(Module):
             self._filtered = filtered
 
         def __preinit__(self):
-            self.shunt_sense.p.signal.connect_via(self.shunt, self.shunt_sense.n.signal)
+            self.shunt_sense.p.line.connect_via(self.shunt, self.shunt_sense.n.line)
             # TODO: minus voltagedrop over shunt
             self.power_in.voltage.alias_is(self.power_out.voltage)
             if self._lowside:
@@ -100,7 +100,7 @@ class INA228_ReferenceDesign(Module):
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
         self.power_load.connect_via(shunted_power, self.power_source)
-        self.ina288.bus_voltage_sense.signal.connect(self.power_load.hv)
+        self.ina288.bus_voltage_sense.line.connect(self.power_load.hv)
 
         self.ina288.shunt_input.connect(shunted_power.shunt_sense)
 

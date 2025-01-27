@@ -300,13 +300,13 @@ class USB2514B_ReferenceDesign(Module):
             )
 
         # Bias resistor
-        self.hub_controller.usb_bias_resistor_input.signal.connect_via(
+        self.hub_controller.usb_bias_resistor_input.line.connect_via(
             self.bias_resistor, gnd
         )  # TODO: replace with pull?
 
         # voltage divider
         vbus.hv.connect_via(
-            self.vbus_voltage_divider, self.hub_controller.vbus_detect.signal
+            self.vbus_voltage_divider, self.hub_controller.vbus_detect.line
         )
         self.vbus_voltage_divider.node[2].connect(vbus.lv)
 

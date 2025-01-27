@@ -21,7 +21,7 @@ class ESP32_C3_MINI_1_ReferenceDesign(Module):
         logic_out: F.ElectricLogic
 
         def __preinit__(self):
-            self.lp_filter.in_.signal.connect_via(
+            self.lp_filter.in_.line.connect_via(
                 self.button, self.logic_out.reference.lv
             )
             self.lp_filter.cutoff_frequency.constrain_subset(
@@ -52,14 +52,14 @@ class ESP32_C3_MINI_1_ReferenceDesign(Module):
         esp32c3mini1.gpio[9].connect(self.reset_switch.logic_out)
 
         # connect low speed crystal oscillator
-        self.low_speed_crystal_clock.xtal_if.xin.connect(esp32c3mini1.gpio[0].signal)
-        self.low_speed_crystal_clock.xtal_if.xout.connect(esp32c3mini1.gpio[1].signal)
+        self.low_speed_crystal_clock.xtal_if.xin.connect(esp32c3mini1.gpio[0].line)
+        self.low_speed_crystal_clock.xtal_if.xout.connect(esp32c3mini1.gpio[1].line)
         self.low_speed_crystal_clock.xtal_if.gnd.connect(self.vdd3v3.lv)
 
         # TODO: set the following in the pinmux
         # jtag gpio 4,5,6,7
-        esp32c3.usb.usb_if.d.n.signal.connect(esp32c3.gpio[18].signal)
-        esp32c3.usb.usb_if.d.p.signal.connect(esp32c3.gpio[19].signal)
+        esp32c3.usb.usb_if.d.n.line.connect(esp32c3.gpio[18].line)
+        esp32c3.usb.usb_if.d.p.line.connect(esp32c3.gpio[19].line)
         # UART0 gpio 30/31 (default)
         esp32c3.uart[0].rx.connect(esp32c3.gpio[20])
         esp32c3.uart[0].tx.connect(esp32c3.gpio[21])

@@ -567,3 +567,6 @@ class Power(F.ElectricPower):
         Negative is current draw.
         """
         return self.max_current
+
+
+_register_shim("generics/interfaces.ato:I2C", "import I2C")(F.I2C)

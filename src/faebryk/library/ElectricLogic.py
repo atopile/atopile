@@ -10,7 +10,7 @@ from faebryk.core.module import Module
 from faebryk.libs.library import L
 
 
-class ElectricLogic(F.SignalElectrical):
+class ElectricLogic(F.ElectricSignal):
     class has_pulls(F.Logic.TraitT):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...
@@ -29,10 +29,10 @@ class ElectricLogic(F.SignalElectrical):
         def pull(self, up: bool, owner: Module) -> F.Resistor: ...
 
     class can_be_pulled_defined(can_be_pulled.impl()):
-        def __init__(self, signal: F.Electrical, ref: F.ElectricPower) -> None:
+        def __init__(self, line: F.Electrical, ref: F.ElectricPower) -> None:
             super().__init__()
             self.ref = ref
-            self.signal = signal
+            self.line = line
 
         def pull(self, up: bool, owner: Module):
             obj = self.obj
@@ -56,7 +56,7 @@ class ElectricLogic(F.SignalElectrical):
                 owner.add(resistor, f"pull_down_{name}")
                 down_r = resistor
 
-            self.signal.connect_via(resistor, self.ref.hv if up else self.ref.lv)
+            self.line.connect_via(resistor, self.ref.hv if up else self.ref.lv)
 
             obj.add(ElectricLogic.has_pulls_defined(up_r, down_r))
             return resistor
@@ -68,9 +68,9 @@ class ElectricLogic(F.SignalElectrical):
     #
     #
     # class can_be_buffered_defined(can_be_buffered.impl()):
-    #    def __init__(self, signal: "ElectricLogic") -> None:
+    #    def __init__(self, line: "ElectricLogic") -> None:
     #        super().__init__()
-    #        self.signal = signal
+    #        self.line = line
     #
     #    def buffer(self):
     #        obj = self.obj
@@ -80,7 +80,7 @@ class ElectricLogic(F.SignalElectrical):
     #
     #        buffer = SignalBuffer()
     #        obj.buffer = buffer
-    #        self.signal.connect(buffer.logic_in)
+    #        self.line.connect(buffer.logic_in)
     #
     #        return buffer.logic_out
 
@@ -101,7 +101,7 @@ class ElectricLogic(F.SignalElectrical):
     # ----------------------------------------
     @L.rt_field
     def pulled(self):
-        return ElectricLogic.can_be_pulled_defined(self.signal, self.reference)
+        return ElectricLogic.can_be_pulled_defined(self.line, self.reference)
 
     specializable_types = L.f_field(F.can_specialize_defined)([F.Logic])
 
@@ -113,7 +113,7 @@ class ElectricLogic(F.SignalElectrical):
         Set the logic signal by directly connecting to the reference.
         """
         r = self.reference
-        self.signal.connect(r.hv if on else r.lv)
+        self.line.connect(r.hv if on else r.lv)
 
     def set_weak(self, on: bool, owner: Module):
         """
@@ -134,7 +134,7 @@ class ElectricLogic(F.SignalElectrical):
 
         # TODO make custom LinkDirectShallow that also allows the specified params
         if signal:
-            self.signal.connect(other.signal)
+            self.line.connect(other.line)
         if reference:
             self.reference.connect(other.reference)
         if lv:
