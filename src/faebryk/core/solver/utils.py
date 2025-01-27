@@ -75,7 +75,7 @@ SHOW_SS_IS = ConfigFlag(
 )
 PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of solver")
 MAX_ITERATIONS_HEURISTIC = int(
-    ConfigFlagInt("SMAX_ITERATIONS", default=30, descr="Max iterations")
+    ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
 TIMEOUT = ConfigFlagInt("STIMEOUT", default=120, descr="Solver timeout").get()
 # --------------------------------------------------------------------------------------
