@@ -250,11 +250,8 @@ class BuildTargetPaths(BaseConfigModel):
     """Build-target KiCAD project file"""
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
-        data.setdefault(
-            "layout",
-            BuildTargetPaths.ensure_layout(
-                project_paths.root / project_paths.layout / name
-            ),
+        data["layout"] = BuildTargetPaths.ensure_layout(
+            Path(data.get("layout", project_paths.root / project_paths.layout / name))
         )
         data.setdefault("output_base", project_paths.build / name)
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
@@ -378,11 +375,13 @@ class BuildTargetConfig(BaseConfigModel):
 
     @property
     def entry_file_path(self) -> Path:
+        """An absolute path to the entry file."""
         address = AddrStr(self.address)
         return self._project_paths.root / address.file_path
 
     @property
     def entry_section(self) -> str:
+        """The path to the entry module."""
         address = AddrStr(self.address)
         return address.entry_section
 
