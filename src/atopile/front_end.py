@@ -1320,15 +1320,19 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             match op_str:
                 # @v0.4 upgrade to error
                 case "<":
-                    with downgrade(DeprecatedException, to_level=logging.WARNING):
-                        raise DeprecatedException(
-                            "`<` is deprecated. Use `<=` instead."
+                    with downgrade(
+                        errors.UserNotImplementedError, to_level=logging.WARNING
+                    ):
+                        raise errors.UserNotImplementedError(
+                            "`<` is not supported. Use `<=` instead."
                         )
                     op = LessOrEqual
                 case ">":
-                    with downgrade(DeprecatedException, to_level=logging.WARNING):
-                        raise DeprecatedException(
-                            "`>` is deprecated. Use `>=` instead."
+                    with downgrade(
+                        errors.UserNotImplementedError, to_level=logging.WARNING
+                    ):
+                        raise errors.UserNotImplementedError(
+                            "`>` is not supported. Use `>=` instead."
                         )
                     op = GreaterOrEqual
                 case "<=":
