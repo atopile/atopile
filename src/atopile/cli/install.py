@@ -54,12 +54,12 @@ def install(
 
     config.apply_options(None)
 
-    do_install(to_install, not vendor, upgrade, path)
+    do_install(to_install, vendor, upgrade, path)
 
 
 def do_install(
     to_install: str | None,
-    link: bool,
+    vendor: bool,
     upgrade: bool,
     path: Path | None,
 ):
@@ -78,7 +78,7 @@ def do_install(
 
     if to_install:
         # eg. "ato install some-atopile-module"
-        install_single_dependency(to_install, link, upgrade)
+        install_single_dependency(to_install, vendor, upgrade)
     else:
         # eg. "ato install"
         install_project_dependencies(upgrade)
@@ -116,17 +116,17 @@ def get_package_repo_from_registry(module_name: str) -> str:
     return return_url
 
 
-def install_single_dependency(to_install: str, link: bool, upgrade: bool):
+def install_single_dependency(to_install: str, vendor: bool, upgrade: bool):
     dependency = Dependency.from_str(to_install)
     name = _name_and_clone_url_helper(dependency.name)[0]
-    if link:
+    if vendor:
+        dependency.link_broken = True
+        abs_path = config.project.paths.src / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
+    else:
         dependency.link_broken = False
         abs_path = config.project.paths.modules / name
         dependency.path = abs_path.relative_to(config.project.paths.root)
-    else:
-        abs_path = config.project.paths.src / name
-        dependency.path = abs_path.relative_to(config.project.paths.root)
-        dependency.link_broken = True
 
     try:
         installed_version = install_dependency(dependency, upgrade, abs_path)
