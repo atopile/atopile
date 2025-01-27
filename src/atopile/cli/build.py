@@ -107,8 +107,9 @@ def build(
     logger.info("Build successful! 🚀")
 
     if config.project.pcbnew_auto:
-        if len(config.project.builds) == 1:
-            build = first(config.project.builds.values())
+        selected_build_names = list(config.selected_builds)
+        if len(selected_build_names) == 1:
+            build = config.project.builds[first(selected_build_names)]
             try:
                 open_pcb(build.paths.layout)
             except FileNotFoundError:
@@ -118,9 +119,9 @@ def build(
                     f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
                 )
 
-        elif len(config.project.builds) > 1:
+        elif len(selected_build_names) > 1:
             logger.warning(
-                "`--open` option is only supported when building"
+                "`--open` option is only supported when building "
                 "a single build. It will be ignored."
             )
 
