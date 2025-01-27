@@ -12,7 +12,6 @@ from antlr4.TokenStreamRewriter import TokenStreamRewriter
 from pygments import token as pygments_token
 
 from atopile.parser.AtoLexer import AtoLexer
-from atopile.parser.AtoParser import AtoParser
 
 
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
@@ -234,12 +233,10 @@ class PygmentsLexerReconstructor(pygments.lexer.Lexer):
 
     def __init__(
         self,
-        ctx: ParserRuleContext,
         rewriter: AtoRewriter,
         start: int,
         stop: int,
     ):
-        self.ctx = ctx
         self.rewriter = rewriter
         self.start = start
         self.stop = stop
@@ -261,32 +258,45 @@ class PygmentsLexerReconstructor(pygments.lexer.Lexer):
             )
 
     @classmethod
+    def from_tokens(
+        cls,
+        token_stream: CommonTokenStream,
+        start_token: Token,
+        stop_token: Token | None = None,
+        expand_before: int | None = None,
+        expand_after: int | None = None,
+    ) -> "PygmentsLexerReconstructor":
+        rewriter = AtoRewriter(token_stream)
+
+        start_index = expand(
+            token_stream.tokens, start_token.tokenIndex, -1, expand_before
+        )
+
+        if stop_token is None:
+            stop_token = start_token
+
+        stop_index = expand(token_stream.tokens, stop_token.tokenIndex, 1, expand_after)
+
+        return PygmentsLexerReconstructor(rewriter, start_index, stop_index)
+
+    @classmethod
     def from_ctx(
         cls,
         ctx: ParserRuleContext,
         expand_before: int | None = None,
         expand_after: int | None = None,
     ) -> "PygmentsLexerReconstructor":
-        assert isinstance(ctx.parser, AtoParser)
-        input_stream: CommonTokenStream = ctx.parser.getInputStream()
-        rewriter = AtoRewriter(input_stream)
-
-        start_index = expand(
-            input_stream.tokens, ctx.start.tokenIndex, -1, expand_before
+        return cls.from_tokens(
+            ctx.parser.getInputStream(),  # type: ignore
+            ctx.start,
+            ctx.stop,
+            expand_before,
+            expand_after,
         )
-        stop_index = expand(input_stream.tokens, ctx.stop.tokenIndex, 1, expand_after)
-
-        lexer = PygmentsLexerReconstructor(ctx, rewriter, start_index, stop_index)
-
-        return lexer
 
     @property
     def start_line(self) -> int:
         return self.rewriter.tokens.tokens[self.start].line
-
-    @property
-    def ctx_lines(self) -> set[int]:
-        return set(range(self.ctx.start.line, self.ctx.stop.line + 1))
 
 
 def reconstruct(

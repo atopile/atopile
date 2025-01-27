@@ -1,9 +1,8 @@
 import logging
-from contextlib import contextmanager
 from os import PathLike
 from pathlib import Path
 
-from antlr4 import CommonTokenStream, FileStream, InputStream
+from antlr4 import CommonTokenStream, FileStream, InputStream, Token
 from antlr4.error.ErrorListener import ErrorListener
 
 from atopile.parser.AtoLexer import AtoLexer
@@ -14,44 +13,32 @@ from .errors import UserFileNotFoundError, UserSyntaxError
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
-IMMEDIATE_RAISE = False
-
-
-def error_factory(
-    e: Exception, msg: str, offendingSymbol, line, column
-) -> UserSyntaxError:
-    from atopile.parse_utils import get_src_info_from_token
-
-    error = UserSyntaxError(f"{str(e)} '{msg}'")
-
-    src_path, src_line, src_col = get_src_info_from_token(offendingSymbol)
-    error.src_path = src_path
-
-    # hack, need to up these one line for some reason
-    error.src_stop_line = src_line - 1
-    error.src_stop_col = column
-
-    error.src_line = line - 1
-    error.src_col = src_col
-    return error
-
 
 class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
 
-    def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        raise error_factory(e, msg, offendingSymbol, line, column)
+    def syntaxError(
+        self,
+        recognizer,
+        offendingSymbol: Token,
+        line: int,
+        column: int,
+        msg: str,
+        e: Exception | None,
+    ):
+        if e is None:
+            msg = msg
+        else:
+            msg = f"{str(e)} '{msg}'"
 
+        input_stream: CommonTokenStream = recognizer.getInputStream()
+        # This fill is required to get context past the offending symbol
+        # to accurately report the error
+        input_stream.fill()
 
-class ErrorListenerCollector(ErrorListenerConverter):
-    """Collects errors into a list."""
-
-    def __init__(self) -> None:
-        self.errors = []
-        super().__init__()
-
-    def syntaxError(self, recognizer, offendingSymbol, line, column, msg, e: Exception):
-        self.errors.append(error_factory(e, msg, offendingSymbol, line, column))
+        raise UserSyntaxError.from_tokens(
+            input_stream, offendingSymbol, None, msg, markdown=False
+        )
 
 
 def make_parser(src_stream: InputStream) -> AtoParser:
@@ -63,27 +50,6 @@ def make_parser(src_stream: InputStream) -> AtoParser:
     return parser
 
 
-def set_error_listener(parser: AtoParser, error_listener: ErrorListener) -> None:
-    """Utility function to set the error listener on a parser."""
-    parser.removeErrorListeners()
-    parser.addErrorListener(error_listener)
-
-
-@contextmanager
-def defer_parser_errors(parser: AtoParser) -> None:
-    """Defer errors from a parser until the end of the context manager."""
-    if IMMEDIATE_RAISE:
-        error_listener = ErrorListenerConverter()
-    else:
-        error_listener = ErrorListenerCollector()
-    set_error_listener(parser, error_listener)
-
-    yield
-
-    if not IMMEDIATE_RAISE and error_listener.errors:
-        raise ExceptionGroup("Errors caused parsing failure", error_listener.errors)
-
-
 def parse_text_as_file(
     src_code: str, src_path: None | str | Path = None
 ) -> AtoParser.File_inputContext:
@@ -91,8 +57,11 @@ def parse_text_as_file(
     input = InputStream(src_code)
     input.name = src_path
     parser = make_parser(input)
-    with defer_parser_errors(parser):
-        tree = parser.file_input()
+
+    parser.removeErrorListeners()
+    parser.addErrorListener(ErrorListenerConverter())
+
+    tree = parser.file_input()
 
     return tree
 
@@ -102,8 +71,11 @@ def parse_file(src_path: Path) -> AtoParser.File_inputContext:
     input = FileStream(str(src_path), encoding="utf-8")
     input.name = src_path
     parser = make_parser(input)
-    with defer_parser_errors(parser):
-        tree = parser.file_input()
+
+    parser.removeErrorListeners()
+    parser.addErrorListener(ErrorListenerConverter())
+
+    tree = parser.file_input()
 
     return tree
 

@@ -2,7 +2,6 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
-from antlr4 import ParserRuleContext
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
@@ -400,12 +399,10 @@ def test_duck_type_connect(bob: Bob):
 def test_shim_power(bob: Bob):
     from atopile.attributes import Power
 
-    ctx = ParserRuleContext()
-
     a = Power()
     b = F.ElectricPower()
 
-    bob._connect(a, b, ctx)
+    bob._connect(a, b, None)
 
     assert a.lv.is_connected_to(b.lv)
     assert a.hv.is_connected_to(b.hv)

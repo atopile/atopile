@@ -396,8 +396,8 @@ def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleCont
     try:
         yield
     except errors.UserException as ex:
-        if ex.origin is None:
-            ex.origin = ctx
+        if ex.origin_start is None:
+            ex.attach_origin_from_ctx(ctx)
             # only attach traceback if we're also setting the origin
             if ex.traceback is None:
                 ex.traceback = traceback
