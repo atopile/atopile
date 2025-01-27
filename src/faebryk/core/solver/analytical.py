@@ -950,7 +950,8 @@ def uncorrelated_alias_fold(mutator: Mutator):
             if any(get_correlations(expr)):
                 continue
 
-            if any(count > 1 for count in count_param_occurrences(expr).values()):
+            # check for auto-correlation
+            if count_param_occurrences(expr)[cast_assert(Parameter, alias)] > 1:
                 continue
 
             expr_resolved_operands = map_extract_literals(expr)
