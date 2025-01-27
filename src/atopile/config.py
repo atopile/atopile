@@ -250,10 +250,18 @@ class BuildTargetPaths(BaseConfigModel):
     """Build-target KiCAD project file"""
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
-        data["layout"] = BuildTargetPaths.ensure_layout(
-            Path(data.get("layout", project_paths.root / project_paths.layout / name))
-        )
-        data.setdefault("output_base", project_paths.build / name)
+        if layout_data := data.get("layout"):
+            data["layout"] = BuildTargetPaths.ensure_layout(Path(layout_data))
+        else:
+            data["layout"] = BuildTargetPaths.ensure_layout(
+                project_paths.root / project_paths.layout / name
+            )
+
+        if output_base_data := data.get("output_base"):
+            data["output_base"] = Path(output_base_data)
+        else:
+            data["output_base"] = project_paths.build / name
+
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
