@@ -14,11 +14,6 @@ from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import cast_assert
 
 
-@pytest.fixture
-def bob() -> Bob:
-    return Bob()
-
-
 def test_empty_module_build(bob: Bob):
     text = dedent(
         """
