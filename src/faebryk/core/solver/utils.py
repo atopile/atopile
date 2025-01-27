@@ -4,6 +4,7 @@
 
 import io
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
@@ -468,6 +469,30 @@ def get_correlations(
         overlap = (exprs[e1] & exprs[e2]).difference(excluded)
         if overlap:
             yield e1, e2, overlap
+
+
+def find_unique_params(po: ParameterOperatable) -> set[ParameterOperatable]:
+    match po:
+        case Parameter():
+            return {po}
+        case Expression():
+            return {p for op in po.operands for p in find_unique_params(op)}
+        case _:
+            return set()
+
+
+def count_param_occurrences(po: ParameterOperatable) -> dict[Parameter, int]:
+    counts: dict[Parameter, int] = defaultdict(int)
+
+    match po:
+        case Parameter():
+            counts[po] += 1
+        case Expression():
+            for op in po.operands:
+                for param, count in count_param_occurrences(op).items():
+                    counts[param] += count
+
+    return counts
 
 
 def is_replacable_by_literal(op: ParameterOperatable.All):

@@ -32,6 +32,8 @@ from faebryk.core.solver.utils import (
     algorithm,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
+    count_param_occurrences,
+    find_unique_params,
     flatten_associative,
     get_constrained_expressions_involved_in,
     get_correlations,
@@ -782,15 +784,6 @@ def isolate_lone_params(mutator: Mutator):
     A + B is Lit1, B is Lit2, A further uncorrelated B -> A is Lit1 + (Lit2 * -1)
     """
 
-    def find_unique_params(po: ParameterOperatable) -> set[ParameterOperatable]:
-        match po:
-            case Parameter():
-                return {po}
-            case Expression():
-                return {p for op in po.operands for p in find_unique_params(op)}
-            case _:
-                return set()
-
     def op_or_create_expr(
         operation: type[CanonicalOperation], *operands: ParameterOperatable.All
     ) -> ParameterOperatable.All:
@@ -955,6 +948,9 @@ def uncorrelated_alias_fold(mutator: Mutator):
             #   skipping the whole expression
             # check if any correlations
             if any(get_correlations(expr)):
+                continue
+
+            if any(count > 1 for count in count_param_occurrences(expr).values()):
                 continue
 
             expr_resolved_operands = map_extract_literals(expr)
