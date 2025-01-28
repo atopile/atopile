@@ -14,12 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: github-pages
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Required due to a bug in the checkout action
-      # https://github.com/actions/checkout/issues/1471
-      - run: git fetch --prune --unshallow --tags
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for mike to work with git history
 
       - name: Configure Git Credentials
         run: |
@@ -49,18 +46,21 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
 
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ vars.WEBSITE_DEPLOYER_APP_ID }}
-          private-key: ${{ secrets.WEBSITE_DEPLOYER_KEY }}
+      # FIXME: enable deployment access restrictions
+      # - enforce https://github.com/atopile/atopile/settings/rules/3213715
+      # - specify the --remote in `mike deploy` to include the app token https://stackoverflow.com/questions/18935539/authenticate-with-github-using-a-token
+      # - uses: actions/create-github-app-token@v1
+      #   id: app-token
+      #   with:
+      #     app-id: ${{ vars.WEBSITE_DEPLOYER_APP_ID }}
+      #     private-key: ${{ secrets.WEBSITE_DEPLOYER_KEY }}
 
       - name: Deploy development docs
         if: github.event_name == 'push'
         # TODO: it'd be nice to have the upcoming version number here as well
         # but it clobbers the latest release in case they're the same
-        run: uv run mike deploy --push --update-aliases dev --remote "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git"
+        run: uv run mike deploy --push --update-aliases dev
 
       - name: Deploy release docs
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
-        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest --remote "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git"
+        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest
