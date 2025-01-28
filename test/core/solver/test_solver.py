@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
+from operator import add, mul, sub, truediv
 from typing import Any, Iterable
 
 import pytest
@@ -12,8 +14,11 @@ from faebryk.core.parameter import (
     Add,
     And,
     Arithmetic,
+    GreaterOrEqual,
     Is,
     IsSubset,
+    IsSuperset,
+    LessOrEqual,
     Max,
     Multiply,
     Not,
@@ -63,9 +68,9 @@ def test_solve_phase_one():
     voltage3.alias_is(voltage1 + voltage2)
 
     voltage1.alias_is(Range(1 * P.V, 3 * P.V))
-    voltage3.alias_is(Range(4 * P.V, 6 * P.V))
+    voltage3.alias_is(Range(2 * P.V, 6 * P.V))
 
-    solver.phase_1_simplify_analytically(voltage1.get_graph())
+    solver.simplify_symbolically(voltage1.get_graph())
 
 
 def test_simplify():
@@ -97,11 +102,11 @@ def test_simplify():
 
     acc = (acc - quantity(3, dimensionless)) - quantity(4, dimensionless)
     assert isinstance(acc, Subtract)
-    (acc < quantity(11, dimensionless)).constrain()
+    (acc <= quantity(11, dimensionless)).constrain()
 
     G = acc.get_graph()
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G)
+    solver.simplify_symbolically(G)
     # TODO actually test something
 
 
@@ -118,7 +123,7 @@ def test_simplify_logic_and():
     anded.constrain()
     G = anded.get_graph()
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G)
+    solver.simplify_symbolically(G)
     # TODO actually test something
 
 
@@ -130,7 +135,7 @@ def test_shortcircuit_logic_and():
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_1_simplify_analytically(G)
+        solver.simplify_symbolically(G)
 
 
 def test_shortcircuit_logic_or():
@@ -146,7 +151,7 @@ def test_shortcircuit_logic_or():
     ored.constrain()
     G = ored.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
     assert repr_map[ored] == BoolSet(True)
 
 
@@ -167,7 +172,7 @@ def test_remove_obvious_tautologies():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G)
+    solver.simplify_symbolically(G)
     # TODO actually test something
 
 
@@ -197,7 +202,7 @@ def test_alias_classes():
     for p in (A, B, C, D, E):
         p.compact_repr(context)
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(G, context)
+    solver.simplify_symbolically(G, context)
     # TODO actually test something
 
 
@@ -232,7 +237,7 @@ def test_min_max_multi():
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(app.get_graph())
+    solver.simplify_symbolically(app.get_graph())
     # TODO actually test something
 
 
@@ -241,7 +246,7 @@ def test_solve_realworld_bigger():
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
 
     solver = DefaultSolver()
-    solver.phase_1_simplify_analytically(app.get_graph())
+    solver.simplify_symbolically(app.get_graph())
     # TODO actually test something
 
 
@@ -252,8 +257,8 @@ def test_inspect_known_superranges():
     assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
 
 
-@pytest.mark.skip(
-    "Behaviour not implemented https://github.com/atopile/atopile/issues/615"
+@pytest.mark.xfail(
+    reason="Behaviour not implemented https://github.com/atopile/atopile/issues/615"
 )
 def test_symmetric_inequality_uncorrelated():
     p0 = Parameter(units=P.V)
@@ -275,7 +280,7 @@ def test_symmetric_inequality_uncorrelated():
     solver = DefaultSolver()
 
     with pytest.raises(Contradiction):
-        solver.phase_1_simplify_analytically(G)
+        solver.simplify_symbolically(G)
 
 
 def test_obvious_contradiction_by_literal():
@@ -290,7 +295,7 @@ def test_obvious_contradiction_by_literal():
     G = p0.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_1_simplify_analytically(G)
+        solver.simplify_symbolically(G)
 
 
 def test_subset_is():
@@ -306,7 +311,7 @@ def test_subset_is():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_1_simplify_analytically(A.get_graph())
+        solver.simplify_symbolically(A.get_graph())
 
 
 def test_subset_is_expr():
@@ -324,7 +329,7 @@ def test_subset_is_expr():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_1_simplify_analytically(A.get_graph(), context)
+        solver.simplify_symbolically(A.get_graph(), context)
 
 
 def test_subset_single_alias():
@@ -332,7 +337,7 @@ def test_subset_single_alias():
     A.constrain_subset(Single(1 * P.V))
 
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(A.get_graph())
+    repr_map, context = solver.simplify_symbolically(A.get_graph())
     assert repr_map[A] == Single(1 * P.V)
 
 
@@ -346,7 +351,7 @@ def test_very_simple_alias_class():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(A.get_graph(), context)
+    repr_map, context = solver.simplify_symbolically(A.get_graph(), context)
     r2_map = repr_map.repr_map
     assert r2_map[A] == r2_map[B] == r2_map[C]
 
@@ -357,7 +362,7 @@ def test_domain():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.phase_1_simplify_analytically(p0.get_graph())
+        solver.simplify_symbolically(p0.get_graph())
 
 
 def test_less_obvious_contradiction_by_literal():
@@ -377,7 +382,7 @@ def test_less_obvious_contradiction_by_literal():
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        repr_map, context = solver.phase_1_simplify_analytically(G, print_context)
+        repr_map, context = solver.simplify_symbolically(G, print_context)
 
 
 def test_symmetric_inequality_correlated():
@@ -392,7 +397,7 @@ def test_symmetric_inequality_correlated():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
     assert repr_map[p0] == repr_map[p1]
     assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
 
@@ -422,7 +427,7 @@ def test_simple_literal_folds_arithmetic(
     G = expr.get_graph()
 
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
     logger.info(f"{repr_map.repr_map}")
     deducted_subset = repr_map.try_get_literal(expr, allow_subset=True)
     assert deducted_subset == expected_result
@@ -448,10 +453,10 @@ def test_super_simple_literal_folding(
     expr = expr_type(*q_operands)
     solver = DefaultSolver()
 
-    (expr < 100.0).constrain()
+    (expr <= 100.0).constrain()
     G = expr.get_graph()
 
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
     assert repr_map[expr] == Quantity_Interval_Disjoint.from_value(expected)
 
 
@@ -466,7 +471,7 @@ def test_literal_folding_add_multiplicative():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
 
     rep_add = repr_map.repr_map[expr]
     rep_A = repr_map.repr_map[A]
@@ -503,7 +508,7 @@ def test_literal_folding_add_multiplicative_2():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
     rep_add = repr_map.repr_map[expr]
     a_res = repr_map.repr_map[A]
     b_res = repr_map.repr_map[B]
@@ -531,7 +536,7 @@ def test_subset_is_replace():
     op_subset = A.constrain_subset(B)
 
     solver = DefaultSolver()
-    result, context = solver.phase_1_simplify_analytically(A.get_graph())
+    result, context = solver.simplify_symbolically(A.get_graph())
     assert result.repr_map[op_subset] == result.repr_map[op_is]
 
 
@@ -550,8 +555,195 @@ def test_transitive_subset():
     C.alias_is(Range(0, 10))
 
     solver = DefaultSolver()
-    result, context = solver.phase_1_simplify_analytically(A.get_graph(), context)
+    result, context = solver.simplify_symbolically(A.get_graph(), context)
     assert result.try_get_literal(A, allow_subset=True) == Range(0, 10)
+
+
+def test_nested_additions():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+    D = Parameter()
+
+    A.alias_is(Quantity_Interval_Disjoint.from_value(1))
+    B.alias_is(Quantity_Interval_Disjoint.from_value(1))
+    C.alias_is(A + B)
+    D.alias_is(C + A)
+
+    solver = DefaultSolver()
+    result, _ = solver.simplify_symbolically(A.get_graph())
+
+    assert result.try_get_literal(A) == Quantity_Interval_Disjoint.from_value(1)
+    assert result.try_get_literal(B) == Quantity_Interval_Disjoint.from_value(1)
+    assert result.try_get_literal(C) == Quantity_Interval_Disjoint.from_value(2)
+    assert result.try_get_literal(D) == Quantity_Interval_Disjoint.from_value(3)
+
+
+def test_combined_add_and_multiply_with_ranges():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    A.alias_is(Range.from_center_rel(1, 0.01))
+    B.alias_is(Range.from_center_rel(2, 0.01))
+    C.alias_is(2 * A + B)
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(C.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(4, 0.01)
+
+
+def test_voltage_divider_find_v_out_no_division():
+    r_top = Parameter()
+    r_bottom = Parameter()
+    v_in = Parameter()
+    v_out = Parameter()
+
+    v_in.alias_is(Range(9, 10))
+    r_top.alias_is(Range(10, 100))
+    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(v_in * r_bottom * ((r_top + r_bottom) ** -1))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(v_out.get_graph())
+
+    # dependency problem prevents finding precise solution of [9/11, 100/11]
+    # TODO: automatically rearrange expression to match
+    # v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
+    assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
+
+
+def test_voltage_divider_find_v_out_with_division():
+    r_top = Parameter()
+    r_bottom = Parameter()
+    v_in = Parameter()
+    v_out = Parameter()
+
+    v_in.alias_is(Range(9, 10))
+    r_top.alias_is(Range(10, 100))
+    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(v_out.get_graph())
+
+    assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
+
+
+def test_voltage_divider_find_v_out_single_variable_occurrences():
+    r_top = Parameter()
+    r_bottom = Parameter()
+    v_in = Parameter()
+    v_out = Parameter()
+
+    v_in.alias_is(Range(9, 10))
+    r_top.alias_is(Range(10, 100))
+    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(v_out.get_graph())
+
+    assert solver.inspect_get_known_supersets(v_out) == Range(9 / 11, 100 / 11)
+
+
+# FIXME: needs 12 iterations
+def test_voltage_divider_find_v_in():
+    r_top = Parameter()
+    r_bottom = Parameter()
+    v_in = Parameter()
+    v_out = Parameter()
+
+    v_out.alias_is(Range(9, 10))
+    r_top.alias_is(Range(10, 100))
+    r_bottom.alias_is(Range(10, 100))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(v_in.get_graph())
+
+    # TODO: should find [9.9, 100]
+    assert solver.inspect_get_known_supersets(v_in) == Range(1.8, 200)
+
+
+def test_voltage_divider_find_resistances():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+    r_total = Parameter(units=P.ohm)
+
+    v_in.alias_is(Range(9 * P.V, 10 * P.V))
+    v_out.alias_is(Range(0.9 * P.V, 1 * P.V))
+    r_total.alias_is(Quantity_Interval_Disjoint.from_value(100 * P.ohm))
+    r_total.alias_is(r_top + r_bottom)
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    result, _ = solver.simplify_symbolically(v_out.get_graph())
+
+    assert result.try_get_literal(v_out) == Range(0.9 * P.V, 1 * P.V)
+
+    # TODO: specify r_top (with tolerance), finish solving to find r_bottom
+
+
+@pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
+def test_voltage_divider_find_r_bottom():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+
+    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
+    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
+    r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(r_bottom.get_graph())
+
+    assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
+        1 * P.ohm, 0.01
+    )
+
+
+def test_voltage_divider_find_r_top():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+
+    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
+    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
+    r_bottom.alias_is(Range.from_center_rel(1 * P.ohm, 0.01))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+    # r_top = (v_in * r_bottom) / v_out - r_bottom
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(r_top.get_graph())
+
+    assert solver.inspect_get_known_supersets(r_top) == Range(
+        (10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99
+    )
+
+
+def test_voltage_divider_reject_invalid_r_top():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+
+    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
+    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    r_bottom.alias_is(Range.from_center_rel(1 * P.ohm, 0.01))
+    r_top.alias_is(Range.from_center_rel(999 * P.ohm, 0.01))
+
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.simplify_symbolically(r_top.get_graph())
 
 
 def test_base_unit_switch():
@@ -561,7 +753,7 @@ def test_base_unit_switch():
 
     G = A.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.phase_1_simplify_analytically(G)
+    repr_map, context = solver.simplify_symbolically(G)
     assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
 
 
@@ -593,7 +785,7 @@ def test_congruence_filter():
     assert y1.is_congruent_to(y2)
 
     solver = DefaultSolver()
-    result, context = solver.phase_1_simplify_analytically(x.get_graph())
+    result, context = solver.simplify_symbolically(x.get_graph())
     assert result.repr_map[y1] is result.repr_map[y2]
 
 
@@ -726,3 +918,295 @@ def test_jlcpcb_pick_powered_led():
     picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
     assert len(picked_parts) == 2
     print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
+
+
+@pytest.mark.parametrize(
+    "op, x_op_y, y, x_expected",
+    [
+        (
+            Add,
+            Range.from_center_rel(3, 0.01),
+            Range.from_center_rel(1, 0.01),
+            Range.from_center_rel(2, 0.02),
+        )
+    ],
+)
+def test_simple_parameter_isolation(
+    op: type[Arithmetic], x_op_y: Range, y: Range, x_expected: Range
+):
+    X = Parameter()
+    Y = Parameter()
+
+    op(X, Y).alias_is(x_op_y)
+    Y.alias_is(y)
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically((X + Y).get_graph())
+
+    assert solver.inspect_get_known_supersets(X) == x_expected
+
+
+def test_abstract_lowpass():
+    Li = Parameter(units=P.H)
+    C = Parameter(units=P.F)
+    fc = Parameter(units=P.Hz)
+
+    # formula
+    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+
+    # input
+    Li.alias_is(Range.from_center_rel(1 * P.uH, 0.01))
+    fc.alias_is(Range.from_center_rel(1000 * P.Hz, 0.01))
+
+    # solve
+    solver = DefaultSolver()
+    solver.simplify_symbolically(fc.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == Range(
+        6.158765796 * P.GF, 6.410118344 * P.GF
+    )
+
+
+@pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
+def test_abstract_lowpass_ss():
+    Li = Parameter(units=P.H)
+    C = Parameter(units=P.F)
+    fc = Parameter(units=P.Hz)
+
+    # formula
+    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+
+    # input
+    Li.constrain_subset(Range.from_center_rel(1 * P.uH, 0.01))
+    fc.constrain_subset(Range.from_center_rel(1000 * P.Hz, 0.01))
+
+    # solve
+    solver = DefaultSolver()
+    solver.simplify_symbolically(fc.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == Range(
+        6.158765796 * P.GF, 6.410118344 * P.GF
+    )
+
+
+def test_param_isolation():
+    X = Parameter()
+    Y = Parameter()
+
+    (X + Y).alias_is(Range.from_center_rel(3, 0.01))
+    Y.alias_is(Range.from_center_rel(1, 0.01))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(Y.get_graph())
+
+    assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)
+
+
+@pytest.mark.parametrize(
+    "op",
+    [
+        add,
+        mul,
+        sub,
+        truediv,
+    ],
+)
+def test_extracted_literal_folding(op):
+    A = Parameter()
+    B = Parameter()
+    C = Parameter(domain=L.Domains.Numbers.REAL())
+
+    lit1 = Range(0, 10)
+    lit2 = Range(10, 20)
+    lito = op(lit1, lit2)
+
+    A.alias_is(lit1)
+    B.alias_is(lit2)
+
+    op(A, B).alias_is(C)
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(C.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == lito
+
+
+def test_fold_correlated():
+    """
+    ```
+    A is [5, 10], B is [10, 15]
+    B is A + 5
+    B - A | [10, 15] - [5, 10] = [0, 10] BUT SHOULD BE 5
+    ```
+
+    A and B correlated, thus B - A should do ss not alias
+    """
+
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    op = add
+    op_inv = sub
+
+    lit1 = Range(5, 10)
+    lit_operand = Single(5)
+    lit2 = op(lit1, lit_operand)
+
+    A.alias_is(lit1)
+    B.alias_is(lit2)
+    B.alias_is(op(A, lit_operand))
+
+    C.alias_is(op_inv(B, A))
+
+    context = ParameterOperatable.ReprContext()
+    for p in (A, B, C):
+        p.compact_repr(context)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(C.get_graph(), context)
+
+    is_lit = repr_map.try_get_literal(C, allow_subset=False)
+    ss_lit = repr_map.try_get_literal(C, allow_subset=True)
+    assert ss_lit is not None
+
+    # Test for ss estimation
+    assert ss_lit.is_subset_of(op_inv(lit2, lit1))
+    # Test for not wrongful is estimation
+    assert is_lit != op_inv(lit2, lit1)
+
+    # Test for correct is estimation
+    # assert is_lit == lit_operand  # TODO
+
+
+def test_fold_pow():
+    A = Parameter()
+    B = Parameter()
+
+    lit = RangeWithGaps(Range(5, 6))
+    lit_operand = 2
+
+    A.alias_is(lit)
+    B.alias_is(A**lit_operand)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(B.get_graph())
+
+    res = repr_map.try_get_literal(B)
+    assert res == lit**lit_operand
+
+
+def test_graph_split():
+    class App(Module):
+        A: Parameter
+        B: Parameter
+
+    app = App()
+
+    C = Parameter()
+    D = Parameter()
+    app.A.alias_is(C)
+    app.B.alias_is(D)
+
+    context = ParameterOperatable.ReprContext()
+    for p in (app.A, app.B, C, D):
+        p.compact_repr(context)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(app.get_graph(), context)
+
+    assert (
+        repr_map.repr_map[app.A].get_graph() is not repr_map.repr_map[app.B].get_graph()
+    )
+
+
+def test_ss_single_into_alias():
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(Range(5, 10))
+    B.operation_is_subset(5).constrain()
+    C = A + B
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(C.get_graph())
+
+    assert repr_map.try_get_literal(B) == 5
+    assert repr_map.try_get_literal(A) == Range(5, 10)
+
+
+@pytest.mark.parametrize(
+    "op, invert",
+    [
+        (GreaterOrEqual, False),
+        (LessOrEqual, True),
+        (Is, True),
+        (Is, False),
+        (IsSubset, True),
+        (IsSubset, False),
+        (IsSuperset, True),
+        (IsSuperset, False),
+    ],
+)
+def test_find_contradiction_by_predicate(op, invert):
+    """
+    A > B, A is [0, 10], B is [20, 30], A further uncorrelated B
+    -> [0,10] > [20, 30]
+    """
+
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(Range(0, 10))
+    B.alias_is(Range(20, 30))
+
+    if invert:
+        op(B, A).constrain()
+    else:
+        op(A, B).constrain()
+
+    solver = DefaultSolver()
+
+    with pytest.raises(Contradiction):
+        solver.simplify_symbolically(A.get_graph())
+
+
+@pytest.mark.xfail(reason="No support for GT")
+def test_find_contradiction_by_gt():
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(Range(0, 10))
+    B.alias_is(Range(20, 30))
+
+    (A > B).constrain()
+
+    solver = DefaultSolver()
+    with pytest.raises(ContradictionByLiteral):
+        solver.simplify_symbolically(A.get_graph())
+
+
+def test_can_add_parameters():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    A.alias_is(Range(10, 100))
+    B.alias_is(Range(10, 100))
+    C.alias_is((A + B))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(C.get_graph())
+
+    assert solver.inspect_get_known_supersets(C) == Range(20, 200)
+
+
+def test_ss_estimation_ge():
+    A = Parameter()
+    B = Parameter()
+
+    A.operation_is_subset(Range(0, 10)).constrain()
+    (B >= A).constrain()
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(B.get_graph())

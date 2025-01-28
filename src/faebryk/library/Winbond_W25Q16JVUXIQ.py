@@ -62,6 +62,6 @@ class Winbond_W25Q16JVUXIQ(F.SPIFlash):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        (self.memory_size < 16 * P.Mbit).constrain()
+        (self.memory_size <= 16 * P.Mbit).constrain()
 
         self.power.voltage.constrain_subset(L.Range(2.7 * P.V, 3.6 * P.V))

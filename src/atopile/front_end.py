@@ -36,11 +36,9 @@ from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
     GreaterOrEqual,
-    GreaterThan,
     Is,
     IsSubset,
     LessOrEqual,
-    LessThan,
     Max,
     Min,
     Parameter,
@@ -1340,10 +1338,23 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         predicates = []
         for (lh, rh), op_str in zip(itertools.pairwise(exprs), op_strs):
             match op_str:
+                # @v0.4 upgrade to error
                 case "<":
-                    op = LessThan
+                    with downgrade(
+                        errors.UserNotImplementedError, to_level=logging.WARNING
+                    ):
+                        raise errors.UserNotImplementedError(
+                            "`<` is not supported. Use `<=` instead."
+                        )
+                    op = LessOrEqual
                 case ">":
-                    op = GreaterThan
+                    with downgrade(
+                        errors.UserNotImplementedError, to_level=logging.WARNING
+                    ):
+                        raise errors.UserNotImplementedError(
+                            "`>` is not supported. Use `>=` instead."
+                        )
+                    op = GreaterOrEqual
                 case "<=":
                     op = LessOrEqual
                 case ">=":

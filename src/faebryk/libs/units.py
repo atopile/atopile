@@ -107,7 +107,10 @@ def assert_compatible_units(items: Sequence) -> Unit:
 
     if not all(u0.is_compatible_with(u) for u in units[1:]):
         raise UnitCompatibilityError(
-            f"Operands {items} have incompatible units {units}",
+            "Operands have incompatible units:\n"
+            + "\n".join(
+                f"`{item.__repr__()}` ({units[i]})" for i, item in enumerate(items)
+            ),
             incompatible_items=items,
         )
 
