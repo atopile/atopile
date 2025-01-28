@@ -69,6 +69,10 @@ jobs:
       with:
         submodules: true
 
+    # Required due to a bug in the checkout action
+    # https://github.com/actions/checkout/issues/1471
+    - run: git fetch --prune --unshallow --tags
+
     - uses: astral-sh/setup-uv@v4
       with:
         version: '0.5.5'
