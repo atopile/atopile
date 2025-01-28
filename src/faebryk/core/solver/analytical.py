@@ -37,6 +37,7 @@ from faebryk.core.solver.utils import (
     flatten_associative,
     get_constrained_expressions_involved_in,
     get_correlations,
+    is_correlatable_literal,
     is_literal,
     is_literal_expression,
     is_replacable,
@@ -149,7 +150,8 @@ def remove_congruent_expressions(mutator: Mutator):
             continue
         # TODO use hash to speed up comparisons
         for e1, e2 in combinations(exprs, 2):
-            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2):
+            # no need for recursive, since subexpr already merged if congruent
+            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2, recursive=False):
                 full_eq.add_eq(e1, e2)
 
     repres = {}
@@ -289,14 +291,16 @@ def resolve_alias_classes(mutator: Mutator):
             # If not params or lits in class, create a new param as representative
             # for expressions
             representative = mutator.register_created_parameter(
-                Parameter(domain=domain)
+                Parameter(domain=domain), from_ops=alias_class_p_ops
             )
 
         # Repr old expr with new param, but keep old expr around
         # This will implicitly swap out the expr in other exprs with the repr
         for e in alias_class_exprs:
             copy_expr = mutator.mutate_expression(e)
-            expr = mutator.create_expression(Is, copy_expr, representative)
+            expr = mutator.create_expression(
+                Is, copy_expr, representative, from_ops=alias_class_p_ops
+            )
             expr.constrain()  # p_eq_classes is derived from constrained exprs only
             # DANGER!
             mutator._override_repr(e, representative)
@@ -397,7 +401,10 @@ def merge_intersect_subsets(mutator: Mutator):
         )
         if narrowest is None:
             narrowest = mutator.create_expression(
-                IsSubset, param, intersected
+                IsSubset,
+                param,
+                intersected,
+                from_ops=constrained_subset_ops_with_literal,
             ).constrain()
             alias_is_literal(narrowest, True, mutator)
 
@@ -539,10 +546,9 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     new_exprs = {
         k: v
-        for k, v in new_aliases.items()
-        # bool expr always map to singles
-        if not isinstance(k, ConstrainableExpression)
-    } | new_subsets
+        for k, v in (new_aliases | new_subsets).items()
+        if not is_correlatable_literal(v)
+    }
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     for expr in exprs:
@@ -566,11 +572,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             operands.append(subset_lits)
 
         # Make new expr with subset literals
-        new_expr = mutator.create_expression(type(expr), *operands)
-        # Constrain subset on old expr
-        ss = mutator.create_expression(IsSubset, expr, new_expr).constrain()
-
-        mutator.mark_predicate_true(ss)
+        mutator.mutate_expression(expr, operands=operands, soft_mutate=IsSubset)
 
 
 @algorithm("Transitive subset")
@@ -638,7 +640,9 @@ def transitive_subset(mutator: Mutator):
 
             # TODO this seems iffy
             # create A ss! C/X
-            _ = mutator.create_expression(IsSubset, A, C_or_X).constrain()
+            _ = mutator.create_expression(
+                IsSubset, A, C_or_X, from_ops=B_ss + B_is
+            ).constrain()
             ss_lookup[A].append(C_or_X)
 
 
@@ -769,6 +773,12 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         if not found_literal:
             continue
 
+        # don't mutate predicates
+        # if isinstance(e, ConstrainableExpression) and e.constrained:
+        #    # FIXME
+        #    # mutator.create_expression(type(e), *ops).constrain()
+        #    continue
+
         mutator.mutate_expression(e, operands=ops)
 
 
@@ -784,21 +794,22 @@ def isolate_lone_params(mutator: Mutator):
     A + B is Lit1, B is Lit2, A further uncorrelated B -> A is Lit1 + (Lit2 * -1)
     """
 
-    def op_or_create_expr(
-        operation: type[CanonicalOperation], *operands: ParameterOperatable.All
-    ) -> ParameterOperatable.All:
-        if len(operands) == 1:
-            return operands[0]
-
-        return mutator.create_expression(operation, *operands)
-
     def _isolate_param(
         param: ParameterOperatable,
         op_with_param: ParameterOperatable,
         op_without_param: ParameterOperatable,
+        from_expr: Expression,
     ) -> tuple[ParameterOperatable.All, ParameterOperatable.All]:
         if not isinstance(op_with_param, Expression):
             return op_with_param, op_without_param
+
+        def op_or_create_expr(
+            operation: type[CanonicalOperation], *operands: ParameterOperatable.All
+        ) -> ParameterOperatable.All:
+            if len(operands) == 1:
+                return operands[0]
+
+            return mutator.create_expression(operation, *operands, from_ops=[from_expr])
 
         retained_ops = [
             op for op in op_with_param.operands if param in find_unique_params(op)
@@ -869,7 +880,7 @@ def isolate_lone_params(mutator: Mutator):
 
         while True:
             new_op_with_param, new_op_without_param = _isolate_param(
-                param, op_with_param, op_without_param
+                param, op_with_param, op_without_param, from_expr=expr
             )
 
             if (
@@ -934,11 +945,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
     new_aliases = mutator.get_new_literal_aliased()
 
     # bool expr always map to singles
-    new_exprs = {
-        k: v
-        for k, v in new_aliases.items()
-        if not isinstance(k, ConstrainableExpression)
-    }
+    new_exprs = {k: v for k, v in new_aliases.items() if not is_correlatable_literal(v)}
 
     for alias in new_exprs.keys():
         exprs = alias.get_operations()
@@ -950,6 +957,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
             if any(get_correlations(expr)):
                 continue
 
+            # TODO: remove (done in get_correlations)
             # check for auto-correlation
             if any(
                 count_param_occurrences(expr)[cast_assert(Parameter, param)] > 1
@@ -964,7 +972,6 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 # just not the same what we do with the other types
                 continue
 
-            literals_expr = mutator.create_expression(
-                type(expr), *expr_resolved_operands
+            mutator.mutate_expression(
+                expr, operands=expr_resolved_operands, soft_mutate=Is
             )
-            mutator.create_expression(Is, expr, literals_expr).constrain()

@@ -3,6 +3,7 @@
 
 import logging
 from cmath import pi
+from typing import cast
 
 from faebryk.core.parameter import (
     Add,
@@ -65,10 +66,18 @@ def constrain_within_domain(mutator: Mutator):
     for param in mutator.nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param)
         if param.within is not None:
-            mutator.create_expression(IsSubset, new_param, param.within).constrain()
+            mutator.create_expression(
+                IsSubset,
+                new_param,
+                param.within,
+                from_ops=[param],
+            ).constrain()
         if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
             mutator.create_expression(
-                GreaterOrEqual, new_param, make_lit(quantity(0.0, new_param.units))
+                GreaterOrEqual,
+                new_param,
+                make_lit(quantity(0.0, new_param.units)),
+                from_ops=[new_param],
             ).constrain()
 
     for predicate in mutator.nodes_of_type(ConstrainableExpression):
@@ -138,7 +147,9 @@ def convert_to_canonical_literals(mutator: Mutator):
                 assert isinstance(operand, ParameterOperatable)
                 return operand
 
-            mutator.mutate_expression_with_op_map(po, mutate)
+            # need to ignore existing because non-canonical literals
+            # are congruent to canonical
+            mutator.mutate_expression_with_op_map(po, mutate, ignore_existing=True)
 
 
 @algorithm("Canonical expression form", single=True, destructive=False)
@@ -161,61 +172,93 @@ def convert_to_canonical_operations(mutator: Mutator):
     """
 
     def c[T: CanonicalOperation](op: type[T], *operands) -> T:
-        return mutator.create_expression(op, *operands)
+        return mutator.create_expression(
+            op, *operands, from_ops=getattr(c, "from_ops", None)
+        )
+
+    def curry(e_type: type[CanonicalOperation]) -> type[Expression]:
+        def _(*operands):
+            operands = [
+                make_lit(o) if not isinstance(o, ParameterOperatable) else o
+                for o in operands
+            ]
+            return c(e_type, *operands)
+
+        # hack
+        return cast(type[Expression], _)
+
+    # CanonicalNumeric
+    Add_ = curry(Add)
+    Multiply_ = curry(Multiply)
+    Power_ = curry(Power)
+    # Round_ = curry(Round)
+    # Abs_ = curry(Abs)
+    # Sin_ = curry(Sin)
+    # Log_ = curry(Log)
+
+    # CanonicalLogic
+    Or_ = curry(Or)
+    Not_ = curry(Not)
+
+    # CanonicalSetic
+    # Intersection_ = curry(Intersection)
+    # Union_ = curry(Union)
+    # SymmetricDifference_ = curry(SymmetricDifference)
+    # Difference_ = curry(Difference)
+
+    # CanonicalPredicate
+    # GreaterOrEqual_ = curry(GreaterOrEqual)
+    # IsSubset_ = curry(IsSubset)
+    # Is_ = curry(Is)
+    # GreaterThan_ = curry(GreaterThan)
 
     MirroredExpressions = [
         (
             Add,
             Subtract,
-            lambda operands: [operands[0]]
-            + [c(Multiply, o, make_lit(-1)) for o in operands[1:]],
+            lambda operands: [operands[0]] + [Multiply_(o, -1) for o in operands[1:]],
         ),
         (
             Multiply,
             Divide,
-            lambda operands: [operands[0]]
-            + [c(Power, o, make_lit(-1)) for o in operands[1:]],
+            lambda operands: [operands[0]] + [Power_(o, -1) for o in operands[1:]],
         ),
         (
             Not,
             And,
-            lambda operands: [c(Or, *[c(Not, o) for o in operands])],
+            lambda operands: [Or_(*[Not_(o) for o in operands])],
         ),
         (
             Or,
             Implies,
-            lambda operands: [c(Not, operands[0]), *operands[1:]],
+            lambda operands: [Not_(operands[0]), *operands[1:]],
         ),
         (
             Not,
             Xor,
             lambda operands: [
-                c(
-                    Or,
-                    c(Not, c(Or, *operands)),
-                    c(Not, c(Or, *[c(Not, o) for o in operands])),
-                )
+                Or_(Not_(Or_(*operands)), Not_(Or_(*[Not_(o) for o in operands])))
             ],
         ),
         (
             Round,
             Floor,
-            lambda operands: [c(Add, o, make_lit(-0.5)) for o in operands],
+            lambda operands: [Add_(*operands, -0.5)],
         ),
         (
             Round,
             Ceil,
-            lambda operands: [c(Add, o, make_lit(0.5)) for o in operands],
+            lambda operands: [Add_(*operands, 0.5)],
         ),
         (
             Sin,
             Cos,
-            lambda operands: [c(Add, o, make_lit(pi / 2)) for o in operands],
+            lambda operands: [Add_(*operands, pi / 2)],
         ),
         (
             Power,
             Sqrt,
-            lambda operands: [*operands, make_lit(-0.5)],
+            lambda operands: [*operands, -0.5],
         ),
         (
             GreaterOrEqual,
@@ -241,17 +284,18 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
+        from_ops = [e]
         # TODO move up, by implementing Parameter Target
         # Min, Max
         if isinstance(e, (Min, Max)):
             p = Parameter(units=e.units)
-            mutator.register_created_parameter(p)
+            mutator.register_created_parameter(p, from_ops=from_ops)
             union = Union(*[mutator.get_copy(o) for o in e.operands])
-            mutator.create_expression(IsSubset, p, union).constrain()
+            mutator.create_expression(IsSubset, p, union, from_ops=from_ops).constrain()
             if isinstance(e, Min):
-                mutator.create_expression(GreaterOrEqual, union, p)
+                mutator.create_expression(GreaterOrEqual, union, p, from_ops=from_ops)
             else:
-                mutator.create_expression(GreaterOrEqual, p, union)
+                mutator.create_expression(GreaterOrEqual, p, union, from_ops=from_ops)
             mutator._mutate(e, p)
             continue
 
@@ -261,6 +305,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         # Rest
         Target, Converter = lookup[type(e)]
 
+        setattr(c, "from_ops", from_ops)
         mutator.mutate_expression(
             e,
             Converter(e.operands),

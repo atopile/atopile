@@ -482,7 +482,7 @@ class ParameterOperatable(Node):
                 out = f"{{S|{lit}}}"
             if lit == BoolSet(True):
                 out = "✓"
-            elif lit == BoolSet(False):
+            elif lit == BoolSet(False) and isinstance(lit, (BoolSet, bool)):
                 out = "✗"
         except KeyErrorAmbiguous as e:
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
@@ -535,7 +535,7 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression") -> bool:
+    def is_congruent_to(self, other: "Expression", recursive: bool = False) -> bool:
         if self == other:
             return True
         if type(self) is not type(other):
@@ -543,8 +543,9 @@ class Expression(ParameterOperatable):
         if len(self.operands) != len(other.operands):
             return False
 
-        if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
-            return False
+        # TODO: think about this, imo it's not needed
+        # if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
+        #    return False
 
         if self.operands == other.operands:
             return True
@@ -557,7 +558,22 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
+        if recursive and Expression.are_pos_congruent(self.operands, other.operands):
+            return True
+
         return False
+
+    @staticmethod
+    def are_pos_congruent(
+        left: Sequence[ParameterOperatable.All],
+        right: Sequence[ParameterOperatable.All],
+    ) -> bool:
+        return all(
+            lhs.is_congruent_to(rhs, recursive=True)
+            if isinstance(lhs, Expression) and isinstance(rhs, Expression)
+            else lhs == rhs
+            for lhs, rhs in zip(left, right)
+        )
 
     @property
     def domain(self) -> "Domain":

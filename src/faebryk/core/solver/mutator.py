@@ -5,9 +5,10 @@
 import io
 import logging
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from types import UnionType
-from typing import Callable, Iterable, cast
+from typing import Callable, Iterable, Sequence, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -26,10 +27,12 @@ from faebryk.core.solver.utils import (
     S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
+    All,
     CanonicalOperation,
     SolverAlgorithm,
     SolverLiteral,
     SolverOperatable,
+    find_congruent_expression,
     get_graphs,
     is_alias_is_literal,
     make_if_doesnt_exist,
@@ -73,7 +76,7 @@ class Mutator:
         mutated: REPR_MAP
         removed: set[ParameterOperatable]
         copied: set[ParameterOperatable]
-        created: set[ParameterOperatable]
+        created: dict[ParameterOperatable, list[ParameterOperatable]]
         # TODO make api for contraining
         marked: set[ConstrainableExpression]
 
@@ -98,7 +101,7 @@ class Mutator:
             mutated=repr_map or {},
             removed=set(),
             copied=set(),
-            created=set(),
+            created=defaultdict(list),
             marked=set(),
         )
 
@@ -148,7 +151,7 @@ class Mutator:
         """
         # TODO not sure this is the best way to handle ghost exprs
         if po in self.transformations.mutated:
-            self.transformations.created.add(self.transformations.mutated[po])
+            self.transformations.created[self.transformations.mutated[po]] = [po]
 
         self.transformations.mutated[po] = new_po
 
@@ -192,20 +195,36 @@ class Mutator:
     def mutate_expression(
         self,
         expr: Expression,
-        operands: Iterable[ParameterOperatable.All] | None = None,
-        expression_factory: Callable[..., Expression] | None = None,
-    ) -> Expression:
+        operands: Iterable[All] | None = None,
+        expression_factory: type[CanonicalOperation] | None = None,
+        soft_mutate: type[Is] | type[IsSubset] | None = None,
+        ignore_existing: bool = False,
+    ) -> CanonicalOperation:
         if expr in self.transformations.mutated:
             out = self.get_mutated(expr)
-            assert isinstance(out, Expression)
+            assert isinstance(out, CanonicalOperation)
             # TODO more checks
             return out
 
         if expression_factory is None:
+            assert isinstance(expr, CanonicalOperation)
             expression_factory = type(expr)
 
         if operands is None:
             operands = expr.operands
+
+        if soft_mutate:
+            out = self.create_expression(expression_factory, *operands, from_ops=[expr])
+            self.soft_mutate(soft_mutate, expr, out)
+            return out
+
+        copy_only = expression_factory is type(expr) and operands == expr.operands
+        if not copy_only and not ignore_existing:
+            exists = find_congruent_expression(
+                expression_factory, *operands, mutator=self
+            )
+            if exists is not None:
+                return self._mutate(expr, self.get_copy(exists))
 
         new_operands = [self.get_copy(op) for op in operands]
         new_expr = expression_factory(*new_operands)
@@ -223,7 +242,19 @@ class Mutator:
             if self.is_predicate_true(expr):
                 self.mark_predicate_true(new_expr)
 
-        return self._mutate(expr, new_expr)
+        return self._mutate(expr, new_expr)  # type: ignore #TODO
+
+    # TODO make more use of soft_mutate for alias & ss with non-lit
+    def soft_mutate(
+        self,
+        soft: type[Is] | type[IsSubset],
+        old: ParameterOperatable,
+        new: ParameterOperatable,
+    ):
+        # filter A is A, A ss A
+        if new is old:
+            return
+        self.create_expression(soft, old, new, from_ops=[old]).constrain()
 
     def mutate_unpack_expression(
         self, expr: Expression, operands: list[ParameterOperatable] | None = None
@@ -231,17 +262,22 @@ class Mutator:
         """
         '''
         op(A, ...) -> A
+        op!(A, ...) -> A!
         '''
         """
         unpacked = expr.operands[0] if operands is None else operands[0]
         if not isinstance(unpacked, ParameterOperatable):
             raise ValueError("Unpacked operand can't be a literal")
-        return self._mutate(expr, self.get_copy(unpacked))
+        out = self._mutate(expr, self.get_copy(unpacked))
+        if isinstance(out, ConstrainableExpression) and out.constrained:
+            out.constrain()
+        return out
 
     def mutator_neutralize_expressions(self, expr: Expression) -> ParameterOperatable:
         """
         '''
         op(op_inv(A), ...) -> A
+        op!(op_inv(A), ...) -> A!
         '''
         """
         inner_expr = expr.operands[0]
@@ -250,14 +286,18 @@ class Mutator:
         inner_operand = inner_expr.operands[0]
         if not isinstance(inner_operand, ParameterOperatable):
             raise ValueError("Unpacked operand can't be a literal")
-        return self._mutate(expr, self.get_copy(inner_operand))
+        out = self._mutate(expr, self.get_copy(inner_operand))
+        if isinstance(out, ConstrainableExpression) and out.constrained:
+            out.constrain()
+        return out
 
     def mutate_expression_with_op_map(
         self,
         expr: Expression,
         operand_mutator: Callable[[int, ParameterOperatable], ParameterOperatable.All],
-        expression_factory: Callable[..., Expression] | None = None,
-    ) -> Expression:
+        expression_factory: type[CanonicalOperation] | None = None,
+        ignore_existing: bool = False,
+    ) -> CanonicalOperation:
         """
         operand_mutator: Only allowed to return old Graph objects
         """
@@ -265,6 +305,7 @@ class Mutator:
             expr,
             operands=[operand_mutator(i, op) for i, op in enumerate(expr.operands)],
             expression_factory=expression_factory,
+            ignore_existing=ignore_existing,
         )
 
     def get_copy(self, obj: ParameterOperatable.All) -> ParameterOperatable.All:
@@ -289,14 +330,17 @@ class Mutator:
         expr_factory: type[T],
         *operands: SolverOperatable,
         check_exists: bool = True,
+        from_ops: Sequence[ParameterOperatable] | None = None,
     ) -> T:
         assert issubclass(expr_factory, CanonicalOperation)
 
+        existed = False
         if check_exists:
-            expr = make_if_doesnt_exist(expr_factory, *operands)
+            expr, existed = make_if_doesnt_exist(expr_factory, *operands, mutator=self)
         else:
             expr = expr_factory(*operands)  # type: ignore
-        self.transformations.created.add(expr)
+        if not existed:
+            self.transformations.created[expr] = list(from_ops or [])
         return expr
 
     def remove(self, *po: ParameterOperatable):
@@ -348,8 +392,10 @@ class Mutator:
             for p in GraphFunctions(g).nodes_of_type(ParameterOperatable):
                 self.transformations.mutated[p] = p
 
-    def register_created_parameter(self, param: Parameter):
-        self.transformations.created.add(param)
+    def register_created_parameter(
+        self, param: Parameter, from_ops: Sequence[ParameterOperatable] | None = None
+    ) -> Parameter:
+        self.transformations.created[param] = list(from_ops or [])
         return param
 
     @property
@@ -381,10 +427,14 @@ class Mutator:
         )
         removed_compact = [op.compact_repr(self.print_context) for op in removed]
         added_compact = [op.compact_repr(self.print_context) for op in added]
-        assert (
-            not removed
-        ), f"Mutator {self.G} removed {indented_container(removed_compact)}"
-        assert not added, f"Mutator {self.G} added {indented_container(added_compact)}"
+        assert not removed, (
+            f"Mutator {self.G, self.algo.name} untracked removed "
+            f"{indented_container(removed_compact)}"
+        )
+        assert not added, (
+            f"Mutator {self.G, self.algo.name} untracked added "
+            f"{indented_container(added_compact)}"
+        )
 
         # don't need to check original graph, done above seperately
         all_new_graphs = get_graphs(self.transformations.mutated.values())
@@ -571,26 +621,24 @@ class Mutator:
 
         rows: list[tuple[str, str]] = []
 
-        for op in created_ops:
+        for op, from_ops in created_ops.items():
+            key = "new"
+            key_from_ops = ", ".join(o.compact_repr(context_old) for o in from_ops)
+            value = op.compact_repr(context_new)
             if is_alias_is_literal(op):
                 expr = next(iter(op.operatable_operands))
                 lit = next(iter(op.get_literal_operands().values()))
-                rows.append(
-                    (
-                        (
-                            (
-                                "proven"
-                                if try_extract_literal(expr) == make_lit(True)
-                                else "disproven"
-                            )
-                            if isinstance(expr, ConstrainableExpression)
-                            else f"new_alias: {lit}"
-                        ),
-                        expr.compact_repr(context_new),
+                if isinstance(expr, ConstrainableExpression):
+                    key = (
+                        "proven"
+                        if try_extract_literal(expr) == make_lit(True)
+                        else "disproven"
                     )
-                )
-                continue
-            rows.append(("new", op.compact_repr(context_new)))
+                else:
+                    key = f"new_alias: {lit}"
+            if key_from_ops:
+                key = f"{key} from ({key_from_ops})"
+            rows.append((key, value))
 
         marked = self.transformations.marked.difference(created_ops)
         for op in marked:
@@ -760,4 +808,28 @@ class Mutator:
         return Mutator.ReprMap(Mutator.concat_repr_maps(*repr_maps))
 
     def __repr__(self) -> str:
-        return f"Mutator({self.transformations})"
+        old_context = self.print_context
+        new_context = self.get_new_print_context()
+        mutated_transformations = [
+            (k.compact_repr(old_context), v.compact_repr(new_context))
+            for k, v in self.transformations.mutated.items()
+        ]
+        mutated = indented_container(
+            [f"{k} -> {v}" for k, v in mutated_transformations if k != v]
+            + [f"copy {k}" for k, v in mutated_transformations if k == v]
+        )
+        created = indented_container(
+            [k.compact_repr(new_context) for k in self.transformations.created]
+        )
+        removed = indented_container(
+            [k.compact_repr(old_context) for k in self.transformations.removed]
+        )
+        # copied = indented_container(
+        #    [k.compact_repr(old_context) for k in self.transformations.copied]
+        # )
+        copied = len(self.transformations.copied)
+        marked = len(self.transformations.marked)
+        return (
+            f"Mutator(mutated={mutated}, created={created},"
+            f" removed={removed}, copied={copied}, marked={marked})"
+        )

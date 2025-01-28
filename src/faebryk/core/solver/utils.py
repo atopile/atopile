@@ -11,7 +11,7 @@ from functools import wraps
 from itertools import pairwise
 from statistics import median
 from types import NoneType
-from typing import TYPE_CHECKING, Callable, Iterable, TypeGuard, cast
+from typing import TYPE_CHECKING, Callable, Iterable, Sequence, TypeGuard, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -131,6 +131,9 @@ CanonicalOperation = (
 SolverOperatable = ParameterOperatable | SolverLiteral
 
 
+All = ParameterOperatable.All | SolverLiteral
+
+
 def make_lit(val):
     return P_Set.from_value(val)
 
@@ -221,7 +224,8 @@ def alias_is_literal(
     if isinstance(po, Is):
         if literal in po.get_literal_operands().values():
             return
-    return mutator.create_expression(Is, po, literal).constrain()
+    # TODO from_ops
+    return mutator.create_expression(Is, po, literal, from_ops=None).constrain()
 
 
 def subset_literal(
@@ -245,10 +249,11 @@ def subset_literal(
         if existing.is_subset_of(literal):  # type: ignore #TODO
             return
 
-    return mutator.create_expression(IsSubset, po, literal).constrain()
+    # TODO from_ops
+    return mutator.create_expression(IsSubset, po, literal, from_ops=None).constrain()
 
 
-def is_literal(po: ParameterOperatable) -> TypeGuard[SolverLiteral]:
+def is_literal(po: ParameterOperatable | SolverOperatable) -> TypeGuard[SolverLiteral]:
     # allowed because of canonicalization
     return ParameterOperatable.is_literal(po)
 
@@ -257,7 +262,9 @@ def is_numeric_literal(po: ParameterOperatable) -> TypeGuard[CanonicalNumber]:
     return is_literal(po) and isinstance(po, CanonicalNumber)
 
 
-def is_literal_expression(po: ParameterOperatable) -> TypeGuard[Expression]:
+def is_literal_expression(
+    po: ParameterOperatable | SolverOperatable,
+) -> TypeGuard[Expression]:
     return isinstance(po, Expression) and not po.get_involved_parameters()
 
 
@@ -465,7 +472,7 @@ def get_correlations(
     # check disjoint sets
     for e1, e2 in pairwise(operables):
         if e1 is e2:
-            return e1, e2
+            yield e1, e2, exprs[e1].difference(excluded)
         overlap = (exprs[e1] & exprs[e2]).difference(excluded)
         if overlap:
             yield e1, e2, overlap
@@ -495,6 +502,12 @@ def count_param_occurrences(po: ParameterOperatable) -> dict[Parameter, int]:
     return counts
 
 
+def is_correlatable_literal(op):
+    if not is_literal(op):
+        return False
+    return op.is_single_element() or op.is_empty()
+
+
 def is_replacable_by_literal(op: ParameterOperatable.All):
     if not isinstance(op, ParameterOperatable):
         return None
@@ -506,18 +519,29 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
     lit = try_extract_literal(op, allow_subset=False)
     if lit is None:
         return None
-    if not lit.is_single_element():
+    if not is_correlatable_literal(lit):
         return None
     return lit
 
 
-def make_if_doesnt_exist[T: Expression](
-    expr_factory: type[T], *operands: SolverOperatable
-) -> T:
+def find_congruent_expression[T: CanonicalOperation](
+    expr_factory: type[T], *operands: SolverOperatable, mutator: "Mutator"
+) -> T | None:
     non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
-    if not non_lits:
-        # TODO implement better
-        return expr_factory(*operands)  # type: ignore #TODO
+    literal_expr = all(is_literal(op) or is_literal_expression(op) for op in operands)
+    if literal_expr:
+        lit_ops = {
+            op
+            for op in mutator.nodes_of_type(expr_factory, created_only=False)
+            if is_literal_expression(op)
+            # check congruence
+            and Expression.are_pos_congruent(
+                op.operands, cast(Sequence[ParameterOperatable.All], operands)
+            )
+        }
+        if lit_ops:
+            return next(iter(lit_ops))
+        return None
 
     # TODO: might have to check in repr_map
     candidates = [
@@ -527,7 +551,16 @@ def make_if_doesnt_exist[T: Expression](
         # TODO congruence check instead
         if c.operands == operands:
             return c
-    return expr_factory(*operands)  # type: ignore #TODO
+    return None
+
+
+def make_if_doesnt_exist[T: CanonicalOperation](
+    expr_factory: type[T], *operands: SolverOperatable, mutator: "Mutator"
+) -> tuple[T, bool]:
+    existing_expr = find_congruent_expression(expr_factory, *operands, mutator=mutator)
+    if existing_expr is not None:
+        return existing_expr, True
+    return expr_factory(*operands), False  # type: ignore #TODO
 
 
 def remove_predicate(

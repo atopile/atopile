@@ -59,9 +59,9 @@ class DefaultSolver(Solver):
         # TODO: get order from topo sort
         # and types from decorator
         pre=[
-            canonical.constrain_within_domain,
-            canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
+            canonical.convert_to_canonical_literals,
+            canonical.constrain_within_domain,
         ],
         iterative=[
             analytical.remove_unconstrained,
