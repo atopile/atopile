@@ -951,7 +951,10 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 continue
 
             # check for auto-correlation
-            if count_param_occurrences(expr)[cast_assert(Parameter, alias)] > 1:
+            if any(
+                count_param_occurrences(expr)[cast_assert(Parameter, param)] > 1
+                for param in find_unique_params(expr)
+            ):
                 continue
 
             expr_resolved_operands = map_extract_literals(expr)
