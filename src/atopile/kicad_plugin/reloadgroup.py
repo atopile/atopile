@@ -3,13 +3,7 @@ from pathlib import Path
 
 import pcbnew
 
-from .common import (
-    footprints_by_addr,
-    get_footprint_addr,
-    get_layout_map,
-    groups_by_name,
-    log_exceptions,
-)
+from .common import footprints_by_addr, get_layout_map, groups_by_name, log_exceptions
 
 log = logging.getLogger(__name__)
 
@@ -31,34 +25,39 @@ class ReloadGroup(pcbnew.ActionPlugin):
         board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = board.GetFileName()
 
-        existing_groups = groups_by_name(board)
+        groups = groups_by_name(board)
         # We can ignore the uuid map here because in the context of the parent module,
         # there will always be addresses with the v0.3 compiler
         footprints = footprints_by_addr(board, {})
 
         for group_name, group_data in get_layout_map(board_path).items():
+            # FIXME: we rely on the fact that this dict is topologically sorted
+            # from the layout.py code to ensure that nested groups are created
+            # prior to their parent groups
+
             # If the group doesn't yet exist in the layout
             # create it and add it to the board
-            if group_name in existing_groups:
-                g = existing_groups[group_name]
+            if group_name in groups:
+                g = groups[group_name]
             else:
                 g = pcbnew.PCB_GROUP(board)
                 g.SetName(group_name)
                 board.Add(g)
+                groups[group_name] = g
 
-            # Make sure all the footprints in the group are up to date
-            footprints_in_group = {
-                addr
-                for fp in g.GetItems()
-                if isinstance(fp, pcbnew.FOOTPRINT)
-                and (addr := get_footprint_addr(fp, {}))
-                and addr in footprints
-            }
-            expected_footprints = set(group_data["addr_map"].keys())
-            for fp_addr in footprints_in_group - expected_footprints:
-                g.RemoveItem(footprints[fp_addr])
-            for fp_addr in expected_footprints - footprints_in_group:
+            # Empty the group of footprints to begin with
+            for fp in g.GetItems():
+                if isinstance(fp, pcbnew.FOOTPRINT):
+                    g.RemoveItem(fp)
+
+            # Add all items to the group
+            # Start with the footprints
+            for fp_addr in group_data["group_components"]:
                 g.AddItem(footprints[fp_addr])
+
+            # Then add the nested groups
+            for nested_group_addr in group_data["nested_groups"]:
+                g.AddItem(groups[nested_group_addr])
 
 
 with log_exceptions():
