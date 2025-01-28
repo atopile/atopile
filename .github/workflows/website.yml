@@ -14,12 +14,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: github-pages
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      # Required due to a bug in the checkout action
-      # https://github.com/actions/checkout/issues/1471
-      - run: git fetch --prune --unshallow --tags
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for mike to work with git history
 
       - name: Configure Git Credentials
         run: |
@@ -59,8 +56,8 @@ jobs:
         if: github.event_name == 'push'
         # TODO: it'd be nice to have the upcoming version number here as well
         # but it clobbers the latest release in case they're the same
-        run: uv run mike deploy --push --update-aliases dev --remote "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git"
+        run: uv run mike deploy --push --update-aliases dev --remote https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git
 
       - name: Deploy release docs
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
-        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest --remote "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git"
+        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest --remote https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}.git
