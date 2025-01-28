@@ -33,7 +33,6 @@ class PushGroup(pcbnew.ActionPlugin):
         source_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = source_board.GetFileName()
         known_layouts = get_layout_map(board_path)
-        target_board = None
 
         # Push Selected Groups
         for g in source_board.Groups():
@@ -55,9 +54,11 @@ class PushGroup(pcbnew.ActionPlugin):
                     f"Cannot load group. Layout file {layout_path} does not exist"
                 )
 
+            log.debug(f"Loading layout {layout_path}")
             target_board: pcbnew.BOARD = pcbnew.LoadBoard(str(layout_path))
 
             # Remove everything but the footprints from the target board
+            log.debug(f"Removing tracks from {layout_path}")
             for item in target_board.GetTracks():
                 target_board.Remove(item)
 
@@ -70,6 +71,7 @@ class PushGroup(pcbnew.ActionPlugin):
             layout_maps = known_layouts[g_name]
 
             # Push the layout
+            log.debug(f"Syncing footprints from {layout_path}")
             sync_footprints(
                 source_board,
                 target_board,
@@ -79,22 +81,24 @@ class PushGroup(pcbnew.ActionPlugin):
 
             for i in g.GetItems():
                 if isinstance(i, pcbnew.PCB_TRACK):
+                    log.debug(f"Syncing track from {layout_path}")
                     sync_track(source_board, i, target_board)
                 elif isinstance(i, pcbnew.DRAWINGS):
+                    log.debug(f"Syncing drawing from {layout_path}")
                     sync_drawing(source_board, i, target_board)
 
             # Shift all objects of interest by offset
             for fp in target_board.GetFootprints():
+                log.debug(f"Moving footprint {fp.GetReference()} from {layout_path}")
                 fp.Move(offset)
 
             for track in target_board.GetTracks():
+                log.debug(f"Moving track {track.GetClass()} from {layout_path}")
                 track.Move(offset)
 
             # Save the target board
-            if target_board:
-                target_board.Save(target_board.GetFileName())
-            else:
-                raise RuntimeWarning("Cannot push group. No groups selected")
+            log.debug(f"Saving {target_board.GetFileName()}")
+            target_board.Save(target_board.GetFileName())
 
 
 with log_exceptions():

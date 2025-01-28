@@ -140,17 +140,15 @@ def generate_module_map(app: Module) -> None:
                 nested_groups.extend(ngs)
                 child_component_addrs.update(cca)
 
-        _descend()
-
         try:
             # TODO: this could be improved if we had the mro of the module
             module_super = find(
                 module_layouts.keys(), lambda x: isinstance(module_instance, x)
             )
         except KeyErrorNotFound:
-            # In this case, there is no layout for this module
-            # Pass past the remaining options, and hit the logic to continue descending
-            pass
+            # For now, only descend if there isn't a layout for this module
+            # This means we'll only get the top-level group
+            _descend()
 
         except KeyErrorAmbiguous as e:
             raise errors.UserNotImplementedError(
