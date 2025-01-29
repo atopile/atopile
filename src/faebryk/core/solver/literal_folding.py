@@ -98,7 +98,7 @@ def _collect_factors[T: Multiply | Power](
         if len(collect_op.operands) != 2:
             continue
         if issubclass(collect_type, Commutative):
-            if not any(
+            if all(
                 ParameterOperatable.is_literal(operand)
                 for operand in collect_op.operands
             ):

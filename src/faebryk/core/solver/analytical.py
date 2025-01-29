@@ -654,12 +654,6 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         if not found_literal:
             continue
 
-        # don't mutate predicates
-        # if isinstance(e, ConstrainableExpression) and e.constrained:
-        #    # FIXME
-        #    # mutator.create_expression(type(e), *ops).constrain()
-        #    continue
-
         mutator.mutate_expression(e, operands=ops)
 
 
