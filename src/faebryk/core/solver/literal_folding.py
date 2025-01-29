@@ -84,55 +84,68 @@ def _fold_op(
 def _collect_factors[T: Multiply | Power](
     counter: Counter[ParameterOperatable], collect_type: type[T]
 ):
-    # collect factors
+    # Convert the counter to a dict for easy manipulation
     factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
         counter.items()
     )
 
+    # Store operations of type collect_type grouped by their non-literal operand
     same_literal_factors: dict[ParameterOperatable, list[T]] = defaultdict(list)
 
+    # Look for operations matching collect_type and gather them
     for collect_op in set(factors.keys()):
         if not isinstance(collect_op, collect_type):
             continue
+        # Skip if operation doesn't have exactly two operands
         # TODO unnecessary strict
         if len(collect_op.operands) != 2:
             continue
+        # If it's commutative, skip purely literal operations and pick the non-literal
+        # operand
         if issubclass(collect_type, Commutative):
-            if all(
-                ParameterOperatable.is_literal(operand)
-                for operand in collect_op.operands
-            ):
+            if all(ParameterOperatable.is_literal(o) for o in collect_op.operands):
                 continue
             paramop = next(
                 o for o in collect_op.operands if not ParameterOperatable.is_literal(o)
             )
         else:
+            # For non-commutative, ensure second operand is literal
             if not ParameterOperatable.is_literal(collect_op.operands[1]):
                 continue
             paramop = collect_op.operands[0]
 
+        # Collect these factors under the non-literal operand
         same_literal_factors[paramop].append(collect_op)
+        # If this operand isn't in factors yet, initialize it with 0
         if paramop not in factors:
             factors[paramop] = make_lit(0)
+        # Remove this operation from the main factors
         del factors[collect_op]
 
+    # new_factors: combined literal counts, old_factors: leftover items
     new_factors = {}
     old_factors = []
 
+    # Combine literals for each non-literal operand
     for var, count in factors.items():
         muls = same_literal_factors[var]
-        mul_lits = [
-            next(o for o in mul.operands if ParameterOperatable.is_literal(o))
-            for mul in muls
-        ]
+        # If no effective multiplier or only a single factor, treat as leftover
         if count == 0 and len(muls) <= 1:
             old_factors.extend(muls)
             continue
 
+        # If only count=1 and no additional factors, just keep the variable
         if count == 1 and not muls:
             old_factors.append(var)
             continue
 
+        # Extract literal parts from collected operations
+        mul_lits = [
+            next(o for o in mul.operands if ParameterOperatable.is_literal(o))
+            for mul in muls
+        ]
+
+        # Sum all literal multipliers plus the leftover count
         new_factors[var] = sum(mul_lits) + make_lit(count)  # type: ignore
 
     return new_factors, old_factors
