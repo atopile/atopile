@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import Field, dataclass, fields, is_dataclass
 from enum import Enum, IntEnum, StrEnum
 from os import PathLike
 from pathlib import Path
 from types import UnionType
-from typing import Any, Callable, Iterator, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Union, get_args, get_origin
 
 import sexpdata
 from dataclasses_json import CatchAll
@@ -14,6 +16,9 @@ from sexpdata import Symbol
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.sexp.util import prettify_sexp_string
 from faebryk.libs.util import cast_assert, duplicates, groupby, zip_non_locked
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
 
 logger = logging.getLogger(__name__)
 
@@ -171,7 +176,7 @@ netlist_obj = str | Symbol | int | float | bool | list
 netlist_type = list[netlist_obj]
 
 
-def _decode[T](
+def _decode[T: DataclassInstance](
     sexp: netlist_type,
     t: type[T],
     stack: list[tuple[str, type]] | None = None,
@@ -380,18 +385,20 @@ def _decode[T](
 
     try:
         out = t(**value_dict)
-        # set parent pointers for all dataclasses in the tree
-        for v in value_dict.values():
-            if isinstance(v, list):
-                vs = v
-            else:
-                vs = [v]
-            for v_ in vs:
-                if is_dataclass(v_):
-                    setattr(v_, "_parent", out)
-        return out
     except TypeError as e:
         raise TypeError(f"Failed to create {t} with {value_dict}") from e
+
+    # set parent pointers for all dataclasses in the tree
+    for v in value_dict.values():
+        if isinstance(v, list):
+            vs = v
+        else:
+            vs = [v]
+        for v_ in vs:
+            if is_dataclass(v_):
+                setattr(v_, "_parent", out)
+
+    return out
 
 
 def _convert2(val: Any) -> netlist_obj | None:
@@ -497,7 +504,9 @@ def _encode(t) -> netlist_type:
     return sexp
 
 
-def loads[T](s: str | Path | list, t: type[T], ignore_assertions: bool = False) -> T:
+def loads[T: DataclassInstance](
+    s: str | Path | list, t: type[T], ignore_assertions: bool = False
+) -> T:
     text = s
     sexp = s
     if isinstance(s, Path):
