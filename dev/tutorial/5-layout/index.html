@@ -694,9 +694,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-with-modules" class="md-nav__link">
+  <a href="#opening-kicad" class="md-nav__link">
     <span class="md-ellipsis">
-      Start with modules
+      Opening KiCAD
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kicad-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      KiCAD plugin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-with-existing-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Start with existing modules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layout-the-remainder-of-your-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layout the remainder of your design
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-layout-881" class="md-nav__link">
+    <span class="md-ellipsis">
+      Auto-layout #881
     </span>
   </a>
   
@@ -1137,9 +1173,45 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#start-with-modules" class="md-nav__link">
+  <a href="#opening-kicad" class="md-nav__link">
     <span class="md-ellipsis">
-      Start with modules
+      Opening KiCAD
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kicad-plugin" class="md-nav__link">
+    <span class="md-ellipsis">
+      KiCAD plugin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#start-with-existing-modules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Start with existing modules
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#layout-the-remainder-of-your-design" class="md-nav__link">
+    <span class="md-ellipsis">
+      Layout the remainder of your design
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auto-layout-881" class="md-nav__link">
+    <span class="md-ellipsis">
+      Auto-layout #881
     </span>
   </a>
   
@@ -1166,8 +1238,48 @@
 <h1 id="5-layout">5. Layout<a class="headerlink" href="#5-layout" title="Permanent link">&para;</a></h1>
 <p><code>ato</code> code defines the function of the circuit via how everything is connected up. Unlike a software compiler, these components all need to end up placed somewhere and copper traces need to be routed between the elements for the circuit to function.</p>
 <p>This process is typically called "layout".</p>
-<p>atopile uses <a href="kicad.org">KiCAD</a>, the premier open-source electronics design package for layout.</p>
-<h2 id="start-with-modules">Start with modules<a class="headerlink" href="#start-with-modules" title="Permanent link">&para;</a></h2>
+<p>atopile uses <a href="https://kicad.org">KiCAD</a>, the premier open-source electronics design package for layout.</p>
+<h2 id="opening-kicad">Opening KiCAD<a class="headerlink" href="#opening-kicad" title="Permanent link">&para;</a></h2>
+<p>When you run <code>ato build</code>, <code>ato</code> will generate a KiCAD project file for you.</p>
+<p>The easiest way to open this is to add the <code>--open</code> flag to the <code>build</code> command:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ato<span class="w"> </span>build<span class="w"> </span>--open
+</span></code></pre></div>
+<p>This will open the KiCAD project file in a new window.</p>
+<h2 id="kicad-plugin">KiCAD plugin<a class="headerlink" href="#kicad-plugin" title="Permanent link">&para;</a></h2>
+<p>The <code>ato</code> compiler automatically installs a KiCAD plugin to help you with layout. This saves insane amounts of time, so we definitely recommend using it!</p>
+<p>The plugin is installed automatically when you run the <code>ato</code> CLI, but in case something went wrong, you can re-trigger the installation by running <code>ato configure</code>.</p>
+<h2 id="start-with-existing-modules">Start with existing modules<a class="headerlink" href="#start-with-existing-modules" title="Permanent link">&para;</a></h2>
+<p>If you import the rp2040 module we installed in the <a href="../4-packages/">previous chapter</a>, you can reuse its layout.</p>
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">from</span><span class="w"> </span><span class="s">&quot;rp2040/RP2040Kit.ato&quot;</span><span class="w"> </span><span class="k">import</span><span class="w"> </span><span class="n">RP2040Kit</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">module</span><span class="w"> </span><span class="n">App</span>:
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="n">uc</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">RP2040Kit</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="c"># Note: I&#39;ve emptied this module out for brevity.</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="c"># You can decide whether you want to keep the demo voltage divider or not.</span>
+</span></code></pre></div>
+<p>To reuse a layout from a module:</p>
+<ul>
+<li>run an <code>ato build</code>, to make sure the layout is synced with the code</li>
+<li>hit the "Sync Group" button in the KiCAD plugin</li>
+<li>select the group you want to sync, and hit the "Pull" (Down arrow) button to pull the layout from the module's KiCAD layout file</li>
+</ul>
+<video autoplay loop muted playsinline>
+    <source src="../assets/5-pcb-layout-sync.mp4" type="video/mp4">
+    <img src="../assets/5-pcb-layout-sync.gif" alt="Animated fallback">
+</video>
+
+<div class="admonition info">
+<p class="admonition-title">Under the hood <img alt="🔧" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f527.svg" title=":wrench:" /></p>
+<p>The <code>ato</code> compiler will map layouts with a <strong>class or super-class</strong> that <strong>has a build</strong>.</p>
+<p>The <code>RP2040Kit</code> in the example is the class, and the <code>ato.yaml</code> config file in the <code>rp2040</code> package means that there's a layout associated with it.</p>
+<p>If you want to create a reusable layout for a class of your own, the easiest way is to add a new build config with <code>ato create build</code>, and then point the newly created <a href="../../reference/config/#builds.entry">entry</a> at the module you've made.</p>
+</div>
+<h2 id="layout-the-remainder-of-your-design">Layout the remainder of your design<a class="headerlink" href="#layout-the-remainder-of-your-design" title="Permanent link">&para;</a></h2>
+<p>Use KiCAD to place-and-route the remainder of your design, just like if you got it from the schematic editor.</p>
+<p>If you can't find the quality of KiCAD docs you need to get started, drop a comment or upvote on this Github Issue <a class="magiclink magiclink-github magiclink-pull" href="https://github.com/atopile/atopile/pull/882" title="GitHub Pull Request: atopile/atopile #882">#882</a></p>
+<h2 id="auto-layout-881">Auto-layout <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" /> <a class="magiclink magiclink-github magiclink-discussion" href="https://github.com/atopile/atopile/discussions/881" title="GitHub Discussion: atopile/atopile #881">#881</a><a class="headerlink" href="#auto-layout-881" title="Permanent link">&para;</a></h2>
+<p>atopile can do small bits of auto-layout for you, however it's not completely exposed to <code>ato</code> yet.</p>
+<p>If this is a feature that'd super-charge your workflow, please come vote and discuss it in the Github Discussion <a class="magiclink magiclink-github magiclink-discussion" href="https://github.com/atopile/atopile/discussions/881" title="GitHub Discussion: atopile/atopile #881">#881</a></p>
 
 
 

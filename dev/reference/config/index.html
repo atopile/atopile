@@ -954,6 +954,24 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#builds.targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      builds.targets
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#builds.exclude_targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      builds.exclude_targets
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1235,6 +1253,24 @@
   
 </li>
       
+        <li class="md-nav__item">
+  <a href="#builds.targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      builds.targets
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#builds.exclude_targets" class="md-nav__link">
+    <span class="md-ellipsis">
+      builds.exclude_targets
+    </span>
+  </a>
+  
+</li>
+      
     </ul>
   
 </nav>
@@ -1335,6 +1371,33 @@ Everything that exists within this module will be built as part of this build-ta
 <div class="language-toml highlight"><span class="filename">ato.yaml</span><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">builds</span><span class="err">:</span>
 </span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="n">default</span><span class="err">:</span>
 </span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">        </span><span class="n">entry</span><span class="err">:</span><span class="w"> </span><span class="n">some_file</span><span class="p">.</span><span class="n">ato</span><span class="err">:</span><span class="n">App</span>
+</span></code></pre></div>
+<h3 id="builds.targets"><a href="#builds.targets"><code>builds.targets</code></a><a class="headerlink" href="#builds.targets" title="Permanent link">&para;</a></h3>
+<p>A list of targets' names to build after updating the layout</p>
+<p><strong>Default value</strong>: <code>["__default__"]</code>, which is a special value.</p>
+<p><strong>Type</strong>: <code>list[str]</code></p>
+<p><strong>Example usage</strong>:</p>
+<div class="language-toml highlight"><span class="filename">ato.yaml</span><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">builds</span><span class="err">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">    </span><span class="n">default</span><span class="err">:</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">        </span><span class="n">targets</span><span class="err">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">          </span><span class="n">-</span><span class="w"> </span><span class="n">bom</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">          </span><span class="n">-</span><span class="w"> </span><span class="n">mfg-data</span>
+</span></code></pre></div>
+<h3 id="builds.exclude_targets"><a href="#builds.exclude_targets"><code>builds.exclude_targets</code></a><a class="headerlink" href="#builds.exclude_targets" title="Permanent link">&para;</a></h3>
+<p>A list of targets' names to exclude.</p>
+<p>Applied after <code>targets</code> are specified. This makes it useful to exclude
+targets that aren't relevant to a specific build - especially in CI,
+which typically builds <strong>all</strong> targets.</p>
+<p>Excluding the <code>mfg-data</code> target is useful, for example, for CI build targets that represent a
+ module, but not a board you'd manufacture.</p>
+<p><strong>Default value</strong>: <code>[]</code>, don't actively exclude any targets</p>
+<p><strong>Type</strong>: <code>list[str]</code></p>
+<p><strong>Example usage</strong>:</p>
+<div class="language-toml highlight"><span class="filename">ato.yaml</span><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">builds</span><span class="err">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="n">default</span><span class="err">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">        </span><span class="n">exclude_targets</span><span class="err">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">          </span><span class="n">-</span><span class="w"> </span><span class="n">bom</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">          </span><span class="n">-</span><span class="w"> </span><span class="n">mfg-data</span>
 </span></code></pre></div>
 
 

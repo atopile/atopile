@@ -709,6 +709,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#importing-things" class="md-nav__link">
+    <span class="md-ellipsis">
+      importing things
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sharing-packages-youve-built" class="md-nav__link">
     <span class="md-ellipsis">
       Sharing packages you've built
@@ -1209,6 +1218,15 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#importing-things" class="md-nav__link">
+    <span class="md-ellipsis">
+      importing things
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#sharing-packages-youve-built" class="md-nav__link">
     <span class="md-ellipsis">
       Sharing packages you've built
@@ -1306,6 +1324,21 @@ These have all been built, are known to work and come with a functioning layout 
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ato<span class="w"> </span>install<span class="w"> </span>--vendor<span class="w"> </span>esp32-s3
 </span></code></pre></div>
 <p>This will copy the package into your project's <code>src</code> directory instead, and break the link to the upstream repo.</p>
+<h2 id="importing-things"><code>import</code>ing things<a class="headerlink" href="#importing-things" title="Permanent link">&para;</a></h2>
+<p>There are two forms of an <code>import</code> statement in <code>ato</code>:</p>
+<p>For standard library imports, you can use the <code>import</code> statement:</p>
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">import</span><span class="w"> </span><span class="n">Something</span>
+</span></code></pre></div>
+<p>For imports from other files, you can use the <code>from ... import ...</code> statement:</p>
+<div class="language-ato highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">from</span><span class="w"> </span><span class="s">&quot;path/to/file.ato&quot;</span><span class="w"> </span><span class="k">import</span><span class="w"> </span><span class="n">Something</span>,<span class="w"> </span><span class="n">SomethingElse</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">from</span><span class="w"> </span><span class="s">&quot;path/to/another/file.py&quot;</span><span class="w"> </span><span class="k">import</span><span class="w"> </span><span class="n">SomethingMore</span><span class="w">  </span><span class="c"># for fabll modules</span>
+</span></code></pre></div>
+<p>The search path for <code>from ... import ...</code> is (in order):</p>
+<ol>
+<li>The current file's directory</li>
+<li>The project's <code>src</code> directory, as defined by the <a href="../../reference/config/#paths.src"><code>ato.yaml</code> config file</a></li>
+<li>The <code>.ato/modules</code> directory within the project's root</li>
+</ol>
 <h2 id="sharing-packages-youve-built">Sharing packages you've built<a class="headerlink" href="#sharing-packages-youve-built" title="Permanent link">&para;</a></h2>
 <p>To the package manager: coming soon! <img alt="🚀" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/1f680.svg" title=":rocket:" /> <a class="magiclink magiclink-github magiclink-discussion" href="https://github.com/atopile/atopile/discussions/495" title="GitHub Discussion: atopile/atopile #495">#495</a></p>
 <p>For now, publish a public repo with a README.md that describes the package and how to use it.
