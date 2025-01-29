@@ -3,7 +3,6 @@
 
 import logging
 from dataclasses import dataclass, field
-from enum import StrEnum
 
 import pytest
 from dataclasses_json import CatchAll
@@ -13,6 +12,7 @@ import faebryk.library._F as F  # noqa: F401  # This is required to prevent a ci
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 from faebryk.libs.sexp.dataclass_sexp import (
     DecodeError,
+    SymEnum,
     dataclass_dfs,
     dumps,
     loads,
@@ -41,7 +41,7 @@ def _unformat(s: str) -> str:
 class Container:
     @dataclass(kw_only=True)
     class SomeDataclass:
-        class SomeEnum(StrEnum):
+        class SomeEnum(SymEnum):
             ONE = "one"
             TWO = "two"
 
@@ -81,7 +81,7 @@ class Container:
                     h=Container.SomeDataclass.SomeEnum.TWO,
                 )
             ),
-            '(some_dataclass 1 yes no "one" (e 2) (f no) (g yes) (h "two"))',
+            "(some_dataclass 1 yes no one (e 2) (f no) (g yes) (h two))",
         ),
     ],
 )
@@ -95,7 +95,7 @@ def test_no_unknowns(container, str_sexp):
 
 def test_extra_positional():
     with pytest.raises(DecodeError):
-        loads('(some_dataclass 1 yes  no "one" gibberish (e 2) (f no))', Container)
+        loads('(some_dataclass 1 yes no "one" gibberish (e 2) (f no))', Container)
 
 
 def test_empty_unknowns():
