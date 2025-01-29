@@ -74,6 +74,30 @@ ato install --vendor esp32-s3
 This will copy the package into your project's `src` directory instead, and break the link to the upstream repo.
 
 
+## `import`ing things
+
+There are two forms of an `import` statement in `ato`:
+
+For standard library imports, you can use the `import` statement:
+
+```ato
+import Something
+```
+
+For imports from other files, you can use the `from ... import ...` statement:
+
+```ato
+from "path/to/file.ato" import Something, SomethingElse
+from "path/to/another/file.py" import SomethingMore  # for fabll modules
+```
+
+The search path for `from ... import ...` is (in order):
+
+1. The current file's directory
+2. The project's `src` directory, as defined by the [`ato.yaml` config file](../reference/config.md#paths.src)
+3. The `.ato/modules` directory within the project's root
+
+
 ## Sharing packages you've built
 
 To the package manager: coming soon! :rocket: ?495

@@ -16,11 +16,20 @@ EXAMPLES_DIR = _repo_root() / "examples"
 FABLL_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.py") if p.is_file()]
 ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 
+XFAILURES = {
+    "ch2_5_signal_processing": "Need more powerful expression reordering",  # TODO
+    "ch1_2_good_voltage_divider": "Need more powerful expression reordering",  # TODO
+}
 
-# FIXME: Test ato examples too
+
 @pytest.mark.parametrize(
     "example",
-    FABLL_EXAMPLES + ATO_EXAMPLES,
+    (
+        pytest.param(example, marks=pytest.mark.xfail(reason=reason))
+        if (reason := XFAILURES.get(example.stem))
+        else example
+        for example in FABLL_EXAMPLES + ATO_EXAMPLES
+    ),
     ids=lambda p: p.stem,
 )
 def test_examples_build(

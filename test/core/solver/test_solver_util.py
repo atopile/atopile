@@ -23,7 +23,8 @@ from faebryk.core.parameter import (
     Xor,
 )
 from faebryk.core.solver.analytical import flatten_associative
-from faebryk.core.solver.utils import Associative, FullyAssociative, Mutator
+from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.utils import Associative, FullyAssociative, algorithm
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, times
@@ -85,7 +86,11 @@ def test_mutator_no_graph_merge():
 
     context = ParameterOperatable.ReprContext()
 
-    mutator = Mutator(p0.get_graph(), print_context=context)
+    @algorithm("")
+    def algo(mutator: Mutator):
+        pass
+
+    mutator = Mutator(p0.get_graph(), print_context=context, algo=algo)
     p0_new = cast_assert(Parameter, mutator.get_copy(p0))
     p3_new = cast_assert(Parameter, mutator.get_copy(p3))
     alias_new = cast_assert(Is, mutator.get_copy(alias))

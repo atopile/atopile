@@ -289,7 +289,7 @@ class Quantity_Interval(Quantity_Set):
         if min_ == max_:
             return f"[{min_}]"
         center, rel = self._interval.as_center_rel()
-        if rel < 1:
+        if rel < 0.5 and round(rel, 2) == rel:
             return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
         return f"[{min_}, {max_}]"
 
@@ -554,7 +554,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
                 return f"[{self._format_number(r._min)}]"
             try:
                 center, rel = r.as_center_rel()
-                if rel < 1:
+                if rel < 0.5 and round(rel, 2) == rel:
                     return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
             except ZeroDivisionError:
                 pass

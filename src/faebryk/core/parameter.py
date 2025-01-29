@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -583,6 +584,15 @@ class Expression(ParameterOperatable):
             for i, o in enumerate(self.operands)
         }
 
+    def get_involved_parameters(self) -> Counter["Parameter"]:
+        params = [p for p in self.operands if isinstance(p, Parameter)] + [
+            p
+            for expr in self.operands
+            if isinstance(expr, Expression)
+            for p in expr.get_involved_parameters()
+        ]
+        return Counter(params)
+
     def depth(self) -> int:
         """
         Returns depth of longest expression tree from this expression.
@@ -901,6 +911,10 @@ class Power(Arithmetic):
         base_unit = HasUnit.get_units_or_dimensionless(base)
         units = dimensionless
         if not base_unit.is_compatible_with(dimensionless):
+            if isinstance(exponent, ParameterOperatable):
+                raise NotImplementedError(
+                    "exponent must be a literal for base with unit"
+                )
             exp_val = Quantity_Interval_Disjoint.from_value(exponent)
             if exp_val.min_elem != exp_val.max_elem:
                 raise ValueError(
@@ -1361,12 +1375,26 @@ class LessThan(NumericPredicate):
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
 
+    def __init__(self, left, right):
+        # TODO we might allow it for integer domains at some point
+        raise NotImplementedError(
+            "'<' not supported, you very likely want to use '<=' instead"
+        )
+        super().__init__(left, right)
+
 
 class GreaterThan(NumericPredicate):
     REPR_STYLE = NumericPredicate.ReprStyle(
         symbol=">",
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
+
+    def __init__(self, left, right):
+        # TODO we might allow it for integer domains at some point
+        raise NotImplementedError(
+            "'>' not supported, you very likely want to use '>=' anyway"
+        )
+        super().__init__(left, right)
 
 
 class LessOrEqual(NumericPredicate):

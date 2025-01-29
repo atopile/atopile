@@ -4,7 +4,6 @@
 import logging
 from cmath import pi
 
-from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
     Add,
     And,
@@ -37,10 +36,11 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
+from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalOperation,
-    Mutator,
     NumericLiteralR,
+    algorithm,
     alias_is_literal,
     make_lit,
 )
@@ -55,13 +55,14 @@ from faebryk.libs.util import cast_assert
 logger = logging.getLogger(__name__)
 
 
+@algorithm("Constrain within and domain", single=True, destructive=False)
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
-    #TODO: Alias predicates to True since we need to assume they are true.
+    Alias predicates to True since we need to assume they are true.
     """
 
-    for param in GraphFunctions(mutator.G).nodes_of_type(Parameter):
+    for param in mutator.nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param)
         if param.within is not None:
             mutator.create_expression(IsSubset, new_param, param.within).constrain()
@@ -70,7 +71,7 @@ def constrain_within_domain(mutator: Mutator):
                 GreaterOrEqual, new_param, make_lit(quantity(0.0, new_param.units))
             ).constrain()
 
-    for predicate in GraphFunctions(mutator.G).nodes_of_type(ConstrainableExpression):
+    for predicate in mutator.nodes_of_type(ConstrainableExpression):
         if predicate.constrained:
             new_predicate = cast_assert(
                 ConstrainableExpression, mutator.mutate_expression(predicate)
@@ -80,6 +81,7 @@ def constrain_within_domain(mutator: Mutator):
             mutator.mark_predicate_false(new_predicate)
 
 
+@algorithm("Canonical literal form", single=True, destructive=False)
 def convert_to_canonical_literals(mutator: Mutator):
     """
     - remove units for NumberLike
@@ -88,9 +90,9 @@ def convert_to_canonical_literals(mutator: Mutator):
     - Enum -> P_Set[Enum]
     """
 
-    param_ops = GraphFunctions(mutator.G).nodes_of_type(ParameterOperatable)
+    param_ops = mutator.nodes_of_type(ParameterOperatable, sort_by_depth=True)
 
-    for po in ParameterOperatable.sort_by_depth(param_ops, ascending=True):
+    for po in param_ops:
         # Parameter
         if isinstance(po, Parameter):
             mutator.mutate_parameter(
@@ -139,6 +141,7 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_expression_with_op_map(po, mutate)
 
 
+@algorithm("Canonical expression form", single=True, destructive=False)
 def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add
@@ -236,8 +239,8 @@ def convert_to_canonical_operations(mutator: Mutator):
         for Target, Convertible, Converter in MirroredExpressions
     }
 
-    exprs = GraphFunctions(mutator.G).nodes_of_type(Expression)
-    for e in ParameterOperatable.sort_by_depth(exprs, ascending=True):
+    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
+    for e in exprs:
         # TODO move up, by implementing Parameter Target
         # Min, Max
         if isinstance(e, (Min, Max)):
