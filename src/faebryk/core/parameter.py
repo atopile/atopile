@@ -482,11 +482,14 @@ class ParameterOperatable(Node):
                 out = f"{{S|{lit}}}"
             if lit == BoolSet(True):
                 out = "✓"
-            elif lit == BoolSet(False):
+            elif lit == BoolSet(False) and isinstance(lit, (BoolSet, bool)):
                 out = "✗"
         except KeyErrorAmbiguous as e:
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
         return out
+
+    def __rich_repr__(self):
+        yield self.compact_repr()
 
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
@@ -535,7 +538,7 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression") -> bool:
+    def is_congruent_to(self, other: "Expression", recursive: bool = False) -> bool:
         if self == other:
             return True
         if type(self) is not type(other):
@@ -543,8 +546,9 @@ class Expression(ParameterOperatable):
         if len(self.operands) != len(other.operands):
             return False
 
-        if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
-            return False
+        # TODO: think about this, imo it's not needed
+        # if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
+        #    return False
 
         if self.operands == other.operands:
             return True
@@ -557,7 +561,24 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
+        if recursive and Expression.are_pos_congruent(self.operands, other.operands):
+            return True
+
         return False
+
+    @staticmethod
+    def are_pos_congruent(
+        left: Sequence[ParameterOperatable.All],
+        right: Sequence[ParameterOperatable.All],
+    ) -> bool:
+        if len(left) != len(right):
+            return False
+        return all(
+            lhs.is_congruent_to(rhs, recursive=True)
+            if isinstance(lhs, Expression) and isinstance(rhs, Expression)
+            else lhs == rhs
+            for lhs, rhs in zip(left, right)
+        )
 
     @property
     def domain(self) -> "Domain":
@@ -674,7 +695,7 @@ class Expression(ParameterOperatable):
         if isinstance(self, ConstrainableExpression) and self.constrained:
             # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
-            if self._solver_evaluates_to_true:
+            if self._solver_terminated:
                 symbol_suffix += "!"
         symbol += symbol_suffix
         symbol += self._get_lit_suffix()
@@ -732,7 +753,7 @@ class ConstrainableExpression(Expression):
         self.constrained: bool = False
 
         # TODO this should be done in solver, not here
-        self._solver_evaluates_to_true: bool = False
+        self._solver_terminated: bool = False
         """
         Flag marking to the solver that this predicate has been deduced to True.
         Differs from alias in the sense that we can guarantee that the predicate is

@@ -40,11 +40,9 @@ from faebryk.libs.picker.picker import MultiPickError, PickError
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     Tree,
-    cast_assert,
     groupby,
     indented_container,
     not_none,
-    partition,
 )
 
 logger = logging.getLogger(__name__)
@@ -280,12 +278,10 @@ def get_compatible_parameters(
     except LCSC_NoDataException:
         return None
 
-    no_attr, have_attr = partition(
-        lambda x: hasattr(module, x), c.attribute_literals.keys()
-    )
-    no_attr, have_attr = list(no_attr), list(have_attr)
+    design_params = module.get_trait(F.is_pickable_by_type).get_parameters()
+    component_params = c.attribute_literals
 
-    if no_attr:
+    if no_attr := component_params.keys() - design_params.keys():
         with downgrade(UserException):
             raise UserException(
                 f"Module `{module}` is missing attributes"
@@ -294,14 +290,13 @@ def get_compatible_parameters(
                 " module/component in your design."
             )
 
-    def _map_param(name: str) -> tuple[Parameter, P_Set]:
-        p = cast_assert(Parameter, getattr(module, name))
-        c_range = c.attribute_literals[name]
+    def _map_param(name: str, param: Parameter) -> tuple[Parameter, P_Set]:
+        c_range = component_params.get(name)
         if c_range is None:
-            c_range = p.domain.unbounded(p)
-        return p, c_range
+            c_range = param.domain.unbounded(param)
+        return param, c_range
 
-    param_mapping = [_map_param(name) for name in have_attr]
+    param_mapping = [_map_param(name, param) for name, param in design_params.items()]
 
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver

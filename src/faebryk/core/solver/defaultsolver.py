@@ -16,10 +16,11 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver import analytical, canonical
+from faebryk.core.solver import analytical, canonical, literal_folding
 from faebryk.core.solver.mutator import REPR_MAP, Mutator
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
+    DEBUG_ALLOW_PARTIAL_STATE,
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
@@ -59,22 +60,24 @@ class DefaultSolver(Solver):
         # TODO: get order from topo sort
         # and types from decorator
         pre=[
-            canonical.constrain_within_domain,
             canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
+            canonical.constrain_within_domain,
         ],
         iterative=[
             analytical.remove_unconstrained,
+            analytical.remove_tautologies,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
             analytical.distribute_literals_across_alias_classes,
             analytical.remove_congruent_expressions,
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
-            analytical.fold_literals,
+            *literal_folding.fold_algorithms,
             analytical.merge_intersect_subsets,
-            analytical.predicate_literal_deduce,
+            analytical.predicate_flat_terminate,
             analytical.predicate_unconstrained_operands_deduce,
+            analytical.predicate_terminated_is_true,
             analytical.empty_set,
             analytical.transitive_subset,
             analytical.isolate_lone_params,
@@ -103,10 +106,17 @@ class DefaultSolver(Solver):
     class IterationState:
         dirty: bool
 
+    @dataclass
+    class PartialState:
+        data: "DefaultSolver.IterationData"
+        print_context: ParameterOperatable.ReprContext
+
     def __init__(self) -> None:
         super().__init__()
 
         self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
+
+        self.partial_state: DefaultSolver.PartialState | None = None
 
     def has_no_solution(
         self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
@@ -124,7 +134,7 @@ class DefaultSolver(Solver):
         algos: list[SolverAlgorithm],
         print_context: ParameterOperatable.ReprContext,
         phase_offset: int = 0,
-    ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
+    ) -> tuple[IterationState, ParameterOperatable.ReprContext]:
         iteration_state = DefaultSolver.IterationState(dirty=False)
         iteration_repr_maps: list[REPR_MAP] = []
 
@@ -175,7 +185,7 @@ class DefaultSolver(Solver):
             data.total_repr_map.repr_map, *iteration_repr_maps
         )
 
-        return data, iteration_state, print_context
+        return iteration_state, print_context
 
     @times_out(TIMEOUT)
     def simplify_symbolically(
@@ -200,44 +210,73 @@ class DefaultSolver(Solver):
             debug_name_mappings(print_context_, g)
             Mutator.print_all(g, context=print_context_, type_filter=Expression)
 
-        iter_data = DefaultSolver.IterationData(
-            graphs=[g],
-            total_repr_map=Mutator.ReprMap(
-                {po: po for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)}
+        self.partial_state = DefaultSolver.PartialState(
+            data=DefaultSolver.IterationData(
+                graphs=[g],
+                total_repr_map=Mutator.ReprMap(
+                    {
+                        po: po
+                        for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+                    }
+                ),
+                output_operables={},
             ),
-            output_operables={},
+            print_context=print_context_,
         )
+
         for iterno in count():
             first_iter = iterno == 0
 
             if iterno > MAX_ITERATIONS_HEURISTIC:
-                raise Exception(
+                if DEBUG_ALLOW_PARTIAL_STATE:
+                    return (
+                        self.partial_state.data.total_repr_map,
+                        self.partial_state.print_context,
+                    )
+                raise TimeoutError(
                     "Solver Bug: Too many iterations, likely stuck in a loop"
                 )
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
-                for g in iter_data.graphs
+                for g in self.partial_state.data.graphs
             )
             logger.debug(
                 (
                     f"Iteration {iterno} "
-                    f"|graphs|: {len(iter_data.graphs)}, |V|: {v_count}"
+                    f"|graphs|: {len(self.partial_state.data.graphs)}, |V|: {v_count}"
                 ).ljust(80, "-")
             )
 
-            iter_data, iteration_state, print_context_ = DefaultSolver._run_iteration(
-                iterno=iterno,
-                data=iter_data,
-                algos=self.algorithms.pre if first_iter else self.algorithms.iterative,
-                print_context=print_context_,
-            )
+            try:
+                iteration_state, self.partial_state.print_context = (
+                    DefaultSolver._run_iteration(
+                        iterno=iterno,
+                        data=self.partial_state.data,
+                        algos=self.algorithms.pre
+                        if first_iter
+                        else self.algorithms.iterative,
+                        print_context=self.partial_state.print_context,
+                    )
+                )
+            except:
+                if S_LOG:
+                    Mutator.print_all(
+                        *self.partial_state.data.graphs,
+                        context=self.partial_state.print_context,
+                    )
+                raise
 
             if not iteration_state.dirty:
                 break
-            if not len(iter_data.graphs):
+
+            if not len(self.partial_state.data.graphs):
                 break
+
             if S_LOG:
-                Mutator.print_all(*iter_data.graphs, context=print_context_)
+                Mutator.print_all(
+                    *self.partial_state.data.graphs,
+                    context=self.partial_state.print_context,
+                )
 
         if LOG_PICK_SOLVE:
             logger.info(
@@ -245,7 +284,10 @@ class DefaultSolver(Solver):
                 f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
 
-        return iter_data.total_repr_map, print_context_
+        out = self.partial_state.data.total_repr_map, self.partial_state.print_context
+        self.partial_state = None
+
+        return out
 
     @override
     def get_any_single(
@@ -315,7 +357,13 @@ class DefaultSolver(Solver):
 
         # run phase 1 solver
         # TODO caching
-        repr_map, print_context = self.simplify_symbolically(param.get_graph())
+        try:
+            repr_map, print_context = self.simplify_symbolically(param.get_graph())
+        except TimeoutError:
+            if self.partial_state is None:
+                raise
+            repr_map = self.partial_state.data.total_repr_map
+
         if param not in repr_map.repr_map:
             if LOG_PICK_SOLVE:
                 logger.warning(f"Parameter {param} not in repr_map")
@@ -367,73 +415,78 @@ class DefaultSolver(Solver):
                 repr_map, print_context_new = self.simplify_symbolically(
                     pred.get_graph(), print_context=print_context
                 )
-                # FIXME: is this correct?
-                # definitely breaks a lot
-                new_Gs = get_graphs(repr_map.repr_map.values())
-                repr_pred = repr_map.repr_map.get(pred)
-
-                # FIXME: workaround for above
-                if repr_pred is not None:
-                    new_Gs = [repr_pred.get_graph()]
-
-                new_preds = [
-                    n
-                    for new_G in new_Gs
-                    for n in GraphFunctions(new_G).nodes_of_type(
-                        ConstrainableExpression
-                    )
-                ]
-                not_deducted = [
-                    p
-                    for p in new_preds
-                    if p.constrained and not p._solver_evaluates_to_true
-                ]
-
-                if not_deducted:
-                    logger.warning(
-                        f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
-                        + (
-                            f" -> {repr_pred.compact_repr(print_context_new)}"
-                            if repr_pred is not None
-                            else ""
-                        )
-                    )
-                    logger.warning(
-                        f"NOT DEDUCED: \n    {'\n    '.join([
-                            p.compact_repr(print_context_new) for p in not_deducted])}"
-                    )
-
-                    if LOG_PICK_SOLVE:
-                        debug_name_mappings(
-                            print_context, pred.get_graph(), print_out=logger.warning
-                        )
-                        not_deduced_grouped = groupby(
-                            not_deducted, key=lambda p: p.get_graph()
-                        )
-                        for g, _ in not_deduced_grouped.items():
-                            Mutator.print_all(
-                                g,
-                                context=print_context_new,
-                                print_out=logger.warning,
-                            )
-
-                    result.unknown_predicates.append(p)
-                    continue
-
-                result.true_predicates.append(p)
-                # This is allowed, but we might want to add an option to prohibit
-                # short-circuiting
-                break
-
             except Contradiction as e:
                 if LOG_PICK_SOLVE:
                     logger.warning(f"CONTRADICTION: {pred.compact_repr(print_context)}")
                     logger.warning(f"CAUSE: {e}")
                 result.false_predicates.append(p)
+                continue
             except TimeoutError:
-                result.unknown_predicates.append(p)
+                if LOG_PICK_SOLVE:
+                    logger.warning(f"TIMEOUT: {pred.compact_repr(print_context)}")
+                if self.partial_state is None:
+                    result.unknown_predicates.append(p)
+                    continue
+                repr_map, print_context_new = (
+                    self.partial_state.data.total_repr_map,
+                    self.partial_state.print_context,
+                )
             finally:
                 pred.constrained = False
+
+            # FIXME: is this correct?
+            # definitely breaks a lot
+            new_Gs = get_graphs(repr_map.repr_map.values())
+            repr_pred = repr_map.repr_map.get(pred)
+
+            # FIXME: workaround for above
+            if repr_pred is not None:
+                new_Gs = [repr_pred.get_graph()]
+
+            new_preds = [
+                n
+                for new_G in new_Gs
+                for n in GraphFunctions(new_G).nodes_of_type(ConstrainableExpression)
+            ]
+            not_deducted = [
+                p for p in new_preds if p.constrained and not p._solver_terminated
+            ]
+
+            if not_deducted:
+                logger.warning(
+                    f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
+                    + (
+                        f" -> {repr_pred.compact_repr(print_context_new)}"
+                        if repr_pred is not None
+                        else ""
+                    )
+                )
+                logger.warning(
+                    f"NOT DEDUCED: \n    {'\n    '.join([
+                        p.compact_repr(print_context_new) for p in not_deducted])}"
+                )
+
+                if LOG_PICK_SOLVE:
+                    debug_name_mappings(
+                        print_context, pred.get_graph(), print_out=logger.warning
+                    )
+                    not_deduced_grouped = groupby(
+                        not_deducted, key=lambda p: p.get_graph()
+                    )
+                    for g, _ in not_deduced_grouped.items():
+                        Mutator.print_all(
+                            g,
+                            context=print_context_new,
+                            print_out=logger.warning,
+                        )
+
+                result.unknown_predicates.append(p)
+                continue
+
+            result.true_predicates.append(p)
+            # This is allowed, but we might want to add an option to prohibit
+            # short-circuiting
+            break
 
         result.unknown_predicates.extend(it)
 

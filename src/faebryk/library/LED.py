@@ -45,7 +45,16 @@ class LED(F.Diode):
     max_brightness = L.p_field(units=P.candela)
     color = L.p_field(domain=L.Domains.ENUM(Color))
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.LED)
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.LED,
+            F.Diode().get_trait(F.is_pickable_by_type).get_parameters()
+            | {
+                "max_brightness": self.max_brightness,
+                "color": self.color,
+            },
+        )
 
     def __preinit__(self):
         self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
