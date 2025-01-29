@@ -124,7 +124,7 @@ class DefaultSolver(Solver):
         algos: list[SolverAlgorithm],
         print_context: ParameterOperatable.ReprContext,
         phase_offset: int = 0,
-    ) -> tuple[IterationData, IterationState, ParameterOperatable.ReprContext]:
+    ) -> tuple[IterationState, ParameterOperatable.ReprContext]:
         iteration_state = DefaultSolver.IterationState(dirty=False)
         iteration_repr_maps: list[REPR_MAP] = []
 
@@ -175,7 +175,7 @@ class DefaultSolver(Solver):
             data.total_repr_map.repr_map, *iteration_repr_maps
         )
 
-        return data, iteration_state, print_context
+        return iteration_state, print_context
 
     @times_out(TIMEOUT)
     def simplify_symbolically(
@@ -226,25 +226,27 @@ class DefaultSolver(Solver):
             )
 
             try:
-                iter_data, iteration_state, print_context_ = (
-                    DefaultSolver._run_iteration(
-                        iterno=iterno,
-                        data=iter_data,
-                        algos=self.algorithms.pre
-                        if first_iter
-                        else self.algorithms.iterative,
-                        print_context=print_context_,
-                    )
+                iteration_state, print_context_ = DefaultSolver._run_iteration(
+                    iterno=iterno,
+                    data=iter_data,
+                    algos=self.algorithms.pre
+                    if first_iter
+                    else self.algorithms.iterative,
+                    print_context=print_context_,
                 )
-            finally:
+            except:
                 if S_LOG:
                     Mutator.print_all(*iter_data.graphs, context=print_context_)
+                raise
 
             if not iteration_state.dirty:
                 break
 
             if not len(iter_data.graphs):
                 break
+
+            if S_LOG:
+                Mutator.print_all(*iter_data.graphs, context=print_context_)
 
         if LOG_PICK_SOLVE:
             logger.info(
