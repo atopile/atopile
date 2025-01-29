@@ -46,7 +46,16 @@ class Capacitor(Module):
         F.has_designator_prefix.Prefix.C
     )
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Capacitor)
+    @L.rt_field
+    def pickable(self) -> F.is_pickable_by_type:
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.Capacitor,
+            {
+                "capacitance": self.capacitance,
+                "max_voltage": self.max_voltage,
+                "temperature_coefficient": self.temperature_coefficient,
+            },
+        )
 
     @L.rt_field
     def can_bridge(self):

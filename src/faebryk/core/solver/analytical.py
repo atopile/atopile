@@ -3,7 +3,6 @@
 
 
 import logging
-from collections import Counter, defaultdict
 from functools import partial
 from itertools import combinations
 from typing import cast
@@ -21,7 +20,6 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Power,
 )
-from faebryk.core.solver.literal_folding import fold
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     S_LOG,
@@ -32,11 +30,14 @@ from faebryk.core.solver.utils import (
     algorithm,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
-    count_param_occurrences,
     find_unique_params,
     flatten_associative,
+    get_all_aliases,
+    get_all_subsets,
     get_constrained_expressions_involved_in,
     get_correlations,
+    get_supersets,
+    is_correlatable_literal,
     is_literal,
     is_literal_expression,
     is_replacable,
@@ -45,9 +46,8 @@ from faebryk.core.solver.utils import (
     map_extract_literals,
     merge_parameters,
     no_other_constrains,
-    remove_predicate,
     subset_literal,
-    try_extract_all_literals,
+    subset_to,
     try_extract_literal,
     try_extract_literal_info,
 )
@@ -59,10 +59,7 @@ from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     EquivalenceClasses,
     cast_assert,
-    find_or,
     groupby,
-    not_none,
-    partition,
 )
 
 logger = logging.getLogger(__name__)
@@ -149,7 +146,8 @@ def remove_congruent_expressions(mutator: Mutator):
             continue
         # TODO use hash to speed up comparisons
         for e1, e2 in combinations(exprs, 2):
-            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2):
+            # no need for recursive, since subexpr already merged if congruent
+            if not full_eq.is_eq(e1, e2) and e1.is_congruent_to(e2, recursive=False):
                 full_eq.add_eq(e1, e2)
 
     repres = {}
@@ -163,12 +161,12 @@ def remove_congruent_expressions(mutator: Mutator):
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
 
-            # propagate constrained & marked true
+            # propagate constrained & terminate
             if isinstance(representative, ConstrainableExpression):
                 eq_class = cast(set[ConstrainableExpression], eq_class)
                 representative.constrained = any(e.constrained for e in eq_class)
-                if any(mutator.is_predicate_true(e) for e in eq_class):
-                    mutator.mark_predicate_true(representative)
+                if any(mutator.is_predicate_terminated(e) for e in eq_class):
+                    mutator.predicate_terminate(representative)
 
         mutator._mutate(expr, repres[eq_id])
 
@@ -201,7 +199,7 @@ def resolve_alias_classes(mutator: Mutator):
     # -> [{A, B, C}, {D, E}, {F}, {G, (A+B)}]
     param_ops = mutator.nodes_of_type(ParameterOperatable)
     full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
-    is_exprs = [e for e in mutator.nodes_of_type(Is) if e.constrained]
+    is_exprs = get_all_aliases(mutator)
     for is_expr in is_exprs:
         full_eq.add_eq(*is_expr.operatable_operands)
     p_eq_classes = full_eq.get()
@@ -289,26 +287,29 @@ def resolve_alias_classes(mutator: Mutator):
             # If not params or lits in class, create a new param as representative
             # for expressions
             representative = mutator.register_created_parameter(
-                Parameter(domain=domain)
+                Parameter(domain=domain), from_ops=alias_class_p_ops
             )
 
         # Repr old expr with new param, but keep old expr around
         # This will implicitly swap out the expr in other exprs with the repr
         for e in alias_class_exprs:
             copy_expr = mutator.mutate_expression(e)
-            expr = mutator.create_expression(Is, copy_expr, representative)
+            expr = mutator.create_expression(
+                Is, copy_expr, representative, from_ops=alias_class_p_ops
+            )
             expr.constrain()  # p_eq_classes is derived from constrained exprs only
             # DANGER!
             mutator._override_repr(e, representative)
 
+    # TODO remove, done by tautologies I think
     # remove eq_class Is (for non-literal alias classes)
-    removed = {
-        e
-        for e in mutator.nodes_of_type(Is)
-        if all(mutator.has_been_mutated(operand) for operand in e.operands)
-        and not e.get_operations()
-    }
-    mutator.remove(*removed)
+    # removed = {
+    #     e
+    #     for e in mutator.nodes_of_type(Is)
+    #     if all(mutator.has_been_mutated(operand) for operand in e.operands)
+    #     and not e.get_operations()
+    # }
+    # mutator.remove(*removed)
 
 
 @algorithm("Distribute literals across alias classes", destructive=False)
@@ -332,9 +333,9 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
         }
         for alias in non_lit_aliases:
             if is_alias:
-                alias_is_literal(alias, lit, mutator)
+                alias_is_literal(alias, lit, mutator, from_ops=[p])
             else:
-                subset_literal(alias, lit, mutator)
+                subset_literal(alias, lit, mutator, from_ops=[p])
 
 
 @algorithm("Merge intersecting subsets")
@@ -357,57 +358,31 @@ def merge_intersect_subsets(mutator: Mutator):
     #   A < B, A < C -> A < (B | C)
     # Got to consider when to Intersect/Union is more useful than the associative
 
+    # this merge is already done implicitly by try_extract_literal
+    # but it's still needed to create the explicit subset op
+
     params = mutator.nodes_of_type(ParameterOperatable, sort_by_depth=True)
 
     for param in params:
-        # TODO we can also propagate is subset from other param: x sub y sub range
-        constrained_subset_ops_with_literal = [
-            e
-            for e in param.get_operations(types=IsSubset)
-            if e.constrained
-            and e.operands[0] is param
-            and ParameterOperatable.try_extract_literal(e.operands[1]) is not None
-        ]
-        if len(constrained_subset_ops_with_literal) <= 1:
+        ss_lits = {v: e for v, e in get_supersets(param).items() if is_literal(v)}
+        if len(ss_lits) <= 1:
             continue
 
-        literal_subsets = [
-            not_none(try_extract_literal(e.operands[1]))
-            for e in constrained_subset_ops_with_literal
-        ]
-        # intersect
-        intersected = P_Set.intersect_all(*literal_subsets)
-        # short-cut, would be detected by A ss! {} -> A is! {} -> Contradiction
+        intersected = P_Set.intersect_all(*ss_lits.keys())
+
+        # already exists
+        if intersected in ss_lits:
+            continue
+
+        # short-cut, would be detected by subset_to
         if intersected.is_empty():
             raise ContradictionByLiteral(
                 "Intersection of literals is empty",
                 involved=[param],
-                literals=literal_subsets,
+                literals=list(ss_lits.keys()),
             )
 
-        direct_literal_subsets = [
-            e for e in constrained_subset_ops_with_literal if is_literal(e.operands[1])
-        ]
-
-        narrowest = find_or(
-            direct_literal_subsets,
-            lambda e: intersected == not_none(e).operands[1],
-            default=None,
-            default_multi=lambda dup: dup[0],
-        )
-        if narrowest is None:
-            narrowest = mutator.create_expression(
-                IsSubset, param, intersected
-            ).constrain()
-            alias_is_literal(narrowest, True, mutator)
-
-        for e in constrained_subset_ops_with_literal:
-            if e is narrowest:
-                continue
-            if e in direct_literal_subsets:
-                remove_predicate(e, narrowest, mutator)
-                continue
-            alias_is_literal_and_check_predicate_eval(e, True, mutator)
+        subset_to(param, intersected, mutator, from_ops=list(ss_lits.values()))
 
 
 @algorithm("Associative expressions Full")
@@ -448,7 +423,10 @@ def compress_associative(mutator: Mutator):
 def empty_set(mutator: Mutator):
     """
     A is {} -> False
+    A ss {} -> False
     """
+
+    # A is {} -> False
     for e in mutator.nodes_of_type(Is):
         lits = cast(dict[int, SolverLiteral], e.get_literal_operands())
         if not lits:
@@ -456,64 +434,8 @@ def empty_set(mutator: Mutator):
         if any(lit.is_empty() for lit in lits.values()):
             alias_is_literal_and_check_predicate_eval(e, False, mutator)
 
-
-@algorithm("Fold literals")
-def fold_literals(mutator: Mutator):
-    """
-    Tries to do operations on literals or fold expressions.
-    - If possible to do literal operation, aliases expr with result.
-    - If fold results in new expr, replaces old expr with new one.
-    - If fold results in neutralization, returns operand if not literal else alias.
-
-    Examples:
-    ```
-    Or(True, B) -> alias: True
-    Add(A, B, 5, 10) -> replace: Add(A, B, 15)
-    Add(10, 15) -> alias: 25
-    Not(Not(A)) -> neutralize=replace: A
-    ```
-    """
-
-    exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
-
-    for expr in exprs:
-        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
-            continue
-
-        # TODO
-        # A is! 5, A is! Add(10, 2)
-        # A ...
-        # Add(10, 2) -> A -> 5
-        # don't run on aliased exprs
-        # if (
-        #    not (
-        #        not isinstance(expr, ConstrainableExpression)
-        #        or expr._solver_evaluates_to_true
-        #    )
-        #    and ParameterOperatable.try_get_literal(expr) is not None
-        # ):
-        #    continue
-
-        operands = expr.operands
-        # TODO consider extracting instead
-        p_operands, literal_operands = partition(
-            lambda o: ParameterOperatable.is_literal(o), operands
-        )
-        p_operands = cast(list[ParameterOperatable], p_operands)
-        non_replacable_nonliteral_operands, replacable_nonliteral_operands = partition(
-            lambda o: not mutator.has_been_mutated(o), p_operands
-        )
-        multiplicity = Counter(replacable_nonliteral_operands)
-
-        # TODO, obviously_eq offers additional possibilites,
-        # must be replacable, no implicit constr
-        fold(
-            cast(CanonicalOperation, expr),
-            literal_operands=list(literal_operands),
-            replacable_nonliteral_operands=multiplicity,
-            non_replacable_nonliteral_operands=list(non_replacable_nonliteral_operands),
-            mutator=mutator,
-        )
+    # A ss {} -> False
+    # Converted by literal_folding
 
 
 @algorithm("Upper estimation")
@@ -534,15 +456,14 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     ```
     """
 
-    new_aliases = mutator.get_new_literal_aliased()
-    new_subsets = mutator.get_new_literal_subsets()
+    new_aliases = mutator.get_literal_aliased(new_only=True)
+    new_subsets = mutator.get_literal_subsets(new_only=True)
 
     new_exprs = {
         k: v
-        for k, v in new_aliases.items()
-        # bool expr always map to singles
-        if not isinstance(k, ConstrainableExpression)
-    } | new_subsets
+        for k, v in (new_aliases | new_subsets).items()
+        if not is_correlatable_literal(v)
+    }
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     for expr in exprs:
@@ -566,11 +487,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             operands.append(subset_lits)
 
         # Make new expr with subset literals
-        new_expr = mutator.create_expression(type(expr), *operands)
-        # Constrain subset on old expr
-        ss = mutator.create_expression(IsSubset, expr, new_expr).constrain()
-
-        mutator.mark_predicate_true(ss)
+        mutator.mutate_expression(expr, operands=operands, soft_mutate=IsSubset)
 
 
 @algorithm("Transitive subset")
@@ -581,65 +498,24 @@ def transitive_subset(mutator: Mutator):
     A ss! B, B is! X -> new A ss! X
     ```
     """
-    ss_ops = [e for e in mutator.nodes_of_type(IsSubset) if e.constrained]
-
-    # don't add new IsSubset if already exists as Is or IsSubset
-    ss_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(
-        list
-    )
-    for ss_op in ss_ops:
-        ss_lookup[ss_op.operands[0]].append(ss_op.operands[1])
-    is_lookup: dict[ParameterOperatable, list[ParameterOperatable.All]] = defaultdict(
-        list
-    )
-    for is_op in [e for e in mutator.nodes_of_type(Is) if e.constrained]:
-        for op in is_op.operands:
-            is_lookup[op] += [n_op for n_op in is_op.operands if n_op is not op]
-
     # for all A ss! B | B not lit
-    for ss_op in ss_ops:
+    for ss_op in get_all_subsets(mutator):
         A, B = ss_op.operands
         if not isinstance(B, ParameterOperatable):
             continue
 
         # all B ss! C | C not A
-        B_ss = [
-            e
-            for e in B.get_operations(IsSubset, constrained_only=True)
-            if e.operands[0] is B and e.operands[1] is not A
-        ]
-
-        # TODO: not 100% convinced this not done by eq classes
-        # all B is! X | A not lit
-        B_is = []
-        if isinstance(A, ParameterOperatable):
-            B_is = [
-                e
-                for e in B.get_operations(Is, constrained_only=True)
-                if ParameterOperatable.is_literal(e.get_other_operand(B))
-            ]
-
-        # all B ss! C and B is! X
-        for b_ss in B_ss + B_is:
-            C_or_X = b_ss.get_other_operand(B)
-            # A ss! C/X already exists
-            if C_or_X in ss_lookup[A]:
+        for C, e in get_supersets(B).items():
+            if C is A:
                 continue
-            # A is! C/X already exists
-            if A in is_lookup and C_or_X in is_lookup[A]:
-                continue
-            # check for redundant subset:
-            # A ss! Z, C is! W (or X), Z ss! W/X then no need for A ss! C/X
-            lit_A = try_extract_literal(A, allow_subset=True)
-            lit_C_or_X = try_extract_literal(C_or_X)
-            if lit_A is not None and lit_C_or_X is not None:
-                if lit_A.is_subset_of(lit_C_or_X):  # type: ignore #TODO
-                    continue
-
-            # TODO this seems iffy
             # create A ss! C/X
-            _ = mutator.create_expression(IsSubset, A, C_or_X).constrain()
-            ss_lookup[A].append(C_or_X)
+            subset_to(A, C, mutator, from_ops=[ss_op, e])
+
+        # all B is! X, X lit
+        # for non-lits done by eq classes
+        X = try_extract_literal(B)
+        if X is not None:
+            subset_to(A, X, mutator, from_ops=[ss_op])
 
 
 @algorithm("Remove empty graphs", destructive=True)
@@ -692,33 +568,58 @@ def remove_empty_graphs(mutator: Mutator):
     mutator.remove_graph()
 
 
-@algorithm("Predicate literal deduce")
-def predicate_literal_deduce(mutator: Mutator):
+@algorithm("Predicate flat terminate")
+def predicate_flat_terminate(mutator: Mutator):
     """
     ```
     P!(A, Lit) -> P!!(A, Lit)
     P!(Lit1, Lit2) -> P!!(Lit1, Lit2)
     ```
 
-    Proof:
-    ```
-    >=, >, is, ss, or, not
-    P1!(A, Lit1) True
-    P2!(A, Lit2)
-    P3!(A, B)
-    P3!!(A, B)
-    ```
+    Terminates all (dis)proven predicates that contain no expressions.
     """
     predicates = mutator.nodes_of_type(ConstrainableExpression)
     for p in predicates:
         if not p.constrained:
             continue
-        lits = not_none(try_extract_all_literals(p, accept_partial=True))
-        if len(p.operands) - len(lits) <= 1:
-            mutator.mark_predicate_true(p)
+
+        if any(isinstance(po, Expression) for po in p.operatable_operands):
+            continue
+
+        # only (dis)proven
+        if try_extract_literal(p) is None:
+            continue
+
+        mutator.predicate_terminate(p)
 
 
-@algorithm("Predicate unconstrained operands deduce")
+@algorithm("Predicate is!! True")
+def predicate_terminated_is_true(mutator: Mutator):
+    """
+    P!! is! True -> P!! is!! True
+    """
+
+    for p in mutator.nodes_of_type(Is):
+        if not p.constrained:
+            continue
+        if mutator.is_predicate_terminated(p):
+            continue
+        if make_lit(True) not in p.operands:
+            continue
+        if not p.operatable_operands:
+            continue
+        op = next(iter(p.operatable_operands))
+        if (
+            not isinstance(op, ConstrainableExpression)
+            or not op.constrained
+            or not mutator.is_predicate_terminated(op)
+        ):
+            continue
+
+        mutator.predicate_terminate(p)
+
+
+@algorithm("Predicate unconstrained operands deduce", destructive=True)
 def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
     A op! B | A or B unconstrained -> A op!! B
@@ -728,18 +629,15 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     for p in preds:
         if not p.constrained:
             continue
-        if mutator.is_predicate_true(p):
+        if mutator.is_predicate_terminated(p):
+            continue
+        if is_literal_expression(p):
             continue
 
-        if any(ParameterOperatable.is_literal(o) for o in p.operands):
-            continue
-
-        if no_other_constrains(p.operands[0], p, unfulfilled_only=True):
-            alias_is_literal_and_check_predicate_eval(p, True, mutator)
-            return
-        if no_other_constrains(p.operands[1], p, unfulfilled_only=True):
-            alias_is_literal_and_check_predicate_eval(p, True, mutator)
-            return
+        for op in p.operatable_operands:
+            if no_other_constrains(op, p, unfulfilled_only=True):
+                alias_is_literal_and_check_predicate_eval(p, True, mutator)
+                break
 
 
 @algorithm("Convert aliased singletons into literals")
@@ -751,6 +649,9 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
+        if is_literal_expression(e):
+            continue
+
         ops = []
         found_literal = False
         for op in e.operands:
@@ -784,21 +685,22 @@ def isolate_lone_params(mutator: Mutator):
     A + B is Lit1, B is Lit2, A further uncorrelated B -> A is Lit1 + (Lit2 * -1)
     """
 
-    def op_or_create_expr(
-        operation: type[CanonicalOperation], *operands: ParameterOperatable.All
-    ) -> ParameterOperatable.All:
-        if len(operands) == 1:
-            return operands[0]
-
-        return mutator.create_expression(operation, *operands)
-
     def _isolate_param(
         param: ParameterOperatable,
         op_with_param: ParameterOperatable,
         op_without_param: ParameterOperatable,
+        from_expr: Expression,
     ) -> tuple[ParameterOperatable.All, ParameterOperatable.All]:
         if not isinstance(op_with_param, Expression):
             return op_with_param, op_without_param
+
+        def op_or_create_expr(
+            operation: type[CanonicalOperation], *operands: ParameterOperatable.All
+        ) -> ParameterOperatable.All:
+            if len(operands) == 1:
+                return operands[0]
+
+            return mutator.create_expression(operation, *operands, from_ops=[from_expr])
 
         retained_ops = [
             op for op in op_with_param.operands if param in find_unique_params(op)
@@ -869,7 +771,7 @@ def isolate_lone_params(mutator: Mutator):
 
         while True:
             new_op_with_param, new_op_without_param = _isolate_param(
-                param, op_with_param, op_without_param
+                param, op_with_param, op_without_param, from_expr=expr
             )
 
             if (
@@ -931,14 +833,10 @@ def uncorrelated_alias_fold(mutator: Mutator):
     Destructive because relies on missing correlations.
     """
 
-    new_aliases = mutator.get_new_literal_aliased()
+    new_aliases = mutator.get_literal_aliased(new_only=True)
 
     # bool expr always map to singles
-    new_exprs = {
-        k: v
-        for k, v in new_aliases.items()
-        if not isinstance(k, ConstrainableExpression)
-    }
+    new_exprs = {k: v for k, v in new_aliases.items() if not is_correlatable_literal(v)}
 
     for alias in new_exprs.keys():
         exprs = alias.get_operations()
@@ -950,13 +848,6 @@ def uncorrelated_alias_fold(mutator: Mutator):
             if any(get_correlations(expr)):
                 continue
 
-            # check for auto-correlation
-            if any(
-                count_param_occurrences(expr)[cast_assert(Parameter, param)] > 1
-                for param in find_unique_params(expr)
-            ):
-                continue
-
             expr_resolved_operands = map_extract_literals(expr)
 
             if isinstance(expr, Is) and expr.constrained:
@@ -964,7 +855,31 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 # just not the same what we do with the other types
                 continue
 
-            literals_expr = mutator.create_expression(
-                type(expr), *expr_resolved_operands
+            mutator.mutate_expression(
+                expr, operands=expr_resolved_operands, soft_mutate=Is
             )
-            mutator.create_expression(Is, expr, literals_expr).constrain()
+
+
+@algorithm("Remove tautologies")
+def remove_tautologies(mutator: Mutator):
+    """
+    A is A -> True
+    A ss A -> True
+    A >= A, A not lit -> True
+    """
+
+    # Also done in literal_folding, but kinda nice to have it here
+    # called if_operands_same_make_true
+
+    predicates = mutator.nodes_of_types(
+        (Is, IsSubset, GreaterOrEqual), sort_by_depth=True
+    )
+
+    for pred in predicates:
+        assert isinstance(pred, ConstrainableExpression)
+        if len(set(pred.operands)) > 1:
+            continue
+        if isinstance(pred, GreaterOrEqual) and is_literal(pred.operands[0]):
+            continue
+
+        alias_is_literal_and_check_predicate_eval(pred, True, mutator)

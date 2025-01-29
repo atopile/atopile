@@ -3,7 +3,7 @@
 
 import functools
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, make_dataclass
 from textwrap import indent
 
 from dataclasses_json import config as dataclass_json_config
@@ -48,75 +48,36 @@ class BaseParams(Serializable):
         return self.to_dict()  # type: ignore
 
 
-@dataclass(frozen=True, kw_only=True)
-class ResistorParams(BaseParams):
-    endpoint: str = "resistors"
-    resistance: ApiParamT = SerializableField()
-    max_power: ApiParamT = SerializableField()
-    max_voltage: ApiParamT = SerializableField()
+def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
+    m = module_type()
+    assert m.has_trait(F.is_pickable_by_type)
+
+    pickable_trait = m.get_trait(F.is_pickable_by_type)
+    parameters = pickable_trait.get_parameters()
+
+    fields = [
+        ("endpoint", str, field(default=endpoint, init=False)),
+        *[(param_name, ApiParamT, SerializableField()) for param_name in parameters],
+    ]
+
+    cls = make_dataclass(
+        f"{module_type.__name__}Params",
+        fields,
+        bases=(BaseParams,),
+        frozen=True,
+        kw_only=True,
+    )
+    return dataclass_json(cls)
 
 
-@dataclass(frozen=True, kw_only=True)
-class CapacitorParams(BaseParams):
-    endpoint: str = "capacitors"
-    capacitance: ApiParamT = SerializableField()
-    max_voltage: ApiParamT = SerializableField()
-    temperature_coefficient: ApiParamT = SerializableField()
-
-
-@dataclass(frozen=True, kw_only=True)
-class InductorParams(BaseParams):
-    endpoint: str = "inductors"
-    inductance: ApiParamT = SerializableField()
-    self_resonant_frequency: ApiParamT = SerializableField()
-    max_current: ApiParamT = SerializableField()
-    dc_resistance: ApiParamT = SerializableField()
-
-
-@dataclass(frozen=True, kw_only=True)
-class DiodeParams(BaseParams):
-    endpoint: str = "diodes"
-    forward_voltage: ApiParamT = SerializableField()
-    reverse_working_voltage: ApiParamT = SerializableField()
-    reverse_leakage_current: ApiParamT = SerializableField()
-    max_current: ApiParamT = SerializableField()
-
-
-@dataclass(frozen=True, kw_only=True)
-class TVSParams(DiodeParams):
-    endpoint: str = "tvs"
-    reverse_breakdown_voltage: ApiParamT = SerializableField()
-
-
-@dataclass(frozen=True, kw_only=True)
-class LEDParams(DiodeParams):
-    endpoint: str = "leds"
-    max_brightness: ApiParamT = SerializableField()
-    color: ApiParamT = SerializableField()
-
-
-@dataclass(frozen=True, kw_only=True)
-class LDOParams(BaseParams):
-    endpoint: str = "ldos"
-    max_input_voltage: ApiParamT = SerializableField()
-    output_voltage: ApiParamT = SerializableField()
-    quiescent_current: ApiParamT = SerializableField()
-    dropout_voltage: ApiParamT = SerializableField()
-    # ripple_rejection_ratio: ApiParamT = SerializableField()
-    output_polarity: ApiParamT = SerializableField()
-    output_type: ApiParamT = SerializableField()
-    output_current: ApiParamT = SerializableField()
-
-
-@dataclass(frozen=True, kw_only=True)
-class MOSFETParams(BaseParams):
-    endpoint: str = "mosfets"
-    channel_type: ApiParamT = SerializableField()
-    # saturation_type: ApiParamT = SerializableField()  # TODO
-    gate_source_threshold_voltage: ApiParamT = SerializableField()
-    max_drain_source_voltage: ApiParamT = SerializableField()
-    max_continuous_drain_current: ApiParamT = SerializableField()
-    on_resistance: ApiParamT = SerializableField()
+ResistorParams = _make_params_for_type(F.Resistor, "resistors")
+CapacitorParams = _make_params_for_type(F.Capacitor, "capacitors")
+InductorParams = _make_params_for_type(F.Inductor, "inductors")
+DiodeParams = _make_params_for_type(F.Diode, "diodes")
+TVSParams = _make_params_for_type(F.TVS, "tvs")
+LEDParams = _make_params_for_type(F.LED, "leds")
+LDOParams = _make_params_for_type(F.LDO, "ldos")
+MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
 
 
 @dataclass_json

@@ -34,27 +34,20 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
+    CanonicalBoolean,
     CanonicalNumber,
     CanonicalOperation,
     Contradiction,
     SolverLiteral,
+    algorithm,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
+    is_literal,
     is_numeric_literal,
     make_lit,
-    remove_predicate,
-    try_extract_all_literals,
-    try_extract_boolset,
-    try_extract_literal,
-    try_extract_numeric_literal,
 )
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
-from faebryk.libs.util import (
-    cast_assert,
-    find_or,
-    not_none,
-)
+from faebryk.libs.util import cast_assert, partition
 
 logger = logging.getLogger(__name__)
 
@@ -91,55 +84,68 @@ def _fold_op(
 def _collect_factors[T: Multiply | Power](
     counter: Counter[ParameterOperatable], collect_type: type[T]
 ):
-    # collect factors
+    # Convert the counter to a dict for easy manipulation
     factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
         counter.items()
     )
 
+    # Store operations of type collect_type grouped by their non-literal operand
     same_literal_factors: dict[ParameterOperatable, list[T]] = defaultdict(list)
 
+    # Look for operations matching collect_type and gather them
     for collect_op in set(factors.keys()):
         if not isinstance(collect_op, collect_type):
             continue
+        # Skip if operation doesn't have exactly two operands
         # TODO unnecessary strict
         if len(collect_op.operands) != 2:
             continue
+        # If it's commutative, skip purely literal operations and pick the non-literal
+        # operand
         if issubclass(collect_type, Commutative):
-            if not any(
-                ParameterOperatable.is_literal(operand)
-                for operand in collect_op.operands
-            ):
+            if all(ParameterOperatable.is_literal(o) for o in collect_op.operands):
                 continue
             paramop = next(
                 o for o in collect_op.operands if not ParameterOperatable.is_literal(o)
             )
         else:
+            # For non-commutative, ensure second operand is literal
             if not ParameterOperatable.is_literal(collect_op.operands[1]):
                 continue
             paramop = collect_op.operands[0]
 
+        # Collect these factors under the non-literal operand
         same_literal_factors[paramop].append(collect_op)
+        # If this operand isn't in factors yet, initialize it with 0
         if paramop not in factors:
             factors[paramop] = make_lit(0)
+        # Remove this operation from the main factors
         del factors[collect_op]
 
+    # new_factors: combined literal counts, old_factors: leftover items
     new_factors = {}
     old_factors = []
 
+    # Combine literals for each non-literal operand
     for var, count in factors.items():
         muls = same_literal_factors[var]
-        mul_lits = [
-            next(o for o in mul.operands if ParameterOperatable.is_literal(o))
-            for mul in muls
-        ]
+        # If no effective multiplier or only a single factor, treat as leftover
         if count == 0 and len(muls) <= 1:
             old_factors.extend(muls)
             continue
 
+        # If only count=1 and no additional factors, just keep the variable
         if count == 1 and not muls:
             old_factors.append(var)
             continue
 
+        # Extract literal parts from collected operations
+        mul_lits = [
+            next(o for o in mul.operands if ParameterOperatable.is_literal(o))
+            for mul in muls
+        ]
+
+        # Sum all literal multipliers plus the leftover count
         new_factors[var] = sum(mul_lits) + make_lit(count)  # type: ignore
 
     return new_factors, old_factors
@@ -181,7 +187,8 @@ def fold_add(
 
     # Careful, modifying old graph, but should be ok
     factored_operands = [
-        mutator.create_expression(Multiply, n, m) for n, m in new_factors.items()
+        mutator.create_expression(Multiply, n, m, from_ops=[expr])
+        for n, m in new_factors.items()
     ]
 
     new_operands = [
@@ -190,6 +197,9 @@ def fold_add(
         *literal_sum,
         *non_replacable_nonliteral_operands,
     ]
+
+    if new_operands == expr.operands:
+        return
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
@@ -200,10 +210,9 @@ def fold_add(
     new_expr = mutator.mutate_expression(
         expr, operands=new_operands, expression_factory=Add
     )
-
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0], mutator)
+        alias_is_literal(new_expr, new_operands[0], mutator, terminate=True)
 
 
 def fold_multiply(
@@ -241,9 +250,10 @@ def fold_multiply(
         *non_replacable_nonliteral_operands,
     ]
 
-    zero_operand = any(try_extract_numeric_literal(o) == 0 for o in new_operands)
-    if zero_operand:
+    # 0 * A -> 0
+    if 0 in new_operands:
         new_operands = [make_lit(0)]
+        # convert_operable_aliased_to_single_into_literal takes care of rest
 
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
@@ -257,7 +267,7 @@ def fold_multiply(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0], mutator)
+        alias_is_literal(new_expr, new_operands[0], mutator, terminate=True)
 
 
 def fold_pow(
@@ -289,7 +299,7 @@ def fold_pow(
         except NotImplementedError:
             # TODO either fix or raise a warning
             return
-        alias_is_literal(expr, result, mutator)
+        alias_is_literal(expr, result, mutator, terminate=True)
         return
 
     if is_numeric_literal(exp):
@@ -299,16 +309,16 @@ def fold_pow(
 
         # in python 0**0 is also 1
         if exp == 0:
-            alias_is_literal(expr, 1, mutator)
+            alias_is_literal(expr, 1, mutator, terminate=True)
             return
 
     if is_numeric_literal(base):
         if base == 0:
-            alias_is_literal(expr, 0, mutator)
+            alias_is_literal(expr, 0, mutator, terminate=True)
             # FIXME: exp >! 0
             return
         if base == 1:
-            alias_is_literal(expr, 1, mutator)
+            alias_is_literal(expr, 1, mutator, terminate=True)
             return
 
 
@@ -359,21 +369,18 @@ def fold_or(
 ):
     """
     ```
-    Or(A, B, C, TrueEx) -> True
-    Or(A, B, C, FalseEx) -> Or(A, B, C)
+    Or(A, B, C, True) -> True
+    Or(A, B, C, False) -> Or(A, B, C)
     Or(A, B, C, P) | P constrained -> True
-    #TODO Or(A, B, A) -> Or(A, B)
+    Or(A, B, A) -> Or(A, B)
     Or(P) -> P
     Or!(P) -> P!
     Or() -> False
     ```
     """
 
-    extracted_literals = try_extract_all_literals(
-        expr, lit_type=BoolSet, accept_partial=True
-    )
     # Or(A, B, C, True) -> True
-    if extracted_literals and BoolSet(True) in extracted_literals:
+    if BoolSet(True) in literal_operands:
         alias_is_literal_and_check_predicate_eval(expr, True, mutator)
         return
 
@@ -382,25 +389,18 @@ def fold_or(
         alias_is_literal_and_check_predicate_eval(expr, False, mutator)
         return
 
-    # Or(A, B, C, FalseEx) -> Or(A, B, C)
+    # Or(A, B, C, False) -> Or(A, B, C)
     # Or(A, B, A) -> Or(A, B)
-    operands_not_clearly_false = {
-        op
-        for op in expr.operands
-        if (lit := try_extract_boolset(op, allow_subset=True)) is None or True in lit
-    }
-    if len(operands_not_clearly_false) != len(expr.operands):
-        # Rebuild without (False) literals
-        mutator.mutate_expression(expr, operands=operands_not_clearly_false)
+    filtered_operands = {op for op in expr.operands if BoolSet(False) != op}
+    if len(filtered_operands) != len(expr.operands):
+        # Rebuild without False literals and duplicates
+        mutator.mutate_expression(expr, operands=filtered_operands)
         return
 
     # Or(P) -> P
+    # Or!(P) -> P!
     if len(expr.operands) == 1:
-        out = mutator.mutate_unpack_expression(expr)
-        assert isinstance(out, ConstrainableExpression)
-        # Or!(P) -> P!
-        if expr.constrained:
-            out.constrain()
+        mutator.mutate_unpack_expression(expr)
         return
 
 
@@ -419,35 +419,38 @@ def fold_not(
     ¬P | P constrained -> False
 
     ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
+    ¬!A -> A is! False
     ```
     """
     # TODO ¬(A >= B) -> (B > A) ss ¬(A >= B) (only ss because of partial overlap)
 
     assert len(expr.operands) == 1
+    op = expr.operands[0]
 
-    lits = try_extract_all_literals(expr, lit_type=BoolSet)
-    if lits:
-        inner = lits[0]
-        alias_is_literal_and_check_predicate_eval(expr, inner.op_not(), mutator)
+    # ¬(X) -> ¬X
+    if isinstance(op, CanonicalBoolean):
+        alias_is_literal_and_check_predicate_eval(expr, op.op_not(), mutator)
         return
 
-    op = expr.operands[0]
+    assert isinstance(op, ParameterOperatable)
+
     # ¬P | P constrained -> False
     if isinstance(op, ConstrainableExpression) and op.constrained:
         # ¬!P! | P constrained -> Contradiction
         if expr.constrained:
             raise Contradiction("¬!P!", involved=[expr])
-        expr.alias_is(make_lit(False))
+        alias_is_literal(expr, False, mutator)
         return
 
     if replacable_nonliteral_operands:
         # ¬(¬A) -> A
+        # ¬!(¬A) -> !A
         if isinstance(op, Not):
-            out = mutator.mutator_neutralize_expressions(expr)
-            assert isinstance(out, ConstrainableExpression)
-            # ¬!(¬A) -> A
-            if expr.constrained:
-                out.constrain()
+            inner_most = op.operands[0]
+            if is_literal(inner_most):
+                alias_is_literal(expr, inner_most, mutator, terminate=True)
+            else:
+                mutator.mutator_neutralize_expressions(expr)
             return
 
         # TODO this is kinda ugly
@@ -455,6 +458,11 @@ def fold_not(
         if expr.constrained:
             # ¬( v )
             if isinstance(op, Or):
+                # FIXME remove this shortcut
+                # should be handle in more general way
+                # maybe we need to terminate non-predicates too
+                if not op.operands:
+                    alias_is_literal_and_check_predicate_eval(expr, True, mutator)
                 for inner_op in op.operands:
                     # ¬(¬A v ...)
                     if isinstance(inner_op, Not):
@@ -474,7 +482,12 @@ def fold_not(
                             for n in parent_nots:
                                 n.constrain()
                         else:
-                            mutator.create_expression(Not, inner_op).constrain()
+                            mutator.create_expression(
+                                Not, inner_op, from_ops=[expr]
+                            ).constrain()
+
+    if expr.constrained:
+        alias_is_literal_and_check_predicate_eval(op, False, mutator)
 
 
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:
@@ -518,13 +531,11 @@ def fold_is(
         return
 
     # A is X, A is Y | X != Y -> Contradiction
-    # is enough to check because of alias class merge
-    lits = try_extract_all_literals(expr)
+    # happens automatically because of alias class merge
 
-    # TODO Xex/Yex or X/Y enough?
-    # Xex is Yex
-    if lits is not None:
-        a, b = lits
+    # X is Y -> X == Y
+    if len(literal_operands) == 2:
+        a, b = literal_operands
         alias_is_literal_and_check_predicate_eval(expr, a == b, mutator)
         return
 
@@ -540,7 +551,7 @@ def fold_is(
         # P is! False -> ¬!P
         if BoolSet(False) in literal_operands:
             for p in expr.get_operatable_operands(ConstrainableExpression):
-                mutator.create_expression(Not, p).constrain()
+                mutator.create_expression(Not, p, from_ops=[expr]).constrain()
 
 
 def fold_subset(
@@ -569,46 +580,22 @@ def fold_subset(
 
     A, B = expr.operands
 
-    # A ss ([X]) -> A is ([X])
-    # A ss {} -> A is {}
-    b_is = try_extract_literal(B, allow_subset=False)
-    if b_is is not None and (b_is.is_single_element() or b_is.is_empty()):
-        new_is = mutator._mutate(expr, Is(mutator.get_copy(A), b_is))
-        if expr.constrained:
-            new_is.constrain()
-        return
-
-    # A is B, A ss B | B non(ex)literal -> repr(B, A)
-    if not literal_operands:
-        iss = cast_assert(ParameterOperatable, A).get_operations(
-            Is, constrained_only=True
-        )
-        match_is_op = find_or(
-            iss,
-            lambda is_op: set(expr.operands).issubset(not_none(is_op).operands),
-            default=None,
-            default_multi=lambda dup: dup[0],
-        )
-        if match_is_op is not None:
-            remove_predicate(expr, match_is_op, mutator)
-            return
-
+    # A ss A -> True
     if if_operands_same_make_true(expr, mutator):
         return
 
-    a_is = try_extract_literal(A, allow_subset=False)
-    a_ss = try_extract_literal(A, allow_subset=True)
-    b = try_extract_literal(B, allow_subset=True)
-    if b is None:
+    if not is_literal(B):
         return
-    if a_is is not None:
-        # A{I|X} ss B{S/I|Y} <-> X ss Y
-        alias_is_literal_and_check_predicate_eval(expr, a_is.is_subset_of(b), mutator)  # type: ignore #TODO type
-    elif a_ss is not None:
-        if a_ss.is_subset_of(b):  # type: ignore #TODO type
-            if b_is is not None:
-                # A{S|X} ss B{I|Y} | X ss Y -> True
-                alias_is_literal_and_check_predicate_eval(expr, True, mutator)
+
+    # A ss ([X]) -> A is ([X])
+    # A ss {} -> A is {}
+    if B.is_single_element() or B.is_empty():
+        mutator.mutate_expression(expr, expression_factory=Is)
+        return
+
+    if is_literal(A):
+        # X ss Y -> True / False
+        alias_is_literal_and_check_predicate_eval(expr, A.is_subset_of(B), mutator)  # type: ignore
 
     if expr.constrained:
         # P1 ss! True -> P1!
@@ -623,7 +610,7 @@ def fold_subset(
         # P ss! False -> ¬!P
         if B == BoolSet(False):
             assert isinstance(A, ConstrainableExpression)
-            mutator.create_expression(Not, A).constrain()
+            mutator.create_expression(Not, A, from_ops=[expr]).constrain()
 
 
 def fold_ge(
@@ -670,36 +657,6 @@ def fold_ge(
             else:
                 assert right is lit
                 mutator.mutate_expression(expr, operands=[left, make_lit(lit.max_elem)])
-        return
-
-    # assert isinstance(left, ParameterOperatable) and isinstance(
-    #     right, ParameterOperatable
-    # )
-
-    # FIXME: only allowed if A uncorrelated B
-    # if_operands_same_make_true covers some of this only
-
-    # TODO makes stuff slow for some reason
-    return
-    # A >= B{I|X} -> A >= X.max()
-    # B{I|X} >= A -> X.min() >= A
-    left_lit, right_lit = map(try_extract_literal, (left, right))
-    # TODO check if exists
-    if left_lit is not None:
-        assert isinstance(left_lit, Quantity_Interval_Disjoint)
-        p = mutator.create_expression(
-            GreaterOrEqual, make_lit(left_lit.min_elem), right
-        )
-        if expr.constrained:
-            p.constrain()
-        return
-    if right_lit is not None:
-        assert isinstance(right_lit, Quantity_Interval_Disjoint)
-        p = mutator.create_expression(
-            GreaterOrEqual, left, make_lit(right_lit.max_elem)
-        )
-        if expr.constrained:
-            p.constrain()
         return
 
 
@@ -791,3 +748,95 @@ def fold(
         non_replacable_nonliteral_operands,
         mutator,
     )
+
+
+def fold_literals(mutator: Mutator, expr_type: type[CanonicalOperation]):
+    """
+    Tries to do operations on literals or fold expressions.
+    - If possible to do literal operation, aliases expr with result.
+    - If fold results in new expr, replaces old expr with new one.
+    - If fold results in neutralization, returns operand if not literal else alias.
+
+    Examples:
+    ```
+    Or(True, B) -> alias: True
+    Add(A, B, 5, 10) -> replace: Add(A, B, 15)
+    Add(10, 15) -> alias: 25
+    Not(Not(A)) -> neutralize=replace: A
+    ```
+    """
+
+    exprs = mutator.nodes_of_type(expr_type, sort_by_depth=True)
+    for expr in exprs:
+        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
+            continue
+
+        # TODO
+        # A is! 5, A is! Add(10, 2)
+        # A ...
+        # Add(10, 2) -> A -> 5
+        # don't run on aliased exprs
+        # if (
+        #    not (
+        #        not isinstance(expr, ConstrainableExpression)
+        #        or expr._solver_evaluates_to_true
+        #    )
+        #    and ParameterOperatable.try_get_literal(expr) is not None
+        # ):
+        #    continue
+
+        operands = expr.operands
+        p_operands, literal_operands = partition(
+            lambda o: ParameterOperatable.is_literal(o), operands
+        )
+        p_operands = cast(list[ParameterOperatable], p_operands)
+        non_replacable_nonliteral_operands, replacable_nonliteral_operands = partition(
+            lambda o: not mutator.has_been_mutated(o), p_operands
+        )
+        multiplicity = Counter(replacable_nonliteral_operands)
+
+        # TODO, obviously_eq offers additional possibilites,
+        # must be replacable, no implicit constr
+        fold(
+            expr,
+            literal_operands=list(literal_operands),
+            replacable_nonliteral_operands=multiplicity,
+            non_replacable_nonliteral_operands=list(non_replacable_nonliteral_operands),
+            mutator=mutator,
+        )
+
+
+def _get_fold_func(expr_type: type[CanonicalOperation]) -> Callable[[Mutator], None]:
+    def wrapped(mutator: Mutator):
+        fold_literals(mutator, expr_type)
+
+    wrapped.__name__ = f"_fold_{expr_type.__name__}"
+
+    return wrapped
+
+
+_CanonicalOperations = [
+    Add,
+    Multiply,
+    Power,
+    Round,
+    Abs,
+    Sin,
+    Log,
+    Or,
+    Not,
+    Intersection,
+    Union,
+    SymmetricDifference,
+    Difference,
+    Is,
+    GreaterOrEqual,
+    GreaterThan,
+    IsSubset,
+]
+fold_algorithms = [
+    algorithm(f"Fold {expr_type.__name__}", destructive=False)(
+        _get_fold_func(expr_type)
+    )
+    for expr_type in _CanonicalOperations
+]
