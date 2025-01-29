@@ -493,8 +493,8 @@ def _encode(t) -> netlist_type:
 
     if catch_all_field is not None:
         catch_all: dict[int, Any] = getattr(t, catch_all_field.name, {}) or {}
-        for i, v in catch_all.items():
-            sexp.insert(i + 1, v)
+        for i, v in sorted(catch_all.items(), key=lambda x: x[0]):
+            sexp.insert(i, v)
 
     if logger.isEnabledFor(logging.DEBUG):
         logger.debug(f"Dumping {type(t).__name__} {'-'*40}")
