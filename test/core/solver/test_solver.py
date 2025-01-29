@@ -1320,3 +1320,11 @@ def test_deduce_negative():
     solver = DefaultSolver()
     res = solver.assert_any_predicate([(p, None)], lock=False)
     assert res.true_predicates == [(p, None)]
+
+
+def test_empty_and():
+    solver = DefaultSolver()
+
+    p = And()
+    res = solver.assert_any_predicate([(p, None)], lock=False)
+    assert res.true_predicates == [(p, None)]

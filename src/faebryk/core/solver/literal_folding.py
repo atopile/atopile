@@ -458,6 +458,11 @@ def fold_not(
         if expr.constrained:
             # ¬( v )
             if isinstance(op, Or):
+                # FIXME remove this shortcut
+                # should be handle in more general way
+                # maybe we need to terminate non-predicates too
+                if not op.operands:
+                    alias_is_literal_and_check_predicate_eval(expr, True, mutator)
                 for inner_op in op.operands:
                     # ¬(¬A v ...)
                     if isinstance(inner_op, Not):
