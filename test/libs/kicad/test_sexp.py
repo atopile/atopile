@@ -41,18 +41,18 @@ def _unformat(s: str) -> str:
 class Container:
     @dataclass(kw_only=True)
     class SomeDataclass:
-        class SomeEnum(SymEnum):
+        class E_Numbers(SymEnum):
             ONE = "one"
             TWO = "two"
 
         a: int = field(**sexp_field(positional=True))
         b: bool = field(**sexp_field(positional=True))
         c: Optional[bool] = field(**sexp_field(positional=True), default=None)
-        d: Optional[SomeEnum] = field(**sexp_field(positional=True), default=None)
-        e: int
-        f: bool
-        g: Optional[bool] = None
-        h: Optional[SomeEnum] = None
+        d: Optional[E_Numbers] = field(**sexp_field(positional=True), default=None)
+        f: int
+        g: bool
+        h: Optional[bool] = None
+        i: Optional[E_Numbers] = None
 
     some_dataclass: SomeDataclass
 
@@ -63,10 +63,10 @@ class Container:
         (
             Container(
                 some_dataclass=Container.SomeDataclass(
-                    a=1, b=True, c=None, d=None, e=2, f=False, g=None, h=None
+                    a=1, b=True, c=None, d=None, f=2, g=False, h=None, i=None
                 )
             ),
-            "(some_dataclass 1 yes (e 2) (f no))",
+            "(some_dataclass 1 yes (f 2) (g no))",
         ),
         (
             Container(
@@ -74,14 +74,14 @@ class Container:
                     a=1,
                     b=True,
                     c=False,
-                    d=Container.SomeDataclass.SomeEnum.ONE,
-                    e=2,
-                    f=False,
-                    g=True,
-                    h=Container.SomeDataclass.SomeEnum.TWO,
+                    d=Container.SomeDataclass.E_Numbers.ONE,
+                    f=2,
+                    g=False,
+                    h=True,
+                    i=Container.SomeDataclass.E_Numbers.TWO,
                 )
             ),
-            "(some_dataclass 1 yes no one (e 2) (f no) (g yes) (h two))",
+            "(some_dataclass 1 yes no one (f 2) (g no) (h yes) (i two))",
         ),
     ],
 )
@@ -130,8 +130,8 @@ def test_unknowns():
         some_dataclass: SomeDataclass
 
     cereal = (
-        '(some_dataclass (a 1) (b "hello") gibberish (thingo) (random_key'
-        ' "random_value") (whats_this (who_even_knows True)))'
+        '(some_dataclass gibberish (thingo) (a 1) (b "hello") gibberish (thingo) '
+        '(random_key "random_value") (whats_this (who_even_knows True)))'
     )
 
     container = loads(cereal, Container)
