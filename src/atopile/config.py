@@ -348,7 +348,7 @@ class BuildTargetConfig(BaseConfigModel):
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
-    keep_net_names: bool = Field(default=False)
+    keep_net_names: bool = Field(default=True)
     frozen: bool = Field(default=False)
     paths: BuildTargetPaths
 
