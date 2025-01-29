@@ -370,7 +370,7 @@ def _decode[T](
                 f" {sp.assert_value} but is {value_dict[f.name]}"
             )
 
-    # Unprocessed values should be None is there aren't any,
+    # Unprocessed values should be None if there aren't any,
     # so they don't get reproduced etc...
     if catch_all_fields and not unprocessed:
         value_dict[catch_all_fields[0].name] = None
