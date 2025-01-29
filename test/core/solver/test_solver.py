@@ -664,9 +664,8 @@ def test_voltage_divider_find_resistances():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-    result, _ = solver.simplify_symbolically(v_out.get_graph())
-
-    assert result.try_get_literal(v_out) == Range(0.9 * P.V, 1 * P.V)
+    # FIXME: this test looks funky
+    assert solver.inspect_get_known_supersets(v_out) == Range(0.9 * P.V, 1 * P.V)
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
