@@ -199,7 +199,7 @@ def fold_add(
     )
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0], mutator)
+        alias_is_literal(new_expr, new_operands[0], mutator, terminate=True)
 
 
 def fold_multiply(
@@ -254,7 +254,7 @@ def fold_multiply(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        alias_is_literal(new_expr, new_operands[0], mutator)
+        alias_is_literal(new_expr, new_operands[0], mutator, terminate=True)
 
 
 def fold_pow(
@@ -286,7 +286,7 @@ def fold_pow(
         except NotImplementedError:
             # TODO either fix or raise a warning
             return
-        alias_is_literal(expr, result, mutator)
+        alias_is_literal(expr, result, mutator, terminate=True)
         return
 
     if is_numeric_literal(exp):
@@ -296,16 +296,16 @@ def fold_pow(
 
         # in python 0**0 is also 1
         if exp == 0:
-            alias_is_literal(expr, 1, mutator)
+            alias_is_literal(expr, 1, mutator, terminate=True)
             return
 
     if is_numeric_literal(base):
         if base == 0:
-            alias_is_literal(expr, 0, mutator)
+            alias_is_literal(expr, 0, mutator, terminate=True)
             # FIXME: exp >! 0
             return
         if base == 1:
-            alias_is_literal(expr, 1, mutator)
+            alias_is_literal(expr, 1, mutator, terminate=True)
             return
 
 
@@ -406,6 +406,7 @@ def fold_not(
     ¬P | P constrained -> False
 
     ¬!(¬A v ¬B v C) -> ¬!(¬!A v ¬!B v C), ¬!C
+    ¬!A -> A is! False
     ```
     """
     # TODO ¬(A >= B) -> (B > A) ss ¬(A >= B) (only ss because of partial overlap)
@@ -417,6 +418,8 @@ def fold_not(
     if isinstance(op, CanonicalBoolean):
         alias_is_literal_and_check_predicate_eval(expr, op.op_not(), mutator)
         return
+
+    assert isinstance(op, ParameterOperatable)
 
     # ¬P | P constrained -> False
     if isinstance(op, ConstrainableExpression) and op.constrained:
@@ -432,7 +435,7 @@ def fold_not(
         if isinstance(op, Not):
             inner_most = op.operands[0]
             if is_literal(inner_most):
-                alias_is_literal(expr, inner_most, mutator)
+                alias_is_literal(expr, inner_most, mutator, terminate=True)
             else:
                 mutator.mutator_neutralize_expressions(expr)
             return
@@ -464,6 +467,9 @@ def fold_not(
                             mutator.create_expression(
                                 Not, inner_op, from_ops=[expr]
                             ).constrain()
+
+    if expr.constrained:
+        alias_is_literal_and_check_predicate_eval(op, False, mutator)
 
 
 def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:

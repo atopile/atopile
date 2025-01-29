@@ -739,13 +739,7 @@ def test_base_unit_switch():
     assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
 
 
-@pytest.mark.parametrize(
-    "predicate_type",
-    [
-        Is,
-        IsSubset,
-    ],
-)
+@pytest.mark.parametrize("predicate_type", [Is, IsSubset])
 def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
     p0 = Parameter(units=P.V)
     p0.alias_is(Range(0 * P.V, 10 * P.V))
@@ -1318,3 +1312,13 @@ def test_fold_literals():
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(A) == Range(0, 20)
+
+
+def test_deduce_negative():
+    A = Parameter(domain=L.Domains.BOOL())
+
+    p = Not(A)
+
+    solver = DefaultSolver()
+    res = solver.assert_any_predicate([(p, None)], lock=False)
+    assert res.true_predicates == [(p, None)]

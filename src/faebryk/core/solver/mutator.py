@@ -79,7 +79,7 @@ class Mutator:
         copied: set[ParameterOperatable]
         created: dict[ParameterOperatable, list[ParameterOperatable]]
         # TODO make api for contraining
-        marked: set[ConstrainableExpression]
+        terminated: set[ConstrainableExpression]
 
     def __init__(
         self,
@@ -96,14 +96,14 @@ class Mutator:
             last_run_operables = set()
 
         self._last_run_operables = last_run_operables
-        self._starting_operables = set(self.nodes_of_type(include_marked=True))
+        self._starting_operables = set(self.nodes_of_type(include_terminated=True))
         self._new_operables = self._starting_operables - self._last_run_operables
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
             removed=set(),
             copied=set(),
             created=defaultdict(list),
-            marked=set(),
+            terminated=set(),
         )
 
         # TODO remove debug
@@ -247,8 +247,8 @@ class Mutator:
         if isinstance(expr, ConstrainableExpression):
             new_expr = cast_assert(ConstrainableExpression, new_expr)
             new_expr.constrained = expr.constrained
-            if self.is_predicate_true(expr):
-                new_expr._solver_evaluates_to_true = True
+            if self.is_predicate_terminated(expr):
+                new_expr._solver_terminated = True
 
         return self._mutate(expr, new_expr)  # type: ignore #TODO
 
@@ -409,10 +409,10 @@ class Mutator:
         self.transformations.created[param] = list(from_ops or [])
         return param
 
-    def constrain(self, *po: ConstrainableExpression):
+    def constrain(self, *po: ConstrainableExpression, terminate: bool = False):
         for p in po:
             p.constrain()
-            alias_is_literal(p, True, self)
+            alias_is_literal(p, True, self, terminate=terminate)
 
     @property
     def dirty(self) -> bool:
@@ -424,7 +424,7 @@ class Mutator:
             self.transformations.removed
             or non_no_op_mutations
             or self.transformations.created
-            or self.transformations.marked
+            or self.transformations.terminated
         )
 
     @property
@@ -438,7 +438,7 @@ class Mutator:
         # TODO should only run during dev
 
         # Check modifications to original graph
-        post_mut_nodes = set(self.nodes_of_type(include_marked=True))
+        post_mut_nodes = set(self.nodes_of_type(include_terminated=True))
         removed = self._starting_operables.difference(
             post_mut_nodes, self.transformations.removed
         )
@@ -498,22 +498,21 @@ class Mutator:
 
         return result
 
-    def mark_predicate_true(self, pred: ConstrainableExpression):
+    def predicate_terminate(self, pred: ConstrainableExpression):
         assert pred.constrained
-        if pred._solver_evaluates_to_true:
+        if pred._solver_terminated:
             return
-        pred._solver_evaluates_to_true = True
-        self.transformations.marked.add(pred)
+        pred._solver_terminated = True
+        self.transformations.terminated.add(pred)
 
-    def is_predicate_true(self, pred: ConstrainableExpression) -> bool:
-        return pred._solver_evaluates_to_true
+    def is_predicate_terminated(self, pred: ConstrainableExpression) -> bool:
+        return pred._solver_terminated
 
-    def mark_predicate_false(self, pred: ConstrainableExpression):
+    def predicate_reset_termination(self, pred: ConstrainableExpression):
         assert pred.constrained
-        if not pred._solver_evaluates_to_true:
+        if not pred._solver_terminated:
             return
-        pred._solver_evaluates_to_true = False
-        self.transformations.marked.add(pred)
+        pred._solver_terminated = False
 
     def get_output_operables(self) -> set[ParameterOperatable]:
         # It's enough to check for mutation graphs and not created ones
@@ -534,7 +533,7 @@ class Mutator:
         sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
-        include_marked: bool = False,
+        include_terminated: bool = False,
     ) -> list[T] | set[T]:
         assert not new_only or not created_only
 
@@ -545,12 +544,13 @@ class Mutator:
         else:
             out = {n for G in self.G for n in GraphFunctions(G).nodes_of_type(t)}
 
-        if not include_marked:
+        if not include_terminated:
             out = {
                 n
                 for n in out
                 if not (
-                    isinstance(n, ConstrainableExpression) and self.is_predicate_true(n)
+                    isinstance(n, ConstrainableExpression)
+                    and self.is_predicate_terminated(n)
                 )
             }
 
@@ -563,16 +563,17 @@ class Mutator:
         self,
         t: tuple[type[ParameterOperatable], ...] | UnionType,
         sort_by_depth: bool = False,
-        include_marked: bool = False,
+        include_terminated: bool = False,
     ) -> list[ParameterOperatable] | set[ParameterOperatable]:
         out = {n for G in self._G for n in GraphFunctions(G).nodes_of_types(t)}
         out = cast(set[ParameterOperatable], out)
-        if not include_marked:
+        if not include_terminated:
             out = {
                 n
                 for n in out
                 if not (
-                    isinstance(n, ConstrainableExpression) and self.is_predicate_true(n)
+                    isinstance(n, ConstrainableExpression)
+                    and self.is_predicate_terminated(n)
                 )
             }
         if sort_by_depth:
@@ -587,7 +588,9 @@ class Mutator:
 
         return (
             expr
-            for expr in self.nodes_of_type(Is, new_only=new_only, include_marked=True)
+            for expr in self.nodes_of_type(
+                Is, new_only=new_only, include_terminated=True
+            )
             if is_alias_is_literal(expr)
         )
 
@@ -595,7 +598,7 @@ class Mutator:
         new_literal_ss = (
             expr
             for expr in self.nodes_of_type(
-                IsSubset, new_only=new_only, include_marked=True
+                IsSubset, new_only=new_only, include_terminated=True
             )
             if bool(
                 expr.constrained
@@ -681,9 +684,9 @@ class Mutator:
                 key = f"{key} from ({key_from_ops})"
             rows.append((key, value))
 
-        marked = self.transformations.marked.difference(created_ops)
-        for op in marked:
-            rows.append(("marked", op.compact_repr(context_new)))
+        terminated = self.transformations.terminated.difference(created_ops)
+        for op in terminated:
+            rows.append(("terminated", op.compact_repr(context_new)))
 
         copied = self.transformations.copied
         printed = set()
@@ -766,7 +769,7 @@ class Mutator:
                     if not (
                         isinstance(n, (Is, IsSubset))
                         and n.constrained
-                        and n._solver_evaluates_to_true
+                        and n._solver_terminated
                         and (
                             # A is/ss Lit
                             any(ParameterOperatable.is_literal(o) for o in n.operands)
@@ -869,8 +872,8 @@ class Mutator:
         #    [k.compact_repr(old_context) for k in self.transformations.copied]
         # )
         copied = len(self.transformations.copied)
-        marked = len(self.transformations.marked)
+        terminated = len(self.transformations.terminated)
         return (
             f"Mutator(mutated={mutated}, created={created},"
-            f" removed={removed}, copied={copied}, marked={marked})"
+            f" removed={removed}, copied={copied}, terminated={terminated})"
         )

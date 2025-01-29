@@ -163,12 +163,12 @@ def remove_congruent_expressions(mutator: Mutator):
             representative = mutator.mutate_expression(expr)
             repres[eq_id] = representative
 
-            # propagate constrained & marked true
+            # propagate constrained & terminate
             if isinstance(representative, ConstrainableExpression):
                 eq_class = cast(set[ConstrainableExpression], eq_class)
                 representative.constrained = any(e.constrained for e in eq_class)
-                if any(mutator.is_predicate_true(e) for e in eq_class):
-                    mutator.mark_predicate_true(representative)
+                if any(mutator.is_predicate_terminated(e) for e in eq_class):
+                    mutator.predicate_terminate(representative)
 
         mutator._mutate(expr, repres[eq_id])
 
@@ -595,7 +595,7 @@ def predicate_literal_deduce(mutator: Mutator):
             continue
         lits = not_none(try_extract_all_literals(p, accept_partial=True))
         if len(p.operands) - len(lits) <= 1:
-            mutator.mark_predicate_true(p)
+            mutator.predicate_terminate(p)
 
 
 @algorithm("Predicate unconstrained operands deduce", destructive=True)
@@ -603,25 +603,20 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
     A op! B | A or B unconstrained -> A op!! B
     """
-    # FIXME rethink this
-    return
 
     preds = mutator.nodes_of_type(ConstrainableExpression)
     for p in preds:
         if not p.constrained:
             continue
-        if mutator.is_predicate_true(p):
+        if mutator.is_predicate_terminated(p):
+            continue
+        if is_literal_expression(p):
             continue
 
-        if any(ParameterOperatable.is_literal(o) for o in p.operands):
-            continue
-
-        if no_other_constrains(p.operands[0], p, unfulfilled_only=True):
-            alias_is_literal_and_check_predicate_eval(p, True, mutator)
-            return
-        if no_other_constrains(p.operands[1], p, unfulfilled_only=True):
-            alias_is_literal_and_check_predicate_eval(p, True, mutator)
-            return
+        for op in p.operatable_operands:
+            if no_other_constrains(op, p, unfulfilled_only=True):
+                alias_is_literal_and_check_predicate_eval(p, True, mutator)
+                break
 
 
 @algorithm("Convert aliased singletons into literals")

@@ -56,6 +56,7 @@ from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagInt,
     KeyErrorAmbiguous,
+    find,
     partition,
     unique_ref,
 )
@@ -212,12 +213,20 @@ def alias_is_literal(
     literal: ParameterOperatable.Literal | SolverLiteral,
     mutator: "Mutator",
     from_ops: Sequence[ParameterOperatable] | None = None,
+    terminate: bool = False,
 ):
     literal = make_lit(literal)
     existing = try_extract_literal(po)
 
     if existing is not None:
         if existing == literal:
+            if terminate:
+                mutator.predicate_terminate(
+                    find(
+                        po.get_operations(Is, constrained_only=True),
+                        lambda x: existing in x.operands,
+                    )
+                )
             return
         raise ContradictionByLiteral(
             "Tried alias to different literal",
@@ -228,7 +237,10 @@ def alias_is_literal(
     if isinstance(po, Is):
         if literal in po.get_literal_operands().values():
             return
-    return mutator.create_expression(Is, po, literal, from_ops=from_ops).constrain()
+    out = mutator.create_expression(Is, po, literal, from_ops=from_ops, constrain=True)
+    if terminate:
+        mutator.predicate_terminate(out)
+    return out
 
 
 def subset_literal(
@@ -316,12 +328,14 @@ def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
 
 
 def alias_is_literal_and_check_predicate_eval(
-    expr: ConstrainableExpression, value: BoolSet | bool, mutator: "Mutator"
+    expr: ParameterOperatable, value: BoolSet | bool, mutator: "Mutator"
 ):
     """
     Call this when 100% sure what the result of a predicate is.
     """
-    alias_is_literal(expr, value, mutator)
+    alias_is_literal(expr, value, mutator, terminate=True)
+    if not isinstance(expr, ConstrainableExpression):
+        return
     if not expr.constrained:
         return
     # all predicates alias to True, so alias False will already throw
@@ -330,10 +344,10 @@ def alias_is_literal_and_check_predicate_eval(
             "Constrained predicate deduced to False",
             involved=[expr],
         )
-    mutator.mark_predicate_true(expr)
+    mutator.predicate_terminate(expr)
 
     # TODO is this still needed?
-    # mark all alias_is P -> True as true
+    # terminate all alias_is P -> True
     for op in expr.get_operations(Is):
         if not op.constrained:
             continue
@@ -342,7 +356,7 @@ def alias_is_literal_and_check_predicate_eval(
             continue
         if lit != BoolSet(True):
             continue
-        mutator.mark_predicate_true(op)
+        mutator.predicate_terminate(op)
 
 
 def no_other_constrains(
@@ -355,7 +369,7 @@ def no_other_constrains(
             [
                 x
                 for x in get_constrained_expressions_involved_in(po).difference(other)
-                if not unfulfilled_only or not x._solver_evaluates_to_true
+                if not unfulfilled_only or not x._solver_terminated
             ]
         )
         == 0
@@ -574,7 +588,7 @@ def find_congruent_expression[T: CanonicalOperation](
         lit_ops = {
             op
             for op in mutator.nodes_of_type(
-                expr_factory, created_only=False, include_marked=True
+                expr_factory, created_only=False, include_terminated=True
             )
             if is_literal_expression(op)
             # check congruence
@@ -618,14 +632,16 @@ def get_supersets(
 
 def get_all_aliases(mutator: "Mutator") -> set[Is]:
     return {
-        op for op in mutator.nodes_of_type(Is, include_marked=True) if op.constrained
+        op
+        for op in mutator.nodes_of_type(Is, include_terminated=True)
+        if op.constrained
     }
 
 
 def get_all_subsets(mutator: "Mutator") -> set[IsSubset]:
     return {
         op
-        for op in mutator.nodes_of_type(IsSubset, include_marked=True)
+        for op in mutator.nodes_of_type(IsSubset, include_terminated=True)
         if op.constrained
     }
 

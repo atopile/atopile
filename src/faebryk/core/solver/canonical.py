@@ -83,7 +83,7 @@ def constrain_within_domain(mutator: Mutator):
             )
             alias_is_literal(new_predicate, True, mutator)
             # reset solver flag
-            mutator.mark_predicate_false(new_predicate)
+            mutator.predicate_reset_termination(new_predicate)
 
 
 @algorithm("Canonical literal form", single=True, destructive=False)

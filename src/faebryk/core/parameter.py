@@ -695,7 +695,7 @@ class Expression(ParameterOperatable):
         if isinstance(self, ConstrainableExpression) and self.constrained:
             # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
-            if self._solver_evaluates_to_true:
+            if self._solver_terminated:
                 symbol_suffix += "!"
         symbol += symbol_suffix
         symbol += self._get_lit_suffix()
@@ -753,7 +753,7 @@ class ConstrainableExpression(Expression):
         self.constrained: bool = False
 
         # TODO this should be done in solver, not here
-        self._solver_evaluates_to_true: bool = False
+        self._solver_terminated: bool = False
         """
         Flag marking to the solver that this predicate has been deduced to True.
         Differs from alias in the sense that we can guarantee that the predicate is

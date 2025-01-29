@@ -431,9 +431,7 @@ class DefaultSolver(Solver):
                     )
                 ]
                 not_deducted = [
-                    p
-                    for p in new_preds
-                    if p.constrained and not p._solver_evaluates_to_true
+                    p for p in new_preds if p.constrained and not p._solver_terminated
                 ]
 
                 if not_deducted:
