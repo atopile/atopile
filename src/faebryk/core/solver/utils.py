@@ -78,6 +78,9 @@ MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
 TIMEOUT = ConfigFlagInt("STIMEOUT", default=120, descr="Solver timeout").get()
+DEBUG_ALLOW_PARTIAL_STATE = ConfigFlag(
+    "SPARTIAL", default=False, descr="Allow partial state"
+)
 # --------------------------------------------------------------------------------------
 
 if S_LOG:
@@ -208,6 +211,7 @@ def alias_is_literal(
     po: ParameterOperatable,
     literal: ParameterOperatable.Literal | SolverLiteral,
     mutator: "Mutator",
+    from_ops: Sequence[ParameterOperatable] | None = None,
 ):
     literal = make_lit(literal)
     existing = try_extract_literal(po)
@@ -224,14 +228,14 @@ def alias_is_literal(
     if isinstance(po, Is):
         if literal in po.get_literal_operands().values():
             return
-    # TODO from_ops
-    return mutator.create_expression(Is, po, literal, from_ops=None).constrain()
+    return mutator.create_expression(Is, po, literal, from_ops=from_ops).constrain()
 
 
 def subset_literal(
     po: ParameterOperatable,
     literal: ParameterOperatable.Literal | SolverLiteral,
     mutator: "Mutator",
+    from_ops: Sequence[ParameterOperatable] | None = None,
 ):
     literal = make_lit(literal)
     existing_alias = try_extract_literal(po)
@@ -249,8 +253,9 @@ def subset_literal(
         if existing.is_subset_of(literal):  # type: ignore #TODO
             return
 
-    # TODO from_ops
-    return mutator.create_expression(IsSubset, po, literal, from_ops=None).constrain()
+    return mutator.create_expression(
+        IsSubset, po, literal, from_ops=from_ops
+    ).constrain()
 
 
 def is_literal(po: ParameterOperatable | SolverOperatable) -> TypeGuard[SolverLiteral]:

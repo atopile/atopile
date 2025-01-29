@@ -20,6 +20,7 @@ from faebryk.core.solver import analytical, canonical
 from faebryk.core.solver.mutator import REPR_MAP, Mutator
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
+    DEBUG_ALLOW_PARTIAL_STATE,
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
@@ -103,10 +104,17 @@ class DefaultSolver(Solver):
     class IterationState:
         dirty: bool
 
+    @dataclass
+    class PartialState:
+        data: "DefaultSolver.IterationData"
+        print_context: ParameterOperatable.ReprContext
+
     def __init__(self) -> None:
         super().__init__()
 
         self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
+
+        self.partial_state: DefaultSolver.PartialState | None = None
 
     def has_no_solution(
         self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
@@ -200,53 +208,73 @@ class DefaultSolver(Solver):
             debug_name_mappings(print_context_, g)
             Mutator.print_all(g, context=print_context_, type_filter=Expression)
 
-        iter_data = DefaultSolver.IterationData(
-            graphs=[g],
-            total_repr_map=Mutator.ReprMap(
-                {po: po for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)}
+        self.partial_state = DefaultSolver.PartialState(
+            data=DefaultSolver.IterationData(
+                graphs=[g],
+                total_repr_map=Mutator.ReprMap(
+                    {
+                        po: po
+                        for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+                    }
+                ),
+                output_operables={},
             ),
-            output_operables={},
+            print_context=print_context_,
         )
+
         for iterno in count():
             first_iter = iterno == 0
 
             if iterno > MAX_ITERATIONS_HEURISTIC:
-                raise Exception(
+                if DEBUG_ALLOW_PARTIAL_STATE:
+                    return (
+                        self.partial_state.data.total_repr_map,
+                        self.partial_state.print_context,
+                    )
+                raise TimeoutError(
                     "Solver Bug: Too many iterations, likely stuck in a loop"
                 )
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
-                for g in iter_data.graphs
+                for g in self.partial_state.data.graphs
             )
             logger.debug(
                 (
                     f"Iteration {iterno} "
-                    f"|graphs|: {len(iter_data.graphs)}, |V|: {v_count}"
+                    f"|graphs|: {len(self.partial_state.data.graphs)}, |V|: {v_count}"
                 ).ljust(80, "-")
             )
 
             try:
-                iteration_state, print_context_ = DefaultSolver._run_iteration(
-                    iterno=iterno,
-                    data=iter_data,
-                    algos=self.algorithms.pre
-                    if first_iter
-                    else self.algorithms.iterative,
-                    print_context=print_context_,
+                iteration_state, self.partial_state.print_context = (
+                    DefaultSolver._run_iteration(
+                        iterno=iterno,
+                        data=self.partial_state.data,
+                        algos=self.algorithms.pre
+                        if first_iter
+                        else self.algorithms.iterative,
+                        print_context=self.partial_state.print_context,
+                    )
                 )
             except:
                 if S_LOG:
-                    Mutator.print_all(*iter_data.graphs, context=print_context_)
+                    Mutator.print_all(
+                        *self.partial_state.data.graphs,
+                        context=self.partial_state.print_context,
+                    )
                 raise
 
             if not iteration_state.dirty:
                 break
 
-            if not len(iter_data.graphs):
+            if not len(self.partial_state.data.graphs):
                 break
 
             if S_LOG:
-                Mutator.print_all(*iter_data.graphs, context=print_context_)
+                Mutator.print_all(
+                    *self.partial_state.data.graphs,
+                    context=self.partial_state.print_context,
+                )
 
         if LOG_PICK_SOLVE:
             logger.info(
@@ -254,7 +282,10 @@ class DefaultSolver(Solver):
                 f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
 
-        return iter_data.total_repr_map, print_context_
+        out = self.partial_state.data.total_repr_map, self.partial_state.print_context
+        self.partial_state = None
+
+        return out
 
     @override
     def get_any_single(
@@ -324,7 +355,13 @@ class DefaultSolver(Solver):
 
         # run phase 1 solver
         # TODO caching
-        repr_map, print_context = self.simplify_symbolically(param.get_graph())
+        try:
+            repr_map, print_context = self.simplify_symbolically(param.get_graph())
+        except TimeoutError:
+            if self.partial_state is None:
+                raise
+            repr_map = self.partial_state.data.total_repr_map
+
         if param not in repr_map.repr_map:
             if LOG_PICK_SOLVE:
                 logger.warning(f"Parameter {param} not in repr_map")
