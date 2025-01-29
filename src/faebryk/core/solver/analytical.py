@@ -336,9 +336,9 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
         }
         for alias in non_lit_aliases:
             if is_alias:
-                alias_is_literal(alias, lit, mutator)
+                alias_is_literal(alias, lit, mutator, from_ops=[p])
             else:
-                subset_literal(alias, lit, mutator)
+                subset_literal(alias, lit, mutator, from_ops=[p])
 
 
 @algorithm("Merge intersecting subsets")
