@@ -91,3 +91,44 @@ builds:
     default:
         entry: some_file.ato:App
 ```
+
+
+### [`builds.targets`](#builds.targets) {: #builds.targets }
+
+!json-schema::$defs.BuildTargetConfig.properties.targets.description
+
+**Default value**: `["__default__"]`, which is a special value.
+
+**Type**: `list[str]`
+
+**Example usage**:
+
+```toml title="ato.yaml"
+builds:
+    default:
+        targets:
+          - bom
+          - mfg-data
+```
+
+
+### [`builds.exclude_targets`](#builds.exclude_targets) {: #builds.exclude_targets }
+
+!json-schema::$defs.BuildTargetConfig.properties.exclude_targets.description
+
+Excluding the `mfg-data` target is useful, for example, for CI build targets that represent a
+ module, but not a board you'd manufacture.
+
+**Default value**: `[]`, don't actively exclude any targets
+
+**Type**: `list[str]`
+
+**Example usage**:
+
+```toml title="ato.yaml"
+builds:
+    default:
+        exclude_targets:
+          - bom
+          - mfg-data
+```
