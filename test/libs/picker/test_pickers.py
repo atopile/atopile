@@ -155,7 +155,6 @@ def test_skip_self_pick():
     assert module.inner.has_trait(F.has_part_picked)
 
 
-@pytest.mark.usefixtures("setup_project_config")
 def test_pick_led_by_colour():
     color = F.LED.Color.YELLOW
     led = F.LED()
