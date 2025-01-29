@@ -334,7 +334,17 @@ class BuildTargetConfig(BaseConfigModel):
     """
 
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
+    """A list of targets' names to build after updating the layout"""
+
     exclude_targets: list[str] = Field(default=[])
+    """
+    A list of targets' names to exclude.
+
+    Applied after `targets` are specified. This makes it useful to exclude
+    targets that aren't relevant to a specific build - especially in CI,
+    which typically builds **all** targets.
+    """
+
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
