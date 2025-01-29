@@ -44,6 +44,7 @@ from faebryk.core.solver.utils import (
     algorithm,
     alias_is_literal,
     make_lit,
+    subset_to,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -64,21 +65,16 @@ def constrain_within_domain(mutator: Mutator):
     """
 
     for param in mutator.nodes_of_type(Parameter):
-        new_param = mutator.mutate_parameter(param)
+        new_param = mutator.mutate_parameter(param, override_within=True, within=None)
         if param.within is not None:
-            mutator.create_expression(
-                IsSubset,
-                new_param,
-                param.within,
-                from_ops=[param],
-            ).constrain()
+            subset_to(new_param, param.within, mutator, from_ops=[param])
         if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            mutator.create_expression(
-                GreaterOrEqual,
+            subset_to(
                 new_param,
-                make_lit(quantity(0.0, new_param.units)),
-                from_ops=[new_param],
-            ).constrain()
+                make_lit(Quantity_Interval(min=0, units=param.units)),
+                mutator,
+                from_ops=[param],
+            )
 
     for predicate in mutator.nodes_of_type(ConstrainableExpression):
         if predicate.constrained:
@@ -113,9 +109,16 @@ def convert_to_canonical_literals(mutator: Mutator):
                 )
                 if po.soft_set is not None
                 else None,
+                within=Quantity_Interval_Disjoint._from_intervals(
+                    Quantity_Interval_Disjoint.from_value(po.within)._intervals,
+                    dimensionless,
+                )
+                if po.within is not None
+                else None,
                 guess=quantity(po.guess, dimensionless)
                 if po.guess is not None
                 else None,
+                override_within=True,
             )
 
         # Expression

@@ -165,7 +165,7 @@ def test_inequality_to_set():
 
 
 def test_remove_obvious_tautologies():
-    p0, p1, p2 = (Parameter(units=dimensionless) for _ in range(3))
+    p0, p1, p2 = times(3, Parameter)
     p0.alias_is(p1 + p2)
     p1.constrain_ge(0.0)
     p2.constrain_ge(0.0)
@@ -527,18 +527,6 @@ def test_literal_folding_add_multiplicative_2():
         Quantity_Interval_Disjoint.from_value(10),
         mul,
     }
-
-
-def test_subset_is_replace():
-    A = Parameter()
-    B = Parameter()
-
-    op_is = A.alias_is(B)
-    op_subset = A.constrain_subset(B)
-
-    solver = DefaultSolver()
-    result, context = solver.simplify_symbolically(A.get_graph())
-    assert result.repr_map[op_subset] == result.repr_map[op_is]
 
 
 def test_transitive_subset():
@@ -1256,16 +1244,77 @@ def test_fold_ss_transitive():
     assert solver.inspect_get_known_supersets(A) == Range(0, 10)
 
 
+def test_ss_intersect():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    A.alias_is(Range(0, 15))
+    B.alias_is(Range(10, 20))
+    C.constrain_subset(A)
+    C.constrain_subset(B)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(C) == Range(10, 15)
+
+
 @pytest.mark.parametrize(
     "left, right, expected",
     [
-        ([Range(0, 10)], [Range(0, 10)], True),
-        ([Range(0, 10)], [Range(10, 20)], False),
-        ([Add(Range(0, 10), Range(0, 20))], [Add(Range(0, 10), Range(0, 20))], True),
-        ([Add(Range(0, 10), Range(0, 20))], [Add(Range(0, 20), Range(0, 10))], True),
-        ([Not(BoolSet(True))], [Not(BoolSet(True))], True),
-        ([Not(Not(BoolSet(True)))], [Not(Not(BoolSet(True)))], True),
+        (
+            [Range(0, 10)],
+            [Range(0, 10)],
+            True,
+        ),
+        (
+            [Range(0, 10)],
+            [Range(10, 20)],
+            False,
+        ),
+        (
+            [Add(Range(0, 10), Range(0, 20))],
+            [Add(Range(0, 10), Range(0, 20))],
+            True,
+        ),
+        (
+            [Add(Range(0, 10), Range(0, 20))],
+            [Add(Range(0, 20), Range(0, 10))],
+            True,
+        ),
+        (
+            [Not(BoolSet(True))],
+            [Not(BoolSet(True))],
+            True,
+        ),
+        (
+            [Not(Not(BoolSet(True)))],
+            [Not(Not(BoolSet(True)))],
+            True,
+        ),
+        (
+            [Multiply(Range(0, 10), Range(0, 10))],
+            [Multiply(Range(0, 10), Range(0, 10))],
+            True,
+        ),
+        (
+            [Multiply(Range(0, math.inf), Range(0, math.inf), Range(0, math.inf))],
+            [Multiply(Range(0, math.inf), Range(0, math.inf))],
+            False,
+        ),
+        (
+            [Add(Range(0, math.inf), Range(0, math.inf))],
+            [Add(Range(0, math.inf))],
+            False,
+        ),
     ],
 )
 def test_congruence_lits(left, right, expected):
     assert Expression.are_pos_congruent(left, right) == expected
+
+
+def test_fold_literals():
+    A = Parameter()
+    A.alias_is(Add(Range(0, 10), Range(0, 10)))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == Range(0, 20)

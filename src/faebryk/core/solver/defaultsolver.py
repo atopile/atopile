@@ -16,7 +16,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver import analytical, canonical
+from faebryk.core.solver import analytical, canonical, literal_folding
 from faebryk.core.solver.mutator import REPR_MAP, Mutator
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
@@ -66,13 +66,14 @@ class DefaultSolver(Solver):
         ],
         iterative=[
             analytical.remove_unconstrained,
+            analytical.remove_tautologies,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
             analytical.distribute_literals_across_alias_classes,
             analytical.remove_congruent_expressions,
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
-            analytical.fold_literals,
+            *literal_folding.fold_algorithms,
             analytical.merge_intersect_subsets,
             analytical.predicate_literal_deduce,
             analytical.predicate_unconstrained_operands_deduce,

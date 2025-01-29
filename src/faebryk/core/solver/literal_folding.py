@@ -39,15 +39,15 @@ from faebryk.core.solver.utils import (
     CanonicalOperation,
     Contradiction,
     SolverLiteral,
+    algorithm,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
     is_literal,
     is_numeric_literal,
     make_lit,
-    remove_predicate,
 )
 from faebryk.libs.sets.sets import BoolSet
-from faebryk.libs.util import cast_assert, find_or, not_none
+from faebryk.libs.util import cast_assert, partition
 
 logger = logging.getLogger(__name__)
 
@@ -185,6 +185,9 @@ def fold_add(
         *non_replacable_nonliteral_operands,
     ]
 
+    if new_operands == expr.operands:
+        return
+
     # unpack if single operand (operatable)
     if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
         new_operands = cast(list[ParameterOperatable], new_operands)
@@ -194,7 +197,6 @@ def fold_add(
     new_expr = mutator.mutate_expression(
         expr, operands=new_operands, expression_factory=Add
     )
-
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
         alias_is_literal(new_expr, new_operands[0], mutator)
@@ -558,23 +560,6 @@ def fold_subset(
     if if_operands_same_make_true(expr, mutator):
         return
 
-    # TODO do we need this?
-    if not literal_operands:
-        assert isinstance(A, ParameterOperatable)
-        assert isinstance(B, ParameterOperatable)
-        iss = cast_assert(ParameterOperatable, A).get_operations(
-            Is, constrained_only=True
-        )
-        match_is_op = find_or(
-            iss,
-            lambda is_op: set(expr.operands).issubset(not_none(is_op).operands),
-            default=None,
-            default_multi=lambda dup: dup[0],
-        )
-        if match_is_op is not None:
-            remove_predicate(expr, match_is_op, mutator)
-            return
-
     if not is_literal(B):
         return
 
@@ -739,3 +724,95 @@ def fold(
         non_replacable_nonliteral_operands,
         mutator,
     )
+
+
+def fold_literals(mutator: Mutator, expr_type: type[CanonicalOperation]):
+    """
+    Tries to do operations on literals or fold expressions.
+    - If possible to do literal operation, aliases expr with result.
+    - If fold results in new expr, replaces old expr with new one.
+    - If fold results in neutralization, returns operand if not literal else alias.
+
+    Examples:
+    ```
+    Or(True, B) -> alias: True
+    Add(A, B, 5, 10) -> replace: Add(A, B, 15)
+    Add(10, 15) -> alias: 25
+    Not(Not(A)) -> neutralize=replace: A
+    ```
+    """
+
+    exprs = mutator.nodes_of_type(expr_type, sort_by_depth=True)
+    for expr in exprs:
+        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
+            continue
+
+        # TODO
+        # A is! 5, A is! Add(10, 2)
+        # A ...
+        # Add(10, 2) -> A -> 5
+        # don't run on aliased exprs
+        # if (
+        #    not (
+        #        not isinstance(expr, ConstrainableExpression)
+        #        or expr._solver_evaluates_to_true
+        #    )
+        #    and ParameterOperatable.try_get_literal(expr) is not None
+        # ):
+        #    continue
+
+        operands = expr.operands
+        p_operands, literal_operands = partition(
+            lambda o: ParameterOperatable.is_literal(o), operands
+        )
+        p_operands = cast(list[ParameterOperatable], p_operands)
+        non_replacable_nonliteral_operands, replacable_nonliteral_operands = partition(
+            lambda o: not mutator.has_been_mutated(o), p_operands
+        )
+        multiplicity = Counter(replacable_nonliteral_operands)
+
+        # TODO, obviously_eq offers additional possibilites,
+        # must be replacable, no implicit constr
+        fold(
+            expr,
+            literal_operands=list(literal_operands),
+            replacable_nonliteral_operands=multiplicity,
+            non_replacable_nonliteral_operands=list(non_replacable_nonliteral_operands),
+            mutator=mutator,
+        )
+
+
+def _get_fold_func(expr_type: type[CanonicalOperation]) -> Callable[[Mutator], None]:
+    def wrapped(mutator: Mutator):
+        fold_literals(mutator, expr_type)
+
+    wrapped.__name__ = f"_fold_{expr_type.__name__}"
+
+    return wrapped
+
+
+_CanonicalOperations = [
+    Add,
+    Multiply,
+    Power,
+    Round,
+    Abs,
+    Sin,
+    Log,
+    Or,
+    Not,
+    Intersection,
+    Union,
+    SymmetricDifference,
+    Difference,
+    Is,
+    GreaterOrEqual,
+    GreaterThan,
+    IsSubset,
+]
+fold_algorithms = [
+    algorithm(f"Fold {expr_type.__name__}", destructive=False)(
+        _get_fold_func(expr_type)
+    )
+    for expr_type in _CanonicalOperations
+]

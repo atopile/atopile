@@ -488,6 +488,9 @@ class ParameterOperatable(Node):
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
         return out
 
+    def __rich_repr__(self):
+        yield self.compact_repr()
+
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     if isinstance(po, ParameterOperatable):
@@ -568,6 +571,8 @@ class Expression(ParameterOperatable):
         left: Sequence[ParameterOperatable.All],
         right: Sequence[ParameterOperatable.All],
     ) -> bool:
+        if len(left) != len(right):
+            return False
         return all(
             lhs.is_congruent_to(rhs, recursive=True)
             if isinstance(lhs, Expression) and isinstance(rhs, Expression)

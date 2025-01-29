@@ -238,6 +238,14 @@ def subset_literal(
     from_ops: Sequence[ParameterOperatable] | None = None,
 ):
     literal = make_lit(literal)
+
+    if literal.is_empty():
+        raise ContradictionByLiteral(
+            "Tried subset to empty set",
+            involved=[po],
+            literals=[literal],
+        )
+
     existing_alias = try_extract_literal(po)
     if existing_alias is not None:
         if not existing_alias.is_subset_of(literal):  # type: ignore #TODO
@@ -250,12 +258,37 @@ def subset_literal(
 
     existing = try_extract_literal(po, allow_subset=True)
     if existing is not None:
-        if existing.is_subset_of(literal):  # type: ignore #TODO
+        # if already narrower, no point
+        # if equal, use create_expression for duplicate detection
+        if existing.is_subset_of(literal) and existing != literal:  # type: ignore #TODO
             return
 
     return mutator.create_expression(
-        IsSubset, po, literal, from_ops=from_ops
-    ).constrain()
+        IsSubset, po, literal, from_ops=from_ops, constrain=True
+    )
+
+
+def subset_to(
+    po: ParameterOperatable,
+    to: ParameterOperatable | SolverLiteral,
+    mutator: "Mutator",
+    check_existing: bool = True,
+    from_ops: Sequence[ParameterOperatable] | None = None,
+):
+    if is_literal(to):
+        assert check_existing
+        return subset_literal(po, to, mutator, from_ops=from_ops)
+
+    # check if alias exists
+    if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
+        if po.get_operations(Is, constrained_only=True) & to.get_operations(
+            Is, constrained_only=True
+        ):
+            return
+
+    return mutator.create_expression(
+        IsSubset, po, to, from_ops=from_ops, constrain=True, check_exists=check_existing
+    )
 
 
 def is_literal(po: ParameterOperatable | SolverOperatable) -> TypeGuard[SolverLiteral]:
@@ -285,6 +318,9 @@ def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
 def alias_is_literal_and_check_predicate_eval(
     expr: ConstrainableExpression, value: BoolSet | bool, mutator: "Mutator"
 ):
+    """
+    Call this when 100% sure what the result of a predicate is.
+    """
     alias_is_literal(expr, value, mutator)
     if not expr.constrained:
         return
@@ -537,7 +573,9 @@ def find_congruent_expression[T: CanonicalOperation](
     if literal_expr:
         lit_ops = {
             op
-            for op in mutator.nodes_of_type(expr_factory, created_only=False)
+            for op in mutator.nodes_of_type(
+                expr_factory, created_only=False, include_marked=True
+            )
             if is_literal_expression(op)
             # check congruence
             and Expression.are_pos_congruent(
@@ -568,24 +606,28 @@ def make_if_doesnt_exist[T: CanonicalOperation](
     return expr_factory(*operands), False  # type: ignore #TODO
 
 
-def remove_predicate(
-    pred: ConstrainableExpression,
-    representative: ConstrainableExpression,
-    mutator: "Mutator",
-):
-    """
-    VERY CAREFUL WITH THIS ONE!
-    Replaces pred in all parent expressions with true
-    """
+def get_supersets(
+    op: ParameterOperatable,
+) -> dict[ParameterOperatable | SolverLiteral, IsSubset]:
+    return {
+        e.operands[1]: e
+        for e in op.get_operations(IsSubset, constrained_only=True)
+        if e.operands[0] is op
+    }
 
-    ops = pred.get_operations()
-    for op in ops:
-        mutator.mutate_expression_with_op_map(
-            op,
-            operand_mutator=lambda _, op: (make_lit(True) if op is pred else op),
-        )
 
-    mutator._mutate(pred, mutator.get_copy(representative))
+def get_all_aliases(mutator: "Mutator") -> set[Is]:
+    return {
+        op for op in mutator.nodes_of_type(Is, include_marked=True) if op.constrained
+    }
+
+
+def get_all_subsets(mutator: "Mutator") -> set[IsSubset]:
+    return {
+        op
+        for op in mutator.nodes_of_type(IsSubset, include_marked=True)
+        if op.constrained
+    }
 
 
 # TODO move to Mutator

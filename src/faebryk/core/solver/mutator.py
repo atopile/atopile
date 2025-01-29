@@ -32,6 +32,7 @@ from faebryk.core.solver.utils import (
     SolverAlgorithm,
     SolverLiteral,
     SolverOperatable,
+    alias_is_literal,
     find_congruent_expression,
     get_graphs,
     is_alias_is_literal,
@@ -95,7 +96,7 @@ class Mutator:
             last_run_operables = set()
 
         self._last_run_operables = last_run_operables
-        self._starting_operables = set(self.nodes_of_type())
+        self._starting_operables = set(self.nodes_of_type(include_marked=True))
         self._new_operables = self._starting_operables - self._last_run_operables
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
@@ -161,9 +162,11 @@ class Mutator:
         units: Unit | Quantity | None = None,
         domain: Domain | None = None,
         soft_set: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
+        within: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
         guess: Quantity | int | float | None = None,
         tolerance_guess: float | None = None,
         likely_constrained: bool | None = None,
+        override_within: bool = False,
     ) -> Parameter:
         if param in self.transformations.mutated:
             out = self.get_mutated(param)
@@ -178,7 +181,7 @@ class Mutator:
 
         new_param = Parameter(
             units=units if units is not None else param.units,
-            within=None,
+            within=within if override_within else param.within,
             domain=domain if domain is not None else param.domain,
             soft_set=soft_set if soft_set is not None else param.soft_set,
             guess=guess if guess is not None else param.guess,
@@ -200,18 +203,23 @@ class Mutator:
         soft_mutate: type[Is] | type[IsSubset] | None = None,
         ignore_existing: bool = False,
     ) -> CanonicalOperation:
-        if expr in self.transformations.mutated:
-            out = self.get_mutated(expr)
-            assert isinstance(out, CanonicalOperation)
-            # TODO more checks
-            return out
-
         if expression_factory is None:
             assert isinstance(expr, CanonicalOperation)
             expression_factory = type(expr)
 
         if operands is None:
             operands = expr.operands
+
+        if expr in self.transformations.mutated:
+            out = self.get_mutated(expr)
+            assert isinstance(out, CanonicalOperation)
+            # TODO more checks
+            assert type(out) is expression_factory
+            # still need to run soft_mutate even if expr already in repr
+            if soft_mutate:
+                expr = out
+            else:
+                return out
 
         if soft_mutate:
             out = self.create_expression(expression_factory, *operands, from_ops=[expr])
@@ -240,7 +248,7 @@ class Mutator:
             new_expr = cast_assert(ConstrainableExpression, new_expr)
             new_expr.constrained = expr.constrained
             if self.is_predicate_true(expr):
-                self.mark_predicate_true(new_expr)
+                new_expr._solver_evaluates_to_true = True
 
         return self._mutate(expr, new_expr)  # type: ignore #TODO
 
@@ -254,7 +262,7 @@ class Mutator:
         # filter A is A, A ss A
         if new is old:
             return
-        self.create_expression(soft, old, new, from_ops=[old]).constrain()
+        self.create_expression(soft, old, new, constrain=True, from_ops=[old])
 
     def mutate_unpack_expression(
         self, expr: Expression, operands: list[ParameterOperatable] | None = None
@@ -331,6 +339,7 @@ class Mutator:
         *operands: SolverOperatable,
         check_exists: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
+        constrain: bool = False,
     ) -> T:
         assert issubclass(expr_factory, CanonicalOperation)
 
@@ -341,6 +350,8 @@ class Mutator:
             expr = expr_factory(*operands)  # type: ignore
         if not existed:
             self.transformations.created[expr] = list(from_ops or [])
+        if constrain and isinstance(expr, ConstrainableExpression):
+            self.constrain(expr)
         return expr
 
     def remove(self, *po: ParameterOperatable):
@@ -398,11 +409,20 @@ class Mutator:
         self.transformations.created[param] = list(from_ops or [])
         return param
 
+    def constrain(self, *po: ConstrainableExpression):
+        for p in po:
+            p.constrain()
+            alias_is_literal(p, True, self)
+
     @property
     def dirty(self) -> bool:
+        non_no_op_mutations = any(
+            k is not v for k, v in self.transformations.mutated.items()
+        )
+
         return bool(
             self.transformations.removed
-            or self.transformations.mutated
+            or non_no_op_mutations
             or self.transformations.created
             or self.transformations.marked
         )
@@ -418,7 +438,7 @@ class Mutator:
         # TODO should only run during dev
 
         # Check modifications to original graph
-        post_mut_nodes = set(self.nodes_of_type())
+        post_mut_nodes = set(self.nodes_of_type(include_marked=True))
         removed = self._starting_operables.difference(
             post_mut_nodes, self.transformations.removed
         )
@@ -514,6 +534,7 @@ class Mutator:
         sort_by_depth: bool = False,
         created_only: bool = False,
         new_only: bool = False,
+        include_marked: bool = False,
     ) -> list[T] | set[T]:
         assert not new_only or not created_only
 
@@ -524,6 +545,15 @@ class Mutator:
         else:
             out = {n for G in self.G for n in GraphFunctions(G).nodes_of_type(t)}
 
+        if not include_marked:
+            out = {
+                n
+                for n in out
+                if not (
+                    isinstance(n, ConstrainableExpression) and self.is_predicate_true(n)
+                )
+            }
+
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
 
@@ -533,14 +563,23 @@ class Mutator:
         self,
         t: tuple[type[ParameterOperatable], ...] | UnionType,
         sort_by_depth: bool = False,
+        include_marked: bool = False,
     ) -> list[ParameterOperatable] | set[ParameterOperatable]:
         out = {n for G in self._G for n in GraphFunctions(G).nodes_of_types(t)}
         out = cast(set[ParameterOperatable], out)
+        if not include_marked:
+            out = {
+                n
+                for n in out
+                if not (
+                    isinstance(n, ConstrainableExpression) and self.is_predicate_true(n)
+                )
+            }
         if sort_by_depth:
             out = ParameterOperatable.sort_by_depth(out, ascending=True)
         return out
 
-    def get_new_literal_aliases(self):
+    def get_literal_aliases(self, new_only: bool = True):
         """
         Find new ops which are Is expressions between a ParameterOperatable and a
         literal
@@ -548,14 +587,16 @@ class Mutator:
 
         return (
             expr
-            for expr in self.nodes_of_type(Is, new_only=True)
+            for expr in self.nodes_of_type(Is, new_only=new_only, include_marked=True)
             if is_alias_is_literal(expr)
         )
 
-    def get_new_literal_subsets(self):
+    def get_literal_subsets(self, new_only: bool = True):
         new_literal_ss = (
             expr
-            for expr in self.nodes_of_type(IsSubset, new_only=True)
+            for expr in self.nodes_of_type(
+                IsSubset, new_only=new_only, include_marked=True
+            )
             if bool(
                 expr.constrained
                 and expr.get_literal_operands()
@@ -569,10 +610,10 @@ class Mutator:
             for p in alias.operatable_operands
         }
 
-    def get_new_literal_aliased(self):
+    def get_literal_aliased(self, new_only: bool = True):
         ps = {
             p: not_none(try_extract_literal(p))
-            for alias in self.get_new_literal_aliases()
+            for alias in self.get_literal_aliases(new_only=new_only)
             for p in alias.operatable_operands
         }
         return ps
