@@ -2,14 +2,22 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 
 import pytest
 from dataclasses_json import CatchAll
+from git import Optional
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
 from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
-from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs, dumps, loads
+from faebryk.libs.sexp.dataclass_sexp import (
+    DecodeError,
+    dataclass_dfs,
+    dumps,
+    loads,
+    sexp_field,
+)
 from faebryk.libs.test.fileformats import (
     _FPLIB_DIR,  # noqa: F401
     _NETLIST_DIR,  # noqa: F401
@@ -29,26 +37,65 @@ def _unformat(s: str) -> str:
     return s.replace("\n", "").replace(" ", "")
 
 
-def test_no_unknowns():
-    @dataclass
-    class Container:
-        @dataclass
-        class SomeDataclass:
-            a: int
-            b: str
+@dataclass
+class Container:
+    @dataclass(kw_only=True)
+    class SomeDataclass:
+        class SomeEnum(StrEnum):
+            ONE = "one"
+            TWO = "two"
 
-        some_dataclass: SomeDataclass
+        a: int = field(**sexp_field(positional=True))
+        b: bool = field(**sexp_field(positional=True))
+        c: Optional[bool] = field(**sexp_field(positional=True), default=None)
+        d: Optional[SomeEnum] = field(**sexp_field(positional=True), default=None)
+        e: int
+        f: bool
+        g: Optional[bool] = None
+        h: Optional[SomeEnum] = None
 
-    container = Container(some_dataclass=Container.SomeDataclass(a=1, b="hello"))
+    some_dataclass: SomeDataclass
+
+
+@pytest.mark.parametrize(
+    "container,str_sexp",
+    [
+        (
+            Container(
+                some_dataclass=Container.SomeDataclass(
+                    a=1, b=True, c=None, d=None, e=2, f=False, g=None, h=None
+                )
+            ),
+            "(some_dataclass 1 yes (e 2) (f no))",
+        ),
+        (
+            Container(
+                some_dataclass=Container.SomeDataclass(
+                    a=1,
+                    b=True,
+                    c=False,
+                    d=Container.SomeDataclass.SomeEnum.ONE,
+                    e=2,
+                    f=False,
+                    g=True,
+                    h=Container.SomeDataclass.SomeEnum.TWO,
+                )
+            ),
+            '(some_dataclass 1 yes no "one" (e 2) (f no) (g yes) (h "two"))',
+        ),
+    ],
+)
+def test_no_unknowns(container, str_sexp):
     cereal = dumps(container)
 
-    assert _unformat(cereal) == _unformat('(some_dataclass (a 1) (b "hello"))')
+    assert _unformat(cereal) == _unformat(str_sexp)
 
     assert loads(cereal, Container) == container
 
-    bad_cereal = '(some_dataclass gibberish (a 1) (b "hello"))'
-    with pytest.raises(ValueError):
-        loads(bad_cereal, Container)
+
+def test_extra_positional():
+    with pytest.raises(DecodeError):
+        loads('(some_dataclass 1 yes  no "one" gibberish (e 2) (f no))', Container)
 
 
 def test_empty_unknowns():
