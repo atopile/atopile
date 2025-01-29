@@ -439,7 +439,7 @@ def fold_not(
         # ¬!P! | P constrained -> Contradiction
         if expr.constrained:
             raise Contradiction("¬!P!", involved=[expr])
-        expr.alias_is(make_lit(False))
+        alias_is_literal(expr, False, mutator)
         return
 
     if replacable_nonliteral_operands:

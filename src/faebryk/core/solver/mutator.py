@@ -199,12 +199,11 @@ class Mutator:
         self,
         expr: Expression,
         operands: Iterable[All] | None = None,
-        expression_factory: type[CanonicalOperation] | None = None,
+        expression_factory: type[Expression] | None = None,
         soft_mutate: type[Is] | type[IsSubset] | None = None,
         ignore_existing: bool = False,
     ) -> CanonicalOperation:
         if expression_factory is None:
-            assert isinstance(expr, CanonicalOperation)
             expression_factory = type(expr)
 
         if operands is None:
@@ -222,12 +221,14 @@ class Mutator:
                 return out
 
         if soft_mutate:
+            assert issubclass(expression_factory, CanonicalOperation)
             out = self.create_expression(expression_factory, *operands, from_ops=[expr])
             self.soft_mutate(soft_mutate, expr, out)
             return out
 
         copy_only = expression_factory is type(expr) and operands == expr.operands
         if not copy_only and not ignore_existing:
+            assert issubclass(expression_factory, CanonicalOperation)
             exists = find_congruent_expression(
                 expression_factory, *operands, mutator=self
             )
