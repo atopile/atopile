@@ -6,12 +6,7 @@ from typing import Any, Iterable, Optional
 
 import pcbnew
 
-LOG_FILE = (Path(__file__).parent / "log.log").expanduser().absolute()
-LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-
 log = logging.getLogger(__name__)
-log.addHandler(logging.FileHandler(str(LOG_FILE), "w", "utf-8"))
-log.setLevel(logging.DEBUG)
 
 
 @contextlib.contextmanager
