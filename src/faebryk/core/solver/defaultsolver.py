@@ -415,71 +415,78 @@ class DefaultSolver(Solver):
                 repr_map, print_context_new = self.simplify_symbolically(
                     pred.get_graph(), print_context=print_context
                 )
-                # FIXME: is this correct?
-                # definitely breaks a lot
-                new_Gs = get_graphs(repr_map.repr_map.values())
-                repr_pred = repr_map.repr_map.get(pred)
-
-                # FIXME: workaround for above
-                if repr_pred is not None:
-                    new_Gs = [repr_pred.get_graph()]
-
-                new_preds = [
-                    n
-                    for new_G in new_Gs
-                    for n in GraphFunctions(new_G).nodes_of_type(
-                        ConstrainableExpression
-                    )
-                ]
-                not_deducted = [
-                    p for p in new_preds if p.constrained and not p._solver_terminated
-                ]
-
-                if not_deducted:
-                    logger.warning(
-                        f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
-                        + (
-                            f" -> {repr_pred.compact_repr(print_context_new)}"
-                            if repr_pred is not None
-                            else ""
-                        )
-                    )
-                    logger.warning(
-                        f"NOT DEDUCED: \n    {'\n    '.join([
-                            p.compact_repr(print_context_new) for p in not_deducted])}"
-                    )
-
-                    if LOG_PICK_SOLVE:
-                        debug_name_mappings(
-                            print_context, pred.get_graph(), print_out=logger.warning
-                        )
-                        not_deduced_grouped = groupby(
-                            not_deducted, key=lambda p: p.get_graph()
-                        )
-                        for g, _ in not_deduced_grouped.items():
-                            Mutator.print_all(
-                                g,
-                                context=print_context_new,
-                                print_out=logger.warning,
-                            )
-
-                    result.unknown_predicates.append(p)
-                    continue
-
-                result.true_predicates.append(p)
-                # This is allowed, but we might want to add an option to prohibit
-                # short-circuiting
-                break
-
             except Contradiction as e:
                 if LOG_PICK_SOLVE:
                     logger.warning(f"CONTRADICTION: {pred.compact_repr(print_context)}")
                     logger.warning(f"CAUSE: {e}")
                 result.false_predicates.append(p)
+                continue
             except TimeoutError:
-                result.unknown_predicates.append(p)
+                if LOG_PICK_SOLVE:
+                    logger.warning(f"TIMEOUT: {pred.compact_repr(print_context)}")
+                if self.partial_state is None:
+                    result.unknown_predicates.append(p)
+                    continue
+                repr_map, print_context_new = (
+                    self.partial_state.data.total_repr_map,
+                    self.partial_state.print_context,
+                )
             finally:
                 pred.constrained = False
+
+            # FIXME: is this correct?
+            # definitely breaks a lot
+            new_Gs = get_graphs(repr_map.repr_map.values())
+            repr_pred = repr_map.repr_map.get(pred)
+
+            # FIXME: workaround for above
+            if repr_pred is not None:
+                new_Gs = [repr_pred.get_graph()]
+
+            new_preds = [
+                n
+                for new_G in new_Gs
+                for n in GraphFunctions(new_G).nodes_of_type(ConstrainableExpression)
+            ]
+            not_deducted = [
+                p for p in new_preds if p.constrained and not p._solver_terminated
+            ]
+
+            if not_deducted:
+                logger.warning(
+                    f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
+                    + (
+                        f" -> {repr_pred.compact_repr(print_context_new)}"
+                        if repr_pred is not None
+                        else ""
+                    )
+                )
+                logger.warning(
+                    f"NOT DEDUCED: \n    {'\n    '.join([
+                        p.compact_repr(print_context_new) for p in not_deducted])}"
+                )
+
+                if LOG_PICK_SOLVE:
+                    debug_name_mappings(
+                        print_context, pred.get_graph(), print_out=logger.warning
+                    )
+                    not_deduced_grouped = groupby(
+                        not_deducted, key=lambda p: p.get_graph()
+                    )
+                    for g, _ in not_deduced_grouped.items():
+                        Mutator.print_all(
+                            g,
+                            context=print_context_new,
+                            print_out=logger.warning,
+                        )
+
+                result.unknown_predicates.append(p)
+                continue
+
+            result.true_predicates.append(p)
+            # This is allowed, but we might want to add an option to prohibit
+            # short-circuiting
+            break
 
         result.unknown_predicates.extend(it)
 
