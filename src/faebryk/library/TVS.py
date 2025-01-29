@@ -17,7 +17,7 @@ class TVS(F.Diode):
     def pickable(self):
         return F.is_pickable_by_type(
             F.is_pickable_by_type.Type.TVS,
-            F.Diode().get_trait(F.is_pickable_by_type).get_parameters()  # TODO: better
+            F.Diode().get_trait(F.is_pickable_by_type).get_parameters()
             | {
                 "reverse_breakdown_voltage": self.reverse_breakdown_voltage,
             },

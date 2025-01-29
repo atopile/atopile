@@ -72,6 +72,7 @@ class LDO(Module):
                 "output_voltage": self.output_voltage,
                 "quiescent_current": self.quiescent_current,
                 "dropout_voltage": self.dropout_voltage,
+                # TODO: add support in backend
                 # "ripple_rejection_ratio": self.ripple_rejection_ratio,
                 "output_polarity": self.output_polarity,
                 "output_type": self.output_type,
