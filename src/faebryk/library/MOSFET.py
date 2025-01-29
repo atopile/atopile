@@ -33,7 +33,20 @@ class MOSFET(Module):
         F.has_designator_prefix.Prefix.Q
     )
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.MOSFET)
+    @L.rt_field
+    def pickable(self) -> F.is_pickable_by_type:
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.MOSFET,
+            {
+                "channel_type": self.channel_type,
+                # TODO: add support in backend
+                # "saturation_type": self.saturation_type,
+                "gate_source_threshold_voltage": self.gate_source_threshold_voltage,
+                "max_drain_source_voltage": self.max_drain_source_voltage,
+                "max_continuous_drain_current": self.max_continuous_drain_current,
+                "on_resistance": self.on_resistance,
+            },
+        )
 
     # TODO pretty confusing
     @L.rt_field

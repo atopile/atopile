@@ -63,7 +63,22 @@ class LDO(Module):
     power_in: F.ElectricPower
     power_out = L.d_field(lambda: F.ElectricPower().make_source())
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.LDO)
+    @L.rt_field
+    def pickable(self) -> F.is_pickable_by_type:
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.LDO,
+            {
+                "max_input_voltage": self.max_input_voltage,
+                "output_voltage": self.output_voltage,
+                "quiescent_current": self.quiescent_current,
+                "dropout_voltage": self.dropout_voltage,
+                # TODO: add support in backend
+                # "ripple_rejection_ratio": self.ripple_rejection_ratio,
+                "output_polarity": self.output_polarity,
+                "output_type": self.output_type,
+                "output_current": self.output_current,
+            },
+        )
 
     def __preinit__(self):
         self.max_input_voltage.constrain_ge(self.power_in.voltage)
