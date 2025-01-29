@@ -23,12 +23,14 @@ class App(Module):
 
         # Parametrize
         self.lowpass.cutoff_frequency.constrain_subset(
-            L.Range.from_center_rel(10 * P.MHz, 0.05)
+            L.Range.from_center_rel(1000 * P.Hz, 0.5)
         )
         self.lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
 
         # Specialize
         special = self.lowpass.specialize(F.FilterElectricalLC())
+
+        special.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 0.1))
 
         # set reference voltage
         # TODO: this will be automatically set by the power supply
