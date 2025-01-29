@@ -633,6 +633,9 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
+        if is_literal_expression(e):
+            continue
+
         ops = []
         found_literal = False
         for op in e.operands:
