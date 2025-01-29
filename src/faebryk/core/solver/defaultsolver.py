@@ -225,19 +225,26 @@ class DefaultSolver(Solver):
                 ).ljust(80, "-")
             )
 
-            iter_data, iteration_state, print_context_ = DefaultSolver._run_iteration(
-                iterno=iterno,
-                data=iter_data,
-                algos=self.algorithms.pre if first_iter else self.algorithms.iterative,
-                print_context=print_context_,
-            )
+            try:
+                iter_data, iteration_state, print_context_ = (
+                    DefaultSolver._run_iteration(
+                        iterno=iterno,
+                        data=iter_data,
+                        algos=self.algorithms.pre
+                        if first_iter
+                        else self.algorithms.iterative,
+                        print_context=print_context_,
+                    )
+                )
+            finally:
+                if S_LOG:
+                    Mutator.print_all(*iter_data.graphs, context=print_context_)
 
             if not iteration_state.dirty:
                 break
+
             if not len(iter_data.graphs):
                 break
-            if S_LOG:
-                Mutator.print_all(*iter_data.graphs, context=print_context_)
 
         if LOG_PICK_SOLVE:
             logger.info(
