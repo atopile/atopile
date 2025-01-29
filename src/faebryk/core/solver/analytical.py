@@ -48,7 +48,6 @@ from faebryk.core.solver.utils import (
     no_other_constrains,
     subset_literal,
     subset_to,
-    try_extract_all_literals,
     try_extract_literal,
     try_extract_literal_info,
 )
@@ -61,7 +60,6 @@ from faebryk.libs.util import (
     EquivalenceClasses,
     cast_assert,
     groupby,
-    not_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -570,32 +568,55 @@ def remove_empty_graphs(mutator: Mutator):
     mutator.remove_graph()
 
 
-@algorithm("Predicate literal deduce")
-def predicate_literal_deduce(mutator: Mutator):
+@algorithm("Predicate flat terminate")
+def predicate_flat_terminate(mutator: Mutator):
     """
     ```
     P!(A, Lit) -> P!!(A, Lit)
     P!(Lit1, Lit2) -> P!!(Lit1, Lit2)
     ```
 
-    Proof:
-    ```
-    >=, >, is, ss, or, not
-    P1!(A, Lit1) True
-    P2!(A, Lit2)
-    P3!(A, B)
-    P3!!(A, B)
-    ```
+    Terminates all (dis)proven predicates that contain no expressions.
     """
-    # FIXME: I dont think this is actually true
-    return
     predicates = mutator.nodes_of_type(ConstrainableExpression)
     for p in predicates:
         if not p.constrained:
             continue
-        lits = not_none(try_extract_all_literals(p, accept_partial=True))
-        if len(p.operands) - len(lits) <= 1:
-            mutator.predicate_terminate(p)
+
+        if any(isinstance(po, Expression) for po in p.operatable_operands):
+            continue
+
+        # only (dis)proven
+        if try_extract_literal(p) is None:
+            continue
+
+        mutator.predicate_terminate(p)
+
+
+@algorithm("Predicate is!! True")
+def predicate_terminated_is_true(mutator: Mutator):
+    """
+    P!! is! True -> P!! is!! True
+    """
+
+    for p in mutator.nodes_of_type(Is):
+        if not p.constrained:
+            continue
+        if mutator.is_predicate_terminated(p):
+            continue
+        if make_lit(True) not in p.operands:
+            continue
+        if not p.operatable_operands:
+            continue
+        op = next(iter(p.operatable_operands))
+        if (
+            not isinstance(op, ConstrainableExpression)
+            or not op.constrained
+            or not mutator.is_predicate_terminated(op)
+        ):
+            continue
+
+        mutator.predicate_terminate(p)
 
 
 @algorithm("Predicate unconstrained operands deduce", destructive=True)

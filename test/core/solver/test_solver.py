@@ -633,7 +633,6 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
     assert solver.inspect_get_known_supersets(v_out) == Range(9 / 11, 100 / 11)
 
 
-# FIXME: needs 12 iterations
 def test_voltage_divider_find_v_in():
     r_top = Parameter()
     r_bottom = Parameter()

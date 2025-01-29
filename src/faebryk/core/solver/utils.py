@@ -56,7 +56,6 @@ from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagInt,
     KeyErrorAmbiguous,
-    find,
     partition,
     unique_ref,
 )
@@ -221,12 +220,10 @@ def alias_is_literal(
     if existing is not None:
         if existing == literal:
             if terminate:
-                mutator.predicate_terminate(
-                    find(
-                        po.get_operations(Is, constrained_only=True),
-                        lambda x: existing in x.operands,
-                    )
-                )
+                for op in po.get_operations(Is, constrained_only=True):
+                    if existing in op.operands:
+                        mutator.predicate_terminate(op)
+                return
             return
         raise ContradictionByLiteral(
             "Tried alias to different literal",
