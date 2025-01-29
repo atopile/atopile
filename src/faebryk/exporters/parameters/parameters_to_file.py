@@ -171,17 +171,11 @@ def _generate_md_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str
             if sorted_params:
                 par_name, par_value = sorted_params[0]
                 out += (
-                    f"| `{module_name.replace('|','&#124;')}` | "
-                    f"`{par_name.replace('|','&#124;')}` | "
-                    f"`{str(par_value).replace('|','&#124;')}` |\n"
+                    f"| `{module_name}` | " f"`{par_name}` | " f"`{str(par_value)}` |\n"
                 )
                 # Subsequent parameters of the same module have empty module cell
                 for par_name, par_value in sorted_params[1:]:
-                    out += (
-                        f"|  | "
-                        f"`{par_name.replace('|','&#124;')}` | "
-                        f"`{str(par_value).replace('|','&#124;')}` |\n"
-                    )
+                    out += f"|  | " f"`{par_name}` | " f"`{str(par_value)}` |\n"
     out += "\n"
 
     return out
