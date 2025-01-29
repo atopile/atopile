@@ -280,6 +280,22 @@ def _handle_package_shim(module: L.Module, value: str, starts_with: str):
         module.add(F.has_package(pkg))
 
 
+@_register_shim("generics/mosfets.ato:NFET", "import NFET")
+class NFET(F.MOSFET):
+    """Temporary shim to translate NFETs."""
+
+    def __postinit__(self):
+        self.channel_type.alias_is(F.MOSFET.ChannelType.N_CHANNEL)
+
+
+@_register_shim("generics/mosfets.ato:PFET", "import PFET")
+class PFET(F.MOSFET):
+    """Temporary shim to translate PFETs."""
+
+    def __postinit__(self):
+        self.channel_type.alias_is(F.MOSFET.ChannelType.P_CHANNEL)
+
+
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
 class Resistor(F.Resistor):
     """
