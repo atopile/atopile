@@ -4,6 +4,7 @@
 import logging
 from dataclasses import dataclass
 
+import pytest
 from dataclasses_json import CatchAll
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
@@ -44,6 +45,10 @@ def test_no_unknowns():
     assert _unformat(cereal) == _unformat('(some_dataclass (a 1) (b "hello"))')
 
     assert loads(cereal, Container) == container
+
+    bad_cereal = '(some_dataclass gibberish (a 1) (b "hello"))'
+    with pytest.raises(ValueError):
+        loads(bad_cereal, Container)
 
 
 def test_empty_unknowns():
