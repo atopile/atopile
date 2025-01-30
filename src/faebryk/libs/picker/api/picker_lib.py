@@ -38,12 +38,7 @@ from faebryk.libs.picker.lcsc import (
 )
 from faebryk.libs.picker.picker import MultiPickError, PickError
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import (
-    Tree,
-    groupby,
-    indented_container,
-    not_none,
-)
+from faebryk.libs.util import Tree, groupby, not_none
 
 logger = logging.getLogger(__name__)
 client = get_api_client()
@@ -219,7 +214,10 @@ def filter_by_module_params_and_attach(
         cmp_descr = f"{cmp.get_full_name()}<{cmp.pretty_params(solver)}>"
         raise PickError(
             f"No parts found that are compatible with design for `{cmp_descr}`:\n"
-            f"{"\n".join(f"- {c.lcsc_display} ({c.description})" for c in parts)}",
+            f"{"\n".join(f"- {c.lcsc_display} (attributes: {', '.join(
+                f"`{a}`" for a in c.attribute_literals) or 'none'})"
+                for c in parts
+            )}",
             cmp,
         ) from ex
 
@@ -288,9 +286,10 @@ def get_compatible_parameters(
 
     if no_attr := component_params.keys() - design_params.keys():
         with downgrade(UserException):
+            no_attr_str = "\n".join(f"- `{a}`" for a in no_attr)
             raise UserException(
-                f"Module `{module}` is missing attributes"
-                f" {indented_container(no_attr)}. "
+                f"Module `{module}` is missing attributes:\n\n"
+                f" {no_attr_str}\n\n"
                 "This likely means you could use a more precise"
                 " module/component in your design."
             )
@@ -353,5 +352,9 @@ def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
         return False
     for m, part in module_candidate_params:
         try_attach(m, [part], qty=1)
+        logger.debug(
+            f"Attached {part.lcsc_display} ('{part.description}') to "
+            f"'{m.get_full_name(types=False)}'"
+        )
 
     return True

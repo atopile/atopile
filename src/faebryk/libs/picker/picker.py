@@ -329,17 +329,18 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     ]
 
     ok = pick_atomically(single_part_modules, solver)
-    if not ok:
-        m_str = "\n".join(
-            f"- `{m}`: {c.lcsc_display} ({c.description})"
-            for m, c in single_part_modules
+    if ok:
+        for m, _ in single_part_modules:
+            progress.advance(m)
+    else:
+        logger.warning(
+            "Could not pick all explicitly-specified parts atomically, "
+            "picking one by one (slow)"
         )
-        raise PickError(
-            f"Parts are not compatible for single-candidate modules: \n{m_str}",
-            single_part_modules[0][0],  # TODO
-        )
-    for m, _ in single_part_modules:
-        progress.advance(m)
+
+        for module, parts in sorted_candidates:
+            filter_by_module_params_and_attach(module, parts, solver)
+            progress.advance(module)
 
     sorted_candidates = [
         (module, parts) for module, parts in sorted_candidates if len(parts) != 1
