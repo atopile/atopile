@@ -4,13 +4,13 @@ import atopile.cli.excepthook  # noqa: F401, I001
 import json
 import logging
 import sys
-from importlib.metadata import version
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from atopile import telemetry
+from atopile import telemetry, version
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger, handler
 from atopile.config import config
@@ -40,9 +40,19 @@ def atopile_src_path(ctx: typer.Context, value: bool):
 
 
 def version_callback(ctx: typer.Context, value: bool):
+    """Output a version string meeting the pypa version spec."""
     if not value or ctx.resilient_parsing:
         return
-    typer.echo(version("atopile"))
+    typer.echo(get_package_version("atopile"))
+    raise typer.Exit()
+
+
+def semver_callback(ctx: typer.Context, value: bool):
+    """Output a version string meeting the semver.org spec."""
+    if not value or ctx.resilient_parsing:
+        return
+    version_string = get_package_version("atopile")
+    typer.echo(version.parse(version_string))
     raise typer.Exit()
 
 
@@ -69,6 +79,10 @@ def cli(
     version: Annotated[
         bool | None,
         typer.Option("--version", callback=version_callback, is_eager=True),
+    ] = None,
+    semver: Annotated[
+        bool | None,
+        typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
 ):
     if debug:
