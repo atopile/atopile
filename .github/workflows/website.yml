@@ -37,11 +37,8 @@ jobs:
 
       - name: Get version
         id: get_version
-        # Uses hatch rather than ato to get the version
-        # because currently ato might also produce logging output
-        # which contaminates stdout
         run: |
-          VERSION=$(uv run --dev hatch version)
+          VERSION=$(uv run ato --version)
           MAJOR_MINOR=$(echo $VERSION | cut -d. -f1,2)
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
