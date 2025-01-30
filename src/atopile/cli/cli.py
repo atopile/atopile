@@ -50,8 +50,8 @@ def version_callback(ctx: typer.Context, value: bool):
 def cli(
     ctx: typer.Context,
     non_interactive: Annotated[
-        bool, typer.Option("--non-interactive", envvar="ATO_NON_INTERACTIVE")
-    ] = False,
+        bool | None, typer.Option("--non-interactive", envvar="ATO_NON_INTERACTIVE")
+    ] = None,
     debug: Annotated[
         bool,
         typer.Option("--debug", help="Wait to attach debugger on start"),
@@ -89,13 +89,16 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    if non_interactive is not None:
+        config.interactive = not non_interactive
+
     if ctx.invoked_subcommand:
         check_for_update()
 
         # Initialize telemetry
         telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
-    if not non_interactive and ctx.invoked_subcommand != "configure":
+    if config.interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
 
 
