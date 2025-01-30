@@ -73,6 +73,7 @@ class DefaultSolver(Solver):
             analytical.remove_congruent_expressions,
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
+            literal_folding.fold_pure_literal_expressions,
             *literal_folding.fold_algorithms,
             analytical.merge_intersect_subsets,
             analytical.predicate_flat_terminate,
