@@ -90,7 +90,7 @@ def cli(
         handler.traceback_level = logging.WARNING
 
     if non_interactive is not None:
-        config.non_interactive = non_interactive
+        config.interactive = not non_interactive
 
     if ctx.invoked_subcommand:
         check_for_update()
@@ -98,7 +98,7 @@ def cli(
         # Initialize telemetry
         telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
-    if not config.non_interactive and ctx.invoked_subcommand != "configure":
+    if config.interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
 
 
