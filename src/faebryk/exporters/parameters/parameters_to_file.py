@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
+from atopile.errors import UserBadParameterError
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Expression, Is, Parameter, Predicate
@@ -230,7 +231,7 @@ def export_parameters_to_file(module: Module, solver: DefaultSolver, path: Path)
         case ".json":
             out = _generate_json_parameters(parameters)
         case _:
-            raise AssertionError(
+            raise UserBadParameterError(
                 f"Export to file extension [{path.suffix}] not supported in {path}"
             )
 
