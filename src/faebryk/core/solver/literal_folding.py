@@ -2,17 +2,18 @@
 # SPDX-License-Identifier: MIT
 
 
+import functools
 import logging
+import operator
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from typing import Callable, cast
+from typing import Callable, Iterable, cast
 
 from faebryk.core.parameter import (
     Abs,
     Add,
     Commutative,
     ConstrainableExpression,
-    Difference,
     Differentiate,
     GreaterOrEqual,
     GreaterThan,
@@ -34,7 +35,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
-    CanonicalBoolean,
     CanonicalNumber,
     CanonicalOperation,
     Contradiction,
@@ -46,7 +46,8 @@ from faebryk.core.solver.utils import (
     is_numeric_literal,
     make_lit,
 )
-from faebryk.libs.sets.sets import BoolSet
+from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
+from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import cast_assert, partition
 
 logger = logging.getLogger(__name__)
@@ -384,11 +385,6 @@ def fold_or(
         alias_is_literal_and_check_predicate_eval(expr, True, mutator)
         return
 
-    # Or() -> False
-    if not expr.operands:
-        alias_is_literal_and_check_predicate_eval(expr, False, mutator)
-        return
-
     # Or(A, B, C, False) -> Or(A, B, C)
     # Or(A, B, A) -> Or(A, B)
     filtered_operands = {op for op in expr.operands if BoolSet(False) != op}
@@ -426,12 +422,6 @@ def fold_not(
 
     assert len(expr.operands) == 1
     op = expr.operands[0]
-
-    # ¬(X) -> ¬X
-    if isinstance(op, CanonicalBoolean):
-        alias_is_literal_and_check_predicate_eval(expr, op.op_not(), mutator)
-        return
-
     assert isinstance(op, ParameterOperatable)
 
     # ¬P | P constrained -> False
@@ -533,12 +523,6 @@ def fold_is(
     # A is X, A is Y | X != Y -> Contradiction
     # happens automatically because of alias class merge
 
-    # X is Y -> X == Y
-    if len(literal_operands) == 2:
-        a, b = literal_operands
-        alias_is_literal_and_check_predicate_eval(expr, a == b, mutator)
-        return
-
     if expr.constrained:
         # P1 is! True -> P1!
         # P1 is! P2!  -> P1!
@@ -593,10 +577,6 @@ def fold_subset(
         mutator.mutate_expression(expr, expression_factory=Is)
         return
 
-    if is_literal(A):
-        # X ss Y -> True / False
-        alias_is_literal_and_check_predicate_eval(expr, A.is_subset_of(B), mutator)  # type: ignore
-
     if expr.constrained:
         # P1 ss! True -> P1!
         # P1 ss! P2!  -> P1!
@@ -636,12 +616,6 @@ def fold_ge(
     literal_operands = cast(Sequence[CanonicalNumber], literal_operands)
     # A >= A
     if if_operands_same_make_true(expr, mutator):
-        return
-
-    # X >= Y
-    if len(literal_operands) == 2:
-        a, b = literal_operands
-        alias_is_literal_and_check_predicate_eval(expr, a >= b, mutator)
         return
 
     # A >=! X | |X| > 1 -> A >=! X.max()
@@ -735,9 +709,6 @@ def fold(
         elif isinstance(expr, SymmetricDifference):
             # TODO implement
             return lambda *args: None
-        elif isinstance(expr, Difference):
-            # TODO implement
-            return lambda *args: None
 
         raise ValueError(f"unsupported operation: {expr}")
 
@@ -771,19 +742,9 @@ def fold_literals(mutator: Mutator, expr_type: type[CanonicalOperation]):
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
-        # TODO
-        # A is! 5, A is! Add(10, 2)
-        # A ...
-        # Add(10, 2) -> A -> 5
-        # don't run on aliased exprs
-        # if (
-        #    not (
-        #        not isinstance(expr, ConstrainableExpression)
-        #        or expr._solver_evaluates_to_true
-        #    )
-        #    and ParameterOperatable.try_get_literal(expr) is not None
-        # ):
-        #    continue
+        # covered by pure literal folding
+        if all(ParameterOperatable.is_literal(o) for o in expr.operands):
+            continue
 
         operands = expr.operands
         p_operands, literal_operands = partition(
@@ -795,8 +756,6 @@ def fold_literals(mutator: Mutator, expr_type: type[CanonicalOperation]):
         )
         multiplicity = Counter(replacable_nonliteral_operands)
 
-        # TODO, obviously_eq offers additional possibilites,
-        # must be replacable, no implicit constr
         fold(
             expr,
             literal_operands=list(literal_operands),
@@ -815,28 +774,69 @@ def _get_fold_func(expr_type: type[CanonicalOperation]) -> Callable[[Mutator], N
     return wrapped
 
 
-_CanonicalOperations = [
-    Add,
-    Multiply,
-    Power,
-    Round,
-    Abs,
-    Sin,
-    Log,
-    Or,
-    Not,
-    Intersection,
-    Union,
-    SymmetricDifference,
-    Difference,
-    Is,
-    GreaterOrEqual,
-    GreaterThan,
-    IsSubset,
-]
+def _multi(op: Callable, init=None) -> Callable:
+    def wrapped(*args):
+        if init is not None:
+            init_lit = make_lit(init)
+            args = [init_lit, init_lit, *args]
+        assert args
+        return functools.reduce(op, args)
+
+    return wrapped
+
+
+# TODO consider making the oprerator property of the expression type
+
+_CanonicalOperations = {
+    Add: _multi(operator.add, 0),
+    Multiply: _multi(operator.mul, 1),
+    Power: operator.pow,
+    Round: round,
+    Abs: abs,
+    Sin: Quantity_Interval_Disjoint.op_sin,
+    Log: Quantity_Interval_Disjoint.op_log,
+    Or: _multi(BoolSet.op_or, False),
+    Not: BoolSet.op_not,
+    Intersection: _multi(operator.and_),
+    Union: _multi(operator.or_),
+    SymmetricDifference: operator.xor,
+    Is: operator.eq,
+    GreaterOrEqual: operator.ge,
+    GreaterThan: operator.gt,
+    IsSubset: P_Set.is_subset_of,
+}
+
+
 fold_algorithms = [
     algorithm(f"Fold {expr_type.__name__}", destructive=False)(
         _get_fold_func(expr_type)
     )
     for expr_type in _CanonicalOperations
 ]
+
+# Pure literal folding -----------------------------------------------------------------
+
+
+def _exec_pure_literal_expressions(expr: CanonicalOperation) -> SolverLiteral:
+    assert all(ParameterOperatable.is_literal(o) for o in expr.operands)
+    return _CanonicalOperations[type(expr)](*expr.operands)
+
+
+@algorithm("Fold pure literal expressions", destructive=False)
+def fold_pure_literal_expressions(mutator: Mutator):
+    exprs = mutator.nodes_of_types(
+        tuple(_CanonicalOperations.keys()), sort_by_depth=True
+    )
+    exprs = cast(Iterable[CanonicalOperation], exprs)
+
+    for expr in exprs:
+        # TODO is this needed?
+        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
+            continue
+
+        if not all(ParameterOperatable.is_literal(o) for o in expr.operands):
+            continue
+
+        result = _exec_pure_literal_expressions(expr)
+        # type ignore because function sig is not 100% correct
+        alias_is_literal_and_check_predicate_eval(expr, result, mutator)  # type: ignore

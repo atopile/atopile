@@ -11,26 +11,40 @@ import pytest
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
+    Abs,
     Add,
     And,
     Arithmetic,
     Expression,
     GreaterOrEqual,
+    GreaterThan,
+    Intersection,
     Is,
     IsSubset,
     IsSuperset,
     LessOrEqual,
+    Log,
     Max,
     Multiply,
     Not,
     Or,
     Parameter,
     ParameterOperatable,
+    Power,
     Predicate,
+    Round,
+    Sin,
     Subtract,
+    SymmetricDifference,
+    Union,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
+from faebryk.core.solver.utils import (
+    CanonicalLiteral,
+    CanonicalOperation,
+    Contradiction,
+    ContradictionByLiteral,
+)
 from faebryk.libs.library import L
 from faebryk.libs.library.L import Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
@@ -41,6 +55,7 @@ from faebryk.libs.picker.picker import (
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
+    Quantity_Set,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P, dimensionless, quantity
@@ -1328,3 +1343,69 @@ def test_empty_and():
     p = And()
     res = solver.assert_any_predicate([(p, None)], lock=False)
     assert res.true_predicates == [(p, None)]
+
+
+@pytest.mark.parametrize(
+    "op,lits,expected",
+    [
+        (Add, [], 0),
+        (Add, [1, 2, 3, 4, 5], 15),
+        (Multiply, [1, 2, 3, 4, 5], 120),
+        (Multiply, [], 1),
+        (Power, [2, 3], 8),
+        (Round, [2.4], 2),
+        (Round, [Range(-2.6, 5.3)], Range(-3, 5)),
+        (Abs, [-2], 2),
+        (Abs, [Range(-2, 3)], Range(0, 3)),
+        (Sin, [0], 0),
+        (Sin, [Range(0, 2 * math.pi)], Range(-1, 1)),
+        (Log, [10], math.log(10)),
+        (Log, [Range(1, 10)], Range(math.log(1), math.log(10))),
+        (Or, [False, False, True], True),
+        (Or, [False, BoolSet(True, False), True], True),
+        (Or, [], False),
+        (Not, [False], True),
+        (Intersection, [Range(0, 10), Range(10, 20)], Range(10, 10)),
+        (Union, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (SymmetricDifference, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (
+            SymmetricDifference,
+            [Range(0, 10), Range(5, 20)],
+            RangeWithGaps(Range(0, 5), Range(10, 20)),
+        ),
+        (Is, [Range(0, 10), Range(0, 10)], True),
+        (GreaterOrEqual, [Range(10, 20), Range(0, 10)], True),
+        (GreaterOrEqual, [Range(5, 20), Range(0, 10)], BoolSet(True, False)),
+        (GreaterThan, [Range(10, 20), Range(0, 10)], BoolSet(True, False)),
+        (GreaterThan, [Range(0, 10), Range(10, 20)], False),
+        (IsSubset, [Range(0, 10), Range(0, 20)], True),
+    ],
+)
+def test_exec_pure_literal_expressions(op: type[CanonicalOperation], lits, expected):
+    from faebryk.core.solver.literal_folding import _exec_pure_literal_expressions
+    from faebryk.core.solver.utils import make_lit
+
+    lits_converted = list(map(make_lit, lits))
+    expected_converted = make_lit(expected)
+
+    expr = op(*lits_converted)
+    assert _exec_pure_literal_expressions(expr) == expected_converted
+
+    if op is GreaterThan:
+        pytest.xfail("GreaterThan is not supported in solver")
+
+    def _get_param_from_lit(lit: CanonicalLiteral):
+        if isinstance(lit, BoolSet):
+            p = Parameter(domain=L.Domains.BOOL())
+        elif isinstance(lit, Quantity_Set):
+            p = Parameter(domain=L.Domains.Numbers.REAL())
+        else:
+            raise NotImplementedError()
+        return p
+
+    result = _get_param_from_lit(expected_converted)
+    result.alias_is(expr)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(result.get_graph())
+    assert repr_map.try_get_literal(result) == expected_converted

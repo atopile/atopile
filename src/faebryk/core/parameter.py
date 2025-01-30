@@ -823,7 +823,10 @@ class Arithmetic(Expression):
 class Additive(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.units = assert_compatible_units(operands)
+        if not operands:
+            self.units = dimensionless
+        else:
+            self.units = assert_compatible_units(operands)
 
     @staticmethod
     def sum(operands: Sequence[ParameterOperatable.NumberLike]) -> "Additive":
@@ -841,7 +844,6 @@ class Add(Additive):
 
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.bla = 5
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -869,8 +871,8 @@ class Multiply(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
         units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
-        self.units = units[0]
-        for u in units[1:]:
+        self.units = dimensionless
+        for u in units:
             self.units = cast_assert(Unit, self.units * u)
 
     def has_implicit_constraint(self) -> bool:
@@ -954,9 +956,10 @@ class Log(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return True  # non-negative
@@ -970,9 +973,10 @@ class Sin(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -986,9 +990,10 @@ class Cos(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1002,7 +1007,7 @@ class Abs(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1016,7 +1021,7 @@ class Round(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1030,7 +1035,7 @@ class Floor(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1044,7 +1049,7 @@ class Ceil(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1211,6 +1216,9 @@ class Setic(Expression):
     def __init__(self, *operands):
         # FIXME domain
         super().__init__(None, *operands)
+
+        if len(operands) == 0:
+            raise ValueError("Setic must have at least one operand")
         # types = (Parameter, ParameterOperatable.Sets)
         # if any(not isinstance(op, types) for op in operands):
         #    raise ValueError("operands must be Parameter or Set")
@@ -1242,8 +1250,8 @@ class Difference(Setic):
         placement=Setic.ReprStyle.Placement.INFIX,
     )
 
-    def __init__(self, minuend, subtrahend):
-        super().__init__(minuend, subtrahend)
+    def __init__(self, minuend, *subtrahends):
+        super().__init__(minuend, *subtrahends)
 
 
 class SymmetricDifference(Setic):
@@ -1251,6 +1259,9 @@ class SymmetricDifference(Setic):
         symbol="△",
         placement=Setic.ReprStyle.Placement.INFIX,
     )
+
+    def __init__(self, left, right):
+        super().__init__(left, right)
 
 
 class Domain:
@@ -1409,13 +1420,6 @@ class GreaterThan(NumericPredicate):
         symbol=">",
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
-
-    def __init__(self, left, right):
-        # TODO we might allow it for integer domains at some point
-        raise NotImplementedError(
-            "'>' not supported, you very likely want to use '>=' anyway"
-        )
-        super().__init__(left, right)
 
 
 class LessOrEqual(NumericPredicate):

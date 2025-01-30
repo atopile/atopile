@@ -9,7 +9,6 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.brightness import TypicalLuminousIntensity
 
 logger = logging.getLogger(__name__)
 
@@ -20,12 +19,6 @@ class App(Module):
 
     def __preinit__(self) -> None:
         self.led.power.connect(self.battery.power)
-
-        # Parametrize
-        self.led.led.color.constrain_subset(F.LED.Color.YELLOW)
-        self.led.led.brightness.constrain_subset(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
-        )
 
         self.led.led.add(F.has_explicit_part.by_supplier("C965802"))
         self.led.current_limiting_resistor.add(
