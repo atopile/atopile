@@ -87,5 +87,5 @@ class M24C08_FMN6TP(Module):
     def __preinit__(self):
         self.ic.data.terminate(owner=self)
         self.ic.power.decoupled.decouple(owner=self).capacitance.constrain_subset(
-            L.Range(10 * P.nF, 100 * P.nF)
+            L.Range(10 * P.nF * 0.9, 100 * P.nF * 1.1)
         )
