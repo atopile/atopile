@@ -1,9 +1,7 @@
 import itertools
 import logging
 import re
-import shutil
 import sys
-import tempfile
 import textwrap
 import webbrowser
 from abc import ABC, abstractmethod
@@ -18,12 +16,12 @@ import git
 import jinja2
 import questionary
 import rich
-import ruamel.yaml
 import typer
 from natsort import natsorted
 from rich.table import Table
 
 from atopile import errors
+from atopile.address import AddrStr
 from atopile.cli.install import do_install
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from faebryk.libs.exceptions import downgrade
@@ -43,8 +41,8 @@ from faebryk.libs.util import (
 )
 
 # Set up logging
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
@@ -244,90 +242,154 @@ def project(
 
 @create_app.command("build-target")
 def build_target(
-    name: Annotated[str | None, typer.Argument()] = None,
+    build_target: Annotated[str | None, typer.Option()] = None,
+    file: Annotated[Path | None, typer.Option()] = None,
+    module: Annotated[str | None, typer.Option()] = None,
+    backup_name: Annotated[str | None, typer.Argument()] = None,
 ):
     """
     Create a new build configuration.
     - adds entry to ato.yaml
     - creates a new directory in layout
     """
-    if not name:
-        name = caseconverter.kebabcase(
-            questionary.text("Enter the build-target name").unsafe_ask()
-        )
+    config.apply_options(None)
 
     try:
-        top_level_path = config.project.paths.root
-        layout_path = config.project.paths.layout
         src_path = config.project.paths.src
-    except FileNotFoundError:
+        config.project_dir  # touch property to ensure config's loaded from a project
+    except ValueError:
         raise errors.UserException(
             "Could not find the project directory, are you within an ato project?"
         )
 
-    # Get user input for the entry file and module name
-    rich.print("We will create a new ato file and add the entry to the ato.yaml")
-    entry = questionary.text(
-        "What would you like to call the entry file? (e.g., psuDebug)"
-    ).unsafe_ask()
+    if backup_name is None:
+        if build_target:
+            backup_name = build_target
+        elif file:
+            backup_name = file.name.split(".", 1)[0]
+        elif module:
+            backup_name = module
 
-    target_layout_path = layout_path / name
-    with tempfile.TemporaryDirectory() as tmpdirname:
+    # If we're running non-interactively, all details must be provided
+    def check_build_name(name: str) -> bool:
+        return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", name))
+
+    def check_module_name(name: str) -> bool:
+        return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", name))
+
+    if config.interactive:
+        # Ensure and validate the build-target name
+        if not build_target:
+            build_target = questionary.text(
+                "Enter the build-target name",
+                default=caseconverter.kebabcase(backup_name) if backup_name else "",
+            ).unsafe_ask()
+
+        if build_target != caseconverter.kebabcase(build_target):
+            rich.print(
+                "We typically recommend using kebab-case for build-target names. "
+                f"Would you like to use `{build_target}` instead?"
+            )
+            if questionary.confirm("").unsafe_ask():
+                build_target = caseconverter.kebabcase(build_target)
+
+        if not build_target or not check_build_name(build_target):
+            raise errors.UserException("Build-target name is invalid")
+
+        if build_target in config.project.builds:
+            raise errors.UserException(f"Build-target `{build_target}` already exists")
+
+        # Ensure and validate the file path
+        if not file:
+            file = questionary.path(
+                "Enter the file path",
+                validate=lambda path: bool(path),
+                default=caseconverter.snakecase(backup_name or build_target) + ".ato",
+            ).unsafe_ask()
+
+        if not file:
+            raise errors.UserException("File path is required")
+
+        file = Path(file)
+
+        if not file.is_absolute():
+            # If it's a relative path wrt ./ (cwd) then respect that
+            # else assume it's relative to the src directory
+            if str(file).startswith("./") or str(file).startswith(".\\"):
+                file = Path(file).resolve()
+            else:
+                rich.print(f"Using {src_path / file} as the file path")
+                file = src_path / file
+
+        if file.is_dir():
+            raise errors.UserException(f"{file} is a directory")
+
         try:
-            git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
-        except git.GitCommandError as ex:
+            file = file.relative_to(config.project.paths.src)
+        except ValueError:
             raise errors.UserException(
-                f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}"
+                f"{file} must be in the project's src dir: {config.project.paths.src}"
             )
-        source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
-        if not source_layout_path.exists():
+
+        if not module:
+            module = questionary.text(
+                "Enter the module name",
+                default=caseconverter.pascalcase(backup_name or build_target),
+            ).unsafe_ask()
+
+            if module != caseconverter.pascalcase(module):
+                rich.print(
+                    "We typically recommend using pascal-case for module names. "
+                    f"Would you like to use `{module}` instead?"
+                )
+                if questionary.confirm("").unsafe_ask():
+                    module = caseconverter.pascalcase(module)
+
+        if not module or not check_module_name(module):
+            raise errors.UserException("Module name is invalid")
+
+    else:
+        if not all([build_target, file, module]):
             raise errors.UserException(
-                f"The specified layout path {source_layout_path} does not exist."
+                "--build-target, --file, and --module must all be"
+                " provided when running non-interactively."
             )
-        else:
-            target_layout_path.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(source_layout_path, target_layout_path, dirs_exist_ok=True)
-            # Configure the files in the directory using the do_configure function
-            do_configure(name, str(target_layout_path), debug=False)
 
-        # Add the build to the ato.yaml file
-        ato_yaml_path = (
-            top_level_path / config.project.paths.root / PROJECT_CONFIG_FILENAME
-        )
-        # Check if ato.yaml exists
-        if not ato_yaml_path.exists():
-            print(
-                f"ato.yaml not found in {top_level_path}. Please ensure the file"
-                " exists before proceeding."
-            )
-        else:
-            # Load the existing YAML configuration
-            yaml = ruamel.yaml.YAML()
-            with ato_yaml_path.open("r") as file:
-                ato_config = yaml.load(file)
+    assert build_target
+    assert file
+    assert module
 
-            entry_file = Path(caseconverter.kebabcase(entry)).with_suffix(".ato")
-            entry_module = caseconverter.pascalcase(entry)
+    logger.debug(f"Creating build-target with {build_target=}, {file=}, {module=}")
 
-            # Update the ato_config with the new build information
-            if "builds" not in ato_config:
-                ato_config["builds"] = {}
-            ato_config["builds"][name] = {
-                "entry": f"elec/src/{entry_file}:{entry_module}"
-            }
+    # Update project config
+    logger.info(
+        f"Adding build-target to {config.project.paths.root / PROJECT_CONFIG_FILENAME}"
+    )
 
-            # Write the updated configuration back to ato.yaml
-            with ato_yaml_path.open("w") as file:
-                yaml.dump(ato_config, file)
+    def add_build_target(config_data: dict, new_data: dict):
+        config_data["builds"][build_target] = new_data
+        return config_data
 
-        # create a new ato file with the entry file and module
-        ato_file = src_path / entry_file
-        ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
+    config.update_project_config(
+        add_build_target, {"entry": str(AddrStr.from_parts(file, module))}
+    )
 
-        rich.print(
-            f":sparkles: Successfully created a new build configuration for {name}!"
-            " :sparkles:"
-        )
+    # Create or add to file
+    module_text = f"module {module}:\n    pass\n"
+
+    if file.is_file():  # exists and is a file
+        with file.open("a") as f:
+            f.write("\n")
+            f.write(module_text)
+
+    else:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(module_text)
+
+    rich.print(
+        f":sparkles: Successfully created a new build configuration {build_target} at !"
+        " :sparkles:"
+    )
 
 
 @create_app.command(hidden=True)
