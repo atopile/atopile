@@ -98,6 +98,8 @@ class has_simple_value_representation_based_on_params_chain(
             try:
                 value = self._get_value()
             except Exception as e:
+                if self.default is None:
+                    raise
                 logger.debug(f"Failed to get value for `{self.param}`: {e}")
                 return ""
             return join_if_non_empty(
