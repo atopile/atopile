@@ -402,14 +402,22 @@ def build_target(
             else:
                 value = src_path / value
 
-        return value.with_suffix(".ato")
+        return value
 
     def _file_updator(value: Path) -> Path:
-        return value.with_stem(caseconverter.snakecase(value.stem))
+        value = value.with_stem(caseconverter.snakecase(value.stem))
+        if value.suffix != ".ato":
+            # Allow dots in filenames
+            value = value.with_suffix(value.suffix + ".ato")
+        return value
 
     def _file_validator(f: Path) -> bool:
         if f.is_dir():
             rich.print(f"{f} is a directory")
+            return False
+
+        if f.suffix != ".ato":
+            rich.print(f"{f} must end in .ato")
             return False
 
         try:
@@ -425,7 +433,9 @@ def build_target(
         type_=Path,
         clarifier=_file_clarifier,
         upgrader=_file_updator,
-        upgrader_msg="We recommend using snake_case for file names.",
+        upgrader_msg=(
+            "We recommend using snake_case for file names, and it must end in .ato"
+        ),
         validator=_file_validator,
         validation_failure_msg="",
         pre_entered=file,
