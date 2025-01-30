@@ -7,6 +7,7 @@ from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
+import json
 from typing import Any, Callable, Generator, Iterable, Self
 
 from pydantic import (
@@ -414,9 +415,10 @@ class Dependency(BaseConfigModel):
     version_spec: str | None = None
     link_broken: bool = False
     path: Path | None = None
+    local: Path | None = None
 
     project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
+        default_factory=lambda data: ProjectConfig.from_path(data["local"] if data["local"] else data["path"]), exclude=True
     )
 
     @classmethod
@@ -434,7 +436,7 @@ class Dependency(BaseConfigModel):
                 return cls(name=name, version_spec=version_spec)
         return cls(name=spec_str)
 
-    @field_serializer("path")
+    @field_serializer("path", "local")
     def serialize_path(self, path: Path | None, _info: Any) -> str | None:
         return str(path) if path else None
 

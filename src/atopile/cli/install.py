@@ -21,6 +21,7 @@ import faebryk.libs.exceptions
 from atopile import errors, version
 from atopile.config import Dependency, ProjectConfig, config
 from faebryk.libs.util import robustly_rm_dir
+import shutil
 
 yaml = ruamel.yaml.YAML()
 
@@ -39,6 +40,9 @@ def install(
             "--vendor",
             help="Copy the contents of this dependency into the repo",
         ),
+    ] = False,
+    local: Annotated[
+        bool, typer.Option("--local", "-l", help="Install from local path")
     ] = False,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
@@ -195,6 +199,10 @@ def install_project_dependencies(upgrade: bool):
         config.project.dependencies or []
     ):
         with _ctx():
+            if dependency.local:
+                install_local_dependency(dependency)
+                continue
+            
             if not dependency.link_broken:
                 # FIXME: these dependency objects are a little too entangled
                 name = _name_and_clone_url_helper(dependency.name)[0]
@@ -212,6 +220,12 @@ def install_project_dependencies(upgrade: bool):
                         ) from ex
                     raise
 
+def install_local_dependency(dependency: Dependency):
+    src = dependency.local
+    dst = dependency.path or config.project.paths.modules / dependency.name
+    if not src.exists():
+        raise errors.UserException(f"Local dependency path {src} does not exist")
+    shutil.copytree(src, dst, dirs_exist_ok=True)
 
 def install_dependency(
     dependency: Dependency, upgrade: bool, abs_path: Path
