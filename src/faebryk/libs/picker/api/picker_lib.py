@@ -218,7 +218,8 @@ def filter_by_module_params_and_attach(
     except PickError as ex:
         cmp_descr = f"{cmp.get_full_name()}<{cmp.pretty_params(solver)}>"
         raise PickError(
-            f"No parts found that are compatible with design for `{cmp_descr}`",
+            f"No parts found that are compatible with design for `{cmp_descr}`:\n"
+            f"{"\n".join(f"- {c.lcsc_display} ({c.description})" for c in parts)}",
             cmp,
         ) from ex
 
