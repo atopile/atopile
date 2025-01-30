@@ -1250,8 +1250,8 @@ class Difference(Setic):
         placement=Setic.ReprStyle.Placement.INFIX,
     )
 
-    def __init__(self, minuend, subtrahend):
-        super().__init__(minuend, subtrahend)
+    def __init__(self, minuend, *subtrahends):
+        super().__init__(minuend, *subtrahends)
 
 
 class SymmetricDifference(Setic):

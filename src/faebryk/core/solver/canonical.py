@@ -213,7 +213,7 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     # CanonicalSetic
     # Intersection_ = curry(Intersection)
-    # Union_ = curry(Union)
+    Union_ = curry(Union)
     SymmetricDifference_ = curry(SymmetricDifference)
 
     # CanonicalPredicate
@@ -294,9 +294,14 @@ def convert_to_canonical_operations(mutator: Mutator):
             lambda operands: list(reversed(operands)),
         ),
         (
+            # A - B - C = A - (B | C)
+            # = A & (A ^ (B | C))
             Intersection,
             Difference,
-            lambda operands: [operands[0], SymmetricDifference_(*operands)],
+            lambda operands: [
+                operands[0],
+                SymmetricDifference_(operands[0], Union_(*operands)),
+            ],
         ),
     ]
 
