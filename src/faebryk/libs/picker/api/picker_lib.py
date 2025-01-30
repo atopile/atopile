@@ -263,21 +263,25 @@ def try_attach(module: Module, parts: Iterable[Component], qty: int):
     )
 
 
+class NotCompatibleException(Exception):
+    pass
+
+
 def get_compatible_parameters(
     module: Module, c: "Component", solver: Solver
-) -> dict[Parameter, ParameterOperatable.Literal] | None:
+) -> dict[Parameter, ParameterOperatable.Literal]:
     """
     Check if the parameters of a component are compatible with the module
     """
     # Nothing to check
-    if not c.attribute_literals:
+    if not module.has_trait(F.is_pickable_by_type):
         return {}
 
     # shortcut because solving slow
     try:
         get_raw(c.lcsc_display)
-    except LCSC_NoDataException:
-        return None
+    except LCSC_NoDataException as e:
+        raise NotCompatibleException from e
 
     design_params = module.get_trait(F.is_pickable_by_type).get_parameters()
     component_params = c.attribute_literals
@@ -311,7 +315,7 @@ def get_compatible_parameters(
                     f"Known superset {known_superset} is not a superset of {c_range}"
                     f" for part C{c.lcsc}"
                 )
-            return None
+            raise NotCompatibleException
 
     return {p: c_range for p, c_range in param_mapping}
 
@@ -322,27 +326,25 @@ def check_compatible_parameters(
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
 
-    mappings = [get_compatible_parameters(m, c, solver) for m, c in module_candidates]
-
-    if any(m is None for m in mappings):
+    try:
+        mappings = [
+            get_compatible_parameters(m, c, solver) for m, c in module_candidates
+        ]
+    except NotCompatibleException:
         return False
 
     if LOG_PICK_SOLVE:
         logger.info(f"Solving for modules:" f" {[m for m, _ in module_candidates]}")
 
-    anded = And(
-        *(
-            Is(m_param, c_range)
-            for param_mapping in mappings
-            for m_param, c_range in not_none(param_mapping).items()
-        )
+    predicates = (
+        Is(m_param, c_range)
+        for param_mapping in mappings
+        for m_param, c_range in not_none(param_mapping).items()
     )
-    result = solver.assert_any_predicate([(anded, None)], lock=False)
 
-    if not result.true_predicates:
-        return False
+    result = solver.assert_any_predicate([(And(*predicates), None)], lock=False)
 
-    return True
+    return len(result.true_predicates) == 1
 
 
 def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
