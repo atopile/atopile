@@ -197,13 +197,10 @@ class Component:
 
         module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
 
+        missing_attrs = []
         for name, literal in self.attribute_literals.items():
             if not hasattr(module, name):
-                with downgrade(UserException):
-                    raise UserException(
-                        f"{module} does not have attribute {name}",
-                        title="Attribute not found",
-                    )
+                missing_attrs.append(name)
                 continue
 
             p = getattr(module, name)
@@ -212,6 +209,17 @@ class Component:
                 literal = p.domain.unbounded(p)
 
             p.alias_is(literal)
+
+        if missing_attrs:
+            with downgrade(UserException):
+                # TODO: suggest specific library module
+                # (requires Component to know its type)
+                attrs = "\n".join(f"- {attr}" for attr in missing_attrs)
+                raise UserException(
+                    f"Module `{module}` is missing attributes:\n{attrs}\n\n"
+                    "Consider using the standard library version of this module.",
+                    title="Attribute(s) not found",
+                )
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
