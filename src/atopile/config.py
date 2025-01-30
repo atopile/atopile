@@ -642,12 +642,14 @@ class Config:
     _entry: str | None
     _selected_builds: list[str] | None
     _project_dir: Path | None
+    non_interactive: bool
 
     def __init__(self) -> None:
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
         self._entry = None
         self._selected_builds = None
+        self.non_interactive = False
 
     def __repr__(self) -> str:
         return self._project.__repr__()
