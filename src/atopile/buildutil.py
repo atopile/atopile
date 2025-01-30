@@ -206,7 +206,7 @@ def build(app: Module) -> None:
         for target_name in targets:
             logger.info(f"Building '{target_name}' for '{config.build.name}' config")
             with accumulator.collect():
-                muster.targets[target_name](app)
+                muster.targets[target_name](app, solver)
             built_targets.append(target_name)
 
     logger.info(
@@ -215,7 +215,7 @@ def build(app: Module) -> None:
     )
 
 
-TargetType = Callable[[Module], None]
+TargetType = Callable[[Module, DefaultSolver], None]
 
 
 class Muster:
@@ -250,7 +250,7 @@ muster = Muster()
 
 
 @muster.register("bom")
-def generate_bom(app: Module) -> None:
+def generate_bom(app: Module, solver: DefaultSolver) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
@@ -259,7 +259,7 @@ def generate_bom(app: Module) -> None:
 
 
 @muster.register("mfg-data", default=False)
-def generate_manufacturing_data(app: Module) -> None:
+def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
     """Generate a designator map for the project."""
     export_step(
         config.build.paths.layout,
@@ -288,7 +288,7 @@ def generate_manufacturing_data(app: Module) -> None:
 
 
 @muster.register("manifest")
-def generate_manifest(app: Module) -> None:
+def generate_manifest(app: Module, solver: DefaultSolver) -> None:
     """Generate a manifest for the project."""
     with accumulate() as accumulator:
         with accumulator.collect():
@@ -311,16 +311,17 @@ def generate_manifest(app: Module) -> None:
 
 
 @muster.register("layout-module-map")
-def generate_module_map(app: Module) -> None:
+def generate_module_map(app: Module, solver: DefaultSolver) -> None:
     """Generate a designator map for the project."""
     layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
-def generate_variable_report(app: Module) -> None:
+def generate_variable_report(app: Module, solver: DefaultSolver) -> None:
     """Generate a report of all the variable values in the design."""
+    # TODO: support other file formats
     export_parameters_to_file(
-        app, config.build.paths.output_base.with_suffix(".variables.md")
+        app, solver, config.build.paths.output_base.with_suffix(".variables.md")
     )
 
 
