@@ -471,8 +471,8 @@ def build_target(
         file.write_text(module_text)
 
     rich.print(
-        f":sparkles: Successfully created a new build configuration {build_target} at !"
-        " :sparkles:"
+        ":sparkles: Successfully created a new build configuration "
+        f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
     )
 
 
