@@ -68,7 +68,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
     logger.info(f"Checking {len(electricpower)} Power")
     for ep in electricpower:
         if ep.lv.is_connected_to(ep.hv):
-            raise ERCFaultShort([ep], "shorted power")
+            raise ERCFaultShort([ep.lv, ep.hv], "shorted power")
         if ep.has_trait(F.Power.is_power_source):
             other_sources = [
                 other

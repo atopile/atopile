@@ -231,7 +231,7 @@ def create_footprint_library(app: Module) -> None:
 
                 else:
                     try:
-                        path = path.relative_to(config.project.paths.root)
+                        prj_rel_path = path.relative_to(config.project.paths.root)
 
                     # Raised when the file isn't relative to the project directory
                     except ValueError as ex:
@@ -244,16 +244,17 @@ def create_footprint_library(app: Module) -> None:
 
                     # Copy the footprint to the new library with a
                     # pseudo-guaranteed unique name
-                    if path in path_map:
-                        id_, new_path = path_map[path]
+                    if prj_rel_path in path_map:
+                        id_, new_path = path_map[prj_rel_path]
                     else:
-                        mini_hash = hash_string(str(path))[:6]
-                        id_ = f"{LIB_NAME}:{path.stem}-{mini_hash}"
+                        mini_hash = hash_string(str(prj_rel_path))[:6]
+                        id_ = f"{LIB_NAME}:{prj_rel_path.stem}-{mini_hash}"
                         new_path = (
-                            atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
+                            atopile_fp_dir
+                            / f"{prj_rel_path.stem}-{mini_hash}{prj_rel_path.suffix}"
                         )
                         shutil.copy(path, new_path)
-                        path_map[path] = (id_, new_path)
+                        path_map[prj_rel_path] = (id_, new_path)
 
                 fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
                 # Attach the newly minted identifier
