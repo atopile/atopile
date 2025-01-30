@@ -212,12 +212,15 @@ def filter_by_module_params_and_attach(
         try_attach(cmp, parts_gen(), qty=1)
     except PickError as ex:
         cmp_descr = f"{cmp.get_full_name()}<{cmp.pretty_params(solver)}>"
+        attr_str = "\n".join(
+            f"- {c.lcsc_display} (attributes: {', '.join(
+                f"{name}={lit}" for name, lit in c.attribute_literals.items()
+            )})"
+            for c in parts
+        )
         raise PickError(
             f"No parts found that are compatible with design for `{cmp_descr}`:\n"
-            f"{"\n".join(f"- {c.lcsc_display} (attributes: {', '.join(
-                f"`{a}`" for a in c.attribute_literals) or 'none'})"
-                for c in parts
-            )}",
+            f"{attr_str}",
             cmp,
         ) from ex
 
