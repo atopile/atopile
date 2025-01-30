@@ -50,16 +50,6 @@ PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 create_app = typer.Typer()
 
 
-def check_name(name: str) -> bool:
-    """
-    Check if a name is valid.
-    """
-    if re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", name):
-        return True
-    else:
-        return False
-
-
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
     """Print help text."""
     rich.print("\n" + textwrap.dedent(text).strip() + "\n")
@@ -92,10 +82,11 @@ def _in_git_repo(path: Path) -> bool:
 def query_helper[T: str | Path | bool](
     prompt: str,
     type_: type[T],
+    clarifier: Callable[[Any], T] = lambda x: x,
+    upgrader: Callable[[T], T] = lambda x: x,
+    upgrader_msg: str | None = None,
     validator: str | Callable[[T], bool] | None = None,
-    validation_failure_msg: str | None = None,
-    upgrader: Callable[[T], T] | None = None,
-    upgrader_msg: str = "",
+    validation_failure_msg: str | None = "Value [cyan]{value}[/] is invalid",
     default: T | None = None,
     pre_entered: T | None = None,
 ) -> T:
@@ -138,6 +129,7 @@ def query_helper[T: str | Path | bool](
     else:
         raise ValueError(f"Unsupported query type: `{type_}`")
 
+    # Ensure a validator
     # Default the validator to a regex match if it's a str
     if validator is None:
 
@@ -155,22 +147,13 @@ def query_helper[T: str | Path | bool](
     else:
         validator_func = validator  # type: ignore
 
-    if not validation_failure_msg:
-        validation_failure_msg = "Value [cyan]{value}[/] is invalid"
-
     # Ensure the default provided is valid
     if default is not None:
-        if not validator_func(default):
-            raise ValueError(f"Default value {default} is not valid")
+        if not validator_func(clarifier(default)):
+            raise ValueError(f"Default value {default} is invalid")
 
-    if upgrader is None:
-
-        def upgrader_func(value: T) -> T:
-            return value
-    else:
-
-        def upgrader_func(value: T) -> T:
-            return upgrader(value)
+        if clarifier(default) != upgrader(clarifier(default)):
+            raise ValueError(f"Default value {default} doesn't meet best-practice")
 
     # When running non-interactively, we expect the value to be provided
     # at the command level, so we don't need to query the user for it
@@ -180,7 +163,11 @@ def query_helper[T: str | Path | bool](
             raise ValueError("Value is required. Check at command level.")
 
         if not validator_func(pre_entered):
-            raise errors.UserException(validation_failure_msg.format(value=pre_entered))
+            if validation_failure_msg:
+                msg = validation_failure_msg.format(value=pre_entered)
+            else:
+                msg = f"Value {pre_entered} is invalid"
+            raise errors.UserException(msg)
 
         return pre_entered
 
@@ -190,21 +177,22 @@ def query_helper[T: str | Path | bool](
 
     for _ in stuck_user_helper_generator:
         if value is None:
-            value = queryier()  # type: ignore
+            value = clarifier(queryier())  # type: ignore
         assert isinstance(value, type_)
 
-        if not validator_func(value):
-            rich.print(validation_failure_msg.format(value=value))
-            value = None
-            continue
-
-        if (proposed_value := upgrader_func(value)) != value:
+        if (proposed_value := upgrader(value)) != value:
             if upgrader_msg:
-                rich.print(upgrader_msg)
+                rich.print(upgrader_msg.format(proposed_value=proposed_value))
 
             rich.print(f"Use [cyan]{proposed_value}[/] instead?")
             if questionary.confirm("").unsafe_ask():
                 value = proposed_value
+
+        if not validator_func(value):
+            if validation_failure_msg:
+                rich.print(validation_failure_msg.format(value=value))
+            value = None
+            continue
 
         return value
 
@@ -220,40 +208,21 @@ def project(
     Create a new ato project.
     """
 
-    # Get a project name
-    kebab_name = None
-    for _ in stuck_user_helper_generator:
-        if not name:
-            rich.print(":rocket: What's your project [cyan]name?[/]")
-            name = questionary.text("").unsafe_ask()
-
-        if name is None:
-            continue
-
-        kebab_name = caseconverter.kebabcase(name)
-        if name != kebab_name:
-            help(
-                f"""
-                We recommend using kebab-case ([cyan]{kebab_name}[/])
-                for your project name. It makes it easier to use your project
-                with other tools (like git) and it embeds nicely into URLs.
-                """
-            )
-
-            rich.print(f"Do you want to use [cyan]{kebab_name}[/] instead?")
-            if questionary.confirm("").unsafe_ask():
-                name = kebab_name
-
-        if check_name(name):
-            break
-        else:
-            help(
-                "[red]Project names must start with a letter and"
-                " contain only letters, numbers, dashes and underscores.[/]"
-            )
-            name = None
-
-    assert name is not None
+    name = query_helper(
+        ":rocket: What's your project [cyan]name?[/]",
+        type_=str,
+        validator=str.isidentifier,
+        validation_failure_msg="Project name must be a valid identifier",
+        upgrader=caseconverter.kebabcase,
+        upgrader_msg=textwrap.dedent(
+            """
+            We recommend using kebab-case ([cyan]{proposed_value}[/])
+            for your project name. It makes it easier to use your project
+            with other tools (like git) and it embeds nicely into URLs.
+            """
+        ).strip(),
+        pre_entered=name,
+    )
 
     if (
         not repo
@@ -353,7 +322,7 @@ def project(
     # Install dependencies listed in the ato.yaml, typically just generics
     do_install(
         to_install="generics",
-        link=True,
+        vendor=False,
         upgrade=True,
         path=Path(repo_obj.working_tree_dir),
     )
@@ -393,93 +362,86 @@ def build_target(
             backup_name = module
 
     # If we're running non-interactively, all details must be provided
-    def check_build_name(name: str) -> bool:
-        return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", name))
+    if not config.interactive and not all([build_target, file, module]):
+        raise errors.UserException(
+            "--build-target, --file, and --module must all be"
+            " provided when running non-interactively."
+        )
 
-    def check_module_name(name: str) -> bool:
-        return bool(re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", name))
-
-    if config.interactive:
-        # Ensure and validate the build-target name
-        if not build_target:
-            build_target = questionary.text(
-                "Enter the build-target name",
-                default=caseconverter.kebabcase(backup_name) if backup_name else "",
-            ).unsafe_ask()
-
-        if build_target != caseconverter.kebabcase(build_target):
+    def _check_build_target_name(value: str) -> bool:
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", value):
             rich.print(
-                "We typically recommend using kebab-case for build-target names. "
-                f"Would you like to use `{build_target}` instead?"
+                "[red]Build-target names must start with a letter and"
+                " contain only letters, numbers, dashes and underscores.[/]"
             )
-            if questionary.confirm("").unsafe_ask():
-                build_target = caseconverter.kebabcase(build_target)
+            return False
 
-        if not build_target or not check_build_name(build_target):
-            raise errors.UserException("Build-target name is invalid")
+        if value in config.project.builds:
+            rich.print(f"[red]Build-target `{value}` already exists[/]")
+            return False
 
-        if build_target in config.project.builds:
-            raise errors.UserException(f"Build-target `{build_target}` already exists")
+        return True
 
-        # Ensure and validate the file path
-        if not file:
-            file = questionary.path(
-                "Enter the file path",
-                validate=lambda path: bool(path),
-                default=caseconverter.snakecase(backup_name or build_target) + ".ato",
-            ).unsafe_ask()
+    build_target = query_helper(
+        ":rocket: What's the [cyan]build-target[/] name?",
+        type_=str,
+        upgrader=caseconverter.kebabcase,
+        upgrader_msg="We recommend using kebab-case for build-target names.",
+        validator=_check_build_target_name,
+        validation_failure_msg="",
+        pre_entered=build_target,
+        default=caseconverter.kebabcase(backup_name) if backup_name else None,
+    )
 
-        if not file:
-            raise errors.UserException("File path is required")
-
-        file = Path(file)
-
-        if not file.is_absolute():
+    def _file_clarifier(value: Path) -> Path:
+        if not value.is_absolute():
             # If it's a relative path wrt ./ (cwd) then respect that
             # else assume it's relative to the src directory
-            if str(file).startswith("./") or str(file).startswith(".\\"):
-                file = Path(file).resolve()
+            if str(value).startswith("./") or str(value).startswith(".\\"):
+                value = Path(value).resolve()
             else:
-                rich.print(f"Using {src_path / file} as the file path")
-                file = src_path / file
+                value = src_path / value
 
-        if file.is_dir():
-            raise errors.UserException(f"{file} is a directory")
+        return value.with_suffix(".ato")
+
+    def _file_updator(value: Path) -> Path:
+        return value.with_stem(caseconverter.snakecase(value.stem))
+
+    def _file_validator(f: Path) -> bool:
+        if f.is_dir():
+            rich.print(f"{f} is a directory")
+            return False
 
         try:
-            file = file.relative_to(config.project.paths.src)
+            f.relative_to(src_path)
         except ValueError:
-            raise errors.UserException(
-                f"{file} must be in the project's src dir: {config.project.paths.src}"
-            )
+            rich.print(f"{f} is outside the project's src dir")
+            return False
 
-        if not module:
-            module = questionary.text(
-                "Enter the module name",
-                default=caseconverter.pascalcase(backup_name or build_target),
-            ).unsafe_ask()
+        return True
 
-            if module != caseconverter.pascalcase(module):
-                rich.print(
-                    "We typically recommend using pascal-case for module names. "
-                    f"Would you like to use `{module}` instead?"
-                )
-                if questionary.confirm("").unsafe_ask():
-                    module = caseconverter.pascalcase(module)
+    file = query_helper(
+        ":rocket: What [cyan]file[/] should we add the module to?",
+        type_=Path,
+        clarifier=_file_clarifier,
+        upgrader=_file_updator,
+        upgrader_msg="We recommend using snake_case for file names.",
+        validator=_file_validator,
+        validation_failure_msg="",
+        pre_entered=file,
+        default=Path(caseconverter.snakecase(backup_name or build_target) + ".ato"),
+    )
 
-        if not module or not check_module_name(module):
-            raise errors.UserException("Module name is invalid")
-
-    else:
-        if not all([build_target, file, module]):
-            raise errors.UserException(
-                "--build-target, --file, and --module must all be"
-                " provided when running non-interactively."
-            )
-
-    assert build_target
-    assert file
-    assert module
+    module = query_helper(
+        ":rocket: What [cyan]module[/] should we add to the file?",
+        type_=str,
+        validator=str.isidentifier,
+        validation_failure_msg="",
+        upgrader=caseconverter.pascalcase,
+        upgrader_msg="We recommend using pascal-case for module names.",
+        pre_entered=module,
+        default=caseconverter.pascalcase(backup_name or build_target),
+    )
 
     logger.debug(f"Creating build-target with {build_target=}, {file=}, {module=}")
 
