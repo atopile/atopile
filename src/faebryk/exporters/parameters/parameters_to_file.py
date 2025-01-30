@@ -203,14 +203,11 @@ def _generate_txt_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> st
     return out
 
 
-def export_parameters_to_file(module: Module, path: Path):
+def export_parameters_to_file(module: Module, solver: DefaultSolver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 
     parameters = dict[str, dict[str, P_Set[Any]]]()
-
-    # FIXME: re-use solution
-    solver = DefaultSolver()
 
     for m in module.get_children_modules(types=Module):
         module_name = m.get_full_name(types=True).split(".", maxsplit=1)[-1]

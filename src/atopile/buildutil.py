@@ -319,8 +319,9 @@ def generate_module_map(app: Module, solver: DefaultSolver) -> None:
 @muster.register("variable-report")
 def generate_variable_report(app: Module, solver: DefaultSolver) -> None:
     """Generate a report of all the variable values in the design."""
+    # TODO: support other file formats
     export_parameters_to_file(
-        app, config.build.paths.output_base.with_suffix(".variables.md")
+        app, solver, config.build.paths.output_base.with_suffix(".variables.md")
     )
 
 
