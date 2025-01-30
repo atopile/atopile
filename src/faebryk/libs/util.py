@@ -1379,7 +1379,7 @@ def run_live(
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
     **kwargs,
-) -> tuple[str, subprocess.Popen]:
+) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
 
     process = subprocess.Popen(
@@ -1394,6 +1394,7 @@ def run_live(
     # Set up file descriptors to monitor
     reads = [process.stdout, process.stderr]
     stdout_lines = []
+    stderr_lines = []
     while reads and process.poll() is None:
         # Wait for output on either stream
         readable, _, _ = select.select(reads, [], [])
@@ -1408,7 +1409,8 @@ def run_live(
                 stdout_lines.append(line)
                 if stdout:
                     stdout(line.rstrip())
-            else:
+            elif stream == process.stderr:
+                stderr_lines.append(line)
                 if stderr:
                     stderr(line.rstrip())
 
@@ -1418,10 +1420,10 @@ def run_live(
     # Get return code and check for errors
     if process.returncode != 0:
         raise subprocess.CalledProcessError(
-            process.returncode, args[0], "".join(stdout_lines)
+            process.returncode, args[0], "".join(stdout_lines), "".join(stderr_lines)
         )
 
-    return "\n".join(stdout_lines), process
+    return "\n".join(stdout_lines), "\n".join(stderr_lines), process
 
 
 @contextmanager

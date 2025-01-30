@@ -14,6 +14,7 @@ from typing import Callable, Iterable
 from rich.progress import Progress
 
 import faebryk.library._F as F
+from atopile.cli.console import error_console
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
@@ -200,7 +201,12 @@ def pick_module_by_params(
 class PickerProgress:
     def __init__(self, tree: Tree[Module]):
         self.tree = tree
-        self.progress = Progress(disable=bool(NO_PROGRESS_BAR), transient=True)
+        self.progress = Progress(
+            disable=bool(NO_PROGRESS_BAR),
+            transient=True,
+            # This uses the error console to properly interleave with logging
+            console=error_console,
+        )
         leaves = list(tree.leaves())
         count = len(leaves)
 
