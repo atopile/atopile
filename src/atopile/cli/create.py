@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Annotated, Any, Iterator, cast
+from typing import Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
 import click
@@ -89,11 +89,133 @@ def _in_git_repo(path: Path) -> bool:
     return True
 
 
+def query_helper[T: str | Path | bool](
+    prompt: str,
+    type_: type[T],
+    validator: str | Callable[[T], bool] | None = None,
+    validation_failure_msg: str | None = None,
+    upgrader: Callable[[T], T] | None = None,
+    upgrader_msg: str = "",
+    default: T | None = None,
+    pre_entered: T | None = None,
+) -> T:
+    """Query a user for input."""
+    rich.print(prompt)
+
+    # Check the default value
+    if default is not None:
+        if not isinstance(default, type_):
+            raise ValueError(f"Default value {default} is not of type {type_}")
+
+    # Make a queryier
+    if type_ is str:
+
+        def queryier() -> str:
+            return questionary.text(
+                "",
+                default=str(default or ""),
+            ).unsafe_ask()
+
+    elif type_ is Path:
+
+        def queryier() -> Path:
+            return Path(
+                questionary.path(
+                    "",
+                    default=str(default or ""),
+                ).unsafe_ask()
+            )
+
+    elif type_ is bool:
+        assert default is None or isinstance(default, bool)
+
+        def queryier() -> bool:
+            return questionary.confirm(
+                "",
+                default=default or True,
+            ).unsafe_ask()
+
+    else:
+        raise ValueError(f"Unsupported query type: `{type_}`")
+
+    # Default the validator to a regex match if it's a str
+    if validator is None:
+
+        def validator_func(value: T) -> bool:
+            return True
+
+    elif isinstance(validator, str):
+
+        def validator_func(value: T) -> bool:
+            return bool(re.match(validator, value))  # type: ignore
+
+        if not validation_failure_msg:
+            validation_failure_msg = f'Value must match regex: `r"{validator}"`'
+
+    else:
+        validator_func = validator  # type: ignore
+
+    if not validation_failure_msg:
+        validation_failure_msg = "Value [cyan]{value}[/] is invalid"
+
+    # Ensure the default provided is valid
+    if default is not None:
+        if not validator_func(default):
+            raise ValueError(f"Default value {default} is not valid")
+
+    if upgrader is None:
+
+        def upgrader_func(value: T) -> T:
+            return value
+    else:
+
+        def upgrader_func(value: T) -> T:
+            return upgrader(value)
+
+    # When running non-interactively, we expect the value to be provided
+    # at the command level, so we don't need to query the user for it
+    # Validate and return the pre-entered value
+    if not config.interactive:
+        if pre_entered is None:
+            raise ValueError("Value is required. Check at command level.")
+
+        if not validator_func(pre_entered):
+            raise errors.UserException(validation_failure_msg.format(value=pre_entered))
+
+        return pre_entered
+
+    # Pre-entered values are expected to skip the query for a value in the first place
+    # but progress through the validator and upgrader if we're running interactively
+    value: T | None = pre_entered
+
+    for _ in stuck_user_helper_generator:
+        if value is None:
+            value = queryier()  # type: ignore
+        assert isinstance(value, type_)
+
+        if not validator_func(value):
+            rich.print(validation_failure_msg.format(value=value))
+            value = None
+            continue
+
+        if (proposed_value := upgrader_func(value)) != value:
+            if upgrader_msg:
+                rich.print(upgrader_msg)
+
+            rich.print(f"Use [cyan]{proposed_value}[/] instead?")
+            if questionary.confirm("").unsafe_ask():
+                value = proposed_value
+
+        return value
+
+    raise RuntimeError("Unclear how we got here")
+
+
 @create_app.command()
 def project(
     name: Annotated[str | None, typer.Option("--name", "-n")] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
-):  # pylint: disable=redefined-builtin
+):
     """
     Create a new ato project.
     """
