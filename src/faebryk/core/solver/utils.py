@@ -23,7 +23,6 @@ from faebryk.core.parameter import (
     Add,
     Associative,
     ConstrainableExpression,
-    Difference,
     Domain,
     Expression,
     FullyAssociative,
@@ -120,7 +119,7 @@ SolverLiteral = CanonicalLiteral
 
 CanonicalNumericOperation = Add | Multiply | Power | Round | Abs | Sin | Log
 CanonicalLogicOperation = Or | Not
-CanonicalSeticOperation = Intersection | Union | SymmetricDifference | Difference
+CanonicalSeticOperation = Intersection | Union | SymmetricDifference
 CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
 
 

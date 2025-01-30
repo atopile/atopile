@@ -11,12 +11,14 @@ from faebryk.core.parameter import (
     Ceil,
     ConstrainableExpression,
     Cos,
+    Difference,
     Divide,
     Expression,
     Floor,
     GreaterOrEqual,
     GreaterThan,
     Implies,
+    Intersection,
     IsSubset,
     IsSuperset,
     LessOrEqual,
@@ -34,6 +36,7 @@ from faebryk.core.parameter import (
     Sin,
     Sqrt,
     Subtract,
+    SymmetricDifference,
     Union,
     Xor,
 )
@@ -174,6 +177,11 @@ def convert_to_canonical_operations(mutator: Mutator):
     ```
     """
 
+    UnsupportedOperations: dict[type[Expression], type[Expression]] = {
+        GreaterThan: GreaterOrEqual,
+        LessThan: LessOrEqual,
+    }
+
     def c[T: CanonicalOperation](op: type[T], *operands) -> T:
         return mutator.create_expression(
             op, *operands, from_ops=getattr(c, "from_ops", None)
@@ -206,8 +214,7 @@ def convert_to_canonical_operations(mutator: Mutator):
     # CanonicalSetic
     # Intersection_ = curry(Intersection)
     # Union_ = curry(Union)
-    # SymmetricDifference_ = curry(SymmetricDifference)
-    # Difference_ = curry(Difference)
+    SymmetricDifference_ = curry(SymmetricDifference)
 
     # CanonicalPredicate
     # GreaterOrEqual_ = curry(GreaterOrEqual)
@@ -269,14 +276,27 @@ def convert_to_canonical_operations(mutator: Mutator):
             lambda operands: list(reversed(operands)),
         ),
         (
-            GreaterThan,
+            # GreaterThan,
+            # TODO
+            GreaterOrEqual,
             LessThan,
             lambda operands: list(reversed(operands)),
+        ),
+        # TODO remove once support for LT/GT
+        (
+            GreaterOrEqual,
+            GreaterThan,
+            lambda operands: operands,
         ),
         (
             IsSubset,
             IsSuperset,
             lambda operands: list(reversed(operands)),
+        ),
+        (
+            Intersection,
+            Difference,
+            lambda operands: [operands[0], SymmetricDifference_(*operands)],
         ),
     ]
 
@@ -287,6 +307,12 @@ def convert_to_canonical_operations(mutator: Mutator):
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
+        if type(e) in UnsupportedOperations:
+            logger.warning(
+                f"{type(e)}({e.compact_repr(mutator.print_context)}) not supported "
+                f"by solver, converting to {UnsupportedOperations[type(e)]}"
+            )
+
         from_ops = [e]
         # TODO move up, by implementing Parameter Target
         # Min, Max
