@@ -3,7 +3,7 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.2.30",
+    "version": "0.3.10-dev0",
     "preview": false,
     "serverInfo": {
         "name": "atopile",
@@ -40,7 +40,7 @@
             "supported": false,
             "description": "Virtual Workspaces are not supported with atopile."
         },
-        "hoverProvider" : "true"
+        "hoverProvider": "true"
     },
     "activationEvents": [
         "onLanguage:atopile",
