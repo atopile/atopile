@@ -1,7 +1,7 @@
 import warnings
 from datetime import timedelta
 from functools import partial
-from operator import add, mul, pow, sub, truediv
+from operator import add
 from typing import Any, Callable, Iterable, NamedTuple
 
 from hypothesis import given, settings
@@ -13,28 +13,24 @@ from faebryk.core.parameter import (
     Abs,
     Add,
     Arithmetic,
-    Ceil,
-    Cos,
-    # Differentiate,
-    Divide,
-    Floor,
-    # Integrate,
     Log,
-    Max,
-    Min,
     Multiply,
     Parameter,
     Power,
     Round,
     Sin,
-    Sqrt,
-    Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.library.L import Range
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.units import Quantity
+
+# canonical operations:
+# Add, Multiply, Power, Round, Abs, Sin, Log
+# Or, Not
+# Intersection, Union, SymmetricDifference
+# IsSubset, Is, GreaterThan
 
 
 class Builders(Namespace):
@@ -53,22 +49,12 @@ class Builders(Namespace):
         )
 
     Add = operator(Add)
-    Subtract = operator(Subtract)
     Multiply = operator(Multiply)
-    Divide = operator(Divide)
     Power = operator(Power)
-    Log = operator(Log)
-    Sqrt = operator(Sqrt)
-    Sin = operator(Sin)
-    Cos = operator(Cos)
-    Abs = operator(Abs)
     Round = operator(Round)
-    Floor = operator(Floor)
-    Ceil = operator(Ceil)
-    # Differentiate = operator(Differentiate)
-    # Integrate = operator(Integrate)
-    Max = operator(Max)
-    Min = operator(Min)
+    Abs = operator(Abs)
+    Sin = operator(Sin)
+    Log = operator(Log)
 
 
 class st_values(Namespace):
@@ -121,23 +107,13 @@ ExprType = NamedTuple(
 )
 
 EXPR_TYPES = [
-    # ExprType(Builders.Abs, st_values.values, Extension.single),
     ExprType(Builders.Add, st_values.pairs, Extension.tuples),
-    # ExprType(Builders.Ceil, st_values.values, Extension.single),
-    # ExprType(Builders.Cos, st_values.values, Extension.single),
-    # ExprType(Builders.Differentiate, st_values.lists, st_values.short_lists),
-    # ExprType(Builders.Divide, st_values.pairs, Extension.tuples),
-    # ExprType(Builders.Floor, st_values.values, Extension.single),
-    # ExprType(Builders.Integrate, st_values.lists, st_values.short_lists),
-    # ExprType(Builders.Log, st_values.values, Extension.single),
-    # ExprType(Builders.Max, st_values.lists, st_values.short_lists),
-    # ExprType(Builders.Min, st_values.lists, st_values.short_lists),
     # ExprType(Builders.Multiply, st_values.pairs, Extension.tuples),
     # ExprType(Builders.Power, st_values.pairs, Extension.tuples),
     # ExprType(Builders.Round, st_values.values, Extension.single),
+    # ExprType(Builders.Abs, st_values.values, Extension.single),
     # ExprType(Builders.Sin, st_values.values, Extension.single),
-    # ExprType(Builders.Sqrt, st_values.values, Extension.single),
-    ExprType(Builders.Subtract, st_values.pairs, Extension.tuples),
+    # ExprType(Builders.Log, st_values.values, Extension.single),
 ]
 
 
@@ -160,36 +136,20 @@ class st_exprs(Namespace):
 
 def evaluate_expr(expr: Arithmetic | Quantity):
     match expr:
-        # case Sqrt():
-        #     return sqrt(evaluate_expr(expr.operands[0]))
-        # case Log():
-        #     return log(evaluate_expr(expr.operands[0]))
-        # case Sin():
-        #     return sin(evaluate_expr(expr.operands[0]))
-        # case Cos():
-        #     return cos(evaluate_expr(expr.operands[0]))
-        # case Abs():
-        #     return abs(evaluate_expr(expr.operands[0]))
-        # case Round():
-        #     return round(evaluate_expr(expr.operands[0]))
-        # case Floor():
-        #     return floor(evaluate_expr(expr.operands[0]))
-        # case Ceil():
-        #     return ceil(evaluate_expr(expr.operands[0]))
-        # case Divide():
-        #     return truediv(*[evaluate_expr(operand) for operand in expr.operands])
-        # case Power():
-        #     return pow(*[evaluate_expr(operand) for operand in expr.operands])
         case Add():
             return add(*[evaluate_expr(operand) for operand in expr.operands])
-        case Subtract():
-            return sub(*[evaluate_expr(operand) for operand in expr.operands])
         # case Multiply():
         #     return mul(*[evaluate_expr(operand) for operand in expr.operands])
-        # case Min():
-        #     return min(*[evaluate_expr(operand) for operand in expr.operands])
-        # case Max():
-        #     return max(*[evaluate_expr(operand) for operand in expr.operands])
+        # case Power():
+        #     return pow(*[evaluate_expr(operand) for operand in expr.operands])
+        # case Round():
+        #     return round(evaluate_expr(expr.operands[0]))
+        # case Abs():
+        #     return abs(evaluate_expr(expr.operands[0]))
+        # case Sin():
+        #     return sin(evaluate_expr(expr.operands[0]))
+        # case Log():
+        #     return log(evaluate_expr(expr.operands[0]))
         case Quantity_Interval_Disjoint():
             return expr
         case Parameter():
