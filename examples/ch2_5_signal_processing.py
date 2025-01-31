@@ -29,8 +29,7 @@ class App(Module):
 
         # Specialize
         special = self.lowpass.specialize(F.FilterElectricalLC())
-
-        special.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 0.1))
+        special.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 1))
 
         # set reference voltage
         # TODO: this will be automatically set by the power supply
