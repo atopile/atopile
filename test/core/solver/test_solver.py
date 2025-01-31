@@ -46,7 +46,7 @@ from faebryk.core.solver.utils import (
     ContradictionByLiteral,
 )
 from faebryk.libs.library import L
-from faebryk.libs.library.L import Range, RangeWithGaps, Single
+from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
@@ -1409,3 +1409,40 @@ def test_exec_pure_literal_expressions(op: type[CanonicalOperation], lits, expec
     solver = DefaultSolver()
     repr_map, _ = solver.simplify_symbolically(result.get_graph())
     assert repr_map.try_get_literal(result) == expected_converted
+
+
+def test_implication():
+    A = Parameter()
+    B = Parameter()
+
+    A.constrain_subset(DiscreteSet(5, 10))
+
+    A.operation_is_subset(Single(5)).operation_implies(
+        B.operation_is_subset(Range.from_center_rel(100, 0.1))
+    ).constrain()
+    A.operation_is_subset(Single(10)).operation_implies(
+        B.operation_is_subset(Range.from_center_rel(500, 0.1))
+    ).constrain()
+
+    A.constrain_subset(Single(10))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(B) == Range.from_center_rel(500, 0.1)
+
+
+@pytest.mark.parametrize("A_value", [5, 10, 15])
+def test_mapping(A_value):
+    A = Parameter()
+    B = Parameter()
+
+    X = Range.from_center_rel(100, 0.1)
+    Y = Range.from_center_rel(200, 0.1)
+    Z = Range.from_center_rel(300, 0.1)
+
+    mapping = {5: X, 10: Y, 15: Z}
+    A.constrain_mapping(B, mapping)  # type: ignore
+
+    A.constrain_subset(A_value)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(B) == mapping[A_value]
