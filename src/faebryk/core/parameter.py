@@ -155,8 +155,8 @@ class ParameterOperatable(Node):
     def operation_intersection(self, other: Sets):
         return Intersection(self, other)
 
-    def operation_difference(self, other: Sets):
-        return Difference(minuend=self, subtrahend=other)
+    def operation_difference(self, *subtrahends: Sets):
+        return Difference(minuend=self, *subtrahends)
 
     def operation_symmetric_difference(self, other: Sets):
         return SymmetricDifference(self, other)
@@ -330,11 +330,28 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
 
-    # TODO
-    # def switch_case(
-    #    self,
-    #    cases: list[tuple[?, Callable[[], Any]]],
-    # ) -> None: ...
+    def operation_switch_case_subset(
+        self,
+        cases: Iterable[tuple[Literal, "ConstrainableExpression"]],
+    ) -> "ConstrainableExpression":
+        exprs = [(IsSubset(self, lit), case) for lit, case in cases]
+        return ConstrainableExpression.operation_switch_case_implications(exprs)
+
+    def operation_mapping(
+        self,
+        other: "ParameterOperatable",
+        mapping: dict[Literal, Literal],
+    ) -> "ConstrainableExpression":
+        exprs = [
+            (lit_self, IsSubset(other, lit_other))
+            for lit_self, lit_other in mapping.items()
+        ]
+        return self.operation_switch_case_subset(exprs)
+
+    def constrain_mapping(
+        self, other: "ParameterOperatable", mapping: dict[Literal, Literal]
+    ):
+        return self.operation_mapping(other, mapping).constrain()
 
     # ----------------------------------------------------------------------------------
     def get_operations[T: "Expression"](
@@ -778,6 +795,12 @@ class ConstrainableExpression(Expression):
         preference: bool | None = None,
     ):
         return IfThenElse(self, if_true, if_false, preference)
+
+    @staticmethod
+    def operation_switch_case_implications(
+        cases: Iterable[tuple["ConstrainableExpression", "ConstrainableExpression"]],
+    ) -> "ConstrainableExpression":
+        return And(*(case.operation_implies(impl) for case, impl in cases))
 
 
 @abstract

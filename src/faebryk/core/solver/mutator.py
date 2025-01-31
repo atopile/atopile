@@ -278,7 +278,8 @@ class Mutator:
         if not isinstance(unpacked, ParameterOperatable):
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(expr, self.get_copy(unpacked))
-        if isinstance(out, ConstrainableExpression) and out.constrained:
+        if isinstance(expr, ConstrainableExpression) and expr.constrained:
+            assert isinstance(out, ConstrainableExpression)
             out.constrain()
         return out
 
