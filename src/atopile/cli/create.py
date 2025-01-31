@@ -347,7 +347,8 @@ def build_target(
 
     try:
         src_path = config.project.paths.src
-        config.project_dir  # touch property to ensure config's loaded from a project
+        # This also raises the exception in case we're not in a project
+        prj_dir = config.project_dir
     except ValueError:
         raise errors.UserException(
             "Could not find the project directory, are you within an ato project?"
@@ -421,9 +422,9 @@ def build_target(
             return False
 
         try:
-            f.relative_to(src_path)
+            f.relative_to(prj_dir)
         except ValueError:
-            rich.print(f"{f} is outside the project's src dir")
+            rich.print(f"{f} is outside the project")
             return False
 
         return True
@@ -465,7 +466,8 @@ def build_target(
         return config_data
 
     config.update_project_config(
-        add_build_target, {"entry": str(AddrStr.from_parts(file, module))}
+        add_build_target,
+        {"entry": str(AddrStr.from_parts(file.relative_to(prj_dir), module))},
     )
 
     # Create or add to file
