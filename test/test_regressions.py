@@ -40,6 +40,15 @@ class BuildError(Exception):
                 "FBRK_MAX_PATHS_NO_NEW_WEAK": "1e5",
             },
         ),
+        (
+            "https://github.com/atopile/hil",
+            {
+                # TODO: @lazy-mifs remove this
+                "FBRK_MAX_PATHS": "1e7",
+                "FBRK_MAX_PATHS_NO_WEAK": "1e6",
+                "FBRK_MAX_PATHS_NO_NEW_WEAK": "1e5",
+            },
+        ),
         ("https://github.com/atopile/rp2040", {}),
         ("https://github.com/atopile/tca9548apwr", {}),
         ("https://github.com/atopile/nau7802", {}),
