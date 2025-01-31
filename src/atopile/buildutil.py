@@ -1,5 +1,6 @@
 import json
 import logging
+import math
 import shutil
 import time
 from copy import deepcopy
@@ -98,6 +99,24 @@ def build(app: Module) -> None:
         logger.info("Simplifying parameter graph")
         solver.inspect_get_known_supersets(first(parameters), force_update=True)
 
+    parameters = {
+        m.get_full_name(types=False): (
+            {
+                param.get_name(): solver.inspect_get_known_supersets(
+                    param, force_update=False
+                )
+                for param in m.get_children(direct_only=True, types=Parameter)
+            }
+        )
+        for m in sorted(
+            app.get_children_modules(types=Module),
+            key=lambda m: m.get_full_name(types=False),
+        )
+    }
+    from rich import print as rprint
+
+    rprint(parameters)
+
     # Pickers ------------------------------------------------------------------
     if config.build.keep_picked_parts:
         load_descriptive_properties(G)
@@ -109,6 +128,53 @@ def build(app: Module) -> None:
             [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
         ) from ex
 
+    parameters = {
+        m.get_full_name(types=False): (
+            {
+                param.get_name(): solver.inspect_get_known_supersets(
+                    param, force_update=False
+                )
+                for param in m.get_children(direct_only=True, types=Parameter)
+            }
+        )
+        for m in sorted(
+            app.get_children_modules(types=Module),
+            key=lambda m: m.get_full_name(types=False),
+        )
+    }
+    from rich import print as rprint
+
+    rprint(parameters)
+
+    # parameters = {
+    #     m.get_full_name(types=False): (
+    #         {
+    #             param.get_name(): solver.inspect_get_known_supersets(
+    #                 param, force_update=True
+    #             )
+    #             for param in m.get_children(direct_only=True, types=Parameter)
+    #         }
+    #     )
+    #     for m in sorted(
+    #         app.get_children_modules(types=Module),
+    #         key=lambda m: m.get_full_name(types=False),
+    #     )
+    # }
+
+    # rprint(parameters)
+
+    # print(
+    #     1
+    #     / (
+    #         2
+    #         * math.pi
+    #         * (
+    #             parameters["lowpass_specialized.capacitor"]["capacitance"]
+    #             * parameters["lowpass_specialized.inductor"]["inductance"]
+    #         )
+    #         ** 0.5
+    #     )
+    # )
     # Footprints ----------------------------------------------------------------
     # Use standard footprints for known packages regardless of
     # what's otherwise been specified.
