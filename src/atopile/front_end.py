@@ -1115,6 +1115,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         suppression_warning="Suppressing further deprecation warnings",
     )
 
+    _suppression_connect_type_warning = suppress_after_count(
+        3,
+        errors.UserTypeError,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
+
     def _connect(
         self, a: L.ModuleInterface, b: L.ModuleInterface, ctx: ParserRuleContext | None
     ):
@@ -1131,7 +1138,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if pair := is_type_pair(a, b, F.Electrical, F.ElectricSignal):
             pair[0].connect(pair[1].line)
 
-            with downgrade(errors.UserTypeError):
+            with (
+                downgrade(errors.UserTypeError),
+                self._suppression_connect_type_warning,
+            ):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
                     f"Connected `{pair[0]}`, a `signal` / `Electrical` to "

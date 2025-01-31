@@ -56,16 +56,16 @@ def test_build_error_logging(build_name: str):
     )
 
     # single error
-    assert process.stdout.count("ERROR") == 1
+    assert process.stderr.count("ERROR") == 1
 
     # single traceback
-    assert process.stdout.count("❱") == 1
-    assert process.stdout.count("Traceback (most recent call last)") == 1
-    assert "another exception occurred" not in process.stdout
-    assert "direct cause of the following exception" not in process.stdout
+    assert process.stderr.count("❱") == 1
+    assert process.stderr.count("Traceback (most recent call last)") == 1
+    assert "another exception occurred" not in process.stderr
+    assert "direct cause of the following exception" not in process.stderr
 
     # including the test exception
-    assert f'raise ValueError("{build_name}")' in process.stdout
+    assert f'raise ValueError("{build_name}")' in process.stderr
 
     # exiting cleanly
     expected_ending = (
@@ -76,7 +76,7 @@ def test_build_error_logging(build_name: str):
     assert actual_ending.endswith(expected_ending)
 
     # exception groups are unwrapped
-    assert "ExceptionGroup" not in process.stdout
+    assert "ExceptionGroup" not in process.stderr
 
     # with a non-zero exit code
     assert process.returncode == 1

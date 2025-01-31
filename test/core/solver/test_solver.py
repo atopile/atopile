@@ -11,27 +11,42 @@ import pytest
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import (
+    Abs,
     Add,
     And,
     Arithmetic,
+    Expression,
     GreaterOrEqual,
+    GreaterThan,
+    Intersection,
     Is,
     IsSubset,
     IsSuperset,
     LessOrEqual,
+    Log,
     Max,
     Multiply,
     Not,
     Or,
     Parameter,
     ParameterOperatable,
+    Power,
     Predicate,
+    Round,
+    Sin,
     Subtract,
+    SymmetricDifference,
+    Union,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral
+from faebryk.core.solver.utils import (
+    CanonicalLiteral,
+    CanonicalOperation,
+    Contradiction,
+    ContradictionByLiteral,
+)
 from faebryk.libs.library import L
-from faebryk.libs.library.L import Range, RangeWithGaps, Single
+from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
 from faebryk.libs.picker.picker import (
     PickerOption,
@@ -40,6 +55,7 @@ from faebryk.libs.picker.picker import (
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
+    Quantity_Set,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import P, dimensionless, quantity
@@ -164,7 +180,7 @@ def test_inequality_to_set():
 
 
 def test_remove_obvious_tautologies():
-    p0, p1, p2 = (Parameter(units=dimensionless) for _ in range(3))
+    p0, p1, p2 = times(3, Parameter)
     p0.alias_is(p1 + p2)
     p1.constrain_ge(0.0)
     p2.constrain_ge(0.0)
@@ -528,18 +544,6 @@ def test_literal_folding_add_multiplicative_2():
     }
 
 
-def test_subset_is_replace():
-    A = Parameter()
-    B = Parameter()
-
-    op_is = A.alias_is(B)
-    op_subset = A.constrain_subset(B)
-
-    solver = DefaultSolver()
-    result, context = solver.simplify_symbolically(A.get_graph())
-    assert result.repr_map[op_subset] == result.repr_map[op_is]
-
-
 def test_transitive_subset():
     A = Parameter(domain=L.Domains.Numbers.REAL())
     B = Parameter(domain=L.Domains.Numbers.REAL())
@@ -589,7 +593,6 @@ def test_combined_add_and_multiply_with_ranges():
     C.alias_is(2 * A + B)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(C.get_graph())
 
     assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(4, 0.01)
 
@@ -606,7 +609,6 @@ def test_voltage_divider_find_v_out_no_division():
     v_out.alias_is(v_in * r_bottom * ((r_top + r_bottom) ** -1))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(v_out.get_graph())
 
     # dependency problem prevents finding precise solution of [9/11, 100/11]
     # TODO: automatically rearrange expression to match
@@ -626,7 +628,6 @@ def test_voltage_divider_find_v_out_with_division():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(v_out.get_graph())
 
     assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
 
@@ -643,12 +644,10 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
     v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(v_out.get_graph())
 
     assert solver.inspect_get_known_supersets(v_out) == Range(9 / 11, 100 / 11)
 
 
-# FIXME: needs 12 iterations
 def test_voltage_divider_find_v_in():
     r_top = Parameter()
     r_bottom = Parameter()
@@ -661,7 +660,6 @@ def test_voltage_divider_find_v_in():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(v_in.get_graph())
 
     # TODO: should find [9.9, 100]
     assert solver.inspect_get_known_supersets(v_in) == Range(1.8, 200)
@@ -681,9 +679,8 @@ def test_voltage_divider_find_resistances():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-    result, _ = solver.simplify_symbolically(v_out.get_graph())
-
-    assert result.try_get_literal(v_out) == Range(0.9 * P.V, 1 * P.V)
+    # FIXME: this test looks funky
+    assert solver.inspect_get_known_supersets(v_out) == Range(0.9 * P.V, 1 * P.V)
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
@@ -701,7 +698,6 @@ def test_voltage_divider_find_r_bottom():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(r_bottom.get_graph())
 
     assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
         1 * P.ohm, 0.01
@@ -721,7 +717,6 @@ def test_voltage_divider_find_r_top():
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(r_top.get_graph())
 
     assert solver.inspect_get_known_supersets(r_top) == Range(
         (10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99
@@ -757,13 +752,7 @@ def test_base_unit_switch():
     assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
 
 
-@pytest.mark.parametrize(
-    "predicate_type",
-    [
-        Is,
-        IsSubset,
-    ],
-)
+@pytest.mark.parametrize("predicate_type", [Is, IsSubset])
 def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
     p0 = Parameter(units=P.V)
     p0.alias_is(Range(0 * P.V, 10 * P.V))
@@ -941,7 +930,6 @@ def test_simple_parameter_isolation(
     Y.alias_is(y)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically((X + Y).get_graph())
 
     assert solver.inspect_get_known_supersets(X) == x_expected
 
@@ -960,7 +948,6 @@ def test_abstract_lowpass():
 
     # solve
     solver = DefaultSolver()
-    solver.simplify_symbolically(fc.get_graph())
 
     assert solver.inspect_get_known_supersets(C) == Range(
         6.158765796 * P.GF, 6.410118344 * P.GF
@@ -997,7 +984,6 @@ def test_param_isolation():
     Y.alias_is(Range.from_center_rel(1, 0.01))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(Y.get_graph())
 
     assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)
 
@@ -1026,7 +1012,6 @@ def test_extracted_literal_folding(op):
     op(A, B).alias_is(C)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(C.get_graph())
 
     assert solver.inspect_get_known_supersets(C) == lito
 
@@ -1196,7 +1181,6 @@ def test_can_add_parameters():
     C.alias_is((A + B))
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(C.get_graph())
 
     assert solver.inspect_get_known_supersets(C) == Range(20, 200)
 
@@ -1210,3 +1194,255 @@ def test_ss_estimation_ge():
 
     solver = DefaultSolver()
     solver.simplify_symbolically(B.get_graph())
+
+
+def test_fold_mul_zero():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    A.alias_is(0)
+    B.alias_is(Range(10, 20))
+
+    (A * B).alias_is(C)
+
+    solver = DefaultSolver()
+
+    assert solver.inspect_get_known_supersets(C) == 0
+
+
+def test_fold_or_true():
+    A = Parameter(domain=L.Domains.BOOL())
+    B = Parameter(domain=L.Domains.BOOL())
+    C = Parameter(domain=L.Domains.BOOL())
+
+    A.alias_is(True)
+
+    (A | B).alias_is(C)
+
+    solver = DefaultSolver()
+
+    assert solver.inspect_get_known_supersets(C) == BoolSet(True)
+
+
+def test_fold_not():
+    A = Parameter(domain=L.Domains.BOOL())
+    B = Parameter(domain=L.Domains.BOOL())
+
+    A.alias_is(False)
+    (Not(A)).alias_is(B)
+
+    solver = DefaultSolver()
+
+    assert solver.inspect_get_known_supersets(B) == BoolSet(True)
+
+
+def test_fold_ss_transitive():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    C.operation_is_subset(Range(0, 10)).constrain()
+    B.operation_is_subset(C).constrain()
+    A.operation_is_subset(B).constrain()
+
+    solver = DefaultSolver()
+
+    assert solver.inspect_get_known_supersets(A) == Range(0, 10)
+
+
+def test_ss_intersect():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    A.alias_is(Range(0, 15))
+    B.alias_is(Range(10, 20))
+    C.constrain_subset(A)
+    C.constrain_subset(B)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(C) == Range(10, 15)
+
+
+@pytest.mark.parametrize(
+    "left, right, expected",
+    [
+        (
+            [Range(0, 10)],
+            [Range(0, 10)],
+            True,
+        ),
+        (
+            [Range(0, 10)],
+            [Range(10, 20)],
+            False,
+        ),
+        (
+            [Add(Range(0, 10), Range(0, 20))],
+            [Add(Range(0, 10), Range(0, 20))],
+            True,
+        ),
+        (
+            [Add(Range(0, 10), Range(0, 20))],
+            [Add(Range(0, 20), Range(0, 10))],
+            True,
+        ),
+        (
+            [Not(BoolSet(True))],
+            [Not(BoolSet(True))],
+            True,
+        ),
+        (
+            [Not(Not(BoolSet(True)))],
+            [Not(Not(BoolSet(True)))],
+            True,
+        ),
+        (
+            [Multiply(Range(0, 10), Range(0, 10))],
+            [Multiply(Range(0, 10), Range(0, 10))],
+            True,
+        ),
+        (
+            [Multiply(Range(0, math.inf), Range(0, math.inf), Range(0, math.inf))],
+            [Multiply(Range(0, math.inf), Range(0, math.inf))],
+            False,
+        ),
+        (
+            [Add(Range(0, math.inf), Range(0, math.inf))],
+            [Add(Range(0, math.inf))],
+            False,
+        ),
+    ],
+)
+def test_congruence_lits(left, right, expected):
+    assert Expression.are_pos_congruent(left, right) == expected
+
+
+def test_fold_literals():
+    A = Parameter()
+    A.alias_is(Add(Range(0, 10), Range(0, 10)))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == Range(0, 20)
+
+
+def test_deduce_negative():
+    A = Parameter(domain=L.Domains.BOOL())
+
+    p = Not(A)
+
+    solver = DefaultSolver()
+    res = solver.assert_any_predicate([(p, None)], lock=False)
+    assert res.true_predicates == [(p, None)]
+
+
+def test_empty_and():
+    solver = DefaultSolver()
+
+    p = And()
+    res = solver.assert_any_predicate([(p, None)], lock=False)
+    assert res.true_predicates == [(p, None)]
+
+
+@pytest.mark.parametrize(
+    "op,lits,expected",
+    [
+        (Add, [], 0),
+        (Add, [1, 2, 3, 4, 5], 15),
+        (Multiply, [1, 2, 3, 4, 5], 120),
+        (Multiply, [], 1),
+        (Power, [2, 3], 8),
+        (Round, [2.4], 2),
+        (Round, [Range(-2.6, 5.3)], Range(-3, 5)),
+        (Abs, [-2], 2),
+        (Abs, [Range(-2, 3)], Range(0, 3)),
+        (Sin, [0], 0),
+        (Sin, [Range(0, 2 * math.pi)], Range(-1, 1)),
+        (Log, [10], math.log(10)),
+        (Log, [Range(1, 10)], Range(math.log(1), math.log(10))),
+        (Or, [False, False, True], True),
+        (Or, [False, BoolSet(True, False), True], True),
+        (Or, [], False),
+        (Not, [False], True),
+        (Intersection, [Range(0, 10), Range(10, 20)], Range(10, 10)),
+        (Union, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (SymmetricDifference, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (
+            SymmetricDifference,
+            [Range(0, 10), Range(5, 20)],
+            RangeWithGaps(Range(0, 5), Range(10, 20)),
+        ),
+        (Is, [Range(0, 10), Range(0, 10)], True),
+        (GreaterOrEqual, [Range(10, 20), Range(0, 10)], True),
+        (GreaterOrEqual, [Range(5, 20), Range(0, 10)], BoolSet(True, False)),
+        (GreaterThan, [Range(10, 20), Range(0, 10)], BoolSet(True, False)),
+        (GreaterThan, [Range(0, 10), Range(10, 20)], False),
+        (IsSubset, [Range(0, 10), Range(0, 20)], True),
+    ],
+)
+def test_exec_pure_literal_expressions(op: type[CanonicalOperation], lits, expected):
+    from faebryk.core.solver.literal_folding import _exec_pure_literal_expressions
+    from faebryk.core.solver.utils import make_lit
+
+    lits_converted = list(map(make_lit, lits))
+    expected_converted = make_lit(expected)
+
+    expr = op(*lits_converted)
+    assert _exec_pure_literal_expressions(expr) == expected_converted
+
+    if op is GreaterThan:
+        pytest.xfail("GreaterThan is not supported in solver")
+
+    def _get_param_from_lit(lit: CanonicalLiteral):
+        if isinstance(lit, BoolSet):
+            p = Parameter(domain=L.Domains.BOOL())
+        elif isinstance(lit, Quantity_Set):
+            p = Parameter(domain=L.Domains.Numbers.REAL())
+        else:
+            raise NotImplementedError()
+        return p
+
+    result = _get_param_from_lit(expected_converted)
+    result.alias_is(expr)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(result.get_graph())
+    assert repr_map.try_get_literal(result) == expected_converted
+
+
+def test_implication():
+    A = Parameter()
+    B = Parameter()
+
+    A.constrain_subset(DiscreteSet(5, 10))
+
+    A.operation_is_subset(Single(5)).operation_implies(
+        B.operation_is_subset(Range.from_center_rel(100, 0.1))
+    ).constrain()
+    A.operation_is_subset(Single(10)).operation_implies(
+        B.operation_is_subset(Range.from_center_rel(500, 0.1))
+    ).constrain()
+
+    A.constrain_subset(Single(10))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(B) == Range.from_center_rel(500, 0.1)
+
+
+@pytest.mark.parametrize("A_value", [5, 10, 15])
+def test_mapping(A_value):
+    A = Parameter()
+    B = Parameter()
+
+    X = Range.from_center_rel(100, 0.1)
+    Y = Range.from_center_rel(200, 0.1)
+    Z = Range.from_center_rel(300, 0.1)
+
+    mapping = {5: X, 10: Y, 15: Z}
+    A.constrain_mapping(B, mapping)  # type: ignore
+
+    A.constrain_subset(A_value)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(B) == mapping[A_value]

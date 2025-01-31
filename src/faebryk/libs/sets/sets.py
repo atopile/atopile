@@ -45,7 +45,9 @@ class P_Set[T](Serializable, Protocol):
             return value
         raise ValueError(f"cannot convert {value} to P_Set")
 
-    def is_subset_of(self, other: "P_Set[T]") -> bool: ...
+    def is_subset_of(self, other: "P_Set[T]") -> bool:
+        assert type(self) is not P_Set
+        return self.is_subset_of(other)
 
     def is_superset_of(self, other: "P_Set[T]") -> bool:
         return P_Set.from_value(other).is_subset_of(self)

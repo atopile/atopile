@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import logging
 from dataclasses import dataclass
 
 import faebryk.library._F as F
@@ -17,6 +18,8 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, EnumSet
 from faebryk.libs.units import Quantity, Unit, to_si_str
 from faebryk.libs.util import join_if_non_empty
+
+logger = logging.getLogger(__name__)
 
 
 class has_simple_value_representation_based_on_params_chain(
@@ -92,10 +95,17 @@ class has_simple_value_representation_based_on_params_chain(
             raise NotImplementedError(f"No support for {domain}")
 
         def get_value(self) -> str:
+            try:
+                value = self._get_value()
+            except Exception as e:
+                if self.default is None:
+                    raise
+                logger.debug(f"Failed to get value for `{self.param}`: {e}")
+                return ""
             return join_if_non_empty(
                 " ",
                 self.prefix,
-                self._get_value(),
+                value,
                 self.suffix,
             )
 

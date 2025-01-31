@@ -14,6 +14,7 @@ from typing import Callable, Iterable
 from rich.progress import Progress
 
 import faebryk.library._F as F
+from atopile.cli.console import error_console
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
@@ -200,7 +201,12 @@ def pick_module_by_params(
 class PickerProgress:
     def __init__(self, tree: Tree[Module]):
         self.tree = tree
-        self.progress = Progress(disable=bool(NO_PROGRESS_BAR), transient=True)
+        self.progress = Progress(
+            disable=bool(NO_PROGRESS_BAR),
+            transient=True,
+            # This uses the error console to properly interleave with logging
+            console=error_console,
+        )
         leaves = list(tree.leaves())
         count = len(leaves)
 
@@ -329,14 +335,18 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     ]
 
     ok = pick_atomically(single_part_modules, solver)
-    if not ok:
-        raise PickError(
-            f"Could not find compatible parts for single-candidate modules: "
-            f"{single_part_modules}",
-            single_part_modules[0][0],  # TODO
+    if ok:
+        for m, _ in single_part_modules:
+            progress.advance(m)
+    else:
+        logger.warning(
+            "Could not pick all explicitly-specified parts atomically, "
+            "picking one by one (slow)"
         )
-    for m, _ in single_part_modules:
-        progress.advance(m)
+
+        for module, parts in sorted_candidates:
+            filter_by_module_params_and_attach(module, parts, solver)
+            progress.advance(module)
 
     sorted_candidates = [
         (module, parts) for module, parts in sorted_candidates if len(parts) != 1
@@ -351,7 +361,6 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
         return
 
     logger.warning("Could not pick all parts atomically, picking one by one (slow)")
-    #
 
     for module, parts in sorted_candidates:
         filter_by_module_params_and_attach(module, parts, solver)

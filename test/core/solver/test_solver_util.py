@@ -8,6 +8,7 @@ import pytest
 from faebryk.core.parameter import (
     Add,
     And,
+    Difference,
     Divide,
     Expression,
     Intersection,
@@ -18,7 +19,6 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
     Subtract,
-    SymmetricDifference,
     Union,
     Xor,
 )
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
         Xor,
         Union,
         Intersection,
-        SymmetricDifference,
+        Difference,
     ],
 )
 def test_flatten_associative(op: type[Expression]):
