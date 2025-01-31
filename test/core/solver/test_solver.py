@@ -1518,3 +1518,84 @@ def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expe
     solver = DefaultSolver()
     repr_map, _ = solver.simplify_symbolically(result.get_graph())
     assert repr_map.try_get_literal(result) == expected_converted
+
+
+def test_picker_contradiction():
+    fc = Parameter(units=P.MHz)
+    C = Parameter(units=P.nF)
+    Li = Parameter(units=P.nH)
+
+    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+    fc.constrain_subset(Range.from_center_rel(10 * P.MHz, 0.05))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(fc.get_graph())
+
+    predicates = [
+        Is(C, Range.from_center_rel(100 * P.nF, 0.1)),
+        Is(Li, Range.from_center_rel(18 * P.nH, 0.03)),
+    ]
+
+    result = solver.assert_any_predicate([(And(*predicates), None)], lock=False)
+
+    assert result.true_predicates == []
+
+
+def test_solve_lc_filter_example():
+    Li = Parameter(units=P.nH)
+    C = Parameter(units=P.nF)
+    R = Parameter(units=P.ohm)
+
+    lowpass = F.FilterElectricalLC()
+
+    lowpass.cutoff_frequency.constrain_subset(L.Range.from_center_rel(1000 * P.Hz, 0.5))
+    # lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
+    lowpass.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 0.1))
+
+    lowpass.in_.reference.voltage.constrain_subset(
+        L.Range.from_center_rel(3 * P.V, 0.05)
+    )
+    lowpass.out.reference.voltage.constrain_subset(
+        L.Range.from_center_rel(3 * P.V, 0.05)
+    )
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(lowpass.get_graph())
+
+    print(solver.inspect_get_known_supersets(lowpass.inductor.inductance))
+    print(solver.inspect_get_known_supersets(lowpass.capacitor.capacitance))
+
+
+def test_solve_voltage_divider_example():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+    i_q = Parameter(units=P.A)
+
+    # TODO: solve this with only one form of each equation
+
+    # v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+    v_out.alias_is(v_in * (1 / (1 + r_top / r_bottom)))
+
+    r_top.alias_is(r_bottom * (v_in / v_out - 1))
+    r_bottom.alias_is(v_out * r_top / (v_in - v_out))
+    v_in.alias_is(v_out * (1 + r_top / r_bottom))
+    r_bottom.alias_is(v_out / i_q)
+    i_q.alias_is(v_in / (r_top + r_bottom))
+
+    v_in.constrain_subset(L.Range.from_center_rel(10 * P.V, 0.1))
+    v_out.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.1))
+    i_q.constrain_subset(L.Range(10 * P.uA, 100 * P.uA))
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(v_out.get_graph())
+
+    r_top_ss = solver.inspect_get_known_supersets(r_top)
+    r_bottom_ss = solver.inspect_get_known_supersets(r_bottom)
+
+    print(r_top_ss)
+    print(r_bottom_ss)
+
+    assert r_top_ss == Range(100 * P.ohm, 1000 * P.ohm)
+    assert r_bottom_ss == Range(100 * P.ohm, 1000 * P.ohm)
