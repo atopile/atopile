@@ -24,6 +24,7 @@ from atopile import errors
 from atopile.address import AddrStr
 from atopile.cli.install import do_install
 from atopile.config import PROJECT_CONFIG_FILENAME, config
+from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
@@ -736,7 +737,7 @@ class Template(ABC):
     nodes: list[str] = field(default_factory=list)
     docstring: str = "TODO: Docstring describing your module"
 
-    def _process_part(self, part: Component) -> tuple[str, Any]:
+    def _process_part(self, part: Component):
         """Common part processing logic used by child classes."""
         name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(name, str)
@@ -832,15 +833,24 @@ class FabllTemplate(Template):
         # Get common processed data
         self.name, easyeda_symbol = self._process_part(part)
 
-        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
+        designator_prefix_str = easyeda_symbol.info.prefix.replace("?", "")
+        try:
+            prefix = has_designator_prefix.Prefix(designator_prefix_str)
+            designator_prefix = f"F.has_designator_prefix.Prefix.{prefix.name}"
+        except ValueError:
+            logger.warning(
+                f"Using non-standard designator prefix: {designator_prefix_str}"
+            )
+            designator_prefix = f"'{designator_prefix_str}'"
+
         self.traits.append(
-            f"designator_prefix = L.f_field(F.has_designator_prefix_defined)"
-            f"('{designator_prefix}')"
+            f"designator_prefix = L.f_field(F.has_designator_prefix)"
+            f"({designator_prefix})"
         )
 
         self.traits.append(
             "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{self.name}'}})"
+            f"({{'LCSC': '{part.lcsc_display}'}})"
         )
 
         self.imports.append(
@@ -944,12 +954,20 @@ class FabllTemplate(Template):
                 \"\"\"
 
                 # ----------------------------------------
-                #     modules, interfaces, parameters
+                #                modules
+                # ----------------------------------------
+
+                # ----------------------------------------
+                #              interfaces
                 # ----------------------------------------
                 {gen_repeated_block(self.nodes)}
 
                 # ----------------------------------------
-                #                 traits
+                #              parameters
+                # ----------------------------------------
+
+                # ----------------------------------------
+                #                traits
                 # ----------------------------------------
                 {gen_repeated_block(self.traits)}
 
