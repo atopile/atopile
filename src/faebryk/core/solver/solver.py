@@ -40,6 +40,11 @@ class Solver(Protocol):
         false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
         unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
 
+        def __rich_repr__(self):
+            yield "true_predicates", self.true_predicates
+            yield "false_predicates", self.false_predicates
+            yield "unknown_predicates", self.unknown_predicates
+
     @dataclass
     class SolveResultAll(SolveResult):
         has_solution: bool
