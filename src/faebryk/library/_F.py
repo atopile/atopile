@@ -104,7 +104,6 @@ from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
 from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
-from faebryk.library.LED import LED
 from faebryk.library.TVS import TVS
 from faebryk.library.LogicGates import LogicGates
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
@@ -138,7 +137,6 @@ from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
-from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
@@ -153,8 +151,8 @@ from faebryk.library.Battery import Battery
 from faebryk.library.Comparator import Comparator
 from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.Fan import Fan
+from faebryk.library.LED import LED
 from faebryk.library.OpAmp import OpAmp
-from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.Relay import Relay
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
 from faebryk.library.ButtonCell import ButtonCell
@@ -164,6 +162,8 @@ from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
+from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
+from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
 from faebryk.library.Diodes_Incorporated_AP255x_x import Diodes_Incorporated_AP255x_x

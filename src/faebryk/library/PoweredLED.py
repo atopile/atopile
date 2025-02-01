@@ -8,17 +8,18 @@ from faebryk.libs.library import L
 
 class PoweredLED(Module):
     power: F.ElectricPower
-
-    led: F.LED
     current_limiting_resistor: F.Resistor
+    led: F.LED
+
+    def __init__(self, low_side_resistor: bool = True):
+        super().__init__()
+        self._low_side_resistor = low_side_resistor
 
     def __preinit__(self):
-        self.power.hv.connect_via(
-            [self.led, self.current_limiting_resistor], self.power.lv
-        )
-
-        self.current_limiting_resistor.resistance.alias_is(
-            (self.power.voltage - self.led.forward_voltage) / self.led.current
+        self.led.connect_via_current_limiting_resistor_to_power(
+            self.current_limiting_resistor,
+            self.power,
+            low_side=self._low_side_resistor,
         )
 
     @L.rt_field

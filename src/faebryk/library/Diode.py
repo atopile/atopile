@@ -3,6 +3,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -84,3 +85,8 @@ class Diode(Module):
 
     def __preinit__(self):
         self.current.constrain_le(self.max_current)
+
+    def get_needed_series_resistance_for_current_limit(
+        self, input_voltage_V: ParameterOperatable
+    ):
+        return (input_voltage_V - self.forward_voltage) / self.current
