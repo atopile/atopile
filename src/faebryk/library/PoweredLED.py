@@ -16,10 +16,18 @@ class PoweredLED(Module):
         self._low_side_resistor = low_side_resistor
 
     def __preinit__(self):
-        self.led.connect_via_current_limiting_resistor_to_power(
-            self.current_limiting_resistor,
-            self.power,
-            low_side=self._low_side_resistor,
+        if self._low_side_resistor:
+            self.power.hv.connect_via(
+                [self.led, self.current_limiting_resistor], self.power.lv
+            )
+        else:
+            self.power.hv.connect_via(
+                [self.current_limiting_resistor, self.led], self.power.lv
+            )
+
+        # I = (V - V_led) / R, rearranged to assist the solver to find a solution
+        self.current_limiting_resistor.resistance.alias_is(
+            (self.power.voltage - self.led.forward_voltage) / self.led.current
         )
 
     @L.rt_field
