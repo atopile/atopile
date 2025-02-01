@@ -209,7 +209,7 @@
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",
         "@vscode/vsce": "^3.2.1",
-        "eslint": "^9.17.0",
+        "eslint": "^9.19.0",
         "glob": "^10.4.2",
         "prettier": "^3.4.2",
         "ts-loader": "^9.5.1",
