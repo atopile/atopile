@@ -1061,7 +1061,10 @@ def test_fold_correlated():
     assert is_lit != op_inv(lit2, lit1)
 
     # Test for correct is estimation
-    # assert is_lit == lit_operand  # TODO
+    try:
+        assert is_lit == lit_operand
+    except AssertionError:
+        pytest.xfail("TODO")
 
 
 def test_fold_pow():
