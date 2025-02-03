@@ -460,20 +460,22 @@ def fold_not(
                                 isinstance(not_op, ConstrainableExpression)
                                 and not not_op.constrained
                             ):
-                                cast_assert(
-                                    ConstrainableExpression,
-                                    mutator.get_copy(not_op),
-                                ).constrain()
+                                mutator.constrain(
+                                    cast_assert(
+                                        ConstrainableExpression,
+                                        mutator.get_copy(not_op),
+                                    )
+                                )
                     # ¬(A v ...)
                     elif isinstance(inner_op, ConstrainableExpression):
                         parent_nots = inner_op.get_operations(Not)
                         if parent_nots:
                             for n in parent_nots:
-                                n.constrain()
+                                mutator.constrain(n)
                         else:
                             mutator.create_expression(
-                                Not, inner_op, from_ops=[expr]
-                            ).constrain()
+                                Not, inner_op, from_ops=[expr], constrain=True
+                            )
 
     if expr.constrained:
         alias_is_literal_and_check_predicate_eval(op, False, mutator)
@@ -497,7 +499,7 @@ def fold_is(
         # P1 is! True -> P1!
         # P1 is! P2!  -> P1! (implicit)
         for p in expr.get_operatable_operands(ConstrainableExpression):
-            p.constrain()
+            mutator.constrain(p)
 
 
 def fold_subset(
@@ -543,11 +545,11 @@ def fold_subset(
             and B.constrained
         ):
             assert isinstance(A, ConstrainableExpression)
-            A.constrain()
+            mutator.constrain(A)
         # P ss! False -> ¬!P
         if B == BoolSet(False):
             assert isinstance(A, ConstrainableExpression)
-            mutator.create_expression(Not, A, from_ops=[expr]).constrain()
+            mutator.create_expression(Not, A, from_ops=[expr], constrain=True)
 
 
 def fold_ge(
