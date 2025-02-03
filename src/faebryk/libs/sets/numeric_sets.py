@@ -136,6 +136,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise NotImplementedError("passing zero in exp not implemented yet")
         if self._min < 0 and self._max > 0:
             raise NotImplementedError("crossing zero in base not implemented yet")
+        if self._max < 0 and not other.min_elem.is_integer():
+            raise NotImplementedError(
+                "cannot raise negative base to fractional exponent"
+            )
 
         values = [
             self._min**other._min,
