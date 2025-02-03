@@ -40,8 +40,8 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import (
+    CanonicalExpression,
     CanonicalLiteral,
-    CanonicalOperation,
     Contradiction,
     ContradictionByLiteral,
 )
@@ -1382,7 +1382,7 @@ def test_empty_and():
         (IsSubset, [Range(0, 10), Range(0, 20)], True),
     ],
 )
-def test_exec_pure_literal_expressions(op: type[CanonicalOperation], lits, expected):
+def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expected):
     from faebryk.core.solver.literal_folding import _exec_pure_literal_expressions
     from faebryk.core.solver.utils import make_lit
 

@@ -6,7 +6,6 @@ import io
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
 from functools import wraps
 from itertools import pairwise
 from statistics import median
@@ -19,36 +18,21 @@ from rich.table import Table
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.parameter import (
-    Abs,
-    Add,
     Associative,
+    CanonicalExpression,
+    CanonicalLiteral,
+    CanonicalNumber,
     ConstrainableExpression,
     Domain,
     Expression,
     FullyAssociative,
-    GreaterOrEqual,
-    GreaterThan,
-    Intersection,
     Is,
     IsSubset,
-    Log,
-    Multiply,
-    Not,
-    Or,
     Parameter,
     ParameterOperatable,
-    Power,
-    Round,
-    Sin,
-    SymmetricDifference,
-    Union,
 )
 from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
     Quantity_Interval_Disjoint,
-    Quantity_Set_Discrete,
-    QuantityLike,
-    QuantityLikeR,
 )
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
@@ -108,30 +92,9 @@ class ContradictionByLiteral(Contradiction):
         return f"{super().__str__()}\n" f"Literals: {self.literals}"
 
 
-CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
-CanonicalBoolean = BoolSet
-CanonicalEnum = P_Set[Enum]
-# TODO Canonical set?
-CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
 SolverLiteral = CanonicalLiteral
-
-CanonicalNumericOperation = Add | Multiply | Power | Round | Abs | Sin | Log
-CanonicalLogicOperation = Or | Not
-CanonicalSeticOperation = Intersection | Union | SymmetricDifference
-CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
-
-
-CanonicalOperation = (
-    CanonicalNumericOperation
-    | CanonicalLogicOperation
-    | CanonicalSeticOperation
-    | CanonicalPredicate
-)
-
-SolverOperatable = ParameterOperatable | SolverLiteral
-
-
-All = ParameterOperatable.All | SolverLiteral
+SolverAll = ParameterOperatable | SolverLiteral
+SolverAllExtended = ParameterOperatable.All | SolverLiteral
 
 
 def make_lit(val):
@@ -168,7 +131,7 @@ def try_extract_literal_info(
 
 def map_extract_literals(
     expr: Expression,
-) -> list[SolverOperatable]:
+) -> list[SolverAll]:
     return [
         lit if (lit := try_extract_literal(op)) is not None else op
         for op in expr.operands
@@ -268,7 +231,7 @@ def subset_to(
     )
 
 
-def is_literal(po: ParameterOperatable | SolverOperatable) -> TypeGuard[SolverLiteral]:
+def is_literal(po: ParameterOperatable | SolverAll) -> TypeGuard[SolverLiteral]:
     # allowed because of canonicalization
     return ParameterOperatable.is_literal(po)
 
@@ -278,7 +241,7 @@ def is_numeric_literal(po: ParameterOperatable) -> TypeGuard[CanonicalNumber]:
 
 
 def is_literal_expression(
-    po: ParameterOperatable | SolverOperatable,
+    po: ParameterOperatable | SolverAll,
 ) -> TypeGuard[Expression]:
     return isinstance(po, Expression) and not po.get_involved_parameters()
 
@@ -544,8 +507,8 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
     return lit
 
 
-def find_congruent_expression[T: CanonicalOperation](
-    expr_factory: type[T], *operands: SolverOperatable, mutator: "Mutator"
+def find_congruent_expression[T: CanonicalExpression](
+    expr_factory: type[T], *operands: SolverAll, mutator: "Mutator"
 ) -> T | None:
     non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
     literal_expr = all(is_literal(op) or is_literal_expression(op) for op in operands)
@@ -576,8 +539,8 @@ def find_congruent_expression[T: CanonicalOperation](
     return None
 
 
-def make_if_doesnt_exist[T: CanonicalOperation](
-    expr_factory: type[T], *operands: SolverOperatable, mutator: "Mutator"
+def make_if_doesnt_exist[T: CanonicalExpression](
+    expr_factory: type[T], *operands: SolverAll, mutator: "Mutator"
 ) -> tuple[T, bool]:
     existing_expr = find_congruent_expression(expr_factory, *operands, mutator=mutator)
     if existing_expr is not None:
@@ -616,11 +579,6 @@ def get_graphs(values: Iterable) -> list[Graph]:
     return unique_ref(
         p.get_graph() for p in values if isinstance(p, ParameterOperatable)
     )
-
-
-NumericLiteral = QuantityLike | Quantity_Interval_Disjoint | Quantity_Interval
-NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
-BoolLiteral = BoolSet | bool
 
 
 def merge_parameters(params: Iterable[Parameter]) -> Parameter:
