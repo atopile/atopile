@@ -775,7 +775,7 @@ class Mutator:
                         and n._solver_terminated
                         and (
                             # A is/ss Lit
-                            any(ParameterOperatable.is_literal(o) for o in n.operands)
+                            n.get_literal_operands()
                             # A is/ss A
                             or n.operands[0] is n.operands[1]
                         )
