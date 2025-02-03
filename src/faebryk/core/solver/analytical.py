@@ -19,6 +19,7 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
     Power,
+    Reflexive,
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
@@ -883,3 +884,28 @@ def remove_tautologies(mutator: Mutator):
             continue
 
         alias_is_literal_and_check_predicate_eval(pred, True, mutator)
+
+
+@algorithm("Reflexive predicates")
+def reflexive_predicates(mutator: Mutator):
+    """
+    A not lit (done by literal_folding)
+    A is A -> True
+    A ss A -> True
+    A >= A -> True
+    """
+
+    def if_operands_same_make_true(pred: ConstrainableExpression) -> bool:
+        if pred.operands[0] is not pred.operands[1]:
+            return False
+        if not isinstance(pred.operands[0], ParameterOperatable):
+            return False
+        alias_is_literal_and_check_predicate_eval(pred, True, mutator)
+        return True
+
+    predicates = mutator.nodes_of_types(Reflexive, sort_by_depth=True)
+    for pred in predicates:
+        assert isinstance(pred, ConstrainableExpression)
+        if not pred.operatable_operands:
+            continue
+        if_operands_same_make_true(pred)

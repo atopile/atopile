@@ -1706,3 +1706,5 @@ Commutative = (
 FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
 LeftAssociative = Subtract | Divide | Difference
 Associative = FullyAssociative | LeftAssociative
+
+Reflexive = Is | IsSubset | GreaterOrEqual

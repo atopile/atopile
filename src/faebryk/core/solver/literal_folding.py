@@ -27,7 +27,6 @@ from faebryk.core.parameter import (
     Or,
     ParameterOperatable,
     Power,
-    Predicate,
     Round,
     Sin,
     SymmetricDifference,
@@ -480,15 +479,6 @@ def fold_not(
         alias_is_literal_and_check_predicate_eval(op, False, mutator)
 
 
-def if_operands_same_make_true(pred: Predicate, mutator: Mutator) -> bool:
-    if pred.operands[0] is not pred.operands[1]:
-        return False
-    if not isinstance(pred.operands[0], ParameterOperatable):
-        return False
-    alias_is_literal_and_check_predicate_eval(pred, True, mutator)
-    return True
-
-
 def fold_is(
     expr: Is,
     literal_operands: Sequence[Literal],
@@ -498,44 +488,16 @@ def fold_is(
 ):
     """
     ```
-    A is A -> True
-    A is X, A is Y | X != Y, X,Y lit -> Contradiction
-    # predicates
     P is! True -> P!
-    P is! False -> ¬!P
-    P1 is! P2! -> P1!
-    A is B | A or B unconstrained -> True
-    # literals
-    X is Y | X == Y -> True
-    X is Y | X != Y -> False
     ```
     """
 
-    # A is B -> R is R
-    # A is E -> R is R, R is E
-    # A is False, E is False
-    #
-
-    # A is A -> A is!! A
-    if if_operands_same_make_true(expr, mutator):
-        return
-
-    # A is X, A is Y | X != Y -> Contradiction
-    # happens automatically because of alias class merge
-
-    if expr.constrained:
+    is_true_alias = expr.constrained and BoolSet(True) in literal_operands
+    if is_true_alias:
         # P1 is! True -> P1!
-        # P1 is! P2!  -> P1!
-        if BoolSet(True) in literal_operands or any(
-            op.constrained
-            for op in expr.get_operatable_operands(ConstrainableExpression)
-        ):
-            for p in expr.get_operatable_operands(ConstrainableExpression):
-                p.constrain()
-        # P is! False -> ¬!P
-        if BoolSet(False) in literal_operands:
-            for p in expr.get_operatable_operands(ConstrainableExpression):
-                mutator.create_expression(Not, p, from_ops=[expr]).constrain()
+        # P1 is! P2!  -> P1! (implicit)
+        for p in expr.get_operatable_operands(ConstrainableExpression):
+            p.constrain()
 
 
 def fold_subset(
@@ -547,7 +509,6 @@ def fold_subset(
 ):
     """
     ```
-    A ss A -> True
     A is B, A ss B | B non(ex)literal -> repr(B, A)
     A ss ([X]) -> A is ([X])
     A ss {} -> A is {}
@@ -563,10 +524,6 @@ def fold_subset(
     """
 
     A, B = expr.operands
-
-    # A ss A -> True
-    if if_operands_same_make_true(expr, mutator):
-        return
 
     if not is_literal(B):
         return
@@ -614,9 +571,6 @@ def fold_ge(
     """
     left, right = expr.operands
     literal_operands = cast(Sequence[CanonicalNumber], literal_operands)
-    # A >= A
-    if if_operands_same_make_true(expr, mutator):
-        return
 
     # A >=! X | |X| > 1 -> A >=! X.max()
     # X >=! A | |X| > 1 -> X.min() >=! A
@@ -805,7 +759,6 @@ _CanonicalOperations = {
     GreaterThan: operator.gt,
     IsSubset: P_Set.is_subset_of,
 }
-
 
 fold_algorithms = [
     algorithm(f"Fold {expr_type.__name__}", destructive=False)(
