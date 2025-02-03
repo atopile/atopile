@@ -3,11 +3,16 @@
 
 import logging
 from enum import Enum, auto
+from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P, Quantity
+
+# FIXME: this has to go this way to avoid gen_F detecting a circular import
+if TYPE_CHECKING:
+    from faebryk.library.ElectricPower import ElectricPower
 
 logger = logging.getLogger(__name__)
 
@@ -84,3 +89,42 @@ class Capacitor(Module):
 
         if footprint is not None:
             self.add(F.has_package(footprint))
+
+    # TODO: remove @https://github.com/atopile/atopile/issues/727
+    @property
+    def p1(self) -> F.Electrical:
+        """One side of the capacitor."""
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        """The other side of the capacitor."""
+        return self.unnamed[1]
+
+    class _has_power(L.Trait.decless()):
+        """
+        This trait is used to add power interfaces to
+        capacitors who use them, keeping the interfaces
+        off caps which don't use it.
+
+        Caps have power-interfaces when used with them.
+        """
+
+        def __init__(self, power: "ElectricPower") -> None:
+            super().__init__()
+            self.power = power
+
+    @property
+    def power(self) -> "ElectricPower":
+        """A `Power` interface, which is connected to the capacitor."""
+        # FIXME: this has to go this way to avoid gen_F detecting a circular import
+        from faebryk.library.ElectricPower import ElectricPower
+
+        if self.has_trait(self._has_power):
+            power = self.get_trait(self._has_power).power
+        else:
+            power = ElectricPower()
+            power.hv.connect_via(self, power.lv)
+            self.add(self._has_power(power))
+
+        return power

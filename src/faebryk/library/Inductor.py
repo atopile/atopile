@@ -65,3 +65,14 @@ class Inductor(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.L
     )
+
+    # TODO: remove @https://github.com/atopile/atopile/issues/727
+    @property
+    def p1(self) -> F.Electrical:
+        """Signal to one side of the inductor."""
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        """Signal to the other side of the inductor."""
+        return self.unnamed[1]
