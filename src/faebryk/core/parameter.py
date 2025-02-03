@@ -25,6 +25,7 @@ from faebryk.core.trait import Trait
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set_Discrete,
     QuantityLikeR,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
@@ -1694,11 +1695,35 @@ class Parameter(ParameterOperatable):
 
 p_field = f_field(Parameter)
 
-Commutative = (
-    Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference | Is
+# Canonical ----------------------------------------------------------------------------
+CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
+CanonicalLogicExpression = Or | Not
+CanonicalSeticExpression = Intersection | Union | SymmetricDifference
+CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+
+CanonicalConstrainableExpression = CanonicalLogicExpression | CanonicalPredicate
+
+CanonicalExpression = (
+    CanonicalNumericExpression
+    | CanonicalLogicExpression
+    | CanonicalSeticExpression
+    | CanonicalPredicate
 )
-FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
-LeftAssociative = Subtract | Divide | Difference
-Associative = FullyAssociative | LeftAssociative
+CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
+CanonicalBoolean = BoolSet
+CanonicalEnum = P_Set[Enum]
+# TODO Canonical set?
+
+CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
+CanonicalOperable = CanonicalExpression | Parameter
+CanonicalAll = CanonicalOperable | CanonicalLiteral
+
+# --------------------------------------------------------------------------------------
 
 Reflexive = Is | IsSubset | GreaterOrEqual
+Idempotent = Or | Union | Intersection
+Commutative = Add | Multiply | Or | Union | Intersection | SymmetricDifference | Is
+UnaryIdentity = Add | Multiply | Or | Union | Intersection
+FullyAssociative = Add | Multiply | Or | Union | Intersection
+Associative = FullyAssociative
+Involutory = Not

@@ -27,11 +27,11 @@ from faebryk.core.solver.utils import (
     S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
-    All,
-    CanonicalOperation,
+    CanonicalExpression,
     SolverAlgorithm,
+    SolverAll,
+    SolverAllExtended,
     SolverLiteral,
-    SolverOperatable,
     alias_is_literal,
     find_congruent_expression,
     get_graphs,
@@ -198,11 +198,11 @@ class Mutator:
     def mutate_expression(
         self,
         expr: Expression,
-        operands: Iterable[All] | None = None,
+        operands: Iterable[SolverAllExtended] | None = None,
         expression_factory: type[Expression] | None = None,
         soft_mutate: type[Is] | type[IsSubset] | None = None,
         ignore_existing: bool = False,
-    ) -> CanonicalOperation:
+    ) -> CanonicalExpression:
         if expression_factory is None:
             expression_factory = type(expr)
 
@@ -211,7 +211,7 @@ class Mutator:
 
         if expr in self.transformations.mutated:
             out = self.get_mutated(expr)
-            assert isinstance(out, CanonicalOperation)
+            assert isinstance(out, CanonicalExpression)
             # TODO more checks
             assert type(out) is expression_factory
             # still need to run soft_mutate even if expr already in repr
@@ -221,14 +221,14 @@ class Mutator:
                 return out
 
         if soft_mutate:
-            assert issubclass(expression_factory, CanonicalOperation)
+            assert issubclass(expression_factory, CanonicalExpression)
             out = self.create_expression(expression_factory, *operands, from_ops=[expr])
             self.soft_mutate(soft_mutate, expr, out)
             return out
 
         copy_only = expression_factory is type(expr) and operands == expr.operands
         if not copy_only and not ignore_existing:
-            assert issubclass(expression_factory, CanonicalOperation)
+            assert issubclass(expression_factory, CanonicalExpression)
             exists = find_congruent_expression(
                 expression_factory, *operands, mutator=self
             )
@@ -269,10 +269,10 @@ class Mutator:
         self, expr: Expression, operands: list[ParameterOperatable] | None = None
     ) -> ParameterOperatable:
         """
-        '''
+        ```
         op(A, ...) -> A
         op!(A, ...) -> A!
-        '''
+        ```
         """
         unpacked = expr.operands[0] if operands is None else operands[0]
         if not isinstance(unpacked, ParameterOperatable):
@@ -305,9 +305,9 @@ class Mutator:
         self,
         expr: Expression,
         operand_mutator: Callable[[int, ParameterOperatable], ParameterOperatable.All],
-        expression_factory: type[CanonicalOperation] | None = None,
+        expression_factory: type[CanonicalExpression] | None = None,
         ignore_existing: bool = False,
-    ) -> CanonicalOperation:
+    ) -> CanonicalExpression:
         """
         operand_mutator: Only allowed to return old Graph objects
         """
@@ -335,15 +335,15 @@ class Mutator:
 
         assert False
 
-    def create_expression[T: CanonicalOperation](
+    def create_expression[T: CanonicalExpression](
         self,
         expr_factory: type[T],
-        *operands: SolverOperatable,
+        *operands: SolverAll,
         check_exists: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
         constrain: bool = False,
     ) -> T:
-        assert issubclass(expr_factory, CanonicalOperation)
+        assert issubclass(expr_factory, CanonicalExpression)
 
         existed = False
         if check_exists:

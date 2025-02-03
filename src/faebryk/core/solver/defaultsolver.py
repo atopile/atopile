@@ -66,7 +66,6 @@ class DefaultSolver(Solver):
         ],
         iterative=[
             analytical.remove_unconstrained,
-            analytical.remove_tautologies,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
             analytical.distribute_literals_across_alias_classes,
@@ -74,6 +73,9 @@ class DefaultSolver(Solver):
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
             analytical.reflexive_predicates,
+            analytical.idempotent_deduplicate,
+            analytical.involutory_fold,
+            analytical.unary_identity_unpack,
             literal_folding.fold_pure_literal_expressions,
             *literal_folding.fold_algorithms,
             analytical.merge_intersect_subsets,

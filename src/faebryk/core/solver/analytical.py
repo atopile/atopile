@@ -9,10 +9,13 @@ from typing import cast
 
 from faebryk.core.parameter import (
     Add,
+    CanonicalExpression,
     ConstrainableExpression,
     Domain,
     Expression,
     GreaterOrEqual,
+    Idempotent,
+    Involutory,
     Is,
     IsSubset,
     Multiply,
@@ -20,11 +23,11 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Power,
     Reflexive,
+    UnaryIdentity,
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     S_LOG,
-    CanonicalOperation,
     ContradictionByLiteral,
     FullyAssociative,
     SolverLiteral,
@@ -61,6 +64,7 @@ from faebryk.libs.util import (
     EquivalenceClasses,
     cast_assert,
     groupby,
+    unique,
 )
 
 logger = logging.getLogger(__name__)
@@ -475,7 +479,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     for expr in exprs:
-        assert isinstance(expr, CanonicalOperation)
+        assert isinstance(expr, CanonicalExpression)
         # In Is automatically by eq classes
         if isinstance(expr, Is):
             continue
@@ -703,7 +707,7 @@ def isolate_lone_params(mutator: Mutator):
             return op_with_param, op_without_param
 
         def op_or_create_expr(
-            operation: type[CanonicalOperation], *operands: ParameterOperatable.All
+            operation: type[CanonicalExpression], *operands: ParameterOperatable.All
         ) -> ParameterOperatable.All:
             if len(operands) == 1:
                 return operands[0]
@@ -849,7 +853,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
     for alias in new_exprs.keys():
         exprs = alias.get_operations()
         for expr in exprs:
-            assert isinstance(expr, CanonicalOperation)
+            assert isinstance(expr, CanonicalExpression)
             # TODO: we can weaken this to not replace correlated operands instead of
             #   skipping the whole expression
             # check if any correlations
@@ -868,31 +872,6 @@ def uncorrelated_alias_fold(mutator: Mutator):
             )
 
 
-@algorithm("Remove tautologies")
-def remove_tautologies(mutator: Mutator):
-    """
-    A is A -> True
-    A ss A -> True
-    A >= A, A not lit -> True
-    """
-
-    # Also done in literal_folding, but kinda nice to have it here
-    # called if_operands_same_make_true
-
-    predicates = mutator.nodes_of_types(
-        (Is, IsSubset, GreaterOrEqual), sort_by_depth=True
-    )
-
-    for pred in predicates:
-        assert isinstance(pred, ConstrainableExpression)
-        if len(set(pred.operands)) > 1:
-            continue
-        if isinstance(pred, GreaterOrEqual) and is_literal(pred.operands[0]):
-            continue
-
-        alias_is_literal_and_check_predicate_eval(pred, True, mutator)
-
-
 @algorithm("Reflexive predicates")
 def reflexive_predicates(mutator: Mutator):
     """
@@ -902,17 +881,72 @@ def reflexive_predicates(mutator: Mutator):
     A >= A -> True
     """
 
-    def if_operands_same_make_true(pred: ConstrainableExpression) -> bool:
-        if pred.operands[0] is not pred.operands[1]:
-            return False
-        if not isinstance(pred.operands[0], ParameterOperatable):
-            return False
-        alias_is_literal_and_check_predicate_eval(pred, True, mutator)
-        return True
-
     predicates = mutator.nodes_of_types(Reflexive, sort_by_depth=True)
     for pred in predicates:
         assert isinstance(pred, ConstrainableExpression)
         if not pred.operatable_operands:
             continue
-        if_operands_same_make_true(pred)
+        if not isinstance(pred.operands[0], ParameterOperatable):
+            continue
+        if pred.operands[0] is not pred.operands[1]:
+            continue
+
+        alias_is_literal_and_check_predicate_eval(pred, True, mutator)
+
+
+@algorithm("Idempotent deduplicate")
+def idempotent_deduplicate(mutator: Mutator):
+    """
+    Or(A, A, B) -> Or(A, B)
+    Union(A, A, B) -> Union(A, B)
+    Intersection(A, A, B) -> Intersection(A, B)
+    """
+
+    exprs = mutator.nodes_of_types(Idempotent, sort_by_depth=True)
+    for expr in exprs:
+        assert isinstance(expr, Idempotent)
+        unique_operands = unique(expr.operands, key=lambda x: x)
+        if len(unique_operands) != len(expr.operands):
+            mutator.mutate_expression(expr, operands=unique_operands)
+
+
+@algorithm("Unary identity unpack")
+def unary_identity_unpack(mutator: Mutator):
+    """
+    E(A), A not lit -> A
+    E(A), A lit -> E alias A
+    for E in [Add, Multiply, Or, Union, Intersection]
+    """
+
+    exprs = mutator.nodes_of_types(UnaryIdentity, sort_by_depth=True)
+    for expr in exprs:
+        assert isinstance(expr, UnaryIdentity)
+        if len(expr.operands) != 1:
+            continue
+        inner = expr.operands[0]
+        if is_literal(inner):
+            alias_is_literal(expr, inner, mutator, terminate=True)
+        else:
+            mutator.mutate_unpack_expression(expr)
+
+
+@algorithm("Involutory fold")
+def involutory_fold(mutator: Mutator):
+    """
+    Not(Not(A)) -> A
+    """
+
+    exprs = mutator.nodes_of_type(Involutory, sort_by_depth=True)
+    for expr in exprs:
+        assert isinstance(expr, Involutory)
+        if len(expr.operands) != 1:
+            continue
+        inner = expr.operands[0]
+        if type(inner) is not type(expr):
+            continue
+        assert isinstance(inner, type(expr))
+        innest = inner.operands[0]
+        if is_literal(innest):
+            alias_is_literal(expr, innest, mutator, terminate=True)
+        else:
+            mutator.mutator_neutralize_expressions(expr)

@@ -8,6 +8,7 @@ from typing import cast
 from faebryk.core.parameter import (
     Add,
     And,
+    CanonicalExpression,
     Ceil,
     ConstrainableExpression,
     Cos,
@@ -42,8 +43,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
-    CanonicalOperation,
-    NumericLiteralR,
     algorithm,
     alias_is_literal,
     make_lit,
@@ -52,12 +51,15 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    QuantityLikeR,
 )
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import Quantity, dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
+
+NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
 @algorithm("Constrain within and domain", single=True, destructive=False)
@@ -182,12 +184,12 @@ def convert_to_canonical_operations(mutator: Mutator):
         LessThan: LessOrEqual,
     }
 
-    def c[T: CanonicalOperation](op: type[T], *operands) -> T:
+    def c[T: CanonicalExpression](op: type[T], *operands) -> T:
         return mutator.create_expression(
             op, *operands, from_ops=getattr(c, "from_ops", None)
         )
 
-    def curry(e_type: type[CanonicalOperation]) -> type[Expression]:
+    def curry(e_type: type[CanonicalExpression]) -> type[Expression]:
         def _(*operands):
             operands = [
                 make_lit(o) if not isinstance(o, ParameterOperatable) else o
