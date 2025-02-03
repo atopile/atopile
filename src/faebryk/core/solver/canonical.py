@@ -325,7 +325,9 @@ def convert_to_canonical_operations(mutator: Mutator):
             p = Parameter(units=e.units)
             mutator.register_created_parameter(p, from_ops=from_ops)
             union = Union(*[mutator.get_copy(o) for o in e.operands])
-            mutator.create_expression(IsSubset, p, union, from_ops=from_ops).constrain()
+            mutator.create_expression(
+                IsSubset, p, union, from_ops=from_ops, constrain=True
+            )
             if isinstance(e, Min):
                 mutator.create_expression(GreaterOrEqual, union, p, from_ops=from_ops)
             else:

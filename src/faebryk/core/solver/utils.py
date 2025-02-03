@@ -166,35 +166,6 @@ def try_extract_literal_info(
     return lit, False
 
 
-def try_extract_numeric_literal(
-    po, allow_subset: bool = False
-) -> CanonicalNumber | None:
-    lit = try_extract_literal(po, allow_subset)
-    assert isinstance(lit, (CanonicalNumber, NoneType))
-    return lit
-
-
-def try_extract_boolset(po, allow_subset: bool = False) -> CanonicalBoolean | None:
-    lit = try_extract_literal(po, allow_subset)
-    assert isinstance(lit, (CanonicalBoolean, NoneType))
-    return lit
-
-
-def try_extract_all_literals[T: P_Set](
-    expr: Expression,
-    allow_subset: bool = False,
-    lit_type: type[T] = P_Set,
-    accept_partial: bool = False,
-) -> list[T] | None:
-    as_lits = [try_extract_literal(o, allow_subset) for o in expr.operands]
-
-    if None in as_lits and not accept_partial:
-        return None
-    as_lits = [lit for lit in as_lits if lit is not None]
-    assert all(isinstance(lit, lit_type) for lit in as_lits)
-    return cast(list[T], as_lits)
-
-
 def map_extract_literals(
     expr: Expression,
 ) -> list[SolverOperatable]:

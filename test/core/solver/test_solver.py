@@ -893,7 +893,6 @@ def test_jlcpcb_pick_led():
     print(led.get_trait(F.has_part_picked).get_part())
 
 
-@pytest.mark.xfail(reason="Need picker backtracking")
 def test_jlcpcb_pick_powered_led():
     led = F.PoweredLED()
     led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
@@ -1061,7 +1060,10 @@ def test_fold_correlated():
     assert is_lit != op_inv(lit2, lit1)
 
     # Test for correct is estimation
-    # assert is_lit == lit_operand  # TODO
+    try:
+        assert is_lit == lit_operand
+    except AssertionError:
+        pytest.xfail("TODO")
 
 
 def test_fold_pow():
@@ -1156,7 +1158,6 @@ def test_find_contradiction_by_predicate(op, invert):
         solver.simplify_symbolically(A.get_graph())
 
 
-@pytest.mark.xfail(reason="No support for GT")
 def test_find_contradiction_by_gt():
     A = Parameter()
     B = Parameter()

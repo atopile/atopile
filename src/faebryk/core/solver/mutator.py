@@ -280,7 +280,7 @@ class Mutator:
         out = self._mutate(expr, self.get_copy(unpacked))
         if isinstance(expr, ConstrainableExpression) and expr.constrained:
             assert isinstance(out, ConstrainableExpression)
-            out.constrain()
+            self.constrain(out)
         return out
 
     def mutator_neutralize_expressions(self, expr: Expression) -> ParameterOperatable:
@@ -298,7 +298,7 @@ class Mutator:
             raise ValueError("Unpacked operand can't be a literal")
         out = self._mutate(expr, self.get_copy(inner_operand))
         if isinstance(out, ConstrainableExpression) and out.constrained:
-            out.constrain()
+            self.constrain(out)
         return out
 
     def mutate_expression_with_op_map(
@@ -604,10 +604,9 @@ class Mutator:
             )
             if bool(
                 expr.constrained
-                and expr.get_literal_operands()
-                and expr.operatable_operands
                 # match A ⊆!!✓ ([5, 20]) but not ([5, 20]) ⊆!!✓ A
                 and isinstance(expr.operands[0], ParameterOperatable)
+                and ParameterOperatable.is_literal(expr.operands[1])
             )
         )
 
@@ -776,7 +775,7 @@ class Mutator:
                         and n._solver_terminated
                         and (
                             # A is/ss Lit
-                            any(ParameterOperatable.is_literal(o) for o in n.operands)
+                            n.get_literal_operands()
                             # A is/ss A
                             or n.operands[0] is n.operands[1]
                         )

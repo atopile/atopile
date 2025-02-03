@@ -610,16 +610,10 @@ class Expression(ParameterOperatable):
         )
 
     def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
-        if isinstance(self, (Is, IsSubset)):
-            return {
-                i: o
-                for i, o in enumerate(self.operands)
-                if ParameterOperatable.is_literal(o)
-            }
-        # TODO not sure its a good idea to do this that recursive
         return {
-            i: ParameterOperatable.try_extract_literal(o)
+            i: o
             for i, o in enumerate(self.operands)
+            if ParameterOperatable.is_literal(o)
         }
 
     def get_involved_parameters(self) -> Counter["Parameter"]:

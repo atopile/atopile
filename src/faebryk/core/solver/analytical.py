@@ -244,9 +244,13 @@ def resolve_alias_classes(mutator: Mutator):
                     for e in operand.get_operations()
                     # skip POps Is, because they create the alias classes
                     # or literal aliases (done by distribute algo)
-                    if not isinstance(e, Is)
+                    if not (isinstance(e, Is) and e.constrained)
                     # skip literal subsets (done by distribute algo)
-                    and not (isinstance(e, IsSubset) and e.get_literal_operands())
+                    and not (
+                        isinstance(e, IsSubset)
+                        and e.get_literal_operands()
+                        and e.constrained
+                    )
                 }
                 if not class_expressions:
                     continue
@@ -295,10 +299,13 @@ def resolve_alias_classes(mutator: Mutator):
         # This will implicitly swap out the expr in other exprs with the repr
         for e in alias_class_exprs:
             copy_expr = mutator.mutate_expression(e)
-            expr = mutator.create_expression(
-                Is, copy_expr, representative, from_ops=alias_class_p_ops
-            )
-            expr.constrain()  # p_eq_classes is derived from constrained exprs only
+            mutator.create_expression(
+                Is,
+                copy_expr,
+                representative,
+                from_ops=alias_class_p_ops,
+                constrain=True,
+            )  # p_eq_classes is derived from constrained exprs only
             # DANGER!
             mutator._override_repr(e, representative)
 
