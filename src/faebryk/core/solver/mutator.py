@@ -604,10 +604,9 @@ class Mutator:
             )
             if bool(
                 expr.constrained
-                and expr.get_literal_operands()
-                and expr.operatable_operands
                 # match A ⊆!!✓ ([5, 20]) but not ([5, 20]) ⊆!!✓ A
                 and isinstance(expr.operands[0], ParameterOperatable)
+                and ParameterOperatable.is_literal(expr.operands[1])
             )
         )
 

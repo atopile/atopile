@@ -244,9 +244,13 @@ def resolve_alias_classes(mutator: Mutator):
                     for e in operand.get_operations()
                     # skip POps Is, because they create the alias classes
                     # or literal aliases (done by distribute algo)
-                    if not isinstance(e, Is)
+                    if not (isinstance(e, Is) and e.constrained)
                     # skip literal subsets (done by distribute algo)
-                    and not (isinstance(e, IsSubset) and e.get_literal_operands())
+                    and not (
+                        isinstance(e, IsSubset)
+                        and e.get_literal_operands()
+                        and e.constrained
+                    )
                 }
                 if not class_expressions:
                     continue
