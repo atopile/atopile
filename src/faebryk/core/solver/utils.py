@@ -77,9 +77,7 @@ MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
 TIMEOUT = ConfigFlagInt("STIMEOUT", default=120, descr="Solver timeout").get()
-DEBUG_ALLOW_PARTIAL_STATE = ConfigFlag(
-    "SPARTIAL", default=False, descr="Allow partial state"
-)
+ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
 if S_LOG:
