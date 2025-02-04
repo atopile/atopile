@@ -525,6 +525,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         }
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
+        self._assert_is_reset()
+
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
                 context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
@@ -543,6 +545,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserException("Build failed")
         finally:
             self._finish()
+
+    def _assert_is_reset(self):
+        """
+        Make sure caches that aren't intended to be shared between builds are empty.
+        """
+        assert not self._node_stack
+        assert not self._traceback_stack
+        assert not self._param_assignments
 
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_finish = suppress_after_count(
