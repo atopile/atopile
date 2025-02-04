@@ -635,9 +635,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         # TODO: consider a warning for definitions that aren't purely
                         # narrowing
                         if is_part_module and non_root_definitions:
-                            raise errors.UserNotImplementedError(
+                            raise errors.UserNotImplementedError.from_ctx(
+                                last(non_root_definitions).ctx,
                                 "You can't assign to a `component` with a specific"
-                                " part number outside of its definition"
+                                " part number outside of its definition",
+                                traceback=last(non_root_definitions).traceback,
                             )
 
                         elif is_part_module and root_definitions:
