@@ -60,7 +60,7 @@ def test_examples_build(
                 "--standalone",
                 f"{example}:App",
             ],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+            env={**os.environ, "NONINTERACTIVE": "1"},
             cwd=tmp_path,
             stdout=print,
             stderr=print,

@@ -199,9 +199,17 @@ def query_helper[T: str | Path | bool](
     raise RuntimeError("Unclear how we got here")
 
 
+PROJECT_NAME_REQUIREMENTS = (
+    "Project name must start with a letter and contain only letters, numbers, dashes"
+    " and underscores. It will be used for the project directory and name on Github"
+)
+
+
 @create_app.command()
 def project(
-    name: Annotated[str | None, typer.Option("--name", "-n")] = None,
+    name: Annotated[
+        str | None, typer.Option("--name", "-n", help=PROJECT_NAME_REQUIREMENTS)
+    ] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
 ):
     """
@@ -211,8 +219,8 @@ def project(
     name = query_helper(
         ":rocket: What's your project [cyan]name?[/]",
         type_=str,
-        validator=str.isidentifier,
-        validation_failure_msg="Project name must be a valid identifier",
+        validator=r"^[a-zA-Z][a-zA-Z0-9_-]{,99}$",
+        validation_failure_msg=PROJECT_NAME_REQUIREMENTS,
         upgrader=caseconverter.kebabcase,
         upgrader_msg=textwrap.dedent(
             """
