@@ -525,7 +525,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         }
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
-        self._assert_is_reset()
+        assert self._is_reset()
 
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
@@ -546,13 +546,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         finally:
             self._finish()
 
-    def _assert_is_reset(self):
+    def _is_reset(self) -> bool:
         """
         Make sure caches that aren't intended to be shared between builds are empty.
+        True if the caches are empty, False if they are not.
         """
-        assert not self._node_stack
-        assert not self._traceback_stack
-        assert not self._param_assignments
+        return (
+            not self._node_stack
+            and not self._traceback_stack
+            and not self._param_assignments
+        )
 
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_finish = suppress_after_count(
@@ -564,6 +567,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def _finish(self):
         self._merge_parameter_assignments()
+        assert self._is_reset()
 
     class ParamAssignmentIsGospel(errors.UserException):
         """
@@ -584,7 +588,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
 
             for param in params_without_defitions:
-                last_declaration = last(self._param_assignments[param])
+                last_declaration = last(self._param_assignments.pop(param))
                 with ex_acc.collect(), ato_error_converter():
                     with (
                         downgrade(
@@ -618,7 +622,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                 gospel_params: list[Parameter] = []
                 for param in assigned_params:
-                    assignments = self._param_assignments[param]
+                    assignments = self._param_assignments.pop(param)
                     definitions = [a for a in assignments if a.is_definition]
                     non_root_definitions, root_definitions = partition_as_list(
                         lambda a: a.is_root_assignment, definitions
@@ -678,8 +682,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             " params are treated as its exact specification:"
                             + ", ".join(f"`{p}`" for p in gospel_params)
                         )
-
-        self._param_assignments.clear()
 
     @property
     def _current_node(self) -> L.Node:
