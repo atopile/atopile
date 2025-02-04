@@ -1,0 +1,46 @@
+import ElectricPower
+
+from "vdivs.ato" import _VDiv
+
+
+module Regulator:
+    power_in = new ElectricPower
+    power_out = new ElectricPower
+    # connect grounds (non isolated regulator)
+    power_in.gnd ~ power_out.gnd
+
+
+module AdjustableRegulator from Regulator:
+    # using vanilla voltage divider without equations
+    feedback_div = new _VDiv
+    v_ref: voltage
+    i_q: current
+    r_total: resistance
+    v_in: voltage
+    v_out: voltage
+
+    # Default value
+    i_q = 100uA to 200uA
+
+    assert v_ref * (1 + feedback_div.r_top.resistance / feedback_div.r_bottom.resistance) within v_out
+    assert v_out / (feedback_div.r_top.resistance + feedback_div.r_bottom.resistance) within i_q
+
+
+module Buck from AdjustableRegulator:
+    pass
+
+
+module Boost from AdjustableRegulator:
+    pass
+
+
+module FixedLDO from Regulator:
+    pass
+
+
+module AdjustableLDO from AdjustableRegulator:
+    pass
+
+
+module Flyback from AdjustableRegulator:
+    pass

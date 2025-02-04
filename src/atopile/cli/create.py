@@ -22,7 +22,6 @@ from rich.table import Table
 
 from atopile import errors
 from atopile.address import AddrStr
-from atopile.cli.install import do_install
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.libs.exceptions import downgrade
@@ -319,14 +318,6 @@ def project(
             clean_repo = git.Repo.init(repo_obj.working_tree_dir)
             clean_repo.git.add(A=True)
             clean_repo.git.commit(m="Initial commit")
-
-    # Install dependencies listed in the ato.yaml, typically just generics
-    do_install(
-        to_install="generics",
-        vendor=False,
-        upgrade=True,
-        path=Path(repo_obj.working_tree_dir),
-    )
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
