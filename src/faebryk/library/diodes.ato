@@ -1,6 +1,6 @@
 import Diode, ElectricPower
 
-from "interfaces.ato" import Power_AC
+from "interfaces.ato" import PowerAC
 
 
 module PowerDiodeOr:
@@ -13,12 +13,12 @@ module PowerDiodeOr:
     power_out = new ElectricPower
 
     power_in2 ~ power_out
-    power_in.vcc ~ diode.anode; diode.cathode ~ power_out.vcc
-    power_in.gnd ~ power_out.gnd
+    power_in1.vcc ~ diode.anode; diode.cathode ~ power_out.vcc
+    power_in1.gnd ~ power_out.gnd
 
 
 module FULLBRIDGERECTIFIER:
-    power_in = new Power_AC
+    power_in = new PowerAC
     power_out = new ElectricPower
 
     d1 = new Diode

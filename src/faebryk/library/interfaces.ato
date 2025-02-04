@@ -1,6 +1,6 @@
 interface PowerAC:
-    signal l1
-    signal n
+    signal line1
+    signal neutral
     signal gnd
 
 
