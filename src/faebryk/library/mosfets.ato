@@ -1,4 +1,4 @@
-import Diode, ElectricSignal, ElectricPower, NFET, PFET
+import Diode, ElectricSignal, ElectricPower, NFET, PFET, Resistor
 
 from "interfaces.ato" import DiffPair
 from "elec/src/NTTFS4C25NTWG.ato" import NTTFS4C25NTWG
@@ -34,7 +34,7 @@ module HalfBridge:
 
 
 module LowSideSwitch:
-    fet = new Mosfet_nchannel
+    fet = new NFET
     gate_resistor = new Resistor
     pulldown_resistor = new Resistor
     freewheel_diode = new Diode
@@ -54,7 +54,3 @@ module LowSideSwitch:
 
     # source to ground
     fet.source ~ power.gnd
-
-
-module LowSideSwitch30V5A from LowSideSwitch:
-    fet -> NTTFS4C25NTWG
