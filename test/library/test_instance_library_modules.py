@@ -82,24 +82,23 @@ def test_init_args(name: str, module):
         pytest.skip("Skipped abstract class")
 
 
-def _module_addr(args):
-    if isinstance(args, Path):
-        return str(args.stem)
-    elif isinstance(args, Ref):
-        return str(args)
-    raise ValueError(args)
+def _module_addr(file: Path, module_name: Ref):
+    return f"{file.name}:{module_name}"
+
+
+_file_and_modules = [
+    (file, module_name)
+    for file in Path(inspect.getfile(not_none(F))).parent.glob("*.ato")
+    for module_name, module in Bob().index_file(file).refs.items()
+    if isinstance(module, ap.BlockdefContext)
+]
 
 
 @pytest.mark.skipif(F is None, reason="Library not loaded")
 @pytest.mark.parametrize(
     "file, module_name",
-    [
-        (file, module_name)
-        for file in Path(inspect.getfile(not_none(F))).parent.glob("*.ato")
-        for module_name, module in Bob().index_file(file).refs.items()
-        if isinstance(module, ap.BlockdefContext)
-    ],
-    ids=_module_addr,
+    _file_and_modules,
+    ids=[_module_addr(file, module_name) for file, module_name in _file_and_modules],
 )
 def test_instance_library_ato(file: Path, module_name: Ref):
     bob = Bob()
