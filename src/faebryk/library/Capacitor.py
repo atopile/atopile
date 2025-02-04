@@ -116,7 +116,7 @@ class Capacitor(Module):
 
     @property
     def power(self) -> "ElectricPower":
-        """A `Power` interface, which is connected to the capacitor."""
+        """An `ElectricPower` interface, which is connected to the capacitor."""
         # FIXME: this has to go this way to avoid gen_F detecting a circular import
         from faebryk.library.ElectricPower import ElectricPower
 

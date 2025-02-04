@@ -51,3 +51,11 @@ class OpAmp(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
+
+    @property
+    def inverting(self) -> F.Electrical:
+        return self.inverting_input
+
+    @property
+    def non_inverting(self) -> F.Electrical:
+        return self.non_inverting_input
