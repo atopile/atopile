@@ -299,9 +299,23 @@ def get_compatible_parameters(
 
     def _map_param(name: str, param: Parameter) -> tuple[Parameter, P_Set]:
         c_range = component_params.get(name)
-        if c_range is None:
-            c_range = param.domain.unbounded(param)
-        return param, c_range
+        literal = param.try_get_literal()
+
+        match c_range, literal:
+            case None, None:
+                return param, param.domain.unbounded(param)
+            case None, _:
+                return param, literal
+            case _, None:
+                return param, c_range
+            case _, _:
+                if c_range != literal:
+                    logger.warning(
+                        f"Parameter `{param}` is set to {literal} "
+                        f"but specified component has attribute value {c_range}",
+                        extra={"markdown": True},
+                    )
+                return param, literal
 
     param_mapping = [_map_param(name, param) for name, param in design_params.items()]
 
