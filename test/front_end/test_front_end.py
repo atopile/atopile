@@ -6,7 +6,7 @@ import pytest
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
-from atopile.datatypes import Ref
+from atopile.datatypes import TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
@@ -22,7 +22,7 @@ def test_empty_module_build(bob: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
     assert isinstance(node, bob.modules[":A"])
 
@@ -35,7 +35,7 @@ def test_simple_module_build(bob: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
 
     param = node.runtime["a"]
@@ -52,7 +52,7 @@ def test_arithmetic(bob: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
 
     # TODO: check output
@@ -71,7 +71,7 @@ def test_simple_new(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
@@ -110,7 +110,7 @@ def test_nested_nodes(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -131,7 +131,7 @@ def test_resistor(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -150,7 +150,7 @@ def test_standard_library_import(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -198,7 +198,7 @@ def test_reserved_attrs(
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -238,7 +238,7 @@ def test_import_ato(bob: Bob, tmp_path):
     bob.search_paths.append(some_module_search_path)
 
     tree = parse_text_as_file(top_module_content)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -272,7 +272,7 @@ def test_traceback(bob: Bob, module: str, count: int):
     tree = parse_text_as_file(text)
 
     with pytest.raises(errors.UserKeyError) as e:
-        bob.build_ast(tree, Ref([module]))
+        bob.build_ast(tree, TypeRef([module]))
 
     assert e.value.traceback is not None
     assert len(e.value.traceback) == count
@@ -298,7 +298,7 @@ def test_signal_connect(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -326,7 +326,7 @@ def test_interface_connect(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -373,7 +373,7 @@ def test_duck_type_connect(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
