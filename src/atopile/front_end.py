@@ -10,7 +10,7 @@ from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
     Any,
@@ -52,6 +52,7 @@ from faebryk.libs.exceptions import (
     suppress_after_count,
 )
 from faebryk.libs.library.L import Range, Single
+from faebryk.libs.picker.picker import does_not_require_picker_check
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
 from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import (
@@ -73,6 +74,7 @@ from faebryk.libs.util import (
     is_type_pair,
     not_none,
     partition,
+    partition_as_list,
 )
 
 logger = logging.getLogger(__name__)
@@ -447,7 +449,7 @@ class _ParameterDefinition:
     def is_root_assignment(self) -> bool:
         if not self.is_definition:
             return False
-        return len(self.ref) > 1
+        return len(self.ref) == 1
 
 
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -601,33 +603,57 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         )
 
             # Handle parameter assignments
+            # root assignments override each other
+            # external assignments merge into a subset
+            # Allowing external assignments in the first place is a bit weird
+            # Got to figure out how people are using this.
+            # My guess is that in 99% of cases you can replace them by a `&=`
             for param in params_with_definitions:
                 assignments = self._param_assignments[param]
                 definitions = [a for a in assignments if a.is_definition]
+                non_root_definitions, root_definitions = partition_as_list(
+                    lambda a: a.is_root_assignment, definitions
+                )
                 assert definitions
-
-                with ex_acc.collect(), ato_error_converter():
-                    # TODO: revisit this language detail
-                    # every assignment overrides the previous one
-                    # this is consistent with v0.2
-                    last_definition = definitions[-1]
-                    value, ctx, traceback = (
-                        not_none(last_definition.value),
-                        last_definition.ctx,
-                        last_definition.traceback,
+                for definition in definitions:
+                    print(
+                        f"Assignment:  {param} [{definition.ref}] := {definition.value}"
                     )
 
-                    # Set final value of parameter
-                    assert isinstance(
-                        ctx, ParserRuleContext
-                    )  # Since value and ctx should be None together
+                root_after_external = (False, True) in pairwise(
+                    a.is_root_assignment for a in definitions
+                )
+                # Don't see how this could happen, but just in case
+                assert not root_after_external
 
-                    try:
-                        param.constrain_subset(value)
-                    except UnitCompatibilityError as ex:
-                        raise errors.UserTypeError.from_ctx(
-                            ctx, str(ex), traceback=traceback
-                        ) from ex
+                with ex_acc.collect(), ato_error_converter():
+                    # Workaround for missing difference between alias and subset
+                    # Only relevant for code-as-data part modules
+                    if root_definitions:
+                        node = param.get_parent_force()[0]
+                        is_part_module = isinstance(node, L.Module) and (
+                            node.has_trait(F.is_pickable_by_supplier_id)
+                            or node.has_trait(F.is_pickable_by_part_number)
+                        )
+                        if is_part_module:
+                            param.alias_is(not_none(root_definitions[-1].value))
+                            param.add(does_not_require_picker_check())
+
+                    # TODO consider a downgraded warning here for root_definitions that
+                    # are not purely narrowing
+                    definitions_to_translate = (
+                        root_definitions[-1:] + non_root_definitions
+                    )
+
+                    for definition in definitions_to_translate:
+                        value = not_none(definition.value)
+                        try:
+                            print(f"Constraining {param} to {value}")
+                            param.constrain_subset(value)
+                        except UnitCompatibilityError as ex:
+                            raise errors.UserTypeError.from_ctx(
+                                definition.ctx, str(ex), traceback=definition.traceback
+                            ) from ex
 
     @property
     def _current_node(self) -> L.Node:

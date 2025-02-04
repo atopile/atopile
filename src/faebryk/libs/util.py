@@ -1533,6 +1533,23 @@ def partition(pred, iterable):  # type: ignore
     return p(pred, iterable)
 
 
+@overload
+def partition_as_list[Y, T](
+    pred: Callable[[T], TypeGuard[Y]], iterable: Iterable[T]
+) -> tuple[list[T], list[Y]]: ...
+
+
+@overload
+def partition_as_list[T](
+    pred: Callable[[T], bool], iterable: Iterable[T]
+) -> tuple[list[T], list[T]]: ...
+
+
+def partition_as_list(pred, iterable):  # type: ignore
+    false_list, true_list = partition(pred, iterable)
+    return list(false_list), list(true_list)
+
+
 def times_out(seconds: float):
     # if running in debugger, don't timeout
     if hasattr(sys, "gettrace") and sys.gettrace():
