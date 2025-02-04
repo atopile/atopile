@@ -593,8 +593,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
                 assert definitions
                 for definition in definitions:
-                    print(
-                        f"Assignment:  {param} [{definition.ref}] := {definition.value}"
+                    logger.debug(
+                        "Assignment:  %s [%s] := %s",
+                        param,
+                        definition.ref,
+                        definition.value,
                     )
 
                 root_after_external = (False, True) in pairwise(
@@ -625,7 +628,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     for definition in definitions_to_translate:
                         value = not_none(definition.value)
                         try:
-                            print(f"Constraining {param} to {value}")
+                            logger.debug("Constraining %s to %s", param, value)
                             param.constrain_subset(value)
                         except UnitCompatibilityError as ex:
                             raise errors.UserTypeError.from_ctx(
