@@ -143,9 +143,11 @@ def test_standard_library_import(bob: Bob):
     text = dedent(
         """
         import Resistor
+        from "interfaces.ato" import PowerAC
 
         module A:
             r1 = new Resistor
+            power_in = new PowerAC
         """
     )
 
@@ -156,6 +158,8 @@ def test_standard_library_import(bob: Bob):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
+
+    assert Bob.get_node_attr(node, "power_in")
 
 
 @pytest.mark.parametrize(
