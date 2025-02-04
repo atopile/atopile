@@ -1,6 +1,5 @@
-import Diode, ElectricSignal, ElectricPower, NFET, PFET, Resistor
+import Diode, ElectricSignal, ElectricPower, NFET, PFET, Resistor, DifferentialPair
 
-from "interfaces.ato" import DiffPair
 from "elec/src/NTTFS4C25NTWG.ato" import NTTFS4C25NTWG
 
 
@@ -8,7 +7,7 @@ module HalfBridge:
     power = new ElectricPower
     gate_high = new ElectricSignal
     gate_low = new ElectricSignal
-    shunt_output = new DiffPair
+    shunt_output = new DifferentialPair
     output = new ElectricSignal
 
     # this doesnt work until we have replace with instance.
