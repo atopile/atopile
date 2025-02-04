@@ -22,8 +22,8 @@ module AdjustableRegulator from Regulator:
     # Default value
     i_q = 100uA to 200uA
 
-    assert v_ref * (1 + feedback_div.r_top.value / feedback_div.r_bottom.value) within v_out
-    assert v_out / (feedback_div.r_top.value + feedback_div.r_bottom.value) within i_q
+    assert v_ref * (1 + feedback_div.r_top.resistance / feedback_div.r_bottom.resistance) within v_out
+    assert v_out / (feedback_div.r_top.resistance + feedback_div.r_bottom.resistance) within i_q
 
 
 module Buck from AdjustableRegulator:
