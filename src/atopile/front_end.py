@@ -76,7 +76,6 @@ from faebryk.libs.util import (
     import_from_path,
     is_type_pair,
     not_none,
-    partition,
     partition_as_list,
 )
 
@@ -582,7 +581,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
             # Handle missing definitions
-            params_without_defitions, params_with_definitions = partition(
+            params_without_defitions, params_with_definitions = partition_as_list(
                 lambda p: any(a.is_definition for a in self._param_assignments[p]),
                 self._param_assignments,
             )
