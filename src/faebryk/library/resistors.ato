@@ -1,4 +1,4 @@
-import I2C, ElectricPower
+import I2C, ElectricPower, Resistor
 
 
 module I2CPullup:
