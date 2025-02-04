@@ -557,9 +557,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     try:
                         if (parent := param.get_parent()) is not None:
                             node, _ = parent
-                            assert isinstance(node, L.Module)
-                            if (node.has_trait(F.is_pickable_by_supplier_id)) or (
-                                node.has_trait(F.is_pickable_by_part_number)
+                            if isinstance(node, L.Module) and (
+                                node.has_trait(F.is_pickable_by_supplier_id)
+                                or node.has_trait(F.is_pickable_by_part_number)
                             ):
                                 param.alias_is(value)
                                 continue
