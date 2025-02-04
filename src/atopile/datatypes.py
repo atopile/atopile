@@ -10,32 +10,58 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
-class Ref(tuple[str]):
+class TypeRef(tuple[str]):
     """Shell class to provide basic utils for a reference."""
 
-    def add_name(self, name: str | int) -> "Ref":
+    def add_name(self, name: str | int) -> "TypeRef":
         """Return a new Ref with the given name."""
-        return Ref((*self, str(name)))
+        return TypeRef((*self, str(name)))
 
     def __str__(self) -> str:
         return ".".join(map(str, self))
 
     @classmethod
-    def empty(cls) -> "Ref":
+    def empty(cls) -> "TypeRef":
         """Return an empty Ref."""
         return cls(())
 
     @classmethod
-    def from_one(cls, name: str | int) -> "Ref":
+    def from_one(cls, name: str | int) -> "TypeRef":
         """Return a Ref with a single item."""
         return cls((str(name),))
 
 
-class KeyOptItem[V](tuple[Ref | None, V]):
+KeyType = str | int
+ReferencePartType = tuple[str, KeyType | None]
+
+
+class FieldRef(tuple[ReferencePartType]):
+    """
+    A class representing a field reference.
+    e.g app.modules[multiresistor].resistors[0].unnamed[1]
+    """
+
+    def __str__(self) -> str:
+        return ".".join(
+            f"{name}[{key}]" if key is not None else name for name, key in self
+        )
+
+    def to_type_ref(self) -> TypeRef | None:
+        if any(key is not None for _, key in self):
+            return None
+        return TypeRef(map(lambda x: x[0], self))
+
+    @classmethod
+    def from_type_ref(cls, type_ref: TypeRef) -> "FieldRef":
+        """Return a FieldRef from a TypeRef."""
+        return cls(map(lambda x: (x, None), type_ref))
+
+
+class KeyOptItem[V](tuple[TypeRef | None, V]):
     """A class representing anf optionally-named thing."""
 
     @property
-    def ref(self) -> Ref | None:
+    def ref(self) -> TypeRef | None:
         """Return the name of this item, if it has one."""
         return self[0]
 
@@ -45,7 +71,7 @@ class KeyOptItem[V](tuple[Ref | None, V]):
         return self[1]
 
     @classmethod
-    def from_kv(cls, key: Ref | None, value: V) -> "KeyOptItem[V]":
+    def from_kv(cls, key: TypeRef | None, value: V) -> "KeyOptItem[V]":
         """Return a KeyOptItem with a single item."""
         return KeyOptItem((key, value))
 
@@ -53,7 +79,7 @@ class KeyOptItem[V](tuple[Ref | None, V]):
 class KeyOptMap[V](tuple[KeyOptItem[V]]):
     """A class representing a set of optionally-named things."""
 
-    def keys(self) -> Iterable[Ref | None]:
+    def keys(self) -> Iterable[TypeRef | None]:
         """Return an iterable of all the names in this set."""
         return map(lambda x: x.ref, filter(lambda x: x.ref is not None, self))
 
@@ -67,7 +93,7 @@ class KeyOptMap[V](tuple[KeyOptItem[V]]):
         return KeyOptMap((item,))
 
     @classmethod
-    def from_kv(cls, key: Ref | None, value: V) -> "KeyOptMap[V]":
+    def from_kv(cls, key: TypeRef | None, value: V) -> "KeyOptMap[V]":
         """Return a KeyOptMap with a single item."""
         return cls.from_item(KeyOptItem.from_kv(key, value))
 

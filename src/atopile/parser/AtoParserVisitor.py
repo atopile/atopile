@@ -69,6 +69,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#field_reference_or_declaration.
+    def visitField_reference_or_declaration(self, ctx:AtoParser.Field_reference_or_declarationContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#assign_stmt.
     def visitAssign_stmt(self, ctx:AtoParser.Assign_stmtContext):
         return self.visitChildren(ctx)
@@ -249,23 +254,38 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#name_or_attr.
-    def visitName_or_attr(self, ctx:AtoParser.Name_or_attrContext):
+    # Visit a parse tree produced by AtoParser#key.
+    def visitKey(self, ctx:AtoParser.KeyContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#array_index.
+    def visitArray_index(self, ctx:AtoParser.Array_indexContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#field_reference_part.
+    def visitField_reference_part(self, ctx:AtoParser.Field_reference_partContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#field_reference.
+    def visitField_reference(self, ctx:AtoParser.Field_referenceContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#type_reference.
+    def visitType_reference(self, ctx:AtoParser.Type_referenceContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#unit.
+    def visitUnit(self, ctx:AtoParser.UnitContext):
         return self.visitChildren(ctx)
 
 
     # Visit a parse tree produced by AtoParser#type_info.
     def visitType_info(self, ctx:AtoParser.Type_infoContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#numerical_pin_ref.
-    def visitNumerical_pin_ref(self, ctx:AtoParser.Numerical_pin_refContext):
-        return self.visitChildren(ctx)
-
-
-    # Visit a parse tree produced by AtoParser#attr.
-    def visitAttr(self, ctx:AtoParser.AttrContext):
         return self.visitChildren(ctx)
 
 

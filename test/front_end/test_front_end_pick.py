@@ -4,7 +4,7 @@ from textwrap import dedent
 import pytest
 
 import faebryk.library._F as F
-from atopile.datatypes import Ref
+from atopile.datatypes import TypeRef
 from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -31,7 +31,7 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -65,7 +65,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 

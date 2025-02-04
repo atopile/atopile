@@ -421,7 +421,7 @@ def goto_definition(
         src_ctx = atopile.front_end.scoop.get_obj_def(
             atopile.front_end.lookup_class_in_closure(
                 atopile.front_end.scoop.get_obj_def(class_addr),
-                atopile.datatypes.Ref(word.split(".")),
+                atopile.datatypes.TypeRef(word.split(".")),
             )
         ).src_ctx
     except (KeyError, atopile.errors.UserException, AttributeError):
