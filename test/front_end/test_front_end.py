@@ -116,7 +116,9 @@ def test_nested_nodes(bob: Bob):
 
 
 def test_resistor(bob: Bob, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         """
@@ -188,7 +190,9 @@ def test_reserved_attrs(
     pkg: F.has_package.Package,
     repo_root: Path,
 ):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         f"""
