@@ -36,7 +36,18 @@ jobs:
       - run: npm ci
 
       # Set the version in package.json from a workflow dispatch input
-      - run: "npm version --no-git-tag-version $(uv run ato --semver)"
+      - name: Pre-release version
+        if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
+        # The pre-release version adds 1000 to the patch version to get around the lack of proper semver support
+        # https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions
+        run: |
+          PUBLISH_VERSION= $(uv run ato --semver | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
+          npm version --no-git-tag-version $PUBLISH_VERSION
+
+      - name: Release version
+        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
+        run: |
+          npm version --no-git-tag-version $(uv run ato --semver)
 
       - name: Publish release to VS Code Marketplace
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
