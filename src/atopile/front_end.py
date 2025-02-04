@@ -7,6 +7,7 @@ import itertools
 import logging
 import operator
 import os
+from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -71,6 +72,8 @@ from faebryk.libs.util import (
     has_instance_settable_attr,
     import_from_path,
     is_type_pair,
+    not_none,
+    partition,
 )
 
 logger = logging.getLogger(__name__)
@@ -415,6 +418,39 @@ _declaration_domain_to_unit = {
 }
 
 
+@dataclass
+class _ParameterDefinition:
+    """
+    Holds information about a parameter declaration or assignment.
+    We collect those per parameter in the `Bob._param_assignments` dict.
+    Multiple assignments are allowed, but they interact with each other in non-trivial
+    ways. Thus we need to track them and process them in the end in
+    `_merge_parameter_assignments`.
+    """
+
+    ctx: ParserRuleContext
+    traceback: Sequence[ParserRuleContext]
+    ref: Ref
+    value: Range | Single | None = None
+
+    @property
+    def is_declaration(self) -> bool:
+        return self.value is None
+
+    @property
+    def is_definition(self) -> bool:
+        return not self.is_declaration
+
+    def __post_init__(self):
+        pass
+
+    @property
+    def is_root_assignment(self) -> bool:
+        if not self.is_definition:
+            return False
+        return len(self.ref) == 1
+
+
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
@@ -435,16 +471,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
         self._traceback_stack = StackList[ParserRuleContext]()
-        # TODO: add tracebacks if we keep this
-        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
-        self._param_assignments = FuncDict[
-            Parameter,
-            tuple[
-                Range | Single | None,
-                ParserRuleContext | None,
-                Sequence[ParserRuleContext] | None,
-            ],
-        ]()
+
+        self._param_assignments = defaultdict[Parameter, list[_ParameterDefinition]](
+            list
+        )
         self.search_paths: list[os.PathLike] = []
 
         # Keeps track of the nodes whose construction failed,
@@ -519,36 +549,50 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     )
 
     def _finish(self):
+        self._merge_parameter_assignments()
+
+    def _merge_parameter_assignments(self):
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
-            for param, (value, ctx, traceback) in self._param_assignments.items():
-                with ex_acc.collect(), ato_error_converter():
-                    if value is None:
-                        ex = errors.UserKeyError.from_ctx(
-                            ctx,
-                            f"Parameter `{param}` never assigned",
-                            traceback=traceback,
-                        )
-                        if param in self._promised_params:
-                            raise ex
-                        else:
-                            with (
-                                downgrade(
-                                    errors.UserActionWithoutEffectError,
-                                    to_level=logging.DEBUG,
-                                ),
-                                self._suppressor_finish,
-                            ):
-                                raise errors.UserActionWithoutEffectError.from_ctx(
-                                    ctx,
-                                    f"Parameter `{param}` declared but never assigned.",
-                                    traceback=traceback,
-                                )
-                            continue
+            # Handle missing definitions
+            params_without_defitions, params_with_definitions = partition(
+                lambda p: any(a.is_definition for a in self._param_assignments[p]),
+                self._param_assignments,
+            )
 
-                    if param in self._promised_params:
-                        del self._promised_params[param]
+            for param in params_without_defitions:
+                last_declaration = self._param_assignments[param][-1]
+                with ex_acc.collect(), ato_error_converter():
+                    with (
+                        downgrade(
+                            errors.UserActionWithoutEffectError,
+                            to_level=logging.DEBUG,
+                        ),
+                        self._suppressor_finish,
+                    ):
+                        raise errors.UserActionWithoutEffectError.from_ctx(
+                            last_declaration.ctx,
+                            f"Attribute `{param}` declared but never assigned.",
+                            traceback=last_declaration.traceback,
+                        )
+
+            # Handle parameter assignments
+            for param in params_with_definitions:
+                assignments = self._param_assignments[param]
+                definitions = [a for a in assignments if a.is_definition]
+                assert definitions
+
+                with ex_acc.collect(), ato_error_converter():
+                    # TODO: revisit this language detail
+                    # every assignment overrides the previous one
+                    # this is consistent with v0.2
+                    last_definition = definitions[-1]
+                    value, ctx, traceback = (
+                        not_none(last_definition.value),
+                        last_definition.ctx,
+                        last_definition.traceback,
+                    )
 
                     # Set final value of parameter
                     assert isinstance(
@@ -561,13 +605,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         raise errors.UserTypeError.from_ctx(
                             ctx, str(ex), traceback=traceback
                         ) from ex
-
-            for param, ctxs in self._promised_params.items():
-                for ctx in ctxs:
-                    with ex_acc.collect():
-                        raise errors.UserKeyError.from_ctx(
-                            ctx, f"Attribute `{param}` referenced, but never assigned"
-                        )
 
     @property
     def _current_node(self) -> L.Node:
@@ -886,11 +923,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
-    def _get_or_promise_param(
+    def _get_param(
         self, node: L.Node, name: str, src_ctx: ParserRuleContext
     ) -> Parameter:
         """
-        Get a param from a node. If it doesn't exist, create it and promise to assign
+        Get a param from a node.
+        Not supported: If it doesn't exist, create it and promise to assign
         it later. Used in forward-declaration.
         """
         try:
@@ -997,6 +1035,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
             unit = HasUnit.get_units(value)
             if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+                # TODO: handle this in _ensure_param with better error
+                # e.g ... with existing units declared here: ...
                 if not provided_unit.is_compatible_with(unit):
                     raise errors.UserIncompatibleUnitError.from_ctx(
                         ctx,
@@ -1004,9 +1044,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         f" with explicit units ({provided_unit}).",
                         traceback=self.get_traceback(),
                     )
+                self._handleParameterDeclaration(assigned_ref, provided_unit, ctx)
 
             param = self._ensure_param(target, assigned_name, unit, ctx)
-            self._param_assignments[param] = (value, ctx, self.get_traceback())
+            self._param_assignments[param].append(
+                _ParameterDefinition(
+                    ref=assigned_ref,
+                    value=value,
+                    ctx=ctx,
+                    traceback=self.get_traceback(),
+                )
+            )
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
@@ -1458,7 +1506,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             target = self._get_referenced_node(Ref(ref[:-1]), ctx)
-            return self._get_or_promise_param(target, ref[-1], ctx)
+            return self._get_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1612,7 +1660,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
             assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+            assignee = self._get_param(target, assignee_ref[-1], ctx)
 
         value = self.visitCum_assignable(ctx.cum_assignable())
 
@@ -1656,7 +1704,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
             assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+            assignee = self._get_param(target, assignee_ref[-1], ctx)
 
         value = self.visitCum_assignable(ctx.cum_assignable())
 
@@ -1704,6 +1752,36 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         suppression_warning="Suppressing further warnings of this type",
     )
 
+    def _handleParameterDeclaration(
+        self, ref: Ref, unit: UnitType, ctx: ParserRuleContext
+    ):
+        assert unit is not None, "Type info should be enforced by the parser"
+        name = ref[-1]
+        param = self._ensure_param(self._current_node, name, unit, ctx)
+        if param in self._param_assignments:
+            declaration_after_definition = any(
+                assignment.is_definition
+                for assignment in self._param_assignments[param]
+            )
+            with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
+                if declaration_after_definition:
+                    raise errors.UserKeyError.from_ctx(
+                        ctx,
+                        f"Ignoring declaration of `{name}` "
+                        "because it's already defined",
+                        traceback=self.get_traceback(),
+                    )
+                else:
+                    raise errors.UserKeyError.from_ctx(
+                        ctx,
+                        f"Ignoring redeclaration of `{name}`",
+                        traceback=self.get_traceback(),
+                    )
+        else:
+            self._param_assignments[param].append(
+                _ParameterDefinition(ref=ref, ctx=ctx, traceback=self.get_traceback())
+            )
+
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext):
         """Handle declaration statements."""
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
@@ -1714,23 +1792,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        assigned_name = assigned_value_ref[0]
+        # check declaration type
         unit = self._try_get_unit_from_type_info(ctx.type_info())
-        assert unit is not None, "Type info should be enforced by the parser"
+        if unit is not None:
+            self._handleParameterDeclaration(assigned_value_ref, unit, ctx)
+            return NOTHING
 
-        param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
-        if param in self._param_assignments:
-            with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
-                raise errors.UserKeyError.from_ctx(
-                    ctx,
-                    f"Ignoring declaration of `{assigned_name}` "
-                    "because it's already defined",
-                    traceback=self.get_traceback(),
-                )
-        else:
-            self._param_assignments[param] = (None, ctx, self.get_traceback())
-
-        return NOTHING
+        assert False, "Only parameter declarations supported"
 
     def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
         return NOTHING
