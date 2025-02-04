@@ -679,6 +679,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             + ", ".join(f"`{p}`" for p in gospel_params)
                         )
 
+        self._param_assignments.clear()
+
     @property
     def _current_node(self) -> L.Node:
         return self._node_stack[-1]
