@@ -22,6 +22,7 @@ from typing import (
 )
 
 from antlr4 import ParserRuleContext
+from more_itertools import last
 from pint import UndefinedUnitError
 
 import faebryk.library._F as F
@@ -69,6 +70,7 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    groupby,
     has_attr_or_property,
     has_instance_settable_attr,
     import_from_path,
@@ -553,6 +555,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _finish(self):
         self._merge_parameter_assignments()
 
+    class ParamAssignmentIsGospel(errors.UserException):
+        """
+        The parameter assignment is treated as the precise specification of the
+        component, rather than merely as a requirement for it's later selection
+        """
+
+        title = "Parameter assignments are component definition"  # type: ignore
+
     def _merge_parameter_assignments(self):
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
@@ -564,7 +574,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
 
             for param in params_without_defitions:
-                last_declaration = self._param_assignments[param][-1]
+                last_declaration = last(self._param_assignments[param])
                 with ex_acc.collect(), ato_error_converter():
                     with (
                         downgrade(
@@ -580,60 +590,82 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         )
 
             # Handle parameter assignments
-            # root assignments override each other
-            # external assignments merge into a subset
+            # assignments override each other
+            # assignments made in the block definition of the component are "is"
+            # external assignments are requirements treated as a subset
+
             # Allowing external assignments in the first place is a bit weird
             # Got to figure out how people are using this.
             # My guess is that in 99% of cases you can replace them by a `&=`
-            for param in params_with_definitions:
-                assignments = self._param_assignments[param]
-                definitions = [a for a in assignments if a.is_definition]
-                non_root_definitions, root_definitions = partition_as_list(
-                    lambda a: a.is_root_assignment, definitions
+            params_by_node = groupby(
+                params_with_definitions, key=lambda p: p.get_parent_force()[0]
+            )
+            for assignee_node, assigned_params in params_by_node.items():
+                is_part_module = isinstance(assignee_node, L.Module) and (
+                    assignee_node.has_trait(F.is_pickable_by_supplier_id)
+                    or assignee_node.has_trait(F.is_pickable_by_part_number)
                 )
-                assert definitions
-                for definition in definitions:
-                    logger.debug(
-                        "Assignment:  %s [%s] := %s",
-                        param,
-                        definition.ref,
-                        definition.value,
+
+                gospel_params: list[Parameter] = []
+                for param in assigned_params:
+                    assignments = self._param_assignments[param]
+                    definitions = [a for a in assignments if a.is_definition]
+                    non_root_definitions, root_definitions = partition_as_list(
+                        lambda a: a.is_root_assignment, definitions
                     )
 
-                root_after_external = (False, True) in pairwise(
-                    a.is_root_assignment for a in definitions
-                )
-                # Don't see how this could happen, but just in case
-                assert not root_after_external
-
-                with ex_acc.collect(), ato_error_converter():
-                    # Workaround for missing difference between alias and subset
-                    # Only relevant for code-as-data part modules
-                    if root_definitions:
-                        node = param.get_parent_force()[0]
-                        is_part_module = isinstance(node, L.Module) and (
-                            node.has_trait(F.is_pickable_by_supplier_id)
-                            or node.has_trait(F.is_pickable_by_part_number)
+                    assert definitions
+                    for definition in definitions:
+                        logger.debug(
+                            "Assignment:  %s [%s] := %s",
+                            param,
+                            definition.ref,
+                            definition.value,
                         )
-                        if is_part_module:
-                            param.alias_is(not_none(root_definitions[-1].value))
-                            param.add(does_not_require_picker_check())
 
-                    # TODO consider a downgraded warning here for root_definitions that
-                    # are not purely narrowing
-                    definitions_to_translate = (
-                        root_definitions[-1:] + non_root_definitions
+                    # Don't see how this could happen, but just in case
+                    root_after_external = (False, True) in pairwise(
+                        a.is_root_assignment for a in definitions
                     )
+                    assert not root_after_external
 
-                    for definition in definitions_to_translate:
-                        value = not_none(definition.value)
-                        try:
-                            logger.debug("Constraining %s to %s", param, value)
-                            param.constrain_subset(value)
-                        except UnitCompatibilityError as ex:
-                            raise errors.UserTypeError.from_ctx(
-                                definition.ctx, str(ex), traceback=definition.traceback
-                            ) from ex
+                    with ex_acc.collect(), ato_error_converter():
+                        # Workaround for missing difference between alias and subset
+                        # Only relevant for code-as-data part modules
+                        # TODO: consider a warning for definitions that aren't purely
+                        # narrowing
+                        if is_part_module and non_root_definitions:
+                            raise errors.UserNotImplementedError(
+                                "You can't assign to a `component` with a specific"
+                                " part number outside of its definition"
+                            )
+
+                        elif is_part_module and root_definitions:
+                            param.alias_is(not_none(last(root_definitions).value))
+                            param.add(does_not_require_picker_check())
+                            gospel_params.append(param)
+
+                        elif not is_part_module:
+                            definition = last(definitions)
+                            value = not_none(definition.value)
+                            try:
+                                logger.debug("Constraining %s to %s", param, value)
+                                param.constrain_subset(value)
+                            except UnitCompatibilityError as ex:
+                                raise errors.UserTypeError.from_ctx(
+                                    definition.ctx,
+                                    str(ex),
+                                    traceback=definition.traceback,
+                                ) from ex
+
+                if gospel_params:
+                    with downgrade(self.ParamAssignmentIsGospel, to_level=logging.INFO):
+                        raise self.ParamAssignmentIsGospel(
+                            f"`component` `{assignee_node.get_full_name()}`"
+                            " is completely specified by a part number, so these"
+                            " params are treated as its exact specification:"
+                            + ", ".join(f"`{p}`" for p in gospel_params)
+                        )
 
     @property
     def _current_node(self) -> L.Node:
