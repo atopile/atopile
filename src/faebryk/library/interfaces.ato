@@ -1,3 +1,9 @@
+interface PowerAC:
+    signal l1
+    signal n
+    signal gnd
+
+
 interface SWD:
     signal swclk
     signal swdio
