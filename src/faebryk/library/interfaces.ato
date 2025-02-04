@@ -49,11 +49,6 @@ interface SDIO:
     signal dat3
 
 
-interface DiffPair:
-    signal p
-    signal n
-
-
 interface I2S:
     signal ws
     signal sck
