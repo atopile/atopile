@@ -470,9 +470,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
         self._traceback_stack = StackList[ParserRuleContext]()
-        # TODO: add tracebacks if we keep this
-        # TODO: this seems like it's not in use?
-        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
 
         self._param_assignments = defaultdict[Parameter, list[_ParameterDefinition]](
             list
@@ -562,27 +559,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 lambda p: any(a.is_definition for a in self._param_assignments[p]),
                 self._param_assignments,
             )
-            params_without_defitions = set(params_without_defitions)
-            params_with_definitions = set(params_with_definitions)
-            promised_but_not_defined = (
-                set(self._promised_params.keys()) - params_with_definitions
-            )
-            promised_but_not_declared = (
-                set(self._param_assignments.keys()) - self._param_assignments.keys()
-            )
-
-            for param in promised_but_not_declared:
-                for ctx in self._promised_params[param]:
-                    with ex_acc.collect():
-                        raise errors.UserKeyError.from_ctx(
-                            ctx, f"Attribute `{param}` referenced, but never declared"
-                        )
-            for param in promised_but_not_defined:
-                for ctx in self._promised_params[param]:
-                    with ex_acc.collect(), ato_error_converter():
-                        raise errors.UserKeyError.from_ctx(
-                            ctx, f"Attribute `{param}` referenced, but never assigned"
-                        )
 
             for param in params_without_defitions:
                 last_declaration = self._param_assignments[param][-1]
@@ -943,11 +919,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
-    def _get_or_promise_param(
+    def _get_param(
         self, node: L.Node, name: str, src_ctx: ParserRuleContext
     ) -> Parameter:
         """
-        Get a param from a node. If it doesn't exist, create it and promise to assign
+        Get a param from a node.
+        Not supported: If it doesn't exist, create it and promise to assign
         it later. Used in forward-declaration.
         """
         try:
@@ -1525,7 +1502,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             target = self._get_referenced_node(Ref(ref[:-1]), ctx)
-            return self._get_or_promise_param(target, ref[-1], ctx)
+            return self._get_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1679,7 +1656,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
             assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+            assignee = self._get_param(target, assignee_ref[-1], ctx)
 
         value = self.visitCum_assignable(ctx.cum_assignable())
 
@@ -1723,7 +1700,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
             assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+            assignee = self._get_param(target, assignee_ref[-1], ctx)
 
         value = self.visitCum_assignable(ctx.cum_assignable())
 
