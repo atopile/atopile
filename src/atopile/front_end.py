@@ -447,7 +447,7 @@ class _ParameterDefinition:
     def is_root_assignment(self) -> bool:
         if not self.is_definition:
             return False
-        return len(self.ref) > 1
+        return len(self.ref) == 1
 
 
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
