@@ -105,6 +105,8 @@ from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprin
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
 from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
 from faebryk.library.TVS import TVS
+from faebryk.library.NFET import NFET
+from faebryk.library.PFET import PFET
 from faebryk.library.LogicGates import LogicGates
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
@@ -136,10 +138,11 @@ from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Potentiometer import Potentiometer
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
-from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
+from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
+from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.is_decoupled import is_decoupled

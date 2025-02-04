@@ -26,3 +26,12 @@ Upgrading will give you more access to features as they're added, but there's no
 This means no more need to open the PCB file, import the netlist and cycle.
 
 `ato build` now directly modifies the PCB file as required on each build.
+
+
+### Standard Library (previously `generics`) is now shipped built-in!
+
+This vastly improves our ability to version and iterate on the standard library, use the best practices and latest features.
+
+See [`library`](https://github.com/atopile/atopile/tree/main/src/faebryk/library) for the latest and greatest.
+
+It should be better documented. If this is important for you, please vote on the issue: #936

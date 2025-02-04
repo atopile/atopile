@@ -60,7 +60,10 @@ def semver_callback(ctx: typer.Context, value: bool):
 def cli(
     ctx: typer.Context,
     non_interactive: Annotated[
-        bool | None, typer.Option("--non-interactive", envvar="ATO_NON_INTERACTIVE")
+        bool | None,
+        typer.Option(
+            "--non-interactive", envvar=["ATO_NON_INTERACTIVE", "NONINTERACTIVE"]
+        ),
     ] = None,
     debug: Annotated[
         bool,
