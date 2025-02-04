@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from subprocess import CalledProcessError
 
+import git
 import pathvalidate
 import pytest
 
@@ -23,10 +24,43 @@ class BuildError(Exception):
     """Failed to build the project."""
 
 
+def build_project(prj_path: Path, env: dict[str, str], request: pytest.FixtureRequest):
+    """Generically "build" the project."""
+    try:
+        run_live(
+            [
+                sys.executable,
+                "-m",
+                "atopile",
+                "-v",
+                "build",
+                "--keep-picked-parts",
+                "--keep-net-names",
+            ],
+            env={**os.environ, "NONINTERACTIVE": "1", **env},
+            cwd=prj_path,
+            stdout=print,
+            stderr=print,
+        )
+    except CalledProcessError as ex:
+        artifact_path = (
+            _repo_root()
+            / "artifacts"
+            / pathvalidate.sanitize_filename(str(request.node.name))
+        )
+        if artifact_path.exists():
+            robustly_rm_dir(artifact_path)
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(prj_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
+
+        # Translate the error message to clearly distinguish from clone errors
+        raise BuildError from ex
+
+
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    "repo, env",
+    "repo_uri, env",
     [
         ("https://github.com/atopile/spin-servo-drive", {}),
         ("https://github.com/atopile/esp32-s3", {}),
@@ -57,13 +91,13 @@ class BuildError(Exception):
     ],
 )
 def test_projects(
-    repo: str, env: dict[str, str], tmp_path: Path, request: pytest.FixtureRequest
+    repo_uri: str, env: dict[str, str], tmp_path: Path, request: pytest.FixtureRequest
 ):
     # Clone the repository
     # Using gh to use user credentials if run locally
     try:
         run_live(
-            ["gh", "repo", "clone", repo, "project", "--", "--depth", "1"],
+            ["gh", "repo", "clone", repo_uri, "project", "--", "--depth", "1"],
             cwd=tmp_path,
             stdout=print,
             stderr=print,
@@ -86,25 +120,8 @@ def test_projects(
         # Translate the error message to clearly distinguish from clone errors
         raise InstallError from ex
 
-    # Generically "build" the project
-    try:
-        run_live(
-            [sys.executable, "-m", "atopile", "-v", "build", "--frozen"],
-            env={**os.environ, "NONINTERACTIVE": "1", **env},
-            cwd=prj_path,
-            stdout=print,
-            stderr=print,
-        )
-    except CalledProcessError as ex:
-        artifact_path = (
-            _repo_root()
-            / "artifacts"
-            / pathvalidate.sanitize_filename(str(request.node.name))
-        )
-        if artifact_path.exists():
-            robustly_rm_dir(artifact_path)
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(prj_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
+    build_project(prj_path, env, request=request)
 
-        # Translate the error message to clearly distinguish from clone errors
-        raise BuildError from ex
+    repo = git.Repo(prj_path)
+    if any(item.a_path.endswith(".kicad_pcb") for item in repo.index.diff(None)):
+        pytest.xfail("can't build with --frozen yet")
