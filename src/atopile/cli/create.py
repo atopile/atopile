@@ -220,7 +220,7 @@ def project(
     name = query_helper(
         ":rocket: What's your project [cyan]name?[/]",
         type_=str,
-        validator=r"^[a-zA-Z][a-zA-Z0-9_-]*$",
+        validator=r"^[a-zA-Z][a-zA-Z0-9_-]{,99}$",
         validation_failure_msg=PROJECT_NAME_REQUIREMENTS,
         upgrader=caseconverter.kebabcase,
         upgrader_msg=textwrap.dedent(
