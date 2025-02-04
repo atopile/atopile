@@ -1,4 +1,4 @@
-import Capacitor, ElectricSignal, ElectricPower
+import Capacitor, ElectricSignal, ElectricPower, Inductor
 
 
 module LowPassPiFilter:
