@@ -12,7 +12,7 @@ from faebryk.libs.util import run_live
 def test_app(config):
     _, stderr, _ = run_live(
         [sys.executable, "-m", "atopile", "build", "examples", "-b", config],
-        env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+        env={**os.environ, "NONINTERACTIVE": "1"},
         stdout=print,
         stderr=print,
     )
@@ -31,7 +31,7 @@ def test_snapiness(benchmark):
             [sys.executable, "-m", "atopile", "--help"],
             capture_output=True,
             text=True,
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+            env={**os.environ, "NONINTERACTIVE": "1"},
         )
 
     result = benchmark(run_cli)
