@@ -23,14 +23,18 @@ class BuildError(Exception):
     """Failed to build the project."""
 
 
+# TODO: frozen=True only
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    "repo, env",
+    "repo, env, frozen",
     [
-        ("https://github.com/atopile/spin-servo-drive", {}),
-        ("https://github.com/atopile/esp32-s3", {}),
-        # ("https://github.com/atopile/nonos", {}), # Removing from critical path
+        ("https://github.com/atopile/spin-servo-drive", {}, True),
+        ("https://github.com/atopile/spin-servo-drive", {}, False),
+        ("https://github.com/atopile/esp32-s3", {}, True),
+        ("https://github.com/atopile/esp32-s3", {}, False),
+        # ("https://github.com/atopile/nonos", {}, True), # Removing from critical path
+        # ("https://github.com/atopile/nonos", {}, False), # Removing from critical path
         (
             "https://github.com/atopile/cell-sim",
             {
@@ -39,25 +43,36 @@ class BuildError(Exception):
                 "FBRK_MAX_PATHS_NO_WEAK": "1e6",
                 "FBRK_MAX_PATHS_NO_NEW_WEAK": "1e5",
             },
+            True,
         ),
         (
-            "https://github.com/atopile/hil",
+            "https://github.com/atopile/cell-sim",
             {
                 # TODO: @lazy-mifs remove this
                 "FBRK_MAX_PATHS": "1e7",
                 "FBRK_MAX_PATHS_NO_WEAK": "1e6",
                 "FBRK_MAX_PATHS_NO_NEW_WEAK": "1e5",
             },
+            False,
         ),
-        ("https://github.com/atopile/rp2040", {}),
-        ("https://github.com/atopile/tca9548apwr", {}),
-        ("https://github.com/atopile/nau7802", {}),
-        ("https://github.com/atopile/lv2842xlvddcr", {}),
-        ("https://github.com/atopile/bq24045dsqr", {}),
+        ("https://github.com/atopile/rp2040", {}, True),
+        ("https://github.com/atopile/rp2040", {}, False),
+        ("https://github.com/atopile/tca9548apwr", {}, True),
+        ("https://github.com/atopile/tca9548apwr", {}, False),
+        ("https://github.com/atopile/nau7802", {}, True),
+        ("https://github.com/atopile/nau7802", {}, False),
+        ("https://github.com/atopile/lv2842xlvddcr", {}, True),
+        ("https://github.com/atopile/lv2842xlvddcr", {}, False),
+        ("https://github.com/atopile/bq24045dsqr", {}, True),
+        ("https://github.com/atopile/bq24045dsqr", {}, False),
     ],
 )
 def test_projects(
-    repo: str, env: dict[str, str], tmp_path: Path, request: pytest.FixtureRequest
+    repo: str,
+    env: dict[str, str],
+    frozen: bool,
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
 ):
     # Clone the repository
     # Using gh to use user credentials if run locally
@@ -89,7 +104,14 @@ def test_projects(
     # Generically "build" the project
     try:
         run_live(
-            [sys.executable, "-m", "atopile", "-v", "build", "--frozen"],
+            [
+                sys.executable,
+                "-m",
+                "atopile",
+                "-v",
+                "build",
+                "--frozen" if frozen else "",
+            ],
             env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
             cwd=prj_path,
             stdout=print,
