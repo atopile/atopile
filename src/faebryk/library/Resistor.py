@@ -69,3 +69,14 @@ class Resistor(Module):
         # self.add(
         #    F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))
         # )
+
+    # TODO: remove @https://github.com/atopile/atopile/issues/727
+    @property
+    def p1(self) -> F.Electrical:
+        """One side of the resistor."""
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        """The other side of the resistor."""
+        return self.unnamed[1]

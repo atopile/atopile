@@ -2,6 +2,7 @@
 Build faebryk core objects from ato DSL.
 """
 
+import inspect
 import itertools
 import logging
 import operator
@@ -486,12 +487,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> L.Node:
         """Build a Module from an AST and reference."""
         file_path = self._sanitise_path(file_path) if file_path else None
-        context = self._index_ast(ast, file_path)
+        context = self.index_ast(ast, file_path)
         return self._build(context, ref)
 
     def build_file(self, path: Path, ref: Ref) -> L.Node:
         """Build a Module from a file and reference."""
-        context = self._index_file(self._sanitise_path(path))
+        context = self.index_file(self._sanitise_path(path))
         return self._build(context, ref)
 
     @property
@@ -618,7 +619,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _sanitise_path(path: os.PathLike) -> Path:
         return Path(path).expanduser().resolve().absolute()
 
-    def _index_ast(
+    def index_ast(
         self, ast: ap.File_inputContext, file_path: Path | None = None
     ) -> Context:
         if ast in self._scopes:
@@ -628,9 +629,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._scopes[ast] = context
         return context
 
-    def _index_file(self, file_path: Path) -> Context:
+    def index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
-        return self._index_ast(ast, file_path)
+        return self.index_ast(ast, file_path)
 
     def _get_search_paths(self, context: Context) -> list[Path]:
         search_paths = [Path(p) for p in self.search_paths]
@@ -640,6 +641,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         if config.has_project:
             search_paths += [config.project.paths.src, config.project.paths.modules]
+
+        # Add the library directory to the search path too
+        search_paths.append(Path(inspect.getfile(F)).parent)
 
         return search_paths
 
@@ -680,7 +684,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return node
 
         elif from_path.suffix == ".ato":
-            context = self._index_file(from_path)
+            context = self.index_file(from_path)
             if item.ref not in context.refs:
                 raise errors.UserKeyError.from_ctx(
                     item.original_ctx, f"No declaration of `{item.ref}` in {from_path}"
