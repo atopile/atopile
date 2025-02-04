@@ -555,7 +555,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     )  # Since value and ctx should be None together
 
                     try:
+                        if (parent := param.get_parent()) is not None:
+                            node, _ = parent
+                            assert isinstance(node, L.Module)
+                            if (node.has_trait(F.is_pickable_by_supplier_id)) or (
+                                node.has_trait(F.is_pickable_by_part_number)
+                            ):
+                                param.alias_is(value)
+                                continue
+
                         param.constrain_subset(value)
+
                     except UnitCompatibilityError as ex:
                         raise errors.UserTypeError.from_ctx(
                             ctx, str(ex), traceback=traceback
