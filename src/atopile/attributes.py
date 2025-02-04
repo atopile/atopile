@@ -505,4 +505,10 @@ class Power(F.ElectricPower):
         return self.max_current
 
 
-_register_shim("generics/interfaces.ato:I2C", "import I2C")(F.I2C)
+@_register_shim("generics/interfaces.ato:I2C", "import I2C")
+class I2C(F.I2C):
+    """Temporary shim to translate I2C interfaces."""
+
+    @property
+    def gnd(self):
+        return self.single_electric_reference.get_reference().gnd
