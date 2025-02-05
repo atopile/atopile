@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated, Optional
 from urllib.parse import urlparse
 
+import questionary
 import requests
 import ruamel.yaml
 import typer
@@ -23,8 +24,8 @@ from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def install(
@@ -72,9 +73,9 @@ def do_install(
         config.project_dir = path
 
     if to_install is None:
-        log.info(f"Installing all dependencies in {config.project.paths.root}")
+        logger.info(f"Installing all dependencies in {config.project.paths.root}")
     else:
-        log.info(f"Installing {to_install} in {config.project.paths.root}")
+        logger.info(f"Installing {to_install} in {config.project.paths.root}")
 
     if to_install:
         # eg. "ato install some-atopile-module"
@@ -83,7 +84,7 @@ def do_install(
         # eg. "ato install"
         install_project_dependencies(upgrade)
 
-    log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 def get_package_repo_from_registry(module_name: str) -> str:
@@ -216,22 +217,22 @@ def install_dependency(
         repo = Repo(abs_path)
     except (InvalidGitRepositoryError, NoSuchPathError):
         # Directory does not contain a valid repo, clone into it
-        log.info(f"Installing dependency {module_name}")
+        logger.info(f"Installing dependency `{module_name}`")
         repo = Repo.clone_from(clone_url, abs_path)
         tracking = repo.active_branch.tracking_branch()
         if tracking:
             tracking.checkout()
         else:
-            log.warning(
+            logger.warning(
                 f"No tracking branch found for {module_name}, using current branch"
             )
     else:
         # In this case the directory exists and contains a valid repo
         if upgrade:
-            log.info(f"Fetching latest changes for {module_name}")
+            logger.info(f"Fetching latest changes for {module_name}")
             repo.remotes.origin.fetch()
         else:
-            log.info(
+            logger.info(
                 f"{module_name} already exists. If you wish to upgrade, use --upgrade"
             )
             # here we're done because we don't want to play with peoples' deps under them # noqa: E501  # pre-existing
@@ -244,7 +245,7 @@ def install_dependency(
         try:
             semver_to_tag[version.parse(tag.name)] = tag
         except errors.UserException:
-            log.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
+            logger.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
 
     if "@" in module_spec:
         # If there's an @ in the version, we're gonna check that thing out
@@ -260,7 +261,7 @@ def install_dependency(
         installed_semver = max(valid_versions)
         best_checkout = semver_to_tag[installed_semver]
     else:
-        log.warning(
+        logger.warning(
             "No semver tags found for this module. Using latest default branch :hot_pepper:.",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
@@ -282,17 +283,47 @@ def install_dependency(
     repo.git.checkout(best_checkout)
 
     if repo.head.commit == ref_before_checkout:
-        log.info(
+        logger.info(
             f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
     else:
-        log.info(
+        logger.info(
             f"Using :sparkles: [cyan bold]{best_checkout}[/] :sparkles: of {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
 
     return repo.head.commit.hexsha
+
+
+def check_missing_deps() -> bool:
+    for dependency in config.project.dependencies or []:
+        if dependency.path:
+            dep_path = config.project.paths.root / dependency.path
+        else:
+            # FIXME: this should exist based on defaults in the config
+            dep_path = config.project.paths.modules / dependency.name
+
+        if not dep_path.exists():
+            return True
+
+    return False
+
+
+def check_missing_deps_or_offer_to_install():
+    if check_missing_deps():
+        logger.warning(
+            "It appears some dependencies are missing."
+            " Run `ato install` to install them.",
+            extra={"markdown": True},
+        )
+
+        if (
+            config.interactive
+            and questionary.confirm("Install missing dependencies now?").unsafe_ask()
+        ):
+            # Install project dependencies, without upgrading
+            install_project_dependencies(False)
 
 
 def _name_and_clone_url_helper(name: str) -> tuple[str, str]:
