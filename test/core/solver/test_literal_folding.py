@@ -164,9 +164,13 @@ class st_values(Namespace):
         # [pico, tera]
         st.integers(min_value=int(-1e12), max_value=int(1e12)),
         st.floats(
-            allow_nan=False, allow_infinity=False, min_value=-1e12, max_value=1e12
+            allow_nan=False,
+            allow_infinity=False,  # FIXME
+            min_value=-1e12,
+            max_value=1e12,
+            allow_subnormal=False,
         ),
-    ).filter(lambda x: x == 0 or abs(x) > 1e-15)
+    )
 
     small_numeric = st.one_of(
         st.integers(min_value=-100, max_value=100),
