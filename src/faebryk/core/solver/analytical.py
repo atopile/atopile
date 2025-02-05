@@ -14,7 +14,8 @@ from faebryk.core.parameter import (
     Domain,
     Expression,
     GreaterOrEqual,
-    Idempotent,
+    IdempotentExpression,
+    IdempotentOperands,
     Involutory,
     Is,
     IsSubset,
@@ -903,12 +904,28 @@ def idempotent_deduplicate(mutator: Mutator):
     Intersection(A, A, B) -> Intersection(A, B)
     """
 
-    exprs = mutator.nodes_of_types(Idempotent, sort_by_depth=True)
+    exprs = mutator.nodes_of_types(IdempotentOperands, sort_by_depth=True)
     for expr in exprs:
-        assert isinstance(expr, Idempotent)
+        assert isinstance(expr, IdempotentOperands)
         unique_operands = unique(expr.operands, key=lambda x: x)
         if len(unique_operands) != len(expr.operands):
             mutator.mutate_expression(expr, operands=unique_operands)
+
+
+@algorithm("Idempotent unpack")
+def idempotent_unpack(mutator: Mutator):
+    """
+    Abs(Abs(A)) -> Abs(A)
+    """
+
+    exprs = mutator.nodes_of_type(IdempotentExpression, sort_by_depth=True)
+    for expr in exprs:
+        assert isinstance(expr, IdempotentExpression)
+        assert len(expr.operands) == 1
+        inner = expr.operands[0]
+        if type(inner) is not type(expr):
+            continue
+        mutator.mutate_unpack_expression(expr)
 
 
 @algorithm("Unary identity unpack")

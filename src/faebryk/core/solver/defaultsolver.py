@@ -74,6 +74,7 @@ class DefaultSolver(Solver):
             analytical.compress_associative,
             analytical.reflexive_predicates,
             analytical.idempotent_deduplicate,
+            analytical.idempotent_unpack,
             analytical.involutory_fold,
             analytical.unary_identity_unpack,
             literal_folding.fold_pure_literal_expressions,

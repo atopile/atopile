@@ -326,6 +326,17 @@ def fold_pow(
             return
 
 
+def fold_abs(
+    expr: Abs,
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+):
+    """ """
+    return
+
+
 # Setic --------------------------------------------------------------------------------
 def fold_intersect(
     expr: Intersection,
@@ -614,8 +625,7 @@ def fold(
             # TODO implement
             return lambda *args: None
         elif isinstance(expr, Abs):
-            # TODO implement
-            return lambda *args: None
+            return fold_abs  # type: ignore
         elif isinstance(expr, Sin):
             # TODO implement
             return lambda *args: None
