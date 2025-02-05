@@ -20,6 +20,18 @@ NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
 EPSILON_REL = 1e-6
 
 
+def float_round[T](value: T) -> T:
+    if not isinstance(value, (float, int)):
+        return round(value)  # type: ignore
+    if value in [math.inf, -math.inf]:
+        return value  # type: ignore
+    out = round(value)
+    if isinstance(value, float):
+        return float(out)  # type: ignore
+    assert isinstance(value, int)
+    return out  # type: ignore
+
+
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class Numeric_Set[T](P_Set[T]):
     pass
@@ -228,7 +240,7 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return Numeric_Interval_Disjoint(Numeric_Interval(other._max, self._max))
 
     def op_round(self) -> "Numeric_Interval[NumericT]":
-        return Numeric_Interval(round(self._min), round(self._max))  # type: ignore #TODO
+        return Numeric_Interval(float_round(self._min), float_round(self._max))  # type: ignore #TODO
 
     def op_abs(self) -> "Numeric_Interval[NumericT]":
         if self._min < 0 < self._max:

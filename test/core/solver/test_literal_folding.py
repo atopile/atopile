@@ -7,6 +7,7 @@ from functools import partial, reduce
 from operator import add, mul, pow, sub, truediv
 from typing import Any, Callable, Iterable, NamedTuple
 
+import typer
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NonInteractiveExampleWarning
@@ -36,6 +37,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.library.L import Range
+from faebryk.libs.sets.numeric_sets import float_round
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -111,22 +113,17 @@ class Filters(Namespace):
     @staticmethod
     def is_negative(value: ValueT) -> bool:
         value = Filters._unwrap_param(value)
-        return value.min_elem < 0 and value.max_elem < 0
+        return value.max_elem < 0
 
     @staticmethod
     def is_positive(value: ValueT) -> bool:
         value = Filters._unwrap_param(value)
-        return value.min_elem > 0 and value.max_elem > 0
+        return value.min_elem > 0
 
     @staticmethod
     def is_fractional(value: ValueT) -> bool:
         value = Filters._unwrap_param(value)
-
-        both_are_integers = value.min_elem.is_integer() and value.max_elem.is_integer()
-        is_single_integer = (
-            value.min_elem == value.max_elem and value.min_elem.is_integer()
-        )
-        return not (both_are_integers or is_single_integer)
+        return not value.min_elem.is_integer() or not value.max_elem.is_integer()
 
     @staticmethod
     def is_zero(value: ValueT) -> bool:
@@ -134,9 +131,13 @@ class Filters(Namespace):
         return abs_close(value.min_elem, 0) and abs_close(value.max_elem, 0)
 
     @staticmethod
-    def is_non_zero(value: ValueT) -> bool:
+    def crosses_zero(value: ValueT) -> bool:
         value = Filters._unwrap_param(value)
-        return not (abs_close(value.min_elem, 0) or abs_close(value.max_elem, 0))
+        return 0 in value or Filters.is_zero(value)
+
+    @staticmethod
+    def does_not_cross_zero(value: ValueT) -> bool:
+        return not Filters.crosses_zero(value)
 
     @staticmethod
     def is_empty(value: ValueT) -> bool:
@@ -147,17 +148,13 @@ class Filters(Namespace):
     def is_valid_for_power(
         pair: tuple[ValueT, ValueT],
     ) -> bool:
+        base, exp = pair
         return (
-            not (Filters.is_negative(pair[0]) and Filters.is_fractional(pair[1]))
-            and (Filters.is_positive(pair[0]) or Filters.is_negative(pair[0]))
-            and (Filters.is_positive(pair[1]) or Filters.is_negative(pair[1]))
+            # complex
+            not (Filters.is_negative(base) and Filters.is_fractional(exp))
+            # nan/undefined
+            and not (Filters.crosses_zero(base) and Filters.crosses_zero(exp))
         )
-
-    @staticmethod
-    def is_valid_for_division(
-        pair: tuple[ValueT, ValueT],
-    ) -> bool:
-        return Filters.is_non_zero(pair[1])
 
 
 class st_values(Namespace):
@@ -198,27 +195,19 @@ class st_values(Namespace):
 
     small_parameters = st.builds(Builders.build_parameter, small_quantities)
 
-    values = st.one_of(
-        numeric.map(Quantity_Interval_Disjoint.from_value),
-        ranges.map(Quantity_Interval_Disjoint.from_value),
-        parameters,
-    )
+    values = st.one_of(quantities, parameters)
 
     positive_values = values.filter(Filters.is_positive)
 
-    small_values = st.one_of(
-        small_numeric.map(Quantity_Interval_Disjoint.from_value),
-        small_ranges.map(Quantity_Interval_Disjoint.from_value),
-        small_parameters,
-    )
+    small_values = st.one_of(small_quantities, small_parameters)
 
-    short_lists = partial(st.lists, min_size=1, max_size=5)
+    _short_lists = partial(st.lists, min_size=1, max_size=5)
 
-    lists = short_lists(values)
+    lists = _short_lists(values)
 
     pairs = st.tuples(values, values)
 
-    division_pairs = st.tuples(values, values.filter(Filters.is_non_zero))
+    division_pairs = st.tuples(values, values.filter(Filters.does_not_cross_zero))
 
     power_pairs = st.tuples(values, small_values).filter(Filters.is_valid_for_power)
 
@@ -240,7 +229,8 @@ class Extension(Namespace):
 
     @staticmethod
     def tuples_division(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
-        return st.tuples(children, st_values.values.filter(Filters.is_non_zero))
+        # TODO: exprs on the right side
+        return st.tuples(children, st_values.values.filter(Filters.does_not_cross_zero))
 
     @staticmethod
     def single_positive(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
@@ -265,6 +255,7 @@ EXPR_TYPES = [
     # ExprType(Builders.Sin, st_values.values, Extension.single),
     # ExprType(Builders.Cos, st_values.values, Extension.single),
     ExprType(Builders.Abs, st_values.values, Extension.single),
+    # TODO: round, float, ceil can't handle inf
     ExprType(Builders.Round, st_values.values, Extension.single),
     # ExprType(Builders.Floor, st_values.values, Extension.single),
     # ExprType(Builders.Ceil, st_values.values, Extension.single),
@@ -276,12 +267,15 @@ EXPR_TYPES = [
 
 
 class st_exprs(Namespace):
-    one_of = st.one_of(
+    flat = st.one_of(
         *[st.builds(expr_type.builder, expr_type.strategy) for expr_type in EXPR_TYPES]
     )
 
+    # flat
+    # op1(flat, flat) | flat
+    # op2(op1 | flat, op1 | flat)
     trees = st.recursive(
-        one_of,
+        flat,
         lambda children: st.one_of(
             *[
                 st.builds(expr_type.builder, expr_type.extension_strategy(children))
@@ -302,13 +296,13 @@ def evaluate_expr(
         Divide: truediv,
         Sqrt: lambda x: pow(x, 0.5),
         Power: pow,
-        Round: round,
+        Round: float_round,
         Abs: abs,
         Sin: lambda x: x.op_sin(),
         Log: lambda x: x.op_log(),
         Cos: lambda x: (x + math.pi / 2).op_sin(),
-        Floor: lambda x: round(x - 0.5),  # TODO: handle inf
-        Ceil: lambda x: round(x + 0.5),  # TODO: handle inf
+        Floor: lambda x: float_round(x - 0.5),
+        Ceil: lambda x: float_round(x + 0.5),
         Min: min,
         Max: max,
     }
@@ -393,10 +387,7 @@ def test_literal_folding(expr: Arithmetic):
     assert solver_result == evaluated_expr
 
 
-@given(st_exprs.trees)
-@settings(deadline=timedelta(milliseconds=1000))
-def test_all_folding_implemented(expr: Arithmetic):
-    evaluate_expr(expr)
+# DEBUG --------------------------------------------------------------------------------
 
 
 def generate_exprs():
@@ -434,13 +425,17 @@ def evaluate_exprs():
     console.print(table)
 
 
-if __name__ == "__main__":
+def main(target: str):
     warnings.filterwarnings("ignore", category=NonInteractiveExampleWarning)
 
-    match sys.argv[1]:
+    match target:
         case "evaluate":
             evaluate_exprs()
         case "generate":
             generate_exprs()
         case _:
             raise ValueError(f"Unknown command: {sys.argv[1]}")
+
+
+if __name__ == "__main__":
+    typer.run(main)

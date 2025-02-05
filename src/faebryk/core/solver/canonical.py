@@ -270,7 +270,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         (
             Power,
             Sqrt,
-            lambda operands: [*operands, -0.5],
+            lambda operands: [*operands, 0.5],
         ),
         (
             GreaterOrEqual,

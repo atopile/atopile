@@ -43,6 +43,7 @@ from faebryk.core.solver.utils import (
     alias_is_literal_and_check_predicate_eval,
     is_literal,
     is_numeric_literal,
+    is_pure_literal_expression,
     make_lit,
 )
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
@@ -103,7 +104,7 @@ def _collect_factors[T: Multiply | Power](
         # If it's commutative, skip purely literal operations and pick the non-literal
         # operand
         if issubclass(collect_type, Commutative):
-            if all(ParameterOperatable.is_literal(o) for o in collect_op.operands):
+            if is_pure_literal_expression(collect_op):
                 continue
             paramop = next(
                 o for o in collect_op.operands if not ParameterOperatable.is_literal(o)
@@ -681,7 +682,7 @@ def fold_literals(mutator: Mutator, expr_type: type[CanonicalExpression]):
             continue
 
         # covered by pure literal folding
-        if all(ParameterOperatable.is_literal(o) for o in expr.operands):
+        if is_pure_literal_expression(expr):
             continue
 
         operands = expr.operands
@@ -755,7 +756,7 @@ fold_algorithms = [
 
 
 def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral:
-    assert all(ParameterOperatable.is_literal(o) for o in expr.operands)
+    assert is_pure_literal_expression(expr)
     return _CanonicalExpressions[type(expr)](*expr.operands)
 
 
@@ -771,7 +772,7 @@ def fold_pure_literal_expressions(mutator: Mutator):
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
-        if not all(ParameterOperatable.is_literal(o) for o in expr.operands):
+        if not is_pure_literal_expression(expr):
             continue
 
         result = _exec_pure_literal_expressions(expr)

@@ -44,6 +44,7 @@ from faebryk.core.solver.utils import (
     is_correlatable_literal,
     is_literal,
     is_literal_expression,
+    is_pure_literal_expression,
     is_replacable,
     is_replacable_by_literal,
     make_lit,
@@ -661,7 +662,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
-        if is_literal_expression(e):
+        if is_pure_literal_expression(e):
             continue
 
         ops = []
