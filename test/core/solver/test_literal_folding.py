@@ -70,12 +70,14 @@ class Builders(Namespace):
         return p
 
     @staticmethod
-    def operator(op: type[Arithmetic]) -> Callable[[Any], Arithmetic]:
-        return (
-            lambda operands: op(*operands)
-            if isinstance(operands, Iterable)
-            else op(operands)
-        )
+    def operator(op: type[Arithmetic]) -> Callable[[Iterable[Any] | Any], Arithmetic]:
+        def f(operands: Iterable[Any] | Any) -> Arithmetic:
+            return op(*operands) if isinstance(operands, Iterable) else op(operands)
+
+        # required for good falsifying examples from hypothesis
+        f.__name__ = op.__name__
+
+        return f
 
     # Arithmetic
     Add = operator(Add)
