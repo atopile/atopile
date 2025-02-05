@@ -485,6 +485,9 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # In Is automatically by eq classes
         if isinstance(expr, Is):
             continue
+        # Taken care of by singleton fold
+        if any(is_replacable_by_literal(op) is not None for op in expr.operands):
+            continue
         # In subset useless to look at subset lits
         no_allow_subset_lit = isinstance(expr, IsSubset)
 
@@ -856,6 +859,9 @@ def uncorrelated_alias_fold(mutator: Mutator):
         exprs = alias.get_operations()
         for expr in exprs:
             assert isinstance(expr, CanonicalExpression)
+            # Taken care of by singleton fold
+            if any(is_replacable_by_literal(op) is not None for op in expr.operands):
+                continue
             # TODO: we can weaken this to not replace correlated operands instead of
             #   skipping the whole expression
             # check if any correlations

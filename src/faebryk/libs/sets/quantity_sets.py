@@ -252,14 +252,15 @@ class Quantity_Interval(Quantity_Set):
     #    return r
 
     def __contains__(self, item: Any) -> bool:
+        if isinstance(item, (float, int)):
+            item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
                 return False
             item = item.to(self.interval_units).magnitude
-            if not isinstance(item, float) and not isinstance(item, int):
-                return False
-            return self._interval.__contains__(item)
-        return False
+        if not isinstance(item, float) and not isinstance(item, int):
+            return False
+        return self._interval.__contains__(item)
 
     # yucky with floats
     def __eq__(self, value: Any) -> bool:
@@ -562,14 +563,15 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
     def __contains__(self, item: Any) -> bool:
+        if isinstance(item, (float, int)):
+            item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
                 return False
             item = item.to(self.interval_units).magnitude
-            if not isinstance(item, float) and not isinstance(item, int):
-                return False
-            return self._intervals.__contains__(item)
-        return False
+        if not isinstance(item, float) and not isinstance(item, int):
+            return False
+        return self._intervals.__contains__(item)
 
     @once
     def __hash__(self) -> int:

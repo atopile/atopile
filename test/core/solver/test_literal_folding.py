@@ -10,6 +10,7 @@ from typing import Any, Callable, Iterable, NamedTuple
 import typer
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
+from hypothesis.core import reproduce_failure  # noqa: F401
 from hypothesis.errors import NonInteractiveExampleWarning
 
 from faebryk.core.core import Namespace
@@ -341,6 +342,24 @@ def evaluate_expr(
 def test_can_evaluate_literals(expr: Arithmetic):
     result = evaluate_expr(expr)
     assert isinstance(result, Quantity_Interval_Disjoint)
+
+
+# FIXME: we are correlating congruent expressions I think
+# might be happening in the check existing of create expression
+# TODO: 0 / [0, 1] is kinda weirdly defined, for now we just skip it
+
+
+# TODO
+# @reproduce_failure('6.124.7', b'AXicc2R2ZGB0ZHJkcPsvrh2ta+HIqLFtAQMYIIR3aQKF7QVgwgxuDC+uLOX/D1LAqOHAwMBqp5tkCVLycSYIzGKE6uP4wUBb0wEkhy5v')  # noqa: E501
+
+
+# TODO subset estimation not working
+# due to not triggerning new alias in:
+# [0] + A{I|X} -> A{I|X}
+# This case doesn't create a new alias, but should trigger a subset estimation run
+# Thus we need to track whether we have created an implicit alias by repr_map merge
+# A{S|([0, inf])} is!✓ ((([1, 2]) ^{I|([1, 1.414213562])} ([0.5])) ^{S|([0,inf])} ([0.5]))  # noqa: E501
+# @reproduce_failure("6.124.7", b"AEEVQQFBBUEAQQFBBEECQQBBAUEAQQI=")
 
 
 @given(st_exprs.trees)

@@ -106,11 +106,6 @@ class Mutator:
             terminated=set(),
         )
 
-        # TODO remove debug
-        # logger.debug(f"new ops ({algo.name}): {len(self._new_operables)}")
-        # for op in self._new_operables:
-        #     logger.debug(f"\t{hex(id(op))}| {op.compact_repr(self.print_context)}")
-
         self.algo = algo
 
     @property

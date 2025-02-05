@@ -197,6 +197,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         Arithmetically divides a interval by another interval.
         """
+        # TODO not sure I like this
+        # this is very numerically unstable
+        # [0] / [0, 1] ->  [0]
+        # [1e-20] / [0, 1] -> [1e-20, inf]
+        # if self.is_single_element() and self._min == 0:
+        #     return Numeric_Interval_Disjoint(
+        #         Numeric_Interval(self._min, self._max),
+        #     )
         return Numeric_Interval_Disjoint(
             *(self.op_mul_interval(o) for o in other.op_invert().intervals)
         )
