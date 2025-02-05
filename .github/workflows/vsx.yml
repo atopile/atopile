@@ -41,7 +41,7 @@ jobs:
         # The pre-release version adds 1000 to the patch version to get around the lack of proper semver support
         # https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions
         run: |
-          PUBLISH_VERSION= $(uv run ato --semver | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
+          PUBLISH_VERSION=$(uv run ato --semver | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
           npm version --no-git-tag-version $PUBLISH_VERSION
 
       - name: Release version
