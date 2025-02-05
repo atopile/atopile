@@ -70,6 +70,7 @@ dependencies = [
     "watchfiles>=0.21.0",
     "questionary>=2.0.1",
     "pydantic-settings>=2.7.1",
+    "hypothesis>=6.124.7",
 ]
 
 [project.urls]

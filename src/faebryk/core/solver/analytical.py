@@ -14,7 +14,8 @@ from faebryk.core.parameter import (
     Domain,
     Expression,
     GreaterOrEqual,
-    Idempotent,
+    IdempotentExpression,
+    IdempotentOperands,
     Involutory,
     Is,
     IsSubset,
@@ -44,6 +45,7 @@ from faebryk.core.solver.utils import (
     is_correlatable_literal,
     is_literal,
     is_literal_expression,
+    is_pure_literal_expression,
     is_replacable,
     is_replacable_by_literal,
     make_lit,
@@ -483,6 +485,9 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # In Is automatically by eq classes
         if isinstance(expr, Is):
             continue
+        # Taken care of by singleton fold
+        if any(is_replacable_by_literal(op) is not None for op in expr.operands):
+            continue
         # In subset useless to look at subset lits
         no_allow_subset_lit = isinstance(expr, IsSubset)
 
@@ -661,7 +666,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
 
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
-        if is_literal_expression(e):
+        if is_pure_literal_expression(e):
             continue
 
         ops = []
@@ -854,6 +859,9 @@ def uncorrelated_alias_fold(mutator: Mutator):
         exprs = alias.get_operations()
         for expr in exprs:
             assert isinstance(expr, CanonicalExpression)
+            # Taken care of by singleton fold
+            if any(is_replacable_by_literal(op) is not None for op in expr.operands):
+                continue
             # TODO: we can weaken this to not replace correlated operands instead of
             #   skipping the whole expression
             # check if any correlations
@@ -902,12 +910,28 @@ def idempotent_deduplicate(mutator: Mutator):
     Intersection(A, A, B) -> Intersection(A, B)
     """
 
-    exprs = mutator.nodes_of_types(Idempotent, sort_by_depth=True)
+    exprs = mutator.nodes_of_types(IdempotentOperands, sort_by_depth=True)
     for expr in exprs:
-        assert isinstance(expr, Idempotent)
+        assert isinstance(expr, IdempotentOperands)
         unique_operands = unique(expr.operands, key=lambda x: x)
         if len(unique_operands) != len(expr.operands):
             mutator.mutate_expression(expr, operands=unique_operands)
+
+
+@algorithm("Idempotent unpack")
+def idempotent_unpack(mutator: Mutator):
+    """
+    Abs(Abs(A)) -> Abs(A)
+    """
+
+    exprs = mutator.nodes_of_types(IdempotentExpression, sort_by_depth=True)
+    for expr in exprs:
+        assert isinstance(expr, IdempotentExpression)
+        assert len(expr.operands) == 1
+        inner = expr.operands[0]
+        if type(inner) is not type(expr):
+            continue
+        mutator.mutate_unpack_expression(expr)
 
 
 @algorithm("Unary identity unpack")

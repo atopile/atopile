@@ -20,6 +20,18 @@ NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
 EPSILON_REL = 1e-6
 
 
+def float_round[T](value: T) -> T:
+    if not isinstance(value, (float, int)):
+        return round(value)  # type: ignore
+    if value in [math.inf, -math.inf]:
+        return value  # type: ignore
+    out = round(value)
+    if isinstance(value, float):
+        return float(out)  # type: ignore
+    assert isinstance(value, int)
+    return out  # type: ignore
+
+
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class Numeric_Set[T](P_Set[T]):
     pass
@@ -57,8 +69,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return self._max
 
     def as_center_rel(self) -> tuple[NumericT, float]:
+        if self._min == self._max:
+            return self._min, 0.0
+
         center = (self._min + self._max) / 2
-        rel = (self._max - self._min) / 2 / center
+        if center == 0:
+            rel = (self._max - self._min) / 2
+        else:
+            rel = (self._max - self._min) / 2 / center
         return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
@@ -136,6 +154,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise NotImplementedError("passing zero in exp not implemented yet")
         if self._min < 0 and self._max > 0:
             raise NotImplementedError("crossing zero in base not implemented yet")
+        if self._max < 0 and not other.min_elem.is_integer():
+            raise NotImplementedError(
+                "cannot raise negative base to fractional exponent"
+            )
 
         values = [
             self._min**other._min,
@@ -175,6 +197,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         Arithmetically divides a interval by another interval.
         """
+        # TODO not sure I like this
+        # this is very numerically unstable
+        # [0] / [0, 1] ->  [0]
+        # [1e-20] / [0, 1] -> [1e-20, inf]
+        # if self.is_single_element() and self._min == 0:
+        #     return Numeric_Interval_Disjoint(
+        #         Numeric_Interval(self._min, self._max),
+        #     )
         return Numeric_Interval_Disjoint(
             *(self.op_mul_interval(o) for o in other.op_invert().intervals)
         )
@@ -218,13 +248,18 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return Numeric_Interval_Disjoint(Numeric_Interval(other._max, self._max))
 
     def op_round(self) -> "Numeric_Interval[NumericT]":
-        return Numeric_Interval(round(self._min), round(self._max))  # type: ignore #TODO
+        return Numeric_Interval(float_round(self._min), float_round(self._max))  # type: ignore #TODO
 
     def op_abs(self) -> "Numeric_Interval[NumericT]":
         if self._min < 0 < self._max:
             return Numeric_Interval(0, self._max)  # type: ignore #TODO
         if self._min < 0 and self._max < 0:
             return Numeric_Interval(-self._max, -self._min)
+        if self._min < 0 and self._max == 0:
+            return Numeric_Interval(0, -self._min)
+        if self._min == 0 and self._max < 0:
+            return Numeric_Interval(self._max, 0)
+
         assert self._min >= 0 and self._max >= 0
         return self
 

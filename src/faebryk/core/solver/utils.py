@@ -246,6 +246,12 @@ def is_literal_expression(
     return isinstance(po, Expression) and not po.get_involved_parameters()
 
 
+def is_pure_literal_expression(
+    po: ParameterOperatable | SolverAll,
+) -> TypeGuard[CanonicalExpression]:
+    return isinstance(po, Expression) and all(is_literal(op) for op in po.operands)
+
+
 def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
     return bool(
         isinstance(po, Is)

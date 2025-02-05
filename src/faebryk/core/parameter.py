@@ -728,7 +728,7 @@ class Expression(ParameterOperatable):
             else:
                 out = f"{symbol}({', '.join(formatted_operands)})"
         elif style.placement == Expression.ReprStyle.Placement.EMBRACE:
-            out = f"{symbol}{', '.join(formatted_operands)}{symbol}"
+            out = f"{symbol}{', '.join(formatted_operands)}{style.symbol}"
         elif len(formatted_operands) == 0:
             out = f"{type(self).__name__}{symbol_suffix}()"
         elif style.placement == Expression.ReprStyle.Placement.POSTFIX:
@@ -1721,7 +1721,8 @@ CanonicalAll = CanonicalOperable | CanonicalLiteral
 # --------------------------------------------------------------------------------------
 
 Reflexive = Is | IsSubset | GreaterOrEqual
-Idempotent = Or | Union | Intersection
+IdempotentExpression = Abs | Round
+IdempotentOperands = Or | Union | Intersection
 Commutative = Add | Multiply | Or | Union | Intersection | SymmetricDifference | Is
 UnaryIdentity = Add | Multiply | Or | Union | Intersection
 FullyAssociative = Add | Multiply | Or | Union | Intersection

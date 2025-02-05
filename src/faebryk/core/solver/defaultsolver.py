@@ -74,6 +74,7 @@ class DefaultSolver(Solver):
             analytical.compress_associative,
             analytical.reflexive_predicates,
             analytical.idempotent_deduplicate,
+            analytical.idempotent_unpack,
             analytical.involutory_fold,
             analytical.unary_identity_unpack,
             literal_folding.fold_pure_literal_expressions,
@@ -95,7 +96,7 @@ class DefaultSolver(Solver):
     class IterationData:
         graphs: list[Graph]
         total_repr_map: Mutator.ReprMap
-        output_operables: dict[SolverAlgorithm, set[ParameterOperatable]]
+        repr_since_last_iteration: dict[SolverAlgorithm, REPR_MAP]
 
         def __rich_repr__(self):
             yield "graphs", self.graphs
@@ -155,7 +156,7 @@ class DefaultSolver(Solver):
                 *data.graphs,
                 algo=algo,
                 print_context=print_context,
-                last_run_operables=data.output_operables.get(algo),
+                iteration_repr_map=data.repr_since_last_iteration.get(algo),
             )
             mutator.run()
             algo_result = mutator.close()
@@ -172,18 +173,22 @@ class DefaultSolver(Solver):
             iteration_state.dirty |= algo_result.dirty
             # TODO: optimize so only dirty
             if not algo.single:
-                data.output_operables[algo] = mutator.get_output_operables()
+                data.repr_since_last_iteration[algo] = {
+                    k: k for k in mutator.get_output_operables()
+                }
 
             if algo_result.dirty:
                 data.graphs = algo_result.graphs
                 iteration_repr_maps.append(algo_result.repr_map)
-                # TODO implement nicer
-                # map output_operables through new repr_map
-                for s, d in algo_result.repr_map.items():
-                    for v_ops in data.output_operables.values():
-                        if s in v_ops:
-                            v_ops.remove(s)
-                            v_ops.add(d)
+                # append to per-algo iteration repr_map
+                assert algo_result.repr_map
+                for reprs in data.repr_since_last_iteration.values():
+                    for old_s, old_d in list(reprs.items()):
+                        new_d = algo_result.repr_map.get(old_d)
+                        if new_d is None:
+                            del reprs[old_s]
+                            continue
+                        reprs[old_s] = new_d
 
         data.total_repr_map = Mutator.create_concat_repr_map(
             data.total_repr_map.repr_map, *iteration_repr_maps
@@ -223,7 +228,7 @@ class DefaultSolver(Solver):
                         for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
                     }
                 ),
-                output_operables={},
+                repr_since_last_iteration={},
             ),
             print_context=print_context_,
         )

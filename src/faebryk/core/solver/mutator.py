@@ -86,18 +86,27 @@ class Mutator:
         *Gs: Graph,
         print_context: ParameterOperatable.ReprContext,
         algo: SolverAlgorithm,
-        last_run_operables: set[ParameterOperatable] | None = None,
+        iteration_repr_map: REPR_MAP | None = None,
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self._G: set[Graph] = set(Gs)
         self.print_context = print_context
 
-        if not last_run_operables:
-            last_run_operables = set()
+        if not iteration_repr_map:
+            iteration_repr_map = {}
 
-        self._last_run_operables = last_run_operables
         self._starting_operables = set(self.nodes_of_type(include_terminated=True))
+
+        self._last_run_repr_map = iteration_repr_map
+        self._last_run_operables = set(iteration_repr_map.values())
         self._new_operables = self._starting_operables - self._last_run_operables
+        self._merged_since_last_run = {
+            new_v: [old_k for old_k, _ in kvs]
+            for new_v, kvs in groupby(
+                iteration_repr_map.items(), key=lambda t: t[1], only_multi=True
+            ).items()
+        }
+
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
             removed=set(),
@@ -105,11 +114,6 @@ class Mutator:
             created=defaultdict(list),
             terminated=set(),
         )
-
-        # TODO remove debug
-        # logger.debug(f"new ops ({algo.name}): {len(self._new_operables)}")
-        # for op in self._new_operables:
-        #     logger.debug(f"\t{hex(id(op))}| {op.compact_repr(self.print_context)}")
 
         self.algo = algo
 
@@ -588,20 +592,36 @@ class Mutator:
         literal
         """
 
-        return (
-            expr
-            for expr in self.nodes_of_type(
-                Is, new_only=new_only, include_terminated=True
-            )
-            if is_alias_is_literal(expr)
+        aliases = set(
+            self.nodes_of_type(Is, new_only=new_only, include_terminated=True)
         )
 
+        if new_only:
+            # Taking into account if op with no literal merged into a op with literal
+            for new, olds in self._merged_since_last_run.items():
+                old_lits = {try_extract_literal(o) for o in olds}
+                if len(old_lits) == 1:
+                    continue
+                aliases.update(new.get_operations(Is, constrained_only=True))
+
+        return (expr for expr in aliases if is_alias_is_literal(expr))
+
     def get_literal_subsets(self, new_only: bool = True):
+        subsets = set(
+            self.nodes_of_type(IsSubset, new_only=new_only, include_terminated=True)
+        )
+
+        if new_only:
+            # Taking into account if op with no literal merged into a op with literal
+            for new, olds in self._merged_since_last_run.items():
+                old_lits = {try_extract_literal(o, allow_subset=True) for o in olds}
+                if len(old_lits) == 1:
+                    continue
+                subsets.update(new.get_operations(IsSubset, constrained_only=True))
+
         new_literal_ss = (
             expr
-            for expr in self.nodes_of_type(
-                IsSubset, new_only=new_only, include_terminated=True
-            )
+            for expr in subsets
             if bool(
                 expr.constrained
                 # match A ⊆!!✓ ([5, 20]) but not ([5, 20]) ⊆!!✓ A
