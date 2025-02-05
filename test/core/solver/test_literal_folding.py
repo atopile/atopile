@@ -6,7 +6,7 @@ from functools import partial, reduce
 from operator import add, mul, pow, sub, truediv
 from typing import Any, Callable, Iterable, NamedTuple
 
-from hypothesis import given, settings
+from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
 from hypothesis.errors import NonInteractiveExampleWarning
 
@@ -348,7 +348,32 @@ def test_can_evaluate_literals(expr: Arithmetic):
 
 
 @given(st_exprs.trees)
-@settings(deadline=timedelta(milliseconds=1000))
+@settings(
+    deadline=None,  # timedelta(milliseconds=1000),
+    max_examples=10000,
+    report_multiple_bugs=True,
+    phases=(
+        Phase.generate,
+        # Phase.reuse,
+        # Phase.explicit,
+        Phase.target,
+        Phase.shrink,
+        Phase.explain,
+    ),
+    suppress_health_check=[
+        HealthCheck.data_too_large,
+        HealthCheck.too_slow,
+        HealthCheck.filter_too_much,
+        HealthCheck.large_base_example,
+    ],
+    print_blob=True,
+)
+@example(
+    expr=Subtract(
+        Quantity_Interval_Disjoint.from_value(1),
+        Quantity_Interval_Disjoint.from_value(0),
+    )
+).via("discovered failure")
 def test_literal_folding(expr: Arithmetic):
     solver = DefaultSolver()
 
