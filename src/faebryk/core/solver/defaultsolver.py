@@ -20,7 +20,7 @@ from faebryk.core.solver import analytical, canonical, literal_folding
 from faebryk.core.solver.mutator import REPR_MAP, Mutator
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
-    DEBUG_ALLOW_PARTIAL_STATE,
+    ALLOW_PARTIAL_STATE,
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
@@ -66,13 +66,16 @@ class DefaultSolver(Solver):
         ],
         iterative=[
             analytical.remove_unconstrained,
-            analytical.remove_tautologies,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
             analytical.distribute_literals_across_alias_classes,
             analytical.remove_congruent_expressions,
             analytical.convert_inequality_with_literal_to_subset,
             analytical.compress_associative,
+            analytical.reflexive_predicates,
+            analytical.idempotent_deduplicate,
+            analytical.involutory_fold,
+            analytical.unary_identity_unpack,
             literal_folding.fold_pure_literal_expressions,
             *literal_folding.fold_algorithms,
             analytical.merge_intersect_subsets,
@@ -229,11 +232,6 @@ class DefaultSolver(Solver):
             first_iter = iterno == 0
 
             if iterno > MAX_ITERATIONS_HEURISTIC:
-                if DEBUG_ALLOW_PARTIAL_STATE:
-                    return (
-                        self.partial_state.data.total_repr_map,
-                        self.partial_state.print_context,
-                    )
                 raise TimeoutError(
                     "Solver Bug: Too many iterations, likely stuck in a loop"
                 )
@@ -361,6 +359,8 @@ class DefaultSolver(Solver):
         try:
             repr_map, print_context = self.simplify_symbolically(param.get_graph())
         except TimeoutError:
+            if not ALLOW_PARTIAL_STATE:
+                raise
             if self.partial_state is None:
                 raise
             repr_map = self.partial_state.data.total_repr_map
@@ -425,6 +425,8 @@ class DefaultSolver(Solver):
             except TimeoutError:
                 if LOG_PICK_SOLVE:
                     logger.warning(f"TIMEOUT: {pred.compact_repr(print_context)}")
+                if not ALLOW_PARTIAL_STATE:
+                    raise
                 if self.partial_state is None:
                     result.unknown_predicates.append(p)
                     continue

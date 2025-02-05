@@ -22,8 +22,8 @@ from rich.table import Table
 
 from atopile import errors
 from atopile.address import AddrStr
-from atopile.cli.install import do_install
 from atopile.config import PROJECT_CONFIG_FILENAME, config
+from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
@@ -199,9 +199,17 @@ def query_helper[T: str | Path | bool](
     raise RuntimeError("Unclear how we got here")
 
 
+PROJECT_NAME_REQUIREMENTS = (
+    "Project name must start with a letter and contain only letters, numbers, dashes"
+    " and underscores. It will be used for the project directory and name on Github"
+)
+
+
 @create_app.command()
 def project(
-    name: Annotated[str | None, typer.Option("--name", "-n")] = None,
+    name: Annotated[
+        str | None, typer.Option("--name", "-n", help=PROJECT_NAME_REQUIREMENTS)
+    ] = None,
     repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
 ):
     """
@@ -211,8 +219,8 @@ def project(
     name = query_helper(
         ":rocket: What's your project [cyan]name?[/]",
         type_=str,
-        validator=str.isidentifier,
-        validation_failure_msg="Project name must be a valid identifier",
+        validator=r"^[a-zA-Z][a-zA-Z0-9_-]{,99}$",
+        validation_failure_msg=PROJECT_NAME_REQUIREMENTS,
         upgrader=caseconverter.kebabcase,
         upgrader_msg=textwrap.dedent(
             """
@@ -318,14 +326,6 @@ def project(
             clean_repo = git.Repo.init(repo_obj.working_tree_dir)
             clean_repo.git.add(A=True)
             clean_repo.git.commit(m="Initial commit")
-
-    # Install dependencies listed in the ato.yaml, typically just generics
-    do_install(
-        to_install="generics",
-        vendor=False,
-        upgrade=True,
-        path=Path(repo_obj.working_tree_dir),
-    )
 
     # Wew! New repo created!
     rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
@@ -736,7 +736,7 @@ class Template(ABC):
     nodes: list[str] = field(default_factory=list)
     docstring: str = "TODO: Docstring describing your module"
 
-    def _process_part(self, part: Component) -> tuple[str, Any]:
+    def _process_part(self, part: Component):
         """Common part processing logic used by child classes."""
         name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(name, str)
@@ -832,15 +832,24 @@ class FabllTemplate(Template):
         # Get common processed data
         self.name, easyeda_symbol = self._process_part(part)
 
-        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
+        designator_prefix_str = easyeda_symbol.info.prefix.replace("?", "")
+        try:
+            prefix = has_designator_prefix.Prefix(designator_prefix_str)
+            designator_prefix = f"F.has_designator_prefix.Prefix.{prefix.name}"
+        except ValueError:
+            logger.warning(
+                f"Using non-standard designator prefix: {designator_prefix_str}"
+            )
+            designator_prefix = f"'{designator_prefix_str}'"
+
         self.traits.append(
-            f"designator_prefix = L.f_field(F.has_designator_prefix_defined)"
-            f"('{designator_prefix}')"
+            f"designator_prefix = L.f_field(F.has_designator_prefix)"
+            f"({designator_prefix})"
         )
 
         self.traits.append(
             "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{self.name}'}})"
+            f"({{'LCSC': '{part.lcsc_display}'}})"
         )
 
         self.imports.append(
@@ -944,12 +953,20 @@ class FabllTemplate(Template):
                 \"\"\"
 
                 # ----------------------------------------
-                #     modules, interfaces, parameters
+                #                modules
+                # ----------------------------------------
+
+                # ----------------------------------------
+                #              interfaces
                 # ----------------------------------------
                 {gen_repeated_block(self.nodes)}
 
                 # ----------------------------------------
-                #                 traits
+                #              parameters
+                # ----------------------------------------
+
+                # ----------------------------------------
+                #                traits
                 # ----------------------------------------
                 {gen_repeated_block(self.traits)}
 

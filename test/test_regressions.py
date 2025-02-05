@@ -77,7 +77,7 @@ def test_projects(
     try:
         run_live(
             [sys.executable, "-m", "atopile", "-v", "install"],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
+            env={**os.environ, "NONINTERACTIVE": "1", **env},
             cwd=prj_path,
             stdout=print,
             stderr=print,
@@ -90,7 +90,7 @@ def test_projects(
     try:
         run_live(
             [sys.executable, "-m", "atopile", "-v", "build", "--frozen"],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1", **env},
+            env={**os.environ, "NONINTERACTIVE": "1", **env},
             cwd=prj_path,
             stdout=print,
             stderr=print,

@@ -116,7 +116,9 @@ def test_nested_nodes(bob: Bob):
 
 
 def test_resistor(bob: Bob, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         """
@@ -143,9 +145,11 @@ def test_standard_library_import(bob: Bob):
     text = dedent(
         """
         import Resistor
+        from "interfaces.ato" import PowerAC
 
         module A:
             r1 = new Resistor
+            power_in = new PowerAC
         """
     )
 
@@ -156,6 +160,8 @@ def test_standard_library_import(bob: Bob):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
+
+    assert Bob.get_node_attr(node, "power_in")
 
 
 @pytest.mark.parametrize(
@@ -184,7 +190,9 @@ def test_reserved_attrs(
     pkg: F.has_package.Package,
     repo_root: Path,
 ):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         f"""

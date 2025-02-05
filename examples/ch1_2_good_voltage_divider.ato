@@ -1,5 +1,5 @@
-from "generics/interfaces.ato" import Power
-from "generics/resistors.ato" import Resistor
+import ElectricPower, Resistor
+
 
 module VoltageDivider:
     """
@@ -12,8 +12,8 @@ module VoltageDivider:
     - max_i_q
     """
 
-    in = new Power
-    out = new Power
+    in = new ElectricPower
+    out = new ElectricPower
     max_i_q: current
 
     r_top = new Resistor
@@ -22,9 +22,10 @@ module VoltageDivider:
     in.vcc ~ r_top.p1; r_top.p2 ~ out.vcc; out.vcc ~ r_bottom.p1; r_bottom.p2 ~ in.gnd
     in.gnd ~ out.gnd
 
-    assert out.voltage within in.voltage * r_bottom.value / (r_top.value + r_bottom.value)
+    assert out.voltage within in.voltage * r_bottom.resistance / (r_top.resistance + r_bottom.resistance)
     assert in.voltage > out.voltage
-    assert in.current * r_bottom.value / (r_top.value + r_bottom.value) within max_i_q
+    assert in.current * r_bottom.resistance / (r_top.resistance + r_bottom.resistance) within max_i_q
+
 
 module App:
     my_vdiv = new VoltageDivider

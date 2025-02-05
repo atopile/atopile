@@ -42,7 +42,7 @@ def test_examples_build(
     example = example_copy
 
     # Copy dependencies to the tmp dir directly because standalone mode doens't include
-    example_modules = repo_root / "examples" / ".ato" / "modules"
+    example_modules = repo_root / "test" / "common" / "resources" / ".ato" / "modules"
     for item in example_modules.glob("*"):
         if item.is_dir():
             shutil.copytree(item, tmp_path / item.name)
@@ -60,7 +60,7 @@ def test_examples_build(
                 "--standalone",
                 f"{example}:App",
             ],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+            env={**os.environ, "NONINTERACTIVE": "1"},
             cwd=tmp_path,
             stdout=print,
             stderr=print,
