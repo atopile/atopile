@@ -145,6 +145,17 @@ class GlobalConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data if self.yaml_data else {}
 
 
+def _find_project_config_file(start: Path) -> Path | None:
+    """Search parent directories, up to the root, for a project config file."""
+    path = start
+    while not (path / PROJECT_CONFIG_FILENAME).exists():
+        path = path.parent
+        if path == path.root:
+            return None
+
+    return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+
+
 class ProjectConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
@@ -154,13 +165,7 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
         if _project_dir:
             return _project_dir / PROJECT_CONFIG_FILENAME
 
-        path = Path.cwd()
-        while not (path / PROJECT_CONFIG_FILENAME).exists():
-            path = path.parent
-            if path == Path("/"):
-                return None
-
-        return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+        return _find_project_config_file(Path.cwd())
 
     def get_data(self) -> dict[str, Any]:
         return self.yaml_data or {}
@@ -862,10 +867,8 @@ class Config:
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)
         else:
-            if entry_arg_file_path.is_dir():
-                self.project_dir = entry_arg_file_path
-            elif entry_arg_file_path.is_file():
-                self.project_dir = entry_arg_file_path.parent
+            if config_file_path := _find_project_config_file(entry_arg_file_path):
+                self.project_dir = config_file_path.parent
             else:
                 raise UserBadParameterError(
                     f"Specified entry path is not a file or directory: "
