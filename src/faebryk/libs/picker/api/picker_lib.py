@@ -36,7 +36,11 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.picker import MultiPickError, PickError
+from faebryk.libs.picker.picker import (
+    MultiPickError,
+    PickError,
+    does_not_require_picker_check,
+)
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Tree, groupby, not_none
 
@@ -303,7 +307,11 @@ def get_compatible_parameters(
             c_range = param.domain.unbounded(param)
         return param, c_range
 
-    param_mapping = [_map_param(name, param) for name, param in design_params.items()]
+    param_mapping = [
+        _map_param(name, param)
+        for name, param in design_params.items()
+        if not param.has_trait(does_not_require_picker_check)
+    ]
 
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver

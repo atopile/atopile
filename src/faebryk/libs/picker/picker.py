@@ -144,6 +144,10 @@ class PickErrorParams(PickError):
         super().__init__(message, module)
 
 
+class does_not_require_picker_check(Parameter.TraitT.decless()):
+    pass
+
+
 def pick_module_by_params(
     module: Module, solver: Solver, options: Iterable[PickerOption]
 ):

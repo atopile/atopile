@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
     Any,
@@ -22,6 +22,7 @@ from typing import (
 )
 
 from antlr4 import ParserRuleContext
+from more_itertools import last
 from pint import UndefinedUnitError
 
 import faebryk.library._F as F
@@ -53,6 +54,7 @@ from faebryk.libs.exceptions import (
     suppress_after_count,
 )
 from faebryk.libs.library.L import Range, Single
+from faebryk.libs.picker.picker import does_not_require_picker_check
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
 from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import (
@@ -68,12 +70,13 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    groupby,
     has_attr_or_property,
     has_instance_settable_attr,
     import_from_path,
     is_type_pair,
     not_none,
-    partition,
+    partition_as_list,
 )
 
 logger = logging.getLogger(__name__)
@@ -521,6 +524,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         }
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
+        assert self._is_reset()
+
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
                 context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
@@ -540,6 +545,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         finally:
             self._finish()
 
+    def _is_reset(self) -> bool:
+        """
+        Make sure caches that aren't intended to be shared between builds are empty.
+        True if the caches are empty, False if they are not.
+        """
+        return (
+            not self._node_stack
+            and not self._traceback_stack
+            and not self._param_assignments
+        )
+
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_finish = suppress_after_count(
         3,
@@ -550,19 +566,28 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def _finish(self):
         self._merge_parameter_assignments()
+        assert self._is_reset()
+
+    class ParamAssignmentIsGospel(errors.UserException):
+        """
+        The parameter assignment is treated as the precise specification of the
+        component, rather than merely as a requirement for it's later selection
+        """
+
+        title = "Parameter assignments are component definition"  # type: ignore
 
     def _merge_parameter_assignments(self):
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
             # Handle missing definitions
-            params_without_defitions, params_with_definitions = partition(
+            params_without_defitions, params_with_definitions = partition_as_list(
                 lambda p: any(a.is_definition for a in self._param_assignments[p]),
                 self._param_assignments,
             )
 
             for param in params_without_defitions:
-                last_declaration = self._param_assignments[param][-1]
+                last_declaration = last(self._param_assignments.pop(param))
                 with ex_acc.collect(), ato_error_converter():
                     with (
                         downgrade(
@@ -578,33 +603,84 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         )
 
             # Handle parameter assignments
-            for param in params_with_definitions:
-                assignments = self._param_assignments[param]
-                definitions = [a for a in assignments if a.is_definition]
-                assert definitions
+            # assignments override each other
+            # assignments made in the block definition of the component are "is"
+            # external assignments are requirements treated as a subset
 
-                with ex_acc.collect(), ato_error_converter():
-                    # TODO: revisit this language detail
-                    # every assignment overrides the previous one
-                    # this is consistent with v0.2
-                    last_definition = definitions[-1]
-                    value, ctx, traceback = (
-                        not_none(last_definition.value),
-                        last_definition.ctx,
-                        last_definition.traceback,
+            # Allowing external assignments in the first place is a bit weird
+            # Got to figure out how people are using this.
+            # My guess is that in 99% of cases you can replace them by a `&=`
+            params_by_node = groupby(
+                params_with_definitions, key=lambda p: p.get_parent_force()[0]
+            )
+            for assignee_node, assigned_params in params_by_node.items():
+                is_part_module = isinstance(assignee_node, L.Module) and (
+                    assignee_node.has_trait(F.is_pickable_by_supplier_id)
+                    or assignee_node.has_trait(F.is_pickable_by_part_number)
+                )
+
+                gospel_params: list[Parameter] = []
+                for param in assigned_params:
+                    assignments = self._param_assignments.pop(param)
+                    definitions = [a for a in assignments if a.is_definition]
+                    non_root_definitions, root_definitions = partition_as_list(
+                        lambda a: a.is_root_assignment, definitions
                     )
 
-                    # Set final value of parameter
-                    assert isinstance(
-                        ctx, ParserRuleContext
-                    )  # Since value and ctx should be None together
+                    assert definitions
+                    for definition in definitions:
+                        logger.debug(
+                            "Assignment:  %s [%s] := %s",
+                            param,
+                            definition.ref,
+                            definition.value,
+                        )
 
-                    try:
-                        param.constrain_subset(value)
-                    except UnitCompatibilityError as ex:
-                        raise errors.UserTypeError.from_ctx(
-                            ctx, str(ex), traceback=traceback
-                        ) from ex
+                    # Don't see how this could happen, but just in case
+                    root_after_external = (False, True) in pairwise(
+                        a.is_root_assignment for a in definitions
+                    )
+                    assert not root_after_external
+
+                    with ex_acc.collect(), ato_error_converter():
+                        # Workaround for missing difference between alias and subset
+                        # Only relevant for code-as-data part modules
+                        # TODO: consider a warning for definitions that aren't purely
+                        # narrowing
+                        if is_part_module and non_root_definitions:
+                            raise errors.UserNotImplementedError.from_ctx(
+                                last(non_root_definitions).ctx,
+                                "You can't assign to a `component` with a specific"
+                                " part number outside of its definition",
+                                traceback=last(non_root_definitions).traceback,
+                            )
+
+                        elif is_part_module and root_definitions:
+                            param.alias_is(not_none(last(root_definitions).value))
+                            param.add(does_not_require_picker_check())
+                            gospel_params.append(param)
+
+                        elif not is_part_module:
+                            definition = last(definitions)
+                            value = not_none(definition.value)
+                            try:
+                                logger.debug("Constraining %s to %s", param, value)
+                                param.constrain_subset(value)
+                            except UnitCompatibilityError as ex:
+                                raise errors.UserTypeError.from_ctx(
+                                    definition.ctx,
+                                    str(ex),
+                                    traceback=definition.traceback,
+                                ) from ex
+
+                if gospel_params:
+                    with downgrade(self.ParamAssignmentIsGospel, to_level=logging.INFO):
+                        raise self.ParamAssignmentIsGospel(
+                            f"`component` `{assignee_node.get_full_name()}`"
+                            " is completely specified by a part number, so these"
+                            " params are treated as its exact specification:"
+                            + ", ".join(f"`{p}`" for p in gospel_params)
+                        )
 
     @property
     def _current_node(self) -> L.Node:
