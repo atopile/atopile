@@ -1447,3 +1447,51 @@ def test_mapping(A_value):
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(B) == mapping[A_value]
+
+
+@pytest.mark.parametrize("op", [Subtract, sub, Add, add])
+def test_subtract_zero(op):
+    from faebryk.core.solver.utils import make_lit
+
+    A = Parameter()
+    A.alias_is(op(make_lit(1), make_lit(0)))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == make_lit(1)
+
+
+def test_canonical_subtract_zero():
+    from faebryk.core.solver.utils import make_lit
+
+    A = Parameter()
+    A.alias_is(Multiply(make_lit(0), make_lit(-1)))
+
+    B = Parameter()
+    B.alias_is(Add(make_lit(1), Multiply(make_lit(0), make_lit(-1))))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == make_lit(0)
+    assert solver.inspect_get_known_supersets(B) == make_lit(1)
+
+
+def test_nested_fold_scalar():
+    from faebryk.core.solver.utils import make_lit
+
+    A = Parameter()
+    A.alias_is(Add(make_lit(1), Multiply(make_lit(2), make_lit(3))))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == make_lit(6)
+
+
+def test_nested_fold_interval():
+    A = Parameter()
+    A.alias_is(
+        Add(
+            Range.from_center_rel(1, 0.1),
+            Multiply(Range.from_center_rel(2, 0.1), Range.from_center_rel(3, 0.1)),
+        )
+    )
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == Range(5.76, 8.36)
