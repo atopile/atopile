@@ -150,7 +150,7 @@ def _find_project_config_file(start: Path) -> Path | None:
     path = start
     while not (path / PROJECT_CONFIG_FILENAME).exists():
         path = path.parent
-        if path == path.root:
+        if path == path.parent:
             return None
 
     return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
