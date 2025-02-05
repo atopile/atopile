@@ -57,8 +57,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return self._max
 
     def as_center_rel(self) -> tuple[NumericT, float]:
+        if self._min == self._max:
+            return self._min, 0.0
+
         center = (self._min + self._max) / 2
-        rel = (self._max - self._min) / 2 / center
+        if center == 0:
+            rel = (self._max - self._min) / 2
+        else:
+            rel = (self._max - self._min) / 2 / center
         return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
