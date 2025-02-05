@@ -1,5 +1,6 @@
 import logging
 import math
+import sys
 import warnings
 from datetime import timedelta
 from functools import partial, reduce
@@ -439,5 +440,10 @@ def evaluate_exprs():
 if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=NonInteractiveExampleWarning)
 
-    evaluate_exprs()
-    # generate_exprs()
+    match sys.argv[1]:
+        case "evaluate":
+            evaluate_exprs()
+        case "generate":
+            generate_exprs()
+        case _:
+            raise ValueError(f"Unknown command: {sys.argv[1]}")
