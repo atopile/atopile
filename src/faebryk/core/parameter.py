@@ -1721,7 +1721,7 @@ CanonicalAll = CanonicalOperable | CanonicalLiteral
 # --------------------------------------------------------------------------------------
 
 Reflexive = Is | IsSubset | GreaterOrEqual
-IdempotentExpression = Abs
+IdempotentExpression = Abs | Round
 IdempotentOperands = Or | Union | Intersection
 Commutative = Add | Multiply | Or | Union | Intersection | SymmetricDifference | Is
 UnaryIdentity = Add | Multiply | Or | Union | Intersection

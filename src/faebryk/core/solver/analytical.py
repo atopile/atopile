@@ -918,7 +918,7 @@ def idempotent_unpack(mutator: Mutator):
     Abs(Abs(A)) -> Abs(A)
     """
 
-    exprs = mutator.nodes_of_type(IdempotentExpression, sort_by_depth=True)
+    exprs = mutator.nodes_of_types(IdempotentExpression, sort_by_depth=True)
     for expr in exprs:
         assert isinstance(expr, IdempotentExpression)
         assert len(expr.operands) == 1
