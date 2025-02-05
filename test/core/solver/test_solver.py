@@ -1481,7 +1481,7 @@ def test_nested_fold_scalar():
     A.alias_is(Add(make_lit(1), Multiply(make_lit(2), make_lit(3))))
 
     solver = DefaultSolver()
-    assert solver.inspect_get_known_supersets(A) == make_lit(6)
+    assert solver.inspect_get_known_supersets(A) == make_lit(7)
 
 
 def test_nested_fold_interval():
