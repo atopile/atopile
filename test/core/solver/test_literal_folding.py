@@ -1,8 +1,9 @@
-from math import sin
+import logging
+import math
 import warnings
 from datetime import timedelta
 from functools import partial, reduce
-from operator import add, mul
+from operator import add, mul, pow, sub, truediv
 from typing import Any, Callable, Iterable, NamedTuple
 
 from hypothesis import given, settings
@@ -14,12 +15,22 @@ from faebryk.core.parameter import (
     Abs,
     Add,
     Arithmetic,
+    Ceil,
+    Cos,
+    Differentiate,
+    Divide,
+    Floor,
+    Integrate,
     Log,
+    Max,
+    Min,
     Multiply,
     Parameter,
     Power,
     Round,
     Sin,
+    Sqrt,
+    Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
@@ -30,11 +41,25 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.units import Quantity
 
+logger = logging.getLogger(__name__)
+
 # canonical operations:
 # Add, Multiply, Power, Round, Abs, Sin, Log
 # Or, Not
 # Intersection, Union, SymmetricDifference
 # IsSubset, Is, GreaterThan
+
+# all operations:
+# Add, Subtract, Multiply, Divide, Sqrt, Power, Log, Sin, Cos, Abs, Round, Floor, Ceil,
+# Min, Max, Integrate, Differentiate
+# And, Or, Not, Xor, Implies, IfThenElse
+# Union, Intersection, Difference, SymmetricDifference
+# LessThan, GreaterThan, LessOrEqual, GreaterOrEqual
+# ISSubset, IsSuperset, Cardinality, Is
+
+
+def abs_close(a: float | Quantity, b: float) -> bool:
+    return math.isclose(a, b, abs_tol=1e-15)
 
 
 class Builders(Namespace):
@@ -52,71 +77,94 @@ class Builders(Namespace):
             else op(operands)
         )
 
+    # Arithmetic
     Add = operator(Add)
+    Subtract = operator(Subtract)
     Multiply = operator(Multiply)
+    Divide = operator(Divide)
+    Sqrt = operator(Sqrt)
     Power = operator(Power)
-    Round = operator(Round)
-    Abs = operator(Abs)
-    Sin = operator(Sin)
     Log = operator(Log)
+    Sin = operator(Sin)
+    Cos = operator(Cos)
+    Abs = operator(Abs)
+    Round = operator(Round)
+    Floor = operator(Floor)
+    Ceil = operator(Ceil)
+    Min = operator(Min)
+    Max = operator(Max)
+    Integrate = operator(Integrate)
+    Differentiate = operator(Differentiate)
 
 
-def is_negative(value: Quantity_Interval_Disjoint | Parameter) -> bool:
-    match value:
-        case Quantity_Interval_Disjoint():
-            return value.min_elem < 0 and value.max_elem < 0
-        case Parameter():
-            literal = value.get_literal()
-            assert isinstance(literal, Quantity_Interval_Disjoint)
-            return literal.min_elem < 0 and literal.max_elem < 0
+ValueT = Quantity_Interval_Disjoint | Parameter
 
 
-def is_fractional(value: Quantity_Interval_Disjoint | Parameter) -> bool:
-    literal: Quantity_Interval_Disjoint
-    match value:
-        case Quantity_Interval_Disjoint():
-            literal = value
-        case Parameter():
-            literal = value.get_literal()
-            assert isinstance(literal, Quantity_Interval_Disjoint)
+class Filters(Namespace):
+    @staticmethod
+    def _unwrap_param(value: ValueT) -> Quantity_Interval_Disjoint:
+        return value.get_literal() if isinstance(value, Parameter) else value
 
-    both_are_integers = literal.min_elem.is_integer() and literal.max_elem.is_integer()
-    is_single_integer = (
-        literal.min_elem == literal.max_elem and literal.min_elem.is_integer()
-    )
-    return not (both_are_integers or is_single_integer)
+    @staticmethod
+    def is_negative(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
+        return value.min_elem < 0 and value.max_elem < 0
 
+    @staticmethod
+    def is_positive(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
+        return value.min_elem > 0 and value.max_elem > 0
 
-def is_zero(value: Quantity_Interval_Disjoint | Parameter) -> bool:
-    match value:
-        case Quantity_Interval_Disjoint():
-            return bool(value.min_elem == 0) and bool(value.max_elem == 0)
-        case Parameter():
-            literal = value.get_literal()
-            assert isinstance(literal, Quantity_Interval_Disjoint)
-            return bool(literal.min_elem == 0) and bool(literal.max_elem == 0)
+    @staticmethod
+    def is_fractional(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
 
+        both_are_integers = value.min_elem.is_integer() and value.max_elem.is_integer()
+        is_single_integer = (
+            value.min_elem == value.max_elem and value.min_elem.is_integer()
+        )
+        return not (both_are_integers or is_single_integer)
 
-def is_empty(value: Quantity_Interval_Disjoint | Parameter) -> bool:
-    literal: Quantity_Interval_Disjoint
-    match value:
-        case Quantity_Interval_Disjoint():
-            literal = value
-        case Parameter():
-            literal = value.get_literal()
-            assert isinstance(literal, Quantity_Interval_Disjoint)
+    @staticmethod
+    def is_zero(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
+        return abs_close(value.min_elem, 0) and abs_close(value.max_elem, 0)
 
-    return literal.is_empty()
+    @staticmethod
+    def is_non_zero(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
+        return not (abs_close(value.min_elem, 0) or abs_close(value.max_elem, 0))
+
+    @staticmethod
+    def is_empty(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
+        return value.is_empty()
+
+    @staticmethod
+    def is_valid_for_power(
+        pair: tuple[ValueT, ValueT],
+    ) -> bool:
+        return (
+            not (Filters.is_negative(pair[0]) and Filters.is_fractional(pair[1]))
+            and (Filters.is_positive(pair[0]) or Filters.is_negative(pair[0]))
+            and (Filters.is_positive(pair[1]) or Filters.is_negative(pair[1]))
+        )
+
+    @staticmethod
+    def is_valid_for_division(
+        pair: tuple[ValueT, ValueT],
+    ) -> bool:
+        return Filters.is_non_zero(pair[1])
 
 
 class st_values(Namespace):
     numeric = st.one_of(
         # [pico, tera]
-        st.integers(min_value=-1_000_000_000_000, max_value=1_000_000_000_000),
+        st.integers(min_value=int(-1e12), max_value=int(1e12)),
         st.floats(
             allow_nan=False, allow_infinity=False, min_value=-1e12, max_value=1e12
         ),
-    )
+    ).filter(lambda x: x == 0 or abs(x) > 1e-15)
 
     small_numeric = st.one_of(
         st.integers(min_value=-100, max_value=100),
@@ -149,6 +197,8 @@ class st_values(Namespace):
         parameters,
     )
 
+    positive_values = values.filter(Filters.is_positive)
+
     small_values = st.one_of(
         small_numeric.map(Quantity_Interval_Disjoint.from_value),
         small_ranges.map(Quantity_Interval_Disjoint.from_value),
@@ -161,10 +211,9 @@ class st_values(Namespace):
 
     pairs = st.tuples(values, values)
 
-    power_pairs = st.tuples(values, small_values).filter(
-        lambda pair: not (is_negative(pair[0]) and is_fractional(pair[1]))
-        and not is_empty(pair[1])
-    )
+    division_pairs = st.tuples(values, values.filter(Filters.is_non_zero))
+
+    power_pairs = st.tuples(values, small_values).filter(Filters.is_valid_for_power)
 
 
 class Extension(Namespace):
@@ -176,6 +225,20 @@ class Extension(Namespace):
     def single(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
         return children
 
+    @staticmethod
+    def tuples_power(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
+        return st.tuples(children, st_values.small_values).filter(
+            Filters.is_valid_for_power
+        )
+
+    @staticmethod
+    def tuples_division(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
+        return st.tuples(children, st_values.values.filter(Filters.is_non_zero))
+
+    @staticmethod
+    def single_positive(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
+        return children.filter(lambda child: Filters.is_positive(evaluate_expr(child)))
+
 
 class ExprType(NamedTuple):
     builder: Callable[[Any], Arithmetic]
@@ -185,12 +248,23 @@ class ExprType(NamedTuple):
 
 EXPR_TYPES = [
     ExprType(Builders.Add, st_values.lists, Extension.tuples),
+    ExprType(Builders.Subtract, st_values.pairs, Extension.tuples),
     ExprType(Builders.Multiply, st_values.lists, Extension.tuples),
-    # ExprType(Builders.Power, st_values.power_pairs, Extension.tuples),
-    # ExprType(Builders.Round, st_values.values, Extension.single),
-    # ExprType(Builders.Abs, st_values.values, Extension.single),
-    ExprType(Builders.Sin, st_values.values, Extension.single),
-    # ExprType(Builders.Log, st_values.values, Extension.single),
+    ExprType(Builders.Divide, st_values.division_pairs, Extension.tuples_division),
+    ExprType(Builders.Sqrt, st_values.positive_values, Extension.single_positive),
+    # ExprType(Builders.Power, st_values.power_pairs, Extension.tuples_power),
+    ExprType(Builders.Log, st_values.positive_values, Extension.single_positive),
+    # TODO: NotImplementedError('sin of interval not implemented yet')
+    # ExprType(Builders.Sin, st_values.values, Extension.single),
+    # ExprType(Builders.Cos, st_values.values, Extension.single),
+    ExprType(Builders.Abs, st_values.values, Extension.single),
+    ExprType(Builders.Round, st_values.values, Extension.single),
+    # ExprType(Builders.Floor, st_values.values, Extension.single),
+    # ExprType(Builders.Ceil, st_values.values, Extension.single),
+    # ExprType(Builders.Min, st_values.lists, Extension.tuples),
+    # ExprType(Builders.Max, st_values.lists, Extension.tuples),
+    # ExprType(Builders.Integrate, st_values.lists, Extension.tuples),
+    # ExprType(Builders.Differentiate, st_values.lists, Extension.tuples),
 ]
 
 
@@ -207,38 +281,52 @@ class st_exprs(Namespace):
                 for expr_type in EXPR_TYPES
             ]
         ),
-        max_leaves=50,
+        max_leaves=20,
     )
 
 
 def evaluate_expr(
     expr: Arithmetic | Quantity,
 ) -> Quantity_Interval_Disjoint:
+    operator_map: dict[type[Arithmetic], Callable] = {
+        Add: add,
+        Subtract: sub,
+        Multiply: mul,
+        Divide: truediv,
+        Sqrt: lambda x: pow(x, 0.5),
+        Power: pow,
+        Round: round,
+        Abs: abs,
+        Sin: lambda x: x.op_sin(),
+        Log: lambda x: x.op_log(),
+        Cos: lambda x: (x + math.pi / 2).op_sin(),
+        Floor: lambda x: round(x - 0.5),  # TODO: handle inf
+        Ceil: lambda x: round(x + 0.5),  # TODO: handle inf
+        Min: min,
+        Max: max,
+    }
+
     match expr:
-        case Add():
+        # monoids
+        case Add() | Multiply() | Min() | Max():
+            operands = (evaluate_expr(operand) for operand in expr.operands)
+            operator = operator_map.get(type(expr))
+            assert operator is not None
+            return reduce(operator, operands)
+        # left/right-associative
+        case Subtract() | Divide() | Power():
             operands = [evaluate_expr(operand) for operand in expr.operands]
-            print(" + ".join(str(operand) for operand in operands))
-            return reduce(add, operands)
-        case Multiply():
-            operands = [evaluate_expr(operand) for operand in expr.operands]
-            print(" * ".join(str(operand) for operand in operands))
-            return reduce(mul, operands)
-        case Power():
-            assert len(expr.operands) == 2
-            base, exp = [evaluate_expr(operand) for operand in expr.operands]
-            print(f"{base} ^ {exp}")
-            print(f"{is_negative(base)=}")
-            print(f"{is_fractional(exp)=}")
-            return base**exp
-        # case Round():
-        #     return round(evaluate_expr(expr.operands[0]))
-        # case Abs():
-        #     return abs(evaluate_expr(expr.operands[0]))
-        case Sin():
+            operator = operator_map.get(type(expr))
+            assert operator is not None
+            assert len(operands) == 2
+            return operator(operands[0], operands[1])
+        # unary
+        case Sqrt() | Round() | Abs() | Sin() | Log() | Cos() | Floor() | Ceil():
             assert len(expr.operands) == 1
-            return evaluate_expr(expr.operands[0]).op_sin()
-        # case Log():
-        #     return log(evaluate_expr(expr.operands[0]))
+            operand = evaluate_expr(expr.operands[0])
+            operator = operator_map.get(type(expr))
+            assert operator is not None
+            return operator(operand)
         case Quantity_Interval():
             # TODO: why are we getting these?
             return Quantity_Interval_Disjoint.from_value(expr)
@@ -321,3 +409,4 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", category=NonInteractiveExampleWarning)
 
     evaluate_exprs()
+    # generate_exprs()
