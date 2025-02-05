@@ -178,10 +178,14 @@ def find_or[T](
         raise
 
 
-def groupby[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
+def groupby[T, U](
+    it: Iterable[T], key: Callable[[T], U], only_multi: bool = False
+) -> dict[U, list[T]]:
     out = defaultdict(list)
     for i in it:
         out[key(i)].append(i)
+    if only_multi:
+        return {k: v for k, v in out.items() if len(v) > 1}
     return out
 
 

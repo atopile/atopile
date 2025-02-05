@@ -353,15 +353,6 @@ def test_can_evaluate_literals(expr: Arithmetic):
 # @reproduce_failure('6.124.7', b'AXicc2R2ZGB0ZHJkcPsvrh2ta+HIqLFtAQMYIIR3aQKF7QVgwgxuDC+uLOX/D1LAqOHAwMBqp5tkCVLycSYIzGKE6uP4wUBb0wEkhy5v')  # noqa: E501
 
 
-# TODO subset estimation not working
-# due to not triggerning new alias in:
-# [0] + A{I|X} -> A{I|X}
-# This case doesn't create a new alias, but should trigger a subset estimation run
-# Thus we need to track whether we have created an implicit alias by repr_map merge
-# A{S|([0, inf])} is!✓ ((([1, 2]) ^{I|([1, 1.414213562])} ([0.5])) ^{S|([0,inf])} ([0.5]))  # noqa: E501
-# @reproduce_failure("6.124.7", b"AEEVQQFBBUEAQQFBBEECQQBBAUEAQQI=")
-
-
 @given(st_exprs.trees)
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
