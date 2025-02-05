@@ -235,6 +235,11 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             return Numeric_Interval(0, self._max)  # type: ignore #TODO
         if self._min < 0 and self._max < 0:
             return Numeric_Interval(-self._max, -self._min)
+        if self._min < 0 and self._max == 0:
+            return Numeric_Interval(0, -self._min)
+        if self._min == 0 and self._max < 0:
+            return Numeric_Interval(self._max, 0)
+
         assert self._min >= 0 and self._max >= 0
         return self
 
