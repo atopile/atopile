@@ -118,6 +118,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         # We do collection both inside and outside the loop because we don't
         # want to continue the loop if we've already raised a short exception
         with accumulator.collect():
+            accounted_for_power_sources = set()
             for ep in electricpower:
                 if ep.lv.is_connected_to(ep.hv):
 
@@ -139,15 +140,21 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
 
                 with accumulator.collect():
                     if ep.has_trait(F.Power.is_power_source):
+                        if ep in accounted_for_power_sources:
+                            continue
+
                         other_sources = [
                             other
                             for other in ep.get_connected()
                             if isinstance(other, F.ElectricPower)
                             and other.has_trait(F.Power.is_power_source)
                         ]
+
                         if other_sources:
+                            all_sources = [ep] + other_sources
+                            accounted_for_power_sources.update(all_sources)
                             friendly_sources = ", ".join(
-                                n.get_full_name() for n in [ep] + other_sources
+                                n.get_full_name() for n in all_sources
                             )
                             raise ERCPowerSourcesShortedError(
                                 f"Power sources shorted: {friendly_sources}"
