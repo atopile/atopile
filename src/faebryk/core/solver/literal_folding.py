@@ -242,7 +242,10 @@ def fold_multiply(
         return
 
     # Careful, modifying old graph, but should be ok
-    powered_operands = [Power(n, m) for n, m in new_powers.items()]
+    powered_operands = [
+        mutator.create_expression(Power, n, m, from_ops=[expr])
+        for n, m in new_powers.items()
+    ]
 
     new_operands = [
         *powered_operands,
