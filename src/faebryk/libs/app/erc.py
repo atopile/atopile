@@ -3,13 +3,13 @@
 
 import inspect
 import logging
-from typing import Callable, Iterable
+from typing import Callable, Iterable, cast
 
 from more_itertools import first
 
 import faebryk.library._F as F
 from atopile import errors
-from faebryk.core.cpp import GraphInterface
+from faebryk.core.cpp import Path
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
@@ -24,56 +24,82 @@ class ERCFault(errors.UserException):
     """Base class for ERC faults."""
 
 
-class ERCFaultShort(ERCFault):
-    """Short circuit between two ModuleInterfaces."""
-
-    @staticmethod
-    def narrow_from_pair(
-        a: ModuleInterface,
-        b: ModuleInterface,
-        is_a: Callable[[GraphInterface], bool],
-        is_b: Callable[[GraphInterface], bool],
-    ) -> list[GraphInterface]:
-        """
-        Given two shorted ModuleInterfaces, return the narrowest path for the fault.
-        """
-        gifs_on_path = list(first(a.is_connected_to(b)))  # type: ignore
-
-        # max to min index sweep of "is_a" to find the highest index
-        # gif which passes the predicate
-        for max_a_i, gif in reversed(list(enumerate(gifs_on_path))):
-            if is_a(gif):
-                break
-        else:
-            raise ValueError("No node passing is_a found on path")
-
-        # min to max index sweep of "is_b" to find the lowest index
-        # gif which passes the predicate
-        for min_b_i, gif in enumerate(gifs_on_path):
-            if is_b(gif):
-                break
-        else:
-            raise ValueError("No node passing is_b found on path")
-
-        return gifs_on_path[max_a_i : min_b_i + 1]
+class ModuleInterfacePath(list[ModuleInterface]):
+    """A path of ModuleInterfaces."""
 
     @classmethod
-    def from_pair(
-        cls,
-        a: ModuleInterface,
-        b: ModuleInterface,
-        is_a: Callable[[GraphInterface], bool],
-        is_b: Callable[[GraphInterface], bool],
-    ) -> "ERCFaultShort":
+    def from_path(cls, path: Path) -> "ModuleInterfacePath":
+        """
+        Convert a Path (of GraphInterfaces) to a ModuleInterfacePath.
+        """
+        mifs = cast(
+            list[ModuleInterface],
+            [gif.node for gif in path if gif.node.isinstance(ModuleInterface)],
+        )
+        return cls(mifs)
+
+    def snip_head(
+        self, scissors: Callable[[ModuleInterface], bool], include_last: bool = True
+    ) -> "ModuleInterfacePath":
+        """
+        Keep the head until the scissors predicate returns False.
+        """
+        for i, mif in enumerate(self):
+            if not scissors(mif):
+                return type(self)(self[: i + include_last])
+        return self
+
+    def snip_tail(
+        self, scissors: Callable[[ModuleInterface], bool], include_first: bool = True
+    ) -> "ModuleInterfacePath":
+        """
+        Keep the tail until the scissors predicate returns False.
+        """
+        for i, mif in reversed(list(enumerate(self))):
+            if not scissors(mif):
+                return type(self)(self[i + (not include_first) :])
+        return self
+
+    @classmethod
+    def from_connection(
+        cls, a: ModuleInterface, b: ModuleInterface
+    ) -> "ModuleInterfacePath | None":
+        """
+        Return a ModuleInterfacePath between two ModuleInterfaces, if it exists,
+        else None.
+        """
+        if paths := a.is_connected_to(b):
+            # FIXME: Notes: from the master of graphs:
+            #  - iterate through all paths
+            #  - make a helper function
+            #    ModuleInterfacePath.get_subpaths(path: Path, search: SubpathSearch)
+            #    e.g SubpathSearch = tuple[Callable[[ModuleInterface], bool], ...]
+            #  - choose out of subpaths
+            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
+            #      is derived, save it as candidate and only yield it if no other found)
+            #    - choose first shortest
+            return cls.from_path(first(paths))
+        return None
+
+
+class ERCFaultShort(ERCFault):
+    """Exception raised for short circuits."""
+
+
+class ERCFaultShortedModuleInterfaces(ERCFaultShort):
+    """Short circuit between two ModuleInterfaces."""
+
+    def __init__(self, msg: str, path: ModuleInterfacePath, *args: object) -> None:
+        super().__init__(msg, path, *args)
+        self.path = path
+
+    @classmethod
+    def from_path(cls, path: ModuleInterfacePath) -> "ERCFaultShortedModuleInterfaces":
         """
         Given two shorted ModuleInterfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        shortest_path = cls.narrow_from_pair(a, b, is_a, is_b)
-        friendly_shortest_path = " ~ ".join(
-            gif.node.get_full_name() for gif in shortest_path
-        )
-        return cls(f"`{a}` and `{b}` are shorted by `{friendly_shortest_path}`")
+        return cls(f"`{" ~ ".join(mif.get_full_name() for mif in path)}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
@@ -120,23 +146,27 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         with accumulator.collect():
             accounted_for_power_sources = set()
             for ep in electricpower:
-                if ep.lv.is_connected_to(ep.hv):
+                if mif_path := ModuleInterfacePath.from_connection(ep.lv, ep.hv):
 
-                    def _is_lv(x: GraphInterface) -> bool:
-                        if parent := x.node.get_parent():
-                            _, parent_name = parent
-                            return parent_name == "lv"
+                    def _keep_head(x: ModuleInterface) -> bool:
+                        if parent := x.get_parent():
+                            parent_node, _ = parent
+                            if isinstance(parent_node, F.ElectricPower):
+                                return parent_node.hv is not x
 
-                        return False
+                        return True
 
-                    def _is_hv(x: GraphInterface) -> bool:
-                        if parent := x.node.get_parent():
-                            _, parent_name = parent
-                            return parent_name == "hv"
+                    def _keep_tail(x: ModuleInterface) -> bool:
+                        if parent := x.get_parent():
+                            parent_node, _ = parent
+                            if isinstance(parent_node, F.ElectricPower):
+                                return parent_node.lv is not x
 
-                        return False
+                        return True
 
-                    raise ERCFaultShort.from_pair(ep.lv, ep.hv, _is_lv, _is_hv)
+                    raise ERCFaultShortedModuleInterfaces.from_path(
+                        mif_path.snip_head(_keep_head).snip_tail(_keep_tail)
+                    )
 
                 with accumulator.collect():
                     if ep.has_trait(F.Power.is_power_source):
@@ -216,10 +246,10 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                 ):
                     continue
 
-                if comp.unnamed[0].is_connected_to(comp.unnamed[1]):
-                    raise ERCFaultShort(
-                        f"Shorted component: {comp.get_full_name()}",
-                    )
+                if path := ModuleInterfacePath.from_connection(
+                    comp.unnamed[0], comp.unnamed[1]
+                ):
+                    raise ERCFaultShortedModuleInterfaces.from_path(path)
 
         ## unmapped Electricals
         # fps = [n for n in nodes if isinstance(n, Footprint)]
