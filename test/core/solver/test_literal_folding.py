@@ -317,22 +317,19 @@ def evaluate_expr(
         # monoids
         case Add() | Multiply() | Min() | Max():
             operands = (evaluate_expr(operand) for operand in expr.operands)
-            operator = operator_map.get(type(expr))
-            assert operator is not None
+            operator = operator_map[type(expr)]
             return reduce(operator, operands)
         # left/right-associative
         case Subtract() | Divide() | Power():
             operands = [evaluate_expr(operand) for operand in expr.operands]
-            operator = operator_map.get(type(expr))
-            assert operator is not None
+            operator = operator_map[type(expr)]
             assert len(operands) == 2
             return operator(operands[0], operands[1])
         # unary
         case Sqrt() | Round() | Abs() | Sin() | Log() | Cos() | Floor() | Ceil():
             assert len(expr.operands) == 1
             operand = evaluate_expr(expr.operands[0])
-            operator = operator_map.get(type(expr))
-            assert operator is not None
+            operator = operator_map[type(expr)]
             return operator(operand)
         case Quantity_Interval():
             # TODO: why are we getting these?
