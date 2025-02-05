@@ -343,6 +343,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         # Rest
         Target, Converter = lookup[type(e)]
 
+        setattr(c, "from_ops", from_ops)
         mutator.mutate_expression(
             e,
             Converter(e.operands),
