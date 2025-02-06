@@ -165,11 +165,13 @@ class st_values(Namespace):
         st.integers(min_value=int(-1e12), max_value=int(1e12)),
         st.floats(
             allow_nan=False,
-            allow_infinity=False,  # FIXME
+            allow_infinity=False,
             min_value=-1e12,
             max_value=1e12,
             allow_subnormal=False,
         ),
+        st.just(float("inf")),
+        st.just(float("-inf")),
     )
 
     small_numeric = st.one_of(
