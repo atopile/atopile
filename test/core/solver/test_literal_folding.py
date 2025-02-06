@@ -170,8 +170,6 @@ class st_values(Namespace):
             max_value=1e12,
             allow_subnormal=False,
         ),
-        st.just(float("inf")),
-        st.just(float("-inf")),
     )
 
     small_numeric = st.one_of(
@@ -182,7 +180,11 @@ class st_values(Namespace):
     )
 
     ranges = st.builds(
-        lambda values: Range(*sorted(values)), st.tuples(numeric, numeric)
+        lambda values: Range(*sorted(values)),
+        st.tuples(
+            st.one_of(st.just(float("-inf")), numeric),
+            st.one_of(st.just(float("inf")), numeric),
+        ),
     )
 
     small_ranges = st.builds(
