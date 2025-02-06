@@ -45,7 +45,7 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     def __init__(self, min: NumericT, max: NumericT):
         if not min <= max:
             raise ValueError("min must be less than or equal to max")
-        if (min == float("inf") or max == float("-inf")) and min != max:
+        if min == float("inf") or max == float("-inf"):
             raise ValueError("min or max has bad infinite value")
         self._min = min
         self._max = max

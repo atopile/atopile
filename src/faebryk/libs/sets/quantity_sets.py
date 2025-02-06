@@ -335,6 +335,10 @@ class Quantity_Singleton(Quantity_Interval):
     """
 
     def __init__(self, value: QuantityLike):
+        # FIXME: handle inf Quantity too
+        if value == float("inf") or value == float("-inf"):
+            raise ValueError("value cannot be infinity for quantity singleton")
+
         super().__init__(min=value, max=value)
 
     def get_value(self) -> Quantity:
