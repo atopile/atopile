@@ -36,13 +36,14 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.picker import (
-    MultiPickError,
-    PickError,
-    does_not_require_picker_check,
-)
+from faebryk.libs.picker.picker import PickError, does_not_require_picker_check
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import Tree, groupby, not_none
+from faebryk.libs.util import (
+    Tree,
+    cast_assert,
+    groupby,
+    not_none,
+)
 
 logger = logging.getLogger(__name__)
 client = get_api_client()
@@ -95,11 +96,13 @@ def _prepare_query(
             part_number=trait.get_partno(),
             quantity=qty,
         )
+
     elif trait := module.try_get_trait(F.is_pickable_by_supplier_id):
         if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC:
             return LCSCParams(
                 lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
+
     elif trait := module.try_get_trait(F.is_pickable_by_type):
         pick_type = trait.get_pick_type()
         params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
@@ -152,20 +155,30 @@ def _find_modules(
     params = {m: _prepare_query(m, solver) for m in modules}
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
+
+    def _map_response[T](results: list[T]) -> dict[Module, T]:
+        assert len(results) == len(queries)
+        return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
+
     try:
         results = client.fetch_parts_multiple(queries)
     except ApiHTTPError as e:
         if e.response.status_code == 404:
-            raise MultiPickError("Failed to fetch one or more parts", modules) from e
+            response = cast_assert(dict, e.response.json())
+            if errors := response.get("errors", None):
+                raise ExceptionGroup(
+                    "Failed to fetch one or more parts",
+                    [
+                        PickError(error["message"], module)
+                        for module, error in _map_response(errors).items()
+                        if error is not None
+                    ],
+                ) from e
+            else:
+                raise
         raise e
 
-    assert len(results) == len(queries)
-
-    return {
-        m: _process_candidates(m, r)
-        for ms, r in zip(grouped.values(), results)
-        for m, _ in ms
-    }
+    return {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
 
 
 def get_candidates(

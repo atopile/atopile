@@ -51,6 +51,7 @@ from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
     downgrade,
+    iter_leaf_exceptions,
     iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats import (
@@ -102,8 +103,11 @@ def build(app: Module) -> None:
         load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
-    except PickError as ex:
-        raise UserPickError.from_pick_error(ex) from ex
+    except* PickError as ex:
+        raise ExceptionGroup(
+            "Failed to pick parts for some modules",
+            [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
+        ) from ex
 
     # Footprints ----------------------------------------------------------------
     # Use standard footprints for known packages regardless of
@@ -421,9 +425,5 @@ def consolidate_footprints(app: Module) -> None:
             assert False, "How'd we get here?"
 
         raise ex.derive(
-            [
-                _make_user_resource_exception(e)
-                for e in ex.exceptions
-                if isinstance(e, (FileNotFoundError, LibNotInTable))
-            ]
+            [_make_user_resource_exception(e) for e in iter_leaf_exceptions(ex)]
         ) from ex
