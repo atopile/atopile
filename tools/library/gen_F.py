@@ -6,6 +6,7 @@ This file generates faebryk/src/faebryk/library/__init__.py
 
 import ast
 import logging
+import re
 import sys
 from graphlib import TopologicalSorter
 from itertools import groupby
@@ -53,7 +54,7 @@ class DependencyVisitor(ast.NodeVisitor):
             self.visit(type_param)
 
 
-def find_deps(module_path: Path) -> set[str]:
+def find_deps_nuanced(module_path: Path) -> set[str]:
     module_ast = ast.parse(module_path.read_text(), filename=module_path.name)
 
     visitor = DependencyVisitor()
@@ -65,10 +66,15 @@ def find_deps(module_path: Path) -> set[str]:
     return visitor.dependencies
 
 
-# def find_deps(module_path: Path) -> set[str]:
-#     f = module_path.read_text()
-#     p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
-#     return set(p.findall(f))
+def find_deps_rough(module_path: Path) -> set[str]:
+    f = module_path.read_text()
+    p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
+    deps = set(p.findall(f))
+    if deps:
+        logger.info("%s depends on: %s", module_path, deps)
+    else:
+        logger.info("%s has no `F` dependencies", module_path.stem)
+    return deps
 
 
 def topo_sort(modules_out: dict[str, tuple[Path, str]]):
@@ -83,8 +89,21 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
             for module_name, (module_path, _) in modules_out.items()
         ]
 
+    def _is_lib(p: Path) -> bool:
+        try:
+            p.relative_to(LIBRARY_DIR)
+        except ValueError:
+            return False
+        else:
+            return True
+
     topo_graph = [
-        (module_name, find_deps(module_path))
+        (
+            module_name,
+            find_deps_nuanced(module_path)
+            if _is_lib(module_path)
+            else find_deps_rough(module_path),
+        )
         for module_name, module_path in all_modules
     ]
 
@@ -182,7 +201,7 @@ def main():
         from faebryk.library import _F  # noqa: F401
     except AttributeError as ex:
         if "partially initialized module 'faebryk.library._F'" in str(ex):
-            logger.error("Failed to make an importable _F.py")
+            logger.exception("Failed to make an importable _F.py")
             sys.exit(1)
 
 
