@@ -14,7 +14,9 @@ class TI_CD4011BE(F.CD4011):
     )
 
     def __preinit__(self):
-        self.footprint.get_footprint().get_trait(F.can_attach_via_pinmap).attach(
+        self.footprint.get_footprint().get_trait(
+            F.Footprint.can_attach_via_pinmap
+        ).attach(
             {
                 "7": self.power.lv,
                 "14": self.power.hv,

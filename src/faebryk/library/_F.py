@@ -85,7 +85,6 @@ from faebryk.library.is_representable_by_single_value_defined import is_represen
 from faebryk.library.has_pin_association_heuristic_lookup_table import has_pin_association_heuristic_lookup_table
 from faebryk.library.LogicOps import LogicOps
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
-from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_footprint_impl import has_footprint_impl
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
@@ -98,9 +97,8 @@ from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.LogicGate import LogicGate
 from faebryk.library.has_footprint_defined import has_footprint_defined
+from faebryk.library.has_kicad_footprint_equal_ifs import has_kicad_footprint_equal_ifs
 from faebryk.library.Net import Net
-from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_pinlist
-from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
 from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
@@ -110,11 +108,13 @@ from faebryk.library.PFET import PFET
 from faebryk.library.LogicGates import LogicGates
 from faebryk.library.can_attach_to_footprint_symmetrically import can_attach_to_footprint_symmetrically
 from faebryk.library.can_attach_to_footprint_via_pinmap import can_attach_to_footprint_via_pinmap
+from faebryk.library.DIP import DIP
+from faebryk.library.QFN import QFN
+from faebryk.library.SMDTwoPin import SMDTwoPin
+from faebryk.library.SOIC import SOIC
+from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.has_pcb_routing_strategy_manual import has_pcb_routing_strategy_manual
 from faebryk.library.has_pcb_routing_strategy_via_to_layer import has_pcb_routing_strategy_via_to_layer
-from faebryk.library.can_attach_via_pinmap_equal import can_attach_via_pinmap_equal
-from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
-from faebryk.library.has_kicad_footprint_equal_ifs import has_kicad_footprint_equal_ifs
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.SurgeProtection import SurgeProtection
 from faebryk.library.Crystal import Crystal
@@ -127,11 +127,6 @@ from faebryk.library.DE9Connector import DE9Connector
 from faebryk.library.Header import Header
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.pf_533984002 import pf_533984002
-from faebryk.library.DIP import DIP
-from faebryk.library.QFN import QFN
-from faebryk.library.SMDTwoPin import SMDTwoPin
-from faebryk.library.SOIC import SOIC
-from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.Mounting_Hole import Mounting_Hole
 from faebryk.library.has_package import has_package
 from faebryk.library.is_surge_protected import is_surge_protected

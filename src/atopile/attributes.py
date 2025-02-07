@@ -64,7 +64,7 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
                 pin_names=list(self.pinmap.keys()),
             )
             fp.add(F.KicadFootprint.has_kicad_identifier(self.lib_reference))
-            fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)
+            fp.get_trait(F.Footprint.can_attach_via_pinmap).attach(self.pinmap)
             self.set_footprint(fp)
             return fp
 
