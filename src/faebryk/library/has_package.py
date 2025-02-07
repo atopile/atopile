@@ -103,7 +103,7 @@ class has_package(Module.TraitT.decless()):
                 if can_attach_t := node.try_get_trait(F.can_attach_to_footprint):
                     fp = _get_footprint(fp_path)
                     kicad_fp = F.KicadFootprint.from_file(fp)
-                    kicad_fp.add(F.KicadFootprint.has_file(fp_path))
+                    kicad_fp.add(F.KicadFootprint.has_footprint_file(fp_path))
                     can_attach_t.attach(kicad_fp)
                 else:
                     # TODO: consider elevating this to an exception

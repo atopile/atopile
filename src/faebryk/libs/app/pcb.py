@@ -217,7 +217,7 @@ def create_footprint_library(app: Module) -> None:
             # as to what we were supposed to do here
             pass
         else:
-            if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
+            if has_file_t := fp.try_get_trait(F.KicadFootprint.has_footprint_file):
                 path = has_file_t.file
                 # We priverliage packages and assume this is what's dribing
                 if path in package_fp_paths:
@@ -256,7 +256,8 @@ def create_footprint_library(app: Module) -> None:
                         shutil.copy(path, new_path)
                         path_map[prj_rel_path] = (id_, new_path)
 
-                fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
+                # Override with new path
+                fp.add(F.KicadFootprint.has_footprint_file(new_path))
                 # Attach the newly minted identifier
                 fp.add(F.KicadFootprint.has_kicad_identifier(id_))
             else:
