@@ -170,9 +170,9 @@ def _find_modules(
                     "Failed to fetch one or more parts",
                     [
                         PickError(f"{error['message']}\n{query.pretty_str()}", module)
-                        for query, (module, error) in zip(
-                            queries, _map_response(errors).items()
-                        )
+                        for module, (query, error) in _map_response(
+                            list(zip(queries, errors))
+                        ).items()
                         if error is not None
                     ],
                 ) from e

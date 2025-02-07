@@ -189,11 +189,14 @@ def test_pick_error_group():
     root = L.Module()
 
     # Good luck finding a 10 gigafarad capacitor!
-    c = F.Capacitor()
-    c.add(F.has_package(F.has_package.Package.R0402))
-    c.capacitance.alias_is(L.Range.from_center_rel(10 * P.GF, 0.1))
+    c1 = F.Capacitor()
+    c1.capacitance.alias_is(L.Range.from_center_rel(10 * P.GF, 0.1))
 
-    root.add(c)
+    c2 = F.Capacitor()
+    c2.capacitance.alias_is(L.Range.from_center_rel(20 * P.GF, 0.1))
+
+    root.add(c1)
+    root.add(c2)
 
     solver = DefaultSolver()
 
@@ -201,4 +204,4 @@ def test_pick_error_group():
         pick_part_recursively(root, solver)
 
     assert len(ex.value.exceptions) == 1
-    assert all(isinstance(e, PickError) for e in ex.value.exceptions)
+    assert isinstance(ex.value.exceptions[0], PickError)
