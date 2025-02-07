@@ -10,7 +10,11 @@ import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
-from atopile.errors import UserBadParameterError, UserNotImplementedError
+from atopile.errors import (
+    DeprecatedException,
+    UserBadParameterError,
+    UserNotImplementedError,
+)
 from faebryk.core.trait import TraitImpl, TraitNotFound
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.picker import DescriptiveProperties
@@ -161,7 +165,7 @@ class GlobalAttributes(L.Module):
 
     @mpn.setter
     def mpn(self, value: str):
-        from atopile.front_end import DeprecatedException
+        from atopile.errors import DeprecatedException
 
         if value.lower() == "dnp":
             raise DeprecatedException(
@@ -265,7 +269,12 @@ class GlobalAttributes(L.Module):
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
     try:
-        pkg = F.has_package.Package(starts_with + value)
+        try:
+            pkg = F.has_package.Package(value)
+        except ValueError:
+            with downgrade(DeprecatedException, to_level=logging.DEBUG):
+                raise DeprecatedException(f"Use: `package = '{starts_with + value}'`")
+            pkg = F.has_package.Package(starts_with + value)
     except ValueError:
         raise UserBadParameterError(
             f"Invalid package for {module.__class__.__name__}: " + value,

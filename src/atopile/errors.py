@@ -313,3 +313,9 @@ class UserAlreadyExistsError(UserException):
     """
     Raised when something already exists.
     """
+
+
+class DeprecatedException(UserException):
+    """
+    Raised when a deprecated feature is used.
+    """

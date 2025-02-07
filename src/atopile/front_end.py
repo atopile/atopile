@@ -133,16 +133,6 @@ class SkipPriorFailedException(Exception):
     """Raised to skip a statement in case a dependency already failed"""
 
 
-class DeprecatedException(errors.UserException):
-    """
-    Raised when a deprecated feature is used.
-    """
-
-    def get_frozen(self) -> tuple:
-        # TODO: this is a bit of a hack to make the logger de-dup these for us
-        return errors._BaseBaseUserException.get_frozen(self)
-
-
 class SequenceMixin:
     """
     The base translator is responsible for methods common to
@@ -276,7 +266,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_visitDep_import_stmt = suppress_after_count(
         3,
-        DeprecatedException,
+        errors.DeprecatedException,
         logger=logger,
         suppression_warning="Suppressing further deprecation warnings",
     )
@@ -289,8 +279,11 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
-        with downgrade(DeprecatedException), self._suppressor_visitDep_import_stmt:
-            raise DeprecatedException.from_ctx(
+        with (
+            downgrade(errors.DeprecatedException),
+            self._suppressor_visitDep_import_stmt,
+        ):
+            raise errors.DeprecatedException.from_ctx(
                 ctx,
                 "`import <something> from <path>` is deprecated and"
                 " will be removed in a future version. Use "
@@ -363,8 +356,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                 # TODO: @v0.4 increase the level of this to WARNING
                 # when there's an alternative
-                with downgrade(DeprecatedException, to_level=logging.DEBUG):
-                    raise DeprecatedException.from_ctx(
+                with downgrade(errors.DeprecatedException, to_level=logging.DEBUG):
+                    raise errors.DeprecatedException.from_ctx(
                         dep_ctx,
                         f"`{ref}` is deprecated and will be removed in a future"
                         f" version. Use `{preferred}` instead.",
@@ -1145,7 +1138,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 prop = cast_assert(property, getattr(GlobalAttributes, assigned_name))
                 assert prop.fset is not None
                 with (
-                    downgrade(DeprecatedException, errors.UserNotImplementedError),
+                    downgrade(
+                        errors.DeprecatedException, errors.UserNotImplementedError
+                    ),
                     self._suppressor_visitAssign_stmt,
                     _attach_ctx_to_ex(ctx, self.get_traceback()),
                 ):
@@ -1238,7 +1233,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     # TODO: @v0.4 remove this deprecated import form
     _suppression_connect = suppress_after_count(
         3,
-        DeprecatedException,
+        errors.DeprecatedException,
         logger=logger,
         suppression_warning="Suppressing further deprecation warnings",
     )
@@ -1315,10 +1310,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         # TODO: @v0.4 increase the level of this to WARNING
                         # when there's an alternative
                         with (
-                            downgrade(DeprecatedException, to_level=logging.DEBUG),
+                            downgrade(
+                                errors.DeprecatedException, to_level=logging.DEBUG
+                            ),
                             self._suppression_connect,
                         ):
-                            raise DeprecatedException.from_ctx(
+                            raise errors.DeprecatedException.from_ctx(
                                 ctx,
                                 f"Connected `{a}` to `{b}` by duck-typing."
                                 "They should be of the same type.",
@@ -1719,7 +1716,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_visitCum_assign_stmt = suppress_after_count(
         3,
-        DeprecatedException,
+        errors.DeprecatedException,
         logger=logger,
         suppression_warning="Suppressing further deprecation warnings",
     )
@@ -1754,16 +1751,18 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # TODO: @v0.4 increase the level of this to WARNING
         # when there's an alternative
         with (
-            downgrade(DeprecatedException, to_level=logging.DEBUG),
+            downgrade(errors.DeprecatedException, to_level=logging.DEBUG),
             self._suppressor_visitCum_assign_stmt,
         ):
-            raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
+            raise errors.DeprecatedException(
+                f"{ctx.cum_operator().getText()} is deprecated."
+            )
         return NOTHING
 
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_visitSet_assign_stmt = suppress_after_count(
         3,
-        DeprecatedException,
+        errors.DeprecatedException,
         logger=logger,
         suppression_warning="Suppressing further deprecation warnings",
     )
@@ -1792,14 +1791,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Syntax should protect from this
             raise ValueError(f"Unhandled set assignment operator {ctx}")
 
-        with downgrade(DeprecatedException), self._suppressor_visitSet_assign_stmt:
+        with (
+            downgrade(errors.DeprecatedException),
+            self._suppressor_visitSet_assign_stmt,
+        ):
             if ctx.OR_ASSIGN():
                 subset = ctx.cum_assignable().getText()
                 superset = ctx.name_or_attr().getText()
             else:
                 subset = ctx.name_or_attr().getText()
                 superset = ctx.cum_assignable().getText()
-            raise DeprecatedException(
+            raise errors.DeprecatedException(
                 f"Set assignment of `{assignee}` is deprecated."
                 f' Use "assert `{subset}` within `{superset}` "instead.'
             )
