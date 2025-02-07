@@ -445,7 +445,7 @@ class ServicesConfig(BaseConfigModel):
         """Components URL"""
 
     class Packages(BaseConfigModel):
-        url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
+        url: str = Field(default="https://packages.atopileapi.com")
         """Packages URL"""
 
     @field_validator("components", mode="before")
