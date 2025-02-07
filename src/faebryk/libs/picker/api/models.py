@@ -3,8 +3,9 @@
 
 import functools
 import logging
-from dataclasses import dataclass, field, make_dataclass
+from dataclasses import asdict, dataclass, field, make_dataclass
 from textwrap import indent
+from typing import Any, Iterable
 
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
@@ -37,6 +38,26 @@ def SerializableField():
     )
 
 
+# Consider moving to a more general markdown utility
+def _md_list(items: Iterable[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
+
+
+# Consider making this a mixin instead
+def _pretty_params_helper(params) -> str:
+    def _map(v: Any) -> str:
+        if v is None:
+            return "**unconstrained**"
+        elif isinstance(v, (P_Set, int, float)):
+            return f"`{v}`"
+        elif isinstance(v, str):
+            return f'"{v}"'
+        else:
+            return str(v)
+
+    return _md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
+
+
 @dataclass_json
 @dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
@@ -46,6 +67,9 @@ class BaseParams(Serializable):
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
+
+    def pretty_str(self) -> str:
+        return _pretty_params_helper(self)
 
 
 def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
@@ -93,6 +117,9 @@ class LCSCParams(Serializable):
     def deserialize(cls, data: dict) -> "LCSCParams":
         return cls(**data)
 
+    def pretty_str(self) -> str:
+        return _pretty_params_helper(self)
+
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -107,6 +134,9 @@ class ManufacturerPartParams(Serializable):
     @classmethod
     def deserialize(cls, data: dict) -> "ManufacturerPartParams":
         return cls(**data)
+
+    def pretty_str(self) -> str:
+        return _pretty_params_helper(self)
 
 
 @dataclass_json

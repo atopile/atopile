@@ -163,14 +163,16 @@ def _find_modules(
     try:
         results = client.fetch_parts_multiple(queries)
     except ApiHTTPError as e:
-        if e.response.status_code == 404:
+        if e.response.status_code == 400:
             response = cast_assert(dict, e.response.json())
-            if errors := response.get("errors", None):
+            if errors := response.get("detail", {}).get("errors", None):
                 raise ExceptionGroup(
                     "Failed to fetch one or more parts",
                     [
-                        PickError(error["message"], module)
-                        for module, error in _map_response(errors).items()
+                        PickError(f"{error['message']}\n{query.pretty_str()}", module)
+                        for query, (module, error) in zip(
+                            queries, _map_response(errors).items()
+                        )
                         if error is not None
                     ],
                 ) from e

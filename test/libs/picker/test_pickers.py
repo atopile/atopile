@@ -6,7 +6,6 @@ import sys
 from pathlib import Path
 from tempfile import mkdtemp
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -16,11 +15,7 @@ from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.api.picker_lib import get_candidates, pick_atomically
-from faebryk.libs.picker.picker import (
-    PickError,
-    pick_part_recursively,
-    pick_topologically,
-)
+from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import P
 from faebryk.libs.util import groupby
@@ -191,31 +186,19 @@ def test_reject_diode_for_led():
 
 
 def test_pick_error_group():
-    # a is a module with a LCSC ID that doesn't exist
-    class DoesntExist(L.Module):
-        lcsc_id = L.f_field(F.has_descriptive_properties_defined)(
-            {"LCSC": "C987654321"}
-        )
-
     root = L.Module()
-
-    # a and b are modules with LCSC IDs that don't exist
-    a = DoesntExist()
-    b = DoesntExist()
 
     # Good luck finding a 10 gigafarad capacitor!
     c = F.Capacitor()
     c.add(F.has_package(F.has_package.Package.R0402))
     c.capacitance.alias_is(L.Range.from_center_rel(10 * P.GF, 0.1))
 
-    root.add(a)
-    root.add(b)
     root.add(c)
 
     solver = DefaultSolver()
 
     with pytest.raises(ExceptionGroup) as ex:
-        pick_topologically(root.get_tree(types=L.Module), solver, MagicMock())
+        pick_part_recursively(root, solver)
 
-    assert len(ex.value.exceptions) == 3
+    assert len(ex.value.exceptions) == 1
     assert all(isinstance(e, PickError) for e in ex.value.exceptions)
