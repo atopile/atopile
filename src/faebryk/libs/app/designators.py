@@ -58,8 +58,8 @@ def attach_random_designators(graph: Graph):
         if not n.has_trait(F.has_designator_prefix):
             prefix = type(n).__name__
             logger.warning(f"Node {prefix} has no designator prefix")
-
-        prefix = n.get_trait(F.has_designator_prefix).get_prefix()
+        else:
+            prefix = n.get_trait(F.has_designator_prefix).get_prefix()
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
