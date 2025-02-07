@@ -922,8 +922,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                 self._python_classes[super_ctx] = super_class
 
-            assert issubclass(super_class, L.Node)
-            return super_class(), promised_supers
+            return cast_assert(L.Node, super_class()), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
