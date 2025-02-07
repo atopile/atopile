@@ -16,6 +16,13 @@ if TYPE_CHECKING:
 
 
 class Footprint(Module):
+    """
+    The footprint here references a specific instance of a footprint representing a
+    component's placement on the PCB.
+
+    Consider this more than just the typical landing pattern.
+    """
+
     class TraitT(Trait): ...
 
     class has_equal_pins(TraitT.decless()):
