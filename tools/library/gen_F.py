@@ -4,8 +4,9 @@
 This file generates faebryk/src/faebryk/library/__init__.py
 """
 
+import ast
 import logging
-import re
+import sys
 from graphlib import TopologicalSorter
 from itertools import groupby
 from pathlib import Path
@@ -29,12 +30,48 @@ def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
     )
 
 
-def topo_sort(modules_out: dict[str, tuple[Path, str]]):
-    def find_deps(module_path: Path) -> set[str]:
-        f = module_path.read_text()
-        p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
-        return set(p.findall(f))
+class DependencyVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.dependencies = set()
+        self._function_level = 0
 
+    def visit_Attribute(self, node: ast.Attribute):
+        if isinstance(node.value, ast.Name) and node.value.id == "F":
+            logger.debug("Adding identifier: %s", node.attr)
+            self.dependencies.add(node.attr)
+        else:
+            self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef):
+        # Visit everything except the body
+        self.visit(node.args)
+        for decorator in node.decorator_list:
+            self.visit(decorator)
+        if node.returns is not None:
+            self.visit(node.returns)
+        for type_param in node.type_params:
+            self.visit(type_param)
+
+
+def find_deps(module_path: Path) -> set[str]:
+    module_ast = ast.parse(module_path.read_text(), filename=module_path.name)
+
+    visitor = DependencyVisitor()
+    visitor.visit(module_ast)
+    if visitor.dependencies:
+        logger.info("%s depends on: %s", module_path, visitor.dependencies)
+    else:
+        logger.info("%s has no `F` dependencies", module_path.stem)
+    return visitor.dependencies
+
+
+# def find_deps(module_path: Path) -> set[str]:
+#     f = module_path.read_text()
+#     p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
+#     return set(p.findall(f))
+
+
+def topo_sort(modules_out: dict[str, tuple[Path, str]]):
     if True:
         SRC_DIR = LIBRARY_DIR.parent.parent
         all_modules = [
@@ -140,6 +177,13 @@ def main():
         )
         + "\n"
     )
+
+    try:
+        from faebryk.library import _F  # noqa: F401
+    except AttributeError as ex:
+        if "partially initialized module 'faebryk.library._F'" in str(ex):
+            logger.error("Failed to make an importable _F.py")
+            sys.exit(1)
 
 
 if __name__ == "__main__":
