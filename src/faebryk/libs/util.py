@@ -116,7 +116,7 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
-def duplicates(it, key):
+def duplicates[T, K](it: Iterable[T], key: Callable[[T], K]) -> dict[K, list[T]]:
     return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
 
 

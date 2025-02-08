@@ -105,7 +105,7 @@ def build(app: Module) -> None:
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-    load_designators(G, attach=True)
+    load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
     # Pre-run solver -----------------------------------------------------------
     parameters = app.get_children(False, types=Parameter)
