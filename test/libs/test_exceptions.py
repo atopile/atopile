@@ -8,6 +8,7 @@ from atopile.errors import (
 from faebryk.libs.exceptions import (
     accumulate,
     downgrade,
+    iter_leaf_exceptions,
     iter_through_errors,
     suppress_after_count,
 )
@@ -125,3 +126,18 @@ def test_suppress_after_count():
         raise ValueError()
 
     logger.warning.assert_called_once()
+
+
+def test_iter_leaf_exceptions():
+    ex = ExceptionGroup(
+        "test",
+        [
+            Exception("test 1"),
+            ExceptionGroup("test 2", [Exception("test 2.1"), Exception("test 2.2")]),
+        ],
+    )
+    assert [ex.args[0] for ex in iter_leaf_exceptions(ex)] == [
+        "test 1",
+        "test 2.1",
+        "test 2.2",
+    ]

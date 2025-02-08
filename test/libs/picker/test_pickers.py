@@ -15,7 +15,7 @@ from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.api.picker_lib import get_candidates, pick_atomically
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import P
 from faebryk.libs.util import groupby
@@ -183,3 +183,25 @@ def test_reject_diode_for_led():
     ok = pick_atomically([(led, c) for c in candidates[diode]], solver)
 
     assert not ok
+
+
+def test_pick_error_group():
+    root = L.Module()
+
+    # Good luck finding a 10 gigafarad capacitor!
+    c1 = F.Capacitor()
+    c1.capacitance.alias_is(L.Range.from_center_rel(10 * P.GF, 0.1))
+
+    c2 = F.Capacitor()
+    c2.capacitance.alias_is(L.Range.from_center_rel(20 * P.GF, 0.1))
+
+    root.add(c1)
+    root.add(c2)
+
+    solver = DefaultSolver()
+
+    with pytest.raises(ExceptionGroup) as ex:
+        pick_part_recursively(root, solver)
+
+    assert len(ex.value.exceptions) == 1
+    assert isinstance(ex.value.exceptions[0], PickError)

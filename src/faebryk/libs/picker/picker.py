@@ -86,16 +86,6 @@ class PickError(Exception):
         return f"{type(self).__name__}({self.module}, {self.message})"
 
 
-class MultiPickError(PickError):
-    def __init__(self, message: str, modules: Iterable[Module]):
-        first_module = next(iter(modules))
-        super().__init__(message, first_module)
-        self.modules = modules
-
-    def __repr__(self):
-        return f"{type(self).__name__}({self.modules}, {self.message})"
-
-
 class PickErrorNotImplemented(PickError):
     def __init__(self, module: Module):
         message = f"Could not pick part for {module}: Not implemented"
