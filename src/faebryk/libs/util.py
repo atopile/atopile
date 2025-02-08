@@ -1729,11 +1729,11 @@ AUTO_RECOMPILE = ConfigFlag(
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
-    return (
-        json.loads(distro.read_text("direct_url.json") or "")
-        .get("dir_info", {})
-        .get("editable", False)
-    )
+
+    if dist_info := distro.read_text("direct_url.json"):
+        return json.loads(dist_info).get("dir_info", {}).get("editable", False)
+
+    return False
 
 
 class SerializableEnum[E: Enum](Serializable):
