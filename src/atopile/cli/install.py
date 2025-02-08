@@ -102,12 +102,24 @@ def get_package_repo_from_registry(module_name: str) -> str:
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
-    if response.status_code == 404:
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as ex:
+        try:
+            _ = response.json()["detail"]
+            if response.status_code == 404:
+                raise errors.UserException(
+                    f"Could not find package '{module_name}' in registry.",
+                    markdown=False,
+                ) from None
+        except (KeyError, requests.exceptions.JSONDecodeError):
+            pass
+
         raise errors.UserException(
-            f"Could not find package '{module_name}' in registry."
+            f"Error getting data for package '{module_name}': \n{ex}",
+            markdown=False,
         )
 
-    response.raise_for_status()
     return_data = response.json()
 
     try:
