@@ -17,10 +17,11 @@ nav:
     - tutorial/3-ato-create-component.md
     - tutorial/4-packages.md
     - tutorial/5-layout.md
+    - tutorial/6-saving-your-work.md
   - Guides:
     - guides/installation.md
-    - guides/git.md
     - guides/faebryk.md
+    - guides/git.md
   - Reference:
     - reference/attributes.md
     - reference/config.md
