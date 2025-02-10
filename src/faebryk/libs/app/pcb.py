@@ -21,7 +21,7 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import hash_string, not_none, once
+from faebryk.libs.util import cast_assert, duplicates, hash_string, not_none, once
 
 logger = logging.getLogger(__name__)
 
@@ -173,15 +173,23 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def load_net_names(graph: Graph) -> None:
+def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
 
     gf = GraphFunctions(graph)
-    for net, pcb_net_t in gf.nodes_with_trait(PCB_Transformer.has_linked_kicad_net):
-        pcb_net = pcb_net_t.get_net()
-        net.add(F.has_overriden_name_defined(pcb_net.name))
+    net_names: dict[F.Net, str] = {
+        cast_assert(F.Net, net): pcb_net_t.get_net().name
+        for net, pcb_net_t in gf.nodes_with_trait(PCB_Transformer.has_linked_kicad_net)
+    }
+
+    if dups := duplicates(net_names.values(), lambda x: x):
+        with downgrade(UserResourceException, raise_anyway=raise_duplicates):
+            raise UserResourceException(f"Multiple nets are named the same: {dups}")
+
+    for net, name in net_names.items():
+        net.add(F.has_overriden_name_defined(name))
 
 
 def create_footprint_library(app: Module) -> None:
