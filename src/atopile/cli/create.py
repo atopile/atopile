@@ -11,20 +11,20 @@ from pathlib import Path
 from typing import Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
-import click
 import git
 import jinja2
 import questionary
 import rich
 import typer
+import urllib3
+from cookiecutter.main import cookiecutter
 from natsort import natsorted
 from rich.table import Table
 
-from atopile import errors
+from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
@@ -35,10 +35,7 @@ from faebryk.libs.pycodegen import (
     gen_repeated_block,
     sanitize_name,
 )
-from faebryk.libs.util import (
-    groupby,
-    robustly_rm_dir,
-)
+from faebryk.libs.util import groupby
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -89,6 +86,7 @@ def query_helper[T: str | Path | bool](
     validation_failure_msg: str | None = "Value [cyan]{value}[/] is invalid",
     default: T | None = None,
     pre_entered: T | None = None,
+    validate_default: bool = True,
 ) -> T:
     """Query a user for input."""
     rich.print(prompt)
@@ -148,7 +146,7 @@ def query_helper[T: str | Path | bool](
         validator_func = validator  # type: ignore
 
     # Ensure the default provided is valid
-    if default is not None:
+    if default is not None and validate_default:
         if not validator_func(clarifier(default)):
             raise ValueError(f"Default value {default} is invalid")
 
@@ -207,128 +205,102 @@ PROJECT_NAME_REQUIREMENTS = (
 
 @create_app.command()
 def project(
-    name: Annotated[
-        str | None, typer.Option("--name", "-n", help=PROJECT_NAME_REQUIREMENTS)
-    ] = None,
-    repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
+    template: str = "https://github.com/atopile/project-template @ compiler-v0.3",
+    create_github_repo: bool | None = None,
 ):
     """
     Create a new ato project.
     """
+    # TODO: add template options
 
-    name = query_helper(
-        ":rocket: What's your project [cyan]name?[/]",
-        type_=str,
-        validator=r"^[a-zA-Z][a-zA-Z0-9_-]{,99}$",
-        validation_failure_msg=PROJECT_NAME_REQUIREMENTS,
-        upgrader=caseconverter.kebabcase,
-        upgrader_msg=textwrap.dedent(
-            """
-            We recommend using kebab-case ([cyan]{proposed_value}[/])
-            for your project name. It makes it easier to use your project
-            with other tools (like git) and it embeds nicely into URLs.
-            """
-        ).strip(),
-        pre_entered=name,
-    )
-
-    if (
-        not repo
-        and not questionary.confirm(
-            "Would you like to create a new repo for this project?"
-        ).unsafe_ask()
-    ):
-        repo = PROJECT_TEMPLATE
-
-    # Get a repo
-    repo_obj: git.Repo | None = None
-    for _ in stuck_user_helper_generator:
-        if not repo:
-            make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
-
-            help(
-                f"""
-                We recommend you create a Github repo for your project.
-
-                If you already have a repo, you can respond [yellow]n[/]
-                to the next question and provide the URL to your repo.
-
-                If you don't have one, you can respond yes to the next question
-                or (Cmd/Ctrl +) click the link below to create one.
-
-                Just select the template you want to use.
-
-                {make_repo_url}
-                """
-            )
-
-            rich.print(":rocket: Open browser to create Github repo?")
-            if questionary.confirm("").unsafe_ask():
-                webbrowser.open(make_repo_url)
-
-            rich.print(":rocket: What's the [cyan]repo's URL?[/]")
-            repo = questionary.text("").unsafe_ask()
-
-        assert repo is not None
-
-        # Try download the repo from the user-provided URL
-        if Path(name).exists():
-            raise click.ClickException(
-                f"Directory {name} already exists. Please put the repo elsewhere or"
-                " choose a different name."
-            )
-
-        try:
-            repo_obj = git.Repo.clone_from(repo, name, depth=1)
-            break
-        except git.GitCommandError as ex:
-            help(
-                f"""
-                [red]Failed to clone repo from {repo}[/]
-
-                {ex.stdout}
-                {ex.stderr}
-                """
-            )
-            repo = None
-
-    assert repo_obj is not None
-    assert repo_obj.working_tree_dir is not None
-
-    # Configure the project
-    do_configure(name, str(repo_obj.working_tree_dir), debug=False)
-
-    # Commit the configured project
-    # force the add, because we're potentially
-    # modifying things in gitignored locations
-    if repo_obj.is_dirty():
-        repo_obj.git.add(A=True, f=True)
-        repo_obj.git.commit(m="Configure project")
+    template_ref, *template_branch = template.split("@")
+    template_ref = template_ref.strip()
+    if template_branch:
+        template_branch = template_branch[0].strip()
     else:
-        rich.print(
-            "[yellow]No changes to commit! Seems like the"
-            " template you used mightn't be configurable?[/]"
+        template_branch = None
+
+    # Default to creating a Github repo if running interactively
+    if create_github_repo is None:
+        create_github_repo = config.interactive
+
+    if create_github_repo is True and not config.interactive:
+        raise errors.UserException(
+            "Cannot create a Github repo when running non-interactively."
         )
 
-    # If this repo's remote it PROJECT_TEMPLATE, cleanup the git history
-    if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
-        try:
-            robustly_rm_dir(Path(repo_obj.git_dir))
-        except (PermissionError, OSError) as ex:
-            with downgrade():
-                raise errors.UserException(
-                    f"Failed to remove .git directory: {repr(ex)}"
-                ) from ex
+    extra_context = {
+        "__ato_version": version.get_installed_atopile_version(),
+        "__python_path": sys.executable,
+    }
 
-        if not _in_git_repo(Path(repo_obj.working_dir).parent):
-            # If we've created this project OUTSIDE an existing git repo
-            # then re-init the repo so it has a clean history
-            clean_repo = git.Repo.init(repo_obj.working_tree_dir)
-            clean_repo.git.add(A=True)
-            clean_repo.git.commit(m="Initial commit")
+    logging.info("Running cookie-cutter on the template")
+    project_path = Path(
+        cookiecutter(
+            template_ref,
+            checkout=template_branch,
+            no_input=not config.interactive,
+            extra_context=dict(
+                filter(lambda x: x[1] is not None, extra_context.items())
+            ),
+        )
+    )
+
+    # Get a repo
+    if create_github_repo:
+        logging.info("Initializing git repo")
+        repo = git.Repo.init(project_path)
+        repo.git.add(A=True, f=True)
+        repo.git.commit(m="Initial commit")
+
+        github_username = query_helper(
+            "What's your Github username?",
+            str,
+            validator=r"^[a-zA-Z0-9_-]+$",
+        )
+
+        make_repo_url = (
+            f"https://github.com/new?name={project_path.name}&owner={github_username}"
+        )
+
+        help(
+            f"""
+            We recommend you create a Github repo for your project.
+
+            If you already have a repo, you can respond [yellow]n[/]
+            to the next question and provide the URL to your repo.
+
+            If you don't have one, you can respond yes to the next question
+            or (Cmd/Ctrl +) click the link below to create one.
+
+            Just select the template you want to use.
+
+            {make_repo_url}
+            """
+        )
+
+        webbrowser.open(make_repo_url)
+
+        def _repo_validator(url: str) -> bool:
+            try:
+                urllib3.request("GET", url)
+                return True
+            except Exception:
+                return False
+
+        if url := query_helper(
+            ":rocket: What's the [cyan]repo's URL?[/]",
+            str,
+            default=f"https://github.com/{github_username}/{project_path.name}",
+            validator=_repo_validator,
+            validate_default=False,
+        ):
+            repo.create_remote("origin", url).push()
 
     # Wew! New repo created!
-    rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
+    rich.print(
+        f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
+    )
 
 
 @create_app.command("build-target")

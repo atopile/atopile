@@ -71,6 +71,7 @@ dependencies = [
     "questionary>=2.0.1",
     "pydantic-settings>=2.7.1",
     "hypothesis>=6.124.7",
+    "cookiecutter>=2.6.0",
 ]
 
 [project.urls]
