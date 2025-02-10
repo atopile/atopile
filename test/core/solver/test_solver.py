@@ -1484,6 +1484,14 @@ def test_nested_fold_scalar():
     assert solver.inspect_get_known_supersets(A) == make_lit(7)
 
 
+def test_regression_lit_mul_fold_powers():
+    A = Parameter()
+    A.alias_is(Power(2, -1) * Power(2, 0.5))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == 2**-0.5
+
+
 def test_nested_fold_interval():
     A = Parameter()
     A.alias_is(

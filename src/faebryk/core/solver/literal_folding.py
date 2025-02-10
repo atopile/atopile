@@ -89,7 +89,6 @@ def _collect_factors[T: Multiply | Power](
     factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
         counter.items()
     )
-
     # Store operations of type collect_type grouped by their non-literal operand
     same_literal_factors: dict[ParameterOperatable, list[T]] = defaultdict(list)
 
@@ -101,20 +100,23 @@ def _collect_factors[T: Multiply | Power](
         # TODO unnecessary strict
         if len(collect_op.operands) != 2:
             continue
-        # If it's commutative, skip purely literal operations and pick the non-literal
-        # operand
-        if issubclass(collect_type, Commutative):
-            if is_pure_literal_expression(collect_op):
+        # handled by lit fold first
+        if len(collect_op.get_literal_operands()) > 1:
+            continue
+        # handled by lit fold completely
+        if is_pure_literal_expression(collect_op):
+            continue
+        if not issubclass(collect_type, Commutative):
+            if not issubclass(collect_type, Power):
+                raise NotImplementedError(
+                    f"Non-commutative {collect_type.__name__} not implemented"
+                )
+            # For power, ensure second operand is literal
+            if not is_literal(collect_op.operands[1]):
                 continue
-            paramop = next(
-                o for o in collect_op.operands if not ParameterOperatable.is_literal(o)
-            )
-        else:
-            # For non-commutative, ensure second operand is literal
-            if not ParameterOperatable.is_literal(collect_op.operands[1]):
-                continue
-            paramop = collect_op.operands[0]
 
+        # pick non-literal operand
+        paramop = next(iter(collect_op.operatable_operands))
         # Collect these factors under the non-literal operand
         same_literal_factors[paramop].append(collect_op)
         # If this operand isn't in factors yet, initialize it with 0
