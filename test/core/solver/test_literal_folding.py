@@ -174,6 +174,7 @@ class Filters(Namespace):
             # complex
             not (Filters.is_negative(base) and Filters.is_fractional(exp))
             # nan/undefined
+            # TODO enable base crossing zero
             and not (Filters.crosses_zero(base) and Filters.crosses_zero(exp))
         )
 
@@ -425,7 +426,6 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 
 # Examples -----------------------------------------------------------------------------
-@example(Abs(Round(lit(Range(-inf, inf)))))
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -481,6 +481,31 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
+# TODO cause timeout
+@example(
+    expr=Subtract(
+        Round(
+            Subtract(
+                lit(0),
+                lit(Range(-999_999_999_905, -0.3333333333333333)),
+            ),
+        ),
+        Subtract(
+            lit(-999_999_983_213),
+            p(Range(-17297878, 999_999_992_070)),
+        ),
+    ),
+)
+@example(Abs(Round(lit(Range(-inf, inf)))))
+@example(
+    expr=Divide(
+        Divide(
+            lit(0),
+            lit(Range(-1, -2.2250738585072014e-308)),
+        ),
+        lit(Range(-1, -2.2250738585072014e-308)),
+    ),
+)
 @example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
 @example(Add(Add(lit(0)), Abs(p(-1))))
 @example(Abs(p(-1)))

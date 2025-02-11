@@ -165,20 +165,41 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         if other.max_elem < 0:
             return self.op_pow_interval(other.op_negate()).op_invert()
         if other.min_elem < 0:
-            raise NotImplementedError("passing zero in exp not implemented yet")
-        if self._min < 0 and self._max > 0:
-            raise NotImplementedError("crossing zero in base not implemented yet")
+            raise NotImplementedError("crossing zero in exp not implemented yet")
         if self._max < 0 and not other.min_elem.is_integer():
             raise NotImplementedError(
                 "cannot raise negative base to fractional exponent"
             )
 
+        def _pow(x, y):
+            try:
+                return x**y
+            except OverflowError:
+                return math.inf if x > 0 else -math.inf
+
+        a, b = self._min, self._max
+        c, d = other._min, other._max
+
+        # see first two guards above
+        assert c >= 0
+
         values = [
-            self._min**other._min,
-            self._min**other._max,
-            self._max**other._min,
-            self._max**other._max,
+            _pow(a, c),
+            _pow(a, d),
+            _pow(b, c),
+            _pow(b, d),
         ]
+
+        if a < 0 < b:
+            # might be 0 exp, so just in case applying exponent
+            values.extend((0.0**c, 0.0**d))
+
+            # d odd
+            if d % 2 == 1:
+                # c < k < d
+                if (k := d - 1) > c:
+                    values.append(_pow(a, k))
+
         return Numeric_Interval_Disjoint(Numeric_Interval(min(values), max(values)))
 
     def op_invert(self) -> "Numeric_Interval_Disjoint[float]":

@@ -201,6 +201,48 @@ def test_pow():
     )
 
 
+@pytest.mark.parametrize(
+    "base,exp, expected",
+    # [-11, 10]^2 -> [0, 11^2]
+    # [-11, 10]^3 -> [-11^3, 10^3]
+    # [-11, 10]^[2,3] -> [-11^3, 10^3]
+    # [-5, 2]^[2,3] -> [-5^3, -5^2]
+    [
+        (
+            Range(-11, 10),
+            Range(2, 2),
+            Range(0, 11**2),
+        ),
+        (
+            Range(-11, 10),
+            Range(3, 3),
+            Range(-(11**3), 10**3),
+        ),
+        (
+            Range(-11, 10),
+            Range(2, 3),
+            Range(-(11**3), 10**3),
+        ),
+        (
+            Range(-5, 2),
+            Range(2, 3),
+            Range(-(5**3), (5**2)),
+        ),
+    ],
+)
+def test_pow_extended(
+    base: Range,
+    exp: Range,
+    expected: Range,
+):
+    base_q, exp_q, expected_q = (
+        RangeWithGaps.from_value(base),
+        RangeWithGaps.from_value(exp),
+        RangeWithGaps.from_value(expected),
+    )
+    assert base_q**exp_q == expected_q
+
+
 @pytest.mark.skip(
     "Zero crossing not implemented https://github.com/atopile/atopile/issues/614"
 )
