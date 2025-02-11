@@ -93,7 +93,9 @@ def test_expression_congruence():
         Add(p1, p2, Quantity_Singleton(0))
     )
 
-    assert Add(Quantity_Interval(0, 1)).is_congruent_to(Add(Quantity_Interval(0, 1)))
+    assert Add(Quantity_Interval(0, 1)).is_congruent_to(
+        Add(Quantity_Interval(0, 1)), allow_uncorrelated=True
+    )
     assert not (p1 - p2).is_congruent_to(p2 - p1)
 
     assert Is(p1, p2).is_congruent_to(Is(p2, p1))
