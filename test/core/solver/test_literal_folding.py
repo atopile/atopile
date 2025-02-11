@@ -435,8 +435,8 @@ def test_discover_literal_folding(expr: Arithmetic):
         # Phase.reuse,
         Phase.explicit,
         Phase.target,
-        Phase.shrink,
-        Phase.explain,
+        # Phase.shrink,
+        # Phase.explain,
     ),
     suppress_health_check=[
         HealthCheck.data_too_large,
@@ -481,7 +481,6 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
-# TODO cause timeout
 @example(
     expr=Subtract(
         Round(
