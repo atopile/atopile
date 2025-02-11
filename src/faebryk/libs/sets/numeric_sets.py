@@ -18,14 +18,16 @@ NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
 # numpy default is 1e-5
 # empirically we need <= 1e-8
 EPSILON_REL = 1e-6
+ABS_DIGITS = 15  # femto
+EPSILON_ABS = 10**-ABS_DIGITS
 
 
-def float_round[T](value: T) -> T:
+def float_round[T](value: T, digits: int = 0) -> T:
     if not isinstance(value, (float, int)):
-        return round(value)  # type: ignore
+        return round(value, digits)  # type: ignore
     if value in [math.inf, -math.inf]:
         return value  # type: ignore
-    out = round(value)
+    out = round(value, digits)
     if isinstance(value, float):
         return float(out)  # type: ignore
     assert isinstance(value, int)
@@ -47,8 +49,8 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise ValueError("min must be less than or equal to max")
         if min == float("inf") or max == float("-inf"):
             raise ValueError("min or max has bad infinite value")
-        self._min = min
-        self._max = max
+        self._min = float_round(min, ABS_DIGITS)
+        self._max = float_round(max, ABS_DIGITS)
 
     def is_empty(self) -> bool:
         return False
@@ -295,8 +297,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         # left overlap
         return Numeric_Interval_Disjoint(Numeric_Interval(other._max, self._max))
 
-    def op_round(self) -> "Numeric_Interval[NumericT]":
-        return Numeric_Interval(float_round(self._min), float_round(self._max))  # type: ignore #TODO
+    def op_round(self, ndigits: int = 0) -> "Numeric_Interval[NumericT]":
+        return Numeric_Interval(
+            float_round(self._min, ndigits), float_round(self._max, ndigits)
+        )  # type: ignore #TODO
 
     def op_abs(self) -> "Numeric_Interval[NumericT]":
         if self._min < 0 < self._max:
@@ -662,8 +666,8 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             return BoolSet(False)
         return BoolSet(True, False)
 
-    def op_round(self) -> "Numeric_Interval_Disjoint[NumericT]":
-        return Numeric_Interval_Disjoint(*(r.op_round() for r in self.intervals))
+    def op_round(self, ndigits: int = 0) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(*(r.op_round(ndigits) for r in self.intervals))
 
     def op_abs(self) -> "Numeric_Interval_Disjoint[NumericT]":
         return Numeric_Interval_Disjoint(*(r.op_abs() for r in self.intervals))

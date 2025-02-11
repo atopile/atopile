@@ -550,8 +550,8 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_pow_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, units)
 
-    def op_round(self) -> "Quantity_Interval_Disjoint":
-        _interval = self._intervals.op_round()
+    def op_round(self, ndigits: int = 0) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_round(ndigits)
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
     def op_abs(self) -> "Quantity_Interval_Disjoint":
@@ -748,8 +748,8 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             raise ValueError("incompatible units")
         return self._intervals < other_q._intervals
 
-    def __round__(self) -> "Quantity_Interval_Disjoint":
-        return self.op_round()
+    def __round__(self, ndigits: int = 0) -> "Quantity_Interval_Disjoint":
+        return self.op_round(ndigits)
 
     def __abs__(self) -> "Quantity_Interval_Disjoint":
         return self.op_abs()

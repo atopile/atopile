@@ -15,6 +15,7 @@ from faebryk.libs.sets.numeric_sets import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set_Discrete,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
 from faebryk.libs.units import P, Unit, dimensionless, quantity
@@ -390,3 +391,22 @@ def test_serialize(input_set: P_Set, expected: P_Set | None):
 )
 def test_float_round(value, expected):
     assert float_round(value) == expected
+
+
+def test_regression_ss_zero():
+    x = Quantity_Set_Discrete(2.77e-17)
+    y = Quantity_Interval_Disjoint(Quantity_Interval(-math.inf, 0))
+    assert x.is_subset_of(y)
+
+
+@pytest.mark.parametrize(
+    "digits,expected",
+    [
+        (0, Quantity_Interval_Disjoint(Quantity_Interval(2, 2))),
+        (1, Quantity_Interval_Disjoint(Quantity_Interval(1.5, 2.4))),
+        (2, Quantity_Interval_Disjoint(Quantity_Interval(1.51, 2.42))),
+    ],
+)
+def test_round_digits(digits: int, expected: Quantity_Interval_Disjoint):
+    x = Quantity_Interval_Disjoint(Quantity_Interval(1.51, 2.42))
+    assert round(x, digits) == expected
