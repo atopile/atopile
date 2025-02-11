@@ -567,8 +567,8 @@ def test_regression_literal_folding(expr: Arithmetic):
         # Phase.reuse,
         # Phase.explicit,
         Phase.target,
-        Phase.shrink,
-        Phase.explain,
+        # Phase.shrink,
+        # Phase.explain,
     ),
     suppress_health_check=[
         HealthCheck.data_too_large,
