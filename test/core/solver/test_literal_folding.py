@@ -426,12 +426,6 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 
 # Examples -----------------------------------------------------------------------------
-@example(
-    Add(
-        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
-        Subtract(lit(-82408), lit(-999_998_999_993)),
-    )
-)
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -487,6 +481,12 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
+@example(
+    Add(
+        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
+        Subtract(lit(-82408), lit(-999_998_999_993)),
+    )
+)
 @example(
     expr=Subtract(
         Round(lit(Range(2, 10))),
