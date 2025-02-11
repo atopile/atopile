@@ -916,14 +916,11 @@ class Config:
 
         # Otherwise, default to opening the layout if we're only building a
         # single target and we're running interactively
-        if (
+        return (
             (self.project is None or self.project.open_layout_on_build is None)
             and len(list(self.selected_builds)) == 1
             and self.interactive
-        ):
-            return True
-
-        return False
+        )
 
 
 _project_dir: Path | None = None
