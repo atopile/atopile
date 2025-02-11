@@ -12,7 +12,6 @@ from typing import Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
 import git
-import jinja2
 import questionary
 import rich
 import typer
@@ -456,54 +455,6 @@ def build_target(
         ":sparkles: Successfully created a new build configuration "
         f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
     )
-
-
-@create_app.command(hidden=True)
-def configure(name: str, repo_path: str):
-    """Command useful in developing templates."""
-    do_configure(name, repo_path, debug=True)
-
-
-def do_configure(name: str, _repo_path: str, debug: bool):
-    """Configure the project."""
-    repo_path = Path(_repo_path)
-    try:
-        author = git.Repo(repo_path).git.config("user.name")
-    except (git.GitCommandError, git.InvalidGitRepositoryError):
-        author = "Original Author"
-
-    template_globals = {
-        "name": name,
-        "caseconverter": caseconverter,
-        "repo_root": repo_path,
-        "python_path": sys.executable,
-        "author": author,
-    }
-
-    # Load templates
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(repo_path)))
-
-    for template_path in repo_path.glob("**/*.j2"):
-        # Figure out the target path and variables and what not
-        target_path = template_path.parent / template_path.name.replace(
-            ".j2", ""
-        ).replace("__name__", caseconverter.kebabcase(name))
-
-        template_globals["rel_path"] = target_path
-
-        template = env.get_template(
-            str(template_path.relative_to(repo_path).as_posix()),
-            globals=template_globals,
-        )
-
-        # Make the noise!
-        with target_path.open("w") as f:
-            for chunk in template.generate():
-                f.write(chunk)
-
-        # Remove the template
-        if not debug:
-            template_path.unlink()
 
 
 class ComponentType(StrEnum):
