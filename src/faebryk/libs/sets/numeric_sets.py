@@ -61,6 +61,12 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return self._min != float("-inf") and self._max != float("inf")
 
     @property
+    def is_integer(self) -> bool:
+        return (isinstance(self._min, int) and isinstance(self._max, int)) or (
+            self._min == self._max and self._min.is_integer()
+        )
+
+    @property
     def min_elem(self) -> NumericT:
         return self._min
 
@@ -170,6 +176,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise NotImplementedError(
                 "cannot raise negative base to fractional exponent"
             )
+        if not other.is_integer and self.min_elem < 0:
+            raise NotImplementedError(
+                "cannot raise negative base to fractional exponent (complex result)"
+            )
 
         def _pow(x, y):
             try:
@@ -252,8 +262,11 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         min_ = max(self._min, other._min)
         max_ = min(self._max, other._max)
-        if min_ <= max_ or math.isclose(min_, max_, rel_tol=EPSILON_REL):
+        if min_ <= max_:
             return Numeric_Interval_Disjoint(Numeric_Interval(min_, max_))
+        if math.isclose(min_, max_, rel_tol=EPSILON_REL):
+            # TODO maybe avg or re-sort min,max?
+            return Numeric_Set_Discrete(min_)
         return Numeric_Set_Empty()
 
     def op_difference_interval(
