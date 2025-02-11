@@ -103,6 +103,8 @@ def _collect_factors[T: Multiply | Power](
         # handled by lit fold first
         if len(collect_op.get_literal_operands()) > 1:
             continue
+        if not collect_op.get_literal_operands():
+            continue
         # handled by lit fold completely
         if is_pure_literal_expression(collect_op):
             continue
