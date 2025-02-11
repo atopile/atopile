@@ -116,15 +116,29 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         Arithmetically multiplies two intervals.
         """
 
-        # if 0.0 * inf -> inf and 0.0
-        # if 0.0 * -inf -> -inf and 0.0
+        # TODO decide on definition
+        # def guarded_mul(a: NumericT, b: NumericT) -> list[NumericT]:
+        #     """
+        #     0.0 * inf -> [0.0, inf]
+        #     0.0 * -inf -> [-inf, 0.0]
+        #     """
+        #     if 0.0 in [a, b] and math.inf in [a, b]:
+        #         assert isinstance(a, float) or isinstance(b, float)
+        #         return [0.0, math.inf]
+        #     if 0.0 in [a, b] and -math.inf in [a, b]:
+        #         assert isinstance(a, float) or isinstance(b, float)
+        #         return [0.0, -math.inf]
+        #     prod = a * b
+        #     assert not math.isnan(prod)
+        #     return [prod]
+
         def guarded_mul(a: NumericT, b: NumericT) -> list[NumericT]:
-            if 0.0 in [a, b] and math.inf in [a, b]:
-                assert isinstance(a, float) or isinstance(b, float)
-                return [0.0, math.inf]
-            if 0.0 in [a, b] and -math.inf in [a, b]:
-                assert isinstance(a, float) or isinstance(b, float)
-                return [0.0, -math.inf]
+            """
+            0 * inf -> 0
+            0 * -inf -> 0
+            """
+            if 0.0 in [a, b]:
+                return [0.0]  # type: ignore
             prod = a * b
             assert not math.isnan(prod)
             return [prod]
