@@ -410,11 +410,6 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 
 # Examples -----------------------------------------------------------------------------
-# FIXME: we are correlating congruent expressions I think
-# might be happening in the check existing of create expression
-# TODO: 0 / [0, 1] is kinda weirdly defined, for now we just skip it
-# TODO: 0 * [0, inf] is inconsistent
-@example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -470,6 +465,7 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
+@example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
 @example(Add(Add(lit(0)), Abs(p(-1))))
 @example(Abs(p(-1)))
 @example(
