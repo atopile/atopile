@@ -91,7 +91,11 @@ def build_project(prj_path: Path, env: dict[str, str], request: pytest.FixtureRe
     ],
 )
 def test_projects(
-    repo_uri: str, env: dict[str, str], tmp_path: Path, request: pytest.FixtureRequest
+    repo_uri: str,
+    env: dict[str, str],
+    tmp_path: Path,
+    request: pytest.FixtureRequest,
+    benchmark,
 ):
     # Clone the repository
     # Using gh to use user credentials if run locally
@@ -120,7 +124,17 @@ def test_projects(
         # Translate the error message to clearly distinguish from clone errors
         raise InstallError from ex
 
-    build_project(prj_path, env, request=request)
+    def _do_build():
+        build_project(prj_path, env, request=request)
+
+    benchmark.pedantic(
+        _do_build,
+        args=(),
+        kwargs=None,
+        setup=None,
+        rounds=1,
+        warmup_rounds=0,
+    )
 
     repo = git.Repo(prj_path)
     if any(item.a_path.endswith(".kicad_pcb") for item in repo.index.diff(None)):
