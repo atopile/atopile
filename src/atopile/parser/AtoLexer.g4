@@ -49,6 +49,7 @@ TRUE : 'True';
 FALSE : 'False';
 
 WITHIN : 'within';
+IS : 'is';
 PASS : 'pass';
 
 

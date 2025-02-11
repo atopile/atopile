@@ -36,15 +36,13 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.picker import MultiPickError, PickError
+from faebryk.libs.picker.picker import PickError, does_not_require_picker_check
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     Tree,
     cast_assert,
     groupby,
-    indented_container,
     not_none,
-    partition,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,11 +96,13 @@ def _prepare_query(
             part_number=trait.get_partno(),
             quantity=qty,
         )
+
     elif trait := module.try_get_trait(F.is_pickable_by_supplier_id):
         if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC:
             return LCSCParams(
                 lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
+
     elif trait := module.try_get_trait(F.is_pickable_by_type):
         pick_type = trait.get_pick_type()
         params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
@@ -155,20 +155,32 @@ def _find_modules(
     params = {m: _prepare_query(m, solver) for m in modules}
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
+
+    def _map_response[T](results: list[T]) -> dict[Module, T]:
+        assert len(results) == len(queries)
+        return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
+
     try:
         results = client.fetch_parts_multiple(queries)
     except ApiHTTPError as e:
-        if e.response.status_code == 404:
-            raise MultiPickError("Failed to fetch one or more parts", modules) from e
+        if e.response.status_code == 400:
+            response = cast_assert(dict, e.response.json())
+            if errors := response.get("detail", {}).get("errors", None):
+                raise ExceptionGroup(
+                    "Failed to fetch one or more parts",
+                    [
+                        PickError(f"{error['message']}\n{query.pretty_str()}", module)
+                        for module, (query, error) in _map_response(
+                            list(zip(queries, errors))
+                        ).items()
+                        if error is not None
+                    ],
+                ) from e
+            else:
+                raise
         raise e
 
-    assert len(results) == len(queries)
-
-    return {
-        m: _process_candidates(m, r)
-        for ms, r in zip(grouped.values(), results)
-        for m, _ in ms
-    }
+    return {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
 
 
 def get_candidates(
@@ -218,19 +230,16 @@ def filter_by_module_params_and_attach(
     try:
         try_attach(cmp, parts_gen(), qty=1)
     except PickError as ex:
-        param_mappings = [
-            (
-                p.lcsc_display,
-                [f"{name}: {lit}" for name, lit in p.attribute_literals.items()],
-            )
-            for p, _ in zip(parts, range(10))
-        ]
+        cmp_descr = f"{cmp.get_full_name()}<{cmp.pretty_params(solver)}>"
+        attr_str = "\n".join(
+            f"- {c.lcsc_display} (attributes: {', '.join(
+                f"{name}={lit}" for name, lit in c.attribute_literals.items()
+            )})"
+            for c in parts
+        )
         raise PickError(
-            f"No parts found that are compatible with design for module:"
-            f"\n{cmp.pretty_params(solver)} "
-            f"\nin {len(tried)} candidate parts, "
-            f"of {len(parts)} total parts:"
-            f"\n{'\n'.join(f'{p}: {lits}' for p, lits in param_mappings)}",
+            f"No parts found that are compatible with design for `{cmp_descr}`:\n"
+            f"{attr_str}",
             cmp,
         ) from ex
 
@@ -274,44 +283,50 @@ def try_attach(module: Module, parts: Iterable[Component], qty: int):
     )
 
 
+class NotCompatibleException(Exception):
+    pass
+
+
 def get_compatible_parameters(
     module: Module, c: "Component", solver: Solver
-) -> dict[Parameter, ParameterOperatable.Literal] | None:
+) -> dict[Parameter, ParameterOperatable.Literal]:
     """
     Check if the parameters of a component are compatible with the module
     """
     # Nothing to check
-    if not c.attribute_literals:
+    if not module.has_trait(F.is_pickable_by_type):
         return {}
 
     # shortcut because solving slow
     try:
         get_raw(c.lcsc_display)
-    except LCSC_NoDataException:
-        return None
+    except LCSC_NoDataException as e:
+        raise NotCompatibleException from e
 
-    no_attr, have_attr = partition(
-        lambda x: hasattr(module, x), c.attribute_literals.keys()
-    )
-    no_attr, have_attr = list(no_attr), list(have_attr)
+    design_params = module.get_trait(F.is_pickable_by_type).get_parameters()
+    component_params = c.attribute_literals
 
-    if no_attr:
+    if no_attr := component_params.keys() - design_params.keys():
         with downgrade(UserException):
+            no_attr_str = "\n".join(f"- `{a}`" for a in no_attr)
             raise UserException(
-                f"Module `{module}` is missing attributes"
-                f" {indented_container(no_attr)}. "
+                f"Module `{module}` is missing attributes:\n\n"
+                f" {no_attr_str}\n\n"
                 "This likely means you could use a more precise"
                 " module/component in your design."
             )
 
-    def _map_param(name: str) -> tuple[Parameter, P_Set]:
-        p = cast_assert(Parameter, getattr(module, name))
-        c_range = c.attribute_literals[name]
+    def _map_param(name: str, param: Parameter) -> tuple[Parameter, P_Set]:
+        c_range = component_params.get(name)
         if c_range is None:
-            c_range = p.domain.unbounded(p)
-        return p, c_range
+            c_range = param.domain.unbounded(param)
+        return param, c_range
 
-    param_mapping = [_map_param(name) for name in have_attr]
+    param_mapping = [
+        _map_param(name, param)
+        for name, param in design_params.items()
+        if not param.has_trait(does_not_require_picker_check)
+    ]
 
     # check for any param that has few supersets whether the component's range
     # is compatible already instead of waiting for the solver
@@ -325,7 +340,7 @@ def get_compatible_parameters(
                     f"Known superset {known_superset} is not a superset of {c_range}"
                     f" for part C{c.lcsc}"
                 )
-            return None
+            raise NotCompatibleException
 
     return {p: c_range for p, c_range in param_mapping}
 
@@ -336,27 +351,25 @@ def check_compatible_parameters(
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
 
-    mappings = [get_compatible_parameters(m, c, solver) for m, c in module_candidates]
-
-    if any(m is None for m in mappings):
+    try:
+        mappings = [
+            get_compatible_parameters(m, c, solver) for m, c in module_candidates
+        ]
+    except NotCompatibleException:
         return False
 
     if LOG_PICK_SOLVE:
         logger.info(f"Solving for modules:" f" {[m for m, _ in module_candidates]}")
 
-    anded = And(
-        *(
-            Is(m_param, c_range)
-            for param_mapping in mappings
-            for m_param, c_range in not_none(param_mapping).items()
-        )
+    predicates = (
+        Is(m_param, c_range)
+        for param_mapping in mappings
+        for m_param, c_range in not_none(param_mapping).items()
     )
-    result = solver.assert_any_predicate([(anded, None)], lock=False)
 
-    if not result.true_predicates:
-        return False
+    result = solver.assert_any_predicate([(And(*predicates), None)], lock=False)
 
-    return True
+    return len(result.true_predicates) == 1
 
 
 def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
@@ -365,5 +378,9 @@ def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
         return False
     for m, part in module_candidate_params:
         try_attach(m, [part], qty=1)
+        logger.debug(
+            f"Attached {part.lcsc_display} ('{part.description}') to "
+            f"'{m.get_full_name(types=False)}'"
+        )
 
     return True

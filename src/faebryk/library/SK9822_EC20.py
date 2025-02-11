@@ -33,12 +33,12 @@ class SK9822_EC20(Module):
         x = self
         return F.can_attach_to_footprint_via_pinmap(
             {
-                "1": x.sdo.signal,
+                "1": x.sdo.line,
                 "2": x.power.lv,
-                "3": x.sdi.signal,
-                "4": x.ckl.signal,
+                "3": x.sdi.line,
+                "4": x.ckl.line,
                 "5": x.power.hv,
-                "6": x.cko.signal,
+                "6": x.cko.line,
             }
         )
 

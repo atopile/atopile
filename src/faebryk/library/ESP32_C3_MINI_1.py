@@ -55,33 +55,33 @@ class _ESP32_C3_MINI_1(Module):
             "2": gnd,
             "3": self.vdd3v3.hv,
             # 4 is not connected
-            "5": self.gpio[2].signal,
-            "6": self.gpio[3].signal,
+            "5": self.gpio[2].line,
+            "6": self.gpio[3].line,
             # 7 is not connected
-            "8": self.chip_enable.signal,
+            "8": self.chip_enable.line,
             # 9 is not connected
             # 10 is not connected
             "11": gnd,
-            "12": self.gpio[0].signal,
-            "13": self.gpio[1].signal,
+            "12": self.gpio[0].line,
+            "13": self.gpio[1].line,
             "14": gnd,
             # 15 is not connected
-            "16": self.gpio[10].signal,
+            "16": self.gpio[10].line,
             # 17 is not connected
-            "18": self.gpio[4].signal,
-            "19": self.gpio[5].signal,
-            "20": self.gpio[6].signal,
-            "21": self.gpio[7].signal,
-            "22": self.gpio[8].signal,
-            "23": self.gpio[9].signal,
+            "18": self.gpio[4].line,
+            "19": self.gpio[5].line,
+            "20": self.gpio[6].line,
+            "21": self.gpio[7].line,
+            "22": self.gpio[8].line,
+            "23": self.gpio[9].line,
             # 24 is not connected
             # 25 is not connected
-            "26": self.gpio[18].signal,
-            "27": self.gpio[19].signal,
+            "26": self.gpio[18].line,
+            "27": self.gpio[19].line,
             # 28 is not connected
             # 29 is not connected
-            "30": self.gpio[20].signal,  # uart.rx,
-            "31": self.gpio[21].signal,  # uart.tx,
+            "30": self.gpio[20].line,  # uart.rx,
+            "31": self.gpio[21].line,  # uart.tx,
             # 32 is not connected
             # 33 is not connected
             # 34 is not connected

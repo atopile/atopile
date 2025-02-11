@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from pygments import token as pygments_token
 
 import atopile
 import atopile.parse
@@ -87,3 +88,19 @@ def test_reconstruct_expand(abcde):
     assert atopile.parse_utils.reconstruct(stmts["d"]) == "d=4"
     assert atopile.parse_utils.reconstruct(stmts["d"], expand_after=0) == "d=4"
     assert atopile.parse_utils.reconstruct(stmts["d"], expand_before=0) == "c=3;d=4"
+
+
+def test_pygments_lexer():
+    text = """module Test:
+    a = 1
+"""
+    lexer = atopile.parse_utils.PygmentsLexer()
+    tok_gen = lexer.get_tokens_unprocessed(text)
+    assert list(filter(lambda t: t[1] != pygments_token.Whitespace, tok_gen)) == [
+        (0, pygments_token.Keyword, "module"),
+        (7, pygments_token.Name, "Test"),
+        (11, pygments_token.Token, ":"),
+        (17, pygments_token.Name, "a"),
+        (19, pygments_token.Operator, "="),
+        (21, pygments_token.Number, "1"),
+    ]

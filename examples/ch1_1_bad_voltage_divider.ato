@@ -1,0 +1,14 @@
+import Resistor
+
+
+module VoltageDivider:
+    r_top = new Resistor
+    r_bottom = new Resistor
+
+    r_top.p2 ~ r_bottom.p1
+
+
+module App:
+    my_vdiv = new VoltageDivider
+    my_vdiv.r_top.resistance = 10kohm +/- 10%
+    my_vdiv.r_bottom.resistance = 4.7kohm +/- 10%

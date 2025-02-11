@@ -16,7 +16,11 @@ from faebryk.core.link import (
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
 from faebryk.core.node import NodeException
-from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
+from faebryk.libs.app.erc import (
+    ERCFaultShortedModuleInterfaces,
+    ERCPowerSourcesShortedError,
+    simple_erc,
+)
 from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
 
@@ -585,13 +589,13 @@ def test_up_connect():
         bus_out: F.UART_Base
 
         def __preinit__(self) -> None:
-            self.bus_in.rx.signal.connect(self.bus_out.rx.signal)
-            self.bus_in.tx.signal.connect(self.bus_out.tx.signal)
+            self.bus_in.rx.line.connect(self.bus_out.rx.line)
+            self.bus_in.tx.line.connect(self.bus_out.tx.line)
             self.bus_in.rx.reference.connect(self.bus_out.rx.reference)
 
     app = UARTBuffer()
 
-    assert app.bus_in.rx.signal.is_connected_to(app.bus_out.rx.signal)
+    assert app.bus_in.rx.line.is_connected_to(app.bus_out.rx.line)
     assert app.bus_in.rx.reference.is_connected_to(app.bus_out.rx.reference)
     assert app.bus_in.rx.is_connected_to(app.bus_out.rx)
     assert app.bus_in.tx.is_connected_to(app.bus_out.tx)
@@ -670,15 +674,15 @@ def test_chains_mixed_shallow_nested():
     el[1].connect(el[2])
     assert el[0].is_connected_to(el[2])
 
-    assert el[1].signal.is_connected_to(el[2].signal)
+    assert el[1].line.is_connected_to(el[2].line)
     assert el[1].reference.is_connected_to(el[2].reference)
-    assert not el[0].signal.is_connected_to(el[1].signal)
+    assert not el[0].line.is_connected_to(el[1].line)
     assert not el[0].reference.is_connected_to(el[1].reference)
-    assert not el[0].signal.is_connected_to(el[2].signal)
+    assert not el[0].line.is_connected_to(el[2].line)
     assert not el[0].reference.is_connected_to(el[2].reference)
 
     # Test duplicate resolution
-    el[0].signal.connect(el[1].signal)
+    el[0].line.connect(el[1].line)
     el[0].reference.connect(el[1].reference)
     assert el[0].is_connected_to(el[1])
     assert el[0].is_connected_to(el[2])
@@ -804,7 +808,7 @@ def test_shallow_bridge_full():
                 zip(self.ins, self.ins_l),
                 zip(self.outs, self.outs_l),
             ):
-                lo.signal.connect(el)
+                lo.line.connect(el)
 
             for l1, l2 in zip(self.ins_l, self.outs_l):
                 l1.connect_shallow(l2)
@@ -825,10 +829,10 @@ def test_shallow_bridge_full():
             bus_o = self.bus_out
             buf = self.buf
 
-            bus_i.tx.signal.connect(buf.ins[0])
-            bus_i.rx.signal.connect(buf.ins[1])
-            bus_o.tx.signal.connect(buf.outs[0])
-            bus_o.rx.signal.connect(buf.outs[1])
+            bus_i.tx.line.connect(buf.ins[0])
+            bus_i.rx.line.connect(buf.ins[1])
+            bus_o.tx.line.connect(buf.outs[0])
+            bus_o.rx.line.connect(buf.outs[1])
 
         @L.rt_field
         def single_electric_reference(self):
@@ -845,14 +849,14 @@ def test_shallow_bridge_full():
     # Check that the two buffer sides are not connected electrically
     assert not buf.ins[0].is_connected_to(buf.outs[0])
     assert not buf.ins[1].is_connected_to(buf.outs[1])
-    assert not bus_i.rx.signal.is_connected_to(bus_o.rx.signal)
-    assert not bus_i.tx.signal.is_connected_to(bus_o.tx.signal)
+    assert not bus_i.rx.line.is_connected_to(bus_o.rx.line)
+    assert not bus_i.tx.line.is_connected_to(bus_o.tx.line)
 
     # direct connect
-    assert bus_i.tx.signal.is_connected_to(buf.ins[0])
-    assert bus_i.rx.signal.is_connected_to(buf.ins[1])
-    assert bus_o.tx.signal.is_connected_to(buf.outs[0])
-    assert bus_o.rx.signal.is_connected_to(buf.outs[1])
+    assert bus_i.tx.line.is_connected_to(buf.ins[0])
+    assert bus_i.rx.line.is_connected_to(buf.ins[1])
+    assert bus_o.tx.line.is_connected_to(buf.outs[0])
+    assert bus_o.rx.line.is_connected_to(buf.outs[1])
 
     # connect through trait
     assert (
@@ -974,7 +978,7 @@ def test_isolated_connect_simple():
     x1.connect(x2, link=F.ElectricLogic.LinkIsolatedReference)
 
     assert x1.is_connected_to(x2)
-    assert x1.signal.is_connected_to(x2.signal)
+    assert x1.line.is_connected_to(x2.line)
 
     assert not x1.reference.is_connected_to(x2.reference)
     assert not x1.reference.hv.is_connected_to(x2.reference.hv)
@@ -1003,11 +1007,29 @@ def test_isolated_connect_erc():
 
     a1.connect(b1, link=F.ElectricLogic.LinkIsolatedReference)
     assert a1.is_connected_to(b1)
-    assert a1.scl.signal.is_connected_to(b1.scl.signal)
-    assert a1.sda.signal.is_connected_to(b1.sda.signal)
+    assert a1.scl.line.is_connected_to(b1.scl.line)
+    assert a1.sda.line.is_connected_to(b1.sda.line)
 
     assert not a1.scl.reference.is_connected_to(b1.scl.reference)
     assert not a1.sda.reference.is_connected_to(b1.sda.reference)
+
+
+def test_simple_erc_ElectricPower_short():
+    ep1 = F.ElectricPower()
+    ep2 = F.ElectricPower()
+
+    ep1.connect(ep2)
+
+    # This is okay!
+    simple_erc(ep1.get_graph())
+
+    ep1.lv.connect(ep2.hv)
+
+    # This is not okay!
+    with pytest.raises(ERCFaultShortedModuleInterfaces) as ex:
+        simple_erc(ep1.get_graph())
+
+    assert set(ex.value.path) == {ep1.lv, ep2.hv}
 
 
 @pytest.mark.skipif(not IMPLIED_PATHS, reason="IMPLIED_PATHS is not set")

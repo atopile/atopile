@@ -45,8 +45,8 @@ class WCHJiangsu_Qin_Heng_CH224K_ReferenceDesign(Module):
         self.controller.power.hv.connect_via(self.vdd_resistor, self.vbus.hv)
         F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
-        self.controller.cc1.signal.connect(self.cc[0])
-        self.controller.cc2.signal.connect(self.cc[1])
+        self.controller.cc1.line.connect(self.cc[0])
+        self.controller.cc2.line.connect(self.cc[1])
         self.controller.usb.connect(self.usb_data)
 
         self.power_good_indicator.logic_in.connect(self.controller.power_good)

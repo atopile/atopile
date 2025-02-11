@@ -107,6 +107,10 @@ class UserConfigurationError(UserException):
     """An error in the config file."""
 
 
+class UserConfigNotFoundError(UserException):
+    """No project config file was found."""
+
+
 class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
     def __init__(self, settings_cls: type[BaseSettings]):
         self.yaml_file_path = self.find_config_file()
@@ -141,6 +145,17 @@ class GlobalConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data if self.yaml_data else {}
 
 
+def _find_project_config_file(start: Path) -> Path | None:
+    """Search parent directories, up to the root, for a project config file."""
+    path = start
+    while not (path / PROJECT_CONFIG_FILENAME).exists():
+        path = path.parent
+        if path == path.parent:
+            return None
+
+    return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+
+
 class ProjectConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
@@ -150,13 +165,7 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
         if _project_dir:
             return _project_dir / PROJECT_CONFIG_FILENAME
 
-        path = Path.cwd()
-        while not (path / PROJECT_CONFIG_FILENAME).exists():
-            path = path.parent
-            if path == Path("/"):
-                return None
-
-        return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+        return _find_project_config_file(Path.cwd())
 
     def get_data(self) -> dict[str, Any]:
         return self.yaml_data or {}
@@ -174,7 +183,7 @@ class ProjectPaths(BaseConfigModel):
     """Project source code directory"""
 
     layout: Path
-    """Project layout directory"""
+    """Project layout directory where KiCAD projects are stored and searched for"""
 
     footprints: Path
     """Project footprints directory"""
@@ -196,7 +205,7 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("src", data["root"] / "elec" / "src")
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data.setdefault("footprints", data["root"] / "elec" / "footprints")
-        data.setdefault("build", data["root"] / "build")
+        data["build"] = Path(data.get("build", data["root"] / "build"))
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("component_lib", data["build"] / "kicad" / "libs")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
@@ -246,13 +255,18 @@ class BuildTargetPaths(BaseConfigModel):
     """Build-target KiCAD project file"""
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
-        data.setdefault(
-            "layout",
-            BuildTargetPaths.find_layout(
+        if layout_data := data.get("layout"):
+            data["layout"] = BuildTargetPaths.ensure_layout(Path(layout_data))
+        else:
+            data["layout"] = BuildTargetPaths.ensure_layout(
                 project_paths.root / project_paths.layout / name
-            ),
-        )
-        data.setdefault("output_base", project_paths.build / name)
+            )
+
+        if output_base_data := data.get("output_base"):
+            data["output_base"] = Path(output_base_data)
+        else:
+            data["output_base"] = project_paths.build / name
+
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
@@ -260,7 +274,7 @@ class BuildTargetPaths(BaseConfigModel):
         super().__init__(**data)
 
     @classmethod
-    def find_layout(cls, layout_base: Path) -> Path:
+    def ensure_layout(cls, layout_base: Path) -> Path:
         """Return the layout associated with a build."""
 
         if layout_base.with_suffix(".kicad_pcb").exists():
@@ -283,7 +297,7 @@ class BuildTargetPaths(BaseConfigModel):
                 )
 
         else:
-            layout_path = layout_base.with_suffix(".kicad_pcb")
+            layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
 
             logger.warning("Creating new layout at %s", layout_path)
             layout_path.parent.mkdir(parents=True, exist_ok=True)
@@ -319,8 +333,23 @@ class BuildTargetConfig(BaseConfigModel):
 
     name: str
     address: str | None = Field(alias="entry")
+    """
+    Entry point or root node for the build-target.
+    Everything that exists within this module will be built as part of this build-target
+    """
+
     targets: list[str] = Field(default=["__default__"])  # TODO: validate
+    """A list of targets' names to build after updating the layout"""
+
     exclude_targets: list[str] = Field(default=[])
+    """
+    A list of targets' names to exclude.
+
+    Applied after `targets` are specified. This makes it useful to exclude
+    targets that aren't relevant to a specific build - especially in CI,
+    which typically builds **all** targets.
+    """
+
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_picked_parts: bool = Field(default=False)
@@ -369,11 +398,13 @@ class BuildTargetConfig(BaseConfigModel):
 
     @property
     def entry_file_path(self) -> Path:
+        """An absolute path to the entry file."""
         address = AddrStr(self.address)
         return self._project_paths.root / address.file_path
 
     @property
     def entry_section(self) -> str:
+        """The path to the entry module."""
         address = AddrStr(self.address)
         return address.entry_section
 
@@ -414,7 +445,7 @@ class ServicesConfig(BaseConfigModel):
         """Components URL"""
 
     class Packages(BaseConfigModel):
-        url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
+        url: str = Field(default="https://packages.atopileapi.com")
         """Packages URL"""
 
     @field_validator("components", mode="before")
@@ -434,12 +465,29 @@ class ProjectConfig(BaseConfigModel):
     ato_version: str = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
-        default=f"^{version.get_installed_atopile_version()}",
+        default=f"{version.get_installed_atopile_version()}",
     )
+    """
+    The compiler version with which the project was developed.
+
+    This is used by the compiler to ensure the code in this project is
+    compatible with the compiler version.
+    """
+
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
     dependencies: list[Dependency] | None = Field(default=None)
+    """
+    Represents requirements on other projects.
+
+    Typically, you shouldn't modify this directly.
+
+    Instead, use the `ato install` command to install dependencies.
+    """
+
     entry: str | None = Field(default=None)
     builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
+    """A map of all the build targets (/ "builds") in this project."""
+
     services: ServicesConfig = Field(default_factory=ServicesConfig)
     pcbnew_auto: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
@@ -599,12 +647,14 @@ class Config:
     _entry: str | None
     _selected_builds: list[str] | None
     _project_dir: Path | None
+    interactive: bool
 
     def __init__(self) -> None:
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
         self._entry = None
         self._selected_builds = None
+        self.interactive = True
 
     def __repr__(self) -> str:
         return self._project.__repr__()
@@ -634,10 +684,16 @@ class Config:
         return self._project_dir
 
     @project_dir.setter
-    def project_dir(self, value: Path) -> None:
+    def project_dir(self, value: os.PathLike) -> None:
         global _project_dir
-        _project_dir = value
-        self._project_dir = value
+        _project_dir = Path(value)
+
+        if not (_project_dir / PROJECT_CONFIG_FILENAME).is_file():
+            raise UserConfigNotFoundError(
+                f"No `{PROJECT_CONFIG_FILENAME}` found in the specified directory"
+            )
+
+        self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
 
     def update_project_config(
@@ -670,7 +726,7 @@ class Config:
 
     @property
     def selected_builds(self) -> Iterable[str]:
-        return self._selected_builds or self.project.builds.keys() or ["default"]
+        return self._selected_builds or self.project.builds.keys()
 
     @selected_builds.setter
     def selected_builds(self, value: list[str]) -> None:
@@ -801,7 +857,6 @@ class Config:
     def apply_options(
         self,
         entry: str | None,
-        entry_arg_file_path: Path = Path.cwd(),
         standalone: bool = False,
         option: Iterable[str] = (),
         target: Iterable[str] = (),
@@ -812,10 +867,8 @@ class Config:
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)
         else:
-            if entry_arg_file_path.is_dir():
-                self.project_dir = entry_arg_file_path
-            elif entry_arg_file_path.is_file():
-                self.project_dir = entry_arg_file_path.parent
+            if config_file_path := _find_project_config_file(entry_arg_file_path):
+                self.project_dir = config_file_path.parent
             else:
                 raise UserBadParameterError(
                     f"Specified entry path is not a file or directory: "

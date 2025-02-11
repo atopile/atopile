@@ -1,15 +1,16 @@
 # excepthook must be installed before typer is imported
 import atopile.cli.excepthook  # noqa: F401, I001
 
+import json
 import logging
 import sys
-from importlib.metadata import version
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from atopile import telemetry
+from atopile import telemetry, version
 from atopile.cli import build, configure, create, inspect, install, view
 from atopile.cli.logging import logger, handler
 from atopile.config import config
@@ -39,9 +40,19 @@ def atopile_src_path(ctx: typer.Context, value: bool):
 
 
 def version_callback(ctx: typer.Context, value: bool):
+    """Output a version string meeting the pypa version spec."""
     if not value or ctx.resilient_parsing:
         return
-    typer.echo(version("atopile"))
+    typer.echo(get_package_version("atopile"))
+    raise typer.Exit()
+
+
+def semver_callback(ctx: typer.Context, value: bool):
+    """Output a version string meeting the semver.org spec."""
+    if not value or ctx.resilient_parsing:
+        return
+    version_string = get_package_version("atopile")
+    typer.echo(version.parse(version_string))
     raise typer.Exit()
 
 
@@ -49,8 +60,11 @@ def version_callback(ctx: typer.Context, value: bool):
 def cli(
     ctx: typer.Context,
     non_interactive: Annotated[
-        bool, typer.Option("--non-interactive", envvar="ATO_NON_INTERACTIVE")
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--non-interactive", envvar=["ATO_NON_INTERACTIVE", "NONINTERACTIVE"]
+        ),
+    ] = None,
     debug: Annotated[
         bool,
         typer.Option("--debug", help="Wait to attach debugger on start"),
@@ -68,6 +82,10 @@ def cli(
     version: Annotated[
         bool | None,
         typer.Option("--version", callback=version_callback, is_eager=True),
+    ] = None,
+    semver: Annotated[
+        bool | None,
+        typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
 ):
     if debug:
@@ -88,13 +106,16 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    if non_interactive is not None:
+        config.interactive = not non_interactive
+
     if ctx.invoked_subcommand:
         check_for_update()
 
         # Initialize telemetry
         telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
-    if not non_interactive and ctx.invoked_subcommand != "configure":
+    if config.interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
 
 
@@ -107,17 +128,25 @@ app.command()(view.view)
 
 
 @app.command(hidden=True)
-def export_config_schema():
+def export_config_schema(pretty: bool = False):
     from atopile.config import ProjectConfig
 
-    print(ProjectConfig.model_json_schema())
+    config_schema = ProjectConfig.model_json_schema()
+
+    if pretty:
+        print(json.dumps(config_schema, indent=4))
+    else:
+        print(json.dumps(config_schema))
 
 
 @app.command(hidden=True)
-def dump_config():
+def dump_config(pretty: bool = False):
     from rich import print
 
-    print(config.project)
+    if pretty:
+        print(json.dumps(config.project, indent=4))
+    else:
+        print(json.dumps(config.project))
 
 
 def main():

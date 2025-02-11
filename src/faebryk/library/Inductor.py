@@ -34,7 +34,17 @@ class Inductor(Module):
         tolerance_guess=10 * P.percent,
     )
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Inductor)
+    @L.rt_field
+    def pickable(self) -> F.is_pickable_by_type:
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.Inductor,
+            {
+                "inductance": self.inductance,
+                "self_resonant_frequency": self.self_resonant_frequency,
+                "max_current": self.max_current,
+                "dc_resistance": self.dc_resistance,
+            },
+        )
 
     @L.rt_field
     def can_bridge(self):
@@ -55,3 +65,14 @@ class Inductor(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.L
     )
+
+    # TODO: remove @https://github.com/atopile/atopile/issues/727
+    @property
+    def p1(self) -> F.Electrical:
+        """Signal to one side of the inductor."""
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        """Signal to the other side of the inductor."""
+        return self.unnamed[1]

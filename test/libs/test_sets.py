@@ -7,7 +7,11 @@ from enum import Enum, auto
 import pytest
 
 from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
-from faebryk.libs.sets.numeric_sets import Numeric_Interval, Numeric_Interval_Disjoint
+from faebryk.libs.sets.numeric_sets import (
+    Numeric_Interval,
+    Numeric_Interval_Disjoint,
+    float_round,
+)
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -323,3 +327,24 @@ def test_serialize(input_set: P_Set, expected: P_Set | None):
     serialized = input_set.serialize()
     deserialized = P_Set.deserialize(serialized)
     assert deserialized == expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        (1.5, 2),
+        (1, 1),
+        (math.inf, math.inf),
+        (-math.inf, -math.inf),
+        (
+            Quantity_Interval_Disjoint(Quantity_Interval(1.5, 2.5)),
+            Quantity_Interval_Disjoint(Quantity_Interval(2, 2)),
+        ),
+        (
+            Quantity_Interval_Disjoint(Quantity_Interval(1.5, math.inf)),
+            Quantity_Interval_Disjoint(Quantity_Interval(2, math.inf)),
+        ),
+    ],
+)
+def test_float_round(value, expected):
+    assert float_round(value) == expected

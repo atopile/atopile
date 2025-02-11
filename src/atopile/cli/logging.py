@@ -216,7 +216,7 @@ class LogHandler(RichHandler):
 logger = logging.getLogger(__name__)
 
 handler = LogHandler(
-    console=console.console,
+    console=console.error_console,
     rich_tracebacks=True,
     show_path=False,
     tracebacks_suppress=["typer"],

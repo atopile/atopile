@@ -16,11 +16,20 @@ EXAMPLES_DIR = _repo_root() / "examples"
 FABLL_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.py") if p.is_file()]
 ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 
+XFAILURES = {
+    "ch2_5_signal_processing": "Need more powerful expression reordering",  # TODO
+    "ch1_2_good_voltage_divider": "Need more powerful expression reordering",  # TODO
+}
 
-# FIXME: Test ato examples too
+
 @pytest.mark.parametrize(
     "example",
-    FABLL_EXAMPLES + ATO_EXAMPLES,
+    (
+        pytest.param(example, marks=pytest.mark.xfail(reason=reason))
+        if (reason := XFAILURES.get(example.stem))
+        else example
+        for example in FABLL_EXAMPLES + ATO_EXAMPLES
+    ),
     ids=lambda p: p.stem,
 )
 def test_examples_build(
@@ -33,7 +42,12 @@ def test_examples_build(
     example = example_copy
 
     # Copy dependencies to the tmp dir directly because standalone mode doens't include
-    shutil.copytree(repo_root / "examples" / ".ato", tmp_path / ".ato")
+    example_modules = repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    for item in example_modules.glob("*"):
+        if item.is_dir():
+            shutil.copytree(item, tmp_path / item.name)
+        else:
+            shutil.copy(item, tmp_path / item.name)
 
     # Make the noise
     try:
@@ -46,7 +60,7 @@ def test_examples_build(
                 "--standalone",
                 f"{example}:App",
             ],
-            env={**os.environ, "ATO_NON_INTERACTIVE": "1"},
+            env={**os.environ, "NONINTERACTIVE": "1"},
             cwd=tmp_path,
             stdout=print,
             stderr=print,

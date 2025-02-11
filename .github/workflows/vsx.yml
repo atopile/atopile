@@ -1,15 +1,10 @@
 name: Release VSCode Extension
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+  release:
+    types:
+      - published
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release'
-        required: true
-        type: string
 
 jobs:
   vsx-extension:
@@ -18,7 +13,21 @@ jobs:
       run:
         working-directory: src/vscode-atopile
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # Required due to a bug in the checkout action
+      # https://github.com/actions/checkout/issues/1471
+      - run: git fetch --prune --unshallow --tags
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: '0.5.5'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
 
       - uses: actions/setup-node@v4
         with:
@@ -27,19 +36,36 @@ jobs:
       - run: npm ci
 
       # Set the version in package.json from a workflow dispatch input
-      - run: npm version --no-git-tag-version ${{ inputs.version }}
-        if: github.event_name == 'workflow_dispatch'
-      # Otherwise use the tag name
-      - run: npm version --no-git-tag-version ${{ github.ref_name }}
-        if: github.event_name == 'push'
+      - name: Pre-release version
+        if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
+        # The pre-release version adds 1000 to the patch version to get around the lack of proper semver support
+        # https://code.visualstudio.com/api/working-with-extensions/publishing-extension#prerelease-extensions
+        run: |
+          PUBLISH_VERSION=$(uv run ato --semver | cut -d- -f1 | awk -F. '{$NF+=1000;OFS=".";$1=$1}1')
+          npm version --no-git-tag-version $PUBLISH_VERSION
 
-      - name: Publish to VS Code Marketplace
+      - name: Release version
+        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
+        run: |
+          npm version --no-git-tag-version $(uv run ato --semver)
+
+      - name: Publish release to VS Code Marketplace
+        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
         # Skip duplicate here to allow manual triggering
         run: npx vsce publish --skip-duplicate
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
 
-      - name: Publish to Open VSX
+      - name: Publish pre-release to VS Code Marketplace
+        if: github.event_name == 'release' && (github.event.release.prerelease || github.event.release.draft)
+        # Skip duplicate here to allow manual triggering
+        run: npx vsce publish --skip-duplicate --pre-release
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+
+      # We don't want to publish pre-releases to Open VSX
+      - name: Publish release to Open VSX
+        if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
         run: npx ovsx publish --skip-duplicate
         env:
           OVSX_PAT: ${{ secrets.OVSX_PAT }}

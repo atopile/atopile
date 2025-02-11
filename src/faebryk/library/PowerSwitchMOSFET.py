@@ -39,7 +39,7 @@ class PowerSwitchMOSFET(F.PowerSwitch):
         self.logic_in.pulled.pull(self._lowside == self._normally_closed, owner=self)
 
         # connect gate to logic
-        self.logic_in.signal.connect(self.mosfet.gate)
+        self.logic_in.line.connect(self.mosfet.gate)
 
         # passthrough non-switched side, bridge switched side
         if self._lowside:

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -24,6 +25,7 @@ from faebryk.core.trait import Trait
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set_Discrete,
     QuantityLikeR,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
@@ -154,8 +156,8 @@ class ParameterOperatable(Node):
     def operation_intersection(self, other: Sets):
         return Intersection(self, other)
 
-    def operation_difference(self, other: Sets):
-        return Difference(minuend=self, subtrahend=other)
+    def operation_difference(self, *subtrahends: Sets):
+        return Difference(minuend=self, *subtrahends)
 
     def operation_symmetric_difference(self, other: Sets):
         return SymmetricDifference(self, other)
@@ -329,11 +331,28 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
 
-    # TODO
-    # def switch_case(
-    #    self,
-    #    cases: list[tuple[?, Callable[[], Any]]],
-    # ) -> None: ...
+    def operation_switch_case_subset(
+        self,
+        cases: Iterable[tuple[Literal, "ConstrainableExpression"]],
+    ) -> "ConstrainableExpression":
+        exprs = [(IsSubset(self, lit), case) for lit, case in cases]
+        return ConstrainableExpression.operation_switch_case_implications(exprs)
+
+    def operation_mapping(
+        self,
+        other: "ParameterOperatable",
+        mapping: dict[Literal, Literal],
+    ) -> "ConstrainableExpression":
+        exprs = [
+            (lit_self, IsSubset(other, lit_other))
+            for lit_self, lit_other in mapping.items()
+        ]
+        return self.operation_switch_case_subset(exprs)
+
+    def constrain_mapping(
+        self, other: "ParameterOperatable", mapping: dict[Literal, Literal]
+    ):
+        return self.operation_mapping(other, mapping).constrain()
 
     # ----------------------------------------------------------------------------------
     def get_operations[T: "Expression"](
@@ -481,11 +500,14 @@ class ParameterOperatable(Node):
                 out = f"{{S|{lit}}}"
             if lit == BoolSet(True):
                 out = "✓"
-            elif lit == BoolSet(False):
+            elif lit == BoolSet(False) and isinstance(lit, (BoolSet, bool)):
                 out = "✗"
         except KeyErrorAmbiguous as e:
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
         return out
+
+    def __rich_repr__(self):
+        yield self.compact_repr()
 
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
@@ -534,7 +556,7 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression") -> bool:
+    def is_congruent_to(self, other: "Expression", recursive: bool = False) -> bool:
         if self == other:
             return True
         if type(self) is not type(other):
@@ -542,8 +564,9 @@ class Expression(ParameterOperatable):
         if len(self.operands) != len(other.operands):
             return False
 
-        if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
-            return False
+        # TODO: think about this, imo it's not needed
+        # if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
+        #    return False
 
         if self.operands == other.operands:
             return True
@@ -556,7 +579,24 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
+        if recursive and Expression.are_pos_congruent(self.operands, other.operands):
+            return True
+
         return False
+
+    @staticmethod
+    def are_pos_congruent(
+        left: Sequence[ParameterOperatable.All],
+        right: Sequence[ParameterOperatable.All],
+    ) -> bool:
+        if len(left) != len(right):
+            return False
+        return all(
+            lhs.is_congruent_to(rhs, recursive=True)
+            if isinstance(lhs, Expression) and isinstance(rhs, Expression)
+            else lhs == rhs
+            for lhs, rhs in zip(left, right)
+        )
 
     @property
     def domain(self) -> "Domain":
@@ -571,17 +611,20 @@ class Expression(ParameterOperatable):
         )
 
     def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
-        if isinstance(self, (Is, IsSubset)):
-            return {
-                i: o
-                for i, o in enumerate(self.operands)
-                if ParameterOperatable.is_literal(o)
-            }
-        # TODO not sure its a good idea to do this that recursive
         return {
-            i: ParameterOperatable.try_extract_literal(o)
+            i: o
             for i, o in enumerate(self.operands)
+            if ParameterOperatable.is_literal(o)
         }
+
+    def get_involved_parameters(self) -> Counter["Parameter"]:
+        params = [p for p in self.operands if isinstance(p, Parameter)] + [
+            p
+            for expr in self.operands
+            if isinstance(expr, Expression)
+            for p in expr.get_involved_parameters()
+        ]
+        return Counter(params)
 
     def depth(self) -> int:
         """
@@ -664,7 +707,7 @@ class Expression(ParameterOperatable):
         if isinstance(self, ConstrainableExpression) and self.constrained:
             # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
-            if self._solver_evaluates_to_true:
+            if self._solver_terminated:
                 symbol_suffix += "!"
         symbol += symbol_suffix
         symbol += self._get_lit_suffix()
@@ -685,7 +728,7 @@ class Expression(ParameterOperatable):
             else:
                 out = f"{symbol}({', '.join(formatted_operands)})"
         elif style.placement == Expression.ReprStyle.Placement.EMBRACE:
-            out = f"{symbol}{', '.join(formatted_operands)}{symbol}"
+            out = f"{symbol}{', '.join(formatted_operands)}{style.symbol}"
         elif len(formatted_operands) == 0:
             out = f"{type(self).__name__}{symbol_suffix}()"
         elif style.placement == Expression.ReprStyle.Placement.POSTFIX:
@@ -722,7 +765,7 @@ class ConstrainableExpression(Expression):
         self.constrained: bool = False
 
         # TODO this should be done in solver, not here
-        self._solver_evaluates_to_true: bool = False
+        self._solver_terminated: bool = False
         """
         Flag marking to the solver that this predicate has been deduced to True.
         Differs from alias in the sense that we can guarantee that the predicate is
@@ -747,6 +790,12 @@ class ConstrainableExpression(Expression):
         preference: bool | None = None,
     ):
         return IfThenElse(self, if_true, if_false, preference)
+
+    @staticmethod
+    def operation_switch_case_implications(
+        cases: Iterable[tuple["ConstrainableExpression", "ConstrainableExpression"]],
+    ) -> "ConstrainableExpression":
+        return And(*(case.operation_implies(impl) for case, impl in cases))
 
 
 @abstract
@@ -792,7 +841,10 @@ class Arithmetic(Expression):
 class Additive(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.units = assert_compatible_units(operands)
+        if not operands:
+            self.units = dimensionless
+        else:
+            self.units = assert_compatible_units(operands)
 
     @staticmethod
     def sum(operands: Sequence[ParameterOperatable.NumberLike]) -> "Additive":
@@ -810,7 +862,6 @@ class Add(Additive):
 
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.bla = 5
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -838,8 +889,8 @@ class Multiply(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
         units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
-        self.units = units[0]
-        for u in units[1:]:
+        self.units = dimensionless
+        for u in units:
             self.units = cast_assert(Unit, self.units * u)
 
     def has_implicit_constraint(self) -> bool:
@@ -901,6 +952,10 @@ class Power(Arithmetic):
         base_unit = HasUnit.get_units_or_dimensionless(base)
         units = dimensionless
         if not base_unit.is_compatible_with(dimensionless):
+            if isinstance(exponent, ParameterOperatable):
+                raise NotImplementedError(
+                    "exponent must be a literal for base with unit"
+                )
             exp_val = Quantity_Interval_Disjoint.from_value(exponent)
             if exp_val.min_elem != exp_val.max_elem:
                 raise ValueError(
@@ -919,9 +974,10 @@ class Log(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return True  # non-negative
@@ -935,9 +991,10 @@ class Sin(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -951,9 +1008,10 @@ class Cos(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -967,7 +1025,7 @@ class Abs(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -981,7 +1039,7 @@ class Round(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -995,7 +1053,7 @@ class Floor(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1009,7 +1067,7 @@ class Ceil(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1176,6 +1234,9 @@ class Setic(Expression):
     def __init__(self, *operands):
         # FIXME domain
         super().__init__(None, *operands)
+
+        if len(operands) == 0:
+            raise ValueError("Setic must have at least one operand")
         # types = (Parameter, ParameterOperatable.Sets)
         # if any(not isinstance(op, types) for op in operands):
         #    raise ValueError("operands must be Parameter or Set")
@@ -1207,8 +1268,8 @@ class Difference(Setic):
         placement=Setic.ReprStyle.Placement.INFIX,
     )
 
-    def __init__(self, minuend, subtrahend):
-        super().__init__(minuend, subtrahend)
+    def __init__(self, minuend, *subtrahends):
+        super().__init__(minuend, *subtrahends)
 
 
 class SymmetricDifference(Setic):
@@ -1216,6 +1277,9 @@ class SymmetricDifference(Setic):
         symbol="△",
         placement=Setic.ReprStyle.Placement.INFIX,
     )
+
+    def __init__(self, left, right):
+        super().__init__(left, right)
 
 
 class Domain:
@@ -1360,6 +1424,13 @@ class LessThan(NumericPredicate):
         symbol="<",
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
+
+    def __init__(self, left, right):
+        # TODO we might allow it for integer domains at some point
+        raise NotImplementedError(
+            "'<' not supported, you very likely want to use '<=' instead"
+        )
+        super().__init__(left, right)
 
 
 class GreaterThan(NumericPredicate):
@@ -1624,9 +1695,36 @@ class Parameter(ParameterOperatable):
 
 p_field = f_field(Parameter)
 
-Commutative = (
-    Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference | Is
+# Canonical ----------------------------------------------------------------------------
+CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
+CanonicalLogicExpression = Or | Not
+CanonicalSeticExpression = Intersection | Union | SymmetricDifference
+CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+
+CanonicalConstrainableExpression = CanonicalLogicExpression | CanonicalPredicate
+
+CanonicalExpression = (
+    CanonicalNumericExpression
+    | CanonicalLogicExpression
+    | CanonicalSeticExpression
+    | CanonicalPredicate
 )
-FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
-LeftAssociative = Subtract | Divide | Difference
-Associative = FullyAssociative | LeftAssociative
+CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
+CanonicalBoolean = BoolSet
+CanonicalEnum = P_Set[Enum]
+# TODO Canonical set?
+
+CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
+CanonicalOperable = CanonicalExpression | Parameter
+CanonicalAll = CanonicalOperable | CanonicalLiteral
+
+# --------------------------------------------------------------------------------------
+
+Reflexive = Is | IsSubset | GreaterOrEqual
+IdempotentExpression = Abs | Round
+IdempotentOperands = Or | Union | Intersection
+Commutative = Add | Multiply | Or | Union | Intersection | SymmetricDifference | Is
+UnaryIdentity = Add | Multiply | Or | Union | Intersection
+FullyAssociative = Add | Multiply | Or | Union | Intersection
+Associative = FullyAssociative
+Involutory = Not

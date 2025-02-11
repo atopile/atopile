@@ -252,14 +252,15 @@ class Quantity_Interval(Quantity_Set):
     #    return r
 
     def __contains__(self, item: Any) -> bool:
+        if isinstance(item, (float, int)):
+            item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
                 return False
             item = item.to(self.interval_units).magnitude
-            if not isinstance(item, float) and not isinstance(item, int):
-                return False
-            return self._interval.__contains__(item)
-        return False
+        if not isinstance(item, float) and not isinstance(item, int):
+            return False
+        return self._interval.__contains__(item)
 
     # yucky with floats
     def __eq__(self, value: Any) -> bool:
@@ -289,7 +290,7 @@ class Quantity_Interval(Quantity_Set):
         if min_ == max_:
             return f"[{min_}]"
         center, rel = self._interval.as_center_rel()
-        if rel < 1:
+        if rel < 0.5 and round(rel, 2) == rel:
             return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
         return f"[{min_}, {max_}]"
 
@@ -474,6 +475,22 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_union_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
+    def op_difference_intervals(
+        self, other: "Quantity_Interval_Disjoint"
+    ) -> "Quantity_Interval_Disjoint":
+        if not self.units.is_compatible_with(other.units):
+            raise ValueError("incompatible units")
+        _interval = self._intervals.op_difference_intervals(other._intervals)
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_symmetric_difference_intervals(
+        self, other: "Quantity_Interval_Disjoint"
+    ) -> "Quantity_Interval_Disjoint":
+        if not self.units.is_compatible_with(other.units):
+            raise ValueError("incompatible units")
+        _interval = self._intervals.op_symmetric_difference_intervals(other._intervals)
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
     def op_add_intervals(
         self, other: "Quantity_Interval_Disjoint"
     ) -> "Quantity_Interval_Disjoint":
@@ -529,15 +546,32 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_pow_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, units)
 
+    def op_round(self) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_round()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_abs(self) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_abs()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_log(self) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_log()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_sin(self) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_sin()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
     def __contains__(self, item: Any) -> bool:
+        if isinstance(item, (float, int)):
+            item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
                 return False
             item = item.to(self.interval_units).magnitude
-            if not isinstance(item, float) and not isinstance(item, int):
-                return False
-            return self._intervals.__contains__(item)
-        return False
+        if not isinstance(item, float) and not isinstance(item, int):
+            return False
+        return self._intervals.__contains__(item)
 
     @once
     def __hash__(self) -> int:
@@ -554,7 +588,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
                 return f"[{self._format_number(r._min)}]"
             try:
                 center, rel = r.as_center_rel()
-                if rel < 1:
+                if rel < 0.5 and round(rel, 2) == rel:
                     return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
             except ZeroDivisionError:
                 pass
@@ -676,17 +710,45 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) | self
 
+    def __xor__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_symmetric_difference_intervals(other_qty)
+
+    def __rxor__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        return Quantity_Interval_Disjoint.from_value(other) ^ self
+
     def __ge__(self, other: QuantitySetLike) -> BoolSet:
         other_q = Quantity_Interval_Disjoint.from_value(other)
         if not self.units.is_compatible_with(other_q.units):
             raise ValueError("incompatible units")
         return self._intervals >= other_q._intervals
 
+    def __gt__(self, other: QuantitySetLike) -> BoolSet:
+        other_q = Quantity_Interval_Disjoint.from_value(other)
+        if not self.units.is_compatible_with(other_q.units):
+            raise ValueError("incompatible units")
+        return self._intervals > other_q._intervals
+
     def __le__(self, other: QuantitySetLike) -> BoolSet:
         other_q = Quantity_Interval_Disjoint.from_value(other)
         if not self.units.is_compatible_with(other_q.units):
             raise ValueError("incompatible units")
         return self._intervals <= other_q._intervals
+
+    def __lt__(self, other: QuantitySetLike) -> BoolSet:
+        other_q = Quantity_Interval_Disjoint.from_value(other)
+        if not self.units.is_compatible_with(other_q.units):
+            raise ValueError("incompatible units")
+        return self._intervals < other_q._intervals
+
+    def __round__(self) -> "Quantity_Interval_Disjoint":
+        return self.op_round()
+
+    def __abs__(self) -> "Quantity_Interval_Disjoint":
+        return self.op_abs()
 
     @once
     def is_single_element(self) -> bool:

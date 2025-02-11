@@ -19,8 +19,8 @@ class FilterElectricalRC(F.Filter):
     Basic Electrical RC filter
     """
 
-    in_: F.SignalElectrical
-    out: F.SignalElectrical
+    in_: F.ElectricSignal
+    out: F.ElectricSignal
     capacitor: F.Capacitor
     resistor: F.Resistor
 
@@ -52,9 +52,9 @@ class FilterElectricalRC(F.Filter):
         fc.alias_is(1 / (2 * math.pi * R * C))
 
         # low pass
-        self.in_.signal.connect_via(
+        self.in_.line.connect_via(
             (self.resistor, self.capacitor),
             self.in_.reference.lv,
         )
 
-        self.in_.signal.connect_via(self.resistor, self.out.signal)
+        self.in_.line.connect_via(self.resistor, self.out.line)

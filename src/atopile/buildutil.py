@@ -45,13 +45,13 @@ from faebryk.libs.app.pcb import (
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
-    open_pcb,
 )
 from faebryk.libs.app.picking import load_descriptive_properties
 from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
     downgrade,
+    iter_leaf_exceptions,
     iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats import (
@@ -89,7 +89,7 @@ def build(app: Module) -> None:
 
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app, cleanup=False)
+    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
     load_designators(G, attach=True)
 
     # Pre-run solver -----------------------------------------------------------
@@ -103,8 +103,11 @@ def build(app: Module) -> None:
         load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
-    except PickError as ex:
-        raise UserPickError.from_pick_error(ex) from ex
+    except* PickError as ex:
+        raise ExceptionGroup(
+            "Failed to pick parts for some modules",
+            [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
+        ) from ex
 
     # Footprints ----------------------------------------------------------------
     # Use standard footprints for known packages regardless of
@@ -128,9 +131,6 @@ def build(app: Module) -> None:
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
     original_pcb = deepcopy(pcb)
-    # We have to cleanup before applying the design, because otherwise we'll
-    # delete the things we're adding
-    transformer.cleanup()
     transformer.apply_design(config.build.paths.fp_lib_table)
     transformer.check_unattached_fps()
 
@@ -187,15 +187,6 @@ def build(app: Module) -> None:
 
         logger.info(f"Updating layout {config.build.paths.layout}")
         pcb.dumps(config.build.paths.layout)
-        if config.project.pcbnew_auto:
-            try:
-                open_pcb(config.build.paths.layout)
-            except FileNotFoundError:
-                pass
-            except RuntimeError as e:
-                logger.info(
-                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
-                )
 
     # Build targets -----------------------------------------------------------
     logger.info("Building targets")
@@ -219,7 +210,7 @@ def build(app: Module) -> None:
         for target_name in targets:
             logger.info(f"Building '{target_name}' for '{config.build.name}' config")
             with accumulator.collect():
-                muster.targets[target_name](app)
+                muster.targets[target_name](app, solver)
             built_targets.append(target_name)
 
     logger.info(
@@ -228,7 +219,7 @@ def build(app: Module) -> None:
     )
 
 
-TargetType = Callable[[Module], None]
+TargetType = Callable[[Module, DefaultSolver], None]
 
 
 class Muster:
@@ -263,7 +254,7 @@ muster = Muster()
 
 
 @muster.register("bom")
-def generate_bom(app: Module) -> None:
+def generate_bom(app: Module, solver: DefaultSolver) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
@@ -272,7 +263,7 @@ def generate_bom(app: Module) -> None:
 
 
 @muster.register("mfg-data", default=False)
-def generate_manufacturing_data(app: Module) -> None:
+def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
     """Generate a designator map for the project."""
     export_step(
         config.build.paths.layout,
@@ -301,7 +292,7 @@ def generate_manufacturing_data(app: Module) -> None:
 
 
 @muster.register("manifest")
-def generate_manifest(app: Module) -> None:
+def generate_manifest(app: Module, solver: DefaultSolver) -> None:
     """Generate a manifest for the project."""
     with accumulate() as accumulator:
         with accumulator.collect():
@@ -320,20 +311,21 @@ def generate_manifest(app: Module) -> None:
             manifest_path = config.project.paths.manifest
             manifest_path.parent.mkdir(exist_ok=True, parents=True)
             with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f)
+                json.dump(manifest, f, indent=4)
 
 
 @muster.register("layout-module-map")
-def generate_module_map(app: Module) -> None:
+def generate_module_map(app: Module, solver: DefaultSolver) -> None:
     """Generate a designator map for the project."""
     layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
-def generate_variable_report(app: Module) -> None:
+def generate_variable_report(app: Module, solver: DefaultSolver) -> None:
     """Generate a report of all the variable values in the design."""
+    # TODO: support other file formats
     export_parameters_to_file(
-        app, config.build.paths.output_base.with_suffix(".variables.md")
+        app, solver, config.build.paths.output_base.with_suffix(".variables.md")
     )
 
 
@@ -433,9 +425,5 @@ def consolidate_footprints(app: Module) -> None:
             assert False, "How'd we get here?"
 
         raise ex.derive(
-            [
-                _make_user_resource_exception(e)
-                for e in ex.exceptions
-                if isinstance(e, (FileNotFoundError, LibNotInTable))
-            ]
+            [_make_user_resource_exception(e) for e in iter_leaf_exceptions(ex)]
         ) from ex

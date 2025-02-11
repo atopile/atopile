@@ -38,7 +38,6 @@ dependencies = [
     "patool>=2.3.0,<2.4.0",
     "requests>=2.32.3,<3.0.0",
     "rich>=13.7.1,<14.0.0",
-    "isort>=5.6.4,<5.14.0",
     "typer>=0.12,<0.16",
     "ruff>=0.8.2,<0.9.0",
     "pint>=0.24.4,<1.0.0",
@@ -71,6 +70,8 @@ dependencies = [
     "watchfiles>=0.21.0",
     "questionary>=2.0.1",
     "pydantic-settings>=2.7.1",
+    "hypothesis>=6.124.7",
+    "cookiecutter>=2.6.0",
 ]
 
 [project.urls]
@@ -80,19 +81,19 @@ Homepage = "https://github.com/atopile/atopile"
 
 [dependency-groups]
 dev = [
-    "antlr4-tools",
+    "antlr4-tools>=0.2.1",
     "coverage>=7.6.8",
     "dash_cytoscape~=1.0.2",
     "dash~=2.18.1",
-    "debugpy",
+    "debugpy>=1.8.11",
     "gprof2dot~=2024.6.6",
-    "mkdocs-material",
-    "mkdocs",
+    "mkdocs-material>=9.5.49",
+    "mkdocs>=1.6.1",
     "nanobind>=2.2,<3.0",
     "pre-commit>=2.20,<4.0",
     "pyinstrument~=4.7.1",
-    "pytest-datafiles",
-    "pytest-html",
+    "pytest-datafiles>=3.0.0",
+    "pytest-html>=4.1.1",
     "pytest-xdist~=3.6.1",
     "pytest>=7.1.3,<9.0.0",
     "viztracer>=1.0.0,<2.0.0",
@@ -104,12 +105,16 @@ dev = [
     "pathvalidate>=3.2.1",
     "mike>=2.1.3",
     "hatch>=1.14.0",
+    "atopile-mkdocs-plugin",
 ]
 
 
 [project.scripts]
 ato = "atopile.cli.cli:main"
 faebryk = "faebryk.tools.main:__main__"
+
+[project.entry-points."pygments.lexers"]
+atopile_lexer = "atopile.parse_utils:PygmentsLexer"
 
 [tool.hatch]
 
@@ -137,11 +142,6 @@ source = "vcs"
 # https://setuptools-scm.readthedocs.io/en/latest/extending/
 version_scheme = "only-version"
 local_scheme = "no-local-version"
-
-[tool.isort]
-profile = "black"
-known_third_party = []
-
 
 [tool.pytest]
 [tool.pytest.ini_options]
@@ -176,7 +176,6 @@ exclude = [
     "src/atopile/parser/AtoParserBase.py",
     "src/atopile/parser/AtoParserListener.py",
     "src/atopile/parser/AtoParserVisitor.py",
-    "src/atopile/kicad_plugin",
     "docs/",
     "sandbox/",
 ]
@@ -285,3 +284,6 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 line-length = 88
 target-version = ['py313']
 extend-exclude = "atopile/parser/"
+
+[tool.uv.sources]
+atopile-mkdocs-plugin = { path = "tools/atopile_mkdocs_plugin", editable = true }

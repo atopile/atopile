@@ -24,13 +24,13 @@ class _M24C08_FMN6TP(Module):
         x = self
         return F.can_attach_to_footprint_via_pinmap(
             {
-                "1": x.address_pin[0].signal,
-                "2": x.address_pin[1].signal,
-                "3": x.address_pin[2].signal,
+                "1": x.address_pin[0].line,
+                "2": x.address_pin[1].line,
+                "3": x.address_pin[2].line,
                 "4": x.power.lv,
-                "5": x.data.sda.signal,
-                "6": x.data.scl.signal,
-                "7": x.write_protect.signal,
+                "5": x.data.sda.line,
+                "6": x.data.scl.line,
+                "7": x.write_protect.line,
                 "8": x.power.hv,
             }
         )
@@ -87,5 +87,5 @@ class M24C08_FMN6TP(Module):
     def __preinit__(self):
         self.ic.data.terminate(owner=self)
         self.ic.power.decoupled.decouple(owner=self).capacitance.constrain_subset(
-            L.Range(10 * P.nF, 100 * P.nF)
+            L.Range(10 * P.nF * 0.9, 100 * P.nF * 1.1)
         )

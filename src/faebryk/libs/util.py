@@ -178,10 +178,14 @@ def find_or[T](
         raise
 
 
-def groupby[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
+def groupby[T, U](
+    it: Iterable[T], key: Callable[[T], U], only_multi: bool = False
+) -> dict[U, list[T]]:
     out = defaultdict(list)
     for i in it:
         out[key(i)].append(i)
+    if only_multi:
+        return {k: v for k, v in out.items() if len(v) > 1}
     return out
 
 
@@ -353,7 +357,6 @@ def times[T](cnt: SupportsInt, lamb: Callable[[], T]) -> list[T]:
     return [lamb() for _ in range(int(cnt))]
 
 
-@staticmethod
 def is_type_pair[T, U](
     param1: Any, param2: Any, type1: type[T], type2: type[U]
 ) -> Optional[tuple[T, U]]:
@@ -1380,7 +1383,7 @@ def run_live(
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
     **kwargs,
-) -> tuple[str, subprocess.Popen]:
+) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
 
     process = subprocess.Popen(
@@ -1395,6 +1398,7 @@ def run_live(
     # Set up file descriptors to monitor
     reads = [process.stdout, process.stderr]
     stdout_lines = []
+    stderr_lines = []
     while reads and process.poll() is None:
         # Wait for output on either stream
         readable, _, _ = select.select(reads, [], [])
@@ -1409,7 +1413,8 @@ def run_live(
                 stdout_lines.append(line)
                 if stdout:
                     stdout(line.rstrip())
-            else:
+            elif stream == process.stderr:
+                stderr_lines.append(line)
                 if stderr:
                     stderr(line.rstrip())
 
@@ -1419,10 +1424,10 @@ def run_live(
     # Get return code and check for errors
     if process.returncode != 0:
         raise subprocess.CalledProcessError(
-            process.returncode, args[0], "".join(stdout_lines)
+            process.returncode, args[0], "".join(stdout_lines), "".join(stderr_lines)
         )
 
-    return "\n".join(stdout_lines), process
+    return "\n".join(stdout_lines), "\n".join(stderr_lines), process
 
 
 @contextmanager
@@ -1530,6 +1535,23 @@ def partition(pred, iterable):  # type: ignore
     from more_itertools import partition as p
 
     return p(pred, iterable)
+
+
+@overload
+def partition_as_list[Y, T](
+    pred: Callable[[T], TypeGuard[Y]], iterable: Iterable[T]
+) -> tuple[list[T], list[Y]]: ...
+
+
+@overload
+def partition_as_list[T](
+    pred: Callable[[T], bool], iterable: Iterable[T]
+) -> tuple[list[T], list[T]]: ...
+
+
+def partition_as_list(pred, iterable):  # type: ignore
+    false_list, true_list = partition(pred, iterable)
+    return list(false_list), list(true_list)
 
 
 def times_out(seconds: float):
@@ -1707,11 +1729,11 @@ AUTO_RECOMPILE = ConfigFlag(
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
-    return (
-        json.loads(distro.read_text("direct_url.json") or "")
-        .get("dir_info", {})
-        .get("editable", False)
-    )
+
+    if dist_info := distro.read_text("direct_url.json"):
+        return json.loads(dist_info).get("dir_info", {}).get("editable", False)
+
+    return False
 
 
 class SerializableEnum[E: Enum](Serializable):

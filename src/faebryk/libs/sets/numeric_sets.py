@@ -20,6 +20,18 @@ NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
 EPSILON_REL = 1e-6
 
 
+def float_round[T](value: T) -> T:
+    if not isinstance(value, (float, int)):
+        return round(value)  # type: ignore
+    if value in [math.inf, -math.inf]:
+        return value  # type: ignore
+    out = round(value)
+    if isinstance(value, float):
+        return float(out)  # type: ignore
+    assert isinstance(value, int)
+    return out  # type: ignore
+
+
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 class Numeric_Set[T](P_Set[T]):
     pass
@@ -57,8 +69,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         return self._max
 
     def as_center_rel(self) -> tuple[NumericT, float]:
+        if self._min == self._max:
+            return self._min, 0.0
+
         center = (self._min + self._max) / 2
-        rel = (self._max - self._min) / 2 / center
+        if center == 0:
+            rel = (self._max - self._min) / 2
+        else:
+            rel = (self._max - self._min) / 2 / center
         return center, rel  # type: ignore
 
     def is_subset_of(self, other: "Numeric_Interval[NumericT]") -> bool:
@@ -97,13 +115,34 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         Arithmetically multiplies two intervals.
         """
+
+        # if 0.0 * inf -> inf and 0.0
+        # if 0.0 * -inf -> -inf and 0.0
+        def guarded_mul(a: NumericT, b: NumericT) -> list[NumericT]:
+            if 0.0 in [a, b] and math.inf in [a, b]:
+                assert isinstance(a, float) or isinstance(b, float)
+                return [0.0, math.inf]
+            if 0.0 in [a, b] and -math.inf in [a, b]:
+                assert isinstance(a, float) or isinstance(b, float)
+                return [0.0, -math.inf]
+            prod = a * b
+            assert not math.isnan(prod)
+            return [prod]
+
         values = [
-            self._min * other._min,
-            self._min * other._max,
-            self._max * other._min,
-            self._max * other._max,
+            res
+            for a, b in [
+                (self._min, other._min),
+                (self._min, other._max),
+                (self._max, other._min),
+                (self._max, other._max),
+            ]
+            for res in guarded_mul(a, b)
         ]
-        return Numeric_Interval(min(values), max(values))
+        _min = min(values)
+        _max = max(values)
+
+        return Numeric_Interval(_min, _max)
 
     def op_pow_interval(
         self, other: "Numeric_Interval"
@@ -115,6 +154,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise NotImplementedError("passing zero in exp not implemented yet")
         if self._min < 0 and self._max > 0:
             raise NotImplementedError("crossing zero in base not implemented yet")
+        if self._max < 0 and not other.min_elem.is_integer():
+            raise NotImplementedError(
+                "cannot raise negative base to fractional exponent"
+            )
 
         values = [
             self._min**other._min,
@@ -154,6 +197,14 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         Arithmetically divides a interval by another interval.
         """
+        # TODO not sure I like this
+        # this is very numerically unstable
+        # [0] / [0, 1] ->  [0]
+        # [1e-20] / [0, 1] -> [1e-20, inf]
+        # if self.is_single_element() and self._min == 0:
+        #     return Numeric_Interval_Disjoint(
+        #         Numeric_Interval(self._min, self._max),
+        #     )
         return Numeric_Interval_Disjoint(
             *(self.op_mul_interval(o) for o in other.op_invert().intervals)
         )
@@ -169,6 +220,60 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         if min_ <= max_ or math.isclose(min_, max_, rel_tol=EPSILON_REL):
             return Numeric_Interval_Disjoint(Numeric_Interval(min_, max_))
         return Numeric_Set_Empty()
+
+    def op_difference_interval(
+        self, other: "Numeric_Interval[NumericT]"
+    ) -> "Numeric_Interval_Disjoint[NumericT]":
+        """
+        Set difference of two intervals.
+        """
+        # TODO feels like there is more pretty way to implement this function
+
+        # no overlap
+        if self._max < other._min or self._min > other._max:
+            return Numeric_Interval_Disjoint(self)
+        # fully covered
+        if other._min <= self._min and other._max >= self._max:
+            return Numeric_Set_Empty()
+        # inner overlap
+        if self._min < other._min and self._max > other._max:
+            return Numeric_Interval_Disjoint(
+                Numeric_Interval(self._min, other._min),
+                Numeric_Interval(other._max, self._max),
+            )
+        # right overlap
+        if self._min < other._min:
+            return Numeric_Interval_Disjoint(Numeric_Interval(self._min, other._min))
+        # left overlap
+        return Numeric_Interval_Disjoint(Numeric_Interval(other._max, self._max))
+
+    def op_round(self) -> "Numeric_Interval[NumericT]":
+        return Numeric_Interval(float_round(self._min), float_round(self._max))  # type: ignore #TODO
+
+    def op_abs(self) -> "Numeric_Interval[NumericT]":
+        if self._min < 0 < self._max:
+            return Numeric_Interval(0, self._max)  # type: ignore #TODO
+        if self._min < 0 and self._max < 0:
+            return Numeric_Interval(-self._max, -self._min)
+        if self._min < 0 and self._max == 0:
+            return Numeric_Interval(0, -self._min)
+        if self._min == 0 and self._max < 0:
+            return Numeric_Interval(self._max, 0)
+
+        assert self._min >= 0 and self._max >= 0
+        return self
+
+    def op_log(self) -> "Numeric_Interval[NumericT]":
+        if self._min <= 0:
+            raise ValueError(f"invalid log of {self}")
+        return Numeric_Interval(math.log(self._min), math.log(self._max))  # type: ignore #TODO
+
+    def op_sin(self) -> "Numeric_Interval[NumericT]":
+        if self._max - self._min >= 2 * math.pi:
+            return Numeric_Interval(-1, 1)  # type: ignore #TODO
+        if self._min == self._max:
+            return Numeric_Interval(math.sin(self._min), math.sin(self._max))  # type: ignore #TODO
+        raise NotImplementedError("sin of interval not implemented yet")
 
     def maybe_merge_interval(
         self, other: "Numeric_Interval[NumericT]"
@@ -412,6 +517,29 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     ) -> "Numeric_Interval_Disjoint[NumericT]":
         return Numeric_Interval_Disjoint(*self.intervals, *other.intervals)
 
+    def op_difference_interval(
+        self, other: "Numeric_Interval[NumericT]"
+    ) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(
+            *(r.op_difference_interval(other) for r in self.intervals)
+        )
+
+    def op_difference_intervals(
+        self, other: "Numeric_Interval_Disjoint[NumericT]"
+    ) -> "Numeric_Interval_Disjoint[NumericT]":
+        # TODO there is probably a more efficient way to do this
+        out = self
+        for o in other.intervals:
+            out = out.op_difference_interval(o)
+        return out
+
+    def op_symmetric_difference_intervals(
+        self, other: "Numeric_Interval_Disjoint[NumericT]"
+    ) -> "Numeric_Interval_Disjoint[NumericT]":
+        return self.op_union_intervals(other).op_difference_intervals(
+            self.op_intersect_intervals(other)
+        )
+
     def op_add_intervals(
         self, other: "Numeric_Interval_Disjoint[NumericT]"
     ) -> "Numeric_Interval_Disjoint[NumericT]":
@@ -459,6 +587,15 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             return BoolSet(False)
         return BoolSet(True, False)
 
+    def op_gt_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
+        if self.is_empty() or other.is_empty():
+            return BoolSet()
+        if self.min_elem > other.max_elem:
+            return BoolSet(True)
+        if self.max_elem <= other.min_elem:
+            return BoolSet(False)
+        return BoolSet(True, False)
+
     def op_le_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         if self.is_empty() or other.is_empty():
             return BoolSet()
@@ -467,6 +604,27 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
         if self.min_elem > other.max_elem:
             return BoolSet(False)
         return BoolSet(True, False)
+
+    def op_lt_intervals(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
+        if self.is_empty() or other.is_empty():
+            return BoolSet()
+        if self.max_elem < other.min_elem:
+            return BoolSet(True)
+        if self.min_elem >= other.max_elem:
+            return BoolSet(False)
+        return BoolSet(True, False)
+
+    def op_round(self) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(*(r.op_round() for r in self.intervals))
+
+    def op_abs(self) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(*(r.op_abs() for r in self.intervals))
+
+    def op_log(self) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(*(r.op_log() for r in self.intervals))
+
+    def op_sin(self) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(*(r.op_sin() for r in self.intervals))
 
     def __contains__(self, item: NumericT) -> bool:
         index = bisect(self.intervals, item, key=lambda r: r.min_elem)
@@ -488,8 +646,14 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
     def __ge__(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         return self.op_ge_intervals(other)
 
+    def __gt__(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
+        return self.op_gt_intervals(other)
+
     def __le__(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
         return self.op_le_intervals(other)
+
+    def __lt__(self, other: "Numeric_Interval_Disjoint[NumericT]") -> BoolSet:
+        return self.op_lt_intervals(other)
 
     def __hash__(self) -> int:
         return hash(tuple(hash(r) for r in self.intervals))

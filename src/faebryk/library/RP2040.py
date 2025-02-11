@@ -22,7 +22,7 @@ class RP2040(Module):
     class PIO(F.ElectricLogic):
         pass
 
-    class ADC(F.SignalElectrical):
+    class ADC(F.ElectricSignal):
         pass
 
     class PWM(ModuleInterface):
@@ -140,18 +140,18 @@ class RP2040(Module):
         self.power_io.lv.connect(self.xtal_if.gnd)
 
         # QSPI pins reusable for soft gpio
-        self.qspi.data[3].signal.connect(self.io_soft[0])
-        self.qspi.clock.signal.connect(self.io_soft[1])
-        self.qspi.data[0].signal.connect(self.io_soft[2])
-        self.qspi.data[2].signal.connect(self.io_soft[3])
-        self.qspi.data[1].signal.connect(self.io_soft[4])
-        self.qspi.chip_select.signal.connect(self.io_soft[5])
+        self.qspi.data[3].line.connect(self.io_soft[0])
+        self.qspi.clock.line.connect(self.io_soft[1])
+        self.qspi.data[0].line.connect(self.io_soft[2])
+        self.qspi.data[2].line.connect(self.io_soft[3])
+        self.qspi.data[1].line.connect(self.io_soft[4])
+        self.qspi.chip_select.line.connect(self.io_soft[5])
 
         # ADC pins shared with GPIO
-        self.adc[0].signal.connect(self.io[26])
-        self.adc[1].signal.connect(self.io[27])
-        self.adc[2].signal.connect(self.io[28])
-        self.adc[3].signal.connect(self.io[29])
+        self.adc[0].line.connect(self.io[26])
+        self.adc[1].line.connect(self.io[27])
+        self.adc[2].line.connect(self.io[28])
+        self.adc[3].line.connect(self.io[29])
         F.ElectricLogic.connect_all_node_references(self.adc + [self.power_adc])
 
     @L.rt_field
@@ -203,9 +203,9 @@ class RP2040(Module):
                 "21": self.xtal_if.xout,
                 "22": self.power_io.hv,
                 "23": self.power_core.hv,
-                "24": self.swd.clk.signal,
-                "25": self.swd.dio.signal,
-                "26": self.run.signal,
+                "24": self.swd.clk.line,
+                "25": self.swd.dio.line,
+                "26": self.run.line,
                 "27": self.io[16],
                 "28": self.io[17],
                 "29": self.io[18],
@@ -225,17 +225,17 @@ class RP2040(Module):
                 "43": self.power_adc.hv,
                 "44": self.core_regulator.power_in.hv,
                 "45": self.core_regulator.power_out.hv,
-                "46": self.usb.n.signal,
-                "47": self.usb.p.signal,
+                "46": self.usb.n.line,
+                "47": self.usb.p.line,
                 "48": self.power_usb_phy.hv,
                 "49": self.power_io.hv,
                 "50": self.power_core.hv,
-                "51": self.qspi.data[3].signal,
-                "52": self.qspi.clock.signal,
-                "53": self.qspi.data[0].signal,
-                "54": self.qspi.data[2].signal,
-                "55": self.qspi.data[1].signal,
-                "56": self.qspi.chip_select.signal,
+                "51": self.qspi.data[3].line,
+                "52": self.qspi.clock.line,
+                "53": self.qspi.data[0].line,
+                "54": self.qspi.data[2].line,
+                "55": self.qspi.data[1].line,
+                "56": self.qspi.chip_select.line,
                 "57": self.power_io.lv,  # center pad
             }
         )
@@ -278,18 +278,18 @@ class RP2040(Module):
                 self.io[8]: ["GPIO8"],
                 self.io[9]: ["GPIO9"],
                 self.power_io.hv: ["IOVDD"],
-                self.qspi.clock.signal: ["QSPI_SCLK"],
-                self.qspi.data[0].signal: ["QSPI_SD0"],
-                self.qspi.data[1].signal: ["QSPI_SD1"],
-                self.qspi.data[2].signal: ["QSPI_SD2"],
-                self.qspi.data[3].signal: ["QSPI_SD3"],
-                self.qspi.chip_select.signal: ["QSPI_SS", "QSPI_SS_N"],
-                self.run.signal: ["RUN"],
-                self.swd.clk.signal: ["SWCLK"],
-                self.swd.dio.signal: ["SWD"],
+                self.qspi.clock.line: ["QSPI_SCLK"],
+                self.qspi.data[0].line: ["QSPI_SD0"],
+                self.qspi.data[1].line: ["QSPI_SD1"],
+                self.qspi.data[2].line: ["QSPI_SD2"],
+                self.qspi.data[3].line: ["QSPI_SD3"],
+                self.qspi.chip_select.line: ["QSPI_SS", "QSPI_SS_N"],
+                self.run.line: ["RUN"],
+                self.swd.clk.line: ["SWCLK"],
+                self.swd.dio.line: ["SWD"],
                 self.factory_test_enable: ["TESTEN"],
-                self.usb.n.signal: ["USB_DM"],
-                self.usb.p.signal: ["USB_DP"],
+                self.usb.n.line: ["USB_DM"],
+                self.usb.p.line: ["USB_DP"],
                 self.power_usb_phy.hv: ["USB_VDD"],
                 self.core_regulator.power_in.hv: ["VREG_IN"],
                 self.core_regulator.power_out.hv: ["VREG_VOUT"],

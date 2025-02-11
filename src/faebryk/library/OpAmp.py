@@ -38,8 +38,8 @@ class OpAmp(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.power.hv: ["V+", "Vcc", "Vdd"],
-                self.power.lv: ["V-", "Vee", "Vss", "GND"],
+                self.power.hv: ["V+", "Vcc", "Vdd", "Vcc+"],
+                self.power.lv: ["V-", "Vee", "Vss", "GND", "Vcc-"],
                 self.inverting_input: ["-", "IN-"],
                 self.non_inverting_input: ["+", "IN+"],
                 self.output: ["OUT"],
@@ -51,3 +51,11 @@ class OpAmp(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
+
+    @property
+    def inverting(self) -> F.Electrical:
+        return self.inverting_input
+
+    @property
+    def non_inverting(self) -> F.Electrical:
+        return self.non_inverting_input

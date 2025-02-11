@@ -166,6 +166,15 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
 Pacman.__exit__ = Pacman._will_be__exit__  # type: ignore
 
 
+def iter_leaf_exceptions[T: Exception](ex: T | BaseExceptionGroup[T]) -> Iterable[T]:
+    """Iter through all the non-group exceptions as a dfs pre-order"""
+    if isinstance(ex, ExceptionGroup):
+        for e in ex.exceptions:
+            yield from iter_leaf_exceptions(e)
+    else:
+        yield cast(T, ex)
+
+
 class accumulate:
     """
     Collect a group of errors and only raise
@@ -185,10 +194,7 @@ class accumulate:
         # function below
         class _Collector(Pacman):
             def nom_nom_nom(s, exc: Exception, original_exinfo) -> None:
-                if isinstance(exc, ExceptionGroup):
-                    self.errors.extend(exc.exceptions)
-                else:
-                    self.errors.append(exc)
+                self.errors.extend(iter_leaf_exceptions(exc))
 
         self.collector = _Collector(*(accumulate_types or (UserException,)))
         self.group_message = group_message or ""

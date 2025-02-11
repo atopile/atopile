@@ -1,0 +1,55 @@
+import Diode, ElectricSignal, ElectricPower, NFET, PFET, Resistor, DifferentialPair
+
+from "elec/src/NTTFS4C25NTWG.ato" import NTTFS4C25NTWG
+
+
+module HalfBridge:
+    power = new ElectricPower
+    gate_high = new ElectricSignal
+    gate_low = new ElectricSignal
+    shunt_output = new DifferentialPair
+    output = new ElectricSignal
+
+    # this doesnt work until we have replace with instance.
+    # Components
+    nfet_high = new NFET
+    nfet_low = new NFET
+    shunt = new Resistor
+
+    # Connect power
+    power.vcc ~ nfet_high.drain
+    output.line ~ nfet_high.source
+    output.line ~ nfet_low.drain
+    power.gnd ~ shunt.p2; shunt.p1 ~ nfet_low.source
+
+    # Connect the gates
+    gate_high.line ~ nfet_high.gate
+    gate_low.line ~ nfet_low.gate
+
+    # Connect the gnds
+    output.reference ~ power
+    gate_high.reference ~ power
+    gate_low.reference ~ power
+
+
+module LowSideSwitch:
+    fet = new NFET
+    gate_resistor = new Resistor
+    pulldown_resistor = new Resistor
+    freewheel_diode = new Diode
+
+    power = new ElectricPower
+    load = new ElectricPower
+
+    input = new ElectricSignal
+
+    # connect up circuit
+    input.line ~ gate_resistor.p1; gate_resistor.p2 ~ fet.gate
+    input.reference ~ power
+
+    # load and diode between power and fet
+    power.vcc ~ freewheel_diode.cathode; freewheel_diode.anode ~ fet.drain
+    power.vcc ~ load.vcc; load.gnd ~ fet.drain
+
+    # source to ground
+    fet.source ~ power.gnd

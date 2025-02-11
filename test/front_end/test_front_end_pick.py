@@ -12,14 +12,11 @@ from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
 
 
-@pytest.fixture
-def bob() -> Bob:
-    return Bob()
-
-
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor(bob: Bob, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         """
@@ -48,7 +45,9 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
 
 
 def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         """

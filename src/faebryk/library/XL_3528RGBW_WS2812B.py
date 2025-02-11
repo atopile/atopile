@@ -14,7 +14,7 @@ class XL_3528RGBW_WS2812B(Module):
         def get_config(self) -> dict:
             obj = self.get_obj(XL_3528RGBW_WS2812B)
 
-            data_pin = F.is_esphome_bus.find_connected_bus(obj.di.signal)
+            data_pin = F.is_esphome_bus.find_connected_bus(obj.di.line)
 
             return {
                 "light": [
@@ -51,9 +51,9 @@ class XL_3528RGBW_WS2812B(Module):
         return F.can_attach_to_footprint_via_pinmap(
             {
                 "1": self.power.lv,
-                "2": self.di.signal,
+                "2": self.di.line,
                 "3": self.power.hv,
-                "4": self.do.signal,
+                "4": self.do.line,
             }
         )
 

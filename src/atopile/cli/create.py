@@ -1,32 +1,30 @@
 import itertools
 import logging
 import re
-import shutil
 import sys
-import tempfile
 import textwrap
 import webbrowser
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Annotated, Any, Iterator, cast
+from typing import Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
-import click
 import git
 import jinja2
 import questionary
 import rich
-import ruamel.yaml
 import typer
+import urllib3
+from cookiecutter.main import cookiecutter
 from natsort import natsorted
 from rich.table import Table
 
-from atopile import errors
-from atopile.cli.install import do_install
+from atopile import errors, version
+from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
-from faebryk.libs.exceptions import downgrade
+from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
@@ -37,29 +35,16 @@ from faebryk.libs.pycodegen import (
     gen_repeated_block,
     sanitize_name,
 )
-from faebryk.libs.util import (
-    groupby,
-    robustly_rm_dir,
-)
+from faebryk.libs.util import groupby
 
 # Set up logging
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
 create_app = typer.Typer()
-
-
-def check_name(name: str) -> bool:
-    """
-    Check if a name is valid.
-    """
-    if re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", name):
-        return True
-    else:
-        return False
 
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
@@ -91,244 +76,386 @@ def _in_git_repo(path: Path) -> bool:
     return True
 
 
+def query_helper[T: str | Path | bool](
+    prompt: str,
+    type_: type[T],
+    clarifier: Callable[[Any], T] = lambda x: x,
+    upgrader: Callable[[T], T] = lambda x: x,
+    upgrader_msg: str | None = None,
+    validator: str | Callable[[T], bool] | None = None,
+    validation_failure_msg: str | None = "Value [cyan]{value}[/] is invalid",
+    default: T | None = None,
+    pre_entered: T | None = None,
+    validate_default: bool = True,
+) -> T:
+    """Query a user for input."""
+    rich.print(prompt)
+
+    # Check the default value
+    if default is not None:
+        if not isinstance(default, type_):
+            raise ValueError(f"Default value {default} is not of type {type_}")
+
+    # Make a queryier
+    if type_ is str:
+
+        def queryier() -> str:
+            return questionary.text(
+                "",
+                default=str(default or ""),
+            ).unsafe_ask()
+
+    elif type_ is Path:
+
+        def queryier() -> Path:
+            return Path(
+                questionary.path(
+                    "",
+                    default=str(default or ""),
+                ).unsafe_ask()
+            )
+
+    elif type_ is bool:
+        assert default is None or isinstance(default, bool)
+
+        def queryier() -> bool:
+            return questionary.confirm(
+                "",
+                default=default or True,
+            ).unsafe_ask()
+
+    else:
+        raise ValueError(f"Unsupported query type: `{type_}`")
+
+    # Ensure a validator
+    # Default the validator to a regex match if it's a str
+    if validator is None:
+
+        def validator_func(value: T) -> bool:
+            return True
+
+    elif isinstance(validator, str):
+
+        def validator_func(value: T) -> bool:
+            return bool(re.match(validator, value))  # type: ignore
+
+        if not validation_failure_msg:
+            validation_failure_msg = f'Value must match regex: `r"{validator}"`'
+
+    else:
+        validator_func = validator  # type: ignore
+
+    # Ensure the default provided is valid
+    if default is not None and validate_default:
+        if not validator_func(clarifier(default)):
+            raise ValueError(f"Default value {default} is invalid")
+
+        if clarifier(default) != upgrader(clarifier(default)):
+            raise ValueError(f"Default value {default} doesn't meet best-practice")
+
+    # When running non-interactively, we expect the value to be provided
+    # at the command level, so we don't need to query the user for it
+    # Validate and return the pre-entered value
+    if not config.interactive:
+        if pre_entered is None:
+            raise ValueError("Value is required. Check at command level.")
+
+        if not validator_func(pre_entered):
+            if validation_failure_msg:
+                msg = validation_failure_msg.format(value=pre_entered)
+            else:
+                msg = f"Value {pre_entered} is invalid"
+            raise errors.UserException(msg)
+
+        return pre_entered
+
+    # Pre-entered values are expected to skip the query for a value in the first place
+    # but progress through the validator and upgrader if we're running interactively
+    value: T | None = pre_entered
+
+    for _ in stuck_user_helper_generator:
+        if value is None:
+            value = clarifier(queryier())  # type: ignore
+        assert isinstance(value, type_)
+
+        if (proposed_value := upgrader(value)) != value:
+            if upgrader_msg:
+                rich.print(upgrader_msg.format(proposed_value=proposed_value))
+
+            rich.print(f"Use [cyan]{proposed_value}[/] instead?")
+            if questionary.confirm("").unsafe_ask():
+                value = proposed_value
+
+        if not validator_func(value):
+            if validation_failure_msg:
+                rich.print(validation_failure_msg.format(value=value))
+            value = None
+            continue
+
+        return value
+
+    raise RuntimeError("Unclear how we got here")
+
+
+PROJECT_NAME_REQUIREMENTS = (
+    "Project name must start with a letter and contain only letters, numbers, dashes"
+    " and underscores. It will be used for the project directory and name on Github"
+)
+
+
 @create_app.command()
 def project(
-    name: Annotated[str | None, typer.Argument()] = None,
-    repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
-):  # pylint: disable=redefined-builtin
+    template: str = "https://github.com/atopile/project-template @ compiler-v0.3",
+    create_github_repo: bool | None = None,
+):
     """
     Create a new ato project.
     """
+    # TODO: add template options
 
-    # Get a project name
-    kebab_name = None
-    for _ in stuck_user_helper_generator:
-        if not name:
-            rich.print(":rocket: What's your project [cyan]name?[/]")
-            name = questionary.text("").unsafe_ask()
-
-        if name is None:
-            continue
-
-        kebab_name = caseconverter.kebabcase(name)
-        if name != kebab_name:
-            help(
-                f"""
-                We recommend using kebab-case ([cyan]{kebab_name}[/])
-                for your project name. It makes it easier to use your project
-                with other tools (like git) and it embeds nicely into URLs.
-                """
-            )
-
-            rich.print(f"Do you want to use [cyan]{kebab_name}[/] instead?")
-            if questionary.confirm("").unsafe_ask():
-                name = kebab_name
-
-        if check_name(name):
-            break
-        else:
-            help(
-                "[red]Project names must start with a letter and"
-                " contain only letters, numbers, dashes and underscores.[/]"
-            )
-            name = None
-
-    assert name is not None
-
-    if (
-        not repo
-        and not questionary.confirm(
-            "Would you like to create a new repo for this project?"
-        ).unsafe_ask()
-    ):
-        repo = PROJECT_TEMPLATE
-
-    # Get a repo
-    repo_obj: git.Repo | None = None
-    for _ in stuck_user_helper_generator:
-        if not repo:
-            make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
-
-            help(
-                f"""
-                We recommend you create a Github repo for your project.
-
-                If you already have a repo, you can respond [yellow]n[/]
-                to the next question and provide the URL to your repo.
-
-                If you don't have one, you can respond yes to the next question
-                or (Cmd/Ctrl +) click the link below to create one.
-
-                Just select the template you want to use.
-
-                {make_repo_url}
-                """
-            )
-
-            rich.print(":rocket: Open browser to create Github repo?")
-            if questionary.confirm("").unsafe_ask():
-                webbrowser.open(make_repo_url)
-
-            rich.print(":rocket: What's the [cyan]repo's URL?[/]")
-            repo = questionary.text("").unsafe_ask()
-
-        assert repo is not None
-
-        # Try download the repo from the user-provided URL
-        if Path(name).exists():
-            raise click.ClickException(
-                f"Directory {name} already exists. Please put the repo elsewhere or"
-                " choose a different name."
-            )
-
-        try:
-            repo_obj = git.Repo.clone_from(repo, name, depth=1)
-            break
-        except git.GitCommandError as ex:
-            help(
-                f"""
-                [red]Failed to clone repo from {repo}[/]
-
-                {ex.stdout}
-                {ex.stderr}
-                """
-            )
-            repo = None
-
-    assert repo_obj is not None
-    assert repo_obj.working_tree_dir is not None
-
-    # Configure the project
-    do_configure(name, str(repo_obj.working_tree_dir), debug=False)
-
-    # Commit the configured project
-    # force the add, because we're potentially
-    # modifying things in gitignored locations
-    if repo_obj.is_dirty():
-        repo_obj.git.add(A=True, f=True)
-        repo_obj.git.commit(m="Configure project")
+    template_ref, *template_branch = template.split("@")
+    template_ref = template_ref.strip()
+    if template_branch:
+        template_branch = template_branch[0].strip()
     else:
-        rich.print(
-            "[yellow]No changes to commit! Seems like the"
-            " template you used mightn't be configurable?[/]"
+        template_branch = None
+
+    # Default to creating a Github repo if running interactively
+    if create_github_repo is None:
+        create_github_repo = config.interactive
+
+    if create_github_repo is True and not config.interactive:
+        raise errors.UserException(
+            "Cannot create a Github repo when running non-interactively."
         )
 
-    # If this repo's remote it PROJECT_TEMPLATE, cleanup the git history
-    if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
-        try:
-            robustly_rm_dir(Path(repo_obj.git_dir))
-        except (PermissionError, OSError) as ex:
-            with downgrade():
-                raise errors.UserException(
-                    f"Failed to remove .git directory: {repr(ex)}"
-                ) from ex
+    extra_context = {
+        "__ato_version": version.get_installed_atopile_version(),
+        "__python_path": sys.executable,
+    }
 
-        if not _in_git_repo(Path(repo_obj.working_dir).parent):
-            # If we've created this project OUTSIDE an existing git repo
-            # then re-init the repo so it has a clean history
-            clean_repo = git.Repo.init(repo_obj.working_tree_dir)
-            clean_repo.git.add(A=True)
-            clean_repo.git.commit(m="Initial commit")
-
-    # Install dependencies listed in the ato.yaml, typically just generics
-    do_install(
-        to_install=None,
-        jlcpcb=False,
-        link=True,
-        upgrade=True,
-        path=repo_obj.working_tree_dir,
+    logging.info("Running cookie-cutter on the template")
+    project_path = Path(
+        cookiecutter(
+            template_ref,
+            checkout=template_branch,
+            no_input=not config.interactive,
+            extra_context=dict(
+                filter(lambda x: x[1] is not None, extra_context.items())
+            ),
+        )
     )
 
+    # Get a repo
+    if create_github_repo:
+        logging.info("Initializing git repo")
+        repo = git.Repo.init(project_path)
+        repo.git.add(A=True, f=True)
+        repo.git.commit(m="Initial commit")
+
+        github_username = query_helper(
+            "What's your Github username?",
+            str,
+            validator=r"^[a-zA-Z0-9_-]+$",
+        )
+
+        make_repo_url = (
+            f"https://github.com/new?name={project_path.name}&owner={github_username}"
+        )
+
+        help(
+            f"""
+            We recommend you create a Github repo for your project.
+
+            If you already have a repo, you can respond [yellow]n[/]
+            to the next question and provide the URL to your repo.
+
+            If you don't have one, you can respond yes to the next question
+            or (Cmd/Ctrl +) click the link below to create one.
+
+            Just select the template you want to use.
+
+            {make_repo_url}
+            """
+        )
+
+        webbrowser.open(make_repo_url)
+
+        def _repo_validator(url: str) -> bool:
+            try:
+                urllib3.request("GET", url)
+                return True
+            except Exception:
+                return False
+
+        if url := query_helper(
+            ":rocket: What's the [cyan]repo's URL?[/]",
+            str,
+            default=f"https://github.com/{github_username}/{project_path.name}",
+            validator=_repo_validator,
+            validate_default=False,
+        ):
+            repo.create_remote("origin", url).push()
+
     # Wew! New repo created!
-    rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
+    rich.print(
+        f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
+    )
 
 
-@create_app.command()
-def build(
-    name: Annotated[str | None, typer.Argument()] = None,
+@create_app.command("build-target")
+def build_target(
+    build_target: Annotated[str | None, typer.Option()] = None,
+    file: Annotated[Path | None, typer.Option()] = None,
+    module: Annotated[str | None, typer.Option()] = None,
+    backup_name: Annotated[str | None, typer.Argument()] = None,
 ):
     """
     Create a new build configuration.
     - adds entry to ato.yaml
     - creates a new directory in layout
     """
-    if not name:
-        name = caseconverter.kebabcase(
-            questionary.text("Enter the build name").unsafe_ask()
-        )
+    config.apply_options(None)
 
     try:
-        top_level_path = config.project.paths.root
-        layout_path = config.project.paths.layout
         src_path = config.project.paths.src
-    except FileNotFoundError:
+        config.project_dir  # touch property to ensure config's loaded from a project
+    except ValueError:
         raise errors.UserException(
             "Could not find the project directory, are you within an ato project?"
         )
 
-    # Get user input for the entry file and module name
-    rich.print("We will create a new ato file and add the entry to the ato.yaml")
-    entry = questionary.text(
-        "What would you like to call the entry file? (e.g., psuDebug)"
-    ).unsafe_ask()
+    if backup_name is None:
+        if build_target:
+            backup_name = build_target
+        elif file:
+            backup_name = file.name.split(".", 1)[0]
+        elif module:
+            backup_name = module
 
-    target_layout_path = layout_path / name
-    with tempfile.TemporaryDirectory() as tmpdirname:
+    # If we're running non-interactively, all details must be provided
+    if not config.interactive and not all([build_target, file, module]):
+        raise errors.UserException(
+            "--build-target, --file, and --module must all be"
+            " provided when running non-interactively."
+        )
+
+    def _check_build_target_name(value: str) -> bool:
+        if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", value):
+            rich.print(
+                "[red]Build-target names must start with a letter and"
+                " contain only letters, numbers, dashes and underscores.[/]"
+            )
+            return False
+
+        if value in config.project.builds:
+            rich.print(f"[red]Build-target `{value}` already exists[/]")
+            return False
+
+        return True
+
+    build_target = query_helper(
+        ":rocket: What's the [cyan]build-target[/] name?",
+        type_=str,
+        upgrader=caseconverter.kebabcase,
+        upgrader_msg="We recommend using kebab-case for build-target names.",
+        validator=_check_build_target_name,
+        validation_failure_msg="",
+        pre_entered=build_target,
+        default=caseconverter.kebabcase(backup_name) if backup_name else None,
+    )
+
+    def _file_clarifier(value: Path) -> Path:
+        if not value.is_absolute():
+            # If it's a relative path wrt ./ (cwd) then respect that
+            # else assume it's relative to the src directory
+            if str(value).startswith("./") or str(value).startswith(".\\"):
+                value = Path(value).resolve()
+            else:
+                value = src_path / value
+
+        return value
+
+    def _file_updator(value: Path) -> Path:
+        value = value.with_stem(caseconverter.snakecase(value.stem))
+        if value.suffix != ".ato":
+            # Allow dots in filenames
+            value = value.with_suffix(value.suffix + ".ato")
+        return value
+
+    def _file_validator(f: Path) -> bool:
+        if f.is_dir():
+            rich.print(f"{f} is a directory")
+            return False
+
+        if f.suffix != ".ato":
+            rich.print(f"{f} must end in .ato")
+            return False
+
         try:
-            git.Repo.clone_from(PROJECT_TEMPLATE, tmpdirname)
-        except git.GitCommandError as ex:
-            raise errors.UserException(
-                f"Failed to clone layout template from {PROJECT_TEMPLATE}: {repr(ex)}"
-            )
-        source_layout_path = Path(tmpdirname) / "elec" / "layout" / "default"
-        if not source_layout_path.exists():
-            raise errors.UserException(
-                f"The specified layout path {source_layout_path} does not exist."
-            )
-        else:
-            target_layout_path.mkdir(parents=True, exist_ok=True)
-            shutil.copytree(source_layout_path, target_layout_path, dirs_exist_ok=True)
-            # Configure the files in the directory using the do_configure function
-            do_configure(name, str(target_layout_path), debug=False)
+            f.relative_to(src_path)
+        except ValueError:
+            rich.print(f"{f} is outside the project's src dir")
+            return False
 
-        # Add the build to the ato.yaml file
-        ato_yaml_path = (
-            top_level_path / config.project.paths.root / PROJECT_CONFIG_FILENAME
-        )
-        # Check if ato.yaml exists
-        if not ato_yaml_path.exists():
-            print(
-                f"ato.yaml not found in {top_level_path}. Please ensure the file"
-                " exists before proceeding."
-            )
-        else:
-            # Load the existing YAML configuration
-            yaml = ruamel.yaml.YAML()
-            with ato_yaml_path.open("r") as file:
-                ato_config = yaml.load(file)
+        return True
 
-            entry_file = Path(caseconverter.kebabcase(entry)).with_suffix(".ato")
-            entry_module = caseconverter.pascalcase(entry)
+    file = query_helper(
+        ":rocket: What [cyan]file[/] should we add the module to?",
+        type_=Path,
+        clarifier=_file_clarifier,
+        upgrader=_file_updator,
+        upgrader_msg=(
+            "We recommend using snake_case for file names, and it must end in .ato"
+        ),
+        validator=_file_validator,
+        validation_failure_msg="",
+        pre_entered=file,
+        default=Path(caseconverter.snakecase(backup_name or build_target) + ".ato"),
+    )
 
-            # Update the ato_config with the new build information
-            if "builds" not in ato_config:
-                ato_config["builds"] = {}
-            ato_config["builds"][name] = {
-                "entry": f"elec/src/{entry_file}:{entry_module}"
-            }
+    module = query_helper(
+        ":rocket: What [cyan]module[/] should we add to the file?",
+        type_=str,
+        validator=str.isidentifier,
+        validation_failure_msg="",
+        upgrader=caseconverter.pascalcase,
+        upgrader_msg="We recommend using pascal-case for module names.",
+        pre_entered=module,
+        default=caseconverter.pascalcase(backup_name or build_target),
+    )
 
-            # Write the updated configuration back to ato.yaml
-            with ato_yaml_path.open("w") as file:
-                yaml.dump(ato_config, file)
+    logger.debug(f"Creating build-target with {build_target=}, {file=}, {module=}")
 
-        # create a new ato file with the entry file and module
-        ato_file = src_path / entry_file
-        ato_file.write_text(f"module {entry_module}:\n \tsignal gnd\n")
+    # Update project config
+    logger.info(
+        f"Adding build-target to {config.project.paths.root / PROJECT_CONFIG_FILENAME}"
+    )
 
-        rich.print(
-            f":sparkles: Successfully created a new build configuration for {name}!"
-            " :sparkles:"
-        )
+    def add_build_target(config_data: dict, new_data: dict):
+        config_data["builds"][build_target] = new_data
+        return config_data
+
+    config.update_project_config(
+        add_build_target, {"entry": str(AddrStr.from_parts(file, module))}
+    )
+
+    # Create or add to file
+    module_text = f"module {module}:\n    pass\n"
+
+    if file.is_file():  # exists and is a file
+        with file.open("a") as f:
+            f.write("\n")
+            f.write(module_text)
+
+    else:
+        file.parent.mkdir(parents=True, exist_ok=True)
+        file.write_text(module_text)
+
+    rich.print(
+        ":sparkles: Successfully created a new build configuration "
+        f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
+    )
 
 
 @create_app.command(hidden=True)
@@ -581,7 +708,7 @@ class Template(ABC):
     nodes: list[str] = field(default_factory=list)
     docstring: str = "TODO: Docstring describing your module"
 
-    def _process_part(self, part: Component) -> tuple[str, Any]:
+    def _process_part(self, part: Component):
         """Common part processing logic used by child classes."""
         name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(name, str)
@@ -677,15 +804,24 @@ class FabllTemplate(Template):
         # Get common processed data
         self.name, easyeda_symbol = self._process_part(part)
 
-        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
+        designator_prefix_str = easyeda_symbol.info.prefix.replace("?", "")
+        try:
+            prefix = has_designator_prefix.Prefix(designator_prefix_str)
+            designator_prefix = f"F.has_designator_prefix.Prefix.{prefix.name}"
+        except ValueError:
+            logger.warning(
+                f"Using non-standard designator prefix: {designator_prefix_str}"
+            )
+            designator_prefix = f"'{designator_prefix_str}'"
+
         self.traits.append(
-            f"designator_prefix = L.f_field(F.has_designator_prefix_defined)"
-            f"('{designator_prefix}')"
+            f"designator_prefix = L.f_field(F.has_designator_prefix)"
+            f"({designator_prefix})"
         )
 
         self.traits.append(
             "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{self.name}'}})"
+            f"({{'LCSC': '{part.lcsc_display}'}})"
         )
 
         self.imports.append(
@@ -789,12 +925,20 @@ class FabllTemplate(Template):
                 \"\"\"
 
                 # ----------------------------------------
-                #     modules, interfaces, parameters
+                #                modules
+                # ----------------------------------------
+
+                # ----------------------------------------
+                #              interfaces
                 # ----------------------------------------
                 {gen_repeated_block(self.nodes)}
 
                 # ----------------------------------------
-                #                 traits
+                #              parameters
+                # ----------------------------------------
+
+                # ----------------------------------------
+                #                traits
                 # ----------------------------------------
                 {gen_repeated_block(self.traits)}
 

@@ -56,9 +56,9 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.port_a.signal: ["A"],
-                self.port_b.signal: ["B"],
-                self.direction.signal: ["DIR"],
+                self.port_a.line: ["A"],
+                self.port_b.line: ["B"],
+                self.direction.line: ["DIR"],
                 self.power_a.lv: ["GND"],
                 self.power_a.hv: ["VCC(A)"],
                 self.power_b.hv: ["VCC(B)"],

@@ -44,8 +44,10 @@ class Solver(Protocol):
     class SolveResultAll(SolveResult):
         has_solution: bool
 
+    # TODO: solver configuration
+
     # timeout per solve call in milliseconds
-    timeout: int
+    # timeout: int
     # threads: int
     # in megabytes
     # memory: int

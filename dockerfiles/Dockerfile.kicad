@@ -9,8 +9,9 @@ ENV UV_LINK_MODE=copy
 ENV UV_COMPILE_BYTECODE=1
 
 # build all targets
+ENV NONINTERACTIVE=1
 ENV ATO_TARGET="all"
-ENV ATO_NON_INTERACTIVE=1
+ENV ATO_FROZEN=1
 
 # We use root for this container, despite the permission-turds
 # since it's all Github actions currently supports.

@@ -56,8 +56,8 @@ class SCD40(Module):
                 "21": self.power.lv,
                 "7": self.power.hv,
                 "19": self.power.hv,
-                "9": self.i2c.scl.signal,
-                "10": self.i2c.sda.signal,
+                "9": self.i2c.scl.line,
+                "10": self.i2c.sda.line,
             }
         )
 

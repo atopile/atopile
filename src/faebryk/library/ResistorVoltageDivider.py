@@ -16,6 +16,7 @@ class ResistorVoltageDivider(Module):
 
     node = L.list_field(3, F.Electrical)
 
+    total_resistance = L.p_field(units=P.Ω)
     ratio = L.p_field(units=P.dimensionless)
     max_current = L.p_field(units=P.A)
 
@@ -24,5 +25,8 @@ class ResistorVoltageDivider(Module):
         return F.can_bridge_defined(self.node[0], self.node[1])
 
     def __preinit__(self):
-        self.node[0].connect_via(self.resistor[0], self.node[1])
-        self.node[1].connect_via(self.resistor[1], self.node[2])
+        self.node[0].connect_via([self.resistor[0], self.resistor[1]], self.node[1])
+        self.total_resistance.alias_is(
+            self.resistor[0].resistance + self.resistor[1].resistance
+        )
+        self.ratio.alias_is(self.resistor[0].resistance / self.total_resistance)

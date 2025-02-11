@@ -7,12 +7,11 @@ This CLI command provides the `ato install` command to:
 """
 
 import logging
-import subprocess
-import sys
 from pathlib import Path
 from typing import Annotated, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
+import questionary
 import requests
 import ruamel.yaml
 import typer
@@ -20,23 +19,26 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 
 import faebryk.libs.exceptions
 from atopile import errors, version
-from atopile.config import Dependency, config
+from atopile.config import Dependency, ProjectConfig, config
 from faebryk.libs.util import robustly_rm_dir
 
 yaml = ruamel.yaml.YAML()
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[
-        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID")
+        bool, typer.Option("--jlcpcb", "-j", help="JLCPCB component ID", hidden=True)
     ] = False,
-    link: Annotated[
+    vendor: Annotated[
         bool,
-        typer.Option("--link", "-l", help="Keep this dependency linked to the source"),
+        typer.Option(
+            "--vendor",
+            help="Copy the contents of this dependency into the repo",
+        ),
     ] = False,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
@@ -46,11 +48,21 @@ def install(
     """
     Install atopile packages or components from jlcpcb.com/parts
     """
-    do_install(to_install, jlcpcb, link, upgrade, path)
+    if jlcpcb:
+        raise errors.UserBadParameterError(
+            "--jlcpcb flag has been replaced by `ato create component`"
+        )
+
+    config.apply_options(None)
+
+    do_install(to_install, vendor, upgrade, path)
 
 
 def do_install(
-    to_install: str | None, jlcpcb: bool, link: bool, upgrade: bool, path: Path | None
+    to_install: str | None,
+    vendor: bool,
+    upgrade: bool,
+    path: Path | None,
 ):
     """
     Actually do the installation of the dependencies.
@@ -60,24 +72,19 @@ def do_install(
     if path is not None:
         config.project_dir = path
 
-    log.info(
-        f"Installing {to_install}{' ' if to_install else ''}"
-        f"in {config.project.paths.root}"
-    )
+    if to_install is None:
+        logger.info(f"Installing all dependencies in {config.project.paths.root}")
+    else:
+        logger.info(f"Installing {to_install} in {config.project.paths.root}")
 
-    if jlcpcb:
-        if to_install is None:
-            raise errors.UserBadParameterError("No component ID specified")
-        # eg. "ato install --jlcpcb=C123"
-        install_jlcpcb(to_install, config.project.paths.root)
-    elif to_install:
+    if to_install:
         # eg. "ato install some-atopile-module"
-        install_single_dependency(to_install, link, upgrade)
+        install_single_dependency(to_install, vendor, upgrade)
     else:
         # eg. "ato install"
         install_project_dependencies(upgrade)
 
-    log.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 def get_package_repo_from_registry(module_name: str) -> str:
@@ -85,9 +92,9 @@ def get_package_repo_from_registry(module_name: str) -> str:
     Get the git repo for a package from the ato registry.
     """
     try:
-        response = requests.post(
-            config.project.services.packages.url,
-            json={"name": module_name},
+        encoded_name = quote(module_name)
+        response = requests.get(
+            f"{config.project.services.packages.url}/v0/package/{encoded_name}",
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
@@ -95,12 +102,26 @@ def get_package_repo_from_registry(module_name: str) -> str:
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
-    if response.status_code == 500:
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as ex:
+        try:
+            _ = response.json()["detail"]
+            if response.status_code == 404:
+                raise errors.UserException(
+                    f"Could not find package '{module_name}' in registry.",
+                    markdown=False,
+                ) from None
+        except (KeyError, requests.exceptions.JSONDecodeError):
+            pass
+
         raise errors.UserException(
-            f"Could not find package '{module_name}' in registry."
+            f"Error getting data for package '{module_name}': \n{ex}",
+            markdown=False,
         )
-    response.raise_for_status()
+
     return_data = response.json()
+
     try:
         return_url = return_data["data"]["repo_url"]
     except KeyError as ex:
@@ -110,17 +131,17 @@ def get_package_repo_from_registry(module_name: str) -> str:
     return return_url
 
 
-def install_single_dependency(to_install: str, link: bool, upgrade: bool):
+def install_single_dependency(to_install: str, vendor: bool, upgrade: bool):
     dependency = Dependency.from_str(to_install)
     name = _name_and_clone_url_helper(dependency.name)[0]
-    if link:
+    if vendor:
+        dependency.link_broken = True
+        abs_path = config.project.paths.src / name
+        dependency.path = abs_path.relative_to(config.project.paths.root)
+    else:
         dependency.link_broken = False
         abs_path = config.project.paths.modules / name
         dependency.path = abs_path.relative_to(config.project.paths.root)
-    else:
-        abs_path = config.project.paths.src / name
-        dependency.path = abs_path.relative_to(config.project.paths.root)
-        dependency.link_broken = True
 
     try:
         installed_version = install_dependency(dependency, upgrade, abs_path)
@@ -148,8 +169,14 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
         dependency.version_spec = f"@{installed_version}"
 
     def add_dependency(config_data, new_data):
-        if config_data.get("dependencies") is None:
-            config_data["dependencies"] = []
+        config_data["dependencies"] = [
+            dep.model_dump()
+            # add_dependencies is the field validator that loads the dependencies
+            # from the config file. It ensures the format of the ato.yaml
+            for dep in ProjectConfig.add_dependencies(
+                config_data.get("dependencies"),
+            )  # type: ignore  add_dependencies is a classmethod
+        ]
 
         for i, dep in enumerate(config_data["dependencies"]):
             if dep["name"] == new_data["name"]:
@@ -157,6 +184,7 @@ def install_single_dependency(to_install: str, link: bool, upgrade: bool):
                 break
         else:
             config_data["dependencies"] = config_data["dependencies"] + [new_data]
+
         return config_data
 
     config.update_project_config(add_dependency, dependency.model_dump())
@@ -203,22 +231,22 @@ def install_dependency(
         repo = Repo(abs_path)
     except (InvalidGitRepositoryError, NoSuchPathError):
         # Directory does not contain a valid repo, clone into it
-        log.info(f"Installing dependency {module_name}")
+        logger.info(f"Installing dependency `{module_name}`")
         repo = Repo.clone_from(clone_url, abs_path)
         tracking = repo.active_branch.tracking_branch()
         if tracking:
             tracking.checkout()
         else:
-            log.warning(
+            logger.warning(
                 f"No tracking branch found for {module_name}, using current branch"
             )
     else:
         # In this case the directory exists and contains a valid repo
         if upgrade:
-            log.info(f"Fetching latest changes for {module_name}")
+            logger.info(f"Fetching latest changes for {module_name}")
             repo.remotes.origin.fetch()
         else:
-            log.info(
+            logger.info(
                 f"{module_name} already exists. If you wish to upgrade, use --upgrade"
             )
             # here we're done because we don't want to play with peoples' deps under them # noqa: E501  # pre-existing
@@ -231,7 +259,7 @@ def install_dependency(
         try:
             semver_to_tag[version.parse(tag.name)] = tag
         except errors.UserException:
-            log.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
+            logger.debug(f"Tag {tag.name} is not a valid semver tag. Skipping.")
 
     if "@" in module_spec:
         # If there's an @ in the version, we're gonna check that thing out
@@ -247,7 +275,7 @@ def install_dependency(
         installed_semver = max(valid_versions)
         best_checkout = semver_to_tag[installed_semver]
     else:
-        log.warning(
+        logger.warning(
             "No semver tags found for this module. Using latest default branch :hot_pepper:.",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
@@ -269,12 +297,12 @@ def install_dependency(
     repo.git.checkout(best_checkout)
 
     if repo.head.commit == ref_before_checkout:
-        log.info(
+        logger.info(
             f"Already on the best option ([cyan bold]{best_checkout}[/]) for {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
     else:
-        log.info(
+        logger.info(
             f"Using :sparkles: [cyan bold]{best_checkout}[/] :sparkles: of {module_name}",  # noqa: E501  # pre-existing
             extra={"markup": True},
         )
@@ -282,46 +310,34 @@ def install_dependency(
     return repo.head.commit.hexsha
 
 
-def install_jlcpcb(component_id: str, top_level_path: Path):
-    """Install a component from JLCPCB"""
-    component_id = component_id.upper()
-    if not component_id.startswith("C") or not component_id[1:].isdigit():
-        raise errors.UserException(f"Component id {component_id} is invalid. Aborting.")
+def check_missing_deps() -> bool:
+    for dependency in config.project.dependencies or []:
+        if dependency.path:
+            dep_path = config.project.paths.root / dependency.path
+        else:
+            # FIXME: this should exist based on defaults in the config
+            dep_path = config.project.paths.modules / dependency.name
 
-    footprints_dir = top_level_path / config.project.paths.footprints
-    footprints_dir.mkdir(parents=True, exist_ok=True)
+        if not dep_path.exists():
+            return True
 
-    ato_src_dir = top_level_path / config.project.paths.src
-    ato_src_dir.mkdir(parents=True, exist_ok=True)
+    return False
 
-    log.info(f"Footprints directory: {footprints_dir}")
 
-    command = [
-        sys.executable,
-        "-m",
-        "easyeda2kicad",
-        "--full",
-        f"--lcsc_id={component_id}",
-        f"--output={footprints_dir}",
-        "--overwrite",
-        "--ato",
-        f"--ato_file_path={ato_src_dir}",
-    ]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-
-    # The stdout and stderr are captured due to 'capture_output=True'
-    print("STDOUT:", result.stdout)
-    print("STDERR:", result.stderr)
-
-    # Check the return code to see if the command was successful
-    if result.returncode == 0:
-        print("Command executed successfully")
-    else:
-        component_link = f"https://jlcpcb.com/partdetail/{component_id}"
-        raise errors.UserException(
-            "Oh no! Looks like this component doesnt have a model available. "
-            f"More information about the component can be found here: {component_link}"
+def check_missing_deps_or_offer_to_install():
+    if check_missing_deps():
+        logger.warning(
+            "It appears some dependencies are missing."
+            " Run `ato install` to install them.",
+            extra={"markdown": True},
         )
+
+        if (
+            config.interactive
+            and questionary.confirm("Install missing dependencies now?").unsafe_ask()
+        ):
+            # Install project dependencies, without upgrading
+            install_project_dependencies(False)
 
 
 def _name_and_clone_url_helper(name: str) -> tuple[str, str]:

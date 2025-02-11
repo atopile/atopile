@@ -179,6 +179,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#is_arithmetic_or.
+    def visitIs_arithmetic_or(self, ctx:AtoParser.Is_arithmetic_orContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#arithmetic_expression.
     def visitArithmetic_expression(self, ctx:AtoParser.Arithmetic_expressionContext):
         return self.visitChildren(ctx)

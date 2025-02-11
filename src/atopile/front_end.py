@@ -2,14 +2,16 @@
 Build faebryk core objects from ato DSL.
 """
 
+import inspect
 import itertools
 import logging
 import operator
 import os
+from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
     Any,
@@ -20,12 +22,13 @@ from typing import (
 )
 
 from antlr4 import ParserRuleContext
+from more_itertools import last
 from pint import UndefinedUnitError
 
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, errors
-from atopile._shim import GlobalShims, has_ato_cmp_attrs, shim_map
+from atopile.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
 from atopile.config import config
 from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
@@ -36,10 +39,9 @@ from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
     GreaterOrEqual,
-    GreaterThan,
+    Is,
     IsSubset,
     LessOrEqual,
-    LessThan,
     Max,
     Min,
     Parameter,
@@ -52,6 +54,7 @@ from faebryk.libs.exceptions import (
     suppress_after_count,
 )
 from faebryk.libs.library.L import Range, Single
+from faebryk.libs.picker.picker import does_not_require_picker_check
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
 from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import (
@@ -67,9 +70,13 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    groupby,
     has_attr_or_property,
     has_instance_settable_attr,
     import_from_path,
+    is_type_pair,
+    not_none,
+    partition_as_list,
 )
 
 logger = logging.getLogger(__name__)
@@ -394,8 +401,8 @@ def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleCont
     try:
         yield
     except errors.UserException as ex:
-        if ex.origin is None:
-            ex.origin = ctx
+        if ex.origin_start is None:
+            ex.attach_origin_from_ctx(ctx)
             # only attach traceback if we're also setting the origin
             if ex.traceback is None:
                 ex.traceback = traceback
@@ -403,6 +410,7 @@ def _attach_ctx_to_ex(ctx: ParserRuleContext, traceback: Sequence[ParserRuleCont
 
 
 _declaration_domain_to_unit = {
+    "dimensionless": dimensionless,
     "resistance": P.ohm,
     "capacitance": P.farad,
     "inductance": P.henry,
@@ -411,6 +419,39 @@ _declaration_domain_to_unit = {
     "power": P.watt,
     "frequency": P.hertz,
 }
+
+
+@dataclass
+class _ParameterDefinition:
+    """
+    Holds information about a parameter declaration or assignment.
+    We collect those per parameter in the `Bob._param_assignments` dict.
+    Multiple assignments are allowed, but they interact with each other in non-trivial
+    ways. Thus we need to track them and process them in the end in
+    `_merge_parameter_assignments`.
+    """
+
+    ctx: ParserRuleContext
+    traceback: Sequence[ParserRuleContext]
+    ref: Ref
+    value: Range | Single | None = None
+
+    @property
+    def is_declaration(self) -> bool:
+        return self.value is None
+
+    @property
+    def is_definition(self) -> bool:
+        return not self.is_declaration
+
+    def __post_init__(self):
+        pass
+
+    @property
+    def is_root_assignment(self) -> bool:
+        if not self.is_definition:
+            return False
+        return len(self.ref) == 1
 
 
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -433,16 +474,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._python_classes = FuncDict[ap.BlockdefContext, Type[L.Module]]()
         self._node_stack = StackList[L.Node]()
         self._traceback_stack = StackList[ParserRuleContext]()
-        # TODO: add tracebacks if we keep this
-        self._promised_params = FuncDict[L.Node, list[ParserRuleContext]]()
-        self._param_assignments = FuncDict[
-            Parameter,
-            tuple[
-                Range | Single | None,
-                ParserRuleContext | None,
-                Sequence[ParserRuleContext] | None,
-            ],
-        ]()
+
+        self._param_assignments = defaultdict[Parameter, list[_ParameterDefinition]](
+            list
+        )
         self.search_paths: list[os.PathLike] = []
 
         # Keeps track of the nodes whose construction failed,
@@ -455,12 +490,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> L.Node:
         """Build a Module from an AST and reference."""
         file_path = self._sanitise_path(file_path) if file_path else None
-        context = self._index_ast(ast, file_path)
+        context = self.index_ast(ast, file_path)
         return self._build(context, ref)
 
     def build_file(self, path: Path, ref: Ref) -> L.Node:
         """Build a Module from a file and reference."""
-        context = self._index_file(self._sanitise_path(path))
+        context = self.index_file(self._sanitise_path(path))
         return self._build(context, ref)
 
     @property
@@ -489,6 +524,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         }
 
     def _build(self, context: Context, ref: Ref) -> L.Node:
+        assert self._is_reset()
+
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
                 context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
@@ -508,6 +545,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         finally:
             self._finish()
 
+    def _is_reset(self) -> bool:
+        """
+        Make sure caches that aren't intended to be shared between builds are empty.
+        True if the caches are empty, False if they are not.
+        """
+        return (
+            not self._node_stack
+            and not self._traceback_stack
+            and not self._param_assignments
+        )
+
     # TODO: @v0.4 remove this deprecated import form
     _suppressor_finish = suppress_after_count(
         3,
@@ -517,54 +565,121 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     )
 
     def _finish(self):
+        self._merge_parameter_assignments()
+        assert self._is_reset()
+
+    class ParamAssignmentIsGospel(errors.UserException):
+        """
+        The parameter assignment is treated as the precise specification of the
+        component, rather than merely as a requirement for it's later selection
+        """
+
+        title = "Parameter assignments are component definition"  # type: ignore
+
+    def _merge_parameter_assignments(self):
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
-            for param, (value, ctx, traceback) in self._param_assignments.items():
+            # Handle missing definitions
+            params_without_defitions, params_with_definitions = partition_as_list(
+                lambda p: any(a.is_definition for a in self._param_assignments[p]),
+                self._param_assignments,
+            )
+
+            for param in params_without_defitions:
+                last_declaration = last(self._param_assignments.pop(param))
                 with ex_acc.collect(), ato_error_converter():
-                    if value is None:
-                        ex = errors.UserKeyError.from_ctx(
-                            ctx,
-                            f"Parameter `{param}` never assigned",
-                            traceback=traceback,
+                    with (
+                        downgrade(
+                            errors.UserActionWithoutEffectError,
+                            to_level=logging.DEBUG,
+                        ),
+                        self._suppressor_finish,
+                    ):
+                        raise errors.UserActionWithoutEffectError.from_ctx(
+                            last_declaration.ctx,
+                            f"Attribute `{param}` declared but never assigned.",
+                            traceback=last_declaration.traceback,
                         )
-                        if param in self._promised_params:
-                            raise ex
-                        else:
-                            with (
-                                downgrade(
-                                    errors.UserActionWithoutEffectError,
-                                    to_level=logging.DEBUG,
-                                ),
-                                self._suppressor_finish,
-                            ):
-                                raise errors.UserActionWithoutEffectError.from_ctx(
-                                    ctx,
-                                    f"Parameter `{param}` declared but never assigned.",
-                                    traceback=traceback,
-                                )
-                            continue
 
-                    if param in self._promised_params:
-                        del self._promised_params[param]
+            # Handle parameter assignments
+            # assignments override each other
+            # assignments made in the block definition of the component are "is"
+            # external assignments are requirements treated as a subset
 
-                    # Set final value of parameter
-                    assert isinstance(
-                        ctx, ParserRuleContext
-                    )  # Since value and ctx should be None together
+            # Allowing external assignments in the first place is a bit weird
+            # Got to figure out how people are using this.
+            # My guess is that in 99% of cases you can replace them by a `&=`
+            params_by_node = groupby(
+                params_with_definitions, key=lambda p: p.get_parent_force()[0]
+            )
+            for assignee_node, assigned_params in params_by_node.items():
+                is_part_module = isinstance(assignee_node, L.Module) and (
+                    assignee_node.has_trait(F.is_pickable_by_supplier_id)
+                    or assignee_node.has_trait(F.is_pickable_by_part_number)
+                )
 
-                    try:
-                        param.constrain_subset(value)
-                    except UnitCompatibilityError as ex:
-                        raise errors.UserTypeError.from_ctx(
-                            ctx, str(ex), traceback=traceback
-                        ) from ex
+                gospel_params: list[Parameter] = []
+                for param in assigned_params:
+                    assignments = self._param_assignments.pop(param)
+                    definitions = [a for a in assignments if a.is_definition]
+                    non_root_definitions, root_definitions = partition_as_list(
+                        lambda a: a.is_root_assignment, definitions
+                    )
 
-            for param, ctxs in self._promised_params.items():
-                for ctx in ctxs:
-                    with ex_acc.collect():
-                        raise errors.UserKeyError.from_ctx(
-                            ctx, f"Attribute `{param}` referenced, but never assigned"
+                    assert definitions
+                    for definition in definitions:
+                        logger.debug(
+                            "Assignment:  %s [%s] := %s",
+                            param,
+                            definition.ref,
+                            definition.value,
+                        )
+
+                    # Don't see how this could happen, but just in case
+                    root_after_external = (False, True) in pairwise(
+                        a.is_root_assignment for a in definitions
+                    )
+                    assert not root_after_external
+
+                    with ex_acc.collect(), ato_error_converter():
+                        # Workaround for missing difference between alias and subset
+                        # Only relevant for code-as-data part modules
+                        # TODO: consider a warning for definitions that aren't purely
+                        # narrowing
+                        if is_part_module and non_root_definitions:
+                            raise errors.UserNotImplementedError.from_ctx(
+                                last(non_root_definitions).ctx,
+                                "You can't assign to a `component` with a specific"
+                                " part number outside of its definition",
+                                traceback=last(non_root_definitions).traceback,
+                            )
+
+                        elif is_part_module and root_definitions:
+                            param.alias_is(not_none(last(root_definitions).value))
+                            param.add(does_not_require_picker_check())
+                            gospel_params.append(param)
+
+                        elif not is_part_module:
+                            definition = last(definitions)
+                            value = not_none(definition.value)
+                            try:
+                                logger.debug("Constraining %s to %s", param, value)
+                                param.constrain_subset(value)
+                            except UnitCompatibilityError as ex:
+                                raise errors.UserTypeError.from_ctx(
+                                    definition.ctx,
+                                    str(ex),
+                                    traceback=definition.traceback,
+                                ) from ex
+
+                if gospel_params:
+                    with downgrade(self.ParamAssignmentIsGospel, to_level=logging.INFO):
+                        raise self.ParamAssignmentIsGospel(
+                            f"`component` `{assignee_node.get_full_name()}`"
+                            " is completely specified by a part number, so these"
+                            " params are treated as its exact specification:"
+                            + ", ".join(f"`{p}`" for p in gospel_params)
                         )
 
     @property
@@ -580,7 +695,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _sanitise_path(path: os.PathLike) -> Path:
         return Path(path).expanduser().resolve().absolute()
 
-    def _index_ast(
+    def index_ast(
         self, ast: ap.File_inputContext, file_path: Path | None = None
     ) -> Context:
         if ast in self._scopes:
@@ -590,9 +705,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._scopes[ast] = context
         return context
 
-    def _index_file(self, file_path: Path) -> Context:
+    def index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
-        return self._index_ast(ast, file_path)
+        return self.index_ast(ast, file_path)
 
     def _get_search_paths(self, context: Context) -> list[Path]:
         search_paths = [Path(p) for p in self.search_paths]
@@ -602,6 +717,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         if config.has_project:
             search_paths += [config.project.paths.src, config.project.paths.modules]
+
+        # Add the library directory to the search path too
+        search_paths.append(Path(inspect.getfile(F)).parent)
 
         return search_paths
 
@@ -642,7 +760,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return node
 
         elif from_path.suffix == ".ato":
-            context = self._index_file(from_path)
+            context = self.index_file(from_path)
             if item.ref not in context.refs:
                 raise errors.UserKeyError.from_ctx(
                     item.original_ctx, f"No declaration of `{item.ref}` in {from_path}"
@@ -869,8 +987,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if isinstance(node_type, ap.BlockdefContext):
             if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
                 # Some shims add the trait themselves
-                if not new_node.has_trait(has_ato_cmp_attrs):
-                    new_node.add(has_ato_cmp_attrs())
+                if not new_node.has_trait(_has_ato_cmp_attrs):
+                    new_node.add(_has_ato_cmp_attrs())
 
         yield new_node
 
@@ -881,11 +999,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
-    def _get_or_promise_param(
+    def _get_param(
         self, node: L.Node, name: str, src_ctx: ParserRuleContext
     ) -> Parameter:
         """
-        Get a param from a node. If it doesn't exist, create it and promise to assign
+        Get a param from a node.
+        Not supported: If it doesn't exist, create it and promise to assign
         it later. Used in forward-declaration.
         """
         try:
@@ -992,6 +1111,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
             unit = HasUnit.get_units(value)
             if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
+                # TODO: handle this in _ensure_param with better error
+                # e.g ... with existing units declared here: ...
                 if not provided_unit.is_compatible_with(unit):
                     raise errors.UserIncompatibleUnitError.from_ctx(
                         ctx,
@@ -999,8 +1120,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         f" with explicit units ({provided_unit}).",
                         traceback=self.get_traceback(),
                     )
+                self._handleParameterDeclaration(assigned_ref, provided_unit, ctx)
+
             param = self._ensure_param(target, assigned_name, unit, ctx)
-            self._param_assignments[param] = (value, ctx, self.get_traceback())
+            self._param_assignments[param].append(
+                _ParameterDefinition(
+                    ref=assigned_ref,
+                    value=value,
+                    ctx=ctx,
+                    traceback=self.get_traceback(),
+                )
+            )
 
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
@@ -1008,11 +1138,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 setattr(target, assigned_name, value)
             elif (
                 # If ModuleShims has a settable property, use it
-                hasattr(GlobalShims, assigned_name)
-                and isinstance(getattr(GlobalShims, assigned_name), property)
-                and getattr(GlobalShims, assigned_name).fset
+                hasattr(GlobalAttributes, assigned_name)
+                and isinstance(getattr(GlobalAttributes, assigned_name), property)
+                and getattr(GlobalAttributes, assigned_name).fset
             ):
-                prop = cast_assert(property, getattr(GlobalShims, assigned_name))
+                prop = cast_assert(property, getattr(GlobalAttributes, assigned_name))
                 assert prop.fset is not None
                 with (
                     downgrade(DeprecatedException, errors.UserNotImplementedError),
@@ -1084,7 +1214,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if mif := self._get_mif_and_warn_when_exists(name, ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
-        if shims_t := self._current_node.try_get_trait(has_ato_cmp_attrs):
+        if shims_t := self._current_node.try_get_trait(_has_ato_cmp_attrs):
             mif = shims_t.add_pin(name)
             return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
 
@@ -1113,6 +1243,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         suppression_warning="Suppressing further deprecation warnings",
     )
 
+    _suppression_connect_type_warning = suppress_after_count(
+        3,
+        errors.UserTypeError,
+        logger=logger,
+        suppression_warning="Suppressing further deprecation warnings",
+    )
+
     def _connect(
         self, a: L.ModuleInterface, b: L.ModuleInterface, ctx: ParserRuleContext | None
     ):
@@ -1124,48 +1261,69 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         warning if that succeeds, else, re-raise the exception emitted
         by the connect method
         """
-        try:
-            # Try a proper connection
-            a.connect(b)
-        except NodeException as top_ex:
-            # If that fails, try connecting via duck-typing
-            for name, (c_a, c_b) in a.zip_children_by_name_with(
-                b, L.ModuleInterface
-            ).items():
-                if c_a is None:
-                    if has_attr_or_property(a, name):
-                        c_a = getattr(a, name)
-                    else:
-                        raise
+        # If we're attempting to connect an Electrical to a SignalElectrical
+        # (or ElectricLogic) then allow the connection, but issue a warning
+        if pair := is_type_pair(a, b, F.Electrical, F.ElectricSignal):
+            pair[0].connect(pair[1].line)
 
-                if c_b is None:
-                    if has_attr_or_property(b, name):
-                        c_b = getattr(b, name)
-                    else:
-                        raise
+            with (
+                downgrade(errors.UserTypeError),
+                self._suppression_connect_type_warning,
+            ):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Connected `{pair[0]}`, a `signal` / `Electrical` to "
+                    f"`{pair[1]}.line`, because `{pair[1]}` is a `{type(pair[1])}`. "
+                    "This means that the reference isn't also connected through.",
+                    traceback=self.get_traceback(),
+                )
 
-                try:
-                    self._connect(c_a, c_b, None)
-                except NodeException:
-                    raise top_ex
+        else:
+            try:
+                # Try a proper connection
+                a.connect(b)
 
-            else:
-                # If we connect everything via name (and tried in the first place)
-                # then we're good to go! We just need to tell everyone to probably not
-                # do that in the future - and we're off!
-                if ctx is not None:  # Check that this is the top-level _connect call
-                    # TODO: @v0.4 increase the level of this to WARNING
-                    # when there's an alternative
-                    with (
-                        downgrade(DeprecatedException, to_level=logging.DEBUG),
-                        self._suppression_connect,
-                    ):
-                        raise DeprecatedException.from_ctx(
-                            ctx,
-                            f"Connected `{a}` to `{b}` by duck-typing."
-                            "They should be of the same type.",
-                            traceback=self.get_traceback(),
-                        )
+            except NodeException as top_ex:
+                # If that fails, try connecting via duck-typing
+                for name, (c_a, c_b) in a.zip_children_by_name_with(
+                    b, L.ModuleInterface
+                ).items():
+                    if c_a is None:
+                        if has_attr_or_property(a, name):
+                            c_a = getattr(a, name)
+                        else:
+                            raise
+
+                    if c_b is None:
+                        if has_attr_or_property(b, name):
+                            c_b = getattr(b, name)
+                        else:
+                            raise
+
+                    try:
+                        self._connect(c_a, c_b, None)
+                    except NodeException:
+                        raise top_ex
+
+                else:
+                    # If we connect everything via name (and tried in the first place)
+                    # then we're good to go! We just need to tell everyone to probably
+                    # not do that in the future - and we're off!
+                    if (
+                        ctx is not None
+                    ):  # Check that this is the top-level _connect call
+                        # TODO: @v0.4 increase the level of this to WARNING
+                        # when there's an alternative
+                        with (
+                            downgrade(DeprecatedException, to_level=logging.DEBUG),
+                            self._suppression_connect,
+                        ):
+                            raise DeprecatedException.from_ctx(
+                                ctx,
+                                f"Connected `{a}` to `{b}` by duck-typing."
+                                "They should be of the same type.",
+                                traceback=self.get_traceback(),
+                            )
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
         """Connect interfaces together"""
@@ -1318,16 +1476,31 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         predicates = []
         for (lh, rh), op_str in zip(itertools.pairwise(exprs), op_strs):
             match op_str:
+                # @v0.4 upgrade to error
                 case "<":
-                    op = LessThan
+                    with downgrade(
+                        errors.UserNotImplementedError, to_level=logging.WARNING
+                    ):
+                        raise errors.UserNotImplementedError(
+                            "`<` is not supported. Use `<=` instead."
+                        )
+                    op = LessOrEqual
                 case ">":
-                    op = GreaterThan
+                    with downgrade(
+                        errors.UserNotImplementedError, to_level=logging.WARNING
+                    ):
+                        raise errors.UserNotImplementedError(
+                            "`>` is not supported. Use `>=` instead."
+                        )
+                    op = GreaterOrEqual
                 case "<=":
                     op = LessOrEqual
                 case ">=":
                     op = GreaterOrEqual
                 case "within":
                     op = IsSubset
+                case "is":
+                    op = Is
                 case _:
                     # We shouldn't be able to get here with parseable input
                     raise ValueError(f"Unhandled operator `{op_str}`")
@@ -1409,7 +1582,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if ctx.name_or_attr():
             ref = self.visitName_or_attr(ctx.name_or_attr())
             target = self._get_referenced_node(Ref(ref[:-1]), ctx)
-            return self._get_or_promise_param(target, ref[-1], ctx)
+            return self._get_param(target, ref[-1], ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1563,7 +1736,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
             assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+            assignee = self._get_param(target, assignee_ref[-1], ctx)
 
         value = self.visitCum_assignable(ctx.cum_assignable())
 
@@ -1607,7 +1780,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
             assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
         else:
-            assignee = self._get_or_promise_param(target, assignee_ref[-1], ctx)
+            assignee = self._get_param(target, assignee_ref[-1], ctx)
 
         value = self.visitCum_assignable(ctx.cum_assignable())
 
@@ -1655,6 +1828,36 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         suppression_warning="Suppressing further warnings of this type",
     )
 
+    def _handleParameterDeclaration(
+        self, ref: Ref, unit: UnitType, ctx: ParserRuleContext
+    ):
+        assert unit is not None, "Type info should be enforced by the parser"
+        name = ref[-1]
+        param = self._ensure_param(self._current_node, name, unit, ctx)
+        if param in self._param_assignments:
+            declaration_after_definition = any(
+                assignment.is_definition
+                for assignment in self._param_assignments[param]
+            )
+            with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
+                if declaration_after_definition:
+                    raise errors.UserKeyError.from_ctx(
+                        ctx,
+                        f"Ignoring declaration of `{name}` "
+                        "because it's already defined",
+                        traceback=self.get_traceback(),
+                    )
+                else:
+                    raise errors.UserKeyError.from_ctx(
+                        ctx,
+                        f"Ignoring redeclaration of `{name}`",
+                        traceback=self.get_traceback(),
+                    )
+        else:
+            self._param_assignments[param].append(
+                _ParameterDefinition(ref=ref, ctx=ctx, traceback=self.get_traceback())
+            )
+
     def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext):
         """Handle declaration statements."""
         assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
@@ -1665,23 +1868,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        assigned_name = assigned_value_ref[0]
+        # check declaration type
         unit = self._try_get_unit_from_type_info(ctx.type_info())
-        assert unit is not None, "Type info should be enforced by the parser"
+        if unit is not None:
+            self._handleParameterDeclaration(assigned_value_ref, unit, ctx)
+            return NOTHING
 
-        param = self._ensure_param(self._current_node, assigned_name, unit, ctx)
-        if param in self._param_assignments:
-            with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
-                raise errors.UserKeyError.from_ctx(
-                    ctx,
-                    f"Ignoring declaration of `{assigned_name}` "
-                    "because it's already defined",
-                    traceback=self.get_traceback(),
-                )
-        else:
-            self._param_assignments[param] = (None, ctx, self.get_traceback())
-
-        return NOTHING
+        assert False, "Only parameter declarations supported"
 
     def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
         return NOTHING

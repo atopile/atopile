@@ -32,7 +32,7 @@ class LayoutHeuristicElectricalClosenessPullResistors(Layout):
             assert isinstance(n, F.Resistor)
             logic = not_none(n.get_parent_of_type(F.ElectricLogic))
 
-            place_next_to(logic.signal, n, route=True, params=self._params)
+            place_next_to(logic.line, n, route=True, params=self._params)
 
     @staticmethod
     def find_module_candidates(node: Node):

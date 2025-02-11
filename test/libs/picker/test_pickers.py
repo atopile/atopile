@@ -14,7 +14,9 @@ import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.api.picker_lib import get_candidates, pick_atomically
+from faebryk.libs.picker.picker import PickError, pick_part_recursively
+from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import P
 from faebryk.libs.util import groupby
 
@@ -151,3 +153,55 @@ def test_skip_self_pick():
 
     assert not module.has_trait(F.has_part_picked)
     assert module.inner.has_trait(F.has_part_picked)
+
+
+def test_pick_led_by_colour():
+    color = F.LED.Color.YELLOW
+    led = F.LED()
+    led.color.constrain_subset(color)
+    led.current.alias_is(L.Range.from_center_rel(10 * P.milliamp, 0.1))
+
+    solver = DefaultSolver()
+    pick_part_recursively(led, solver)
+
+    assert led.has_trait(F.has_part_picked)
+    assert solver.inspect_get_known_supersets(
+        led.color, force_update=True
+    ).is_subset_of(EnumSet.from_value(color))
+
+
+def test_reject_diode_for_led():
+    led = F.LED()
+    led.color.constrain_subset(F.LED.Color.YELLOW)
+    led.current.alias_is(L.Range.from_center_rel(10 * P.milliamp, 0.1))
+
+    diode = F.Diode()
+    diode.current.alias_is(L.Range.from_center_rel(10 * P.milliamp, 0.1))
+
+    solver = DefaultSolver()
+    candidates = get_candidates(diode.get_tree(types=F.Diode), solver)
+    ok = pick_atomically([(led, c) for c in candidates[diode]], solver)
+
+    assert not ok
+
+
+def test_pick_error_group():
+    root = L.Module()
+
+    # Good luck finding a 10 gigafarad capacitor!
+    c1 = F.Capacitor()
+    c1.capacitance.alias_is(L.Range.from_center_rel(10 * P.GF, 0.1))
+
+    c2 = F.Capacitor()
+    c2.capacitance.alias_is(L.Range.from_center_rel(20 * P.GF, 0.1))
+
+    root.add(c1)
+    root.add(c2)
+
+    solver = DefaultSolver()
+
+    with pytest.raises(ExceptionGroup) as ex:
+        pick_part_recursively(root, solver)
+
+    assert len(ex.value.exceptions) == 1
+    assert isinstance(ex.value.exceptions[0], PickError)
