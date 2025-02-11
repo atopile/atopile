@@ -468,6 +468,10 @@ class ParameterOperatable(Node):
 
         variable_mapping: VariableMapping = field(default_factory=VariableMapping)
 
+        def __hash__(self) -> int:
+            return hash(id(self))
+
+    @once
     def compact_repr(self, context: ReprContext | None = None) -> str:
         raise NotImplementedError()
 
@@ -556,18 +560,24 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression", recursive: bool = False) -> bool:
+    def is_congruent_to(
+        self,
+        other: "Expression",
+        recursive: bool = False,
+        allow_uncorrelated: bool = False,
+    ) -> bool:
         if self == other:
             return True
         if type(self) is not type(other):
             return False
         if len(self.operands) != len(other.operands):
             return False
-
-        # TODO: think about this, imo it's not needed
-        # if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
-        #    return False
-
+        # if lit is non-single/empty set we can't correlate thus can't be congruent
+        #  in general
+        if not allow_uncorrelated and (
+            self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals()
+        ):
+            return False
         if self.operands == other.operands:
             return True
         if isinstance(self, Commutative):
@@ -579,7 +589,12 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
-        if recursive and Expression.are_pos_congruent(self.operands, other.operands):
+        if recursive and Expression.are_pos_congruent(
+            self.operands,
+            other.operands,
+            commutative=isinstance(self, Commutative),
+            allow_uncorrelated=allow_uncorrelated,
+        ):
             return True
 
         return False
@@ -588,11 +603,17 @@ class Expression(ParameterOperatable):
     def are_pos_congruent(
         left: Sequence[ParameterOperatable.All],
         right: Sequence[ParameterOperatable.All],
+        commutative: bool = False,
+        allow_uncorrelated: bool = False,
     ) -> bool:
         if len(left) != len(right):
             return False
+
+        # FIXME handle commutative
         return all(
-            lhs.is_congruent_to(rhs, recursive=True)
+            lhs.is_congruent_to(
+                rhs, recursive=True, allow_uncorrelated=allow_uncorrelated
+            )
             if isinstance(lhs, Expression) and isinstance(rhs, Expression)
             else lhs == rhs
             for lhs, rhs in zip(left, right)
@@ -815,11 +836,13 @@ class Arithmetic(Expression):
             Quantity_Interval,
             Quantity_Interval_Disjoint,
         )
-        if any(not isinstance(op, types) for op in operands):
+        invalid_operands = [op for op in operands if not isinstance(op, types)]
+        if invalid_operands:
             raise ValueError(
                 "operands must be int, float, Quantity, Unit, Parameter, Arithmetic"
                 ", Quantity_Interval, or Quantity_Interval_Disjoint"
-                f", got {[op for op in operands if not isinstance(op, types)]}"
+                f", got {invalid_operands} with types"
+                f" ([{', '.join(type(op).__name__ for op in invalid_operands)}])"
             )
         if any(
             not isinstance(param.domain, (Numbers, ESeries))
@@ -1635,6 +1658,7 @@ class Parameter(ParameterOperatable):
     def has_implicit_constraints_recursive(self) -> bool:
         return False
 
+    @once
     def compact_repr(
         self, context: ParameterOperatable.ReprContext | None = None
     ) -> str:

@@ -4,13 +4,15 @@ import sys
 import warnings
 from datetime import timedelta
 from functools import partial, reduce
+from math import inf
 from operator import add, mul, pow, sub, truediv
 from typing import Any, Callable, Iterable, NamedTuple
 
-import pytest
+import pytest  # noqa: F401
 import typer
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
+from hypothesis.control import event
 from hypothesis.core import reproduce_failure  # noqa: F401
 from hypothesis.errors import NonInteractiveExampleWarning
 
@@ -29,6 +31,7 @@ from faebryk.core.parameter import (
     Max,
     Min,
     Multiply,
+    Numbers,
     Parameter,
     Power,
     Round,
@@ -45,8 +48,16 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
 from faebryk.libs.units import Quantity
+from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
 logger = logging.getLogger(__name__)
+
+NUM_STAT_EXAMPLES = ConfigFlagInt(
+    "ST_NUMEXAMPLES",
+    default=100,
+    descr="Number of examples to run for statistics",
+)
+ENABLE_PROGRESS_TRACKING = ConfigFlag("ST_PROGRESS", default=False)
 
 # canonical operations:
 # Add, Multiply, Power, Round, Abs, Sin, Log
@@ -63,6 +74,14 @@ logger = logging.getLogger(__name__)
 # ISSubset, IsSuperset, Cardinality, Is
 
 
+def lit(val) -> Quantity_Interval_Disjoint:
+    return Quantity_Interval_Disjoint.from_value(val)
+
+
+def p(val):
+    return Builders.build_parameter(lit(val))
+
+
 def abs_close(a: float | Quantity, b: float) -> bool:
     return math.isclose(a, b, abs_tol=1e-15)
 
@@ -70,7 +89,7 @@ def abs_close(a: float | Quantity, b: float) -> bool:
 class Builders(Namespace):
     @staticmethod
     def build_parameter(quantity) -> Parameter:
-        p = Parameter()
+        p = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
         p.alias_is(quantity)
         return p
 
@@ -155,6 +174,7 @@ class Filters(Namespace):
             # complex
             not (Filters.is_negative(base) and Filters.is_fractional(exp))
             # nan/undefined
+            # TODO enable base crossing zero
             and not (Filters.crosses_zero(base) and Filters.crosses_zero(exp))
         )
 
@@ -165,7 +185,7 @@ class st_values(Namespace):
         st.integers(min_value=int(-1e12), max_value=int(1e12)),
         st.floats(
             allow_nan=False,
-            allow_infinity=False,  # FIXME
+            allow_infinity=False,
             min_value=-1e12,
             max_value=1e12,
             allow_subnormal=False,
@@ -180,18 +200,20 @@ class st_values(Namespace):
     )
 
     ranges = st.builds(
-        lambda values: Range(*sorted(values)), st.tuples(numeric, numeric)
+        lambda values: Range(*sorted(values)),
+        st.tuples(
+            st.one_of(st.just(-inf), numeric),
+            st.one_of(st.just(inf), numeric),
+        ),
     )
 
     small_ranges = st.builds(
         lambda values: Range(*sorted(values)), st.tuples(small_numeric, small_numeric)
     )
 
-    quantities = st.one_of(numeric, ranges).map(Quantity_Interval_Disjoint.from_value)
+    quantities = st.one_of(numeric, ranges).map(lit)
 
-    small_quantities = st.one_of(small_numeric, small_ranges).map(
-        Quantity_Interval_Disjoint.from_value
-    )
+    small_quantities = st.one_of(small_numeric, small_ranges).map(lit)
 
     parameters = st.builds(Builders.build_parameter, quantities)
 
@@ -329,7 +351,7 @@ def evaluate_expr(
             return operator(operand)
         case Quantity_Interval():
             # TODO: why are we getting these?
-            return Quantity_Interval_Disjoint.from_value(expr)
+            return lit(expr)
         case Quantity_Interval_Disjoint():
             return expr
         case Parameter():
@@ -345,13 +367,15 @@ def test_can_evaluate_literals(expr: Arithmetic):
     assert isinstance(result, Quantity_Interval_Disjoint)
 
 
-# FIXME: we are correlating congruent expressions I think
-# might be happening in the check existing of create expression
-# TODO: 0 / [0, 1] is kinda weirdly defined, for now we just skip it
-
-
-# TODO
-# @reproduce_failure('6.124.7', b'AXicc2R2ZGB0ZHJkcPsvrh2ta+HIqLFtAQMYIIR3aQKF7QVgwgxuDC+uLOX/D1LAqOHAwMBqp5tkCVLycSYIzGKE6uP4wUBb0wEkhy5v')  # noqa: E501
+def _track():
+    if not bool(ENABLE_PROGRESS_TRACKING):
+        return
+    if not hasattr(_track, "count"):
+        _track.count = 0
+    _track.count += 1
+    if _track.count % 10 == 0:
+        print(f"track: {_track.count}")
+    return _track.count
 
 
 @pytest.mark.xfail(reason="Still finds problems")
@@ -359,11 +383,166 @@ def test_can_evaluate_literals(expr: Arithmetic):
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
     max_examples=10000,
-    report_multiple_bugs=True,
+    report_multiple_bugs=False,
     phases=(
         Phase.generate,
+        Phase.reuse,
+        Phase.explicit,
+        Phase.target,
+        Phase.shrink,
+        # Phase.explain,
+    ),
+    suppress_health_check=[
+        HealthCheck.data_too_large,
+        HealthCheck.too_slow,
+        HealthCheck.filter_too_much,
+        HealthCheck.large_base_example,
+    ],
+    print_blob=True,
+)
+def test_discover_literal_folding(expr: Arithmetic):
+    """
+    Run with:
+    ```bash
+    FBRK_STIMEOUT=1 \
+    FBRK_SMAX_ITERATIONS=10 \
+    FBRK_SPARTIAL=n \
+    FBRK_ST_PROGRESS=y \
+    ./test/runpytest.sh -k "test_discover_literal_folding"
+    ```
+    """
+    _track()
+    solver = DefaultSolver()
+
+    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root.alias_is(expr)
+
+    evaluated_expr = evaluate_expr(expr)
+
+    solver_result = solver.inspect_get_known_supersets(root)
+
+    assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
+    assert solver_result == evaluated_expr
+
+
+# Examples -----------------------------------------------------------------------------
+# --------------------------------------------------------------------------------------
+@given(st_exprs.trees)
+@settings(
+    deadline=None,  # timedelta(milliseconds=1000),
+    report_multiple_bugs=False,
+    phases=(
         # Phase.reuse,
-        # Phase.explicit,
+        Phase.explicit,
+        Phase.target,
+        # Phase.shrink,
+        # Phase.explain,
+    ),
+    suppress_health_check=[
+        HealthCheck.data_too_large,
+        HealthCheck.too_slow,
+        HealthCheck.filter_too_much,
+        HealthCheck.large_base_example,
+    ],
+    print_blob=False,
+)
+def debug_fix_literal_folding(expr: Arithmetic):
+    """
+    Run with:
+    ```bash
+    FBRK_SPARTIAL=n
+    FBRK_LOG_PICK_SOLVE=y
+    FBRK_SLOG=y
+    FBRK_SMAX_ITERATIONS=10
+    FBRK_LOG_FMT=y
+    python ./test/runtest.py -k "debug_fix_literal_folding"
+    ```
+    """
+    solver = DefaultSolver()
+
+    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root.alias_is(expr)
+
+    logger.info(f"expr: {expr.compact_repr()}")
+    evaluated_expr = evaluate_expr(expr)
+    logger.info(f"evaluated_expr: {evaluated_expr}")
+
+    solver_result = solver.inspect_get_known_supersets(root)
+
+    assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
+    correct = solver_result == evaluated_expr
+
+    if not correct:
+        logger.error(f"Failing expression: {expr.compact_repr()}")
+        logger.error(f"{solver_result} != {evaluated_expr}")
+        input()
+        return
+    logger.warning("PASSES")
+    input()
+
+
+@example(
+    Add(
+        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
+        Subtract(lit(-82408), lit(-999_998_999_993)),
+    )
+)
+@example(
+    expr=Subtract(
+        Round(lit(Range(2, 10))),
+        Round(lit(Range(2, 10))),
+    ),
+)
+@example(
+    expr=Subtract(
+        Round(
+            Subtract(
+                lit(0),
+                lit(Range(-999_999_999_905, -0.3333333333333333)),
+            ),
+        ),
+        Subtract(
+            lit(-999_999_983_213),
+            p(Range(-17297878, 999_999_992_070)),
+        ),
+    ),
+)
+@example(Abs(Round(lit(Range(-inf, inf)))))
+@example(
+    expr=Divide(
+        Divide(
+            lit(0),
+            lit(Range(-1, -2.2250738585072014e-308)),
+        ),
+        lit(Range(-1, -2.2250738585072014e-308)),
+    ),
+)
+@example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
+@example(Add(Add(lit(0)), Abs(p(-1))))
+@example(Abs(p(-1)))
+@example(
+    Add(
+        Sqrt(lit(1)),
+        Abs(lit(Range(-inf, inf))),
+    ),
+)
+@example(expr=Round(Add(Abs(lit(0)), Round(lit(-1)))))
+@example(
+    expr=Add(
+        Add(lit(0)),
+        Multiply(Add(lit(0)), Add(lit(0))),
+    )
+)
+@example(expr=Subtract(lit(1), lit(0))).via("discovered failure")
+# --------------------------------------------------------------------------------------
+@given(st_exprs.trees)
+@settings(
+    deadline=None,  # timedelta(milliseconds=1000),
+    max_examples=10000,
+    report_multiple_bugs=False,
+    phases=(
+        # Phase.reuse,
+        Phase.explicit,
         Phase.target,
         Phase.shrink,
         Phase.explain,
@@ -374,29 +553,90 @@ def test_can_evaluate_literals(expr: Arithmetic):
         HealthCheck.filter_too_much,
         HealthCheck.large_base_example,
     ],
-    print_blob=True,
+    print_blob=False,
 )
-@example(
-    expr=Subtract(
-        Quantity_Interval_Disjoint.from_value(1),
-        Quantity_Interval_Disjoint.from_value(0),
-    )
-).via("discovered failure")
-def test_literal_folding(expr: Arithmetic):
+def test_regression_literal_folding(expr: Arithmetic):
     solver = DefaultSolver()
 
-    root = Parameter()
+    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
     root.alias_is(expr)
+
+    evaluated_expr = evaluate_expr(expr)
+
+    solver_result = solver.inspect_get_known_supersets(root)
+
+    assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
+    assert solver_result == evaluated_expr
+
+
+@pytest.mark.slow
+@given(st_exprs.trees)
+@settings(
+    deadline=None,
+    max_examples=int(NUM_STAT_EXAMPLES),
+    phases=(
+        Phase.generate,
+        # Phase.reuse,
+        # Phase.explicit,
+        Phase.target,
+        # Phase.shrink,
+        # Phase.explain,
+    ),
+    suppress_health_check=[
+        HealthCheck.data_too_large,
+        HealthCheck.too_slow,
+        HealthCheck.filter_too_much,
+        HealthCheck.large_base_example,
+    ],
+)
+def test_folding_statistics(expr: Arithmetic):
+    """
+    Run with:
+    ```bash
+    FBRK_STIMEOUT=5 \
+    FBRK_SPARTIAL=n \
+    FBRK_SMAX_ITERATIONS=10 \
+    ./test/runpytest.sh -Wignore --hypothesis-show-statistics \
+      -k "test_folding_statistics" | grep -v Retried | grep -v "invalid because"
+    ```
+    """
+
+    event("start")
+    solver = DefaultSolver()
+    root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
+    root.alias_is(expr)
+
+    try:
+        evaluated_expr = evaluate_expr(expr)
+    except NotImplementedError:
+        event("not implemented in literals")
+        return
+    except Exception as e:
+        event(f"error in literals: {type(e).__name__}")
+        return
+
+    assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
 
     try:
         solver_result = solver.inspect_get_known_supersets(root)
     except Contradiction:
-        # TODO: handle this better
+        event("contradiction")
+        return
+    except TimeoutError:
+        event("timeout")
+        return
+    except NotImplementedError:
+        event("not implemented in solver")
+        return
+    except Exception as e:
+        event(f"error in solver: {type(e).__name__}")
         return
 
-    evaluated_expr = evaluate_expr(expr)
-    assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
-    assert solver_result == evaluated_expr
+    if solver_result != evaluated_expr:
+        event("incorrect")
+        return
+
+    event("correct")
 
 
 # DEBUG --------------------------------------------------------------------------------

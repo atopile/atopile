@@ -37,6 +37,7 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     ConfigFlag,
+    ConfigFlagFloat,
     ConfigFlagInt,
     KeyErrorAmbiguous,
     partition,
@@ -60,7 +61,7 @@ PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of so
 MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
-TIMEOUT = ConfigFlagInt("STIMEOUT", default=120, descr="Solver timeout").get()
+TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
@@ -514,7 +515,10 @@ def is_replacable_by_literal(op: ParameterOperatable.All):
 
 
 def find_congruent_expression[T: CanonicalExpression](
-    expr_factory: type[T], *operands: SolverAll, mutator: "Mutator"
+    expr_factory: type[T],
+    *operands: SolverAll,
+    mutator: "Mutator",
+    allow_uncorrelated: bool = False,
 ) -> T | None:
     non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
     literal_expr = all(is_literal(op) or is_literal_expression(op) for op in operands)
@@ -527,7 +531,9 @@ def find_congruent_expression[T: CanonicalExpression](
             if is_literal_expression(op)
             # check congruence
             and Expression.are_pos_congruent(
-                op.operands, cast(Sequence[ParameterOperatable.All], operands)
+                op.operands,
+                cast(Sequence[ParameterOperatable.All], operands),
+                allow_uncorrelated=allow_uncorrelated,
             )
         }
         if lit_ops:
@@ -548,7 +554,9 @@ def find_congruent_expression[T: CanonicalExpression](
 def make_if_doesnt_exist[T: CanonicalExpression](
     expr_factory: type[T], *operands: SolverAll, mutator: "Mutator"
 ) -> tuple[T, bool]:
-    existing_expr = find_congruent_expression(expr_factory, *operands, mutator=mutator)
+    existing_expr = find_congruent_expression(
+        expr_factory, *operands, mutator=mutator, allow_uncorrelated=False
+    )
     if existing_expr is not None:
         return existing_expr, True
     return expr_factory(*operands), False  # type: ignore #TODO
