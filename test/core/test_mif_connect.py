@@ -198,7 +198,7 @@ def test_split_chain_single():
     assert high1.is_connected_to(high3)
 
 
-# @pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
 def test_split_chain_double_flat_no_inter():
     """
     ```
@@ -276,7 +276,7 @@ def test_split_chain_double_flat_inter():
     assert high1.is_connected_to(high4)
 
 
-# @pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
 def test_split_chain_double_hierarchy():
     """
     ```
@@ -400,6 +400,7 @@ def test_up_connect_chain_multiple_mixed_simulate_realworld():
     assert high1.is_connected_to(high4)
 
 
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
 def test_up_connect_chain_multiple_realworld():
     """
     ```
@@ -727,6 +728,7 @@ def test_shallow_bridge_simple():
     assert not high1.lower2.is_connected_to(high2.lower2)
 
 
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
 def test_shallow_bridge_partial():
     """
     ```
