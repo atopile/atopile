@@ -18,34 +18,51 @@ class has_package(Module.TraitT.decless()):
     """Module has a package parameter"""
 
     class Package(StrEnum):
-        # TODO: make this more extensive
+        # Capacitors
         C0201 = "C0201"
         C0402 = "C0402"
         C0603 = "C0603"
         C0805 = "C0805"
         C1206 = "C1206"
         C1210 = "C1210"
+        C1808 = "C1808"
         C1812 = "C1812"
-        C2010 = "C2010"
-        C2512 = "C2512"
+        C1825 = "C1825"
+        C2220 = "C2220"
+        C2225 = "C2225"
+        C3640 = "C3640"
+        C01005 = "C01005"
+
+        # Resistors
         R0201 = "R0201"
         R0402 = "R0402"
         R0603 = "R0603"
         R0805 = "R0805"
+        R0815 = "R0815"
+        R1020 = "R1020"
         R1206 = "R1206"
         R1210 = "R1210"
+        R1218 = "R1218"
         R1812 = "R1812"
         R2010 = "R2010"
         R2512 = "R2512"
+        R2816 = "R2816"
+        R4020 = "R4020"
+        R01005 = "R01005"
+
+        # Inductors
         L0201 = "L0201"
         L0402 = "L0402"
         L0603 = "L0603"
         L0805 = "L0805"
+        L1008 = "L1008"
         L1206 = "L1206"
         L1210 = "L1210"
+        L1806 = "L1806"
         L1812 = "L1812"
         L2010 = "L2010"
         L2512 = "L2512"
+        L01005 = "L01005"
 
     def __init__(self, *package_candidates: str | Package) -> None:
         super().__init__()
