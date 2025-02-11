@@ -222,34 +222,6 @@ def test_alias_classes():
     # TODO actually test something
 
 
-@pytest.mark.xfail(reason="TODO reenable ge fold")
-def test_min_max_single():
-    p0 = Parameter(units=P.V)
-    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
-
-    p1 = Parameter(units=P.V)
-    p1.alias_is(Max(p0))
-
-    solver = DefaultSolver()
-    out = solver.inspect_get_known_supersets(p1)
-    assert out == L.Single(10 * P.V)
-
-
-@pytest.mark.xfail(reason="TODO")
-def test_min_max_multi():
-    p0 = Parameter(units=P.V)
-    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
-    p3 = Parameter(units=P.V)
-    p3.alias_is(L.Range(4 * P.V, 15 * P.V))
-
-    p1 = Parameter(units=P.V)
-    p1.alias_is(Max(p0, p3))
-
-    solver = DefaultSolver()
-    out = solver.inspect_get_known_supersets(p1)
-    assert out == L.Single(15 * P.V)
-
-
 def test_solve_realworld():
     app = F.RP2040()
     solver = DefaultSolver()
@@ -271,32 +243,6 @@ def test_inspect_known_superranges():
     p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
-
-
-@pytest.mark.xfail(
-    reason="Behaviour not implemented https://github.com/atopile/atopile/issues/615"
-)
-def test_symmetric_inequality_uncorrelated():
-    p0 = Parameter(units=P.V)
-    p1 = Parameter(units=P.V)
-
-    p0.alias_is(Range(0 * P.V, 10 * P.V))
-
-    (p0 >= p1).constrain()
-    (p0 <= p1).constrain()
-
-    # This would only work if p0 is alias p1
-    # but we never do implicit alias, because that's very dangerous
-    # so this has to throw
-
-    # strategy: if this kind of unequality exists, check if there is an alias
-    # and if not, throw
-
-    G = p0.get_graph()
-    solver = DefaultSolver()
-
-    with pytest.raises(Contradiction):
-        solver.simplify_symbolically(G)
 
 
 def test_obvious_contradiction_by_literal():
@@ -685,25 +631,6 @@ def test_voltage_divider_find_resistances():
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
 
 
-@pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
-def test_voltage_divider_find_r_bottom():
-    r_top = Parameter(units=P.ohm)
-    r_bottom = Parameter(units=P.ohm)
-    v_in = Parameter(units=P.V)
-    v_out = Parameter(units=P.V)
-
-    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
-    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
-    r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
-    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
-
-    solver = DefaultSolver()
-
-    assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
-        1 * P.ohm, 0.01
-    )
-
-
 def test_voltage_divider_find_r_top():
     r_top = Parameter(units=P.ohm)
     r_bottom = Parameter(units=P.ohm)
@@ -953,28 +880,6 @@ def test_abstract_lowpass():
     )
 
 
-@pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
-def test_abstract_lowpass_ss():
-    Li = Parameter(units=P.H)
-    C = Parameter(units=P.F)
-    fc = Parameter(units=P.Hz)
-
-    # formula
-    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
-
-    # input
-    Li.constrain_subset(Range.from_center_rel(1 * P.uH, 0.01))
-    fc.constrain_subset(Range.from_center_rel(1000 * P.Hz, 0.01))
-
-    # solve
-    solver = DefaultSolver()
-    solver.simplify_symbolically(fc.get_graph())
-
-    assert solver.inspect_get_known_supersets(C) == Range(
-        6.158765796 * P.GF, 6.410118344 * P.GF
-    )
-
-
 def test_param_isolation():
     X = Parameter()
     Y = Parameter()
@@ -1013,57 +918,6 @@ def test_extracted_literal_folding(op):
     solver = DefaultSolver()
 
     assert solver.inspect_get_known_supersets(C) == lito
-
-
-def test_fold_correlated():
-    """
-    ```
-    A is [5, 10], B is [10, 15]
-    B is A + 5
-    B - A | [10, 15] - [5, 10] = [0, 10] BUT SHOULD BE 5
-    ```
-
-    A and B correlated, thus B - A should do ss not alias
-    """
-
-    A = Parameter()
-    B = Parameter()
-    C = Parameter()
-
-    op = add
-    op_inv = sub
-
-    lit1 = Range(5, 10)
-    lit_operand = Single(5)
-    lit2 = op(lit1, lit_operand)
-
-    A.alias_is(lit1)
-    B.alias_is(lit2)
-    B.alias_is(op(A, lit_operand))
-
-    C.alias_is(op_inv(B, A))
-
-    context = ParameterOperatable.ReprContext()
-    for p in (A, B, C):
-        p.compact_repr(context)
-
-    solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(C.get_graph(), context)
-
-    is_lit = repr_map.try_get_literal(C, allow_subset=False)
-    ss_lit = repr_map.try_get_literal(C, allow_subset=True)
-    assert ss_lit is not None
-
-    # Test for ss estimation
-    assert ss_lit.is_subset_of(op_inv(lit2, lit1))
-    # Test for not wrongful is estimation
-    assert is_lit != op_inv(lit2, lit1)
-
-    # Test for correct is estimation
-    try:
-        assert is_lit == lit_operand
-    except AssertionError:
-        pytest.xfail("TODO")
 
 
 def test_fold_pow():
@@ -1272,52 +1126,56 @@ def test_ss_intersect():
         (
             [Range(0, 10)],
             [Range(0, 10)],
-            True,
+            (True, True),
         ),
         (
             [Range(0, 10)],
             [Range(10, 20)],
-            False,
+            (False, False),
         ),
         (
             [Add(Range(0, 10), Range(0, 20))],
             [Add(Range(0, 10), Range(0, 20))],
-            True,
+            (True, False),
         ),
         (
             [Add(Range(0, 10), Range(0, 20))],
             [Add(Range(0, 20), Range(0, 10))],
-            True,
+            (True, False),
         ),
         (
             [Not(BoolSet(True))],
             [Not(BoolSet(True))],
-            True,
+            (True, True),
         ),
         (
             [Not(Not(BoolSet(True)))],
             [Not(Not(BoolSet(True)))],
-            True,
+            (True, True),
         ),
         (
             [Multiply(Range(0, 10), Range(0, 10))],
             [Multiply(Range(0, 10), Range(0, 10))],
-            True,
+            (True, False),
         ),
         (
             [Multiply(Range(0, math.inf), Range(0, math.inf), Range(0, math.inf))],
             [Multiply(Range(0, math.inf), Range(0, math.inf))],
-            False,
+            (False, False),
         ),
         (
             [Add(Range(0, math.inf), Range(0, math.inf))],
             [Add(Range(0, math.inf))],
-            False,
+            (False, False),
         ),
     ],
 )
 def test_congruence_lits(left, right, expected):
-    assert Expression.are_pos_congruent(left, right) == expected
+    assert (
+        Expression.are_pos_congruent(left, right, allow_uncorrelated=True)
+        == expected[0]
+    )
+    assert Expression.are_pos_congruent(left, right) == expected[1]
 
 
 def test_fold_literals():
@@ -1344,72 +1202,6 @@ def test_empty_and():
     p = And()
     res = solver.assert_any_predicate([(p, None)], lock=False)
     assert res.true_predicates == [(p, None)]
-
-
-@pytest.mark.parametrize(
-    "op,lits,expected",
-    [
-        (Add, [], 0),
-        (Add, [1, 2, 3, 4, 5], 15),
-        (Multiply, [1, 2, 3, 4, 5], 120),
-        (Multiply, [], 1),
-        (Power, [2, 3], 8),
-        (Round, [2.4], 2),
-        (Round, [Range(-2.6, 5.3)], Range(-3, 5)),
-        (Abs, [-2], 2),
-        (Abs, [Range(-2, 3)], Range(0, 3)),
-        (Sin, [0], 0),
-        (Sin, [Range(0, 2 * math.pi)], Range(-1, 1)),
-        (Log, [10], math.log(10)),
-        (Log, [Range(1, 10)], Range(math.log(1), math.log(10))),
-        (Or, [False, False, True], True),
-        (Or, [False, BoolSet(True, False), True], True),
-        (Or, [], False),
-        (Not, [False], True),
-        (Intersection, [Range(0, 10), Range(10, 20)], Range(10, 10)),
-        (Union, [Range(0, 10), Range(10, 20)], Range(0, 20)),
-        (SymmetricDifference, [Range(0, 10), Range(10, 20)], Range(0, 20)),
-        (
-            SymmetricDifference,
-            [Range(0, 10), Range(5, 20)],
-            RangeWithGaps(Range(0, 5), Range(10, 20)),
-        ),
-        (Is, [Range(0, 10), Range(0, 10)], True),
-        (GreaterOrEqual, [Range(10, 20), Range(0, 10)], True),
-        (GreaterOrEqual, [Range(5, 20), Range(0, 10)], BoolSet(True, False)),
-        (GreaterThan, [Range(10, 20), Range(0, 10)], BoolSet(True, False)),
-        (GreaterThan, [Range(0, 10), Range(10, 20)], False),
-        (IsSubset, [Range(0, 10), Range(0, 20)], True),
-    ],
-)
-def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expected):
-    from faebryk.core.solver.literal_folding import _exec_pure_literal_expressions
-    from faebryk.core.solver.utils import make_lit
-
-    lits_converted = list(map(make_lit, lits))
-    expected_converted = make_lit(expected)
-
-    expr = op(*lits_converted)
-    assert _exec_pure_literal_expressions(expr) == expected_converted
-
-    if op is GreaterThan:
-        pytest.xfail("GreaterThan is not supported in solver")
-
-    def _get_param_from_lit(lit: CanonicalLiteral):
-        if isinstance(lit, BoolSet):
-            p = Parameter(domain=L.Domains.BOOL())
-        elif isinstance(lit, Quantity_Set):
-            p = Parameter(domain=L.Domains.Numbers.REAL())
-        else:
-            raise NotImplementedError()
-        return p
-
-    result = _get_param_from_lit(expected_converted)
-    result.alias_is(expr)
-
-    solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(result.get_graph())
-    assert repr_map.try_get_literal(result) == expected_converted
 
 
 def test_implication():
@@ -1484,6 +1276,14 @@ def test_nested_fold_scalar():
     assert solver.inspect_get_known_supersets(A) == make_lit(7)
 
 
+def test_regression_lit_mul_fold_powers():
+    A = Parameter()
+    A.alias_is(Power(2, -1) * Power(2, 0.5))
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(A) == 2**-0.5
+
+
 def test_nested_fold_interval():
     A = Parameter()
     A.alias_is(
@@ -1495,3 +1295,226 @@ def test_nested_fold_interval():
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(A) == Range(5.76, 8.36)
+
+
+# XFAIL --------------------------------------------------------------------------------
+
+
+# extra formula
+# C.alias_is(1 / (4 * math.pi**2 * Li * fc**2))
+# TODO test with only fc given
+@pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
+def test_abstract_lowpass_ss():
+    Li = Parameter(units=P.H)
+    C = Parameter(units=P.F)
+    fc = Parameter(units=P.Hz)
+
+    # formula
+    fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+
+    # input
+    Li_const = RangeWithGaps(Range.from_center_rel(1 * P.uH, 0.01))
+    fc_const = RangeWithGaps(Range.from_center_rel(1000 * P.Hz, 0.01))
+    Li.constrain_subset(Li_const)
+    fc.constrain_subset(fc_const)
+
+    # solve
+    solver = DefaultSolver()
+    solver.simplify_symbolically(fc.get_graph())
+
+    C_expected = 1 / (4 * math.pi**2 * Li_const * fc_const**2)
+
+    assert solver.inspect_get_known_supersets(C) == C_expected
+
+
+@pytest.mark.xfail(reason="Need more powerful expression reordering")  # TODO
+def test_voltage_divider_find_r_bottom():
+    r_top = Parameter(units=P.ohm)
+    r_bottom = Parameter(units=P.ohm)
+    v_in = Parameter(units=P.V)
+    v_out = Parameter(units=P.V)
+
+    # formula
+    v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
+
+    # input
+    v_in.alias_is(Range.from_center_rel(10 * P.V, 0.01))
+    v_out.alias_is(Range.from_center_rel(1 * P.V, 0.01))
+    r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
+
+    solver = DefaultSolver()
+
+    assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
+        1 * P.ohm, 0.01
+    )
+
+
+@pytest.mark.xfail(reason="TODO reenable ge fold")
+def test_min_max_single():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(10 * P.V)
+
+
+@pytest.mark.xfail(reason="TODO")
+def test_min_max_multi():
+    p0 = Parameter(units=P.V)
+    p0.alias_is(L.Range(0 * P.V, 10 * P.V))
+    p3 = Parameter(units=P.V)
+    p3.alias_is(L.Range(4 * P.V, 15 * P.V))
+
+    p1 = Parameter(units=P.V)
+    p1.alias_is(Max(p0, p3))
+
+    solver = DefaultSolver()
+    out = solver.inspect_get_known_supersets(p1)
+    assert out == L.Single(15 * P.V)
+
+
+@pytest.mark.xfail(
+    reason="Behaviour not implemented https://github.com/atopile/atopile/issues/615"
+)
+def test_symmetric_inequality_uncorrelated():
+    p0 = Parameter(units=P.V)
+    p1 = Parameter(units=P.V)
+
+    p0.alias_is(Range(0 * P.V, 10 * P.V))
+
+    (p0 >= p1).constrain()
+    (p0 <= p1).constrain()
+
+    # This would only work if p0 is alias p1
+    # but we never do implicit alias, because that's very dangerous
+    # so this has to throw
+
+    # strategy: if this kind of unequality exists, check if there is an alias
+    # and if not, throw
+
+    G = p0.get_graph()
+    solver = DefaultSolver()
+
+    with pytest.raises(Contradiction):
+        solver.simplify_symbolically(G)
+
+
+def test_fold_correlated():
+    """
+    ```
+    A is [5, 10], B is [10, 15]
+    B is A + 5
+    B - A | [10, 15] - [5, 10] = [0, 10] BUT SHOULD BE 5
+    ```
+
+    A and B correlated, thus B - A should do ss not alias
+    """
+
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    op = add
+    op_inv = sub
+
+    lit1 = Range(5, 10)
+    lit_operand = Single(5)
+    lit2 = op(lit1, lit_operand)
+
+    A.alias_is(lit1)
+    B.alias_is(lit2)
+    B.alias_is(op(A, lit_operand))
+
+    C.alias_is(op_inv(B, A))
+
+    context = ParameterOperatable.ReprContext()
+    for p in (A, B, C):
+        p.compact_repr(context)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(C.get_graph(), context)
+
+    is_lit = repr_map.try_get_literal(C, allow_subset=False)
+    ss_lit = repr_map.try_get_literal(C, allow_subset=True)
+    assert ss_lit is not None
+
+    # Test for ss estimation
+    assert ss_lit.is_subset_of(op_inv(lit2, lit1))
+    # Test for not wrongful is estimation
+    assert is_lit != op_inv(lit2, lit1)
+
+    # Test for correct is estimation
+    try:
+        assert is_lit == lit_operand
+    except AssertionError:
+        pytest.xfail("TODO")
+
+
+@pytest.mark.parametrize(
+    "op,lits,expected",
+    [
+        (Add, [], 0),
+        (Add, [1, 2, 3, 4, 5], 15),
+        (Multiply, [1, 2, 3, 4, 5], 120),
+        (Multiply, [], 1),
+        (Power, [2, 3], 8),
+        (Round, [2.4], 2),
+        (Round, [Range(-2.6, 5.3)], Range(-3, 5)),
+        (Abs, [-2], 2),
+        (Abs, [Range(-2, 3)], Range(0, 3)),
+        (Sin, [0], 0),
+        (Sin, [Range(0, 2 * math.pi)], Range(-1, 1)),
+        (Log, [10], math.log(10)),
+        (Log, [Range(1, 10)], Range(math.log(1), math.log(10))),
+        (Or, [False, False, True], True),
+        (Or, [False, BoolSet(True, False), True], True),
+        (Or, [], False),
+        (Not, [False], True),
+        (Intersection, [Range(0, 10), Range(10, 20)], Range(10, 10)),
+        (Union, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (SymmetricDifference, [Range(0, 10), Range(10, 20)], Range(0, 20)),
+        (
+            SymmetricDifference,
+            [Range(0, 10), Range(5, 20)],
+            RangeWithGaps(Range(0, 5), Range(10, 20)),
+        ),
+        (Is, [Range(0, 10), Range(0, 10)], True),
+        (GreaterOrEqual, [Range(10, 20), Range(0, 10)], True),
+        (GreaterOrEqual, [Range(5, 20), Range(0, 10)], BoolSet(True, False)),
+        (GreaterThan, [Range(10, 20), Range(0, 10)], BoolSet(True, False)),
+        (GreaterThan, [Range(0, 10), Range(10, 20)], False),
+        (IsSubset, [Range(0, 10), Range(0, 20)], True),
+    ],
+)
+def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expected):
+    from faebryk.core.solver.literal_folding import _exec_pure_literal_expressions
+    from faebryk.core.solver.utils import make_lit
+
+    lits_converted = list(map(make_lit, lits))
+    expected_converted = make_lit(expected)
+
+    expr = op(*lits_converted)
+    assert _exec_pure_literal_expressions(expr) == expected_converted
+
+    if op is GreaterThan:
+        pytest.xfail("GreaterThan is not supported in solver")
+
+    def _get_param_from_lit(lit: CanonicalLiteral):
+        if isinstance(lit, BoolSet):
+            p = Parameter(domain=L.Domains.BOOL())
+        elif isinstance(lit, Quantity_Set):
+            p = Parameter(domain=L.Domains.Numbers.REAL())
+        else:
+            raise NotImplementedError()
+        return p
+
+    result = _get_param_from_lit(expected_converted)
+    result.alias_is(expr)
+
+    solver = DefaultSolver()
+    repr_map, _ = solver.simplify_symbolically(result.get_graph())
+    assert repr_map.try_get_literal(result) == expected_converted
