@@ -936,6 +936,17 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         return self.get()
 
 
+class ConfigFlagFloat(_ConfigFlagBase[float]):
+    def __init__(self, name: str, default: float = 0.0, descr: str = "") -> None:
+        super().__init__(name, default, descr)
+
+    def _convert(self, raw_val: str) -> float:
+        return float(raw_val)
+
+    def __float__(self) -> float:
+        return self.get()
+
+
 def zip_dicts_by_key(*dicts):
     keys = {k for d in dicts for k in d}
     return {k: tuple(d.get(k) for d in dicts) for k in keys}

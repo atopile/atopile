@@ -37,6 +37,7 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import (
     ConfigFlag,
+    ConfigFlagFloat,
     ConfigFlagInt,
     KeyErrorAmbiguous,
     partition,
@@ -60,7 +61,7 @@ PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of so
 MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
-TIMEOUT = ConfigFlagInt("STIMEOUT", default=120, descr="Solver timeout").get()
+TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
