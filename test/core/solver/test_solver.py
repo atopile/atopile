@@ -1126,52 +1126,56 @@ def test_ss_intersect():
         (
             [Range(0, 10)],
             [Range(0, 10)],
-            True,
+            (True, True),
         ),
         (
             [Range(0, 10)],
             [Range(10, 20)],
-            False,
+            (False, False),
         ),
         (
             [Add(Range(0, 10), Range(0, 20))],
             [Add(Range(0, 10), Range(0, 20))],
-            True,
+            (True, False),
         ),
         (
             [Add(Range(0, 10), Range(0, 20))],
             [Add(Range(0, 20), Range(0, 10))],
-            True,
+            (True, False),
         ),
         (
             [Not(BoolSet(True))],
             [Not(BoolSet(True))],
-            True,
+            (True, True),
         ),
         (
             [Not(Not(BoolSet(True)))],
             [Not(Not(BoolSet(True)))],
-            True,
+            (True, True),
         ),
         (
             [Multiply(Range(0, 10), Range(0, 10))],
             [Multiply(Range(0, 10), Range(0, 10))],
-            True,
+            (True, False),
         ),
         (
             [Multiply(Range(0, math.inf), Range(0, math.inf), Range(0, math.inf))],
             [Multiply(Range(0, math.inf), Range(0, math.inf))],
-            False,
+            (False, False),
         ),
         (
             [Add(Range(0, math.inf), Range(0, math.inf))],
             [Add(Range(0, math.inf))],
-            False,
+            (False, False),
         ),
     ],
 )
 def test_congruence_lits(left, right, expected):
-    assert Expression.are_pos_congruent(left, right) == expected
+    assert (
+        Expression.are_pos_congruent(left, right, allow_uncorrelated=True)
+        == expected[0]
+    )
+    assert Expression.are_pos_congruent(left, right) == expected[1]
 
 
 def test_fold_literals():

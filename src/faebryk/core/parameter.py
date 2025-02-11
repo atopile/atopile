@@ -560,18 +560,24 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression", recursive: bool = False) -> bool:
+    def is_congruent_to(
+        self,
+        other: "Expression",
+        recursive: bool = False,
+        allow_uncorrelated: bool = False,
+    ) -> bool:
         if self == other:
             return True
         if type(self) is not type(other):
             return False
         if len(self.operands) != len(other.operands):
             return False
-
-        # TODO: think about this, imo it's not needed
-        # if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
-        #    return False
-
+        # if lit is non-single/empty set we can't correlate thus can't be congruent
+        #  in general
+        if not allow_uncorrelated and (
+            self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals()
+        ):
+            return False
         if self.operands == other.operands:
             return True
         if isinstance(self, Commutative):
@@ -584,7 +590,10 @@ class Expression(ParameterOperatable):
                 return True
 
         if recursive and Expression.are_pos_congruent(
-            self.operands, other.operands, commutative=isinstance(self, Commutative)
+            self.operands,
+            other.operands,
+            commutative=isinstance(self, Commutative),
+            allow_uncorrelated=allow_uncorrelated,
         ):
             return True
 
@@ -595,13 +604,16 @@ class Expression(ParameterOperatable):
         left: Sequence[ParameterOperatable.All],
         right: Sequence[ParameterOperatable.All],
         commutative: bool = False,
+        allow_uncorrelated: bool = False,
     ) -> bool:
         if len(left) != len(right):
             return False
 
         # FIXME handle commutative
         return all(
-            lhs.is_congruent_to(rhs, recursive=True)
+            lhs.is_congruent_to(
+                rhs, recursive=True, allow_uncorrelated=allow_uncorrelated
+            )
             if isinstance(lhs, Expression) and isinstance(rhs, Expression)
             else lhs == rhs
             for lhs, rhs in zip(left, right)

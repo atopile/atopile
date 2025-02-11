@@ -483,6 +483,12 @@ def debug_fix_literal_folding(expr: Arithmetic):
 
 @example(
     expr=Subtract(
+        Round(lit(Range(2, 10))),
+        Round(lit(Range(2, 10))),
+    ),
+)
+@example(
+    expr=Subtract(
         Round(
             Subtract(
                 lit(0),

@@ -246,7 +246,7 @@ class Mutator:
         if not copy_only and not ignore_existing:
             assert issubclass(expression_factory, CanonicalExpression)
             exists = find_congruent_expression(
-                expression_factory, *operands, mutator=self
+                expression_factory, *operands, mutator=self, allow_uncorrelated=False
             )
             if exists is not None:
                 return self._mutate(expr, self.get_copy(exists))
