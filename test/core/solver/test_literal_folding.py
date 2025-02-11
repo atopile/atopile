@@ -419,7 +419,6 @@ def test_discover_literal_folding(expr: Arithmetic):
     evaluated_expr = evaluate_expr(expr)
 
     solver_result = solver.inspect_get_known_supersets(root)
-    return  # TODO remove
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
     assert solver_result == evaluated_expr
