@@ -26,10 +26,19 @@ class BuildError(Exception):
 
 def build_project(prj_path: Path, env: dict[str, str], request: pytest.FixtureRequest):
     """Generically "build" the project."""
+    friendly_node_name = pathvalidate.sanitize_filename(str(request.node.name))
+    artifact_dir = _repo_root() / "artifacts"
+    profile_path = artifact_dir / (friendly_node_name + "-profile.html")
+
     try:
         run_live(
             [
                 sys.executable,
+                "-m",
+                "pyinstrument",
+                "--html",
+                "-o",
+                profile_path,
                 "-m",
                 "atopile",
                 "-v",
@@ -43,11 +52,7 @@ def build_project(prj_path: Path, env: dict[str, str], request: pytest.FixtureRe
             stderr=print,
         )
     except CalledProcessError as ex:
-        artifact_path = (
-            _repo_root()
-            / "artifacts"
-            / pathvalidate.sanitize_filename(str(request.node.name))
-        )
+        artifact_path = artifact_dir / friendly_node_name
         if artifact_path.exists():
             robustly_rm_dir(artifact_path)
         artifact_path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,7 +100,6 @@ def test_projects(
     env: dict[str, str],
     tmp_path: Path,
     request: pytest.FixtureRequest,
-    benchmark,
 ):
     # Clone the repository
     # Using gh to use user credentials if run locally
@@ -124,17 +128,7 @@ def test_projects(
         # Translate the error message to clearly distinguish from clone errors
         raise InstallError from ex
 
-    def _do_build():
-        build_project(prj_path, env, request=request)
-
-    benchmark.pedantic(
-        _do_build,
-        args=(),
-        kwargs=None,
-        setup=None,
-        rounds=1,
-        warmup_rounds=0,
-    )
+    build_project(prj_path, env, request=request)
 
     repo = git.Repo(prj_path)
     if any(item.a_path.endswith(".kicad_pcb") for item in repo.index.diff(None)):
