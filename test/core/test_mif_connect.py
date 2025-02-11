@@ -16,7 +16,11 @@ from faebryk.core.link import (
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
 from faebryk.core.node import NodeException
-from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
+from faebryk.libs.app.erc import (
+    ERCFaultShortedModuleInterfaces,
+    ERCPowerSourcesShortedError,
+    simple_erc,
+)
 from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
 
@@ -405,6 +409,24 @@ def test_isolated_connect_erc():
 
     assert not a1.scl.reference.is_connected_to(b1.scl.reference)
     assert not a1.sda.reference.is_connected_to(b1.sda.reference)
+
+
+def test_simple_erc_ElectricPower_short():
+    ep1 = F.ElectricPower()
+    ep2 = F.ElectricPower()
+
+    ep1.connect(ep2)
+
+    # This is okay!
+    simple_erc(ep1.get_graph())
+
+    ep1.lv.connect(ep2.hv)
+
+    # This is not okay!
+    with pytest.raises(ERCFaultShortedModuleInterfaces) as ex:
+        simple_erc(ep1.get_graph())
+
+    assert set(ex.value.path) == {ep1.lv, ep2.hv}
 
 
 @pytest.mark.skipif(not IMPLIED_PATHS, reason="IMPLIED_PATHS is not set")

@@ -9,7 +9,7 @@ This CLI command provides the `ato install` command to:
 import logging
 from pathlib import Path
 from typing import Annotated, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import questionary
 import requests
@@ -92,9 +92,9 @@ def get_package_repo_from_registry(module_name: str) -> str:
     Get the git repo for a package from the ato registry.
     """
     try:
-        response = requests.post(
-            config.project.services.packages.url,
-            json={"name": module_name},
+        encoded_name = quote(module_name)
+        response = requests.get(
+            f"{config.project.services.packages.url}/v0/package/{encoded_name}",
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
@@ -102,12 +102,26 @@ def get_package_repo_from_registry(module_name: str) -> str:
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
-    if response.status_code == 500:
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as ex:
+        try:
+            _ = response.json()["detail"]
+            if response.status_code == 404:
+                raise errors.UserException(
+                    f"Could not find package '{module_name}' in registry.",
+                    markdown=False,
+                ) from None
+        except (KeyError, requests.exceptions.JSONDecodeError):
+            pass
+
         raise errors.UserException(
-            f"Could not find package '{module_name}' in registry."
+            f"Error getting data for package '{module_name}': \n{ex}",
+            markdown=False,
         )
-    response.raise_for_status()
+
     return_data = response.json()
+
     try:
         return_url = return_data["data"]["repo_url"]
     except KeyError as ex:

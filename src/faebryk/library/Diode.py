@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from deprecated import deprecated
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import ParameterOperatable
@@ -86,6 +88,7 @@ class Diode(Module):
     def __preinit__(self):
         self.current.constrain_le(self.max_current)
 
+    @deprecated(reason="Use parameter constraints instead")
     def get_needed_series_resistance_for_current_limit(
         self, input_voltage_V: ParameterOperatable
     ):

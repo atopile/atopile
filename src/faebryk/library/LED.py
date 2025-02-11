@@ -4,6 +4,8 @@
 
 from enum import Enum, auto
 
+from deprecated import deprecated
+
 import faebryk.library._F as F
 from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
@@ -63,6 +65,7 @@ class LED(F.Diode):
     def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
         self.brightness.alias_is(intensity * self.max_brightness)
 
+    @deprecated(reason="Use PoweredLED instead")
     def connect_via_current_limiting_resistor(
         self,
         input_voltage: ParameterOperatable.NumberLike,
@@ -80,6 +83,7 @@ class LED(F.Diode):
         )
         resistor.allow_removal_if_zero()
 
+    @deprecated(reason="Use PoweredLED instead")
     def connect_via_current_limiting_resistor_to_power(
         self, resistor: F.Resistor, power: F.ElectricPower, low_side: bool
     ):

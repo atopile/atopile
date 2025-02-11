@@ -1,14 +1,5 @@
-import ElectricPower
-
+import ElectricPower, Regulator
 from "vdivs.ato" import _VDiv
-
-
-module Regulator:
-    power_in = new ElectricPower
-    power_out = new ElectricPower
-    # connect grounds (non isolated regulator)
-    power_in.gnd ~ power_out.gnd
-
 
 module AdjustableRegulator from Regulator:
     # using vanilla voltage divider without equations
