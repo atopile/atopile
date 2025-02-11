@@ -481,7 +481,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     # Include exprs that changed
-    exprs.update(mutator._mutated_since_last_run.keys())
+    exprs.update(mutator._mutated_since_last_run)
 
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)
@@ -864,7 +864,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
     new_exprs = {k: v for k, v in new_aliases.items() if not is_correlatable_literal(v)}
     exprs = {e for alias in new_exprs for e in alias.get_operations()}
     # Include exprs that changed
-    exprs.update(mutator._mutated_since_last_run.keys())
+    exprs.update(mutator._mutated_since_last_run)
 
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)

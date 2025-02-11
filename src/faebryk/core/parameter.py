@@ -468,6 +468,10 @@ class ParameterOperatable(Node):
 
         variable_mapping: VariableMapping = field(default_factory=VariableMapping)
 
+        def __hash__(self) -> int:
+            return hash(id(self))
+
+    @once
     def compact_repr(self, context: ReprContext | None = None) -> str:
         raise NotImplementedError()
 
@@ -579,7 +583,9 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
-        if recursive and Expression.are_pos_congruent(self.operands, other.operands):
+        if recursive and Expression.are_pos_congruent(
+            self.operands, other.operands, commutative=isinstance(self, Commutative)
+        ):
             return True
 
         return False
@@ -588,9 +594,12 @@ class Expression(ParameterOperatable):
     def are_pos_congruent(
         left: Sequence[ParameterOperatable.All],
         right: Sequence[ParameterOperatable.All],
+        commutative: bool = False,
     ) -> bool:
         if len(left) != len(right):
             return False
+
+        # FIXME handle commutative
         return all(
             lhs.is_congruent_to(rhs, recursive=True)
             if isinstance(lhs, Expression) and isinstance(rhs, Expression)
@@ -1637,6 +1646,7 @@ class Parameter(ParameterOperatable):
     def has_implicit_constraints_recursive(self) -> bool:
         return False
 
+    @once
     def compact_repr(
         self, context: ParameterOperatable.ReprContext | None = None
     ) -> str:

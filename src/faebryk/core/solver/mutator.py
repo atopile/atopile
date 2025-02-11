@@ -106,13 +106,18 @@ class Mutator:
                 iteration_repr_map.items(), key=lambda t: t[1], only_multi=True
             ).items()
         }
-        self._mutated_since_last_run = {
-            v: k
+        # TODO careful can only be used once
+        # TODO make faster, compact repr is a pretty bad one
+        # consider congruence instead
+        self._mutated_since_last_run = (
+            v
             for k, v in iteration_repr_map.items()
             if isinstance(v, CanonicalExpression)
-            and k.compact_repr() != v.compact_repr()
+            and isinstance(k, Expression)
+            and k is not v
             and v not in self._merged_since_last_run
-        }
+            and k.compact_repr() != v.compact_repr()
+        )
 
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
