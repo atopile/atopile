@@ -480,6 +480,9 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     }
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
+    # Include exprs that changed
+    exprs.update(mutator._mutated_since_last_run.keys())
+
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)
         # In Is automatically by eq classes
@@ -492,6 +495,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         no_allow_subset_lit = isinstance(expr, IsSubset)
 
         operands = []
+        found_extracted_literal = False
         for op in expr.operands:
             if not isinstance(op, ParameterOperatable):
                 operands.append(op)
@@ -502,6 +506,10 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
                 operands.append(op)
                 continue
             operands.append(subset_lits)
+            found_extracted_literal = True
+
+        if not found_extracted_literal:
+            continue
 
         # Make new expr with subset literals
         mutator.mutate_expression(expr, operands=operands, soft_mutate=IsSubset)
@@ -854,30 +862,29 @@ def uncorrelated_alias_fold(mutator: Mutator):
 
     # bool expr always map to singles
     new_exprs = {k: v for k, v in new_aliases.items() if not is_correlatable_literal(v)}
+    exprs = {e for alias in new_exprs for e in alias.get_operations()}
+    # Include exprs that changed
+    exprs.update(mutator._mutated_since_last_run.keys())
 
-    for alias in new_exprs.keys():
-        exprs = alias.get_operations()
-        for expr in exprs:
-            assert isinstance(expr, CanonicalExpression)
-            # Taken care of by singleton fold
-            if any(is_replacable_by_literal(op) is not None for op in expr.operands):
-                continue
-            # TODO: we can weaken this to not replace correlated operands instead of
-            #   skipping the whole expression
-            # check if any correlations
-            if any(get_correlations(expr)):
-                continue
+    for expr in exprs:
+        assert isinstance(expr, CanonicalExpression)
+        # Taken care of by singleton fold
+        if any(is_replacable_by_literal(op) is not None for op in expr.operands):
+            continue
+        # TODO: we can weaken this to not replace correlated operands instead of
+        #   skipping the whole expression
+        # check if any correlations
+        if any(get_correlations(expr)):
+            continue
 
-            expr_resolved_operands = map_extract_literals(expr)
+        expr_resolved_operands = map_extract_literals(expr)
 
-            if isinstance(expr, Is) and expr.constrained:
-                # TODO: definitely need to do something
-                # just not the same what we do with the other types
-                continue
+        if isinstance(expr, Is) and expr.constrained:
+            # TODO: definitely need to do something
+            # just not the same what we do with the other types
+            continue
 
-            mutator.mutate_expression(
-                expr, operands=expr_resolved_operands, soft_mutate=Is
-            )
+        mutator.mutate_expression(expr, operands=expr_resolved_operands, soft_mutate=Is)
 
 
 @algorithm("Reflexive predicates")

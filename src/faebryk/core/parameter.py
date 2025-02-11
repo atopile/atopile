@@ -815,11 +815,13 @@ class Arithmetic(Expression):
             Quantity_Interval,
             Quantity_Interval_Disjoint,
         )
-        if any(not isinstance(op, types) for op in operands):
+        invalid_operands = [op for op in operands if not isinstance(op, types)]
+        if invalid_operands:
             raise ValueError(
                 "operands must be int, float, Quantity, Unit, Parameter, Arithmetic"
                 ", Quantity_Interval, or Quantity_Interval_Disjoint"
-                f", got {[op for op in operands if not isinstance(op, types)]}"
+                f", got {invalid_operands} with types"
+                f" ([{', '.join(type(op).__name__ for op in invalid_operands)}])"
             )
         if any(
             not isinstance(param.domain, (Numbers, ESeries))

@@ -106,6 +106,13 @@ class Mutator:
                 iteration_repr_map.items(), key=lambda t: t[1], only_multi=True
             ).items()
         }
+        self._mutated_since_last_run = {
+            v: k
+            for k, v in iteration_repr_map.items()
+            if isinstance(v, CanonicalExpression)
+            and k.compact_repr() != v.compact_repr()
+            and v not in self._merged_since_last_run
+        }
 
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
