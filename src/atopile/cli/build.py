@@ -109,8 +109,17 @@ def build(
 
     logger.info("Build successful! 🚀")
 
+    selected_build_names = list(config.selected_builds)
+    # Default to opening the layout if we're only building a single target
+    # and we're running interactively
+    if (
+        config.project.pcbnew_auto is None
+        and len(selected_build_names) == 1
+        and config.interactive
+    ):
+        config.project.pcbnew_auto = True
+
     if config.project.pcbnew_auto:
-        selected_build_names = list(config.selected_builds)
         if len(selected_build_names) == 1:
             build = config.project.builds[first(selected_build_names)]
             try:
