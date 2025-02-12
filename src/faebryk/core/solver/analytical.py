@@ -35,6 +35,8 @@ from faebryk.core.solver.utils import (
     algorithm,
     alias_is_literal,
     alias_is_literal_and_check_predicate_eval,
+    alias_to,
+    are_aliased,
     find_unique_params,
     flatten_associative,
     get_all_aliases,
@@ -260,6 +262,9 @@ def resolve_alias_classes(mutator: Mutator):
                 }
                 if not class_expressions:
                     continue
+            # else
+            mutator.get_copy(_repr)
+            continue
 
         # Merge param alias classes
         representative = merge_parameters(alias_class_params)
@@ -301,29 +306,11 @@ def resolve_alias_classes(mutator: Mutator):
                 Parameter(domain=domain), from_ops=alias_class_p_ops
             )
 
-        # Repr old expr with new param, but keep old expr around
-        # This will implicitly swap out the expr in other exprs with the repr
         for e in alias_class_exprs:
-            copy_expr = mutator.mutate_expression(e)
-            mutator.create_expression(
-                Is,
-                copy_expr,
-                representative,
-                from_ops=alias_class_p_ops,
-                constrain=True,
-            )  # p_eq_classes is derived from constrained exprs only
-            # DANGER!
-            mutator._override_repr(e, representative)
-
-    # TODO remove, done by tautologies I think
-    # remove eq_class Is (for non-literal alias classes)
-    # removed = {
-    #     e
-    #     for e in mutator.nodes_of_type(Is)
-    #     if all(mutator.has_been_mutated(operand) for operand in e.operands)
-    #     and not e.get_operations()
-    # }
-    # mutator.remove(*removed)
+            mutator.soft_replace(e, representative)
+            if are_aliased(e, *alias_class_params):
+                continue
+            alias_to(e, representative, mutator, from_ops=alias_class_p_ops)
 
 
 @algorithm("Distribute literals across alias classes", destructive=False)
@@ -481,7 +468,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     # Include exprs that changed
-    exprs.update(mutator._mutated_since_last_run)
+    # exprs.update(mutator.mutated_since_last_run)
 
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)
@@ -491,24 +478,28 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # Taken care of by singleton fold
         if any(is_replacable_by_literal(op) is not None for op in expr.operands):
             continue
+        # TODO: remove when splitting destructive/non-destructive
+        # optimization: don't take away from uncorrelated_alias_fold
+        if (
+            not (expr in new_subsets and expr not in new_aliases)
+            and not any(get_correlations(expr))
+            and map_extract_literals(expr)[1]
+        ):
+            continue
         # In subset useless to look at subset lits
         no_allow_subset_lit = isinstance(expr, IsSubset)
 
-        operands = []
-        found_extracted_literal = False
-        for op in expr.operands:
-            if not isinstance(op, ParameterOperatable):
-                operands.append(op)
-                continue
+        operands, any_lit = map_extract_literals(
+            expr, allow_subset=not no_allow_subset_lit
+        )
+        if not any_lit:
+            continue
 
-            subset_lits = try_extract_literal(op, allow_subset=not no_allow_subset_lit)
-            if subset_lits is None:
-                operands.append(op)
-                continue
-            operands.append(subset_lits)
-            found_extracted_literal = True
-
-        if not found_extracted_literal:
+        # no point in op! ss op! (always true)
+        if isinstance(expr, ConstrainableExpression) and expr.constrained:
+            mutator.create_expression(
+                type(expr), *operands, constrain=True, allow_uncorrelated=True
+            )
             continue
 
         # Make new expr with subset literals
@@ -695,6 +686,17 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         if not found_literal:
             continue
 
+        # TODO reconsider
+        # Avoid creating True is/ss! True
+        # if (
+        #    isinstance(e, (IsSubset, Is))
+        #    and e.constrained
+        #    and set(ops) == {BoolSet(True)}
+        # ):
+        #    mutator.predicate_terminate(e.operands[0])
+        #    mutator.predicate_terminate(e)
+        #    continue
+
         mutator.mutate_expression(e, operands=ops)
 
 
@@ -864,12 +866,16 @@ def uncorrelated_alias_fold(mutator: Mutator):
     new_exprs = {k: v for k, v in new_aliases.items() if not is_correlatable_literal(v)}
     exprs = {e for alias in new_exprs for e in alias.get_operations()}
     # Include exprs that changed
-    exprs.update(mutator._mutated_since_last_run)
+    # exprs.update(mutator.mutated_since_last_run)
 
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)
         # Taken care of by singleton fold
         if any(is_replacable_by_literal(op) is not None for op in expr.operands):
+            continue
+        if isinstance(expr, Is) and expr.constrained:
+            # TODO: definitely need to do something
+            # just not the same what we do with the other types
             continue
         # TODO: we can weaken this to not replace correlated operands instead of
         #   skipping the whole expression
@@ -877,14 +883,18 @@ def uncorrelated_alias_fold(mutator: Mutator):
         if any(get_correlations(expr)):
             continue
 
-        expr_resolved_operands = map_extract_literals(expr)
-
-        if isinstance(expr, Is) and expr.constrained:
-            # TODO: definitely need to do something
-            # just not the same what we do with the other types
+        operands, any_lit = map_extract_literals(expr)
+        if not any_lit:
             continue
 
-        mutator.mutate_expression(expr, operands=expr_resolved_operands, soft_mutate=Is)
+        # no point in op! is op! (always true)
+        if isinstance(expr, ConstrainableExpression) and expr.constrained:
+            mutator.create_expression(
+                type(expr), *operands, constrain=True, allow_uncorrelated=True
+            )
+            continue
+
+        mutator.mutate_expression(expr, operands=operands, soft_mutate=Is)
 
 
 @algorithm("Reflexive predicates")

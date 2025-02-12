@@ -131,12 +131,18 @@ def try_extract_literal_info(
 
 
 def map_extract_literals(
-    expr: Expression,
-) -> list[SolverAll]:
-    return [
-        lit if (lit := try_extract_literal(op)) is not None else op
-        for op in expr.operands
-    ]
+    expr: Expression, allow_subset: bool = False
+) -> tuple[list[SolverAll], bool]:
+    out = []
+    any_lit = False
+    for op in expr.operands:
+        lit = try_extract_literal(op, allow_subset=allow_subset)
+        if lit is None:
+            out.append(op)
+            continue
+        out.append(lit)
+        any_lit = True
+    return out, any_lit
 
 
 def alias_is_literal(
@@ -166,7 +172,9 @@ def alias_is_literal(
     if isinstance(po, Is):
         if literal in po.get_literal_operands().values():
             return
-    out = mutator.create_expression(Is, po, literal, from_ops=from_ops, constrain=True)
+    out = mutator.create_expression(
+        Is, po, literal, from_ops=from_ops, constrain=True, allow_uncorrelated=True
+    )
     if terminate:
         mutator.predicate_terminate(out)
     return out
@@ -209,6 +217,42 @@ def subset_literal(
     )
 
 
+def are_aliased(po: ParameterOperatable, *other: ParameterOperatable) -> bool:
+    return bool(
+        po.get_operations(Is, constrained_only=True)
+        & {o for o in other for o in o.get_operations(Is, constrained_only=True)}
+    )
+
+
+def alias_to(
+    po: ParameterOperatable,
+    to: ParameterOperatable | SolverLiteral,
+    mutator: "Mutator",
+    check_existing: bool = True,
+    from_ops: Sequence[ParameterOperatable] | None = None,
+):
+    if is_literal(to):
+        assert check_existing
+        return alias_is_literal(po, to, mutator, from_ops=from_ops)
+
+    # check if alias exists
+    if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
+        if po.get_operations(Is, constrained_only=True) & to.get_operations(
+            Is, constrained_only=True
+        ):
+            return
+
+    return mutator.create_expression(
+        Is,
+        po,
+        to,
+        from_ops=from_ops,
+        constrain=True,
+        check_exists=check_existing,
+        allow_uncorrelated=True,
+    )
+
+
 def subset_to(
     po: ParameterOperatable,
     to: ParameterOperatable | SolverLiteral,
@@ -228,7 +272,13 @@ def subset_to(
             return
 
     return mutator.create_expression(
-        IsSubset, po, to, from_ops=from_ops, constrain=True, check_exists=check_existing
+        IsSubset,
+        po,
+        to,
+        from_ops=from_ops,
+        constrain=True,
+        check_exists=check_existing,
+        allow_uncorrelated=True,
     )
 
 
@@ -552,10 +602,16 @@ def find_congruent_expression[T: CanonicalExpression](
 
 
 def make_if_doesnt_exist[T: CanonicalExpression](
-    expr_factory: type[T], *operands: SolverAll, mutator: "Mutator"
+    expr_factory: type[T],
+    *operands: SolverAll,
+    mutator: "Mutator",
+    allow_uncorrelated: bool = False,
 ) -> tuple[T, bool]:
     existing_expr = find_congruent_expression(
-        expr_factory, *operands, mutator=mutator, allow_uncorrelated=False
+        expr_factory,
+        *operands,
+        mutator=mutator,
+        allow_uncorrelated=allow_uncorrelated,
     )
     if existing_expr is not None:
         return existing_expr, True
@@ -569,6 +625,14 @@ def get_supersets(
         e.operands[1]: e
         for e in op.get_operations(IsSubset, constrained_only=True)
         if e.operands[0] is op
+    }
+
+
+def get_aliases(
+    op: ParameterOperatable,
+) -> dict[ParameterOperatable | SolverLiteral, Is]:
+    return {
+        e.get_other_operand(op): e for e in op.get_operations(Is, constrained_only=True)
     }
 
 

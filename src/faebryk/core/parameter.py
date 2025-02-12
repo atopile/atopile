@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from itertools import chain
 from types import NotImplementedType
 from typing import (
     TYPE_CHECKING,
@@ -526,6 +527,7 @@ class Expression(ParameterOperatable):
 
     def __init__(self, domain, *operands: ParameterOperatable.All):
         super().__init__()
+        assert not any(o is None for o in operands)
         self._domain = domain
         self.operands = tuple(operands)
         self.operatable_operands: set[ParameterOperatable] = {
@@ -541,18 +543,19 @@ class Expression(ParameterOperatable):
                 continue
             self.operates_on.connect(op.operated_on)
 
+    @staticmethod
+    def is_uncorrelatable_literal(lit) -> bool:
+        return not isinstance(lit, ParameterOperatable) and (
+            not isinstance(lit, P_Set)
+            or not (lit.is_single_element() or lit.is_empty())
+        )
+
     @once
     def get_uncorrelatable_literals(self) -> list[ParameterOperatable.Literal]:
+        # TODO we should just use the canonical lits, for now just no support
+        # for non-canonical lits
         return [
-            lit
-            for lit in self.operands
-            # TODO we should just use the canonical lits, for now just no support
-            # for non-canonical lits
-            if not isinstance(lit, ParameterOperatable)
-            and (
-                not isinstance(lit, P_Set)
-                or not (lit.is_single_element() or lit.is_empty())
-            )
+            lit for lit in self.operands if Expression.is_uncorrelatable_literal(lit)
         ]
 
     @once
@@ -599,6 +602,18 @@ class Expression(ParameterOperatable):
 
         return False
 
+    def is_congruent_to_factory(
+        self,
+        other_factory: type["Expression"],
+        other_operands: Sequence[ParameterOperatable.All],
+        allow_uncorrelated: bool = False,
+    ) -> bool:
+        if type(self) is not other_factory:
+            return False
+        return Expression.are_pos_congruent(
+            self.operands, other_operands, allow_uncorrelated=allow_uncorrelated
+        )
+
     @staticmethod
     def are_pos_congruent(
         left: Sequence[ParameterOperatable.All],
@@ -607,6 +622,11 @@ class Expression(ParameterOperatable):
         allow_uncorrelated: bool = False,
     ) -> bool:
         if len(left) != len(right):
+            return False
+
+        if not allow_uncorrelated and any(
+            Expression.is_uncorrelatable_literal(lit) for lit in chain(left, right)
+        ):
             return False
 
         # FIXME handle commutative

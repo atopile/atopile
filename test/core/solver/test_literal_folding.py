@@ -428,6 +428,31 @@ def test_discover_literal_folding(expr: Arithmetic):
 # Examples -----------------------------------------------------------------------------
 
 
+@example(Subtract(Abs(p(Range(5, 6))), Abs(p(Range(5, 6)))))
+@example(
+    Subtract(
+        Abs(p(Range(-inf, inf))),
+        Abs(p(Range(-inf, inf))),
+    )
+)
+@example(
+    expr=Add(
+        Add(lit(-999_999_950_000)),
+        Subtract(lit(50000), lit(-999_997_650_001)),
+    ),
+)
+@example(
+    expr=Subtract(
+        Add(
+            Add(lit(0)),
+            Subtract(
+                Add(lit(0)),
+                Add(lit(1)),
+            ),
+        ),
+        Add(lit(1)),
+    )
+)
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -476,7 +501,7 @@ def debug_fix_literal_folding(expr: Arithmetic):
 
     if not correct:
         logger.error(f"Failing expression: {expr.compact_repr()}")
-        logger.error(f"{solver_result} != {evaluated_expr}")
+        logger.error(f"Solver {solver_result} != {evaluated_expr} Literal")
         input()
         return
     logger.warning("PASSES")

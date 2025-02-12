@@ -87,8 +87,8 @@ class DefaultSolver(Solver):
             analytical.transitive_subset,
             analytical.isolate_lone_params,
             analytical.remove_empty_graphs,
-            analytical.upper_estimation_of_expressions_with_subsets,
             analytical.uncorrelated_alias_fold,
+            analytical.upper_estimation_of_expressions_with_subsets,
         ],
     )
 
