@@ -489,7 +489,7 @@ class ProjectConfig(BaseConfigModel):
     """A map of all the build targets (/ "builds") in this project."""
 
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    pcbnew_auto: bool = Field(default=False)
+    open_layout_on_build: bool | None = None
     """Automatically open pcbnew when applying netlist"""
 
     @classmethod
@@ -907,6 +907,20 @@ class Config:
                 self.project.builds[build_name].address = entry_addr_override
             if target:
                 self.project.builds[build_name].targets = list(target)
+
+    def should_open_layout_on_build(self) -> bool:
+        """Returns whether atopile should open the layout after building"""
+        # If the project config has an explicit setting, use that
+        if self.project is not None and self.project.open_layout_on_build is not None:
+            return self.project.open_layout_on_build
+
+        # Otherwise, default to opening the layout if we're only building a
+        # single target and we're running interactively
+        return (
+            (self.project is None or self.project.open_layout_on_build is None)
+            and len(list(self.selected_builds)) == 1
+            and self.interactive
+        )
 
 
 _project_dir: Path | None = None
