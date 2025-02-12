@@ -373,12 +373,12 @@ def _track():
     if not hasattr(_track, "count"):
         _track.count = 0
     _track.count += 1
-    if _track.count % 10 == 0:
+    if _track.count % 100 == 0:
         print(f"track: {_track.count}")
     return _track.count
 
 
-@pytest.mark.xfail(reason="Still finds problems")
+# @pytest.mark.xfail(reason="Still finds problems")
 @given(st_exprs.trees)
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
@@ -426,6 +426,8 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 
 # Examples -----------------------------------------------------------------------------
+
+
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -481,13 +483,27 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
-# FIXME: this example is failing in CI consistently
-# @example(
-#     Add(
-#         Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
-#         Subtract(lit(-82408), lit(-999_998_999_993)),
-#     )
-# )
+@example(
+    expr=Multiply(
+        Sqrt(Sqrt(lit(2))),
+        Sqrt(Sqrt(lit(2))),
+    )
+)
+@example(
+    Divide(
+        Divide(
+            Sqrt(Add(lit(2))),
+            lit(2),
+        ),
+        lit(710038921),
+    )
+)
+@example(
+    Add(
+        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
+        Subtract(lit(-82408), lit(-999_998_999_993)),
+    )
+)
 @example(
     expr=Subtract(
         Round(lit(Range(2, 10))),
