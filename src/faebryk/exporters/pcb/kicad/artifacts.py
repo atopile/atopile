@@ -117,7 +117,7 @@ def export_gerber(pcb_file: Path, gerber_zip_file: Path) -> None:
             _export(
                 k.pcb.export.gerbers(
                     INPUT_FILE=str(pcb_file),
-                    layers="F.Cu,B.Cu,F.Paste,B.Paste,F.SilkS,B.SilkS,F.Mask,B.Mask,F.CrtYd,B.CrtYd,F.Fab,B.Fab,Edge.Cuts",
+                    layers="F.Cu,In1.Cu,In2.Cu,In3.Cu,In4.Cu,B.Cu,F.Paste,B.Paste,F.SilkS,B.SilkS,F.Mask,B.Mask,F.CrtYd,B.CrtYd,F.Fab,B.Fab,Edge.Cuts",
                     output=out_dir,
                 )
             )

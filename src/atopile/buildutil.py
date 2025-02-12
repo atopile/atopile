@@ -69,9 +69,10 @@ def build(app: Module) -> None:
     G = app.get_graph()
     solver = DefaultSolver()
 
-    logger.info("Resolving bus parameters")
+    # logger.info("Resolving bus parameters")
     try:
-        F.is_bus_parameter.resolve_bus_parameters(G)
+        # F.is_bus_parameter.resolve_bus_parameters(G)
+        pass
     # FIXME: this is a hack around a compiler bug
     except KeyErrorAmbiguous as ex:
         raise UserException(
