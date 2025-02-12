@@ -1542,16 +1542,12 @@ def test_picker_contradiction():
 
 
 def test_solve_lc_filter_example():
-    Li = Parameter(units=P.nH)
-    C = Parameter(units=P.nF)
-    R = Parameter(units=P.ohm)
-
     lowpass = F.FilterElectricalLC()
-
-    lowpass.cutoff_frequency.constrain_subset(L.Range.from_center_rel(1000 * P.Hz, 0.5))
-    # lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
+    lowpass.cutoff_frequency.constrain_subset(L.Range.from_center_rel(10 * P.kHz, 0.5))
     lowpass.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 0.1))
-
+    lowpass.characteristic_impedance.constrain_subset(
+        L.Range.from_center_rel(50 * P.ohm, 0.1)
+    )
     lowpass.in_.reference.voltage.constrain_subset(
         L.Range.from_center_rel(3 * P.V, 0.05)
     )
