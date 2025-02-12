@@ -60,8 +60,8 @@ class FilterElectricalLC(F.Filter):
         C.alias_is(Li / z0**2)
 
         # cutoff frequency
-        C.alias_is(1 / (4 * math.pi**2 * fc**2 * Li))
         Li.alias_is(1 / (4 * math.pi**2 * fc**2 * C))
+        C.alias_is(1 / (4 * math.pi**2 * fc**2 * Li))
 
         # substituted
         Li.alias_is(z0 / (2 * math.pi * fc))

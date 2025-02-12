@@ -21,15 +21,17 @@ class App(Module):
     def __preinit__(self) -> None:
         # TODO actually do something with the filter
 
-        # Parametrize
-        self.lowpass.cutoff_frequency.constrain_subset(
-            L.Range.from_center_rel(1000 * P.Hz, 0.5)
-        )
-        self.lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
-
         # Specialize
+        # self.lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
         special = self.lowpass.specialize(F.FilterElectricalLC())
-        special.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 1))
+
+        # Parametrize
+        special.cutoff_frequency.constrain_subset(
+            L.Range.from_center_rel(100 * P.MHz, 0.05)
+        )
+        special.characteristic_impedance.constrain_subset(
+            L.Range.from_center_rel(50 * P.ohm, 0.05)
+        )
 
         # set reference voltage
         # TODO: this will be automatically set by the power supply
