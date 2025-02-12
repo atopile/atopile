@@ -7,7 +7,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import wraps
-from itertools import pairwise
+from itertools import combinations
 from statistics import median
 from types import NoneType
 from typing import TYPE_CHECKING, Callable, Iterable, Sequence, TypeGuard, cast
@@ -460,7 +460,7 @@ def get_correlations(
 
     exprs = {o: get_constrained_expressions_involved_in(o, Is) for o in op_set}
     # check disjoint sets
-    for e1, e2 in pairwise(operables):
+    for e1, e2 in combinations(operables, 2):
         if e1 is e2:
             yield e1, e2, exprs[e1].difference(excluded)
         overlap = (exprs[e1] & exprs[e2]).difference(excluded)
