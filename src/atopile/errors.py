@@ -187,6 +187,13 @@ class UserException(_BaseUserException):
     """
 
 
+class UserContradictionException(UserException):
+    """
+    Raised when there's a contradiction in the design, e.g. a fixed parameter doesn't
+    match an assertion.
+    """
+
+
 class UserSyntaxError(UserException):
     """
     Raised when there's an error in the syntax of the language

@@ -76,7 +76,10 @@ class Contradiction(Exception):
         self.involved_exprs = involved
 
     def __str__(self):
-        return f"{self.msg}: Involved: {self.involved_exprs}"
+        return (
+            f"{self.msg}: \n"
+            f"Involved: {[e.compact_repr() for e in self.involved_exprs]}"
+        )
 
 
 class ContradictionByLiteral(Contradiction):
@@ -90,7 +93,10 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
 
     def __str__(self):
-        return f"{super().__str__()}\n" f"Literals: {self.literals}"
+        return (
+            f"{super().__str__()}\n"
+            f"Literals: {[str(literal) for literal in self.literals]}"
+        )
 
 
 SolverLiteral = CanonicalLiteral

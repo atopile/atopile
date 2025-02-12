@@ -10,11 +10,12 @@ from more_itertools import first
 
 from atopile import layout
 from atopile.config import config
-from atopile.errors import UserException, UserPickError
+from atopile.errors import UserContradictionException, UserException, UserPickError
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.utils import Contradiction
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -96,7 +97,11 @@ def build(app: Module) -> None:
     parameters = app.get_children(False, types=Parameter)
     if parameters:
         logger.info("Simplifying parameter graph")
-        solver.inspect_get_known_supersets(first(parameters), force_update=True)
+        try:
+            solver.inspect_get_known_supersets(first(parameters), force_update=True)
+        except Contradiction as e:
+            # TODO: better contradiction diagnostics
+            raise UserContradictionException(str(e), markdown=False) from e
 
     # Pickers ------------------------------------------------------------------
     if config.build.keep_picked_parts:
