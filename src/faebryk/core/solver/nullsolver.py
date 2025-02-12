@@ -6,6 +6,41 @@ from faebryk.core.solver.solver import Solver
 from faebryk.libs.sets.sets import P_Set
 
 
+class SuperSuperSet(P_Set):
+    """Is a superset of anything"""
+
+    def __init__(self, *args: Any, **kwargs: Any):
+        super().__init__(*args, **kwargs)
+
+    def is_superset_of(self, other: P_Set) -> bool:
+        return True
+
+    def is_empty(self) -> bool:
+        return False
+
+    def is_finite(self) -> bool:
+        return False
+
+    def __contains__(self, item: Any) -> bool:
+        return True
+
+    def __and__(self, other: P_Set) -> P_Set:
+        return other
+
+    def is_single_element(self) -> bool:
+        return False
+
+    def any(self) -> Any:
+        return None
+
+    def serialize_pset(self) -> dict:
+        return {}
+
+    @classmethod
+    def deserialize_pset(cls, data: dict) -> "P_Set":
+        return SuperSuperSet()
+
+
 class NullSolver(Solver):
     def get_any_single(
         self,
@@ -39,4 +74,4 @@ class NullSolver(Solver):
         try:
             return value.domain.unbounded(value)
         except NotImplementedError:
-            return value.try_get_literal()
+            return value.try_get_literal() or SuperSuperSet()
