@@ -16,6 +16,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -67,15 +68,18 @@ logger = logging.getLogger(__name__)
 SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
 
 
+def _get_solver() -> Solver:
+    if SKIP_SOLVING:
+        logger.warning("Assertion checking is disabled")
+        return NullSolver()
+    else:
+        return DefaultSolver()
+
+
 def build(app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
-
-    if SKIP_SOLVING:
-        logger.warning("Assertion checking is disabled")
-        solver = NullSolver()
-    else:
-        solver = DefaultSolver()
+    solver = _get_solver()
 
     logger.info("Resolving bus parameters")
     try:
@@ -227,7 +231,7 @@ def build(app: Module) -> None:
     )
 
 
-TargetType = Callable[[Module, DefaultSolver], None]
+TargetType = Callable[[Module, Solver], None]
 
 
 class Muster:
@@ -262,7 +266,7 @@ muster = Muster()
 
 
 @muster.register("bom")
-def generate_bom(app: Module, solver: DefaultSolver) -> None:
+def generate_bom(app: Module, solver: Solver) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
@@ -271,7 +275,7 @@ def generate_bom(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("mfg-data", default=False)
-def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
+def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """Generate a designator map for the project."""
     export_step(
         config.build.paths.layout,
@@ -300,7 +304,7 @@ def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("manifest")
-def generate_manifest(app: Module, solver: DefaultSolver) -> None:
+def generate_manifest(app: Module, solver: Solver) -> None:
     """Generate a manifest for the project."""
     with accumulate() as accumulator:
         with accumulator.collect():
@@ -323,13 +327,13 @@ def generate_manifest(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("layout-module-map")
-def generate_module_map(app: Module, solver: DefaultSolver) -> None:
+def generate_module_map(app: Module, solver: Solver) -> None:
     """Generate a designator map for the project."""
     layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
-def generate_variable_report(app: Module, solver: DefaultSolver) -> None:
+def generate_variable_report(app: Module, solver: Solver) -> None:
     """Generate a report of all the variable values in the design."""
     # TODO: support other file formats
     export_parameters_to_file(
