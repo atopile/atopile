@@ -1544,22 +1544,19 @@ def test_picker_contradiction():
 def test_solve_lc_filter_example():
     lowpass = F.FilterElectricalLC()
     lowpass.cutoff_frequency.constrain_subset(L.Range.from_center_rel(10 * P.kHz, 0.5))
-    lowpass.damping_ratio.constrain_subset(L.Range.from_center_rel(1, 0.1))
     lowpass.characteristic_impedance.constrain_subset(
         L.Range.from_center_rel(50 * P.ohm, 0.1)
-    )
-    lowpass.in_.reference.voltage.constrain_subset(
-        L.Range.from_center_rel(3 * P.V, 0.05)
-    )
-    lowpass.out.reference.voltage.constrain_subset(
-        L.Range.from_center_rel(3 * P.V, 0.05)
     )
 
     solver = DefaultSolver()
     solver.simplify_symbolically(lowpass.get_graph())
 
-    print(solver.inspect_get_known_supersets(lowpass.inductor.inductance))
-    print(solver.inspect_get_known_supersets(lowpass.capacitor.capacitance))
+    assert solver.inspect_get_known_supersets(lowpass.inductor.inductance) == Range(
+        477.464829255 * P.uH, 1.750704374 * P.mH
+    )
+    assert solver.inspect_get_known_supersets(lowpass.capacitor.capacitance) == Range(
+        192.915083 * P.nF, 707.355303 * P.nF
+    )
 
 
 def test_solve_voltage_divider_example():
