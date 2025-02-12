@@ -36,4 +36,7 @@ class NullSolver(Solver):
     def inspect_get_known_supersets(
         self, value: Parameter, force_update: bool = True
     ) -> P_Set:
-        return value.domain.unbounded(value)
+        try:
+            return value.domain.unbounded(value)
+        except NotImplementedError:
+            return value.try_get_literal()
