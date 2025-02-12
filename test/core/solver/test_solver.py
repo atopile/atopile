@@ -1559,6 +1559,22 @@ def test_solve_lc_filter_example():
     )
 
 
+def test_solve_lc_filter_example_2():
+    lowpass = F.FilterElectricalLC()
+    lowpass.cutoff_frequency.constrain_subset(
+        L.Range.from_center_rel(100 * P.MHz, 0.05)
+    )
+    lowpass.characteristic_impedance.constrain_subset(
+        L.Range.from_center_rel(50 * P.ohm, 0.05)
+    )
+
+    solver = DefaultSolver()
+    solver.simplify_symbolically(lowpass.get_graph())
+
+    print(solver.inspect_get_known_supersets(lowpass.inductor.inductance))
+    print(solver.inspect_get_known_supersets(lowpass.capacitor.capacitance))
+
+
 def test_solve_voltage_divider_example():
     r_top = Parameter(units=P.ohm)
     r_bottom = Parameter(units=P.ohm)
