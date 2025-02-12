@@ -25,9 +25,9 @@ class NullSolver(Solver):
     ) -> Solver.SolveResultAny:
         return Solver.SolveResultAny(
             timed_out=False,
-            true_predicates=[],
+            true_predicates=predicates,
             false_predicates=[],
-            unknown_predicates=predicates,
+            unknown_predicates=[],
         )
 
     def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
