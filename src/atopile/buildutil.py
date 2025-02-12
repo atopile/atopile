@@ -15,6 +15,7 @@ from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -59,15 +60,22 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
+
+SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
 
 
 def build(app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
-    solver = DefaultSolver()
+
+    if SKIP_SOLVING:
+        logger.warning("Assertion checking is disabled")
+        solver = NullSolver()
+    else:
+        solver = DefaultSolver()
 
     logger.info("Resolving bus parameters")
     try:
