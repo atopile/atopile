@@ -312,6 +312,15 @@ def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
     )
 
 
+def is_subset_literal(po: ParameterOperatable) -> TypeGuard[IsSubset]:
+    return bool(
+        isinstance(po, IsSubset)
+        and po.constrained
+        and is_literal(po.operands[1])
+        and isinstance(po.operands[0], ParameterOperatable)
+    )
+
+
 def alias_is_literal_and_check_predicate_eval(
     expr: ParameterOperatable, value: BoolSet | bool, mutator: "Mutator"
 ):

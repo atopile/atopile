@@ -38,6 +38,7 @@ from faebryk.core.solver.utils import (
     get_graphs,
     get_supersets,
     is_alias_is_literal,
+    is_subset_literal,
     make_if_doesnt_exist,
     make_lit,
     try_extract_literal,
@@ -898,17 +899,7 @@ class Mutator:
                 nodes = [
                     n
                     for n in pre_nodes
-                    if not (
-                        isinstance(n, (Is, IsSubset))
-                        and n.constrained
-                        and n._solver_terminated
-                        and (
-                            # A is/ss Lit
-                            n.get_literal_operands()
-                            # A is/ss A
-                            or n.operands[0] is n.operands[1]
-                        )
-                    )
+                    if not (is_alias_is_literal(n) or is_subset_literal(n))
                 ]
             out = ""
             node_by_depth = groupby(nodes, key=ParameterOperatable.get_depth)
