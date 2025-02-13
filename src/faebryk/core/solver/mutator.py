@@ -43,6 +43,7 @@ from faebryk.core.solver.utils import (
     try_extract_literal,
 )
 from faebryk.libs.exceptions import downgrade
+from faebryk.libs.logging import TERMINAL_WIDTH
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -863,7 +864,12 @@ class Mutator:
             rows.sort(key=lambda r: tuple(r))
             for row in rows:
                 table.add_row(*row)
-            console = Console(record=True, width=80, file=io.StringIO())
+
+            console = Console(
+                record=True,
+                width=int(TERMINAL_WIDTH) - 40,
+                file=io.StringIO(),
+            )
             console.print(table)
             log(console.export_text(styles=True))
 
