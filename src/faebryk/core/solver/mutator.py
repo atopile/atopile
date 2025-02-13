@@ -5,7 +5,7 @@
 import io
 import logging
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from types import UnionType
 from typing import Callable, Iterable, Sequence, cast
@@ -783,10 +783,6 @@ class Mutator:
         context_old = self.print_context
         context_new = self.get_new_print_context()
 
-        table = Table(title="Mutations", show_lines=True)
-        table.add_column("Before/Created By")
-        table.add_column("After")
-
         graphs = get_graphs(self.transformations.mutated.values())
 
         created_ops = self.transformations.created
@@ -877,9 +873,20 @@ class Mutator:
             rows.append((old, "removed"))
 
         if rows:
-            rows.sort(key=lambda r: tuple(r))
-            for row in rows:
-                table.add_row(*row)
+            rows_unique = Counter(rows)
+            rows_sorted = sorted(rows_unique.items(), key=lambda t: t[0])
+            table = Table(title="Mutations", show_lines=True)
+            track_count = any(c > 1 for c in rows_unique.values())
+            if track_count:
+                table.add_column("x")
+            table.add_column("Before/Created By")
+            table.add_column("After")
+            for row, count in rows_sorted:
+                count_str = "" if count == 1 else f"{count}x"
+                if track_count:
+                    table.add_row(count_str, *row)
+                else:
+                    table.add_row(*row)
 
             console = Console(
                 record=True,
