@@ -795,11 +795,15 @@ class Mutator:
 
         for op, from_ops in created_ops.items():
             key = "new"
-            key_from_ops = ", ".join(o.compact_repr(context_old) for o in from_ops)
+            key_from_ops = " \n  ".join(o.compact_repr(context_old) for o in from_ops)
+            if len(from_ops) > 1:
+                key_from_ops = f"({key_from_ops})"
             value = op.compact_repr(context_new)
             if is_alias_is_literal(op):
                 expr = next(iter(op.operatable_operands))
                 lit = next(iter(op.get_literal_operands().values()))
+                if not SHOW_SS_IS and expr in created_ops:
+                    continue
                 if isinstance(expr, ConstrainableExpression):
                     key = (
                         "proven"
@@ -807,9 +811,10 @@ class Mutator:
                         else "disproven"
                     )
                 else:
-                    key = f"new_alias: {lit}"
+                    key = f"new_alias\n{lit}"
+                value = expr.compact_repr(context_new)
             if key_from_ops:
-                key = f"{key} from ({key_from_ops})"
+                key = f"{key} from\n{key_from_ops}"
             rows.append((key, value))
 
         terminated = self.transformations.terminated.difference(created_ops)
@@ -835,6 +840,16 @@ class Mutator:
                 new += "\n\n" + repr(d)
             if old == new:
                 continue
+            if (
+                isinstance(s, ConstrainableExpression)
+                and new.replace("✓", "") == old.replace("✓", "")
+                and try_extract_literal(d) != try_extract_literal(s)
+                and new.count("✓") == old.count("✓") + 1
+            ):
+                # done by proven/disproven
+                # TODO disproven
+                continue
+
             printed.add(s)
             rows.append((old, new))
 

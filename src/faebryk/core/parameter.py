@@ -568,6 +568,7 @@ class Expression(ParameterOperatable):
         other: "Expression",
         recursive: bool = False,
         allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
     ) -> bool:
         if self == other:
             return True
@@ -579,6 +580,13 @@ class Expression(ParameterOperatable):
         #  in general
         if not allow_uncorrelated and (
             self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals()
+        ):
+            return False
+        if (
+            check_constrained
+            and isinstance(self, ConstrainableExpression)
+            and self.constrained
+            != cast_assert(ConstrainableExpression, other).constrained
         ):
             return False
         if self.operands == other.operands:
@@ -597,6 +605,7 @@ class Expression(ParameterOperatable):
             other.operands,
             commutative=isinstance(self, Commutative),
             allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
         ):
             return True
 
@@ -607,11 +616,16 @@ class Expression(ParameterOperatable):
         other_factory: type["Expression"],
         other_operands: Sequence[ParameterOperatable.All],
         allow_uncorrelated: bool = False,
+        # TODO
+        check_constrained: bool = True,
     ) -> bool:
         if type(self) is not other_factory:
             return False
         return Expression.are_pos_congruent(
-            self.operands, other_operands, allow_uncorrelated=allow_uncorrelated
+            self.operands,
+            other_operands,
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
         )
 
     @staticmethod
@@ -620,6 +634,7 @@ class Expression(ParameterOperatable):
         right: Sequence[ParameterOperatable.All],
         commutative: bool = False,
         allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
     ) -> bool:
         if len(left) != len(right):
             return False
@@ -632,7 +647,10 @@ class Expression(ParameterOperatable):
         # FIXME handle commutative
         return all(
             lhs.is_congruent_to(
-                rhs, recursive=True, allow_uncorrelated=allow_uncorrelated
+                rhs,
+                recursive=True,
+                allow_uncorrelated=allow_uncorrelated,
+                check_constrained=check_constrained,
             )
             if isinstance(lhs, Expression) and isinstance(rhs, Expression)
             else lhs == rhs
