@@ -63,6 +63,7 @@ class DefaultSolver(Solver):
             canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
             canonical.constrain_within_domain,
+            canonical.alias_predicates_to_true,
         ],
         iterative=[
             analytical.remove_unconstrained,

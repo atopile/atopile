@@ -498,7 +498,11 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # no point in op! ss op! (always true)
         if isinstance(expr, ConstrainableExpression) and expr.constrained:
             mutator.create_expression(
-                type(expr), *operands, constrain=True, allow_uncorrelated=True
+                type(expr),
+                *operands,
+                constrain=True,
+                allow_uncorrelated=True,
+                from_ops=[expr],
             )
             continue
 
@@ -890,7 +894,11 @@ def uncorrelated_alias_fold(mutator: Mutator):
         # no point in op! is op! (always true)
         if isinstance(expr, ConstrainableExpression) and expr.constrained:
             mutator.create_expression(
-                type(expr), *operands, constrain=True, allow_uncorrelated=True
+                type(expr),
+                *operands,
+                constrain=True,
+                allow_uncorrelated=True,
+                from_ops=[expr],
             )
             continue
 

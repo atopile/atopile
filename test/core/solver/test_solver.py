@@ -1126,7 +1126,7 @@ def test_ss_intersect():
         (
             [Range(0, 10)],
             [Range(0, 10)],
-            (True, True),
+            (True, False),
         ),
         (
             [Range(0, 10)],
