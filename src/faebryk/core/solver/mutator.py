@@ -7,8 +7,9 @@ import logging
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import chain
 from types import UnionType
-from typing import Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Iterable, Sequence, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -36,11 +37,10 @@ from faebryk.core.solver.utils import (
     find_congruent_expression,
     get_aliases,
     get_graphs,
+    get_lit_mapping_from_lit_expr,
     get_supersets,
     is_alias_is_literal,
     is_subset_literal,
-    make_if_doesnt_exist,
-    make_lit,
     try_extract_literal,
 )
 from faebryk.libs.exceptions import downgrade
@@ -112,7 +112,7 @@ class Mutator:
             ).items()
         }
         # TODO make faster, compact repr is a pretty bad one
-        # consider congruence instead
+        # consider congruence instead, but be careful since not in same graph space
         self._mutated_since_last_run = (
             v
             for k, v in iteration_repr_map.items()
@@ -120,8 +120,8 @@ class Mutator:
             and isinstance(k, Expression)
             and k is not v
             and v not in self._merged_since_last_run
-            and not v.is_congruent_to(k, allow_uncorrelated=True)
-            # and k.compact_repr() != v.compact_repr()
+            # and not v.is_congruent_to(k, allow_uncorrelated=True)
+            and k.compact_repr() != v.compact_repr()
         )
 
         self.transformations = Mutator._Transformations(
@@ -222,6 +222,36 @@ class Mutator:
 
         return self._mutate(param, new_param)
 
+    def _create_expression[T: Expression](
+        self,
+        expr_factory: type[T],
+        *operands: SolverAllExtended,
+        non_operands: Any = None,
+        constrain: bool = False,
+    ) -> T:
+        new_operands = [
+            self.get_copy(
+                op,
+                accept_soft=not (expr_factory in [Is, IsSubset] and constrain),
+            )
+            for op in operands
+        ]
+        new_expr = expr_factory(*new_operands)
+        new_expr.non_operands = non_operands
+
+        if constrain and isinstance(new_expr, ConstrainableExpression):
+            new_expr.constrained = True
+            # TODO this is better, but ends up in inf loop
+            # self.constrain(new_expr)
+
+        for op in new_operands:
+            if isinstance(op, ParameterOperatable):
+                assert (
+                    op.get_graph() == new_expr.get_graph()
+                ), f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+
+        return new_expr
+
     def mutate_expression(
         self,
         expr: Expression,
@@ -262,43 +292,33 @@ class Mutator:
             if exists is not None:
                 return self._mutate(expr, self.get_copy(exists))
 
-        new_operands = [
-            self.get_copy(
-                op,
-                accept_soft=not (
-                    expression_factory in [Is, IsSubset]
-                    and isinstance(expr, ConstrainableExpression)
-                    and expr.constrained
-                ),
-            )
-            for op in operands
-        ]
-        new_expr = expression_factory(*new_operands)
-        new_expr.non_operands = expr.non_operands
-
-        for op in new_operands:
-            if isinstance(op, ParameterOperatable):
-                assert (
-                    op.get_graph() == new_expr.get_graph()
-                ), f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+        constrain = isinstance(expr, ConstrainableExpression) and expr.constrained
+        new_expr = self._create_expression(
+            expression_factory,
+            *operands,
+            non_operands=expr.non_operands,
+            constrain=constrain,
+        )
 
         if isinstance(expr, ConstrainableExpression):
             new_expr = cast_assert(ConstrainableExpression, new_expr)
-            new_expr.constrained = expr.constrained
             if self.is_predicate_terminated(expr):
                 new_expr._solver_terminated = True
 
         return self._mutate(expr, new_expr)  # type: ignore #TODO
 
-    def soft_replace(
+    def soft_replace[T: ParameterOperatable](
         self,
-        current: ParameterOperatable,
+        current: T,
         new: ParameterOperatable,
-        # also_ss_is: bool = False,
-    ) -> ParameterOperatable:
-        assert not self.has_been_mutated(current)
+    ) -> T:
+        if self.has_been_mutated(current):
+            copy = self.get_mutated(current)
+            exps = copy.get_operations()
+            assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
+
         self.transformations.soft_replaced[current] = new
-        return self.get_copy(current, accept_soft=False)
+        return self.get_copy(current, accept_soft=False)  # type: ignore
 
     def soft_mutate_expr(
         self,
@@ -306,14 +326,13 @@ class Mutator:
         expr: Expression,
         operands: Iterable[SolverAllExtended],
         soft: type[Is] | type[IsSubset],
-    ):
+    ) -> CanonicalExpression:
         operands = list(operands)
         # Don't create A is A, lit is lit
-        if type(expr) is expression_factory:
-            if Expression.are_pos_congruent(
-                expr.operands, operands, allow_uncorrelated=True
-            ):
-                return expr
+        if expr.is_congruent_to_factory(
+            expression_factory, operands, allow_uncorrelated=True
+        ):
+            return expr  # type: ignore
 
         # Avoid alias X to Op1(lit) if X is!! Op2(lit)
         congruent = {
@@ -421,6 +440,15 @@ class Mutator:
         if self.has_been_mutated(obj):
             return self.get_mutated(obj)
 
+        # TODO: not sure if ok
+        # if obj is new, no need to copy
+        # TODO add guard to _mutate to not let new stuff be mutated
+        if (
+            obj in self.transformations.created
+            or obj in self.transformations.mutated.values()
+        ):
+            return obj
+
         # purely for debug
         self.transformations.copied.add(obj)
 
@@ -442,20 +470,28 @@ class Mutator:
     ) -> T:
         assert issubclass(expr_factory, CanonicalExpression)
 
-        existed = False
+        expr = None
         if check_exists:
-            expr, existed = make_if_doesnt_exist(
+            # TODO look in old & new graph
+            expr = find_congruent_expression(
                 expr_factory,
                 *operands,
                 mutator=self,
                 allow_uncorrelated=allow_uncorrelated,
             )
-        else:
-            expr = expr_factory(*operands)  # type: ignore
-        if not existed:
+
+        if expr is None:
+            expr = self._create_expression(
+                expr_factory,
+                *operands,
+                constrain=constrain,
+            )
             self.transformations.created[expr] = list(from_ops or [])
+
+        # TODO double constrain ugly
         if constrain and isinstance(expr, ConstrainableExpression):
             self.constrain(expr)
+
         return expr
 
     def remove(self, *po: ParameterOperatable):
@@ -535,6 +571,12 @@ class Mutator:
 
     @property
     def _touched_graphs(self) -> set[Graph]:
+        """
+        Return graphs that require a copy in some form
+        - if a mutation happened we need to copy the whole graph to replace
+         the old node with the new one
+        - if a node was removed, we need to copy the graph to remove it
+        """
         return {
             n.get_graph()
             for n in self.transformations.removed | self.transformations.mutated.keys()
@@ -591,16 +633,16 @@ class Mutator:
         )
 
         if result.dirty:
-            touched = self._touched_graphs
+            touched_pre_copy = self._touched_graphs
             self.check_no_illegal_mutations()
             self._copy_unmutated()
 
             result.repr_map = self.transformations.mutated
-            result.graphs = get_graphs(result.repr_map.values())
+            result.graphs = self.get_graphs()
 
             # Check if original graphs ended up in result
             # allowed if no copy was needed for graph
-            assert not (touched & set(result.graphs))
+            assert not (touched_pre_copy & set(result.graphs))
 
         return result
 
@@ -620,6 +662,14 @@ class Mutator:
             return
         pred._solver_terminated = False
 
+    def get_graphs(self) -> list[Graph]:
+        return get_graphs(
+            chain(
+                self.transformations.mutated.values(),
+                self.transformations.created,
+            )
+        )
+
     def get_output_operables(self) -> set[ParameterOperatable]:
         # It's enough to check for mutation graphs and not created ones
         # because the created ones always connect to graphs of the mutated ones
@@ -629,7 +679,7 @@ class Mutator:
 
         return {
             op
-            for g in get_graphs(self.transformations.mutated.values())
+            for g in self.get_graphs()
             for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
 
@@ -708,7 +758,7 @@ class Mutator:
 
         return (expr for expr in aliases if is_alias_is_literal(expr))
 
-    def get_literal_subsets(self, new_only: bool = True):
+    def _get_literal_subsets(self, new_only: bool = True):
         subsets: set[CanonicalExpression]
         subsets = set(
             self.nodes_of_type(IsSubset, new_only=new_only, include_terminated=True)
@@ -723,31 +773,13 @@ class Mutator:
                 subsets.update(new.get_operations(IsSubset, constrained_only=True))
             subsets.update(self.mutated_since_last_run)
 
-        new_literal_ss = (
-            expr
-            for expr in subsets
-            if isinstance(expr, IsSubset)
-            and bool(
-                expr.constrained
-                # match A ⊆!!✓ ([5, 20]) but not ([5, 20]) ⊆!!✓ A
-                and isinstance(expr.operands[0], ParameterOperatable)
-                and ParameterOperatable.is_literal(expr.operands[1])
-            )
-        )
+        return (expr for expr in subsets if is_subset_literal(expr))
 
-        return {
-            p: not_none(try_extract_literal(p, allow_subset=True))
-            for alias in new_literal_ss
-            for p in alias.operatable_operands
-        }
-
-    def get_literal_aliased(self, new_only: bool = True):
-        ps = {
-            p: not_none(try_extract_literal(p))
-            for alias in self.get_literal_aliases(new_only=new_only)
-            for p in alias.operatable_operands
-        }
-        return ps
+    def get_literal_mappings(self, new_only: bool = True, allow_subset: bool = False):
+        ops = self.get_literal_aliases(new_only=new_only)
+        if allow_subset:
+            ops = chain(ops, self._get_literal_subsets(new_only=new_only))
+        return dict(get_lit_mapping_from_lit_expr(op) for op in ops)
 
     def run(self):
         self.algo(self)
@@ -792,22 +824,15 @@ class Mutator:
         for op, from_ops in created_ops.items():
             key = "new"
             key_from_ops = " \n  ".join(o.compact_repr(context_old) for o in from_ops)
-            if len(from_ops) > 1:
-                key_from_ops = f"({key_from_ops})"
+            key_from_ops = f"  {key_from_ops}"
             value = op.compact_repr(context_new)
-            if is_alias_is_literal(op):
+            if is_alias_is_literal(op) or is_subset_literal(op):
                 expr = next(iter(op.operatable_operands))
                 lit = next(iter(op.get_literal_operands().values()))
                 if not SHOW_SS_IS and expr in created_ops:
                     continue
-                if isinstance(expr, ConstrainableExpression):
-                    key = (
-                        "proven"
-                        if try_extract_literal(expr) == make_lit(True)
-                        else "disproven"
-                    )
-                else:
-                    key = f"new_alias\n{lit}"
+                alias_type = "alias" if isinstance(op, Is) else "subset"
+                key = f"new_{alias_type}\n{lit}"
                 value = expr.compact_repr(context_new)
             if key_from_ops:
                 key = f"{key} from\n{key_from_ops}"
@@ -1020,6 +1045,6 @@ class Mutator:
         copied = len(self.transformations.copied)
         terminated = len(self.transformations.terminated)
         return (
-            f"Mutator(mutated={mutated}, created={created},"
+            f"Mutator('{self.algo.name}', mutated={mutated}, created={created},"
             f" removed={removed}, copied={copied}, terminated={terminated})"
         )

@@ -183,7 +183,9 @@ class DefaultSolver(Solver):
                 iteration_repr_maps.append(algo_result.repr_map)
                 # append to per-algo iteration repr_map
                 assert algo_result.repr_map
-                for reprs in data.repr_since_last_iteration.values():
+                for _algo, reprs in data.repr_since_last_iteration.items():
+                    if _algo is algo:
+                        continue
                     for old_s, old_d in list(reprs.items()):
                         new_d = algo_result.repr_map.get(old_d)
                         if new_d is None:

@@ -74,8 +74,11 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise ValueError("min must be less than or equal to max")
         if min == float("inf") or max == float("-inf"):
             raise ValueError("min or max has bad infinite value")
-        self._min = rel_round(float_round(min, ABS_DIGITS), REL_DIGITS)
-        self._max = rel_round(float_round(max, ABS_DIGITS), REL_DIGITS)
+        # FIXME
+        # self._min = rel_round(float_round(min, ABS_DIGITS), REL_DIGITS)
+        # self._max = rel_round(float_round(max, ABS_DIGITS), REL_DIGITS)
+        self._min = float_round(min, ABS_DIGITS)
+        self._max = float_round(max, ABS_DIGITS)
 
     def is_empty(self) -> bool:
         return False

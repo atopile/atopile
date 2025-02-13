@@ -496,6 +496,7 @@ class ParameterOperatable(Node):
             return po.depth()
         return 0
 
+    @once
     def _get_lit_suffix(self) -> str:
         out = ""
         try:
@@ -769,7 +770,8 @@ class Expression(ParameterOperatable):
             if self._solver_terminated:
                 symbol_suffix += "!"
         symbol += symbol_suffix
-        symbol += self._get_lit_suffix()
+        lit_suffix = self._get_lit_suffix()
+        symbol += lit_suffix
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
@@ -797,6 +799,11 @@ class Expression(ParameterOperatable):
                 out = f"({', '.join(formatted_operands)}){symbol}"
         elif len(formatted_operands) == 1:
             out = f"{type(self).__name__}{symbol_suffix}({formatted_operands[0]})"
+        elif lit_suffix and len(formatted_operands) > 2:
+            out = (
+                f"{type(self).__name__}{symbol_suffix}{lit_suffix}"
+                f"({', '.join(formatted_operands)})"
+            )
         elif style.placement == Expression.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"

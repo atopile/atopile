@@ -455,8 +455,8 @@ def test_literal_folding_add_multiplicative():
 
 
 def test_literal_folding_add_multiplicative_2():
-    A = Parameter(units=dimensionless)
-    B = Parameter(units=dimensionless)
+    A = Parameter()
+    B = Parameter()
 
     expr = (
         A

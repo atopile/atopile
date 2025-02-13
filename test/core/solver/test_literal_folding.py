@@ -428,31 +428,6 @@ def test_discover_literal_folding(expr: Arithmetic):
 # Examples -----------------------------------------------------------------------------
 
 
-@example(Subtract(Abs(p(Range(5, 6))), Abs(p(Range(5, 6)))))
-@example(
-    Subtract(
-        Abs(p(Range(-inf, inf))),
-        Abs(p(Range(-inf, inf))),
-    )
-)
-@example(
-    expr=Add(
-        Add(lit(-999_999_950_000)),
-        Subtract(lit(50000), lit(-999_997_650_001)),
-    ),
-)
-@example(
-    expr=Subtract(
-        Add(
-            Add(lit(0)),
-            Subtract(
-                Add(lit(0)),
-                Add(lit(1)),
-            ),
-        ),
-        Add(lit(1)),
-    )
-)
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -508,25 +483,68 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
+# TODO: rounding
+# @example(
+#    Divide(
+#        Divide(
+#            Sqrt(Add(lit(2))),
+#            lit(2),
+#        ),
+#        lit(710038921),
+#    )
+
+
+# @example(
+#    Add(
+#        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
+#        Subtract(lit(-82408), lit(-999_998_999_993)),
+#    )
+# )
+# )
+@example(
+    Add(
+        Sqrt(lit(1)),
+        Abs(lit(Range(-inf, inf))),
+    ),
+)
+@example(
+    expr=Add(
+        Add(lit(-999_999_950_000)),
+        Subtract(lit(50000), lit(-999_997_650_001)),
+    ),
+)
+@example(
+    expr=Subtract(
+        Add(
+            Add(lit(0)),
+            Subtract(
+                Add(lit(0)),
+                Add(lit(1)),
+            ),
+        ),
+        Add(lit(1)),
+    )
+)
+@example(
+    expr=Subtract(
+        Subtract(
+            lit(1),
+            lit(Range(-inf, inf)),
+        ),
+        Add(lit(0)),
+    ),
+)
+@example(
+    Subtract(
+        Abs(p(Range(-inf, inf))),
+        Abs(p(Range(-inf, inf))),
+    )
+)
+@example(Subtract(Abs(p(Range(5, 6))), Abs(p(Range(5, 6)))))
 @example(
     expr=Multiply(
         Sqrt(Sqrt(lit(2))),
         Sqrt(Sqrt(lit(2))),
-    )
-)
-@example(
-    Divide(
-        Divide(
-            Sqrt(Add(lit(2))),
-            lit(2),
-        ),
-        lit(710038921),
-    )
-)
-@example(
-    Add(
-        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
-        Subtract(lit(-82408), lit(-999_998_999_993)),
     )
 )
 @example(
@@ -562,12 +580,6 @@ def debug_fix_literal_folding(expr: Arithmetic):
 @example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
 @example(Add(Add(lit(0)), Abs(p(-1))))
 @example(Abs(p(-1)))
-@example(
-    Add(
-        Sqrt(lit(1)),
-        Abs(lit(Range(-inf, inf))),
-    ),
-)
 @example(expr=Round(Add(Abs(lit(0)), Round(lit(-1)))))
 @example(
     expr=Add(

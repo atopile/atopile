@@ -102,17 +102,45 @@ def make_lit(val):
     return P_Set.from_value(val)
 
 
+# TODO should be part of mutator
 def try_extract_literal(
-    po: ParameterOperatable, allow_subset: bool = False
+    po: ParameterOperatable,
+    allow_subset: bool = False,
+    check_pre_transform: "Mutator | None" = None,
 ) -> SolverLiteral | None:
+    pos = {po}
+
+    # TODO should be mutator api
+    if (
+        check_pre_transform
+        and po in check_pre_transform.transformations.mutated.values()
+    ):
+        mutator = check_pre_transform
+        pos |= {
+            k
+            for k, v in mutator.transformations.mutated.items()
+            if v is po and k not in mutator.transformations.removed
+        }
+
+    lits = set()
     try:
-        lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
+        for po in pos:
+            lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
+            if lit is not None:
+                lits.add(lit)
     except KeyErrorAmbiguous as e:
         raise ContradictionByLiteral(
             "Duplicate unequal is literals",
             involved=[po],
             literals=e.duplicates,
         ) from e
+    if len(lits) > 1:
+        raise ContradictionByLiteral(
+            "Multiple literals found",
+            involved=list(pos),
+            literals=list(lits),
+        )
+    lit = next(iter(lits), None)
     assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set, NoneType))
     return lit
 
@@ -153,8 +181,7 @@ def alias_is_literal(
     terminate: bool = False,
 ):
     literal = make_lit(literal)
-    existing = try_extract_literal(po)
-
+    existing = try_extract_literal(po, check_pre_transform=mutator)
     if existing is not None:
         if existing == literal:
             if terminate:
@@ -201,7 +228,7 @@ def subset_literal(
             literals=[literal],
         )
 
-    existing_alias = try_extract_literal(po)
+    existing_alias = try_extract_literal(po, check_pre_transform=mutator)
     if existing_alias is not None:
         if not existing_alias.is_subset_of(literal):  # type: ignore #TODO
             raise ContradictionByLiteral(
@@ -211,11 +238,11 @@ def subset_literal(
             )
         return
 
-    existing = try_extract_literal(po, allow_subset=True)
+    existing = try_extract_literal(po, allow_subset=True, check_pre_transform=mutator)
     if existing is not None:
         # if already narrower, no point
         # if equal, use create_expression for duplicate detection
-        if existing.is_subset_of(literal) and existing != literal:  # type: ignore #TODO
+        if existing.is_subset_of(literal):  # type: ignore #TODO
             return
 
     return mutator.create_expression(
@@ -467,6 +494,17 @@ def is_replacable(
     return True
 
 
+def is_constrained(po: ParameterOperatable) -> TypeGuard[ConstrainableExpression]:
+    return isinstance(po, ConstrainableExpression) and po.constrained
+
+
+def get_lit_mapping_from_lit_expr(expr: Is | IsSubset):
+    assert is_alias_is_literal(expr) or is_subset_literal(expr)
+    return next(iter(expr.operatable_operands)), next(
+        iter(expr.get_literal_operands().values())
+    )
+
+
 def get_params_for_expr(expr: Expression) -> set[Parameter]:
     param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
     expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
@@ -508,8 +546,9 @@ def get_constrained_expressions_involved_in[T: ConstrainableExpression](
     return res
 
 
+# TODO write tests for this
 def get_correlations(
-    operables: Iterable[ParameterOperatable] | Expression,
+    expr: Expression,
     exclude: set[Expression] | None = None,
 ):
     # TODO: might want to check if expr has aliases because those are correlated too
@@ -517,11 +556,9 @@ def get_correlations(
     if exclude is None:
         exclude = set()
 
-    if isinstance(operables, Expression):
-        exclude.add(operables)
-        operables = [
-            o for o in operables.operands if isinstance(o, ParameterOperatable)
-        ]
+    exclude.add(expr)
+    exclude.update(get_constrained_expressions_involved_in(expr, Is))
+    operables = [o for o in expr.operands if isinstance(o, ParameterOperatable)]
 
     excluded = {
         e for e in exclude if isinstance(e, ConstrainableExpression) and e.constrained
@@ -620,23 +657,6 @@ def find_congruent_expression[T: CanonicalExpression](
         if c.operands == operands:
             return c
     return None
-
-
-def make_if_doesnt_exist[T: CanonicalExpression](
-    expr_factory: type[T],
-    *operands: SolverAll,
-    mutator: "Mutator",
-    allow_uncorrelated: bool = False,
-) -> tuple[T, bool]:
-    existing_expr = find_congruent_expression(
-        expr_factory,
-        *operands,
-        mutator=mutator,
-        allow_uncorrelated=allow_uncorrelated,
-    )
-    if existing_expr is not None:
-        return existing_expr, True
-    return expr_factory(*operands), False  # type: ignore #TODO
 
 
 def get_supersets(
