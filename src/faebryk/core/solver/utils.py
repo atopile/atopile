@@ -173,7 +173,13 @@ def alias_is_literal(
         if literal in po.get_literal_operands().values():
             return
     out = mutator.create_expression(
-        Is, po, literal, from_ops=from_ops, constrain=True, allow_uncorrelated=True
+        Is,
+        po,
+        literal,
+        from_ops=from_ops,
+        constrain=True,
+        # already checked for uncorrelated lit, op needs to be correlated
+        allow_uncorrelated=False,
     )
     if terminate:
         mutator.predicate_terminate(out)
@@ -213,7 +219,13 @@ def subset_literal(
             return
 
     return mutator.create_expression(
-        IsSubset, po, literal, from_ops=from_ops, constrain=True
+        IsSubset,
+        po,
+        literal,
+        from_ops=from_ops,
+        constrain=True,
+        # already checked for uncorrelated lit, op needs to be correlated
+        allow_uncorrelated=False,
     )
 
 
