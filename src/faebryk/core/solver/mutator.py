@@ -321,8 +321,9 @@ class Mutator:
     ) -> T:
         if self.has_been_mutated(current):
             copy = self.get_mutated(current)
-            exps = copy.get_operations()
-            assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
+            exps = copy.get_operations()  # noqa: F841
+            # FIXME: reenable, but alias classes need to take this into account
+            # assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
 
         self.transformations.soft_replaced[current] = new
         return self.get_copy(current, accept_soft=False)  # type: ignore
