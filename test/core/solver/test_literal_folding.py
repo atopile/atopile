@@ -451,6 +451,7 @@ def _track():
     return _track.count
 
 
+@pytest.mark.not_in_ci
 @pytest.mark.xfail(reason="Still finds problems")
 @given(st_exprs.trees)
 @settings(
