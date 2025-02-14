@@ -19,7 +19,7 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 
 import faebryk.libs.exceptions
 from atopile import errors, version
-from atopile.config import Dependency, ProjectConfig, config
+from atopile.config import Dependency, ProjectConfig, Source, config
 from faebryk.libs.util import robustly_rm_dir
 import shutil
 
@@ -164,7 +164,7 @@ def install_single_local(path: Path, name: str | None = None):
     name = name or path.name
     dependency = Dependency(
         name=name,
-        local=path,
+        source=Source(local=path),
         path=(config.project.paths.modules / name).relative_to(config.project.paths.root),
         project_config=ProjectConfig.from_path(path),
     )
@@ -217,7 +217,7 @@ def install_project_dependencies(upgrade: bool):
         config.project.dependencies or []
     ):
         with _ctx():
-            if dependency.local:
+            if dependency.source and dependency.source.local:
                 install_local_dependency(dependency)
                 continue
 
@@ -240,7 +240,9 @@ def install_project_dependencies(upgrade: bool):
 
 
 def install_local_dependency(dependency: Dependency):
-    src = dependency.local
+    if not dependency.source or not dependency.source.local:
+        raise errors.UserException("Local dependency must have a source with local path")
+    src = dependency.source.local
     dst = dependency.path or config.project.paths.modules / dependency.name
     if not src.exists():
         raise errors.UserException(f"Local dependency path {src} does not exist")

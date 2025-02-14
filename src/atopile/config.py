@@ -410,15 +410,23 @@ class BuildTargetConfig(BaseConfigModel):
         return address.entry_section
 
 
+class Source(BaseConfigModel):
+    local: Path | None = None
+
+    @field_serializer("local")
+    def serialize_local(self, path: Path | None, _info: Any) -> str | None:
+        return str(path) if path else None
+
+
 class Dependency(BaseConfigModel):
     name: str
     version_spec: str | None = None
     link_broken: bool = False
     path: Path | None = None
-    local: Path | None = None
+    source: Source | None = None
 
     project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: ProjectConfig.from_path(data["local"] if data["local"] else data["path"]), exclude=True
+        default_factory=lambda data: ProjectConfig.from_path(data["source"].local if data["source"] else data["path"]), exclude=True
     )
 
     @classmethod
@@ -436,7 +444,7 @@ class Dependency(BaseConfigModel):
                 return cls(name=name, version_spec=version_spec)
         return cls(name=spec_str)
 
-    @field_serializer("path", "local")
+    @field_serializer("path")
     def serialize_path(self, path: Path | None, _info: Any) -> str | None:
         return str(path) if path else None
 
