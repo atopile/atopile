@@ -150,10 +150,12 @@ def remove_congruent_expressions(mutator: Mutator):
     # No (Automatic): X1 = A + C, X2 = A + B, C ~ B -> X1 ~ X2
 
     all_exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
-    exprs_by_type = groupby(all_exprs, type)
+    exprs_by_type = groupby(all_exprs, lambda e: (type(e), len(e.operands)))
     full_eq = EquivalenceClasses[Expression](all_exprs)
 
     for exprs in exprs_by_type.values():
+        # optimization: can't be congruent if they have uncorrelated literals
+        exprs = [e for e in exprs if not e.get_uncorrelatable_literals()]
         if len(exprs) <= 1:
             continue
         # TODO use hash to speed up comparisons
