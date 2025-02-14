@@ -714,6 +714,19 @@ def test_inspect_enum_simple():
     assert solver.inspect_get_known_supersets(A) == F.LED.Color.EMERALD
 
 
+def test_regression_enum_contradiction():
+    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+
+    A.constrain_subset(L.EnumSet(F.LED.Color.BLUE, F.LED.Color.RED))
+
+    solver = DefaultSolver()
+    result = solver.assert_any_predicate(
+        [(Is(A, F.LED.Color.EMERALD), None)], lock=False
+    )
+    assert not result.true_predicates
+    assert result.false_predicates
+
+
 def test_inspect_enum_led():
     led = F.LED()
 

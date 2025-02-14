@@ -66,6 +66,7 @@ class DefaultSolver(Solver):
             canonical.alias_predicates_to_true,
         ],
         iterative=[
+            analytical.check_literal_contradiction,
             analytical.remove_unconstrained,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
