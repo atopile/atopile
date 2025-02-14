@@ -1,47 +1,21 @@
+from types import SimpleNamespace
 from typing import Any
 
 from faebryk.core.cpp import Graph
 from faebryk.core.parameter import Expression, Parameter, Predicate
+from faebryk.core.solver import canonical
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.sets.sets import P_Set
 
 
-class SuperSuperSet(P_Set):
-    """Is a superset of anything"""
+class NullSolver(DefaultSolver):
+    algorithms = SimpleNamespace(
+        pre=[canonical.convert_to_canonical_literals], iterative=[]
+    )
 
-    def __init__(self, *args: Any, **kwargs: Any):
-        super().__init__(*args, **kwargs)
+    _superset_cache: dict[Parameter, P_Set] = {}
 
-    def is_superset_of(self, other: P_Set) -> bool:
-        return True
-
-    def is_empty(self) -> bool:
-        return False
-
-    def is_finite(self) -> bool:
-        return False
-
-    def __contains__(self, item: Any) -> bool:
-        return True
-
-    def __and__(self, other: P_Set) -> P_Set:
-        return other
-
-    def is_single_element(self) -> bool:
-        return False
-
-    def any(self) -> Any:
-        return None
-
-    def serialize_pset(self) -> dict:
-        return {}
-
-    @classmethod
-    def deserialize_pset(cls, data: dict) -> "P_Set":
-        return SuperSuperSet()
-
-
-class NullSolver(Solver):
     def get_any_single(
         self,
         operatable: Parameter,
@@ -69,9 +43,19 @@ class NullSolver(Solver):
         return Solver.SolveResultAll(timed_out=False, has_solution=False)
 
     def inspect_get_known_supersets(
-        self, value: Parameter, force_update: bool = True
+        self, param: Parameter, force_update: bool = True
     ) -> P_Set:
-        try:
-            return value.domain.unbounded(value)
-        except NotImplementedError:
-            return value.try_get_literal() or SuperSuperSet()
+        if param in self._superset_cache:
+            return self._superset_cache[param]
+
+        repr_map, _ = self.simplify_symbolically(param.get_graph())
+
+        result = param.domain_set()
+        if (
+            param in repr_map.repr_map
+            and (lit := repr_map.try_get_literal(param, allow_subset=True)) is not None
+        ):
+            result = P_Set.from_value(lit)
+
+        self._superset_cache[param] = result
+        return result
