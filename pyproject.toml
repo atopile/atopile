@@ -43,7 +43,7 @@ dependencies = [
     "pint>=0.24.4,<1.0.0",
     "deprecated~=1.2.14",
     "more-itertools>=10.4,<10.7",
-    "psutil>=6.0.0,<7.0.0",
+    "psutil>=6.0.0,<8.0.0",
     "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
     "attrs>=23.2.0",
     "case-converter>=1.1.0",
