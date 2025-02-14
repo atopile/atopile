@@ -175,8 +175,8 @@ class Filters(Namespace):
     def within_limits(value: ValueT) -> bool:
         value = Filters._unwrap_param(value)
         return bool(
-            (value.min_elem >= -LIMIT or value.min_elem == -inf)
-            and (value.max_elem <= LIMIT or value.max_elem == inf)
+            (value.min_elem >= -ABS_UPPER_LIMIT or value.min_elem == -inf)
+            and (value.max_elem <= ABS_UPPER_LIMIT or value.max_elem == inf)
         )
 
     @staticmethod
@@ -207,29 +207,42 @@ class Filters(Namespace):
         )
 
 
-LIMIT = 1e4  # Terra/pico or inf
+# TODO set to something reasonable again
+ABS_UPPER_LIMIT = 1e4  # Terra/pico or inf
+ABS_LOWER_LIMIT = 1e-6  # micro
 
 
 class st_values(Namespace):
     @staticmethod
-    def _numbers_with_limit(limit: float):
-        return st.one_of(
-            st.integers(
-                min_value=int(-limit),
-                max_value=int(limit),
-            ),
-            st.floats(
-                allow_nan=False,
-                allow_infinity=False,
-                min_value=-limit,
-                max_value=limit,
-                allow_subnormal=False,
-            ),
+    def _numbers_with_limit(upper_limit: float, lower_limit: float):
+        assert 0 <= lower_limit < 1
+        ints = st.integers(
+            min_value=int(-upper_limit),
+            max_value=int(upper_limit),
         )
 
-    numeric = _numbers_with_limit(LIMIT)
+        def _floats(min_value: float, max_value: float):
+            return st.floats(
+                allow_nan=False,
+                allow_infinity=False,
+                min_value=min_value,
+                max_value=max_value,
+                allow_subnormal=False,
+            )
 
-    small_numeric = _numbers_with_limit(100)
+        if lower_limit == 0:
+            floats = _floats(-upper_limit, upper_limit)
+        else:
+            floats = st.one_of(
+                _floats(lower_limit, upper_limit),
+                _floats(-upper_limit, -lower_limit),
+            )
+
+        return st.one_of(ints, floats)
+
+    numeric = _numbers_with_limit(ABS_UPPER_LIMIT, ABS_LOWER_LIMIT)
+
+    small_numeric = _numbers_with_limit(1e2, 1e-1)
 
     ranges = st.builds(
         lambda values: Range(*sorted(values)),
@@ -488,6 +501,15 @@ def test_discover_literal_folding(expr: Arithmetic):
 # Examples -----------------------------------------------------------------------------
 
 
+@example(
+    Divide(
+        Add(
+            Subtract(lit(0), lit(1)),
+            Abs(lit(Range(-inf, inf))),
+        ),
+        lit(1),
+    ),
+)
 @example(
     Divide(
         Divide(
