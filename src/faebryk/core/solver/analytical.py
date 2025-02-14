@@ -606,35 +606,35 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
 
 # TODO: some kind of aliased singleton stuff for constrained/is/ss exprs
-def _todo(mutator: Mutator):
-    exprs = mutator.nodes_of_types(
-        (Is, IsSubset), sort_by_depth=True, include_terminated=False
-    )
-    exprs = cast(list[Is | IsSubset], exprs)
-    for e in exprs:
-        if not e.constrained:
-            continue
-        if not any(is_constrained(op) for op in e.operatable_operands):
-            continue
-
-    #    # Avoid creating True is/ss! True
-    #    if (
-    #        isinstance(e, (IsSubset, Is))
-    #        and e.constrained
-    #        and isinstance(e.operands[0], ConstrainableExpression)
-    #    ):
-    #        # if set(ops) == {BoolSet(True)}
-    #        # TODO reconsider terminating operand[0]
-    #        # only valid in specific cases, eg if operand[1] created by subset or is
-    #        # estimation
-    #        ## mutator.predicate_terminate(e.operands[0])
-    #        # mutator.predicate_terminate(e)
-    #        continue
-
-    # Don't make from A is! X -> X is! X
-    # TODO do we have to create A is! X, A is! Y -> X is! Y?
-    # if yes do it somewhere else
-    pass
+# def _todo(mutator: Mutator):
+#     exprs = mutator.nodes_of_types(
+#         (Is, IsSubset), sort_by_depth=True, include_terminated=False
+#     )
+#     exprs = cast(list[Is | IsSubset], exprs)
+#     for e in exprs:
+#         if not e.constrained:
+#             continue
+#         if not any(is_constrained(op) for op in e.operatable_operands):
+#             continue
+#
+#     #    # Avoid creating True is/ss! True
+#     #    if (
+#     #        isinstance(e, (IsSubset, Is))
+#     #        and e.constrained
+#     #        and isinstance(e.operands[0], ConstrainableExpression)
+#     #    ):
+#     #        # if set(ops) == {BoolSet(True)}
+#     #        # TODO reconsider terminating operand[0]
+#     #        # only valid in specific cases, eg if operand[1] created by subset or is
+#     #        # estimation
+#     #        ## mutator.predicate_terminate(e.operands[0])
+#     #        # mutator.predicate_terminate(e)
+#     #        continue
+#
+#     # Don't make from A is! X -> X is! X
+#     # TODO do we have to create A is! X, A is! Y -> X is! Y?
+#     # if yes do it somewhere else
+#     pass
 
 
 @algorithm("Convert aliased singletons into literals")

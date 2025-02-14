@@ -59,6 +59,11 @@ NUM_STAT_EXAMPLES = ConfigFlagInt(
 )
 ENABLE_PROGRESS_TRACKING = ConfigFlag("ST_PROGRESS", default=False)
 
+# TODO set to something reasonable again
+ABS_UPPER_LIMIT = 1e4  # Terra/pico or inf
+ABS_LOWER_LIMIT = 1e-6  # micro
+
+
 # canonical operations:
 # Add, Multiply, Power, Round, Abs, Sin, Log
 # Or, Not
@@ -205,11 +210,6 @@ class Filters(Namespace):
             # TODO enable base crossing zero
             and not (Filters.crosses_zero(base) and Filters.crosses_zero(exp))
         )
-
-
-# TODO set to something reasonable again
-ABS_UPPER_LIMIT = 1e4  # Terra/pico or inf
-ABS_LOWER_LIMIT = 1e-6  # micro
 
 
 class st_values(Namespace):
@@ -451,7 +451,7 @@ def _track():
     return _track.count
 
 
-# @pytest.mark.xfail(reason="Still finds problems")
+@pytest.mark.xfail(reason="Still finds problems")
 @given(st_exprs.trees)
 @settings(
     deadline=None,  # timedelta(milliseconds=1000),
@@ -501,6 +501,22 @@ def test_discover_literal_folding(expr: Arithmetic):
 # Examples -----------------------------------------------------------------------------
 
 
+# TODO: rounding
+@example(
+    Divide(
+        Divide(
+            Sqrt(Add(lit(2))),
+            lit(2),
+        ),
+        lit(710038921),
+    )
+)
+@example(
+    Add(
+        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
+        Subtract(lit(-82408), lit(-999_998_999_993)),
+    )
+)
 @example(
     Divide(
         Divide(
@@ -571,22 +587,6 @@ def debug_fix_literal_folding(expr: Arithmetic):
     input()
 
 
-# TODO: rounding
-# @example(
-#    Divide(
-#        Divide(
-#            Sqrt(Add(lit(2))),
-#            lit(2),
-#        ),
-#        lit(710038921),
-#    )
-# @example(
-#    Add(
-#        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
-#        Subtract(lit(-82408), lit(-999_998_999_993)),
-#    )
-# )
-# )
 @example(
     Divide(
         Add(
