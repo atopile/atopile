@@ -489,14 +489,6 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 
 @example(
-    Add(
-        lit(1),
-        Abs(
-            Add(p(Range(-inf, inf)), p(Range(-inf, inf))),
-        ),
-    ),
-)
-@example(
     Divide(
         Divide(
             Add(Sqrt(lit(2.0)), Subtract(lit(0), lit(0))),
@@ -584,6 +576,14 @@ def debug_fix_literal_folding(expr: Arithmetic):
 #    )
 # )
 # )
+@example(
+    Add(
+        lit(1),
+        Abs(
+            Add(p(Range(-inf, inf)), p(Range(-inf, inf))),
+        ),
+    ),
+)
 @example(
     Add(
         Sqrt(lit(1)),

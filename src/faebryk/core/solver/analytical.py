@@ -937,6 +937,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
     exprs.update(mutator.mutated_since_last_run)
+    exprs = ParameterOperatable.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)
@@ -990,6 +991,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
     }
     # Include mutated since last run
     exprs.update(mutator.mutated_since_last_run)
+    exprs = ParameterOperatable.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
         assert isinstance(expr, CanonicalExpression)

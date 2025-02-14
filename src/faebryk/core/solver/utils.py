@@ -164,6 +164,9 @@ def map_extract_literals(
     out = []
     any_lit = False
     for op in expr.operands:
+        if is_literal(op):
+            out.append(op)
+            continue
         lit = try_extract_literal(op, allow_subset=allow_subset)
         if lit is None:
             out.append(op)
