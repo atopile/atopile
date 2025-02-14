@@ -241,7 +241,7 @@ def install_project_dependencies(upgrade: bool):
 
 def install_local_dependency(dependency: Dependency):
     if not dependency.source or not dependency.source.local:
-        raise errors.UserException("Local dependency must have a source with local path")
+        raise errors.UserFileNotFoundError("Local dependency must have a source with local path")
     src = dependency.source.local
     dst = dependency.path or config.project.paths.modules / dependency.name
     if not src.exists():
