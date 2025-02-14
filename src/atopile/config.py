@@ -426,7 +426,7 @@ class Dependency(BaseConfigModel):
     source: Source | None = None
 
     project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: ProjectConfig.from_path(data["source"].local if data["source"] else data["path"]), exclude=True
+        default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
     )
 
     @classmethod
