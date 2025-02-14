@@ -240,10 +240,10 @@ def subset_literal(
 
     existing = try_extract_literal(po, allow_subset=True, check_pre_transform=mutator)
     if existing is not None:
-        # if already narrower, no point
-        # if equal, use create_expression for duplicate detection
+        # no point in adding more general subset
         if existing.is_subset_of(literal):  # type: ignore #TODO
             return
+        # other cases handled by intersect subsets algo
 
     return mutator.create_expression(
         IsSubset,
