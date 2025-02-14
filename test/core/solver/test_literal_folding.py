@@ -503,15 +503,6 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 @example(
     Divide(
-        Add(
-            Subtract(lit(0), lit(1)),
-            Abs(lit(Range(-inf, inf))),
-        ),
-        lit(1),
-    ),
-)
-@example(
-    Divide(
         Divide(
             Add(Sqrt(lit(2.0)), Subtract(lit(0), lit(0))),
             lit(891895568.0),
@@ -589,8 +580,6 @@ def debug_fix_literal_folding(expr: Arithmetic):
 #        ),
 #        lit(710038921),
 #    )
-
-
 # @example(
 #    Add(
 #        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
@@ -598,6 +587,15 @@ def debug_fix_literal_folding(expr: Arithmetic):
 #    )
 # )
 # )
+@example(
+    Divide(
+        Add(
+            Subtract(lit(0), lit(1)),
+            Abs(lit(Range(-inf, inf))),
+        ),
+        lit(1),
+    ),
+)
 @example(
     Add(
         lit(1),

@@ -111,18 +111,6 @@ class Mutator:
                 iteration_repr_map.items(), key=lambda t: t[1], only_multi=True
             ).items()
         }
-        # TODO make faster, compact repr is a pretty bad one
-        # consider congruence instead, but be careful since not in same graph space
-        self._mutated_since_last_run = (
-            v
-            for k, v in iteration_repr_map.items()
-            if isinstance(v, CanonicalExpression)
-            and isinstance(k, Expression)
-            and k is not v
-            and v not in self._merged_since_last_run
-            # and not v.is_congruent_to(k, allow_uncorrelated=True)
-            and k.compact_repr() != v.compact_repr()
-        )
 
         self.transformations = Mutator._Transformations(
             mutated=repr_map or {},
@@ -138,7 +126,26 @@ class Mutator:
     @property
     @once
     def mutated_since_last_run(self) -> set[CanonicalExpression]:
-        return set(self._mutated_since_last_run)
+        # TODO make faster, compact repr is a pretty bad one
+        # consider congruence instead, but be careful since not in same graph space
+        out = {
+            v
+            for k, v in self._last_run_repr_map.items()
+            if isinstance(v, CanonicalExpression)
+            and isinstance(k, Expression)
+            and k is not v
+            and k.compact_repr() != v.compact_repr()
+            # ignore merged (since those always act mutated)
+            # but accept if all merged got mutated
+            and (
+                v not in self._merged_since_last_run
+                or all(
+                    km.compact_repr() != v.compact_repr()
+                    for km in self._merged_since_last_run[v]
+                )
+            )
+        }
+        return out
 
     @property
     def G(self) -> set[Graph]:
@@ -750,8 +757,11 @@ class Mutator:
         if new_only:
             # Taking into account if op with no literal merged into a op with literal
             for new, olds in self._merged_since_last_run.items():
+                new_lit = try_extract_literal(new)
+                if new_lit is None:
+                    continue
                 old_lits = {try_extract_literal(o) for o in olds}
-                if len(old_lits) == 1:
+                if old_lits == {new_lit}:
                     continue
                 aliases.update(new.get_operations(Is, constrained_only=True))
             aliases.update(self.mutated_since_last_run)
@@ -767,8 +777,11 @@ class Mutator:
         if new_only:
             # Taking into account if op with no literal merged into a op with literal
             for new, olds in self._merged_since_last_run.items():
+                new_lit = try_extract_literal(new, allow_subset=True)
+                if new_lit is None:
+                    continue
                 old_lits = {try_extract_literal(o, allow_subset=True) for o in olds}
-                if len(old_lits) == 1:
+                if old_lits == {new_lit}:
                     continue
                 subsets.update(new.get_operations(IsSubset, constrained_only=True))
             subsets.update(self.mutated_since_last_run)
