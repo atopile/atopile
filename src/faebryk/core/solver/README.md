@@ -327,3 +327,52 @@ flowchart LR
     n2 --> n8
 ```
 
+Graphs are purely additive thus you can't remove edges or vertices, which poses a challenge for internally modifying expressions within the solver. `A + 5 + 3 -> A + 8` is thus not trivially possible without the help of the `Mutator`. 
+The `Mutator` is a collection of functions that help make mutations to a Graph by constructing a new Graph with those mutations applied.
+
+```python
+E0 = Multiply(A, B)
+E1 = Add(E9, 5)
+E2 = Add(E1, 3)
+-> Add(Add(Multiply(A, B), 5), 3)
+
+# ... mutate and transform ...
+
+E3_mutated
+-> Add(Multiply(A_mutated, B_mutated), 8)
+E0_mutated
+-> Multiply(A_mutated, B_mutated)
+
+E0_mutated is E0
+-> False
+
+# E1_mutated and E2_mutated don't exist
+# E0, E1, E2, E3, A, B keep on existing in the old graph unchanged
+A.get_graph() is A_mutated.get_graph()
+-> False
+```
+
+
+## Canonicalization
+In the last example we were using float literals `5` and `3` which according to our Literal section above are not real literals. Towards the user/design-space we allow non-canonical literals and convert them before running later stages of the solver.
+We canonicalize 
+- all literals representing some kind of numeric (with or without unit) as `Quantity_Interval_Disjoint`
+    - no unit -> `dimensionless` unit
+    - float/int -> `Singleton` (special case of `Quantity_Interval_Disjoint`)
+    - Range/Quantity_Interval -> `Quantity_Interval_Disjoint` with single interval
+- all boolean literals as `BoolSet`
+- all enum literals as `EnumSet`
+- all non-canonical expressions as canonical expressions
+    - e.g `A - B` becomes `A + (B * -1)`
+    - e.g `A / B` becomes `A * (B ^ -1)`
+    - e.g `A ∧ B` becomes `¬(¬A ∨ ¬B)`
+```python
+CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
+CanonicalLogicExpression = Or | Not
+CanonicalSeticExpression = Intersection | Union | SymmetricDifference
+CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+```
+
+## Solving
+
+
