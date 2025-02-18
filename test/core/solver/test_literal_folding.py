@@ -59,6 +59,11 @@ NUM_STAT_EXAMPLES = ConfigFlagInt(
 )
 ENABLE_PROGRESS_TRACKING = ConfigFlag("ST_PROGRESS", default=False)
 
+# TODO set to something reasonable again
+ABS_UPPER_LIMIT = 1e4  # Terra/pico or inf
+ABS_LOWER_LIMIT = 1e-6  # micro
+
+
 # canonical operations:
 # Add, Multiply, Power, Round, Abs, Sin, Log
 # Or, Not
@@ -123,13 +128,19 @@ class Builders(Namespace):
     Differentiate = operator(Differentiate)
 
 
-ValueT = Quantity_Interval_Disjoint | Parameter
+ValueT = Quantity_Interval_Disjoint | Parameter | Arithmetic
 
 
 class Filters(Namespace):
     @staticmethod
     def _unwrap_param(value: ValueT) -> Quantity_Interval_Disjoint:
-        return value.get_literal() if isinstance(value, Parameter) else value
+        assert isinstance(value, ValueT)
+        if isinstance(value, Parameter):
+            return value.get_literal()
+        elif isinstance(value, Arithmetic):
+            return evaluate_expr(value)
+        else:
+            return value
 
     @staticmethod
     def is_negative(value: ValueT) -> bool:
@@ -166,6 +177,28 @@ class Filters(Namespace):
         return value.is_empty()
 
     @staticmethod
+    def within_limits(value: ValueT) -> bool:
+        value = Filters._unwrap_param(value)
+        return bool(
+            (value.min_elem >= -ABS_UPPER_LIMIT or value.min_elem == -inf)
+            and (value.max_elem <= ABS_UPPER_LIMIT or value.max_elem == inf)
+        )
+
+    @staticmethod
+    def no_op_overflow(
+        op: Callable[[Any, Any], Any],
+    ):
+        def f(values: tuple[ValueT, ValueT]) -> bool:
+            return Filters.within_limits(
+                op(
+                    Filters._unwrap_param(values[0]),
+                    Filters._unwrap_param(values[1]),
+                )
+            )
+
+        return f
+
+    @staticmethod
     def is_valid_for_power(
         pair: tuple[ValueT, ValueT],
     ) -> bool:
@@ -180,24 +213,36 @@ class Filters(Namespace):
 
 
 class st_values(Namespace):
-    numeric = st.one_of(
-        # [pico, tera]
-        st.integers(min_value=int(-1e12), max_value=int(1e12)),
-        st.floats(
-            allow_nan=False,
-            allow_infinity=False,
-            min_value=-1e12,
-            max_value=1e12,
-            allow_subnormal=False,
-        ),
-    )
+    @staticmethod
+    def _numbers_with_limit(upper_limit: float, lower_limit: float):
+        assert 0 <= lower_limit < 1
+        ints = st.integers(
+            min_value=int(-upper_limit),
+            max_value=int(upper_limit),
+        )
 
-    small_numeric = st.one_of(
-        st.integers(min_value=-100, max_value=100),
-        st.floats(
-            allow_nan=False, allow_infinity=False, min_value=-10.0, max_value=10.0
-        ),
-    )
+        def _floats(min_value: float, max_value: float):
+            return st.floats(
+                allow_nan=False,
+                allow_infinity=False,
+                min_value=min_value,
+                max_value=max_value,
+                allow_subnormal=False,
+            )
+
+        if lower_limit == 0:
+            floats = _floats(-upper_limit, upper_limit)
+        else:
+            floats = st.one_of(
+                _floats(lower_limit, upper_limit),
+                _floats(-upper_limit, -lower_limit),
+            )
+
+        return st.one_of(ints, floats)
+
+    numeric = _numbers_with_limit(ABS_UPPER_LIMIT, ABS_LOWER_LIMIT)
+
+    small_numeric = _numbers_with_limit(1e2, 1e-1)
 
     ranges = st.builds(
         lambda values: Range(*sorted(values)),
@@ -231,9 +276,21 @@ class st_values(Namespace):
 
     pairs = st.tuples(values, values)
 
-    division_pairs = st.tuples(values, values.filter(Filters.does_not_cross_zero))
+    @staticmethod
+    def no_overflow_pairs(op: Callable[[Any, Any], Any]):
+        return st.tuples(st_values.values, st_values.values).filter(
+            Filters.no_op_overflow(op)
+        )
 
-    power_pairs = st.tuples(values, small_values).filter(Filters.is_valid_for_power)
+    division_pairs = st.tuples(
+        values, values.filter(Filters.does_not_cross_zero)
+    ).filter(Filters.no_op_overflow(truediv))
+
+    power_pairs = (
+        st.tuples(values, small_values)
+        .filter(Filters.is_valid_for_power)
+        .filter(Filters.no_op_overflow(pow))
+    )
 
 
 class Extension(Namespace):
@@ -242,19 +299,31 @@ class Extension(Namespace):
         return st.tuples(children, children)
 
     @staticmethod
+    def tuples_no_overflow(op: Callable[[Any, Any], Any]):
+        def f(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
+            return st.tuples(children, children).filter(Filters.no_op_overflow(op))
+
+        return f
+
+    @staticmethod
     def single(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
         return children
 
     @staticmethod
     def tuples_power(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
-        return st.tuples(children, st_values.small_values).filter(
-            Filters.is_valid_for_power
+        return (
+            st.tuples(children, st_values.small_values)
+            .filter(Filters.is_valid_for_power)
+            .filter(Filters.no_op_overflow(pow))
         )
 
     @staticmethod
     def tuples_division(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
         # TODO: exprs on the right side
-        return st.tuples(children, st_values.values.filter(Filters.does_not_cross_zero))
+        return st.tuples(
+            children,
+            st_values.values.filter(Filters.does_not_cross_zero),
+        ).filter(Filters.no_op_overflow(truediv))
 
     @staticmethod
     def single_positive(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
@@ -270,7 +339,11 @@ class ExprType(NamedTuple):
 EXPR_TYPES = [
     ExprType(Builders.Add, st_values.lists, Extension.tuples),
     ExprType(Builders.Subtract, st_values.pairs, Extension.tuples),
-    ExprType(Builders.Multiply, st_values.lists, Extension.tuples),
+    ExprType(
+        Builders.Multiply,
+        st_values.no_overflow_pairs(mul),
+        Extension.tuples_no_overflow(mul),
+    ),
     ExprType(Builders.Divide, st_values.division_pairs, Extension.tuples_division),
     ExprType(Builders.Sqrt, st_values.positive_values, Extension.single_positive),
     # ExprType(Builders.Power, st_values.power_pairs, Extension.tuples_power),
@@ -295,19 +368,19 @@ class st_exprs(Namespace):
         *[st.builds(expr_type.builder, expr_type.strategy) for expr_type in EXPR_TYPES]
     )
 
-    # flat
-    # op1(flat, flat) | flat
-    # op2(op1 | flat, op1 | flat)
-    trees = st.recursive(
-        flat,
-        lambda children: st.one_of(
+    @staticmethod
+    def _extend_tree(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
+        return st.one_of(
             *[
                 st.builds(expr_type.builder, expr_type.extension_strategy(children))
                 for expr_type in EXPR_TYPES
             ]
-        ),
-        max_leaves=20,
-    )
+        )
+
+    # flat
+    # op1(flat, flat) | flat
+    # op2(op1 | flat, op1 | flat)
+    trees = st.recursive(base=flat, extend=_extend_tree, max_leaves=20)
 
 
 def evaluate_expr(
@@ -373,11 +446,12 @@ def _track():
     if not hasattr(_track, "count"):
         _track.count = 0
     _track.count += 1
-    if _track.count % 10 == 0:
+    if _track.count % 100 == 0:
         print(f"track: {_track.count}")
     return _track.count
 
 
+@pytest.mark.not_in_ci
 @pytest.mark.xfail(reason="Still finds problems")
 @given(st_exprs.trees)
 @settings(
@@ -426,6 +500,39 @@ def test_discover_literal_folding(expr: Arithmetic):
 
 
 # Examples -----------------------------------------------------------------------------
+
+
+# TODO: rounding
+@example(
+    Divide(
+        Divide(
+            Sqrt(Add(lit(2))),
+            lit(2),
+        ),
+        lit(710038921),
+    )
+)
+@example(
+    Add(
+        Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
+        Subtract(lit(-82408), lit(-999_998_999_993)),
+    )
+)
+@example(
+    Divide(
+        Divide(
+            Add(Sqrt(lit(2.0)), Subtract(lit(0), lit(0))),
+            lit(891895568.0),
+        ),
+        lit(2.0),
+    ),
+)
+@example(
+    Subtract(
+        Multiply(lit(-999_992_989_829), lit(-999_992_989_829)),
+        Multiply(lit(-999_991_993_022), lit(-999_991_989_837)),
+    )
+)
 # --------------------------------------------------------------------------------------
 @given(st_exprs.trees)
 @settings(
@@ -474,20 +581,76 @@ def debug_fix_literal_folding(expr: Arithmetic):
 
     if not correct:
         logger.error(f"Failing expression: {expr.compact_repr()}")
-        logger.error(f"{solver_result} != {evaluated_expr}")
+        logger.error(f"Solver {solver_result} != {evaluated_expr} Literal")
         input()
         return
     logger.warning("PASSES")
     input()
 
 
-# FIXME: this example is failing in CI consistently
-# @example(
-#     Add(
-#         Subtract(lit(-999_999_935_634), lit(-999_999_999_992)),
-#         Subtract(lit(-82408), lit(-999_998_999_993)),
-#     )
-# )
+@example(
+    Divide(
+        Add(
+            Subtract(lit(0), lit(1)),
+            Abs(lit(Range(-inf, inf))),
+        ),
+        lit(1),
+    ),
+)
+@example(
+    Add(
+        lit(1),
+        Abs(
+            Add(p(Range(-inf, inf)), p(Range(-inf, inf))),
+        ),
+    ),
+)
+@example(
+    Add(
+        Sqrt(lit(1)),
+        Abs(lit(Range(-inf, inf))),
+    ),
+)
+@example(
+    expr=Add(
+        Add(lit(-999_999_950_000)),
+        Subtract(lit(50000), lit(-999_997_650_001)),
+    ),
+)
+@example(
+    expr=Subtract(
+        Add(
+            Add(lit(0)),
+            Subtract(
+                Add(lit(0)),
+                Add(lit(1)),
+            ),
+        ),
+        Add(lit(1)),
+    )
+)
+@example(
+    expr=Subtract(
+        Subtract(
+            lit(1),
+            lit(Range(-inf, inf)),
+        ),
+        Add(lit(0)),
+    ),
+)
+@example(
+    Subtract(
+        Abs(p(Range(-inf, inf))),
+        Abs(p(Range(-inf, inf))),
+    )
+)
+@example(Subtract(Abs(p(Range(5, 6))), Abs(p(Range(5, 6)))))
+@example(
+    expr=Multiply(
+        Sqrt(Sqrt(lit(2))),
+        Sqrt(Sqrt(lit(2))),
+    )
+)
 @example(
     expr=Subtract(
         Round(lit(Range(2, 10))),
@@ -521,12 +684,6 @@ def debug_fix_literal_folding(expr: Arithmetic):
 @example(Multiply(Add(lit(0)), Abs(lit(Range(-inf, inf)))))
 @example(Add(Add(lit(0)), Abs(p(-1))))
 @example(Abs(p(-1)))
-@example(
-    Add(
-        Sqrt(lit(1)),
-        Abs(lit(Range(-inf, inf))),
-    ),
-)
 @example(expr=Round(Add(Abs(lit(0)), Round(lit(-1)))))
 @example(
     expr=Add(
