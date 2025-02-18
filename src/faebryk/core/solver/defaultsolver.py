@@ -63,8 +63,10 @@ class DefaultSolver(Solver):
             canonical.convert_to_canonical_literals,
             canonical.convert_to_canonical_operations,
             canonical.constrain_within_domain,
+            canonical.alias_predicates_to_true,
         ],
         iterative=[
+            analytical.check_literal_contradiction,
             analytical.remove_unconstrained,
             analytical.convert_operable_aliased_to_single_into_literal,
             analytical.resolve_alias_classes,
@@ -87,8 +89,8 @@ class DefaultSolver(Solver):
             analytical.transitive_subset,
             analytical.isolate_lone_params,
             analytical.remove_empty_graphs,
-            analytical.upper_estimation_of_expressions_with_subsets,
             analytical.uncorrelated_alias_fold,
+            analytical.upper_estimation_of_expressions_with_subsets,
         ],
     )
 
@@ -182,7 +184,9 @@ class DefaultSolver(Solver):
                 iteration_repr_maps.append(algo_result.repr_map)
                 # append to per-algo iteration repr_map
                 assert algo_result.repr_map
-                for reprs in data.repr_since_last_iteration.values():
+                for _algo, reprs in data.repr_since_last_iteration.items():
+                    if _algo is algo:
+                        continue
                     for old_s, old_d in list(reprs.items()):
                         new_d = algo_result.repr_map.get(old_d)
                         if new_d is None:

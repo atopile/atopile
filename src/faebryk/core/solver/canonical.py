@@ -66,7 +66,6 @@ NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
-    Alias predicates to True since we need to assume they are true.
     """
 
     for param in mutator.nodes_of_type(Parameter):
@@ -80,6 +79,13 @@ def constrain_within_domain(mutator: Mutator):
                 mutator,
                 from_ops=[param],
             )
+
+
+@algorithm("Alias predicates to true", single=True, destructive=False)
+def alias_predicates_to_true(mutator: Mutator):
+    """
+    Alias predicates to True since we need to assume they are true.
+    """
 
     for predicate in mutator.nodes_of_type(ConstrainableExpression):
         if predicate.constrained:

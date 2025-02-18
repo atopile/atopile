@@ -6,6 +6,7 @@ from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from itertools import chain
 from types import NotImplementedType
 from typing import (
     TYPE_CHECKING,
@@ -468,6 +469,10 @@ class ParameterOperatable(Node):
 
         variable_mapping: VariableMapping = field(default_factory=VariableMapping)
 
+        def __hash__(self) -> int:
+            return hash(id(self))
+
+    @once
     def compact_repr(self, context: ReprContext | None = None) -> str:
         raise NotImplementedError()
 
@@ -491,6 +496,7 @@ class ParameterOperatable(Node):
             return po.depth()
         return 0
 
+    @once
     def _get_lit_suffix(self) -> str:
         out = ""
         try:
@@ -522,6 +528,7 @@ class Expression(ParameterOperatable):
 
     def __init__(self, domain, *operands: ParameterOperatable.All):
         super().__init__()
+        assert not any(o is None for o in operands)
         self._domain = domain
         self.operands = tuple(operands)
         self.operatable_operands: set[ParameterOperatable] = {
@@ -537,18 +544,19 @@ class Expression(ParameterOperatable):
                 continue
             self.operates_on.connect(op.operated_on)
 
+    @staticmethod
+    def is_uncorrelatable_literal(lit) -> bool:
+        return not isinstance(lit, ParameterOperatable) and (
+            not isinstance(lit, P_Set)
+            or not (lit.is_single_element() or lit.is_empty())
+        )
+
     @once
     def get_uncorrelatable_literals(self) -> list[ParameterOperatable.Literal]:
+        # TODO we should just use the canonical lits, for now just no support
+        # for non-canonical lits
         return [
-            lit
-            for lit in self.operands
-            # TODO we should just use the canonical lits, for now just no support
-            # for non-canonical lits
-            if not isinstance(lit, ParameterOperatable)
-            and (
-                not isinstance(lit, P_Set)
-                or not (lit.is_single_element() or lit.is_empty())
-            )
+            lit for lit in self.operands if Expression.is_uncorrelatable_literal(lit)
         ]
 
     @once
@@ -556,18 +564,32 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression", recursive: bool = False) -> bool:
+    def is_congruent_to(
+        self,
+        other: "Expression",
+        recursive: bool = False,
+        allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
+    ) -> bool:
         if self == other:
             return True
         if type(self) is not type(other):
             return False
         if len(self.operands) != len(other.operands):
             return False
-
-        # TODO: think about this, imo it's not needed
-        # if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
-        #    return False
-
+        # if lit is non-single/empty set we can't correlate thus can't be congruent
+        #  in general
+        if not allow_uncorrelated and (
+            self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals()
+        ):
+            return False
+        if (
+            check_constrained
+            and isinstance(self, ConstrainableExpression)
+            and self.constrained
+            != cast_assert(ConstrainableExpression, other).constrained
+        ):
+            return False
         if self.operands == other.operands:
             return True
         if isinstance(self, Commutative):
@@ -579,20 +601,58 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
-        if recursive and Expression.are_pos_congruent(self.operands, other.operands):
+        if recursive and Expression.are_pos_congruent(
+            self.operands,
+            other.operands,
+            commutative=isinstance(self, Commutative),
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
+        ):
             return True
 
         return False
+
+    def is_congruent_to_factory(
+        self,
+        other_factory: type["Expression"],
+        other_operands: Sequence[ParameterOperatable.All],
+        allow_uncorrelated: bool = False,
+        # TODO
+        check_constrained: bool = True,
+    ) -> bool:
+        if type(self) is not other_factory:
+            return False
+        return Expression.are_pos_congruent(
+            self.operands,
+            other_operands,
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
+        )
 
     @staticmethod
     def are_pos_congruent(
         left: Sequence[ParameterOperatable.All],
         right: Sequence[ParameterOperatable.All],
+        commutative: bool = False,
+        allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
     ) -> bool:
         if len(left) != len(right):
             return False
+
+        if not allow_uncorrelated and any(
+            Expression.is_uncorrelatable_literal(lit) for lit in chain(left, right)
+        ):
+            return False
+
+        # FIXME handle commutative
         return all(
-            lhs.is_congruent_to(rhs, recursive=True)
+            lhs.is_congruent_to(
+                rhs,
+                recursive=True,
+                allow_uncorrelated=allow_uncorrelated,
+                check_constrained=check_constrained,
+            )
             if isinstance(lhs, Expression) and isinstance(rhs, Expression)
             else lhs == rhs
             for lhs, rhs in zip(left, right)
@@ -710,7 +770,8 @@ class Expression(ParameterOperatable):
             if self._solver_terminated:
                 symbol_suffix += "!"
         symbol += symbol_suffix
-        symbol += self._get_lit_suffix()
+        lit_suffix = self._get_lit_suffix()
+        symbol += lit_suffix
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
@@ -738,6 +799,11 @@ class Expression(ParameterOperatable):
                 out = f"({', '.join(formatted_operands)}){symbol}"
         elif len(formatted_operands) == 1:
             out = f"{type(self).__name__}{symbol_suffix}({formatted_operands[0]})"
+        elif lit_suffix and len(formatted_operands) > 2:
+            out = (
+                f"{type(self).__name__}{symbol_suffix}{lit_suffix}"
+                f"({', '.join(formatted_operands)})"
+            )
         elif style.placement == Expression.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"
@@ -815,11 +881,13 @@ class Arithmetic(Expression):
             Quantity_Interval,
             Quantity_Interval_Disjoint,
         )
-        if any(not isinstance(op, types) for op in operands):
+        invalid_operands = [op for op in operands if not isinstance(op, types)]
+        if invalid_operands:
             raise ValueError(
                 "operands must be int, float, Quantity, Unit, Parameter, Arithmetic"
                 ", Quantity_Interval, or Quantity_Interval_Disjoint"
-                f", got {[op for op in operands if not isinstance(op, types)]}"
+                f", got {invalid_operands} with types"
+                f" ([{', '.join(type(op).__name__ for op in invalid_operands)}])"
             )
         if any(
             not isinstance(param.domain, (Numbers, ESeries))
@@ -1635,6 +1703,7 @@ class Parameter(ParameterOperatable):
     def has_implicit_constraints_recursive(self) -> bool:
         return False
 
+    @once
     def compact_repr(
         self, context: ParameterOperatable.ReprContext | None = None
     ) -> str:

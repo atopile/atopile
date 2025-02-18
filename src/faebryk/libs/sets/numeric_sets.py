@@ -14,22 +14,49 @@ logger = logging.getLogger(__name__)
 
 NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
 
+REL_DIGITS = 7  # 99.99999% precision
+ABS_DIGITS = 15  # femto
 # math.isclose default is 1e-9
 # numpy default is 1e-5
 # empirically we need <= 1e-8
-EPSILON_REL = 1e-6
+EPSILON_REL = 10 ** -(REL_DIGITS - 1)
+EPSILON_ABS = 10**-ABS_DIGITS
 
 
-def float_round[T](value: T) -> T:
+def float_round[T](value: T, digits: int = 0) -> T:
     if not isinstance(value, (float, int)):
-        return round(value)  # type: ignore
+        return round(value, digits)  # type: ignore
     if value in [math.inf, -math.inf]:
         return value  # type: ignore
-    out = round(value)
+    out = round(value, digits)
     if isinstance(value, float):
         return float(out)  # type: ignore
     assert isinstance(value, int)
-    return out  # type: ignore
+    return int(out)  # type: ignore
+
+
+def rel_round[T](value: T, digits: int = 0) -> T:
+    """ """
+    if not isinstance(value, (float, int)):
+        raise ValueError("value must be a float or int")
+    if digits < 0:
+        raise ValueError("digits must be non-negative")
+
+    if value in [math.inf, -math.inf]:
+        return value  # type: ignore
+    if value == 0:
+        return value  # type: ignore
+
+    a_val = abs(value)
+    if a_val >= 1:
+        magnitude = math.floor(math.log10(a_val)) + 1
+        digits -= magnitude
+
+    out = round(value, digits)
+    if isinstance(value, float):
+        return float(out)  # type: ignore
+    assert isinstance(value, int)
+    return int(out)  # type: ignore
 
 
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -47,8 +74,11 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise ValueError("min must be less than or equal to max")
         if min == float("inf") or max == float("-inf"):
             raise ValueError("min or max has bad infinite value")
-        self._min = min
-        self._max = max
+        # FIXME
+        # self._min = rel_round(float_round(min, ABS_DIGITS), REL_DIGITS)
+        # self._max = rel_round(float_round(max, ABS_DIGITS), REL_DIGITS)
+        self._min = float_round(min, ABS_DIGITS)
+        self._max = float_round(max, ABS_DIGITS)
 
     def is_empty(self) -> bool:
         return False
@@ -59,6 +89,12 @@ class Numeric_Interval(Numeric_Set[NumericT]):
     @override
     def is_finite(self) -> bool:
         return self._min != float("-inf") and self._max != float("inf")
+
+    @property
+    def is_integer(self) -> bool:
+        return (isinstance(self._min, int) and isinstance(self._max, int)) or (
+            self._min == self._max and self._min.is_integer()
+        )
 
     @property
     def min_elem(self) -> NumericT:
@@ -116,15 +152,29 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         Arithmetically multiplies two intervals.
         """
 
-        # if 0.0 * inf -> inf and 0.0
-        # if 0.0 * -inf -> -inf and 0.0
+        # TODO decide on definition
+        # def guarded_mul(a: NumericT, b: NumericT) -> list[NumericT]:
+        #     """
+        #     0.0 * inf -> [0.0, inf]
+        #     0.0 * -inf -> [-inf, 0.0]
+        #     """
+        #     if 0.0 in [a, b] and math.inf in [a, b]:
+        #         assert isinstance(a, float) or isinstance(b, float)
+        #         return [0.0, math.inf]
+        #     if 0.0 in [a, b] and -math.inf in [a, b]:
+        #         assert isinstance(a, float) or isinstance(b, float)
+        #         return [0.0, -math.inf]
+        #     prod = a * b
+        #     assert not math.isnan(prod)
+        #     return [prod]
+
         def guarded_mul(a: NumericT, b: NumericT) -> list[NumericT]:
-            if 0.0 in [a, b] and math.inf in [a, b]:
-                assert isinstance(a, float) or isinstance(b, float)
-                return [0.0, math.inf]
-            if 0.0 in [a, b] and -math.inf in [a, b]:
-                assert isinstance(a, float) or isinstance(b, float)
-                return [0.0, -math.inf]
+            """
+            0 * inf -> 0
+            0 * -inf -> 0
+            """
+            if 0.0 in [a, b]:
+                return [0.0]  # type: ignore
             prod = a * b
             assert not math.isnan(prod)
             return [prod]
@@ -151,20 +201,45 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         if other.max_elem < 0:
             return self.op_pow_interval(other.op_negate()).op_invert()
         if other.min_elem < 0:
-            raise NotImplementedError("passing zero in exp not implemented yet")
-        if self._min < 0 and self._max > 0:
-            raise NotImplementedError("crossing zero in base not implemented yet")
+            raise NotImplementedError("crossing zero in exp not implemented yet")
         if self._max < 0 and not other.min_elem.is_integer():
             raise NotImplementedError(
                 "cannot raise negative base to fractional exponent"
             )
+        if not other.is_integer and self.min_elem < 0:
+            raise NotImplementedError(
+                "cannot raise negative base to fractional exponent (complex result)"
+            )
+
+        def _pow(x, y):
+            try:
+                return x**y
+            except OverflowError:
+                return math.inf if x > 0 else -math.inf
+
+        a, b = self._min, self._max
+        c, d = other._min, other._max
+
+        # see first two guards above
+        assert c >= 0
 
         values = [
-            self._min**other._min,
-            self._min**other._max,
-            self._max**other._min,
-            self._max**other._max,
+            _pow(a, c),
+            _pow(a, d),
+            _pow(b, c),
+            _pow(b, d),
         ]
+
+        if a < 0 < b:
+            # might be 0 exp, so just in case applying exponent
+            values.extend((0.0**c, 0.0**d))
+
+            # d odd
+            if d % 2 == 1:
+                # c < k < d
+                if (k := d - 1) > c:
+                    values.append(_pow(a, k))
+
         return Numeric_Interval_Disjoint(Numeric_Interval(min(values), max(values)))
 
     def op_invert(self) -> "Numeric_Interval_Disjoint[float]":
@@ -217,8 +292,11 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         """
         min_ = max(self._min, other._min)
         max_ = min(self._max, other._max)
-        if min_ <= max_ or math.isclose(min_, max_, rel_tol=EPSILON_REL):
+        if min_ <= max_:
             return Numeric_Interval_Disjoint(Numeric_Interval(min_, max_))
+        if math.isclose(min_, max_, rel_tol=EPSILON_REL):
+            # TODO maybe avg or re-sort min,max?
+            return Numeric_Set_Discrete(min_)
         return Numeric_Set_Empty()
 
     def op_difference_interval(
@@ -247,8 +325,10 @@ class Numeric_Interval(Numeric_Set[NumericT]):
         # left overlap
         return Numeric_Interval_Disjoint(Numeric_Interval(other._max, self._max))
 
-    def op_round(self) -> "Numeric_Interval[NumericT]":
-        return Numeric_Interval(float_round(self._min), float_round(self._max))  # type: ignore #TODO
+    def op_round(self, ndigits: int = 0) -> "Numeric_Interval[NumericT]":
+        return Numeric_Interval(
+            float_round(self._min, ndigits), float_round(self._max, ndigits)
+        )  # type: ignore #TODO
 
     def op_abs(self) -> "Numeric_Interval[NumericT]":
         if self._min < 0 < self._max:
@@ -614,8 +694,8 @@ class Numeric_Interval_Disjoint(Numeric_Set[NumericT]):
             return BoolSet(False)
         return BoolSet(True, False)
 
-    def op_round(self) -> "Numeric_Interval_Disjoint[NumericT]":
-        return Numeric_Interval_Disjoint(*(r.op_round() for r in self.intervals))
+    def op_round(self, ndigits: int = 0) -> "Numeric_Interval_Disjoint[NumericT]":
+        return Numeric_Interval_Disjoint(*(r.op_round(ndigits) for r in self.intervals))
 
     def op_abs(self) -> "Numeric_Interval_Disjoint[NumericT]":
         return Numeric_Interval_Disjoint(*(r.op_abs() for r in self.intervals))

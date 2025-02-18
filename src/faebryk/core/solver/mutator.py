@@ -5,10 +5,11 @@
 import io
 import logging
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from itertools import chain
 from types import UnionType
-from typing import Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Iterable, Sequence, cast
 
 from rich.console import Console
 from rich.table import Table
@@ -34,13 +35,16 @@ from faebryk.core.solver.utils import (
     SolverLiteral,
     alias_is_literal,
     find_congruent_expression,
+    get_aliases,
     get_graphs,
+    get_lit_mapping_from_lit_expr,
+    get_supersets,
     is_alias_is_literal,
-    make_if_doesnt_exist,
-    make_lit,
+    is_subset_literal,
     try_extract_literal,
 )
 from faebryk.libs.exceptions import downgrade
+from faebryk.libs.logging import TERMINAL_WIDTH
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -80,6 +84,7 @@ class Mutator:
         created: dict[ParameterOperatable, list[ParameterOperatable]]
         # TODO make api for contraining
         terminated: set[ConstrainableExpression]
+        soft_replaced: dict[ParameterOperatable, ParameterOperatable]
 
     def __init__(
         self,
@@ -113,9 +118,34 @@ class Mutator:
             copied=set(),
             created=defaultdict(list),
             terminated=set(),
+            soft_replaced=dict(),
         )
 
         self.algo = algo
+
+    @property
+    @once
+    def mutated_since_last_run(self) -> set[CanonicalExpression]:
+        # TODO make faster, compact repr is a pretty bad one
+        # consider congruence instead, but be careful since not in same graph space
+        out = {
+            v
+            for k, v in self._last_run_repr_map.items()
+            if isinstance(v, CanonicalExpression)
+            and isinstance(k, Expression)
+            and k is not v
+            and k.compact_repr() != v.compact_repr()
+            # ignore merged (since those always act mutated)
+            # but accept if all merged got mutated
+            and (
+                v not in self._merged_since_last_run
+                or all(
+                    km.compact_repr() != v.compact_repr()
+                    for km in self._merged_since_last_run[v]
+                )
+            )
+        }
+        return out
 
     @property
     def G(self) -> set[Graph]:
@@ -199,6 +229,36 @@ class Mutator:
 
         return self._mutate(param, new_param)
 
+    def _create_expression[T: Expression](
+        self,
+        expr_factory: type[T],
+        *operands: SolverAllExtended,
+        non_operands: Any = None,
+        constrain: bool = False,
+    ) -> T:
+        new_operands = [
+            self.get_copy(
+                op,
+                accept_soft=not (expr_factory in [Is, IsSubset] and constrain),
+            )
+            for op in operands
+        ]
+        new_expr = expr_factory(*new_operands)
+        new_expr.non_operands = non_operands
+
+        if constrain and isinstance(new_expr, ConstrainableExpression):
+            new_expr.constrained = True
+            # TODO this is better, but ends up in inf loop
+            # self.constrain(new_expr)
+
+        for op in new_operands:
+            if isinstance(op, ParameterOperatable):
+                assert (
+                    op.get_graph() == new_expr.get_graph()
+                ), f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+
+        return new_expr
+
     def mutate_expression(
         self,
         expr: Expression,
@@ -226,36 +286,82 @@ class Mutator:
 
         if soft_mutate:
             assert issubclass(expression_factory, CanonicalExpression)
-            out = self.create_expression(expression_factory, *operands, from_ops=[expr])
-            self.soft_mutate(soft_mutate, expr, out)
-            return out
+            return self.soft_mutate_expr(
+                expression_factory, expr, operands, soft_mutate
+            )
 
         copy_only = expression_factory is type(expr) and operands == expr.operands
         if not copy_only and not ignore_existing:
             assert issubclass(expression_factory, CanonicalExpression)
             exists = find_congruent_expression(
-                expression_factory, *operands, mutator=self
+                expression_factory, *operands, mutator=self, allow_uncorrelated=False
             )
             if exists is not None:
                 return self._mutate(expr, self.get_copy(exists))
 
-        new_operands = [self.get_copy(op) for op in operands]
-        new_expr = expression_factory(*new_operands)
-        new_expr.non_operands = expr.non_operands
-
-        for op in new_operands:
-            if isinstance(op, ParameterOperatable):
-                assert (
-                    op.get_graph() == new_expr.get_graph()
-                ), f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+        constrain = isinstance(expr, ConstrainableExpression) and expr.constrained
+        new_expr = self._create_expression(
+            expression_factory,
+            *operands,
+            non_operands=expr.non_operands,
+            constrain=constrain,
+        )
 
         if isinstance(expr, ConstrainableExpression):
             new_expr = cast_assert(ConstrainableExpression, new_expr)
-            new_expr.constrained = expr.constrained
             if self.is_predicate_terminated(expr):
                 new_expr._solver_terminated = True
 
         return self._mutate(expr, new_expr)  # type: ignore #TODO
+
+    def soft_replace[T: ParameterOperatable](
+        self,
+        current: T,
+        new: ParameterOperatable,
+    ) -> T:
+        if self.has_been_mutated(current):
+            copy = self.get_mutated(current)
+            exps = copy.get_operations()  # noqa: F841
+            # FIXME: reenable, but alias classes need to take this into account
+            # assert all(isinstance(o, (Is, IsSubset)) and o.constrained for o in exps)
+
+        self.transformations.soft_replaced[current] = new
+        return self.get_copy(current, accept_soft=False)  # type: ignore
+
+    def soft_mutate_expr(
+        self,
+        expression_factory: type[CanonicalExpression],
+        expr: Expression,
+        operands: Iterable[SolverAllExtended],
+        soft: type[Is] | type[IsSubset],
+    ) -> CanonicalExpression:
+        operands = list(operands)
+        # Don't create A is A, lit is lit
+        if expr.is_congruent_to_factory(
+            expression_factory, operands, allow_uncorrelated=True
+        ):
+            return expr  # type: ignore
+
+        # Avoid alias X to Op1(lit) if X is!! Op2(lit)
+        congruent = {
+            alias
+            for alias in (get_aliases(expr) if soft is Is else get_supersets(expr))
+            if isinstance(alias, expression_factory)
+            and alias.is_congruent_to_factory(
+                expression_factory, operands, allow_uncorrelated=True
+            )
+        }
+        if congruent:
+            return next(iter(congruent))
+
+        out = self.create_expression(
+            expression_factory,
+            *operands,
+            from_ops=[expr],
+            allow_uncorrelated=soft is IsSubset,
+        )
+        self.soft_mutate(soft, expr, out)
+        return out
 
     # TODO make more use of soft_mutate for alias & ss with non-lit
     def soft_mutate(
@@ -267,7 +373,15 @@ class Mutator:
         # filter A is A, A ss A
         if new is old:
             return
-        self.create_expression(soft, old, new, constrain=True, from_ops=[old])
+        self.create_expression(
+            soft,
+            old,
+            new,
+            constrain=True,
+            from_ops=[old],
+            # FIXME
+            allow_uncorrelated=True,
+        )
 
     def mutate_unpack_expression(
         self, expr: Expression, operands: list[ParameterOperatable] | None = None
@@ -322,12 +436,26 @@ class Mutator:
             ignore_existing=ignore_existing,
         )
 
-    def get_copy(self, obj: ParameterOperatable.All) -> ParameterOperatable.All:
+    def get_copy(
+        self, obj: ParameterOperatable.All, accept_soft: bool = True
+    ) -> ParameterOperatable.All:
         if not isinstance(obj, ParameterOperatable):
             return obj
 
+        if accept_soft and obj in self.transformations.soft_replaced:
+            return self.transformations.soft_replaced[obj]
+
         if self.has_been_mutated(obj):
             return self.get_mutated(obj)
+
+        # TODO: not sure if ok
+        # if obj is new, no need to copy
+        # TODO add guard to _mutate to not let new stuff be mutated
+        if (
+            obj in self.transformations.created
+            or obj in self.transformations.mutated.values()
+        ):
+            return obj
 
         # purely for debug
         self.transformations.copied.add(obj)
@@ -346,18 +474,32 @@ class Mutator:
         check_exists: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
         constrain: bool = False,
+        allow_uncorrelated: bool = False,
     ) -> T:
         assert issubclass(expr_factory, CanonicalExpression)
 
-        existed = False
+        expr = None
         if check_exists:
-            expr, existed = make_if_doesnt_exist(expr_factory, *operands, mutator=self)
-        else:
-            expr = expr_factory(*operands)  # type: ignore
-        if not existed:
+            # TODO look in old & new graph
+            expr = find_congruent_expression(
+                expr_factory,
+                *operands,
+                mutator=self,
+                allow_uncorrelated=allow_uncorrelated,
+            )
+
+        if expr is None:
+            expr = self._create_expression(
+                expr_factory,
+                *operands,
+                constrain=constrain,
+            )
             self.transformations.created[expr] = list(from_ops or [])
+
+        # TODO double constrain ugly
         if constrain and isinstance(expr, ConstrainableExpression):
             self.constrain(expr)
+
         return expr
 
     def remove(self, *po: ParameterOperatable):
@@ -423,7 +565,9 @@ class Mutator:
     @property
     def dirty(self) -> bool:
         non_no_op_mutations = any(
-            k is not v for k, v in self.transformations.mutated.items()
+            k is not v
+            for k, v in self.transformations.mutated.items()
+            if k not in self.transformations.copied
         )
 
         return bool(
@@ -435,6 +579,12 @@ class Mutator:
 
     @property
     def _touched_graphs(self) -> set[Graph]:
+        """
+        Return graphs that require a copy in some form
+        - if a mutation happened we need to copy the whole graph to replace
+         the old node with the new one
+        - if a node was removed, we need to copy the graph to remove it
+        """
         return {
             n.get_graph()
             for n in self.transformations.removed | self.transformations.mutated.keys()
@@ -491,16 +641,16 @@ class Mutator:
         )
 
         if result.dirty:
-            touched = self._touched_graphs
+            touched_pre_copy = self._touched_graphs
             self.check_no_illegal_mutations()
             self._copy_unmutated()
 
             result.repr_map = self.transformations.mutated
-            result.graphs = get_graphs(result.repr_map.values())
+            result.graphs = self.get_graphs()
 
             # Check if original graphs ended up in result
             # allowed if no copy was needed for graph
-            assert not (touched & set(result.graphs))
+            assert not (touched_pre_copy & set(result.graphs))
 
         return result
 
@@ -520,6 +670,14 @@ class Mutator:
             return
         pred._solver_terminated = False
 
+    def get_graphs(self) -> list[Graph]:
+        return get_graphs(
+            chain(
+                self.transformations.mutated.values(),
+                self.transformations.created,
+            )
+        )
+
     def get_output_operables(self) -> set[ParameterOperatable]:
         # It's enough to check for mutation graphs and not created ones
         # because the created ones always connect to graphs of the mutated ones
@@ -529,7 +687,7 @@ class Mutator:
 
         return {
             op
-            for g in get_graphs(self.transformations.mutated.values())
+            for g in self.get_graphs()
             for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
         }
 
@@ -592,6 +750,7 @@ class Mutator:
         literal
         """
 
+        aliases: set[CanonicalExpression]
         aliases = set(
             self.nodes_of_type(Is, new_only=new_only, include_terminated=True)
         )
@@ -599,14 +758,19 @@ class Mutator:
         if new_only:
             # Taking into account if op with no literal merged into a op with literal
             for new, olds in self._merged_since_last_run.items():
+                new_lit = try_extract_literal(new)
+                if new_lit is None:
+                    continue
                 old_lits = {try_extract_literal(o) for o in olds}
-                if len(old_lits) == 1:
+                if old_lits == {new_lit}:
                     continue
                 aliases.update(new.get_operations(Is, constrained_only=True))
+            aliases.update(self.mutated_since_last_run)
 
         return (expr for expr in aliases if is_alias_is_literal(expr))
 
-    def get_literal_subsets(self, new_only: bool = True):
+    def _get_literal_subsets(self, new_only: bool = True):
+        subsets: set[CanonicalExpression]
         subsets = set(
             self.nodes_of_type(IsSubset, new_only=new_only, include_terminated=True)
         )
@@ -614,35 +778,22 @@ class Mutator:
         if new_only:
             # Taking into account if op with no literal merged into a op with literal
             for new, olds in self._merged_since_last_run.items():
+                new_lit = try_extract_literal(new, allow_subset=True)
+                if new_lit is None:
+                    continue
                 old_lits = {try_extract_literal(o, allow_subset=True) for o in olds}
-                if len(old_lits) == 1:
+                if old_lits == {new_lit}:
                     continue
                 subsets.update(new.get_operations(IsSubset, constrained_only=True))
+            subsets.update(self.mutated_since_last_run)
 
-        new_literal_ss = (
-            expr
-            for expr in subsets
-            if bool(
-                expr.constrained
-                # match A ⊆!!✓ ([5, 20]) but not ([5, 20]) ⊆!!✓ A
-                and isinstance(expr.operands[0], ParameterOperatable)
-                and ParameterOperatable.is_literal(expr.operands[1])
-            )
-        )
+        return (expr for expr in subsets if is_subset_literal(expr))
 
-        return {
-            p: not_none(try_extract_literal(p, allow_subset=True))
-            for alias in new_literal_ss
-            for p in alias.operatable_operands
-        }
-
-    def get_literal_aliased(self, new_only: bool = True):
-        ps = {
-            p: not_none(try_extract_literal(p))
-            for alias in self.get_literal_aliases(new_only=new_only)
-            for p in alias.operatable_operands
-        }
-        return ps
+    def get_literal_mappings(self, new_only: bool = True, allow_subset: bool = False):
+        ops = self.get_literal_aliases(new_only=new_only)
+        if allow_subset:
+            ops = chain(ops, self._get_literal_subsets(new_only=new_only))
+        return dict(get_lit_mapping_from_lit_expr(op) for op in ops)
 
     def run(self):
         self.algo(self)
@@ -678,10 +829,6 @@ class Mutator:
         context_old = self.print_context
         context_new = self.get_new_print_context()
 
-        table = Table(title="Mutations", show_lines=True)
-        table.add_column("Before/Created By")
-        table.add_column("After")
-
         graphs = get_graphs(self.transformations.mutated.values())
 
         created_ops = self.transformations.created
@@ -690,21 +837,19 @@ class Mutator:
 
         for op, from_ops in created_ops.items():
             key = "new"
-            key_from_ops = ", ".join(o.compact_repr(context_old) for o in from_ops)
+            key_from_ops = " \n  ".join(o.compact_repr(context_old) for o in from_ops)
+            key_from_ops = f"  {key_from_ops}"
             value = op.compact_repr(context_new)
-            if is_alias_is_literal(op):
+            if is_alias_is_literal(op) or is_subset_literal(op):
                 expr = next(iter(op.operatable_operands))
                 lit = next(iter(op.get_literal_operands().values()))
-                if isinstance(expr, ConstrainableExpression):
-                    key = (
-                        "proven"
-                        if try_extract_literal(expr) == make_lit(True)
-                        else "disproven"
-                    )
-                else:
-                    key = f"new_alias: {lit}"
+                if not SHOW_SS_IS and expr in created_ops:
+                    continue
+                alias_type = "alias" if isinstance(op, Is) else "subset"
+                key = f"new_{alias_type}\n{lit}"
+                value = expr.compact_repr(context_new)
             if key_from_ops:
-                key = f"{key} from ({key_from_ops})"
+                key = f"{key} from\n{key_from_ops}"
             rows.append((key, value))
 
         terminated = self.transformations.terminated.difference(created_ops)
@@ -730,6 +875,16 @@ class Mutator:
                 new += "\n\n" + repr(d)
             if old == new:
                 continue
+            if (
+                isinstance(s, ConstrainableExpression)
+                and new.replace("✓", "") == old.replace("✓", "")
+                and try_extract_literal(d) != try_extract_literal(s)
+                and new.count("✓") == old.count("✓") + 1
+            ):
+                # done by proven/disproven
+                # TODO disproven
+                continue
+
             printed.add(s)
             rows.append((old, new))
 
@@ -757,10 +912,26 @@ class Mutator:
             rows.append((old, "removed"))
 
         if rows:
-            rows.sort(key=lambda r: tuple(r))
-            for row in rows:
-                table.add_row(*row)
-            console = Console(record=True, width=80, file=io.StringIO())
+            rows_unique = Counter(rows)
+            rows_sorted = sorted(rows_unique.items(), key=lambda t: t[0])
+            table = Table(title="Mutations", show_lines=True)
+            track_count = any(c > 1 for c in rows_unique.values())
+            if track_count:
+                table.add_column("x")
+            table.add_column("Before/Created By")
+            table.add_column("After")
+            for row, count in rows_sorted:
+                count_str = "" if count == 1 else f"{count}x"
+                if track_count:
+                    table.add_row(count_str, *row)
+                else:
+                    table.add_row(*row)
+
+            console = Console(
+                record=True,
+                width=int(TERMINAL_WIDTH) - 40,
+                file=io.StringIO(),
+            )
             console.print(table)
             log(console.export_text(styles=True))
 
@@ -789,17 +960,7 @@ class Mutator:
                 nodes = [
                     n
                     for n in pre_nodes
-                    if not (
-                        isinstance(n, (Is, IsSubset))
-                        and n.constrained
-                        and n._solver_terminated
-                        and (
-                            # A is/ss Lit
-                            n.get_literal_operands()
-                            # A is/ss A
-                            or n.operands[0] is n.operands[1]
-                        )
-                    )
+                    if not (is_alias_is_literal(n) or is_subset_literal(n))
                 ]
             out = ""
             node_by_depth = groupby(nodes, key=ParameterOperatable.get_depth)
@@ -880,6 +1041,7 @@ class Mutator:
         mutated_transformations = [
             (k.compact_repr(old_context), v.compact_repr(new_context))
             for k, v in self.transformations.mutated.items()
+            if k not in self.transformations.copied
         ]
         mutated = indented_container(
             [f"{k} -> {v}" for k, v in mutated_transformations if k != v]
@@ -897,6 +1059,6 @@ class Mutator:
         copied = len(self.transformations.copied)
         terminated = len(self.transformations.terminated)
         return (
-            f"Mutator(mutated={mutated}, created={created},"
+            f"Mutator('{self.algo.name}', mutated={mutated}, created={created},"
             f" removed={removed}, copied={copied}, terminated={terminated})"
         )

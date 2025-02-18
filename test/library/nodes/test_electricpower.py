@@ -68,7 +68,6 @@ def test_voltage_propagation():
     )
 
 
-@pytest.mark.xfail(reason="Solver not smart enough")
 def test_current_consumption_sum_zero():
     import faebryk.library._F as F
     from faebryk.libs.units import P
@@ -98,7 +97,6 @@ def test_current_consumption_sum_zero():
     assert out.is_subset_of(L.Single(0 * P.mA))
 
 
-@pytest.mark.xfail(reason="Solver not smart enough")
 def test_current_consumption_sum_negative():
     import faebryk.library._F as F
     from faebryk.libs.units import P

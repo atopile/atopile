@@ -788,18 +788,39 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
     # might not be desirable if different instances with same hash
     # return same values here
     # check if f is a method with only self
-    if list(inspect.signature(f).parameters) == ["self"]:
+    params = inspect.signature(f).parameters
+    # optimization: if takes self, cache in instance (saves hash of instance)
+    if "self" in params:
         name = f.__name__
         attr_name = f"_{name}_once"
+        param_list = list(params)
 
-        def wrapper_single(self) -> Any:
+        # optimization: if takes only self, no need for dict
+        if len(param_list) == 1:
+
+            def wrapper_single(self) -> Any:
+                if not hasattr(self, attr_name):
+                    setattr(self, attr_name, f(self))
+                return getattr(self, attr_name)
+
+            return wrapper_single
+
+        # optimization: if takes self + args, use self as cache
+        def wrapper_self(*args: P.args, **kwargs: P.kwargs) -> Any:
+            self = args[0]
+            lookup = (args[1:], tuple(kwargs.items()))
             if not hasattr(self, attr_name):
-                setattr(self, attr_name, f(self))
-            return getattr(self, attr_name)
+                setattr(self, attr_name, {})
 
-        return wrapper_single
+            cache = getattr(self, attr_name)
+            if lookup in cache:
+                return cache[lookup]
 
-    # TODO optimization: if takes self + args, use self as cache
+            result = f(*args, **kwargs)
+            cache[lookup] = result
+            return result
+
+        return wrapper_self
 
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         lookup = (args, tuple(kwargs.items()))
@@ -933,6 +954,17 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         return int(float(raw_val))
 
     def __int__(self) -> int:
+        return self.get()
+
+
+class ConfigFlagFloat(_ConfigFlagBase[float]):
+    def __init__(self, name: str, default: float = 0.0, descr: str = "") -> None:
+        super().__init__(name, default, descr)
+
+    def _convert(self, raw_val: str) -> float:
+        return float(raw_val)
+
+    def __float__(self) -> float:
         return self.get()
 
 
@@ -1729,11 +1761,11 @@ AUTO_RECOMPILE = ConfigFlag(
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
-    return (
-        json.loads(distro.read_text("direct_url.json") or "")
-        .get("dir_info", {})
-        .get("editable", False)
-    )
+
+    if dist_info := distro.read_text("direct_url.json"):
+        return json.loads(dist_info).get("dir_info", {}).get("editable", False)
+
+    return False
 
 
 class SerializableEnum[E: Enum](Serializable):
@@ -1819,7 +1851,7 @@ def indented_container(
     recursive: bool = False,
     use_repr: bool = True,
 ) -> str:
-    kvs = obj.items() if isinstance(obj, dict) else enumerate(obj)
+    kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
 
     def format_v(v: Any) -> str:
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
@@ -1828,7 +1860,7 @@ def indented_container(
 
     ind = "\n" + "  " * indent_level
     inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
-    if kvs:
+    if len(kvs):
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}}}"

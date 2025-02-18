@@ -11,10 +11,12 @@ from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval,
     Numeric_Interval_Disjoint,
     float_round,
+    rel_round,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set_Discrete,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
 from faebryk.libs.units import P, Unit, dimensionless, quantity
@@ -201,6 +203,48 @@ def test_pow():
     )
 
 
+@pytest.mark.parametrize(
+    "base,exp, expected",
+    # [-11, 10]^2 -> [0, 11^2]
+    # [-11, 10]^3 -> [-11^3, 10^3]
+    # [-11, 10]^[2,3] -> [-11^3, 10^3]
+    # [-5, 2]^[2,3] -> [-5^3, -5^2]
+    [
+        (
+            Range(-11, 10),
+            Range(2, 2),
+            Range(0, 11**2),
+        ),
+        (
+            Range(-11, 10),
+            Range(3, 3),
+            Range(-(11**3), 10**3),
+        ),
+        (
+            Range(-11, 10),
+            Range(2, 3),
+            Range(-(11**3), 10**3),
+        ),
+        (
+            Range(-5, 2),
+            Range(2, 3),
+            Range(-(5**3), (5**2)),
+        ),
+    ],
+)
+def test_pow_extended(
+    base: Range,
+    exp: Range,
+    expected: Range,
+):
+    base_q, exp_q, expected_q = (
+        RangeWithGaps.from_value(base),
+        RangeWithGaps.from_value(exp),
+        RangeWithGaps.from_value(expected),
+    )
+    assert base_q**exp_q == expected_q
+
+
 @pytest.mark.skip(
     "Zero crossing not implemented https://github.com/atopile/atopile/issues/614"
 )
@@ -348,3 +392,39 @@ def test_serialize(input_set: P_Set, expected: P_Set | None):
 )
 def test_float_round(value, expected):
     assert float_round(value) == expected
+
+
+def test_regression_ss_zero():
+    x = Quantity_Set_Discrete(2.77e-17)
+    y = Quantity_Interval_Disjoint(Quantity_Interval(-math.inf, 0))
+    assert x.is_subset_of(y)
+
+
+@pytest.mark.parametrize(
+    "digits,expected",
+    [
+        (0, Quantity_Interval_Disjoint(Quantity_Interval(2, 2))),
+        (1, Quantity_Interval_Disjoint(Quantity_Interval(1.5, 2.4))),
+        (2, Quantity_Interval_Disjoint(Quantity_Interval(1.51, 2.42))),
+    ],
+)
+def test_round_digits(digits: int, expected: Quantity_Interval_Disjoint):
+    x = Quantity_Interval_Disjoint(Quantity_Interval(1.51, 2.42))
+    assert round(x, digits) == expected
+
+
+@pytest.mark.parametrize(
+    "value,digits,expected",
+    [
+        (1234.5678, 2, 1200),
+        (1234.5678, 4, 1235),
+        (1234.5678, 6, 1234.57),
+        (1234.5678, 10, 1234.5678),
+        (0.123456, 2, 0.12),
+        (0.123456, 4, 0.1235),
+        (0.123456, 6, 0.123456),
+        (0.123456, 10, 0.123456),
+    ],
+)
+def test_rel_round(value: float | int, digits: int, expected: float | int):
+    assert rel_round(value, digits) == expected
