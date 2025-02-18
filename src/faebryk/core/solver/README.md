@@ -21,11 +21,11 @@
     - the `Graph` - [core/cpp/graph api](../../core/cpp/__init__.pyi)
     - `Mutator` - [core/solver/mutator.py](../solver/mutator.py)
 - canonicalization
+- picking parts - [libs/picker.py](../../libs/picker/picker.py)
 - solving - [core/solver](../..//core/solver)
     - computer algebra - symbolic solving
     - constraint solving
     - numerical solving: WIP
-- picking parts - [libs/picker.py](../../libs/picker/picker.py)
 - optimization: WIP
 
 
@@ -373,6 +373,47 @@ CanonicalSeticExpression = Intersection | Union | SymmetricDifference
 CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
 ```
 
+
+## Picking parts
+We use the constraints applied to parameters of all modules that need a pick to find potential parts for each.
+Simple case:
+```ato
+# ato
+assert resistor1.resistance within 100kOhm +/- 10%
+assert resistor1.rated_power >= 0.1W
+
+# Could result in the pick of a 100kOhm +/-1% resistor with a rated power of 1W
+```
+In general parameters will not have some form of subset literal constraint like this which would make picking very easy.
+
+```ato
+assert resistor2.resistance within resistor1.resistance * 10
+```
+Here our parameters and thus modules become intertwined and non-trivial to pick.
+Picking is thus a complicated process that consists of multiple steps:
+- Solver: Simplify the constraint system symbolically
+- Solver: Create an upper estimation of each relevant parameter
+- Backend: Ask the picker backend to find parts within that estimation 
+- Solver: Test whether any combination of candidates fullfill the constraints
+
+Since doing this for each part individually creates a large combinatorial search problem we need to use some heuristics.
+Currently we
+- create upper estimations of each parameter before any pick
+- for any module that has a only a single candidate check if it's a valid solution
+- try to pick the first candidate for all parts at the same time
+- if it fails, fallback to one-by-one picking
+
+
 ## Solving
 
 
+
+
+## Optimization - WIP
+When specifying a resistor as `100kOhm +/-10%` we can optimize for different things.
+- We can look for the cheapest resistor that fullfills the constraint.
+- We can look for the most narrow resistor
+- We can look for the most narrow resistor close to the nominal value (center of the set)
+- ...
+
+Since it's not clear what the design space prefers for each case, we need a way to express cost functions.
