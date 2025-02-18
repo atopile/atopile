@@ -1,6 +1,6 @@
 # :alembic: Rum is technically a solution - An overview of the parameter subsystem
 
-> The solver doesn't bite, but it will hurt you in different ways. - Ioannis P
+> "The solver doesn't bite, but it will hurt you in different ways." - Ioannis P
 
 ## Covered topics with links
 - literals - `Sets` - [libs/sets](../../libs/sets)
@@ -30,7 +30,7 @@
 
 
 ## Introduction
-We are using parameters to express some form of attribute of a module that is within the numeric, boolean or enum domain. Think of a very simple resistor
+Parameters express attributes of a module that exist in numeric, boolean or enum domains. Consider a basic resistor example:
 ```ato
 # ato
 module Resistor:
@@ -49,7 +49,7 @@ class Resistor(Module):
         domain=L.Domains.Numbers.REAL(negative=False),
     )
 ```
-What sets parameters apart from construction arguments is their ability to be defined at a *later time* and *implicitly through a set of constraints*.
+What distinguishes parameters from construction arguments is that they can be defined later and determined implicitly through constraints.
 
 ```ato
 psu = new PowerSupply
@@ -58,37 +58,17 @@ assert resistor.resistance within 100kOhm +/- 10%
 assert resistor.rated_power >= psu.voltage * psu.max_current
 ```
 
-These assertions not only ensure that the design is consistent but it also communicates relationships and constrains to the core. Those can be then used to automatically pick parts for modules that have no explicit parts defined.
+These assertions serve two purposes: they verify design consistency and communicate relationships to the core system. This information enables automatic part selection for modules without explicitly defined components.
 
 ## Literals
 
-You might have noticed that in the example above we used the syntax `100kOhm +/- 10%` to express that the resistance has to be within a certain range. This is a very typical way to denote values in atopile because most things in the real world are not exact. This can be due to manufacturing tolerances or fluctuations caused by unpredicatable external factors (e.g temperature).
-*Important: Make sure that all parameters live in the same environment:
-e.g is the voltage of a `6V +/-10%` power supply a subset of `4.5V` to `5.5V` or a subset of `0V` to `5.5V` because the power supply might be off that fully depends on the perspective (environment) of a design. Most often one should choose for the most general case which would include the ramping up from 0V to the nominal voltage. But in real a lot of engineering is done around a specific fixpoint/state of a system to optimize engineering time.*
+The syntax `100kOhm +/- 10%` in the example above specifies a resistance within a range. This notation is common in atopile because real-world components rarely have exact values due to manufacturing tolerances and environmental factors like temperature.
 
-We call those non-variable containing values **literals**.
-They are represented as `Sets`. `100kOhm +/- 10%` is just a set that contains all real numbers between `90e3` and `110e3` with a unit of `Ohm`. Sets are thus more general than intervals or singletons (`100kOhm` exactly). 
-Literals are in the most cases some form of set of real numbers with a unit, but we also support sets of booleans and enums.
+*Important: Ensure all parameters share the same context. For example, a `5V +/-10%` power supply voltage could be interpreted as either a range from `4.5V` to `5.5V`, or from `0V` to `5.5V` if considering power-up states. Generally, choose the most comprehensive context (including startup conditions), but be aware that many engineering calculations focus on specific operating points to simplify analysis.*
 
-```python
-class Capacitor(Module):
-    class TemperatureCoefficient(Enum):
-        Y5V = auto()
-        Z5U = auto()
-        X7S = auto()
-        X5R = auto()
-        X6R = auto()
-        X7R = auto()
-        X8R = auto()
-        C0G = auto()
+These non-variable values are called **literals** and are implemented as `Sets`. For example, `100kOhm +/- 10%` represents a set containing all real numbers between `90e3` and `110e3` Ohms. Sets are more flexible than simple intervals or single values (`100kOhm` exactly), and can represent numeric values with units, booleans, and enums.
 
-    temperature_coefficient = L.p_field(
-        domain=L.Domains.ENUM(TemperatureCoefficient),
-    )
-
-```
-
-We can do arithmetic with literals
+Literals support arithmetic operations:
 ```python
 Range(100*P.W, 200*P.W) * 2
 -> Range(200*P.W, 400*P.W)
@@ -100,19 +80,17 @@ Range(100*P.W, 200*P.W) + Range(10*P.W, 20*P.W)
 -> Range(110*P.W, 220*P.W)
 ```
 
-Let's take a second to have a closer look at the last example.
-Apparently if you add two intervals (special case of sets) you get a new interval that covers all possible values of the two sets. This is the case for any operation between two sets.
+Let's examine the last example more closely. When adding two intervals (which are special cases of sets), the result is a new interval encompassing all possible values from both sets. This principle applies to any operation between sets.
 
-
+Mathematically, this is expressed as:
 $$ 
 \begin{aligned}
     \forall S \in \mathcal{P}, \forall X,Y \subseteq S, f: S \times S \to S : f(X,Y) := \{ f(x,y) \mid x \in X, y \in Y \}
 \end{aligned}
 $$
-*In simple words: We define an elementwise function applied to sets as the set of all combinations of the function applied to any element of the first set and any element of the second set.*
-Note: This extends also beyond the Real domain.
+In simpler terms: When applying a function to sets, we compute the function for every possible combination of elements from both sets and collect all results into a new set. This principle extends beyond just real numbers.
 
-This definition brings us to an interesting case:
+This definition leads to an interesting case:
 
 ```python
 X = Range(10*P.W, 20*P.W)
@@ -120,29 +98,28 @@ X - X
 -> Range(-10*P.W, 10*P.W)
 ```
 
-But:
+However:
 ```python
 X = Range(10*P.W, 10*P.W) # aka Single(10*P.W)
 X - X
 -> Range(0*P.W, 0*P.W) # aka Single(0*P.W)
 ```
 
-Basically, our definition results in:
-> Singletons are auto-correlated
-> Every other set is fully uncorrelated to any other set
+This reveals two key principles:
+> Singleton sets are self-correlated
+> All other sets are uncorrelated with any other set (including themselves)
 
-And since our literals are all sets, any literal is uncorrelated to itself.
+Since literals are implemented as sets, any non-singleton literal is uncorrelated with itself.
 
-There are some interesting patterns in set arithmetic that we won't go into here.
-But good to see an example:
+Set arithmetic exhibits some interesting properties. For example:
 ```python
 Range(10, 20) / Range(-1, 1)
--> Range(-10, inf) # due to lim(y->0) (x/y) = inf
+-> Range(-10, inf) # because lim(y->0) (x/y) = inf
 ```
 
 ## Symbols
 
-Well, so how can we express correlations then?
+To express correlations between values, we use symbols:
 ```python
 X = Range(10*P.W, 20*P.W)
 A = Parameter()
@@ -151,15 +128,11 @@ E = A - A
 out, = DefaultSolver().simplify_symbolically(E)
 out[E]
 -> Single(0*P.W)
-
 ```
 
-A lot is happening here, but the important bit is our symbols or as we call them `ParameterOperatables`. Here the more specific `Parameters` (A in this example) and `Expressions` (E in this example).
-Parameters are very closely related to how we think of variables in math, but not variables in programming.
-Expressions are a tuple of an operation and a list of operands. Operands can be literal or ParameterOperatables.
-Thus expressions can take expressions as operands too `Multiply(Add(A, B), C)`.
-Expressions use operator overloading.
+This introduces `ParameterOperatables`, specifically `Parameters` (like A in this example) and `Expressions` (like E). Parameters are similar to mathematical variables rather than programming variables. Expressions consist of an operation and a list of operands, where operands can be literals or ParameterOperatables. This allows nested expressions like `Multiply(Add(A, B), C)`.
 
+Expressions use operator overloading for intuitive syntax:
 ```python
 A + B
 -> Add(A, B)
@@ -167,7 +140,7 @@ A + B * C
 -> Add(A, Multiply(B, C))
 ```
 
-Expressions with the output domain of 'Boolean' can be constrained. We refer to those as `ConstrainableExpressions`.
+Expressions that produce Boolean outputs can be constrained, and we call these `ConstrainableExpressions`:
 ```python
 # unconstrained
 A >= B
@@ -180,10 +153,7 @@ A.constrain_ge(B)
 -> GreaterOrEqual(A, B)
 ```
 
-We have mentioned further up correlations. All (except one) expressions are non-correlating.
-That means that two ParameterOperatables are not getting correlated by an expression.
-Except for the one special case: `Is`
-A constrained `Is` expression creates a full correlation between its operands.
+Most expressions don't create correlations between ParameterOperatables, with one important exception: the `Is` expression. When constrained, `Is` creates a complete correlation between its operands:
 
 ```python
 Is(A, B).constrain()
@@ -196,8 +166,7 @@ out[E]
 -> Single(0*P.W)
 ```
 
-The full repr of Expressions can get quite long and difficult to read for humans.
-That's why there is a more math-like representation of Expressions:
+Expression representations can become lengthy and hard to read. For this reason, we provide a more mathematical notation through compact representation:
 
 ```python
 E = A + B * C
@@ -214,25 +183,24 @@ A.constrain_le(B).compact_repr()
 -> A{I|[20W ±10%]} <=! B{S|[30W ±10%]}
 ```
 
-The last example shows that constrained `Is` and `IsSubset` expressions with literals have quite a special place in our parameter system. Since literals can not be correlated, they are mostly used in the form of Parameters that are `alias_is`'ed to a literal. In the design space `constrain_subset` & `constrain_superset` (fabll) or `assert within` (ato) are the most common expressions, because they express an explicit value for a parameter.
+Constrained `Is` and `IsSubset` expressions with literals play a special role in our parameter system. Since literals cannot be correlated, they're typically used with Parameters through `alias_is`. In practical designs, `constrain_subset` & `constrain_superset` (in fabll) or `assert within` (in ato) are the most common expressions because they explicitly define parameter bounds.
 
 ```python
-
-# we need a resistor who's resistance always resides between 90kOhm and 110kOhm
-# it's fine if it is more narrow (e.g 103kOhm +/-1%)
+# This resistor's resistance must always be between 90kOhm and 110kOhm
+# A narrower range (e.g., 103kOhm ±1%) is acceptable
 resistor.resistance.constrain_subset(
     Range.from_center_rel(100*P.kOhm, 10*P.percent)
 )
 
-# we need an ldo that can handle everything from 10.8V to 13.2V
-# it's okay if it also accepts other voltages
+# This LDO must handle any voltage from 10.8V to 13.2V
+# It may accept voltages outside this range as well
 ldo.input_voltage.constrain_superset(
     Range.from_center_rel(12*P.V, 10*P.percent)
 )
 
-# CAREFUL! This will require a resistor that has a tolerance of exactly 10%
-# Thus a 100kOhm +/-5% resistor will not work
-# In general, very unlikely in design space to use alias_is with literals
+# CAUTION: This requires a resistor with exactly 10% tolerance
+# A 100kOhm ±5% resistor would not satisfy this constraint
+# Using alias_is with literals is rarely appropriate in designs
 resistor.resistance.alias_is(
     Range.from_center_rel(100*P.kOhm, 10*P.percent)
 )
@@ -240,23 +208,22 @@ resistor.resistance.alias_is(
 
 ## Data Structures
 
-Everything in the core is modeled as a graph. That also applies to the parameter system.
-Little summary of the core graph:
+The core system models everything as a graph, including the parameter system. Here's a summary of the core graph components:
 
-- `GraphInterface` - The vertices of the graph
-- `Link` - The edges of the graph
-- `Node` - Higher level vertex which contains multiple GraphInterfaces
-    - contains `self` GraphInterface that creates a mapping between the high-level and low-level graph space
-    - contains `parent` and `children` GraphInterfaces that are used to create a tree structure
+- `GraphInterface`: The vertices of the graph
+- `Link`: The edges of the graph
+- `Node`: Higher-level vertex containing multiple GraphInterfaces
+    - Contains a `self` GraphInterface that maps between high-level and low-level graph spaces
+    - Contains `parent` and `children` GraphInterfaces that create a tree structure
 
-Those are then used by:
-- `Module` - `Node` that represents modules (e.g a component) in the design
-- `ModuleInterface` - `Node` that contains `connected` `GraphInterface` to create high-level connections between Modules
-    - e.g `Electrical` is a `ModuleInterface` that connects to other `Electrical` `ModuleInterface`s
-- `ParameterOperatable` - `Node` within the parameter system
-    - contains `operated_on` `GraphInterface` that allows Expressions to link to it
-- `Expression` - `ParameterOperatable`
-    - contains `operates_on` `GraphInterface` that links to `ParameterOperatable` operands
+These components are used to implement:
+- `Module`: A `Node` representing design modules (like components)
+- `ModuleInterface`: A `Node` with a `connected` `GraphInterface` for high-level Module connections
+    - Example: `Electrical` is a `ModuleInterface` that connects to other `Electrical` `ModuleInterface`s
+- `ParameterOperatable`: A `Node` within the parameter system
+    - Contains an `operated_on` `GraphInterface` allowing Expression connections
+- `Expression`: A `ParameterOperatable`
+    - Contains an `operates_on` `GraphInterface` linking to `ParameterOperatable` operands
 
 ```mermaid
 erDiagram
@@ -291,11 +258,7 @@ erDiagram
     }
 ```
 
-
-
-Here we can already see that a `ParameterOperatable` is just a `Node` within our high-level graph.
-And we build our Expression tree just within the graph space.
-For the example of `A + B * C` we get the following graph:
+As shown above, a `ParameterOperatable` is implemented as a `Node` within our high-level graph. Expression trees are built within this graph space. For example, the expression `A + B * C` creates this graph structure:
 
 ```mermaid
 %%{init: { 'theme': 'neutral' } }%%
@@ -327,8 +290,9 @@ flowchart LR
     n2 --> n8
 ```
 
-Graphs are purely additive thus you can't remove edges or vertices, which poses a challenge for internally modifying expressions within the solver. `A + 5 + 3 -> A + 8` is thus not trivially possible without the help of the `Mutator`. 
-The `Mutator` is a collection of functions that help make mutations to a Graph by constructing a new Graph with those mutations applied.
+Graphs are append-only, meaning edges and vertices cannot be removed. This creates a challenge when modifying expressions within the solver. For example, simplifying `A + 5 + 3` to `A + 8` isn't straightforward without using the `Mutator`. 
+
+The `Mutator` provides functions that help modify a Graph by creating a new Graph with the desired changes:
 
 ```python
 E0 = Multiply(A, B)
@@ -347,25 +311,26 @@ E0_mutated is E0
 -> False
 
 # E1_mutated and E2_mutated don't exist
-# E0, E1, E2, E3, A, B keep on existing in the old graph unchanged
+# E0, E1, E2, E3, A, B remain unchanged in the old graph
 A.get_graph() is A_mutated.get_graph()
 -> False
 ```
 
-
 ## Canonicalization
-In the last example we were using float literals `5` and `3` which according to our Literal section above are not real literals. Towards the user/design-space we allow non-canonical literals and convert them before running later stages of the solver.
-We canonicalize 
-- all literals representing some kind of numeric (with or without unit) as `Quantity_Interval_Disjoint`
-    - no unit -> `dimensionless` unit
-    - float/int -> `Singleton` (special case of `Quantity_Interval_Disjoint`)
-    - Range/Quantity_Interval -> `Quantity_Interval_Disjoint` with single interval
-- all boolean literals as `BoolSet`
-- all enum literals as `EnumSet`
-- all non-canonical expressions as canonical expressions
-    - e.g `A - B` becomes `A + (B * -1)`
-    - e.g `A / B` becomes `A * (B ^ -1)`
-    - e.g `A ∧ B` becomes `¬(¬A ∨ ¬B)`
+In previous examples, we used float literals like `5` and `3`, which aren't strictly literals according to our earlier definition. For user convenience, we accept non-canonical literals and convert them before processing in the solver.
+
+We canonicalize values in these ways:
+- Numeric values (with or without units) become `Quantity_Interval_Disjoint`
+    - Values without units get the `dimensionless` unit
+    - Float/int values become `Singleton` (a special case of `Quantity_Interval_Disjoint`)
+    - Range/Quantity_Interval values become `Quantity_Interval_Disjoint` with a single interval
+- Boolean literals become `BoolSet`
+- Enum literals become `EnumSet`
+- Non-canonical expressions become canonical expressions
+    - `A - B` becomes `A + (B * -1)`
+    - `A / B` becomes `A * (B ^ -1)`
+    - `A ∧ B` becomes `¬(¬A ∨ ¬B)`
+
 ```python
 CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
 CanonicalLogicExpression = Or | Not
@@ -373,76 +338,67 @@ CanonicalSeticExpression = Intersection | Union | SymmetricDifference
 CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
 ```
 
-
-## Picking parts
-We use the constraints applied to parameters of all modules that need a pick to find potential parts for each.
-Simple case:
+## Picking Parts
+The system uses constraints on module parameters to identify suitable components. Here's a simple example:
 ```ato
 # ato
 assert resistor1.resistance within 100kOhm +/- 10%
 assert resistor1.rated_power >= 0.1W
 
-# Could result in the pick of a 100kOhm +/-1% resistor with a rated power of 1W
+# This might result in selecting a 100kOhm ±1% resistor rated for 1W
 ```
-In general parameters will not have some form of subset literal constraint like this which would make picking very easy.
 
+Often, parameter constraints are more complex and interconnected:
 ```ato
 assert resistor2.resistance within resistor1.resistance * 10
 ```
-Here our parameters and thus modules become intertwined and non-trivial to pick.
-Picking is thus a complicated process that consists of multiple steps:
-- Solver: Simplify the constraint system symbolically
-- Solver: Create an upper estimation of each relevant parameter
-- Backend: Ask the picker backend to find parts within that estimation 
-- Solver: Test whether any combination of candidates fullfill the constraints
 
-Since doing this for each part individually creates a large combinatorial search problem we need to use some heuristics.
-Currently we
-- create upper estimations of each parameter before any pick
-- for any module that has a only a single candidate check if it's a valid solution
-- try to pick the first candidate for all parts at the same time
-- if it fails, fallback to one-by-one picking
+In such cases, modules become interdependent, making part selection more challenging. The picking process follows these steps:
+- Solver: Symbolically simplify the constraint system
+- Solver: Generate upper bounds for each relevant parameter
+- Backend: Query the picker backend for parts within these bounds
+- Solver: Verify that candidate combinations satisfy all constraints
 
+To manage the combinatorial complexity of this search, we employ several strategies:
+- Calculate parameter bounds before any picking
+- Validate single-candidate modules first
+- Attempt to pick all parts simultaneously using first candidates
+- Fall back to sequential picking if simultaneous picking fails
 
 ## Solving
-Solving a constraint system is one of the most core functionalities of atopile. It is the foundation of picking and design checking. Which in turn is foundational to abstraction, modularity, collaboration and code reuse.
-It's unfortunately not only important but also quite challenging. A typical design can create an incomprehensibly large amount of constraints.
+Constraint solving is fundamental to atopile's operation. It enables part picking, design verification, abstraction, modularity, collaboration, and code reuse. While essential, it's also computationally challenging due to the large number of constraints in typical designs.
 
-While the solver is first and foremost a constraint solver, it does a fair bit of computer algebra and (in the future) optimization.
-The solver operates in theory in following stages
- 1. non-destructive canonicalization
- 2. non-destructive symbolic solving
- 3. destructive symbolic solving
- 4. destructive symbolic optimization
- 5. destructive numerical solving
- 6. destructive numerical optimization
+The solver combines constraint solving with computer algebra and (planned) optimization. It operates in these theoretical stages:
+ 1. Non-destructive canonicalization
+ 2. Non-destructive symbolic solving
+ 3. Destructive symbolic solving
+ 4. Destructive symbolic optimization
+ 5. Destructive numerical solving
+ 6. Destructive numerical optimization
 
-Only phases 1-3 are currently implemented, but are sufficient for now.
-Phase 2 and 3 are currently not split.
+Currently, only phases 1-3 are implemented, which suffice for most needs. Phases 2 and 3 are currently combined.
 
-What does `destructive` mean? It means we introduce the invariant into our algorithms that no new constraints can be added by the user.
+"Destructive" means the solver can assume no new constraints will be added:
 ```
 A, B = Parameter(), Parameter()
 (A >= B).constrain()
 
-# non-destructive, nothing to do here
+# non-destructive: no action possible
 
 # destructive
-# - since A and B are further unconstrained we can always make A >= B true
-#  e.g by setting both to the same value
-# - thus we can deduce (A>=B) is True
+# Since A and B are unconstrained, we can satisfy A >= B
+# by setting them equal, so we can conclude (A>=B) is True
 ```
 
-Phase 2/3 are running iterations of all available `algorithm`s and terminate once not a single algorithm has made a mutation within an iteration.
+Phases 2/3 iterate through available `algorithms` until no algorithm produces changes in an iteration.
 
-Most symbolic algorithms are in [analytical.py](../../core/solver/analytical.py).
-A great first one to look at is `idempotent_deduplicate`.
+Most symbolic algorithms are in [analytical.py](../../core/solver/analytical.py). The `idempotent_deduplicate` algorithm provides a good starting point for understanding the system.
 
 ## Optimization - WIP
-When specifying a resistor as `100kOhm +/-10%` we can optimize for different things.
-- We can look for the cheapest resistor that fullfills the constraint.
-- We can look for the most narrow resistor
-- We can look for the most narrow resistor close to the nominal value (center of the set)
-- ...
+When working with a specification like `100kOhm +/-10%`, multiple optimization goals are possible:
+- Minimize component cost
+- Minimize tolerance range
+- Minimize deviation from nominal value
+- And more...
 
-Since it's not clear what the design space prefers for each case, we need a way to express cost functions.
+Since optimal choices depend on design requirements, we need a way to express these preferences through cost functions.
