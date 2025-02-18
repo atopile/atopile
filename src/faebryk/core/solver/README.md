@@ -405,9 +405,38 @@ Currently we
 
 
 ## Solving
+Solving a constraint system is one of the most core functionalities of atopile. It is the foundation of picking and design checking. Which in turn is foundational to abstraction, modularity, collaboration and code reuse.
+It's unfortunately not only important but also quite challenging. A typical design can create an incomprehensibly large amount of constraints.
 
+While the solver is first and foremost a constraint solver, it does a fair bit of computer algebra and (in the future) optimization.
+The solver operates in theory in following stages
+ 1. non-destructive canonicalization
+ 2. non-destructive symbolic solving
+ 3. destructive symbolic solving
+ 4. destructive symbolic optimization
+ 5. destructive numerical solving
+ 6. destructive numerical optimization
 
+Only phases 1-3 are currently implemented, but are sufficient for now.
+Phase 2 and 3 are currently not split.
 
+What does `destructive` mean? It means we introduce the invariant into our algorithms that no new constraints can be added by the user.
+```
+A, B = Parameter(), Parameter()
+(A >= B).constrain()
+
+# non-destructive, nothing to do here
+
+# destructive
+# - since A and B are further unconstrained we can always make A >= B true
+#  e.g by setting both to the same value
+# - thus we can deduce (A>=B) is True
+```
+
+Phase 2/3 are running iterations of all available `algorithm`s and terminate once not a single algorithm has made a mutation within an iteration.
+
+Most symbolic algorithms are in [analytical.py](../../core/solver/analytical.py).
+A great first one to look at is `idempotent_deduplicate`.
 
 ## Optimization - WIP
 When specifying a resistor as `100kOhm +/-10%` we can optimize for different things.
