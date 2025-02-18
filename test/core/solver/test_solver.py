@@ -455,8 +455,8 @@ def test_literal_folding_add_multiplicative():
 
 
 def test_literal_folding_add_multiplicative_2():
-    A = Parameter(units=dimensionless)
-    B = Parameter(units=dimensionless)
+    A = Parameter()
+    B = Parameter()
 
     expr = (
         A
@@ -712,6 +712,19 @@ def test_inspect_enum_simple():
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(A) == F.LED.Color.EMERALD
+
+
+def test_regression_enum_contradiction():
+    A = Parameter(domain=L.Domains.ENUM(F.LED.Color))
+
+    A.constrain_subset(L.EnumSet(F.LED.Color.BLUE, F.LED.Color.RED))
+
+    solver = DefaultSolver()
+    result = solver.assert_any_predicate(
+        [(Is(A, F.LED.Color.EMERALD), None)], lock=False
+    )
+    assert not result.true_predicates
+    assert result.false_predicates
 
 
 def test_inspect_enum_led():
@@ -1126,7 +1139,7 @@ def test_ss_intersect():
         (
             [Range(0, 10)],
             [Range(0, 10)],
-            (True, True),
+            (True, False),
         ),
         (
             [Range(0, 10)],

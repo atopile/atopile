@@ -14,11 +14,12 @@ logger = logging.getLogger(__name__)
 
 NumericT = TypeVar("NumericT", int, float, contravariant=False, covariant=False)
 
+REL_DIGITS = 7  # 99.99999% precision
+ABS_DIGITS = 15  # femto
 # math.isclose default is 1e-9
 # numpy default is 1e-5
 # empirically we need <= 1e-8
-EPSILON_REL = 1e-6
-ABS_DIGITS = 15  # femto
+EPSILON_REL = 10 ** -(REL_DIGITS - 1)
 EPSILON_ABS = 10**-ABS_DIGITS
 
 
@@ -31,7 +32,31 @@ def float_round[T](value: T, digits: int = 0) -> T:
     if isinstance(value, float):
         return float(out)  # type: ignore
     assert isinstance(value, int)
-    return out  # type: ignore
+    return int(out)  # type: ignore
+
+
+def rel_round[T](value: T, digits: int = 0) -> T:
+    """ """
+    if not isinstance(value, (float, int)):
+        raise ValueError("value must be a float or int")
+    if digits < 0:
+        raise ValueError("digits must be non-negative")
+
+    if value in [math.inf, -math.inf]:
+        return value  # type: ignore
+    if value == 0:
+        return value  # type: ignore
+
+    a_val = abs(value)
+    if a_val >= 1:
+        magnitude = math.floor(math.log10(a_val)) + 1
+        digits -= magnitude
+
+    out = round(value, digits)
+    if isinstance(value, float):
+        return float(out)  # type: ignore
+    assert isinstance(value, int)
+    return int(out)  # type: ignore
 
 
 # Numeric ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -49,6 +74,9 @@ class Numeric_Interval(Numeric_Set[NumericT]):
             raise ValueError("min must be less than or equal to max")
         if min == float("inf") or max == float("-inf"):
             raise ValueError("min or max has bad infinite value")
+        # FIXME
+        # self._min = rel_round(float_round(min, ABS_DIGITS), REL_DIGITS)
+        # self._max = rel_round(float_round(max, ABS_DIGITS), REL_DIGITS)
         self._min = float_round(min, ABS_DIGITS)
         self._max = float_round(max, ABS_DIGITS)
 

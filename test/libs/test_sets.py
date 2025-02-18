@@ -11,6 +11,7 @@ from faebryk.libs.sets.numeric_sets import (
     Numeric_Interval,
     Numeric_Interval_Disjoint,
     float_round,
+    rel_round,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -410,3 +411,20 @@ def test_regression_ss_zero():
 def test_round_digits(digits: int, expected: Quantity_Interval_Disjoint):
     x = Quantity_Interval_Disjoint(Quantity_Interval(1.51, 2.42))
     assert round(x, digits) == expected
+
+
+@pytest.mark.parametrize(
+    "value,digits,expected",
+    [
+        (1234.5678, 2, 1200),
+        (1234.5678, 4, 1235),
+        (1234.5678, 6, 1234.57),
+        (1234.5678, 10, 1234.5678),
+        (0.123456, 2, 0.12),
+        (0.123456, 4, 0.1235),
+        (0.123456, 6, 0.123456),
+        (0.123456, 10, 0.123456),
+    ],
+)
+def test_rel_round(value: float | int, digits: int, expected: float | int):
+    assert rel_round(value, digits) == expected
