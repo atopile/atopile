@@ -28,7 +28,6 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
-    S_LOG,
     ContradictionByLiteral,
     FullyAssociative,
     SolverLiteral,
@@ -75,9 +74,6 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
-
-if S_LOG:
-    logger.setLevel(logging.DEBUG)
 
 
 # TODO: mark destructive=False where applicable

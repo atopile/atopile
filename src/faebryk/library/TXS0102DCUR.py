@@ -4,6 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 
 
 class TXS0102DCUR(Module):
@@ -56,3 +57,29 @@ class TXS0102DCUR(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/1810292010_Texas-Instruments-TXS0102DCUR_C53434.pdf"
     )
+
+    mfr = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "Texas Instruments",
+            DescriptiveProperties.partno: "TXS0102DCUR",
+        }
+    )
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C53434"})
+
+    @L.rt_field
+    def pin_association_heuristic(self):
+        return F.has_pin_association_heuristic_lookup_table(
+            mapping={
+                self.voltage_a_power.lv: ["GND"],
+                self.voltage_a_power.hv: ["VCCA"],
+                self.voltage_b_power.hv: ["VCCB"],
+                self.n_oe.line: ["OE"],
+                self.shifters[0].io_a.line: ["A1"],
+                self.shifters[0].io_b.line: ["B1"],
+                self.shifters[1].io_a.line: ["A2"],
+                self.shifters[1].io_b.line: ["B2"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
+        )

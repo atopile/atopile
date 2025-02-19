@@ -218,7 +218,7 @@ def test_alias_classes():
     for p in (A, B, C, D, E):
         p.compact_repr(context)
     solver = DefaultSolver()
-    solver.simplify_symbolically(G, context)
+    solver.simplify_symbolically(G, print_context=context)
     # TODO actually test something
 
 
@@ -291,7 +291,7 @@ def test_subset_is_expr():
 
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        solver.simplify_symbolically(A.get_graph(), context)
+        solver.simplify_symbolically(A.get_graph(), print_context=context)
 
 
 def test_subset_single_alias():
@@ -313,7 +313,9 @@ def test_very_simple_alias_class():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(A.get_graph(), context)
+    repr_map, context = solver.simplify_symbolically(
+        A.get_graph(), print_context=context
+    )
     r2_map = repr_map.repr_map
     assert r2_map[A] == r2_map[B] == r2_map[C]
 
@@ -344,7 +346,7 @@ def test_less_obvious_contradiction_by_literal():
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        repr_map, context = solver.simplify_symbolically(G, print_context)
+        repr_map, context = solver.simplify_symbolically(G, print_context=print_context)
 
 
 def test_symmetric_inequality_correlated():
@@ -505,7 +507,7 @@ def test_transitive_subset():
     C.alias_is(Range(0, 10))
 
     solver = DefaultSolver()
-    result, context = solver.simplify_symbolically(A.get_graph(), context)
+    result, context = solver.simplify_symbolically(A.get_graph(), print_context=context)
     assert result.try_get_literal(A, allow_subset=True) == Range(0, 10)
 
 
@@ -967,7 +969,7 @@ def test_graph_split():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(app.get_graph(), context)
+    repr_map, _ = solver.simplify_symbolically(app.get_graph(), print_context=context)
 
     assert (
         repr_map.repr_map[app.A].get_graph() is not repr_map.repr_map[app.B].get_graph()
@@ -1449,7 +1451,7 @@ def test_fold_correlated():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(C.get_graph(), context)
+    repr_map, _ = solver.simplify_symbolically(C.get_graph(), print_context=context)
 
     is_lit = repr_map.try_get_literal(C, allow_subset=False)
     ss_lit = repr_map.try_get_literal(C, allow_subset=True)

@@ -61,10 +61,10 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
+type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
+
 if S_LOG:
     logger.setLevel(logging.DEBUG)
-
-type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
 
 
 @dataclass
