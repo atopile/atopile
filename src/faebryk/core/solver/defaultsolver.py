@@ -31,6 +31,7 @@ from faebryk.core.solver.utils import (
     get_graphs,
 )
 from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.test.times import Times
 from faebryk.libs.util import groupby, times_out
 
 logger = logging.getLogger(__name__)
@@ -211,6 +212,8 @@ class DefaultSolver(Solver):
         Args:
         - destructive: if False, no destructive algorithms are allowed
         """
+        timings = Times(name="simplify")
+
         if not destructive:
             raise NotImplementedError()
 
@@ -294,6 +297,8 @@ class DefaultSolver(Solver):
 
         out = self.partial_state.data.total_repr_map, self.partial_state.print_context
         self.partial_state = None
+
+        timings.add("total")
 
         return out
 

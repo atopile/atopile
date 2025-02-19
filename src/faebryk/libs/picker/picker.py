@@ -304,7 +304,7 @@ def pick_topologically(
         pick_atomically,
     )
 
-    timings = Times(name="pick_topologically")
+    timings = Times(name="pick")
 
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
@@ -333,8 +333,8 @@ def pick_topologically(
         (module, parts[0]) for module, parts in sorted_candidates if len(parts) == 1
     ]
 
-    ok = pick_atomically(single_part_modules, solver)
-    timings.add("pick single candidate modules")
+    with timings.as_global("pick single candidate modules"):
+        ok = pick_atomically(single_part_modules, solver)
     if ok:
         if progress:
             for m, _ in single_part_modules:
@@ -355,8 +355,8 @@ def pick_topologically(
     ]
 
     # heuristic: try pick first candidate for rest
-    ok = pick_atomically([(m, p[0]) for m, p in sorted_candidates], solver)
-    timings.add("fast-pick")
+    with timings.as_global("fast-pick"):
+        ok = pick_atomically([(m, p[0]) for m, p in sorted_candidates], solver)
     if ok:
         if progress:
             for m, _ in sorted_candidates:
