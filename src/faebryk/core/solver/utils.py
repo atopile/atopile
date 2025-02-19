@@ -66,19 +66,17 @@ TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
+
 
 def set_log_level(level: int):
-    from faebryk.core.solver.analytical import logger as analytical_logger
     from faebryk.core.solver.defaultsolver import logger as defaultsolver_logger
     from faebryk.core.solver.mutator import logger as mutator_logger
 
-    loggers = [logger, mutator_logger, defaultsolver_logger, analytical_logger]
+    loggers = [logger, mutator_logger, defaultsolver_logger]
     for lo in loggers:
         lo.setLevel(level)
-
-
-if S_LOG:
-    set_log_level(logging.DEBUG)
 
 
 class Contradiction(Exception):

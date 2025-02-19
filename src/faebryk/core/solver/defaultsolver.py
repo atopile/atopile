@@ -37,6 +37,9 @@ from faebryk.libs.util import groupby, times_out
 
 logger = logging.getLogger(__name__)
 
+if S_LOG:
+    logger.setLevel(logging.DEBUG)
+
 
 class DefaultSolver(Solver):
     """
@@ -341,7 +344,12 @@ class DefaultSolver(Solver):
         g_hash = hash(tuple(sorted(all_params, key=id)))
         cached_g_hash = self.superset_cache.get(param, (None, None))[0]
 
-        if force_update or cached_g_hash != g_hash:
+        ignore_hash_mismatch = not force_update
+        hash_match = cached_g_hash == g_hash
+        no_cache = cached_g_hash is None
+        valid_hash = hash_match or ignore_hash_mismatch
+
+        if no_cache or not valid_hash:
             self.update_superset_cache(param)
 
         return self.superset_cache[param][1]

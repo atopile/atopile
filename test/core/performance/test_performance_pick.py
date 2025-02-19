@@ -72,6 +72,8 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
     logger.info(f"\n{timings}")
 
 
+@pytest.mark.slow
+@pytest.mark.usefixtures("setup_project_config")
 def test_performance_pick_rc_formulas():
     GROUPS = 4
     GROUP_SIZE = 4
@@ -92,7 +94,7 @@ def test_performance_pick_rc_formulas():
                     # solver doesn't do equation reordering, so we need to reverse
                     m1.resistance.constrain_subset(m2.resistance / increase)
 
-    timings = Times()
+    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.AVG_ACC)
 
     app = App()
     timings.add("construct")
