@@ -25,7 +25,6 @@ from faebryk.core.parameter import (
     ParameterOperatable,
 )
 from faebryk.core.solver.utils import (
-    S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
     CanonicalExpression,
@@ -60,9 +59,6 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
-
-if S_LOG:
-    logger.setLevel(logging.DEBUG)
 
 type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
 

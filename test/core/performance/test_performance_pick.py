@@ -10,8 +10,10 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Multiply, Parameter
+from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE
+from faebryk.core.solver.utils import S_LOG, set_log_level
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
@@ -71,18 +73,24 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
 
 
 def test_performance_pick_rc_formulas():
+    GROUPS = 4
+    GROUP_SIZE = 4
+    INCREASE = 10 * P.percent
+    TOLERANCE = 20 * P.percent
+
     class App(Module):
-        caps = L.list_field(0, F.Capacitor)
-        res = L.list_field(2, F.Resistor)
+        res = L.list_field(GROUPS * GROUP_SIZE, F.Resistor)
 
         def __preinit__(self):
-            # for m1, m2 in pairwise(self.caps):
-            #    m2.capacitance.constrain_subset(Add(m1.capacitance, 10 * P.pF))
+            increase = L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(
+                100 * P.percent
+            )
 
-            for m1, m2 in pairwise(self.res):
-                m2.resistance.constrain_ge(Multiply(m1.resistance, 109 * P.percent))
-
-            # self.caps[-1].capacitance / P.F
+            for i in range(GROUPS):
+                for m1, m2 in pairwise(self.res[i::GROUPS]):
+                    m2.resistance.constrain_subset(m1.resistance * increase)
+                    # solver doesn't do equation reordering, so we need to reverse
+                    m1.resistance.constrain_subset(m2.resistance / increase)
 
     timings = Times()
 
@@ -105,12 +113,20 @@ def test_performance_pick_rc_formulas():
             m.get_full_name(): "\n" + indent(m.pretty_params(solver), prefix="  ")
             for m in app.get_children_modules(direct_only=True, types=Module)
         }
+        params = {k: v for k, v in sorted(params.items(), key=lambda t: t[0])}
         logger.info(f"Params:{indented_container(params, use_repr=False)}")
-        assert False
+        S_LOG.set(True, force=True)
+        LOG_PICK_SOLVE.set(True, force=True)
+        set_log_level(logging.DEBUG)
+        solver.update_superset_cache(app)
+        # assert False
+        return
     finally:
         logger.info(f"\n{timings}")
 
     picked_values = {
-        m.get_full_name(): str(m.capacitance.try_get_literal()) for m in app.caps
-    } | {m.get_full_name(): str(m.resistance.try_get_literal()) for m in app.res}
+        m.get_full_name(): str(m.resistance.try_get_literal()) for m in app.res
+    }
     logger.info(f"Picked values: {indented_container(picked_values)}")
+
+    logger.info(f"Pick duration {GROUPS}x{GROUP_SIZE}: {timings.get_formatted('pick')}")

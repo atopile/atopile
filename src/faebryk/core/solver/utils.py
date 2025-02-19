@@ -17,6 +17,7 @@ from rich.table import Table
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Associative,
     CanonicalExpression,
@@ -65,8 +66,19 @@ TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
+
+def set_log_level(level: int):
+    from faebryk.core.solver.analytical import logger as analytical_logger
+    from faebryk.core.solver.defaultsolver import logger as defaultsolver_logger
+    from faebryk.core.solver.mutator import logger as mutator_logger
+
+    loggers = [logger, mutator_logger, defaultsolver_logger, analytical_logger]
+    for lo in loggers:
+        lo.setLevel(level)
+
+
 if S_LOG:
-    logger.setLevel(logging.DEBUG)
+    set_log_level(logging.DEBUG)
 
 
 class Contradiction(Exception):
@@ -698,9 +710,7 @@ def get_all_subsets(mutator: "Mutator") -> set[IsSubset]:
 
 # TODO move to Mutator
 def get_graphs(values: Iterable) -> list[Graph]:
-    return unique_ref(
-        p.get_graph() for p in values if isinstance(p, ParameterOperatable)
-    )
+    return unique_ref(p.get_graph() for p in values if isinstance(p, Node))
 
 
 def merge_parameters(params: Iterable[Parameter]) -> Parameter:

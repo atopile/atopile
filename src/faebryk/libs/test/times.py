@@ -154,11 +154,14 @@ class Times:
     _in_measurement: list["Times"] = []
 
     @contextmanager
-    def as_global(self, name: str | None = None):
+    def as_global(self, name: str | None = None, context: bool = False):
         Times._in_measurement.append(self)
+        start = time.perf_counter()
         try:
             yield
         finally:
             Times._in_measurement.remove(self)
             if name is not None:
+                if context:
+                    self._add(name, time.perf_counter() - start)
                 self.add(name)

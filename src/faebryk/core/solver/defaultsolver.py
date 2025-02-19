@@ -37,9 +37,6 @@ from faebryk.libs.util import groupby, times_out
 
 logger = logging.getLogger(__name__)
 
-if S_LOG:
-    logger.setLevel(logging.DEBUG)
-
 
 class DefaultSolver(Solver):
     """
@@ -229,7 +226,7 @@ class DefaultSolver(Solver):
 
         self.partial_state = DefaultSolver.PartialState(
             data=DefaultSolver.IterationData(
-                graphs=gs,
+                graphs=list(gs),
                 total_repr_map=Mutator.ReprMap(
                     {
                         po: po
@@ -352,7 +349,7 @@ class DefaultSolver(Solver):
     def update_superset_cache(self, *nodes: Node):
         graphs = get_graphs(nodes)
         try:
-            repr_map, print_context = self.simplify_symbolically(*graphs)
+            repr_map, _ = self.simplify_symbolically(*graphs)
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise

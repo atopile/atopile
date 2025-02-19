@@ -73,7 +73,7 @@ class ParameterOperatable(Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
-    type NumberLiteral = Number | P_Set[Number]
+    type NumberLiteral = Number | P_Set[Number] | Quantity_Interval
     type NumberLike = ParameterOperatable | NumberLiteral
     type BooleanLiteral = bool | BoolSet
     type BooleanLike = ParameterOperatable | BooleanLiteral

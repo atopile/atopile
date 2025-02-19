@@ -879,8 +879,8 @@ class _ConfigFlagBase[T]:
     def name(self) -> str:
         return f"FBRK_{self._name}"
 
-    def set(self, value: T):
-        if self._has_been_read and value != self.value:
+    def set(self, value: T, force: bool = False):
+        if self._has_been_read and value != self.value and not force:
             raise ValueError(
                 f"Can't write flag {self.name}"
                 ", has already been read with different value"
