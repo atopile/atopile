@@ -297,7 +297,6 @@ def pick_topologically(
     tree: Tree[Module],
     solver: Solver,
     progress: PickerProgress | None = None,
-    timings: Times | None = None,
 ):
     from faebryk.libs.picker.api.picker_lib import (
         filter_by_module_params_and_attach,
@@ -305,8 +304,7 @@ def pick_topologically(
         pick_atomically,
     )
 
-    if not timings:
-        timings = Times()
+    timings = Times(name="pick_topologically")
 
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
@@ -317,8 +315,8 @@ def pick_topologically(
 
     logger.info("Getting part candidates for modules")
     timings.add("setup")
-    candidates = get_candidates(tree, solver)
-    timings.add("get candidates")
+    with timings.as_global("get candidates"):
+        candidates = get_candidates(tree, solver)
     logger.info(f"Got candidates in {timings.get_formatted('get candidates')}")
 
     # heuristic: order by candidates count

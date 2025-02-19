@@ -4,6 +4,7 @@
 import io
 import time
 from collections import defaultdict
+from contextlib import contextmanager
 from enum import Enum, auto
 
 from rich.console import Console
@@ -37,11 +38,13 @@ class Times:
 
     def __init__(
         self,
+        name: str | None = None,
         cnt: int = 1,
         multi_sample_strategy: MultiSampleStrategy = MultiSampleStrategy.ACC,
     ) -> None:
         self.times: dict[str, list[float]] = defaultdict(list)
         self.last_time = time.perf_counter()
+        self.name = name
 
         self.cnt = cnt
         self.strat = multi_sample_strategy
@@ -55,6 +58,16 @@ class Times:
 
     def _add(self, name: str, val: float):
         self.times[name].append(val)
+        if Times._in_measurement:
+            if self is Times._in_measurement[0]:
+                return
+            index = (
+                Times._in_measurement.index(self) - 1
+                if self in Times._in_measurement
+                else -1
+            )
+            self_name = self.name or hex(id(self))[:4]
+            Times._in_measurement[index]._add(f"{self_name}:{name}", val)
 
     def _format_val(self, val: float):
         _val = (val / self.cnt) * P.s
@@ -93,14 +106,6 @@ class Times:
         return self.get(name)
 
     def __repr__(self):
-        has_subcategories = any(":" in k for k in self.times)
-
-        def get_categories(x: str):
-            out = [x.strip() for x in k.split(":", 1)]
-            if len(out) == 1 and has_subcategories:
-                out.append("")
-            return out
-
         has_multisamples = any(len(vs) > 1 for vs in self.times.values())
 
         strats = self.strat.strats
@@ -109,8 +114,6 @@ class Times:
 
         table = Table(title="Timings" + (f" (cnt={self.cnt})" if self.cnt > 1 else ""))
         table.add_column("Category", style="cyan")
-        if has_subcategories:
-            table.add_column("Subcategory", style="magenta")
         if has_multisamples:
             table.add_column("Samples", justify="right")
         for strat in strats:
@@ -131,7 +134,7 @@ class Times:
                 value, unit = self._format_val(v)
                 values.extend([value, unit])
 
-            categories = get_categories(k)
+            categories = [k]
             samples = [str(len(vs))] if has_multisamples else []
             table.add_row(*categories, *samples, *values)
 
@@ -139,17 +142,23 @@ class Times:
         console.print(table)
         return console.export_text(styles=True)
 
-    class Context:
-        def __init__(self, name: str, times: "Times"):
-            self.name = name
-            self.times = times
-
-        def __enter__(self):
-            self.times.add("_" + self.name)
-            self.start = time.perf_counter()
-
-        def __exit__(self, exc_type, exc_value, traceback):
-            self.times._add(self.name, time.perf_counter() - self.start)
-
+    @contextmanager
     def context(self, name: str):
-        return Times.Context(name, self)
+        self.add("_" + name)
+        start = time.perf_counter()
+        try:
+            yield
+        finally:
+            self._add(name, time.perf_counter() - start)
+
+    _in_measurement: list["Times"] = []
+
+    @contextmanager
+    def as_global(self, name: str | None = None):
+        Times._in_measurement.append(self)
+        try:
+            yield
+        finally:
+            Times._in_measurement.remove(self)
+            if name is not None:
+                self.add(name)

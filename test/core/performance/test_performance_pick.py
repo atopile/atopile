@@ -45,20 +45,20 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
     timings = Times()
 
     app = module_type()
-    timings.add("test", "construct")
+    timings.add("construct")
 
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add("test", "resolve bus params")
+    timings.add("resolve bus params")
 
     pick_tree = get_pick_tree(app)
-    timings.add("test", "pick tree")
+    timings.add("pick tree")
 
     solver = DefaultSolver()
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)
-    timings.add("test", "pre-solve")
+    timings.add("pre-solve")
 
-    pick_topologically(pick_tree, solver, timings=timings)
-    timings.add("test", "pick")
+    with timings.as_global("pick"):
+        pick_topologically(pick_tree, solver)
 
     logger.info(f"\n{timings}")
