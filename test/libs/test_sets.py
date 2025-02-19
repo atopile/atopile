@@ -222,12 +222,12 @@ def test_pow():
         ),
         (
             Range(-11, 10),
-            Range(2, 3),
+            DiscreteSet(2, 3),
             Range(-(11**3), 10**3),
         ),
         (
             Range(-5, 2),
-            Range(2, 3),
+            DiscreteSet(2, 3),
             Range(-(5**3), (5**2)),
         ),
     ],
@@ -360,7 +360,7 @@ class _Enum(Enum):
         ),
         (BoolSet(True), None),
         (BoolSet.unbounded(), None),
-        (Quantity_Interval_Disjoint(Quantity_Interval(0 * P.V, 1 * P.V)), None),
+        (Quantity_Interval_Disjoint(Quantity_Interval(0.0 * P.V, 1.0 * P.V)), None),
         (EnumSet(_Enum.A, _Enum.B), None),
         (EnumSet.unbounded(_Enum), None),
     ],
