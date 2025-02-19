@@ -17,6 +17,7 @@ from rich.table import Table
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.graphinterface import GraphInterfaceSelf
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Associative,
     CanonicalExpression,
@@ -67,6 +68,15 @@ ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial 
 
 if S_LOG:
     logger.setLevel(logging.DEBUG)
+
+
+def set_log_level(level: int):
+    from faebryk.core.solver.defaultsolver import logger as defaultsolver_logger
+    from faebryk.core.solver.mutator import logger as mutator_logger
+
+    loggers = [logger, mutator_logger, defaultsolver_logger]
+    for lo in loggers:
+        lo.setLevel(level)
 
 
 class Contradiction(Exception):
@@ -698,9 +708,7 @@ def get_all_subsets(mutator: "Mutator") -> set[IsSubset]:
 
 # TODO move to Mutator
 def get_graphs(values: Iterable) -> list[Graph]:
-    return unique_ref(
-        p.get_graph() for p in values if isinstance(p, ParameterOperatable)
-    )
+    return unique_ref(p.get_graph() for p in values if isinstance(p, Node))
 
 
 def merge_parameters(params: Iterable[Parameter]) -> Parameter:
@@ -746,17 +754,18 @@ def merge_parameters(params: Iterable[Parameter]) -> Parameter:
 
 def debug_name_mappings(
     context: ParameterOperatable.ReprContext,
-    g: Graph,
+    *gs: Graph,
     print_out: Callable[[str], None] = logger.debug,
 ):
     table = Table(title="Name mappings", show_lines=True)
     table.add_column("Variable name")
     table.add_column("Node name")
 
-    for p in sorted(
-        GraphFunctions(g).nodes_of_type(Parameter), key=Parameter.get_full_name
-    ):
-        table.add_row(p.compact_repr(context), p.get_full_name())
+    for g in gs:
+        for p in sorted(
+            GraphFunctions(g).nodes_of_type(Parameter), key=Parameter.get_full_name
+        ):
+            table.add_row(p.compact_repr(context), p.get_full_name())
 
     if table.rows:
         console = Console(record=True, width=80, file=io.StringIO())

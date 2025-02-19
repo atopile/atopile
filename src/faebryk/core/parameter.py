@@ -26,6 +26,7 @@ from faebryk.core.trait import Trait
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set,
     Quantity_Set_Discrete,
     QuantityLikeR,
 )
@@ -73,7 +74,7 @@ class ParameterOperatable(Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
-    type NumberLiteral = Number | P_Set[Number]
+    type NumberLiteral = Number | P_Set[Number] | Quantity_Set
     type NumberLike = ParameterOperatable | NumberLiteral
     type BooleanLiteral = bool | BoolSet
     type BooleanLike = ParameterOperatable | BooleanLiteral
@@ -1415,7 +1416,16 @@ class Numbers(Domain):
     @override
     def unbounded(self, param: "Parameter") -> Quantity_Interval_Disjoint:
         if self.integer:
-            raise NotImplementedError("Integer unbounded not implemented")
+            # TODO
+            _max = int(1e15)
+            _min = -_max if self.negative else 0
+            return Quantity_Interval_Disjoint.from_value(
+                Quantity_Interval(
+                    min=quantity(_min, param.units),
+                    max=quantity(_max, param.units),
+                    units=param.units,
+                )
+            )
         if not self.zero_allowed:
             raise NotImplementedError("Non-zero unbounded not implemented")
         if not self.negative:

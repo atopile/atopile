@@ -2,6 +2,7 @@ from types import SimpleNamespace
 from typing import Any
 
 from faebryk.core.cpp import Graph
+from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter, Predicate
 from faebryk.core.solver import canonical
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -45,6 +46,9 @@ class NullSolver(DefaultSolver):
 
     def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
         return Solver.SolveResultAll(timed_out=False, has_solution=False)
+
+    def update_superset_cache(self, *nodes: Node):
+        pass
 
     def inspect_get_known_supersets(
         self, param: Parameter, force_update: bool = True

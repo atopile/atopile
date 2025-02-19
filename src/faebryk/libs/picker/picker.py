@@ -3,13 +3,12 @@
 
 import logging
 import pprint
-import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from textwrap import indent
-from typing import Callable, Iterable
+from typing import Any, Callable, Iterable
 
 from rich.progress import Progress
 
@@ -26,6 +25,7 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     ConfigFlag,
     KeyErrorAmbiguous,
@@ -243,6 +243,12 @@ def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
     return tree
 
 
+def update_pick_tree(tree: Tree[Module]):
+    # TODO: have to filter the lower levels too,
+    # but atm only first level is picked anyway
+    return Tree((k, v) for k, v in tree.items() if not k.has_trait(F.has_part_picked))
+
+
 def check_missing_picks(module: Module):
     # - not skip self pick
     # - no parent with part picked
@@ -293,76 +299,90 @@ def check_missing_picks(module: Module):
             )
 
 
-def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
+def pick_topologically(
+    tree: Tree[Module],
+    solver: Solver,
+    progress: PickerProgress | None = None,
+):
+    # TODO implement backtracking
+
     from faebryk.libs.picker.api.picker_lib import (
         filter_by_module_params_and_attach,
         get_candidates,
         pick_atomically,
     )
 
+    timings = Times(name="pick")
+
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
         names = sorted(p.get_full_name(types=True) for p in pickable_modules)
         logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
 
-    # TODO implement backtracking
+    def _get_candidates(_tree: Tree[Module]):
+        with timings.as_global("get candidates"):
+            # Rerun solver for new system
+            solver.update_superset_cache(*_tree)
+            candidates = list(get_candidates(_tree, solver).items())
+        if LOG_PICK_SOLVE:
+            logger.info(
+                "Candidates: \n\t"
+                f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates)}"
+            )
+        return candidates
 
-    logger.info("Getting part candidates for modules")
-    candidates_now = time.time()
-    candidates = get_candidates(tree, solver)
-    logger.info(f"Got candidates in {time.time() - candidates_now:.3f} seconds")
+    def _update_progress(done: list[tuple[Module, Any]] | Module):
+        if not progress:
+            return
 
-    now = time.time()
+        if isinstance(done, Module):
+            modules = [done]
+        else:
+            modules = [m for m, _ in done]
 
-    # heuristic: order by candidates count
-    sorted_candidates = sorted(candidates.items(), key=lambda x: len(x[1]))
+        for m in modules:
+            progress.advance(m)
 
-    if LOG_PICK_SOLVE:
-        logger.info(
-            "Candidates: \n\t"
-            f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in sorted_candidates)}"
-        )
+    timings.add("setup")
+
+    candidates = _get_candidates(tree)
 
     # heuristic: pick all single part modules in one go
     single_part_modules = [
-        (module, parts[0]) for module, parts in sorted_candidates if len(parts) == 1
+        (module, parts[0]) for module, parts in candidates if len(parts) == 1
     ]
+    if single_part_modules:
+        with timings.as_global("pick single candidate modules"):
+            ok = pick_atomically(single_part_modules, solver)
+        if not ok:
+            # TODO: Track contradicting constraints back to modules
+            raise PickError(
+                "Could not pick all explicitly-specified parts."
+                "Likely contradicting constraints.",
+                module=(m for m, _ in single_part_modules),  # type: ignore # TODO
+            )
+        _update_progress(single_part_modules)
 
-    ok = pick_atomically(single_part_modules, solver)
-    if ok:
-        for m, _ in single_part_modules:
-            progress.advance(m)
-    else:
-        logger.warning(
-            "Could not pick all explicitly-specified parts atomically, "
-            "picking one by one (slow)"
-        )
-
-        for module, parts in sorted_candidates:
-            filter_by_module_params_and_attach(module, parts, solver)
-            progress.advance(module)
-
-    sorted_candidates = [
-        (module, parts) for module, parts in sorted_candidates if len(parts) != 1
-    ]
+        tree = update_pick_tree(tree)
+        candidates = _get_candidates(tree)
 
     # heuristic: try pick first candidate for rest
-    ok = pick_atomically([(m, p[0]) for m, p in sorted_candidates], solver)
+    with timings.as_global("fast-pick"):
+        ok = pick_atomically([(m, p[0]) for m, p in candidates], solver)
     if ok:
-        for m, _ in sorted_candidates:
-            progress.advance(m)
-        logger.info(f"Fast-picked parts in {time.time() - now:.3f} seconds")
+        _update_progress(candidates)
+        logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
         return
+    logger.warning("Could not pick all parts atomically")
 
-    logger.warning("Could not pick all parts atomically, picking one by one (slow)")
+    logger.warning("Falling back to extremely slow picking one by one")
+    with timings.as_global("slow-pick", context=True):
+        for module in tree:
+            parts = _get_candidates(Tree({module: Tree()}))[0][1]
+            filter_by_module_params_and_attach(module, parts, solver)
+            _update_progress(module)
 
-    for module, parts in sorted_candidates:
-        filter_by_module_params_and_attach(module, parts, solver)
-        progress.advance(module)
-
-    if LOG_PICK_SOLVE:
-        logger.info("Done picking")
-    logger.info(f"Picked parts in {time.time() - now:.3f}s")
+    logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
 
 
 # TODO should be a Picker
