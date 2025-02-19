@@ -11,10 +11,14 @@ from faebryk.libs.sets.sets import P_Set
 
 class NullSolver(DefaultSolver):
     algorithms = SimpleNamespace(
-        pre=[canonical.convert_to_canonical_literals], iterative=[]
+        pre=[
+            canonical.convert_to_canonical_literals,
+        ],
+        iterative=[],
     )
 
     _superset_cache: dict[Parameter, P_Set] = {}
+    _repr_map = None
 
     def get_any_single(
         self,
@@ -48,14 +52,19 @@ class NullSolver(DefaultSolver):
         if param in self._superset_cache:
             return self._superset_cache[param]
 
-        repr_map, _ = self.simplify_symbolically(param.get_graph())
+        if self._repr_map is None:
+            repr_map, _ = self.simplify_symbolically(param.get_graph())
+            self._repr_map = repr_map
 
-        result = param.domain_set()
         if (
-            param in repr_map.repr_map
-            and (lit := repr_map.try_get_literal(param, allow_subset=True)) is not None
+            param in self._repr_map.repr_map
+            and (lit := self._repr_map.try_get_literal(param, allow_subset=True))
+            is not None
         ):
             result = P_Set.from_value(lit)
+        else:
+            result = param.domain_set()
 
         self._superset_cache[param] = result
+
         return result
