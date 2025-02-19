@@ -118,7 +118,7 @@ class Numeric_Interval(Numeric_Set):
 
     @property
     def is_integer(self) -> bool:
-        return self.is_single_element() and int(self._min) == self._min
+        return self.is_single_element() and is_int(self._min)
 
     def as_center_rel(self) -> tuple[Number, Number]:
         if self._min == self._max:
