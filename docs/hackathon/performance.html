@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Hackathon: Solver 100x speed 🚀</title>
+    <!-- Add Tailwind CSS and Chart.js CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js/dist/chart.umd.min.js"></script>
+    <script
+        src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #performanceChart {
+            width: 100% !important;
+            height: 100% !important;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-50">
+    <div class="w-full mx-auto px-6 py-8">
+        <canvas id="performanceChart"></canvas>
+    </div>
+
+    <script type="module">
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
+        const SUPABASE_URL = 'https://ynesgbuoxmszjrkzazxz.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InluZXNnYnVveG1zempya3phenh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzQzNzg5NDYsImV4cCI6MjA0OTk1NDk0Nn0.6KxEoSHTgyV4jKnnLAG5-Y9tWfHOzpl0qnA_NPzGUBo';
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const TARGET_TEST = 'test/core/performance/test_performance_pick.py::test_performance_pick_rc_formulas';
+        const HOURS_TO_SHOW = 6;
+        const REFRESH_INTERVAL = 5 * 60 * 1000;  // Refresh every 5 minutes
+
+        // Store chart instance
+        let chart = null;
+
+        async function fetchData() {
+            // Convert local time to UTC for Supabase query
+            const now = new Date();
+            const startTime = new Date(now - HOURS_TO_SHOW * 60 * 60 * 1000);
+
+            console.log('Time window:', {
+                now: now.toISOString(),
+                sixHoursAgo: startTime.toISOString()
+            });
+
+            let { data: results, error } = await supabase
+                .from('test_results')
+                .select(`
+                    duration,
+                    outcome,
+                    nodeid,
+                    test_runs!inner (
+                        start,
+                        gitauthor
+                    )
+                `)
+                .neq('test_runs.gitauthor', null)
+                .gte('test_runs.start', startTime.toISOString())
+                .eq('nodeid', TARGET_TEST)
+                .eq('outcome', 'passed')
+                .order('test_runs(start)', { ascending: true });
+
+            if (error) {
+                console.error('Error fetching results:', error);
+                return;
+            }
+
+            console.log('Raw results:', results);
+
+            // Transform the joined data, converting UTC times to local
+            const data = results
+                .map(result => ({
+                    timestamp: result.test_runs.start,
+                    duration: result.duration,
+                    author: result.test_runs.gitauthor
+                }));
+
+            console.log('Processed data:', data);
+            return data;
+        }
+
+        function hashCode(str) {
+            let hash = 0;
+            for (let i = 0; i < str.length; i++) {
+                const char = str.charCodeAt(i);
+                hash = ((hash << 5) - hash) + char;
+                hash = hash & hash; // Convert to 32-bit integer
+            }
+            return hash;
+        }
+
+        function getColorFromHash(str) {
+            const hash = hashCode(str);
+            // Use hue rotation to get distinct colors
+            const hue = Math.abs(hash % 360);
+            // Convert HSL to RGB
+            return `hsl(${hue}, 70%, 50%)`;
+        }
+
+        async function updateChart() {
+            const data = await fetchData();
+            if (!data || data.length === 0) {
+                console.log('No data to display');
+                return;
+            }
+
+            // Group data by author
+            const authorData = {};
+            data.forEach(point => {
+                if (!authorData[point.author]) {
+                    authorData[point.author] = [];
+                }
+                authorData[point.author].push({
+                    x: point.timestamp,
+                    y: point.duration
+                });
+            });
+
+            console.log('Author data:', authorData);
+
+            // Create datasets for each author using consistent colors
+            const datasets = Object.entries(authorData).map(([author, points]) => {
+                const color = getColorFromHash(author);
+                return {
+                    label: author,
+                    data: points,
+                    borderColor: color,
+                    backgroundColor: color + '20',
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                };
+            });
+
+            // Create or update chart
+            const ctx = document.getElementById('performanceChart');
+
+            // Destroy existing chart if it exists
+            if (chart) {
+                chart.destroy();
+            }
+
+            // Create new chart
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: datasets
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'nearest'
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute',
+                                displayFormats: {
+                                    minute: 'HH:mm'
+                                }
+                            }
+                        },
+                        y: {
+                            beginAtZero: true
+                        }
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function (context) {
+                                    return `${context.dataset.label}: ${context.parsed.y.toFixed(2)}s`;
+                                },
+                                title: function(context) {
+                                    const date = new Date(context[0].parsed.x);
+                                    return date.toLocaleTimeString(undefined, {
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                        second: '2-digit'
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Initial update
+        updateChart();
+
+        // Set up periodic refresh
+        setInterval(updateChart, REFRESH_INTERVAL);
+    </script>
+</body>
+
+</html>
