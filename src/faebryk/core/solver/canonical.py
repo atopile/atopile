@@ -28,7 +28,6 @@ from faebryk.core.parameter import (
     Min,
     Multiply,
     Not,
-    Numbers,
     Or,
     Parameter,
     ParameterOperatable,
@@ -72,13 +71,12 @@ def constrain_within_domain(mutator: Mutator):
         new_param = mutator.mutate_parameter(param, override_within=True, within=None)
         if param.within is not None:
             subset_to(new_param, param.within, mutator, from_ops=[param])
-        if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            subset_to(
-                new_param,
-                make_lit(Quantity_Interval(min=0, units=param.units)),
-                mutator,
-                from_ops=[param],
-            )
+        subset_to(
+            new_param,
+            param.domain_set(),
+            mutator,
+            from_ops=[param],
+        )
 
 
 @algorithm("Alias predicates to true", single=True, destructive=False)

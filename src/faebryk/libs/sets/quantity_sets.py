@@ -6,9 +6,9 @@ from collections.abc import Generator
 from typing import Any, TypeVar, cast, override
 
 from faebryk.libs.sets.numeric_sets import (
+    Number,
     Numeric_Interval,
     Numeric_Interval_Disjoint,
-    NumericT,
 )
 from faebryk.libs.sets.sets import BoolSet, P_Set, P_UnitSet
 from faebryk.libs.units import (
@@ -42,8 +42,8 @@ QuantityT = TypeVar(
     covariant=False,
 )
 
-type QuantityLike = Quantity | int | float  # | Unit
-QuantityLikeR = (Quantity, int, float)
+type QuantityLike = Quantity | int | float | Number  # | Unit
+QuantityLikeR = (Quantity, int, float, Number)
 
 
 type Numeric = int | float
@@ -70,12 +70,12 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
         self.units = units
         self.interval_units = base_units(units)
 
-    def base_to_units(self, value: NumericT) -> Quantity:
+    def base_to_units(self, value: Number) -> Quantity:
         return cast_assert(
             Quantity, quantity(value, self.interval_units).to(self.units)
         )
 
-    def _format_number(self, number: float, num_decimals: int = 9) -> str:
+    def _format_number(self, number: Number, num_decimals: int = 9) -> str:
         if self.units.is_compatible_with(dimensionless):
             return round_str(number, num_decimals)
         return to_si_str(
@@ -128,14 +128,14 @@ class Quantity_Interval(Quantity_Set):
 
         if isinstance(min, Quantity):
             num_min = min.to_base_units().magnitude
-            if not isinstance(num_min, (float, int)):
+            if not isinstance(num_min, (float, int, Number)):
                 raise ValueError("min must be a float or int quantity")
         else:
             num_min = min
 
         if isinstance(max, Quantity):
             num_max = max.to_base_units().magnitude
-            if not isinstance(num_max, (float, int)):
+            if not isinstance(num_max, (float, int, Number)):
                 raise ValueError("max must be a float or int quantity")
         else:
             num_max = max
@@ -150,12 +150,31 @@ class Quantity_Interval(Quantity_Set):
 
     @staticmethod
     def from_center(center: QuantityLike, abs_tol: QuantityLike) -> "Quantity_Interval":
+        if isinstance(center, float):
+            center = Number(center)
+        if isinstance(center, Quantity) and not isinstance(center.magnitude, Number):
+            center = Quantity(Number(center.magnitude), center.units)  # type: ignore
+            assert isinstance(center, Quantity)
+        if isinstance(abs_tol, float):
+            abs_tol = Number(abs_tol)
+        if isinstance(abs_tol, Quantity) and not isinstance(abs_tol.magnitude, Number):
+            abs_tol = Quantity(Number(abs_tol.magnitude), abs_tol.units)  # type: ignore
+            assert isinstance(abs_tol, Quantity)
         left = cast_assert(QuantityLikeR, center - abs_tol)
         right = cast_assert(QuantityLikeR, center + abs_tol)
         return Quantity_Interval(left, right)
 
     @staticmethod
-    def from_center_rel(center: QuantityLike, rel_tol: float) -> "Quantity_Interval":
+    def from_center_rel(
+        center: QuantityLike, rel_tol: float | Number
+    ) -> "Quantity_Interval":
+        if isinstance(center, float):
+            center = Number(center)
+        if isinstance(center, Quantity) and not isinstance(center.magnitude, Number):
+            center = Quantity(Number(center.magnitude), center.units)  # type: ignore
+            assert isinstance(center, Quantity)
+        if isinstance(rel_tol, float):
+            rel_tol = Number(rel_tol)
         return Quantity_Interval(
             cast_assert(QuantityLikeR, center - center * rel_tol),
             cast_assert(QuantityLikeR, center + center * rel_tol),
@@ -170,7 +189,7 @@ class Quantity_Interval(Quantity_Set):
         )
 
     def as_center_tuple(self, relative: bool = False) -> tuple[QuantityT, QuantityT]:
-        center = cast_assert(QuantityLikeR, (self.min_elem + self.max_elem) / 2)
+        center = cast_assert(QuantityLikeR, (self.min_elem + self.max_elem)) / 2
         delta = (self.max_elem - self.min_elem) / 2
         if relative:
             delta /= center
@@ -252,7 +271,7 @@ class Quantity_Interval(Quantity_Set):
     #    return r
 
     def __contains__(self, item: Any) -> bool:
-        if isinstance(item, (float, int)):
+        if isinstance(item, (float, int, Number)):
             item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
@@ -393,7 +412,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     @classmethod
     def _from_intervals(
         cls: type[Quantity_Interval_DisjointT],
-        intervals: "Numeric_Interval_Disjoint[NumericT]",
+        intervals: "Numeric_Interval_Disjoint",
         units: Unit,
     ) -> Quantity_Interval_DisjointT:
         r = cls.__new__(cls)
@@ -567,7 +586,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
     def __contains__(self, item: Any) -> bool:
-        if isinstance(item, (float, int)):
+        if isinstance(item, (float, int, Number)):
             item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
@@ -583,11 +602,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
 
     @once
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self})"
+        return f"Quantity_Interval_Disjoint({self})"
 
     @once
     def __str__(self) -> str:
-        def _format_interval(r: Numeric_Interval[NumericT]) -> str:
+        def _format_interval(r: Numeric_Interval) -> str:
             if r._min == r._max:
                 return f"[{self._format_number(r._min)}]"
             try:

@@ -38,6 +38,7 @@ from faebryk.libs.picker.lcsc import (
 )
 from faebryk.libs.picker.picker import PickError, does_not_require_picker_check
 from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Tree,
     cast_assert,
@@ -152,7 +153,11 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
 def _find_modules(
     modules: Tree[Module], solver: Solver
 ) -> dict[Module, list[Component]]:
+    timings = Times(name="find_modules")
+
     params = {m: _prepare_query(m, solver) for m in modules}
+    timings.add("prepare queries")
+
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
 
@@ -162,6 +167,7 @@ def _find_modules(
 
     try:
         results = client.fetch_parts_multiple(queries)
+        timings.add("fetch parts")
     except ApiHTTPError as e:
         if e.response.status_code == 400:
             response = cast_assert(dict, e.response.json())
@@ -180,7 +186,9 @@ def _find_modules(
                 raise
         raise e
 
-    return {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
+    out = {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
+    timings.add("process candidates")
+    return out
 
 
 def get_candidates(
@@ -230,7 +238,7 @@ def filter_by_module_params_and_attach(
     try:
         try_attach(cmp, parts_gen(), qty=1)
     except PickError as ex:
-        cmp_descr = f"{cmp.get_full_name()}<{cmp.pretty_params(solver)}>"
+        cmp_descr = f"{cmp.get_full_name()}<\n{cmp.pretty_params(solver)}>"
         attr_str = "\n".join(
             f"- {c.lcsc_display} (attributes: {', '.join(
                 f"{name}={lit}" for name, lit in c.attribute_literals.items()
@@ -350,6 +358,9 @@ def check_compatible_parameters(
 ):
     # check for every param whether the candidate component's range is
     # compatible by querying the solver
+
+    if not module_candidates:
+        return True
 
     try:
         mappings = [
