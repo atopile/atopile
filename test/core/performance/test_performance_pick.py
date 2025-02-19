@@ -10,7 +10,12 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import NO_PROGRESS_BAR, pick_part_recursively
+from faebryk.libs.picker.picker import (
+    NO_PROGRESS_BAR,
+    get_pick_tree,
+    pick_part_recursively,
+    pick_topologically,
+)
 from faebryk.libs.test.times import Times
 
 logger = logging.getLogger(__name__)
@@ -37,13 +42,15 @@ def test_performance_pick_complex_module_full():
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     timings.add("resolve bus params")
 
-    solver = DefaultSolver()
+    pick_tree = get_pick_tree(app)
+    timings.add("pick tree")
 
+    solver = DefaultSolver()
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)
     timings.add("pre-solve")
 
-    pick_part_recursively(app, solver)
+    pick_topologically(pick_tree, solver)
     timings.add("pick")
 
     logger.info(f"\n{timings}")

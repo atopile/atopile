@@ -3,7 +3,6 @@
 
 import logging
 import pprint
-import time
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -26,6 +25,7 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     ConfigFlag,
     KeyErrorAmbiguous,
@@ -293,12 +293,20 @@ def check_missing_picks(module: Module):
             )
 
 
-def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgress):
+def pick_topologically(
+    tree: Tree[Module],
+    solver: Solver,
+    progress: PickerProgress | None = None,
+    timings: Times | None = None,
+):
     from faebryk.libs.picker.api.picker_lib import (
         filter_by_module_params_and_attach,
         get_candidates,
         pick_atomically,
     )
+
+    if not timings:
+        timings = Times()
 
     if LOG_PICK_SOLVE:
         pickable_modules = next(iter(tree.iter_by_depth()))
@@ -308,11 +316,10 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     # TODO implement backtracking
 
     logger.info("Getting part candidates for modules")
-    candidates_now = time.time()
+    timings.add("setup")
     candidates = get_candidates(tree, solver)
-    logger.info(f"Got candidates in {time.time() - candidates_now:.3f} seconds")
-
-    now = time.time()
+    timings.add("get candidates")
+    logger.info(f"Got candidates in {timings.get_formatted('get candidates')}")
 
     # heuristic: order by candidates count
     sorted_candidates = sorted(candidates.items(), key=lambda x: len(x[1]))
@@ -329,9 +336,11 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
     ]
 
     ok = pick_atomically(single_part_modules, solver)
+    timings.add("pick single candidate modules")
     if ok:
-        for m, _ in single_part_modules:
-            progress.advance(m)
+        if progress:
+            for m, _ in single_part_modules:
+                progress.advance(m)
     else:
         logger.warning(
             "Could not pick all explicitly-specified parts atomically, "
@@ -340,7 +349,8 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
         for module, parts in sorted_candidates:
             filter_by_module_params_and_attach(module, parts, solver)
-            progress.advance(module)
+            if progress:
+                progress.advance(module)
 
     sorted_candidates = [
         (module, parts) for module, parts in sorted_candidates if len(parts) != 1
@@ -348,21 +358,25 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: PickerProgr
 
     # heuristic: try pick first candidate for rest
     ok = pick_atomically([(m, p[0]) for m, p in sorted_candidates], solver)
+    timings.add("fast-pick")
     if ok:
-        for m, _ in sorted_candidates:
-            progress.advance(m)
-        logger.info(f"Fast-picked parts in {time.time() - now:.3f} seconds")
+        if progress:
+            for m, _ in sorted_candidates:
+                progress.advance(m)
+        logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
         return
 
     logger.warning("Could not pick all parts atomically, picking one by one (slow)")
 
     for module, parts in sorted_candidates:
         filter_by_module_params_and_attach(module, parts, solver)
-        progress.advance(module)
+        if progress:
+            progress.advance(module)
+    timings.add("slow-pick")
 
     if LOG_PICK_SOLVE:
         logger.info("Done picking")
-    logger.info(f"Picked parts in {time.time() - now:.3f}s")
+    logger.info(f"Picked parts in {timings.get_formatted('slow-pick')}")
 
 
 # TODO should be a Picker

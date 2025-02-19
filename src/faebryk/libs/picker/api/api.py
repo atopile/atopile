@@ -15,6 +15,7 @@ from faebryk.libs.picker.api.models import (
     LCSCParams,
     ManufacturerPartParams,
 )
+from faebryk.libs.units import format_time
 from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
@@ -92,7 +93,7 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
         finally:
-            logger.info(f"Backend query took {time.time() - now:.3f} seconds")
+            logger.info(f"Backend query took {format_time(time.time() - now)}")
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
