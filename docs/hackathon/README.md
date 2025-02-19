@@ -66,30 +66,30 @@ pytest test/core/solver/test_solver.py
 ```bash
 FBRK_ST_NUMEXAMPLES=1000 FBRK_STIMEOUT=2 FBRK_SPARTIAL=n ./test/runpytest.sh -Wignore --hypothesis-show-statistics -k "test_folding_statistics" | grep -v Retried | grep -v "invalid because"
 ```
-5. Run the solver benchmark
+6. Run the solver benchmark
 ```bash
-#TODO
+python ./test/runtest.py -k "test_performance_pick_rc_formulas"
 ```
-6. Get to work
+7. Get to work
 
 ## Pointers
 
-### Picking - [picker.py](../../src/faebryk/libs/picker/picker.py):pick_topologically
+### Algorithmic: Picker - [picker.py](../../src/faebryk/libs/picker/picker.py):pick_topologically
 The solver itself is not super slow, but it's called a lot during picking.
 There are ways to reduce the number of solver calls.
 
 - picking parts by solver instead of looping through candidates
 - picking parts in smarter sequences (e.g sort by parameter variance)
-- picking parts in parallel
+- picking parts in parallel, by finding independent module groups
 
-### Mutation - [mutator.py](../../src/faebryk/core/solver/mutator.py)
+### Implementation: Mutator - [mutator.py](../../src/faebryk/core/solver/mutator.py)
 Mutation by copy is very expensive if done for large graphs.
 
 - improve `Expression`/`Parameter` construction speed
 - avoid graph copies if not necessary
 - switch to mutable graph for intermediate stages of solver
 
-### Mathematical - [analytical.py](../../src/faebryk/core/solver/analytical.py)
+### Mathematical: Solver - [analytical.py](../../src/faebryk/core/solver/analytical.py)
 Every solver algorithm/iteration costs time.
 If algorithms can reach most strong expressions faster, fewer iterations are needed.
 If results can be shared between solver runs, even better.
@@ -106,3 +106,7 @@ If results can be shared between solver runs, even better.
 - `FBRK_LOG_FMT`: math expression highlighting and stack traces
 - `FBRK_SLOG`: very detailed mathematical expression logging
 - `FBRK_SMAX_ITERATIONS`: maximum iterations for solver
+
+## Profiling
+Have a look in [profile.py](../../tools/profile.py) for tools to profile the solver.
+Also useful for in-code instrumenting: [times.py](../../src/faebryk/libs/test/times.py)
