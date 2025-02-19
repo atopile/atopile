@@ -18,7 +18,7 @@
 ## Rules
 
 - no new libraries or external tools (unless approved by organizers)
-- python code has to stay python and c++ has to stay c++
+- code must be in python or c++ (hint; we don't expect much over a 2x speedup going out of python)
 - all passing tests need to remain passing
 - even if all tests pass, doing something obviously incorrect will result in a penalty
 - if picker accepts invalid parts, solver will be considered incorrect
