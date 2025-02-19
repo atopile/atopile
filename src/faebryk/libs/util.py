@@ -872,18 +872,30 @@ class _ConfigFlagBase[T]:
         self.default = default
         self.descr = descr
         self._type: type[T] = type(default)
-        self.get()
+        self.value = self._get()
+        self._has_been_read = False
 
     @property
     def name(self) -> str:
         return f"FBRK_{self._name}"
 
+    def set(self, value: T):
+        if self._has_been_read and value != self.value:
+            raise ValueError(
+                f"Can't write flag {self.name}"
+                ", has already been read with different value"
+            )
+        self.value = value
+
     @property
     def raw_value(self) -> str | None:
         return os.getenv(self.name, None)
 
-    @once
     def get(self) -> T:
+        self._has_been_read = True
+        return self.value
+
+    def _get(self) -> T:
         raw_val = self.raw_value
 
         if raw_val is None:

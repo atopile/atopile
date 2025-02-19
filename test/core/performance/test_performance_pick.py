@@ -10,15 +10,20 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.picker.picker import NO_PROGRESS_BAR, pick_part_recursively
 from faebryk.libs.test.times import Times
 
 logger = logging.getLogger(__name__)
 
 
+@pytest.fixture()
+def _setup():
+    NO_PROGRESS_BAR.set(True)
+
+
 @pytest.mark.slow
-@pytest.mark.usefixtures("setup_project_config")
-def test_complex_module_full():
+@pytest.mark.usefixtures("setup_project_config", "_setup")
+def test_performance_pick_complex_module_full():
     timings = Times()
 
     class App(Module):
@@ -45,8 +50,8 @@ def test_complex_module_full():
 
 
 @pytest.mark.slow
-@pytest.mark.usefixtures("setup_project_config")
-def test_very_complex_module_full():
+@pytest.mark.usefixtures("setup_project_config", "_setup")
+def test_performance_pick_very_complex_module_full():
     timings = Times()
 
     app = F.RP2040_ReferenceDesign()
@@ -68,8 +73,8 @@ def test_very_complex_module_full():
 
 
 @pytest.mark.slow
-@pytest.mark.usefixtures("setup_project_config")
-def test_complex_module_comp_count():
+@pytest.mark.usefixtures("setup_project_config", "_setup")
+def test_performance_pick_complex_module_comp_count():
     timings = Times()
 
     class App(Module):
