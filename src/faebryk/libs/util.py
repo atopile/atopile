@@ -1864,13 +1864,16 @@ def indented_container(
     use_repr: bool = True,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
+    _indent = "  " * indent_level
+    ind = "\n" + _indent
 
     def format_v(v: Any) -> str:
+        if not use_repr and isinstance(v, str):
+            return indent(v, prefix=_indent)
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
             return repr(v) if use_repr else str(v)
         return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
 
-    ind = "\n" + "  " * indent_level
     inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
     if len(kvs):
         inside = f"{ind}{inside}\n"

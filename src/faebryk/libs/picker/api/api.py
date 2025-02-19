@@ -3,7 +3,6 @@
 
 import json
 import logging
-import time
 from dataclasses import dataclass
 
 import requests
@@ -15,7 +14,6 @@ from faebryk.libs.picker.api.models import (
     LCSCParams,
     ManufacturerPartParams,
 )
-from faebryk.libs.units import format_time
 from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
@@ -81,7 +79,6 @@ class ApiClient:
     def _post(
         self, url: str, data: dict, timeout: float = DEFAULT_API_TIMEOUT_SECONDS
     ) -> requests.Response:
-        now = time.time()
         try:
             response = self._client.post(
                 f"{self._cfg.api_url}{url}",
@@ -92,8 +89,6 @@ class ApiClient:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
-        finally:
-            logger.info(f"Backend query took {format_time(time.time() - now)}")
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(

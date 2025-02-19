@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, override
 
 from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -204,7 +205,7 @@ class DefaultSolver(Solver):
     @times_out(TIMEOUT)
     def simplify_symbolically(
         self,
-        g: Graph,
+        *gs: Graph,
         print_context: ParameterOperatable.ReprContext | None = None,
         destructive: bool = True,
     ) -> tuple[Mutator.ReprMap, ParameterOperatable.ReprContext]:
@@ -223,15 +224,16 @@ class DefaultSolver(Solver):
 
         print_context_ = print_context or ParameterOperatable.ReprContext()
         if S_LOG:
-            debug_name_mappings(print_context_, g)
-            Mutator.print_all(g, context=print_context_, type_filter=Expression)
+            debug_name_mappings(print_context_, *gs)
+            Mutator.print_all(*gs, context=print_context_, type_filter=Expression)
 
         self.partial_state = DefaultSolver.PartialState(
             data=DefaultSolver.IterationData(
-                graphs=[g],
+                graphs=gs,
                 total_repr_map=Mutator.ReprMap(
                     {
                         po: po
+                        for g in gs
                         for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
                     }
                 ),
@@ -332,9 +334,6 @@ class DefaultSolver(Solver):
         )
         # raise NotImplementedError()
 
-    # IMPORTANT ------------------------------------------------------------------------
-
-    # TODO: Could be exponentially many
     @override
     def inspect_get_known_supersets(
         self, param: Parameter, force_update: bool = False
@@ -343,35 +342,17 @@ class DefaultSolver(Solver):
             ParameterOperatable
         )
         g_hash = hash(tuple(sorted(all_params, key=id)))
-        cached = self.superset_cache.get(param, (None, None))[0]
-        if cached == g_hash or (cached is not None and not force_update):
-            return self.superset_cache[param][1]
+        cached_g_hash = self.superset_cache.get(param, (None, None))[0]
 
-        out, repr_map = self._inspect_get_known_supersets(param)
-        self.superset_cache[param] = g_hash, out
+        if force_update or cached_g_hash != g_hash:
+            self.update_superset_cache(param)
 
-        if repr_map:
-            for p in all_params:
-                if not isinstance(p, Parameter):
-                    continue
-                lit = repr_map.try_get_literal(p, allow_subset=True)
-                if lit is None:
-                    lit = p.domain_set()
-                self.superset_cache[p] = g_hash, P_Set.from_value(lit)
+        return self.superset_cache[param][1]
 
-        return out
-
-    def _inspect_get_known_supersets(
-        self, param: Parameter
-    ) -> tuple[P_Set, Mutator.ReprMap | None]:
-        lit = param.try_get_literal()
-        if lit is not None:
-            return P_Set.from_value(lit), None
-
-        # run phase 1 solver
-        # TODO caching
+    def update_superset_cache(self, *nodes: Node):
+        graphs = get_graphs(nodes)
         try:
-            repr_map, print_context = self.simplify_symbolically(param.get_graph())
+            repr_map, print_context = self.simplify_symbolically(*graphs)
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise
@@ -379,18 +360,16 @@ class DefaultSolver(Solver):
                 raise
             repr_map = self.partial_state.data.total_repr_map
 
-        if param not in repr_map.repr_map:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Parameter {param} not in repr_map")
-            return param.domain_set(), repr_map
-
-        # check predicates (is, subset), (ge, le covered too)
-        literal = repr_map.try_get_literal(param, allow_subset=True)
-
-        if literal is None:
-            return param.domain_set(), repr_map
-
-        return P_Set.from_value(literal), repr_map
+        for g in graphs:
+            pos = GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            g_hash = hash(tuple(sorted(pos, key=id)))
+            for p in pos:
+                if not isinstance(p, Parameter):
+                    continue
+                lit = repr_map.try_get_literal(p, allow_subset=True)
+                # during canonicalization we use domain set
+                assert lit is not None
+                self.superset_cache[p] = g_hash, lit
 
     @override
     def assert_any_predicate[ArgType](

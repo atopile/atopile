@@ -332,27 +332,22 @@ def pick_topologically(
     single_part_modules = [
         (module, parts[0]) for module, parts in sorted_candidates if len(parts) == 1
     ]
-
-    with timings.as_global("pick single candidate modules"):
-        ok = pick_atomically(single_part_modules, solver)
-    if ok:
+    if single_part_modules:
+        with timings.as_global("pick single candidate modules"):
+            ok = pick_atomically(single_part_modules, solver)
+        if not ok:
+            # TODO: Track contradicting constraints back to modules
+            raise PickError(
+                "Could not pick all explicitly-specified parts."
+                "Likely contradicting constraints."
+            )
         if progress:
             for m, _ in single_part_modules:
                 progress.advance(m)
-    else:
-        logger.warning(
-            "Could not pick all explicitly-specified parts atomically, "
-            "picking one by one (slow)"
-        )
 
-        for module, parts in sorted_candidates:
-            filter_by_module_params_and_attach(module, parts, solver)
-            if progress:
-                progress.advance(module)
-
-    sorted_candidates = [
-        (module, parts) for module, parts in sorted_candidates if len(parts) != 1
-    ]
+        sorted_candidates = [
+            (module, parts) for module, parts in sorted_candidates if len(parts) != 1
+        ]
 
     # heuristic: try pick first candidate for rest
     with timings.as_global("fast-pick"):
