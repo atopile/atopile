@@ -131,4 +131,5 @@ def test_performance_pick_rc_formulas():
     }
     logger.info(f"Picked values: {indented_container(picked_values)}")
 
-    logger.info(f"Pick duration {GROUPS}x{GROUP_SIZE}: {timings.get_formatted('pick')}")
+    pick_time = timings.get_formatted("pick", strat=Times.MultiSampleStrategy.ACC)
+    logger.info(f"Pick duration {GROUPS}x{GROUP_SIZE}: {pick_time}")
