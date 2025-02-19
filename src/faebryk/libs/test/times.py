@@ -107,7 +107,7 @@ class Times:
         if not has_multisamples:
             strats = [Times.MultiSampleStrategy.AVG]
 
-        table = Table(title=f"Timings (cnt={self.cnt})")
+        table = Table(title="Timings" + (f" (cnt={self.cnt})" if self.cnt > 1 else ""))
         table.add_column("Category", style="cyan")
         if has_subcategories:
             table.add_column("Subcategory", style="magenta")

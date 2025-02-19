@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from typing import Callable
 
 import pytest
 
@@ -9,11 +10,9 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
     NO_PROGRESS_BAR,
     get_pick_tree,
-    pick_part_recursively,
     pick_topologically,
 )
 from faebryk.libs.test.times import Times
@@ -26,80 +25,40 @@ def _setup():
     NO_PROGRESS_BAR.set(True)
 
 
+class _RP2040_Basic(Module):
+    rp2040: F.RP2040
+    ldo: F.LDO
+    led: F.LED
+
+
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
-def test_performance_pick_complex_module_full():
+@pytest.mark.parametrize(
+    "module_type",
+    [
+        _RP2040_Basic,
+        F.RP2040_ReferenceDesign,
+        lambda: F.MultiCapacitor(10),
+    ],
+)
+def test_performance_pick_real_module(module_type: Callable[[], Module]):
     timings = Times()
 
-    class App(Module):
-        rp2040: F.RP2040
-        ldo: F.LDO
-        led: F.LED
-
-    app = App()
-    timings.add("construct")
+    app = module_type()
+    timings.add("test", "construct")
 
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add("resolve bus params")
+    timings.add("test", "resolve bus params")
 
     pick_tree = get_pick_tree(app)
-    timings.add("pick tree")
+    timings.add("test", "pick tree")
 
     solver = DefaultSolver()
     p = next(iter(app.get_children(direct_only=False, types=Parameter)))
     solver.inspect_get_known_supersets(p)
-    timings.add("pre-solve")
+    timings.add("test", "pre-solve")
 
-    pick_topologically(pick_tree, solver)
-    timings.add("pick")
-
-    logger.info(f"\n{timings}")
-
-
-@pytest.mark.slow
-@pytest.mark.usefixtures("setup_project_config")
-def test_performance_pick_very_complex_module_full():
-    timings = Times()
-
-    app = F.RP2040_ReferenceDesign()
-    timings.add("construct")
-
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add("resolve bus params")
-
-    solver = DefaultSolver()
-
-    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
-    solver.inspect_get_known_supersets(p)
-    timings.add("pre-solve")
-
-    pick_part_recursively(app, solver)
-    timings.add("pick")
-
-    logger.info(f"\n{timings}")
-
-
-@pytest.mark.slow
-@pytest.mark.usefixtures("setup_project_config")
-def test_performance_pick_complex_module_comp_count():
-    timings = Times()
-
-    class App(Module):
-        caps = L.f_field(F.MultiCapacitor)(10)
-
-    app = App()
-    timings.add("construct")
-
-    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
-    timings.add("resolve bus params")
-
-    solver = DefaultSolver()
-
-    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
-    solver.inspect_get_known_supersets(p)
-    timings.add("pre-solve")
-
-    pick_part_recursively(app, solver)
-    timings.add("pick")
+    pick_topologically(pick_tree, solver, timings=timings)
+    timings.add("test", "pick")
 
     logger.info(f"\n{timings}")
