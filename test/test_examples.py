@@ -32,6 +32,7 @@ XFAILURES = {
     ),
     ids=lambda p: p.stem,
 )
+@pytest.mark.not_in_ci
 def test_examples_build(
     example: Path, tmp_path: Path, repo_root: Path, request: pytest.FixtureRequest
 ):
