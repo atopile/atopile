@@ -7,6 +7,7 @@ This CLI command provides the `ato install` command to:
 """
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Annotated, Optional
 from urllib.parse import quote, urlparse
@@ -21,12 +22,10 @@ import faebryk.libs.exceptions
 from atopile import errors, version
 from atopile.config import Dependency, ProjectConfig, Source, config
 from faebryk.libs.util import robustly_rm_dir
-import shutil
-
-yaml = ruamel.yaml.YAML()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+yaml = ruamel.yaml.YAML()
 
 
 def install(
@@ -73,7 +72,6 @@ def do_install(
     Actually do the installation of the dependencies.
     This is split in two so that it can be called from `install` and `create`
     """
-
 
     if path is not None:
         config.project_dir = path
@@ -165,7 +163,9 @@ def install_single_local(path: Path, name: str | None = None):
     dependency = Dependency(
         name=name,
         source=Source(local=path),
-        path=(config.project.paths.modules / name).relative_to(config.project.paths.root),
+        path=(config.project.paths.modules / name).relative_to(
+            config.project.paths.root
+        ),
         project_config=ProjectConfig.from_path(path),
     )
     install_local_dependency(dependency)
@@ -241,7 +241,9 @@ def install_project_dependencies(upgrade: bool):
 
 def install_local_dependency(dependency: Dependency):
     if not dependency.source or not dependency.source.local:
-        raise errors.UserFileNotFoundError("Local dependency must have a source with local path")
+        raise errors.UserFileNotFoundError(
+            "Local dependency must have a source with local path"
+        )
     src = dependency.source.local
     dst = dependency.path or config.project.paths.modules / dependency.name
     if not src.exists():
