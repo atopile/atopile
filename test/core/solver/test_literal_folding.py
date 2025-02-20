@@ -21,6 +21,7 @@ from rich.console import Console
 from rich.table import Table
 
 from faebryk.core.core import Namespace
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -43,7 +44,7 @@ from faebryk.core.parameter import (
     Subtract,
 )
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.core.solver.utils import Contradiction
+from faebryk.core.solver.utils import Contradiction, get_graphs
 from faebryk.libs.library.L import Range
 from faebryk.libs.sets.numeric_sets import float_round
 from faebryk.libs.sets.quantity_sets import (
@@ -826,13 +827,7 @@ class Stats:
         table.add_column("Type", justify="left")
         table.add_column("count", justify="right")
 
-        all_exprs = [
-            e
-            for root in self.exprs
-            for e in root.get_children(
-                direct_only=False, types=Arithmetic, include_root=True
-            )
-        ]
+        all_exprs = GraphFunctions(*get_graphs(self.exprs)).nodes_of_type(Arithmetic)
         expr_types = groupby(all_exprs, type)
         for expr_type, exprs_for_type in expr_types.items():
             table.add_row(expr_type.__name__, str(len(exprs_for_type)))

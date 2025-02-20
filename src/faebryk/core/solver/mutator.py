@@ -706,7 +706,7 @@ class Mutator:
         elif created_only:
             out = {n for n in self.transformations.created if isinstance(n, t)}
         else:
-            out = {n for G in self.G for n in GraphFunctions(G).nodes_of_type(t)}
+            out = GraphFunctions(*self.G).nodes_of_type(t)
 
         if not include_terminated:
             out = {
@@ -729,7 +729,7 @@ class Mutator:
         sort_by_depth: bool = False,
         include_terminated: bool = False,
     ) -> list[ParameterOperatable] | set[ParameterOperatable]:
-        out = {n for G in self._G for n in GraphFunctions(G).nodes_of_types(t)}
+        out = GraphFunctions(*self.G).nodes_of_types(t)
         out = cast(set[ParameterOperatable], out)
         if not include_terminated:
             out = {
