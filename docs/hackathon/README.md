@@ -45,9 +45,11 @@ The points are cumulative.
 
 ## Getting started
 
-1. Clone & setup [atopile](https://github.com/atopile/atopile)
-2. Read the [atopile solver introduction](https://github.com/atopile/atopile/tree/main/src/faebryk/core/solver)
-3. Run the solver functional test suite
+1. [Fork atopile]([https://github.com/atopile/atopile](https://github.com/atopile/atopile/fork))
+2. `git remote add upstream https://github.com/atopile/atopile && git fetch && git checkout -b hackathon upstream/temp/hackathon_solver`
+3. Read the [atopile solver introduction](https://github.com/atopile/atopile/tree/main/src/faebryk/core/solver)
+4. Run the solver functional test suite
+5. Create a draft pull request against atopile, to run the test jobs in CI, where your performance metrics will be logged
 
 ```bash
 pytest test/core/solver/test_solver.py
