@@ -1,0 +1,33 @@
+{
+    "name": "Atopile Development Environment",
+    "build": {
+        "dockerfile": "../dockerfiles/Dockerfile.kicad",
+        "context": ".."
+    },
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "charliermarsh.ruff"
+            ],
+            "settings": {
+                "python.defaultInterpreterPath": "/venv/bin/python",
+                "python.formatting.provider": "ruff",
+                "python.linting.enabled": true,
+                "editor.formatOnSave": true,
+            }
+        }
+    },
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {},
+        "ghcr.io/devcontainers/features/github-cli:1": {}
+    },
+    // Mount the source code and .git directory
+    "mounts": [
+        "source=${localWorkspaceFolder},target=/opt/atopile,type=bind",
+        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/root/.ssh,type=bind"
+    ],
+    "workspaceFolder": "/opt/atopile",
+    "remoteUser": "root"
+}
