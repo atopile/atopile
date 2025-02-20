@@ -14,9 +14,11 @@ jobs:
       (github.event_name == 'push') ||
       (github.event_name == 'workflow_dispatch') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository && contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+      (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: blacksmith-8vcpu-ubuntu-2204
     steps:
+    - if: (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository && !contains(github.event.pull_request.labels.*.name, 'safe-to-test'))
+      run: exit 1
     - name: Checkout code
       uses: actions/checkout@v4
       with:
