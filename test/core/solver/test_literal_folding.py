@@ -53,7 +53,7 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.test.times import Times
 from faebryk.libs.units import Quantity
-from faebryk.libs.util import ConfigFlag, ConfigFlagInt
+from faebryk.libs.util import ConfigFlag, ConfigFlagInt, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -761,6 +761,25 @@ class Stats:
         console = Console(record=True, file=io.StringIO())
         console.print(table)
         logger.info(console.export_text(styles=True))
+
+        table = Table(title="Expressions")
+        table.add_column("Type", justify="left")
+        table.add_column("count", justify="right")
+
+        all_exprs = [
+            e
+            for root in self.exprs
+            for e in root.get_children(
+                direct_only=False, types=Arithmetic, include_root=True
+            )
+        ]
+        expr_types = groupby(all_exprs, type)
+        for expr_type, exprs_for_type in expr_types.items():
+            table.add_row(expr_type.__name__, str(len(exprs_for_type)))
+        console = Console(record=True, file=io.StringIO())
+        console.print(table)
+        logger.info(console.export_text(styles=True))
+
         logger.info(self.times)
 
     def finish(self):
