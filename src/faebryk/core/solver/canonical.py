@@ -28,7 +28,6 @@ from faebryk.core.parameter import (
     Min,
     Multiply,
     Not,
-    Numbers,
     Or,
     Parameter,
     ParameterOperatable,
@@ -66,20 +65,25 @@ NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
-    Alias predicates to True since we need to assume they are true.
     """
 
     for param in mutator.nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param, override_within=True, within=None)
         if param.within is not None:
             subset_to(new_param, param.within, mutator, from_ops=[param])
-        if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            subset_to(
-                new_param,
-                make_lit(Quantity_Interval(min=0, units=param.units)),
-                mutator,
-                from_ops=[param],
-            )
+        subset_to(
+            new_param,
+            param.domain_set(),
+            mutator,
+            from_ops=[param],
+        )
+
+
+@algorithm("Alias predicates to true", single=True, destructive=False)
+def alias_predicates_to_true(mutator: Mutator):
+    """
+    Alias predicates to True since we need to assume they are true.
+    """
 
     for predicate in mutator.nodes_of_type(ConstrainableExpression):
         if predicate.constrained:

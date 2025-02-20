@@ -63,7 +63,7 @@ def build(
     check_missing_deps_or_offer_to_install()
 
     if open_layout is not None:
-        config.project.pcbnew_auto = open_layout
+        config.project.open_layout_on_build = open_layout
 
     for build_cfg in config.project.builds.values():
         if keep_picked_parts is not None:
@@ -109,7 +109,7 @@ def build(
 
     logger.info("Build successful! 🚀")
 
-    if config.project.pcbnew_auto:
+    if config.should_open_layout_on_build():
         selected_build_names = list(config.selected_builds)
         if len(selected_build_names) == 1:
             build = config.project.builds[first(selected_build_names)]

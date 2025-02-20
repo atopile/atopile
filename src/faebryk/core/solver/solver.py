@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from faebryk.core.graph import Graph
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -106,5 +107,7 @@ class Solver(Protocol):
     def find_and_lock_solution(self, G: Graph) -> SolveResultAll: ...
 
     def inspect_get_known_supersets(
-        self, value: Parameter, force_update: bool = True
+        self, value: Parameter, force_update: bool = False
     ) -> P_Set: ...
+
+    def update_superset_cache(self, *nodes: Node): ...
