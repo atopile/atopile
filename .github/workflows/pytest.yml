@@ -35,20 +35,21 @@ jobs:
 
     # Required by examples
     # TODO: remove dependency on global fp-lib-table
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
+    # FIXME: re-enable
+    # - name: Configure AWS Credentials
+    #   uses: aws-actions/configure-aws-credentials@v4
+    #   with:
+    #     aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    #     aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    #     aws-region: ${{ secrets.AWS_REGION }}
 
-    - name: Prepare test environment
-      run: |
-        mkdir -p ~/.config/kicad/8.0/
-        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-fp-lib-table" ~/.config/kicad/8.0/fp-lib-table
+    # - name: Prepare test environment
+    #   run: |
+    #     mkdir -p ~/.config/kicad/8.0/
+    #     aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-fp-lib-table" ~/.config/kicad/8.0/fp-lib-table
 
-        mkdir -p /usr/share/kicad/
-        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
+    #     mkdir -p /usr/share/kicad/
+    #     aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
 
     - name: Run pytest
       id: pytest
