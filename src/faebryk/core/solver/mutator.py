@@ -150,9 +150,9 @@ class Mutator:
     @property
     def G(self) -> set[Graph]:
         # Handles C++ graph shenanigans on move
-        g = self._G
-        if all(g.node_count > 0 for g in g):
-            return g
+        gs = self._G
+        if all(g.node_count > 0 for g in gs):
+            return gs
         # Handle graph merge
         gs = get_graphs(self._starting_operables)
         self._G = set(gs)

@@ -1,7 +1,9 @@
+import io
 import logging
 import math
 import sys
 import warnings
+from collections import defaultdict
 from datetime import timedelta
 from functools import partial, reduce
 from math import inf
@@ -12,9 +14,11 @@ import pytest  # noqa: F401
 import typer
 from hypothesis import HealthCheck, Phase, example, given, settings
 from hypothesis import strategies as st
-from hypothesis.control import event
 from hypothesis.core import reproduce_failure  # noqa: F401
 from hypothesis.errors import NonInteractiveExampleWarning
+from hypothesis.strategies._internal.lazy import LazyStrategy
+from rich.console import Console
+from rich.table import Table
 
 from faebryk.core.core import Namespace
 from faebryk.core.parameter import (
@@ -47,6 +51,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
 )
+from faebryk.libs.test.times import Times
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
@@ -727,7 +732,65 @@ def test_regression_literal_folding(expr: Arithmetic):
     assert solver_result == evaluated_expr
 
 
+class Stats:
+    singleton: "Stats | None" = None
+
+    @classmethod
+    def get(cls) -> "Stats":
+        if Stats.singleton is None:
+            Stats.singleton = cls()
+        return Stats.singleton
+
+    def __init__(self):
+        self.exprs: dict[Arithmetic, set[str]] = defaultdict(set)
+        self.events: dict[str, set[Arithmetic]] = defaultdict(set)
+        self.times = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
+        self._total = self.times.context("total")
+        self._total.__enter__()
+
+    def print(self):
+        table = Table(title="Statistics")
+        table.add_column("Event", justify="left")
+        table.add_column("Count", justify="right")
+        table.add_column("%", justify="right")
+        total = len(self.exprs)
+        for name, exprs in self.events.items():
+            count = len(exprs)
+            percent = count / total
+            table.add_row(name, str(count), f"{percent:.2%}")
+        console = Console(record=True, file=io.StringIO())
+        console.print(table)
+        logger.info(console.export_text(styles=True))
+        logger.info(self.times)
+
+    def finish(self):
+        self._total.__exit__(None, None, None)
+        self.print()
+        self.singleton = None
+
+    def event(self, name: str, expr: Arithmetic, terminal: bool = True):
+        # from hypothesis.control import event
+        # event(name)
+        self.exprs[expr].add(name)
+        self.events[name].add(expr)
+        self.times.add(name)
+
+        if terminal and len(self.exprs) % 1000 == 0:
+            self.print()
+
+
+@pytest.fixture
+def cleanup_stats():
+    # Workaround: for large repr generation of hypothesis strategies,
+    # LimitedStrategy.__repr__ = lambda self: str(id(self))
+    LazyStrategy.__repr__ = lambda self: str(id(self))
+
+    yield
+    Stats.get().finish()
+
+
 @pytest.mark.slow
+@pytest.mark.usefixtures("cleanup_stats")
 @given(st_exprs.trees)
 @settings(
     deadline=None,
@@ -754,47 +817,59 @@ def test_folding_statistics(expr: Arithmetic):
     FBRK_STIMEOUT=5 \
     FBRK_SPARTIAL=n \
     FBRK_SMAX_ITERATIONS=10 \
-    ./test/runpytest.sh -Wignore --hypothesis-show-statistics \
-      -k "test_folding_statistics" | grep -v Retried | grep -v "invalid because"
+    ./test/runpytest.sh  \
+    -k "test_folding_statistics"
     ```
     """
-
-    event("start")
+    stats = Stats.get()
+    stats.event("generate", expr, terminal=False)
     solver = DefaultSolver()
     root = Parameter(domain=Numbers(negative=True, zero_allowed=True, integer=False))
     root.alias_is(expr)
 
     try:
         evaluated_expr = evaluate_expr(expr)
+        stats.event("evaluate", expr, terminal=False)
     except NotImplementedError:
-        event("not implemented in literals")
+        stats.event("not implemented in literals", expr)
         return
     except Exception as e:
-        event(f"error in literals: {type(e).__name__}")
+        stats.event(f"error in literals: {type(e).__name__}", expr)
         return
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
 
     try:
         solver_result = solver.inspect_get_known_supersets(root)
+        assert isinstance(solver_result, Quantity_Interval_Disjoint)
     except Contradiction:
-        event("contradiction")
+        stats.event("contradiction", expr)
         return
     except TimeoutError:
-        event("timeout")
+        stats.event("timeout", expr)
         return
     except NotImplementedError:
-        event("not implemented in solver")
+        stats.event("not implemented in solver", expr)
         return
     except Exception as e:
-        event(f"error in solver: {type(e).__name__}")
+        stats.event(f"exc {type(e).__name__}", expr)
         return
 
     if solver_result != evaluated_expr:
-        event("incorrect")
+        try:
+            deviation = solver_result.op_deviation_to(evaluated_expr, relative=True)
+        except Exception as e:
+            stats.event(f"incorrect {type(e).__name__}", expr)
+            return
+        if deviation < 0.01:
+            stats.event("incorrect <1% dev", expr)
+        elif deviation < 0.1:
+            stats.event("incorrect <10% dev", expr)
+        else:
+            stats.event("incorrect >10% dev", expr)
         return
 
-    event("correct")
+    stats.event("correct", expr)
 
 
 # DEBUG --------------------------------------------------------------------------------

@@ -585,6 +585,27 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_sin()
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
+    def op_total_span(self) -> Quantity:
+        """Returns the sum of the spans of all intervals in this disjoint set.
+        For a single interval, this is equivalent to max - min.
+        For multiple intervals, this sums the spans of each disjoint interval."""
+        return quantity(
+            sum(abs(r.max_elem - r.min_elem) for r in self._intervals), self.units
+        )
+
+    def op_deviation_to(
+        self, other: QuantitySetLike, relative: bool = False
+    ) -> Quantity:
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        sym_diff = self.op_symmetric_difference_intervals(other_qty)
+        deviation = sym_diff.op_total_span()
+        if relative:
+            deviation /= max(abs(self).max_elem, abs(other_qty).max_elem)
+        return deviation
+
     def __contains__(self, item: Any) -> bool:
         if isinstance(item, (float, int, Number)):
             item = quantity(item)
