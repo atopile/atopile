@@ -95,6 +95,7 @@ class Mutator:
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self._G: set[Graph] = set(Gs)
+        self._cached_G = None
         self.print_context = print_context
 
         if not iteration_repr_map:
@@ -150,12 +151,16 @@ class Mutator:
     @property
     def G(self) -> set[Graph]:
         # Handles C++ graph shenanigans on move
+        if self._cached_G != None:
+            return self._cached_G
         g = self._G
-        if all(g.node_count > 0 for g in g):
+        if all(graph.node_count > 0 for graph in g):
+            self._cached_G = g
             return g
         # Handle graph merge
         gs = get_graphs(self._starting_operables)
         self._G = set(gs)
+        self._G_cached_G = self._G
         return self._G
 
     def has_been_mutated(self, po: ParameterOperatable) -> bool:
