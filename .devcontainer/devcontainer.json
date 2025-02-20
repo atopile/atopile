@@ -1,9 +1,18 @@
 {
     "name": "Atopile Development Environment",
-    "build": {
-        "dockerfile": "../dockerfiles/Dockerfile.kicad",
-        "context": ".."
+    "image": "ubuntu:24.04",
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest",
+            "ppa": true
+        },
+        "ghcr.io/devcontainers/features/python:1": {
+            "version": "3.13",
+            "installTools": true,
+            "pip": true
+        }
     },
+    "postCreateCommand": "apt update && apt install -y cmake g++ && curl -LsSf https://astral.sh/uv/install.sh | sh && uv sync --dev",
     "customizations": {
         "vscode": {
             "extensions": [
@@ -12,19 +21,13 @@
                 "charliermarsh.ruff"
             ],
             "settings": {
-                "python.defaultInterpreterPath": "/venv/bin/python",
                 "python.formatting.provider": "ruff",
                 "python.linting.enabled": true,
-                "editor.formatOnSave": true,
+                "editor.formatOnSave": true
             }
         }
     },
-    // Mount the source code and .git directory
-    "mounts": [
-        "source=${localWorkspaceFolder},target=/opt/atopile,type=bind",
-        "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/root/.ssh,type=bind"
-    ],
-    "workspaceFolder": "/opt/atopile",
-    "postCreateCommand": "mkdir -p /opt/atopile && chown -R root:root /opt/atopile",
-    "remoteUser": "root"
+    "runArgs": [
+        "--platform=linux/amd64"
+    ]
 }
