@@ -1170,7 +1170,12 @@ class Max(Arithmetic):
         return False
 
 
-class Integrate(Arithmetic):
+class Functional(Arithmetic):
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+
+
+class Integrate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="∫",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
@@ -1184,7 +1189,7 @@ class Integrate(Arithmetic):
         return False
 
 
-class Differentiate(Arithmetic):
+class Differentiate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="d",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,

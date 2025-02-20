@@ -1336,6 +1336,7 @@ def abstract[T: type](cls: T) -> T:
         return old_new(cls_, *args, **kwargs)
 
     cls.__new__ = _new
+    cls.__is_abstract__ = cls
     return cls
 
 

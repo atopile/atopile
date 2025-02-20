@@ -1,14 +1,14 @@
 import io
 import logging
-import math
 import sys
 import warnings
 from collections import defaultdict
+from dataclasses import dataclass
 from datetime import timedelta
 from functools import partial, reduce
 from math import inf
 from operator import add, mul, pow, sub, truediv
-from typing import Any, Callable, Iterable, NamedTuple
+from typing import Any, Callable, Iterable
 
 import pytest  # noqa: F401
 import typer
@@ -27,10 +27,9 @@ from faebryk.core.parameter import (
     Arithmetic,
     Ceil,
     Cos,
-    Differentiate,
     Divide,
     Floor,
-    Integrate,
+    Functional,
     Log,
     Max,
     Min,
@@ -53,20 +52,22 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.test.times import Times
 from faebryk.libs.units import Quantity
-from faebryk.libs.util import ConfigFlag, ConfigFlagInt, groupby
+from faebryk.libs.util import ConfigFlag, ConfigFlagInt, groupby, once
 
 logger = logging.getLogger(__name__)
 
 NUM_STAT_EXAMPLES = ConfigFlagInt(
     "ST_NUMEXAMPLES",
-    default=100,
+    default=10000,
     descr="Number of examples to run for statistics",
 )
 ENABLE_PROGRESS_TRACKING = ConfigFlag("ST_PROGRESS", default=False)
+CATCH_EVALUATION_ERRORS = True
 
 # TODO set to something reasonable again
 ABS_UPPER_LIMIT = 1e4  # Terra/pico or inf
-ABS_LOWER_LIMIT = 1e-6  # micro
+DIGITS_LOWER_LIMIT = 6  # micro
+ABS_LOWER_LIMIT = 10**-DIGITS_LOWER_LIMIT  # micro
 
 
 # canonical operations:
@@ -82,6 +83,23 @@ ABS_LOWER_LIMIT = 1e-6  # micro
 # Union, Intersection, Difference, SymmetricDifference
 # LessThan, GreaterThan, LessOrEqual, GreaterOrEqual
 # ISSubset, IsSuperset, Cardinality, Is
+operator_map: dict[type[Arithmetic], Callable] = {
+    Add: add,
+    Subtract: sub,
+    Multiply: mul,
+    Divide: truediv,
+    Sqrt: lambda x: x.op_sqrt(),
+    Power: pow,
+    Round: float_round,
+    Abs: abs,
+    Sin: lambda x: x.op_sin(),
+    Log: lambda x: x.op_log(),
+    Cos: lambda x: x.op_cos(),
+    Floor: lambda x: x.op_floor(),
+    Ceil: lambda x: x.op_ceil(),
+    Min: min,
+    Max: max,
+}
 
 
 def lit(val) -> Quantity_Interval_Disjoint:
@@ -90,10 +108,6 @@ def lit(val) -> Quantity_Interval_Disjoint:
 
 def p(val):
     return Builders.build_parameter(lit(val))
-
-
-def abs_close(a: float | Quantity, b: float) -> bool:
-    return math.isclose(a, b, abs_tol=1e-15)
 
 
 class Builders(Namespace):
@@ -109,28 +123,9 @@ class Builders(Namespace):
             return op(*operands) if isinstance(operands, Iterable) else op(operands)
 
         # required for good falsifying examples from hypothesis
-        f.__name__ = op.__name__
+        f.__name__ = f"{op.__name__}'"
 
         return f
-
-    # Arithmetic
-    Add = operator(Add)
-    Subtract = operator(Subtract)
-    Multiply = operator(Multiply)
-    Divide = operator(Divide)
-    Sqrt = operator(Sqrt)
-    Power = operator(Power)
-    Log = operator(Log)
-    Sin = operator(Sin)
-    Cos = operator(Cos)
-    Abs = operator(Abs)
-    Round = operator(Round)
-    Floor = operator(Floor)
-    Ceil = operator(Ceil)
-    Min = operator(Min)
-    Max = operator(Max)
-    Integrate = operator(Integrate)
-    Differentiate = operator(Differentiate)
 
 
 ValueT = Quantity_Interval_Disjoint | Parameter | Arithmetic
@@ -138,82 +133,130 @@ ValueT = Quantity_Interval_Disjoint | Parameter | Arithmetic
 
 class Filters(Namespace):
     @staticmethod
+    def _decorator[
+        T: Callable[[ValueT], bool]
+        | Callable[[ValueT | Iterable[ValueT]], bool]
+        | Callable[[tuple[ValueT, ValueT]], bool]
+    ](
+        func: T,
+    ) -> T:
+        if not CATCH_EVALUATION_ERRORS:
+            return func
+
+        def _wrap(*args, **kwargs) -> bool:
+            try:
+                return func(*args, **kwargs)
+            except Filters._EvaluationError:
+                return False
+
+        return _wrap  # type: ignore
+
+    class _EvaluationError(Exception):
+        pass
+
+    @staticmethod
     def _unwrap_param(value: ValueT) -> Quantity_Interval_Disjoint:
+        # TODO where is this coming from?
+        if isinstance(value, Range):
+            return lit(value)
         assert isinstance(value, ValueT)
         if isinstance(value, Parameter):
             return value.get_literal()
         elif isinstance(value, Arithmetic):
-            return evaluate_expr(value)
+            try:
+                return evaluate_expr(value)
+            except Exception as e:
+                raise Filters._EvaluationError(e) from e
         else:
             return value
 
+    @_decorator
     @staticmethod
     def is_negative(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
-        return value.max_elem < 0
+        lit = Filters._unwrap_param(value)
+        return lit.max_elem < 0
 
+    @_decorator
     @staticmethod
     def is_positive(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
-        return value.min_elem > 0
+        lit = Filters._unwrap_param(value)
+        return lit.min_elem > 0
 
+    @_decorator
     @staticmethod
     def is_fractional(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
-        return not value.min_elem.is_integer() or not value.max_elem.is_integer()
+        lit = Filters._unwrap_param(value)
+        return not lit.is_integer
 
+    @_decorator
     @staticmethod
     def is_zero(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
-        return abs_close(value.min_elem, 0) and abs_close(value.max_elem, 0)
+        # no need for fancy isclose, already covered by impl
+        lit = Filters._unwrap_param(value)
+        return lit == 0
 
+    @_decorator
     @staticmethod
     def crosses_zero(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
-        return 0 in value or Filters.is_zero(value)
+        lit = Filters._unwrap_param(value)
+        return 0 in lit or Filters.is_zero(lit)
 
+    @_decorator
     @staticmethod
     def does_not_cross_zero(value: ValueT) -> bool:
         return not Filters.crosses_zero(value)
 
+    @_decorator
     @staticmethod
-    def is_empty(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
-        return value.is_empty()
+    def not_empty(value: ValueT) -> bool:
+        lit = Filters._unwrap_param(value)
+        return not lit.is_empty()
 
+    @_decorator
     @staticmethod
     def within_limits(value: ValueT) -> bool:
-        value = Filters._unwrap_param(value)
+        lit = Filters._unwrap_param(value)
+        abs_lit = abs(lit)
         return bool(
-            (value.min_elem >= -ABS_UPPER_LIMIT or value.min_elem == -inf)
-            and (value.max_elem <= ABS_UPPER_LIMIT or value.max_elem == inf)
+            (abs_lit.max_elem <= ABS_UPPER_LIMIT or abs_lit.max_elem == inf)
+            and abs_lit.min_elem >= ABS_LOWER_LIMIT
         )
 
+    @_decorator
     @staticmethod
-    def no_op_overflow(
-        op: Callable[[Any, Any], Any],
-    ):
-        def f(values: tuple[ValueT, ValueT]) -> bool:
-            return Filters.within_limits(
-                op(
-                    Filters._unwrap_param(values[0]),
-                    Filters._unwrap_param(values[1]),
-                )
-            )
+    def all_within_limits(values: Iterable[ValueT] | ValueT) -> bool:
+        if isinstance(values, ValueT):
+            values = [values]
+        return all(Filters.within_limits(v) for v in values)
+
+    @staticmethod
+    def no_op_overflow(op: Callable):
+        @Filters._decorator
+        def f(values: Iterable[ValueT] | ValueT) -> bool:
+            if isinstance(values, ValueT):
+                values = [values]
+            lits = [Filters._unwrap_param(v) for v in values]
+            try:
+                expr = op(*lits)
+            except Exception as e:
+                raise Filters._EvaluationError(e) from e
+            return Filters.within_limits(expr)
 
         return f
 
+    @_decorator
     @staticmethod
     def is_valid_for_power(
         pair: tuple[ValueT, ValueT],
     ) -> bool:
         base, exp = pair
         return (
-            # complex
-            not (Filters.is_negative(base) and Filters.is_fractional(exp))
             # nan/undefined
-            # TODO enable base crossing zero
-            and not (Filters.crosses_zero(base) and Filters.crosses_zero(exp))
+            not (Filters.crosses_zero(base) and not Filters.is_positive(exp))
+            # TODO: complex
+            and not (Filters.is_fractional(exp) and not Filters.is_positive(base))
+            # TODO: not impl yet
+            and not Filters.crosses_zero(exp)
         )
 
 
@@ -227,12 +270,12 @@ class st_values(Namespace):
         )
 
         def _floats(min_value: float, max_value: float):
-            return st.floats(
+            return st.decimals(
                 allow_nan=False,
                 allow_infinity=False,
                 min_value=min_value,
                 max_value=max_value,
-                allow_subnormal=False,
+                places=DIGITS_LOWER_LIMIT,
             )
 
         if lower_limit == 0:
@@ -250,7 +293,7 @@ class st_values(Namespace):
     small_numeric = _numbers_with_limit(1e2, 1e-1)
 
     ranges = st.builds(
-        lambda values: Range(*sorted(values)),
+        lambda values: lit(Range(*sorted(values))),
         st.tuples(
             st.one_of(st.just(-inf), numeric),
             st.one_of(st.just(inf), numeric),
@@ -258,7 +301,8 @@ class st_values(Namespace):
     )
 
     small_ranges = st.builds(
-        lambda values: Range(*sorted(values)), st.tuples(small_numeric, small_numeric)
+        lambda values: lit(Range(*sorted(values))),
+        st.tuples(small_numeric, small_numeric),
     )
 
     quantities = st.one_of(numeric, ranges).map(lit)
@@ -276,26 +320,13 @@ class st_values(Namespace):
     small_values = st.one_of(small_quantities, small_parameters)
 
     _short_lists = partial(st.lists, min_size=1, max_size=5)
-
     lists = _short_lists(values)
 
     pairs = st.tuples(values, values)
 
-    @staticmethod
-    def no_overflow_pairs(op: Callable[[Any, Any], Any]):
-        return st.tuples(st_values.values, st_values.values).filter(
-            Filters.no_op_overflow(op)
-        )
+    division_pairs = st.tuples(values, values.filter(Filters.does_not_cross_zero))
 
-    division_pairs = st.tuples(
-        values, values.filter(Filters.does_not_cross_zero)
-    ).filter(Filters.no_op_overflow(truediv))
-
-    power_pairs = (
-        st.tuples(values, small_values)
-        .filter(Filters.is_valid_for_power)
-        .filter(Filters.no_op_overflow(pow))
-    )
+    power_pairs = st.tuples(values, small_values).filter(Filters.is_valid_for_power)
 
 
 class Extension(Namespace):
@@ -304,22 +335,13 @@ class Extension(Namespace):
         return st.tuples(children, children)
 
     @staticmethod
-    def tuples_no_overflow(op: Callable[[Any, Any], Any]):
-        def f(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
-            return st.tuples(children, children).filter(Filters.no_op_overflow(op))
-
-        return f
-
-    @staticmethod
     def single(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
         return children
 
     @staticmethod
     def tuples_power(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
-        return (
-            st.tuples(children, st_values.small_values)
-            .filter(Filters.is_valid_for_power)
-            .filter(Filters.no_op_overflow(pow))
+        return st.tuples(children, st_values.small_values).filter(
+            Filters.is_valid_for_power
         )
 
     @staticmethod
@@ -328,49 +350,92 @@ class Extension(Namespace):
         return st.tuples(
             children,
             st_values.values.filter(Filters.does_not_cross_zero),
-        ).filter(Filters.no_op_overflow(truediv))
+        )
 
     @staticmethod
-    def single_positive(children: st.SearchStrategy[Any]) -> st.SearchStrategy[Any]:
-        return children.filter(lambda child: Filters.is_positive(evaluate_expr(child)))
+    def single_positive(
+        children: st.SearchStrategy[Any],
+    ) -> st.SearchStrategy[Any]:
+        return children.filter(Filters.is_positive)
 
 
-class ExprType(NamedTuple):
-    builder: Callable[[Any], Arithmetic]
-    strategy: st.SearchStrategy[Any]
-    extension_strategy: Callable[[st.SearchStrategy[Any]], st.SearchStrategy[Any]]
+@dataclass
+class ExprType:
+    op: type[Arithmetic]
+    _strategy: st.SearchStrategy[Any]
+    _extension_strategy: Callable[[st.SearchStrategy[Any]], st.SearchStrategy[Any]]
+    check_overflow: bool = True
+    disable: bool = False
+
+    @property
+    @once
+    def builder(self) -> Callable[[Any], Arithmetic]:
+        return Builders.operator(self.op)
+
+    @property
+    def operator(self) -> Callable[[Any, Any], Any]:
+        return operator_map[self.op]
+
+    @property
+    def strategy(self) -> st.SearchStrategy[Any]:
+        out = self._strategy
+        if self.check_overflow:
+            # TODO why would this be needed?
+            out = out.filter(Filters.all_within_limits)
+            out = out.filter(Filters.no_op_overflow(self.operator))
+        return out
+
+    def extension_strategy(
+        self, children: st.SearchStrategy[Any]
+    ) -> st.SearchStrategy[Any]:
+        out = self._extension_strategy(children)
+        if self.check_overflow:
+            out = out.filter(Filters.no_op_overflow(self.operator))
+        return out
 
 
 EXPR_TYPES = [
-    ExprType(Builders.Add, st_values.lists, Extension.tuples),
-    ExprType(Builders.Subtract, st_values.pairs, Extension.tuples),
-    ExprType(
-        Builders.Multiply,
-        st_values.no_overflow_pairs(mul),
-        Extension.tuples_no_overflow(mul),
-    ),
-    ExprType(Builders.Divide, st_values.division_pairs, Extension.tuples_division),
-    ExprType(Builders.Sqrt, st_values.positive_values, Extension.single_positive),
-    # ExprType(Builders.Power, st_values.power_pairs, Extension.tuples_power),
-    ExprType(Builders.Log, st_values.positive_values, Extension.single_positive),
-    # TODO: NotImplementedError('sin of interval not implemented yet')
-    # ExprType(Builders.Sin, st_values.values, Extension.single),
-    # ExprType(Builders.Cos, st_values.values, Extension.single),
-    ExprType(Builders.Abs, st_values.values, Extension.single),
-    # TODO: round, float, ceil can't handle inf
-    ExprType(Builders.Round, st_values.values, Extension.single),
-    # ExprType(Builders.Floor, st_values.values, Extension.single),
-    # ExprType(Builders.Ceil, st_values.values, Extension.single),
-    # ExprType(Builders.Min, st_values.lists, Extension.tuples),
-    # ExprType(Builders.Max, st_values.lists, Extension.tuples),
-    # ExprType(Builders.Integrate, st_values.lists, Extension.tuples),
-    # ExprType(Builders.Differentiate, st_values.lists, Extension.tuples),
+    ExprType(Add, st_values.pairs, Extension.tuples, check_overflow=False),
+    ExprType(Subtract, st_values.pairs, Extension.tuples, check_overflow=False),
+    ExprType(Multiply, st_values.pairs, Extension.tuples),
+    ExprType(Divide, st_values.division_pairs, Extension.tuples_division),
+    ExprType(Sqrt, st_values.positive_values, Extension.single_positive),
+    ExprType(Power, st_values.power_pairs, Extension.tuples_power),
+    ExprType(Log, st_values.positive_values, Extension.single_positive),
+    ExprType(Sin, st_values.values, Extension.single, check_overflow=False),
+    ExprType(Cos, st_values.values, Extension.single, check_overflow=False),
+    ExprType(Abs, st_values.values, Extension.single, check_overflow=False),
+    ExprType(Round, st_values.values, Extension.single, check_overflow=False),
+    ExprType(Floor, st_values.values, Extension.single, check_overflow=False),
+    ExprType(Ceil, st_values.values, Extension.single, check_overflow=False),
+    # TODO
+    ExprType(Min, st_values.lists, Extension.tuples, disable=True),
+    ExprType(Max, st_values.lists, Extension.tuples, disable=True),
 ]
+
+
+def test_no_forgotten_expr_types():
+    ops = {expr_type.op for expr_type in EXPR_TYPES}
+    import faebryk.core.parameter as P
+
+    all_arithmetic_ops = {
+        v
+        for k, v in vars(P).items()
+        if isinstance(v, type)
+        and issubclass(v, Arithmetic)
+        and not issubclass(v, Functional)
+        and getattr(v, "__is_abstract__", False) is not v
+    }
+    assert ops == set(all_arithmetic_ops)
 
 
 class st_exprs(Namespace):
     flat = st.one_of(
-        *[st.builds(expr_type.builder, expr_type.strategy) for expr_type in EXPR_TYPES]
+        *[
+            st.builds(expr_type.builder, expr_type.strategy)
+            for expr_type in EXPR_TYPES
+            if not expr_type.disable
+        ]
     )
 
     @staticmethod
@@ -379,6 +444,7 @@ class st_exprs(Namespace):
             *[
                 st.builds(expr_type.builder, expr_type.extension_strategy(children))
                 for expr_type in EXPR_TYPES
+                if not expr_type.disable
             ]
         )
 
@@ -391,24 +457,6 @@ class st_exprs(Namespace):
 def evaluate_expr(
     expr: Arithmetic | Quantity,
 ) -> Quantity_Interval_Disjoint:
-    operator_map: dict[type[Arithmetic], Callable] = {
-        Add: add,
-        Subtract: sub,
-        Multiply: mul,
-        Divide: truediv,
-        Sqrt: lambda x: pow(x, 0.5),
-        Power: pow,
-        Round: float_round,
-        Abs: abs,
-        Sin: lambda x: x.op_sin(),
-        Log: lambda x: x.op_log(),
-        Cos: lambda x: (x + math.pi / 2).op_sin(),
-        Floor: lambda x: float_round(x - 0.5),
-        Ceil: lambda x: float_round(x + 0.5),
-        Min: min,
-        Max: max,
-    }
-
     match expr:
         # monoids
         case Add() | Multiply() | Min() | Max():
@@ -787,9 +835,15 @@ class Stats:
         self.print()
         self.singleton = None
 
-    def event(self, name: str, expr: Arithmetic, terminal: bool = True):
-        # from hypothesis.control import event
-        # event(name)
+    def event(
+        self,
+        name: str,
+        expr: Arithmetic,
+        terminal: bool = True,
+        exc: Exception | None = None,
+    ):
+        if exc:
+            name = f"{name} {type(exc).__name__}"
         self.exprs[expr].add(name)
         self.events[name].add(expr)
         self.times.add(name)
@@ -801,7 +855,6 @@ class Stats:
 @pytest.fixture
 def cleanup_stats():
     # Workaround: for large repr generation of hypothesis strategies,
-    # LimitedStrategy.__repr__ = lambda self: str(id(self))
     LazyStrategy.__repr__ = lambda self: str(id(self))
 
     yield
@@ -853,7 +906,7 @@ def test_folding_statistics(expr: Arithmetic):
         stats.event("not implemented in literals", expr)
         return
     except Exception as e:
-        stats.event(f"error in literals: {type(e).__name__}", expr)
+        stats.event("eval exc", expr, exc=e)
         return
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -871,14 +924,14 @@ def test_folding_statistics(expr: Arithmetic):
         stats.event("not implemented in solver", expr)
         return
     except Exception as e:
-        stats.event(f"exc {type(e).__name__}", expr)
+        stats.event("exc", expr, exc=e)
         return
 
     if solver_result != evaluated_expr:
         try:
             deviation = solver_result.op_deviation_to(evaluated_expr, relative=True)
         except Exception as e:
-            stats.event(f"incorrect {type(e).__name__}", expr)
+            stats.event("incorrect", expr, exc=e)
             return
         if deviation < 0.01:
             stats.event("incorrect <1% dev", expr)
