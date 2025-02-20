@@ -1,7 +1,5 @@
 # Hackathon: Solver 100x speed 🚀
 
-**$4k prize - 6-10pm PST, Wed 17-Feb, Stanford (TBD)**
-
 ​Judged on solver speed, with bonus points for solving complex equations.
 
 ​A perfect SMT solver isn't magic—it's the ultimate code hack that transforms bugs and bottlenecks into well-formed, elegant solutions. However, since perfect solvers don't exist, we at atopile built our own.
