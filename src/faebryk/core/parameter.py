@@ -523,6 +523,10 @@ def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     return False
 
 
+def lit(x):
+    return P_Set.from_value(x)
+
+
 @abstract
 class Expression(ParameterOperatable):
     operates_on: GraphInterface
@@ -1047,6 +1051,13 @@ class Log(Arithmetic):
         if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
         self.units = unit
+
+        # TODO, be careful makes solver run forever like this
+        # implicit constraint
+        # if isinstance(operand, ParameterOperatable):
+        #    operand.constrain_ge(lit(0))
+        # elif Quantity_Interval_Disjoint.from_value(operand).min_elem < 0:
+        #    raise ValueError("operand must be non-negative")
 
     def has_implicit_constraint(self) -> bool:
         return True  # non-negative

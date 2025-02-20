@@ -295,7 +295,7 @@ def fold_pow(
     A^1 -> A
     0^A -> 0
     1^A -> 1
-    5^3 -> 125
+    #TODO: (A^B)^C -> A^(B*C)
     #TODO rethink: 0^0 -> 1
     ```
     """
@@ -334,6 +334,20 @@ def fold_pow(
             return
 
 
+def fold_log(
+    expr: Log,
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+):
+    """
+    # TODO log(A*B) -> log(A) + log(B)
+    # TODO log(A^B) -> B*log(A)
+    """
+    return
+
+
 def fold_abs(
     expr: Abs,
     literal_operands: Sequence[Literal],
@@ -341,7 +355,11 @@ def fold_abs(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    """ """
+    """
+    # TODO |-A| = |A|
+    # TODO |A*B| = |A|*|B|
+    # TODO |A+B| <= |A|+|B|
+    """
     return
 
 
@@ -367,6 +385,9 @@ def fold_sin(
 ):
     """
     Sin ss! [-1, 1]
+    #TODO Sin(-A) -> -Sin(A)
+    #TODO Sin(A + 2*pi) -> Sin(A)
+    #TODO Sin(A+B) -> Sin(A)*Cos(B) + Cos(A)*Sin(B)
     """
     subset_to(expr, make_lit(Quantity_Interval(-1, 1)), mutator, from_ops=[expr])
 
@@ -662,8 +683,7 @@ def fold(
         elif isinstance(expr, Sin):
             return fold_sin  # type: ignore
         elif isinstance(expr, Log):
-            # TODO implement
-            return lambda *args: None
+            return fold_log  # type: ignore
         elif isinstance(expr, Integrate):
             # TODO implement
             return lambda *args: None
