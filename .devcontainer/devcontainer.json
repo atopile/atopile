@@ -19,10 +19,6 @@
             }
         }
     },
-    "features": {
-        "ghcr.io/devcontainers/features/git:1": {},
-        "ghcr.io/devcontainers/features/github-cli:1": {}
-    },
     // Mount the source code and .git directory
     "mounts": [
         "source=${localWorkspaceFolder},target=/opt/atopile,type=bind",
