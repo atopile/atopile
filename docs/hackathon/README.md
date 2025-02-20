@@ -48,27 +48,37 @@ The points are cumulative.
 1. [Fork atopile]([https://github.com/atopile/atopile](https://github.com/atopile/atopile/fork))
 2. `git remote add upstream https://github.com/atopile/atopile && git fetch && git checkout -b hackathon upstream/temp/hackathon_solver`
 3. Read the [atopile solver introduction](https://github.com/atopile/atopile/tree/main/src/faebryk/core/solver)
+4. Setup the project dependencies
+```
+brew install cmake # (or similar)
+
+# https://docs.astral.sh/uv/getting-started/installation/#installation-methods
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+uv sync --dev
+```
+
 4. Run the solver functional test suite
 5. Create a draft pull request against atopile, to run the test jobs in CI, where your performance metrics will be logged
 
 ```bash
-pytest test/core/solver/test_solver.py
+uv run pytest test/core/solver/test_solver.py
 ```
 
 4. Run the literal folding fuzzer regression tests
 
 ```bash
-./test/runpytest.sh -k test_regression_literal_folding
+uv run ./test/runpytest.sh -k test_regression_literal_folding
 ```
 
 5. Run the literal folding fuzzer statistics
 
 ```bash
-FBRK_ST_NUMEXAMPLES=1000 FBRK_STIMEOUT=2 FBRK_SPARTIAL=n ./test/runpytest.sh -Wignore --hypothesis-show-statistics -k "test_folding_statistics" | grep -v Retried | grep -v "invalid because"
+FBRK_ST_NUMEXAMPLES=1000 FBRK_STIMEOUT=2 FBRK_SPARTIAL=n uv run ./test/runpytest.sh -Wignore --hypothesis-show-statistics -k "test_folding_statistics" | grep -v Retried | grep -v "invalid because"
 ```
 6. Run the solver benchmark
 ```bash
-python ./test/runtest.py -k "test_performance_pick_rc_formulas"
+uv run python ./test/runtest.py -k "test_performance_pick_rc_formulas"
 ```
 7. Get to work
 
