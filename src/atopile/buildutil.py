@@ -44,6 +44,7 @@ from faebryk.libs.app.designators import (
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
+    check_net_names,
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
@@ -142,6 +143,7 @@ def build(app: Module) -> None:
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
+    check_net_names(G)
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
