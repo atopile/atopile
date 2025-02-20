@@ -67,10 +67,9 @@ NUM_EXAMPLES = ConfigFlagInt(
 ENABLE_PROGRESS_TRACKING = ConfigFlag("ST_PROGRESS", default=False)
 CATCH_EVALUATION_ERRORS = True
 
-# TODO set to something reasonable again
-ABS_UPPER_LIMIT = 1e4  # Terra/pico or inf
-DIGITS_LOWER_LIMIT = 6  # micro
-ABS_LOWER_LIMIT = 10**-DIGITS_LOWER_LIMIT  # micro
+ABS_UPPER_LIMIT = 1e12  # Terra or inf
+DIGITS_LOWER_LIMIT = 12  # pico
+ABS_LOWER_LIMIT = 10**-DIGITS_LOWER_LIMIT
 ALLOW_ROUNDING_ERROR = True
 ALLOW_EVAL_ERROR = True
 
@@ -940,8 +939,12 @@ def test_folding_statistics(expr: Arithmetic):
     if solver_result != evaluated_expr:
         try:
             deviation = solver_result.op_deviation_to(evaluated_expr, relative=True)
-        except Exception as e:
-            stats.event("incorrect", expr, exc=e)
+        except Exception:
+            deviation = solver_result.op_deviation_to(evaluated_expr)
+            if deviation <= 1:
+                stats.event("incorrect <= 1 ", expr)
+            else:
+                stats.event("incorrect > 1 ", expr)
             return
         if deviation < 0.01:
             stats.event("incorrect <1% dev", expr)
