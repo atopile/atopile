@@ -29,5 +29,6 @@
         "source=${localEnv:HOME}${localEnv:USERPROFILE}/.ssh,target=/root/.ssh,type=bind"
     ],
     "workspaceFolder": "/opt/atopile",
+    "postCreateCommand": "mkdir -p /opt/atopile && chown -R root:root /opt/atopile",
     "remoteUser": "root"
 }
