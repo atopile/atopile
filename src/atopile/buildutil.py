@@ -81,16 +81,19 @@ def build(app: Module) -> None:
     G = app.get_graph()
     solver = _get_solver()
 
-    logger.info("Resolving bus parameters")
-    try:
-        F.is_bus_parameter.resolve_bus_parameters(G)
-    # FIXME: this is a hack around a compiler bug
-    except KeyErrorAmbiguous as ex:
-        raise UserException(
-            "Unfortunately, there's a compiler bug at the moment that means that "
-            "this sometimes fails. Try again, and it'll probably work. "
-            "See https://github.com/atopile/atopile/issues/807"
-        ) from ex
+    if not SKIP_SOLVING:
+        logger.info("Resolving bus parameters")
+        try:
+            F.is_bus_parameter.resolve_bus_parameters(G)
+        # FIXME: this is a hack around a compiler bug
+        except KeyErrorAmbiguous as ex:
+            raise UserException(
+                "Unfortunately, there's a compiler bug at the moment that means that "
+                "this sometimes fails. Try again, and it'll probably work. "
+                "See https://github.com/atopile/atopile/issues/807"
+            ) from ex
+    else:
+        logger.warning("Skipping bus parameter resolution")
 
     logger.info("Running checks")
     run_checks(app, G)
