@@ -170,7 +170,7 @@ jobs:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
           flavor: |
-            latest=${{github.event_name == 'release' && github.event.action == 'published' && !github.event.release.prerelease && !github.event.release.draft}}
+            latest=${{ github.event_name == 'release' && github.event.action == 'published' && !github.event.release.prerelease && !github.event.release.draft }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -178,7 +178,16 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
+      - id: PUSH_CONTAINER
+        run: >-
+          echo "PUSH_CONTAINER=${{
+            ( github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name == github.repository ) ||
+            github.event_name == 'pull_request'
+          }}" >> $GITHUB_OUTPUT
+
       - name: Log in to the Container registry
+        if: ${{ steps.PUSH_CONTAINER.outputs.PUSH_CONTAINER }}
         uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
         with:
           registry: ghcr.io
@@ -190,6 +199,6 @@ jobs:
         with:
           context: .
           file: dockerfiles/${{ matrix.dockerfile }}
-          push: true
+          push: ${{ steps.PUSH_CONTAINER.outputs.PUSH_CONTAINER }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
