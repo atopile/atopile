@@ -115,7 +115,7 @@ class Builders(Namespace):
             return op(*operands) if isinstance(operands, Iterable) else op(operands)
 
         # required for good falsifying examples from hypothesis
-        f.__name__ = f"{op.__name__}'"
+        f.__name__ = f"'{op.__name__}'"
 
         return f
 

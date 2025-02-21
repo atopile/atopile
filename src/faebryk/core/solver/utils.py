@@ -35,7 +35,7 @@ from faebryk.core.parameter import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
-from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.sets.sets import BoolSet, P_Set, as_lit
 from faebryk.libs.util import (
     ConfigFlag,
     ConfigFlagFloat,
@@ -108,8 +108,8 @@ SolverAll = ParameterOperatable | SolverLiteral
 SolverAllExtended = ParameterOperatable.All | SolverLiteral
 
 
-def make_lit(val):
-    return P_Set.from_value(val)
+# alias
+make_lit = as_lit
 
 
 # TODO should be part of mutator

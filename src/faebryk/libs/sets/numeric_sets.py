@@ -8,7 +8,7 @@ from collections.abc import Generator
 from decimal import Decimal, getcontext
 from typing import Any, override
 
-from faebryk.libs.math import sine_on_interval
+from faebryk.libs.set_math import sine_on_interval
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import cast_assert
 

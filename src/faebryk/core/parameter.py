@@ -523,10 +523,6 @@ def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     return False
 
 
-def lit(x):
-    return P_Set.from_value(x)
-
-
 @abstract
 class Expression(ParameterOperatable):
     operates_on: GraphInterface
@@ -1181,6 +1177,7 @@ class Max(Arithmetic):
         return False
 
 
+@abstract
 class Functional(Arithmetic):
     def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
         super().__init__(function, variable)
