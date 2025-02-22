@@ -23,7 +23,7 @@ module VoltageDivider:
     in.gnd ~ out.gnd
 
     assert out.voltage within in.voltage * r_bottom.resistance / (r_top.resistance + r_bottom.resistance)
-    assert in.voltage > out.voltage
+    assert in.voltage >= out.voltage
     assert in.max_current * r_bottom.resistance / (r_top.resistance + r_bottom.resistance) within max_i_q
 
 
