@@ -8,6 +8,7 @@ from collections.abc import Generator
 from decimal import Decimal, getcontext
 from typing import Any, override
 
+from faebryk.libs.set_math import sine_on_interval
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import cast_assert
 
@@ -25,6 +26,7 @@ zero = Decimal(0)
 Number = Decimal
 
 NumberLike = int | float | Number
+NumberLikeR = int, float, Number
 
 
 def is_int(value: Number) -> bool:
@@ -203,16 +205,14 @@ class Numeric_Interval(Numeric_Set):
         return Numeric_Interval(_min, _max)
 
     def op_pow_interval(self, other: "Numeric_Interval") -> "Numeric_Interval_Disjoint":
-        # TODO implement this properly
-        if other.max_elem < 0:
-            return self.op_pow_interval(other.op_negate()).op_invert()
-        if other.min_elem < 0:
+        base = self
+        exp = other
+
+        if exp.max_elem < 0:
+            return base.op_pow_interval(exp.op_negate()).op_invert()
+        if exp.min_elem < 0:
             raise NotImplementedError("crossing zero in exp not implemented yet")
-        if self._max < 0 and not is_int(other.min_elem):
-            raise NotImplementedError(
-                "cannot raise negative base to fractional exponent"
-            )
-        if not other.is_integer and self.min_elem < 0:
+        if base.min_elem < 0 and not exp.is_integer:
             raise NotImplementedError(
                 "cannot raise negative base to fractional exponent (complex result)"
             )
@@ -223,8 +223,8 @@ class Numeric_Interval(Numeric_Set):
             except OverflowError:
                 return inf if x > 0 else -inf
 
-        a, b = self._min, self._max
-        c, d = other._min, other._max
+        a, b = base._min, base._max
+        c, d = exp._min, exp._max
 
         # see first two guards above
         assert c >= 0
@@ -350,11 +350,7 @@ class Numeric_Interval(Numeric_Set):
         return Numeric_Interval(math.log(self._min), math.log(self._max))  # type: ignore #TODO
 
     def op_sin(self) -> "Numeric_Interval":
-        if self._max - self._min >= 2 * math.pi:
-            return Numeric_Interval(-1, 1)  # type: ignore #TODO
-        if self._min == self._max:
-            return Numeric_Interval(math.sin(self._min), math.sin(self._max))  # type: ignore #TODO
-        raise NotImplementedError("sin of interval not implemented yet")
+        return Numeric_Interval(*sine_on_interval((float(self._min), float(self._max))))
 
     def maybe_merge_interval(
         self, other: "Numeric_Interval"

@@ -45,8 +45,12 @@ from faebryk.core.solver.utils import (
     is_numeric_literal,
     is_pure_literal_expression,
     make_lit,
+    subset_to,
 )
-from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
+from faebryk.libs.sets.quantity_sets import (
+    Quantity_Interval,
+    Quantity_Interval_Disjoint,
+)
 from faebryk.libs.sets.sets import BoolSet, P_Set
 from faebryk.libs.util import cast_assert, partition
 
@@ -291,7 +295,7 @@ def fold_pow(
     A^1 -> A
     0^A -> 0
     1^A -> 1
-    5^3 -> 125
+    #TODO: (A^B)^C -> A^(B*C)
     #TODO rethink: 0^0 -> 1
     ```
     """
@@ -330,6 +334,20 @@ def fold_pow(
             return
 
 
+def fold_log(
+    expr: Log,
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+):
+    """
+    # TODO log(A*B) -> log(A) + log(B)
+    # TODO log(A^B) -> B*log(A)
+    """
+    return
+
+
 def fold_abs(
     expr: Abs,
     literal_operands: Sequence[Literal],
@@ -337,8 +355,41 @@ def fold_abs(
     non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
     mutator: Mutator,
 ):
-    """ """
+    """
+    # TODO |-A| = |A|
+    # TODO |A*B| = |A|*|B|
+    # TODO |A+B| <= |A|+|B|
+    """
     return
+
+
+def fold_round(
+    expr: Round,
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+):
+    """
+    TODO: Think about round(A + X)
+    """
+    return
+
+
+def fold_sin(
+    expr: Sin,
+    literal_operands: Sequence[Literal],
+    replacable_nonliteral_operands: Counter[ParameterOperatable],
+    non_replacable_nonliteral_operands: Sequence[ParameterOperatable],
+    mutator: Mutator,
+):
+    """
+    Sin ss! [-1, 1]
+    #TODO Sin(-A) -> -Sin(A)
+    #TODO Sin(A + 2*pi) -> Sin(A)
+    #TODO Sin(A+B) -> Sin(A)*Cos(B) + Cos(A)*Sin(B)
+    """
+    subset_to(expr, make_lit(Quantity_Interval(-1, 1)), mutator, from_ops=[expr])
 
 
 # Setic --------------------------------------------------------------------------------
@@ -626,16 +677,13 @@ def fold(
         elif isinstance(expr, Power):
             return fold_pow  # type: ignore
         elif isinstance(expr, Round):
-            # TODO implement
-            return lambda *args: None
+            return fold_round  # type: ignore
         elif isinstance(expr, Abs):
             return fold_abs  # type: ignore
         elif isinstance(expr, Sin):
-            # TODO implement
-            return lambda *args: None
+            return fold_sin  # type: ignore
         elif isinstance(expr, Log):
-            # TODO implement
-            return lambda *args: None
+            return fold_log  # type: ignore
         elif isinstance(expr, Integrate):
             # TODO implement
             return lambda *args: None
@@ -792,6 +840,11 @@ def fold_pure_literal_expressions(mutator: Mutator):
         if not is_pure_literal_expression(expr):
             continue
 
-        result = _exec_pure_literal_expressions(expr)
+        # if expression is not evaluatable that's fine
+        # just means we can't say anything about the result
+        try:
+            result = _exec_pure_literal_expressions(expr)
+        except (ValueError, NotImplementedError, ZeroDivisionError):
+            continue
         # type ignore because function sig is not 100% correct
         alias_is_literal_and_check_predicate_eval(expr, result, mutator)  # type: ignore

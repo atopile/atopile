@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 class GraphFunctions:
     # Make all kinds of graph filtering functions so we can optimize them in the future
     # Avoid letting user query all graph nodes always because quickly very slow
-    def __init__(self, graph: Graph):
+    def __init__(self, *graph: Graph):
         self.graph = graph
 
     def node_projection(self) -> list["Node"]:
@@ -44,7 +44,7 @@ class GraphFunctions:
         ]
 
     def nodes_of_type[T: "Node"](self, t: type[T]) -> set[T]:
-        return {n for n in self.graph.node_projection() if isinstance(n, t)}
+        return {n for g in self.graph for n in g.node_projection() if isinstance(n, t)}
 
     @overload
     def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]: ...
@@ -52,4 +52,4 @@ class GraphFunctions:
     def nodes_of_types(self, t: UnionType) -> set["Node"]: ...
 
     def nodes_of_types(self, t):  # type: ignore TODO
-        return {n for n in self.graph.node_projection() if isinstance(n, t)}
+        return {n for g in self.graph for n in g.node_projection() if isinstance(n, t)}

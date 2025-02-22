@@ -1048,6 +1048,13 @@ class Log(Arithmetic):
             raise ValueError("operand must have dimensionless unit")
         self.units = unit
 
+        # TODO, be careful makes solver run forever like this
+        # implicit constraint
+        # if isinstance(operand, ParameterOperatable):
+        #    operand.constrain_ge(lit(0))
+        # elif Quantity_Interval_Disjoint.from_value(operand).min_elem < 0:
+        #    raise ValueError("operand must be non-negative")
+
     def has_implicit_constraint(self) -> bool:
         return True  # non-negative
 
@@ -1170,7 +1177,13 @@ class Max(Arithmetic):
         return False
 
 
-class Integrate(Arithmetic):
+@abstract
+class Functional(Arithmetic):
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+
+
+class Integrate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="∫",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
@@ -1184,7 +1197,7 @@ class Integrate(Arithmetic):
         return False
 
 
-class Differentiate(Arithmetic):
+class Differentiate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="d",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
