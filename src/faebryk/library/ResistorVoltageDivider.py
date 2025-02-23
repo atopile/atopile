@@ -25,8 +25,17 @@ class ResistorVoltageDivider(Module):
         return F.can_bridge_defined(self.node[0], self.node[1])
 
     def __preinit__(self):
-        self.node[0].connect_via([self.resistor[0], self.resistor[1]], self.node[1])
+        self.node[0].connect_via([self.resistor[0], self.resistor[1]], self.node[2])
+        self.node[0].connect_via([self.resistor[0]], self.node[1])
+
         self.total_resistance.alias_is(
             self.resistor[0].resistance + self.resistor[1].resistance
         )
-        self.ratio.alias_is(self.resistor[0].resistance / self.total_resistance)
+        # help solver
+        # TODO: can be removed when solver can take hints
+        self.resistor[0].resistance.alias_is(
+            self.total_resistance - self.resistor[1].resistance
+        )
+        self.resistor[1].resistance.alias_is(
+            self.total_resistance - self.resistor[0].resistance
+        )
