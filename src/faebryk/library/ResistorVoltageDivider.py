@@ -3,6 +3,8 @@
 
 import logging
 
+from deprecated import deprecated
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -11,6 +13,7 @@ from faebryk.libs.units import P
 logger = logging.getLogger(__name__)
 
 
+@deprecated(reason="Use VoltageDivider instead")
 class ResistorVoltageDivider(Module):
     """
     A voltage divider using two resistors.
