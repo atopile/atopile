@@ -1506,7 +1506,7 @@ def test_fold_correlated():
     ],
 )
 def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expected):
-    from faebryk.core.solver.symbolic.expression_wise import (
+    from faebryk.core.solver.symbolic.pure_literal import (
         _exec_pure_literal_expressions,
     )
     from faebryk.core.solver.utils import make_lit
