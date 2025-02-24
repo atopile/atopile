@@ -307,9 +307,9 @@ def pick_topologically(
     # TODO implement backtracking
 
     from faebryk.libs.picker.api.picker_lib import (
-        filter_by_module_params_and_attach,
+        check_and_attach_candidates,
+        check_and_attach_single,
         get_candidates,
-        pick_atomically,
     )
 
     timings = Times(name="pick")
@@ -353,7 +353,7 @@ def pick_topologically(
     ]
     if single_part_modules:
         with timings.as_global("pick single candidate modules"):
-            ok = pick_atomically(single_part_modules, solver)
+            ok = check_and_attach_candidates(single_part_modules, solver)
         if not ok:
             # TODO: Track contradicting constraints back to modules
             raise PickError(
@@ -368,7 +368,7 @@ def pick_topologically(
 
     # heuristic: try pick first candidate for rest
     with timings.as_global("fast-pick"):
-        ok = pick_atomically([(m, p[0]) for m, p in candidates], solver)
+        ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
     if ok:
         _update_progress(candidates)
         logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
@@ -379,7 +379,7 @@ def pick_topologically(
     with timings.as_global("slow-pick", context=True):
         for module in tree:
             parts = _get_candidates(Tree({module: Tree()}))[0][1]
-            filter_by_module_params_and_attach(module, parts, solver)
+            check_and_attach_single(module, parts[0], solver)
             _update_progress(module)
 
     logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")

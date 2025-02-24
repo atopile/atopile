@@ -14,7 +14,10 @@ import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
-from faebryk.libs.picker.api.picker_lib import get_candidates, pick_atomically
+from faebryk.libs.picker.api.picker_lib import (
+    check_and_attach_candidates,
+    get_candidates,
+)
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import P
@@ -180,7 +183,7 @@ def test_reject_diode_for_led():
 
     solver = DefaultSolver()
     candidates = get_candidates(diode.get_tree(types=F.Diode), solver)
-    ok = pick_atomically([(led, c) for c in candidates[diode]], solver)
+    ok = check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
 
     assert not ok
 

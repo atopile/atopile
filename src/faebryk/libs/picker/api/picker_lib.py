@@ -4,8 +4,6 @@
 import logging
 import re
 from dataclasses import fields
-from textwrap import indent
-from typing import Iterable
 
 import more_itertools
 
@@ -191,43 +189,26 @@ def _find_modules(
     return out
 
 
-def _try_attach(module: Module, parts: Iterable[Component], qty: int):
-    # TODO remove ignore_exceptions
-    # was used to handle TBDs
+def _attach(module: Module, c: Component):
+    """
+    Calls LCSC attach and wraps errors into PickError
+    """
 
-    failures = []
-    for c in parts:
-        try:
-            c.attach(module, qty)
-            return
-        except (ValueError, Component.ParseError) as e:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
-            failures.append((c, e))
-        except LCSC_NoDataException as e:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
-            failures.append((c, e))
-        except LCSC_PinmapException as e:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
-            failures.append((c, e))
-
-    if failures:
-        fail_str = indent(
-            "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
-        )
+    try:
+        c.attach(module)
+    except (
+        ValueError,
+        Component.ParseError,
+        LCSC_NoDataException,
+        LCSC_PinmapException,
+    ) as e:
+        if LOG_PICK_SOLVE:
+            logger.warning(f"Failed to attach {c} to `{module}`: {e}")
 
         raise PickError(
-            f"Failed to attach any components to module `{module}`: {len(failures)}"
-            f" {fail_str}",
+            f"Failed to attach component {c} to module `{module}`: {e}",
             module,
         )
-
-    raise PickError(
-        "No components found that match the parameters and that can be attached",
-        module,
-    )
 
 
 class NotCompatibleException(Exception):
@@ -292,11 +273,13 @@ def _get_compatible_parameters(
     return {p: c_range for p, c_range in param_mapping}
 
 
-def _check_compatible_parameters(
+def _check_candidates_compatible(
     module_candidates: list[tuple[Module, Component]], solver: Solver
 ):
-    # check for every param whether the candidate component's range is
-    # compatible by querying the solver
+    """
+    Check if combination of all candidates is compatible with each other
+    Checks each candidate first for individual compatibility
+    """
 
     if not module_candidates:
         return True
@@ -325,15 +308,24 @@ def _check_compatible_parameters(
 # public -------------------------------------------------------------------------------
 
 
-def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
-    if not _check_compatible_parameters(candidates, solver):
+def check_and_attach_candidates(
+    candidates: list[tuple[Module, Component]], solver: Solver
+):
+    """
+    Check if given candidates are compatible with each other
+    If so, attach them to the modules
+    """
+    if not _check_candidates_compatible(candidates, solver):
         return False
+
     for m, part in candidates:
-        _try_attach(m, [part], qty=1)
-        logger.debug(
-            f"Attached {part.lcsc_display} ('{part.description}') to "
-            f"'{m.get_full_name(types=False)}'"
-        )
+        _attach(m, part)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Attached {part.lcsc_display} ('{part.description}') to "
+                f"'{m.get_full_name(types=False)}'"
+            )
 
     return True
 
@@ -367,33 +359,18 @@ def get_candidates(
     return {}
 
 
-def filter_by_module_params_and_attach(
-    cmp: Module, parts: list[Component], solver: Solver
-):
+def check_and_attach_single(cmp: Module, part: Component, solver: Solver):
     """
     Find a component with matching parameters
     """
-    # FIXME: should take the desired qty and respect it
-    tried = []
-
-    def parts_gen():
-        for part in parts:
-            if _check_compatible_parameters([(cmp, part)], solver):
-                tried.append(part)
-                yield part
-
     try:
-        _try_attach(cmp, parts_gen(), qty=1)
+        _attach(cmp, part)
     except PickError as ex:
         cmp_descr = f"{cmp.get_full_name()}<\n{cmp.pretty_params(solver)}>"
-        attr_str = "\n".join(
-            f"- {c.lcsc_display} (attributes: {', '.join(
-                f"{name}={lit}" for name, lit in c.attribute_literals.items()
+        attr_str = f"- {part.lcsc_display} (attributes: {', '.join(
+                f"{name}={lit}" for name, lit in part.attribute_literals.items()
             )})"
-            for c in parts
-        )
         raise PickError(
-            f"No parts found that are compatible with design for `{cmp_descr}`:\n"
-            f"{attr_str}",
+            f"Part not compatible with design for `{cmp_descr}`:\n" f"{attr_str}",
             cmp,
         ) from ex
