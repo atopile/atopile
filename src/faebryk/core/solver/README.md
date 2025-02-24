@@ -392,7 +392,7 @@ A, B = Parameter(), Parameter()
 
 Phases 2/3 iterate through available `algorithms` until no algorithm produces changes in an iteration.
 
-Most symbolic algorithms are in [analytical.py](../../core/solver/analytical.py). The `idempotent_deduplicate` algorithm provides a good starting point for understanding the system.
+Most symbolic algorithms are in [symbolic/](../../core/solver/symbolic/). The `idempotent_deduplicate` algorithm provides a good starting point for understanding the system.
 
 ## Optimization - WIP
 When working with a specification like `100kOhm +/-10%`, multiple optimization goals are possible:

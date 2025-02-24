@@ -1820,3 +1820,24 @@ UnaryIdentity = Add | Multiply | Or | Union | Intersection
 FullyAssociative = Add | Multiply | Or | Union | Intersection
 Associative = FullyAssociative
 Involutory = Not
+
+
+# python help --------------------------------------------------------------------------
+CanonicalExpressionR = (
+    Add,
+    Multiply,
+    Power,
+    Round,
+    Abs,
+    Sin,
+    Log,
+    Or,
+    Not,
+    Intersection,
+    Union,
+    SymmetricDifference,
+    Is,
+    GreaterOrEqual,
+    GreaterThan,
+    IsSubset,
+)

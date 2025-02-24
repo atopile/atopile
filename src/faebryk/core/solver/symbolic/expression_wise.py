@@ -2,16 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 
-import functools
 import logging
-import operator
 from collections import Counter, defaultdict
 from collections.abc import Sequence
-from typing import Callable, Iterable, cast
+from typing import Callable, cast
 
 from faebryk.core.parameter import (
     Abs,
     Add,
+    CanonicalExpressionR,
     Commutative,
     ConstrainableExpression,
     Differentiate,
@@ -49,9 +48,8 @@ from faebryk.core.solver.utils import (
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
-    Quantity_Interval_Disjoint,
 )
-from faebryk.libs.sets.sets import BoolSet, P_Set
+from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.util import cast_assert, partition
 
 logger = logging.getLogger(__name__)
@@ -60,7 +58,7 @@ logger = logging.getLogger(__name__)
 
 Literal = SolverLiteral
 
-# Arithmetic ---------------------------------------------------------------------------
+# Helpers ==============================================================================
 
 
 def _fold_op(
@@ -158,6 +156,9 @@ def _collect_factors[T: Multiply | Power](
         new_factors[var] = sum(mul_lits) + make_lit(count)  # type: ignore
 
     return new_factors, old_factors
+
+
+# Arithmetic ---------------------------------------------------------------------------
 
 
 def fold_add(
@@ -393,6 +394,8 @@ def fold_sin(
 
 
 # Setic --------------------------------------------------------------------------------
+
+
 def fold_intersect(
     expr: Intersection,
     literal_operands: Sequence[Literal],
@@ -642,7 +645,7 @@ def fold_ge(
         return
 
 
-# Boilerplate --------------------------------------------------------------------------
+# Boilerplate ==========================================================================
 
 
 def fold(
@@ -778,73 +781,9 @@ def _get_fold_func(expr_type: type[CanonicalExpression]) -> Callable[[Mutator], 
     return wrapped
 
 
-def _multi(op: Callable, init=None) -> Callable:
-    def wrapped(*args):
-        if init is not None:
-            init_lit = make_lit(init)
-            args = [init_lit, init_lit, *args]
-        assert args
-        return functools.reduce(op, args)
-
-    return wrapped
-
-
-# TODO consider making the oprerator property of the expression type
-
-_CanonicalExpressions = {
-    Add: _multi(operator.add, 0),
-    Multiply: _multi(operator.mul, 1),
-    Power: operator.pow,
-    Round: round,
-    Abs: abs,
-    Sin: Quantity_Interval_Disjoint.op_sin,
-    Log: Quantity_Interval_Disjoint.op_log,
-    Or: _multi(BoolSet.op_or, False),
-    Not: BoolSet.op_not,
-    Intersection: _multi(operator.and_),
-    Union: _multi(operator.or_),
-    SymmetricDifference: operator.xor,
-    Is: operator.eq,
-    GreaterOrEqual: operator.ge,
-    GreaterThan: operator.gt,
-    IsSubset: P_Set.is_subset_of,
-}
-
 fold_algorithms = [
     algorithm(f"Fold {expr_type.__name__}", destructive=False)(
         _get_fold_func(expr_type)
     )
-    for expr_type in _CanonicalExpressions
+    for expr_type in CanonicalExpressionR
 ]
-
-# Pure literal folding -----------------------------------------------------------------
-
-
-def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral:
-    assert is_pure_literal_expression(expr)
-    return _CanonicalExpressions[type(expr)](*expr.operands)
-
-
-@algorithm("Fold pure literal expressions", destructive=False)
-def fold_pure_literal_expressions(mutator: Mutator):
-    exprs = mutator.nodes_of_types(
-        tuple(_CanonicalExpressions.keys()), sort_by_depth=True
-    )
-    exprs = cast(Iterable[CanonicalExpression], exprs)
-
-    for expr in exprs:
-        # TODO is this needed?
-        if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
-            continue
-
-        if not is_pure_literal_expression(expr):
-            continue
-
-        # if expression is not evaluatable that's fine
-        # just means we can't say anything about the result
-        try:
-            result = _exec_pure_literal_expressions(expr)
-        except (ValueError, NotImplementedError, ZeroDivisionError):
-            continue
-        # type ignore because function sig is not 100% correct
-        alias_is_literal_and_check_predicate_eval(expr, result, mutator)  # type: ignore

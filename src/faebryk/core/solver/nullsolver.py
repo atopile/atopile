@@ -4,9 +4,9 @@ from typing import Any
 from faebryk.core.cpp import Graph
 from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter, Predicate
-from faebryk.core.solver import canonical
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.symbolic import canonical
 from faebryk.libs.sets.sets import P_Set
 
 

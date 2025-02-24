@@ -22,8 +22,8 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
-from faebryk.core.solver.analytical import flatten_associative
 from faebryk.core.solver.mutator import Mutator
+from faebryk.core.solver.symbolic.structural import flatten_associative
 from faebryk.core.solver.utils import Associative, FullyAssociative, algorithm
 from faebryk.libs.library import L
 from faebryk.libs.units import P
