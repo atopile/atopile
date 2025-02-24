@@ -96,7 +96,6 @@ class DefaultSolver(Solver):
             structural.empty_set,
             structural.transitive_subset,
             structural.isolate_lone_params,
-            structural.remove_empty_graphs,
             structural.uncorrelated_alias_fold,
             structural.upper_estimation_of_expressions_with_subsets,
         ],
