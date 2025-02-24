@@ -191,68 +191,7 @@ def _find_modules(
     return out
 
 
-def get_candidates(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
-    candidates = modules.copy()
-    parts = {}
-    empty = set()
-
-    while candidates:
-        # TODO deduplicate parts with same literals
-        new_parts = _find_modules(modules, solver)
-        parts.update({m: p for m, p in new_parts.items() if p})
-        empty = {m for m, p in new_parts.items() if not p}
-        for m in parts:
-            if m in candidates:
-                candidates.pop(m)
-        if not empty:
-            return parts
-        for m in empty:
-            subtree = candidates.pop(m)
-            if not subtree:
-                raise PickError(
-                    f"No candidates found for `{m}`:\n{m.pretty_params(solver)}", m
-                )
-            candidates.update(subtree)
-
-    # should fail earlier
-    return {}
-
-
-def filter_by_module_params_and_attach(
-    cmp: Module, parts: list[Component], solver: Solver
-):
-    """
-    Find a component with matching parameters
-    """
-    # FIXME: should take the desired qty and respect it
-    tried = []
-
-    def parts_gen():
-        for part in parts:
-            if check_compatible_parameters([(cmp, part)], solver):
-                tried.append(part)
-                yield part
-
-    try:
-        try_attach(cmp, parts_gen(), qty=1)
-    except PickError as ex:
-        cmp_descr = f"{cmp.get_full_name()}<\n{cmp.pretty_params(solver)}>"
-        attr_str = "\n".join(
-            f"- {c.lcsc_display} (attributes: {', '.join(
-                f"{name}={lit}" for name, lit in c.attribute_literals.items()
-            )})"
-            for c in parts
-        )
-        raise PickError(
-            f"No parts found that are compatible with design for `{cmp_descr}`:\n"
-            f"{attr_str}",
-            cmp,
-        ) from ex
-
-
-def try_attach(module: Module, parts: Iterable[Component], qty: int):
+def _try_attach(module: Module, parts: Iterable[Component], qty: int):
     # TODO remove ignore_exceptions
     # was used to handle TBDs
 
@@ -295,7 +234,7 @@ class NotCompatibleException(Exception):
     pass
 
 
-def get_compatible_parameters(
+def _get_compatible_parameters(
     module: Module, c: "Component", solver: Solver
 ) -> dict[Parameter, ParameterOperatable.Literal]:
     """
@@ -353,7 +292,7 @@ def get_compatible_parameters(
     return {p: c_range for p, c_range in param_mapping}
 
 
-def check_compatible_parameters(
+def _check_compatible_parameters(
     module_candidates: list[tuple[Module, Component]], solver: Solver
 ):
     # check for every param whether the candidate component's range is
@@ -364,7 +303,7 @@ def check_compatible_parameters(
 
     try:
         mappings = [
-            get_compatible_parameters(m, c, solver) for m, c in module_candidates
+            _get_compatible_parameters(m, c, solver) for m, c in module_candidates
         ]
     except NotCompatibleException:
         return False
@@ -383,15 +322,78 @@ def check_compatible_parameters(
     return len(result.true_predicates) == 1
 
 
+# public -------------------------------------------------------------------------------
+
+
 def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
-    module_candidate_params = [(module, part) for module, part in candidates]
-    if not check_compatible_parameters(module_candidate_params, solver):
+    if not _check_compatible_parameters(candidates, solver):
         return False
-    for m, part in module_candidate_params:
-        try_attach(m, [part], qty=1)
+    for m, part in candidates:
+        _try_attach(m, [part], qty=1)
         logger.debug(
             f"Attached {part.lcsc_display} ('{part.description}') to "
             f"'{m.get_full_name(types=False)}'"
         )
 
     return True
+
+
+def get_candidates(
+    modules: Tree[Module], solver: Solver
+) -> dict[Module, list[Component]]:
+    candidates = modules.copy()
+    parts = {}
+    empty = set()
+
+    while candidates:
+        # TODO deduplicate parts with same literals
+        new_parts = _find_modules(modules, solver)
+        parts.update({m: p for m, p in new_parts.items() if p})
+        empty = {m for m, p in new_parts.items() if not p}
+        for m in parts:
+            if m in candidates:
+                candidates.pop(m)
+        if not empty:
+            return parts
+        for m in empty:
+            subtree = candidates.pop(m)
+            if not subtree:
+                raise PickError(
+                    f"No candidates found for `{m}`:\n{m.pretty_params(solver)}", m
+                )
+            candidates.update(subtree)
+
+    # should fail earlier
+    return {}
+
+
+def filter_by_module_params_and_attach(
+    cmp: Module, parts: list[Component], solver: Solver
+):
+    """
+    Find a component with matching parameters
+    """
+    # FIXME: should take the desired qty and respect it
+    tried = []
+
+    def parts_gen():
+        for part in parts:
+            if _check_compatible_parameters([(cmp, part)], solver):
+                tried.append(part)
+                yield part
+
+    try:
+        _try_attach(cmp, parts_gen(), qty=1)
+    except PickError as ex:
+        cmp_descr = f"{cmp.get_full_name()}<\n{cmp.pretty_params(solver)}>"
+        attr_str = "\n".join(
+            f"- {c.lcsc_display} (attributes: {', '.join(
+                f"{name}={lit}" for name, lit in c.attribute_literals.items()
+            )})"
+            for c in parts
+        )
+        raise PickError(
+            f"No parts found that are compatible with design for `{cmp_descr}`:\n"
+            f"{attr_str}",
+            cmp,
+        ) from ex

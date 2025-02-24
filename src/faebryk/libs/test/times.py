@@ -164,4 +164,5 @@ class Times:
             if name is not None:
                 if context:
                     self._add(name, time.perf_counter() - start)
-                self.add(name)
+                else:
+                    self.add(name)
