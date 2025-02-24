@@ -69,7 +69,7 @@ logger = logging.getLogger(__name__)
 # TODO: mark terminal=False where applicable
 
 
-@algorithm("Check literal contradiction")
+@algorithm("Check literal contradiction", terminal=False)
 def check_literal_contradiction(mutator: Mutator):
     """
     Check if a literal is contradictory
@@ -80,7 +80,7 @@ def check_literal_contradiction(mutator: Mutator):
         try_extract_literal(op, allow_subset=True)
 
 
-@algorithm("Convert inequality with literal to subset")
+@algorithm("Convert inequality with literal to subset", terminal=False)
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
     # TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
     """
@@ -120,7 +120,7 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         )
 
 
-@algorithm("Remove unconstrained")
+@algorithm("Remove unconstrained", terminal=True)
 def remove_unconstrained(mutator: Mutator):
     """
     Remove all expressions that are not involved in any constrained predicates
@@ -133,7 +133,7 @@ def remove_unconstrained(mutator: Mutator):
         mutator.remove(obj)
 
 
-@algorithm("Remove congruent expressions")
+@algorithm("Remove congruent expressions", terminal=False)
 def remove_congruent_expressions(mutator: Mutator):
     """
     Remove expressions that are congruent to other expressions
@@ -315,7 +315,7 @@ def resolve_alias_classes(mutator: Mutator):
             alias_to(e, representative, mutator, from_ops=alias_class_p_ops)
 
 
-@algorithm("Merge intersecting subsets")
+@algorithm("Merge intersecting subsets", terminal=False)
 def merge_intersect_subsets(mutator: Mutator):
     """
     A subset L1
@@ -362,7 +362,7 @@ def merge_intersect_subsets(mutator: Mutator):
         subset_to(param, intersected, mutator, from_ops=list(ss_lits.values()))
 
 
-@algorithm("Empty set")
+@algorithm("Empty set", terminal=False)
 def empty_set(mutator: Mutator):
     """
     A is {} -> False
@@ -381,7 +381,7 @@ def empty_set(mutator: Mutator):
     # Converted by literal_folding
 
 
-@algorithm("Transitive subset")
+@algorithm("Transitive subset", terminal=False)
 def transitive_subset(mutator: Mutator):
     """
     ```
@@ -409,7 +409,7 @@ def transitive_subset(mutator: Mutator):
             subset_to(A, X, mutator, from_ops=[ss_op])
 
 
-@algorithm("Predicate flat terminate")
+@algorithm("Predicate flat terminate", terminal=False)
 def predicate_flat_terminate(mutator: Mutator):
     """
     ```
@@ -434,7 +434,7 @@ def predicate_flat_terminate(mutator: Mutator):
         mutator.predicate_terminate(p)
 
 
-@algorithm("Predicate is!! True")
+@algorithm("Predicate is!! True", terminal=False)
 def predicate_terminated_is_true(mutator: Mutator):
     """
     P!! is! True -> P!! is!! True
@@ -460,7 +460,7 @@ def predicate_terminated_is_true(mutator: Mutator):
         mutator.predicate_terminate(p)
 
 
-@algorithm("Convert aliased singletons into literals")
+@algorithm("Convert aliased singletons into literals", terminal=False)
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
     A is ([5]), A + B -> ([5]) + B
@@ -500,6 +500,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         mutator.mutate_expression(e, operands=ops)
 
 
+# TODO terminal?
 @algorithm("Isolate lone parameters")
 def isolate_lone_params(mutator: Mutator):
     """
@@ -698,7 +699,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
 
 # Estimation algorithms ----------------------------------------------------------------
-@algorithm("Upper estimation")
+@algorithm("Upper estimation", terminal=False)
 def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
     If any operand in an expression has a subset literal,
@@ -737,11 +738,11 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
         # TODO: remove when splitting terminal/non-terminal
         # optimization: don't take away from uncorrelated_alias_fold
-        if (
-            # not (expr in new_subsets and expr not in new_aliases)
-            not any(get_correlations(expr)) and map_extract_literals(expr)[1]
-        ):
-            continue
+        # if (
+        #    # not (expr in new_subsets and expr not in new_aliases)
+        #    not any(get_correlations(expr)) and map_extract_literals(expr)[1]
+        # ):
+        #    continue
         # In subset useless to look at subset lits
         no_allow_subset_lit = isinstance(expr, IsSubset)
 

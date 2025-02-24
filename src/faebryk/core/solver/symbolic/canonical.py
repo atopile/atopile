@@ -42,6 +42,7 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
+    SolverAllExtended,
     algorithm,
     alias_is_literal,
     make_lit,
@@ -52,8 +53,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.units import Quantity, dimensionless, quantity
+from faebryk.libs.units import dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
@@ -112,16 +112,10 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_parameter(
                 po,
                 units=dimensionless,
-                soft_set=Quantity_Interval_Disjoint._from_intervals(
-                    Quantity_Interval_Disjoint.from_value(po.soft_set)._intervals,
-                    dimensionless,
-                )
+                soft_set=make_lit(po.soft_set).to_dimensionless()
                 if po.soft_set is not None
                 else None,
-                within=Quantity_Interval_Disjoint._from_intervals(
-                    Quantity_Interval_Disjoint.from_value(po.within)._intervals,
-                    dimensionless,
-                )
+                within=make_lit(po.within).to_dimensionless()
                 if po.within is not None
                 else None,
                 guess=quantity(po.guess, dimensionless)
@@ -133,31 +127,13 @@ def convert_to_canonical_literals(mutator: Mutator):
         # Expression
         elif isinstance(po, Expression):
 
-            def mutate(
-                i: int, operand: ParameterOperatable.All
-            ) -> ParameterOperatable.All:
-                if isinstance(operand, NumericLiteralR):
-                    if isinstance(operand, int | float | Quantity) and not isinstance(
-                        operand, bool
-                    ):
-                        return Quantity_Interval_Disjoint.from_value(
-                            quantity(operand, dimensionless)
-                        )
-                    if isinstance(operand, Quantity_Interval_Disjoint):
-                        return Quantity_Interval_Disjoint._from_intervals(
-                            operand._intervals, dimensionless
-                        )
-                    if isinstance(operand, Quantity_Interval):
-                        return Quantity_Interval_Disjoint(
-                            Quantity_Interval._from_interval(
-                                operand._interval, dimensionless
-                            )
-                        )
-                if ParameterOperatable.is_literal(operand):
-                    return P_Set.from_value(operand)
-
-                assert isinstance(operand, ParameterOperatable)
-                return operand
+            def mutate(i: int, operand: SolverAllExtended) -> SolverAllExtended:
+                if not ParameterOperatable.is_literal(operand):
+                    return operand
+                lit = make_lit(operand)
+                if isinstance(lit, Quantity_Interval_Disjoint):
+                    return lit.to_dimensionless()
+                return lit
 
             # need to ignore existing because non-canonical literals
             # are congruent to canonical

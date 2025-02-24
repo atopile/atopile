@@ -845,6 +845,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         out._intervals = P_Set.deserialize(data["intervals"])
         return out
 
+    def to_dimensionless(self) -> "Quantity_Interval_Disjoint":
+        return Quantity_Interval_Disjoint._from_intervals(
+            self._intervals, dimensionless
+        )
+
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):
     """

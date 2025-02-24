@@ -708,7 +708,11 @@ def get_all_subsets(mutator: "Mutator") -> set[IsSubset]:
 
 # TODO move to Mutator
 def get_graphs(values: Iterable) -> list[Graph]:
-    return unique_ref(p.get_graph() for p in values if isinstance(p, Node))
+    return unique_ref(
+        p.get_graph() if isinstance(p, Node) else p
+        for p in values
+        if isinstance(p, (Node, Graph))
+    )
 
 
 def merge_parameters(params: Iterable[Parameter]) -> Parameter:

@@ -25,6 +25,7 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.utils import get_graphs
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     ConfigFlag,
@@ -320,9 +321,12 @@ def pick_topologically(
         logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
 
     def _get_candidates(_tree: Tree[Module]):
-        with timings.as_global("get candidates"):
+        with timings.as_global("pre-solve"):
+            solver.simplify(*get_graphs(tree.keys()))
+        with timings.as_global("new estimates"):
             # Rerun solver for new system
             solver.update_superset_cache(*_tree)
+        with timings.as_global("get candidates"):
             candidates = list(get_candidates(_tree, solver).items())
         if LOG_PICK_SOLVE:
             logger.info(
@@ -371,14 +375,14 @@ def pick_topologically(
         candidates = _get_candidates(tree)
 
     # heuristic: try pick first candidate for rest
-    with timings.as_global("fast-pick"):
-        ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-        if ok:
-            _update_progress(candidates)
-            logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
-            return
-        # no need to update candidates, slow picking does by itself
-    logger.warning("Could not pick all parts atomically")
+    # with timings.as_global("fast-pick"):
+    #     ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
+    #     if ok:
+    #         _update_progress(candidates)
+    #         logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
+    #         return
+    #     # no need to update candidates, slow picking does by itself
+    # logger.warning("Could not pick all parts atomically")
 
     logger.warning("Falling back to extremely slow picking one by one")
     # Works by looking for each module again for compatible parts

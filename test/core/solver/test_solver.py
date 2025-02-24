@@ -3,6 +3,7 @@
 
 import logging
 import math
+from itertools import pairwise
 from operator import add, mul, sub, truediv
 from typing import Any, Iterable
 
@@ -57,7 +58,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     Quantity_Set,
 )
-from faebryk.libs.sets.sets import BoolSet, EnumSet
+from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
 from faebryk.libs.units import P, dimensionless, quantity
 from faebryk.libs.util import times
 
@@ -1310,6 +1311,70 @@ def test_nested_fold_interval():
 
     solver = DefaultSolver()
     assert solver.inspect_get_known_supersets(A) == Range(5.76, 8.36)
+
+
+def test_simplify_non_terminal_manual_test_1():
+    """
+    Test that non-terminal simplification works
+    No assertions, run with
+    FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
+    """
+
+    A = Parameter(units=P.V)
+    E = A + A
+
+    solver = DefaultSolver()
+    solver.simplify(E)
+    E2 = E + A
+    A.alias_is(Range(0 * P.V, 10 * P.V))
+
+    solver.simplify(E2)
+
+    solver.simplify_symbolically(E2, terminal=True)
+
+    solver.simplify(E2)
+
+
+def test_simplify_non_terminal_manual_test_2():
+    """
+    Test that non-terminal simplification works
+    No assertions, run with
+    FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
+    """
+
+    A, B, C = ps = times(3, lambda: Parameter(units=P.V))
+
+    INCREASE = 20 * P.percent
+    TOLERANCE = 5 * P.percent
+    increase = as_lit(
+        L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(100 * P.percent)
+    )
+    for p1, p2 in pairwise(ps):
+        p2.constrain_subset(p1 * increase)
+        p1.constrain_subset(p2 / increase)
+
+    solver = DefaultSolver()
+    solver.simplify(A)
+
+    origin = 1, as_lit(Range(9 * P.V, 11 * P.V))
+    ps[origin[0]].alias_is(origin[1])
+    solver.simplify(A)
+
+    for i, p in enumerate(ps):
+        # _inc = increase ** (i - origin[0])
+        _inc = 1
+        _i = i - origin[0]
+        for _ in range(abs(_i)):
+            if _i > 0:
+                _inc *= increase
+            else:
+                _inc /= increase
+
+        p_lit = solver.inspect_get_known_supersets(p)
+        print(f"p[{i}]_lit", p_lit)
+        assert p_lit.is_subset_of(origin[1] * _inc)
+        p.alias_is(p_lit)
+        solver.simplify(p)
 
 
 # XFAIL --------------------------------------------------------------------------------

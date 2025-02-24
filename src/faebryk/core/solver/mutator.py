@@ -914,7 +914,10 @@ class Mutator:
         if rows:
             rows_unique = Counter(rows)
             rows_sorted = sorted(rows_unique.items(), key=lambda t: t[0])
-            table = Table(title="Mutations", show_lines=True)
+            table = Table(
+                title="Mutations",
+                show_lines=True,
+            )
             track_count = any(c > 1 for c in rows_unique.values())
             if track_count:
                 table.add_column("x")
@@ -929,8 +932,8 @@ class Mutator:
 
             console = Console(
                 record=True,
-                width=int(TERMINAL_WIDTH) - 40,
                 file=io.StringIO(),
+                width=int(TERMINAL_WIDTH) - 40,
             )
             console.print(table)
             log(console.export_text(styles=True))
@@ -1003,8 +1006,11 @@ class Mutator:
         return concatenated
 
     class ReprMap:
-        def __init__(self, repr_map: REPR_MAP):
+        def __init__(
+            self, repr_map: REPR_MAP, removed: set[ParameterOperatable] | None = None
+        ):
             self.repr_map = repr_map
+            self.removed = removed or set()
 
         def try_get_literal(
             self, param: ParameterOperatable, allow_subset: bool = False
@@ -1019,6 +1025,9 @@ class Mutator:
                 return lit * fac / fac.to_base_units().m
             return lit
 
+        def is_removed(self, param: ParameterOperatable) -> bool:
+            return param in self.removed
+
         def __getitem__(self, param: ParameterOperatable) -> SolverLiteral:
             return not_none(self.try_get_literal(param))
 
@@ -1031,9 +1040,20 @@ class Mutator:
         def __rich_repr__(self):
             yield self.repr_map
 
+        @staticmethod
+        def create_from_graphs(*graphs: Graph) -> "Mutator.ReprMap":
+            repr_map = {
+                po: po
+                for g in graphs
+                for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            }
+            return Mutator.ReprMap(repr_map)
+
     @staticmethod
     def create_concat_repr_map(*repr_maps: REPR_MAP) -> ReprMap:
-        return Mutator.ReprMap(Mutator.concat_repr_maps(*repr_maps))
+        concatenated = Mutator.concat_repr_maps(*repr_maps)
+        removed = repr_maps[0].keys() - concatenated.keys()
+        return Mutator.ReprMap(concatenated, removed)
 
     def __repr__(self) -> str:
         old_context = self.print_context

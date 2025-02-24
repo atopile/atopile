@@ -97,7 +97,7 @@ def test_performance_pick_rc_formulas():
                     # solver doesn't do equation reordering, so we need to reverse
                     m1.resistance.constrain_subset(m2.resistance / increase)
 
-    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.AVG_ACC)
+    timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
 
     app = App()
     timings.add("construct")

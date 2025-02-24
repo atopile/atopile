@@ -37,8 +37,10 @@ from faebryk.core.solver.utils import (
     debug_name_mappings,
     get_graphs,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
+from faebryk.libs.sets.sets import P_Set, as_lit
 from faebryk.libs.test.times import Times
+from faebryk.libs.units import dimensionless, quantity
 from faebryk.libs.util import groupby, times_out
 
 logger = logging.getLogger(__name__)
@@ -130,7 +132,8 @@ class DefaultSolver(Solver):
 
         self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
 
-        self.partial_state: DefaultSolver.PartialState | None = None
+        self.state: DefaultSolver.PartialState | None = None
+        self.simplified_state: DefaultSolver.PartialState | None = None
 
     def has_no_solution(
         self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
@@ -207,10 +210,100 @@ class DefaultSolver(Solver):
 
         return iteration_state, print_context
 
+    def create_or_resume_state(
+        self, print_context: ParameterOperatable.ReprContext | None, *gs: Graph | Node
+    ):
+        # TODO consider not getting full graph of node gs, but scope to only relevant
+        _gs = get_graphs(gs)
+
+        if self.simplified_state is None:
+            print_context_ = print_context or ParameterOperatable.ReprContext()
+
+            self.state = DefaultSolver.PartialState(
+                data=DefaultSolver.IterationData(
+                    graphs=_gs,
+                    total_repr_map=Mutator.ReprMap.create_from_graphs(*_gs),
+                    repr_since_last_iteration={},
+                ),
+                print_context=print_context_,
+            )
+            return
+
+        # TODO this function is unreadable, refactor and document
+        # TODO consider using mutator
+
+        if print_context is not None:
+            # TODO
+            logger.warning("Ignoring supplied print_context")
+            # raise ValueError("print_context not allowed when using simplified state")
+
+        print_context_ = self.simplified_state.print_context
+        repr_map = self.simplified_state.data.total_repr_map
+
+        p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
+        new_p_ops = {
+            p_op
+            for p_op in p_ops
+            if p_op not in repr_map.repr_map and not repr_map.is_removed(p_op)
+        }
+
+        repr_map_new = repr_map.repr_map.copy()
+
+        # mutate new parameters
+        new_params = [p for p in new_p_ops if isinstance(p, Parameter)]
+        for p in new_params:
+            # strip units and copy (for decoupling from old graph)
+            repr_map_new[p] = Parameter(
+                domain=p.domain,
+                tolerance_guess=p.tolerance_guess,
+                likely_constrained=p.likely_constrained,
+                units=dimensionless,
+                soft_set=as_lit(p.soft_set).to_dimensionless()
+                if p.soft_set is not None
+                else None,
+                within=as_lit(p.within).to_dimensionless()
+                if p.within is not None
+                else None,
+                guess=quantity(p.guess, dimensionless) if p.guess is not None else None,
+            )
+
+        # mutate new expressions
+        new_exprs = {e for e in new_p_ops if isinstance(e, Expression)}
+        for e in ParameterOperatable.sort_by_depth(new_exprs, ascending=True):
+            op_mapped = []
+            for op in e.operands:
+                if op in repr_map_new:
+                    op_mapped.append(repr_map_new[op])
+                    continue
+                if repr_map.is_removed(op):
+                    # TODO
+                    raise Exception("Using removed operand")
+                if ParameterOperatable.is_literal(op):
+                    op = as_lit(op)
+                    if isinstance(op, Quantity_Interval_Disjoint):
+                        op = op.to_dimensionless()
+                op_mapped.append(op)
+            e_mapped = type(e)(*op_mapped)
+            repr_map_new[e] = e_mapped
+            if isinstance(e, ConstrainableExpression) and e.constrained:
+                assert isinstance(e_mapped, ConstrainableExpression)
+                e_mapped.constrained = True
+
+        graphs = get_graphs(repr_map_new.values())
+
+        self.state = DefaultSolver.PartialState(
+            data=DefaultSolver.IterationData(
+                graphs=list(graphs),
+                total_repr_map=Mutator.ReprMap(repr_map_new, removed=repr_map.removed),
+                repr_since_last_iteration={},
+            ),
+            print_context=print_context_,
+        )
+
     @times_out(TIMEOUT)
     def simplify_symbolically(
         self,
-        *gs: Graph,
+        *gs: Graph | Node,
         print_context: ParameterOperatable.ReprContext | None = None,
         terminal: bool = True,
     ) -> tuple[Mutator.ReprMap, ParameterOperatable.ReprContext]:
@@ -220,32 +313,25 @@ class DefaultSolver(Solver):
         """
         timings = Times(name="simplify")
 
-        if not terminal:
-            raise NotImplementedError()
-
         now = time.time()
         if LOG_PICK_SOLVE:
-            logger.info("Phase 1 Solving: Analytical Solving ".ljust(80, "="))
+            logger.info("Phase 1 Solving: Symbolic Solving ".ljust(80, "="))
 
-        print_context_ = print_context or ParameterOperatable.ReprContext()
+        self.create_or_resume_state(print_context, *gs)
+        assert self.state is not None
+
         if S_LOG:
-            debug_name_mappings(print_context_, *gs)
-            Mutator.print_all(*gs, context=print_context_, type_filter=Expression)
+            _gs = self.state.data.graphs
+            debug_name_mappings(self.state.print_context, *_gs)
+            Mutator.print_all(
+                *_gs, context=self.state.print_context, type_filter=Expression
+            )
 
-        self.partial_state = DefaultSolver.PartialState(
-            data=DefaultSolver.IterationData(
-                graphs=list(gs),
-                total_repr_map=Mutator.ReprMap(
-                    {
-                        po: po
-                        for g in gs
-                        for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
-                    }
-                ),
-                repr_since_last_iteration={},
-            ),
-            print_context=print_context_,
-        )
+        pre_algos = self.algorithms.pre
+        it_algos = self.algorithms.iterative
+        if not terminal:
+            pre_algos = [a for a in pre_algos if not a.terminal]
+            it_algos = [a for a in it_algos if not a.terminal]
 
         for iterno in count():
             first_iter = iterno == 0
@@ -256,44 +342,42 @@ class DefaultSolver(Solver):
                 )
             v_count = sum(
                 len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
-                for g in self.partial_state.data.graphs
+                for g in self.state.data.graphs
             )
             logger.debug(
                 (
                     f"Iteration {iterno} "
-                    f"|graphs|: {len(self.partial_state.data.graphs)}, |V|: {v_count}"
+                    f"|graphs|: {len(self.state.data.graphs)}, |V|: {v_count}"
                 ).ljust(80, "-")
             )
 
             try:
-                iteration_state, self.partial_state.print_context = (
+                iteration_state, self.state.print_context = (
                     DefaultSolver._run_iteration(
                         iterno=iterno,
-                        data=self.partial_state.data,
-                        algos=self.algorithms.pre
-                        if first_iter
-                        else self.algorithms.iterative,
-                        print_context=self.partial_state.print_context,
+                        data=self.state.data,
+                        algos=pre_algos if first_iter else it_algos,
+                        print_context=self.state.print_context,
                     )
                 )
             except:
                 if S_LOG:
                     Mutator.print_all(
-                        *self.partial_state.data.graphs,
-                        context=self.partial_state.print_context,
+                        *self.state.data.graphs,
+                        context=self.state.print_context,
                     )
                 raise
 
             if not iteration_state.dirty:
                 break
 
-            if not len(self.partial_state.data.graphs):
+            if not len(self.state.data.graphs):
                 break
 
             if S_LOG:
                 Mutator.print_all(
-                    *self.partial_state.data.graphs,
-                    context=self.partial_state.print_context,
+                    *self.state.data.graphs,
+                    context=self.state.print_context,
                 )
 
         if LOG_PICK_SOLVE:
@@ -302,12 +386,12 @@ class DefaultSolver(Solver):
                 f" and {time.time() - now:.3f} seconds".ljust(80, "=")
             )
 
-        out = self.partial_state.data.total_repr_map, self.partial_state.print_context
-        self.partial_state = None
+        timings.add("terminal" if terminal else "non-terminal")
 
-        timings.add("total")
+        if not terminal:
+            self.simplified_state = self.state
 
-        return out
+        return self.state.data.total_repr_map, self.state.print_context
 
     @override
     def get_any_single(
@@ -366,9 +450,9 @@ class DefaultSolver(Solver):
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise
-            if self.partial_state is None:
+            if self.state is None:
                 raise
-            repr_map = self.partial_state.data.total_repr_map
+            repr_map = self.state.data.total_repr_map
 
         for g in graphs:
             pos = GraphFunctions(g).nodes_of_type(ParameterOperatable)
@@ -430,12 +514,12 @@ class DefaultSolver(Solver):
                     logger.warning(f"TIMEOUT: {pred.compact_repr(print_context)}")
                 if not ALLOW_PARTIAL_STATE:
                     raise
-                if self.partial_state is None:
+                if self.state is None:
                     result.unknown_predicates.append(p)
                     continue
                 repr_map, print_context_new = (
-                    self.partial_state.data.total_repr_map,
-                    self.partial_state.print_context,
+                    self.state.data.total_repr_map,
+                    self.state.print_context,
                 )
             finally:
                 pred.constrained = False
@@ -503,3 +587,7 @@ class DefaultSolver(Solver):
             result.true_predicates[0][0].constrain()
 
         return result
+
+    @override
+    def simplify(self, *gs: Graph | Node):
+        self.simplify_symbolically(*gs, terminal=False)

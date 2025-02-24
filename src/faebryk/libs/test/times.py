@@ -10,6 +10,7 @@ from enum import Enum, auto
 from rich.console import Console
 from rich.table import Table
 
+from faebryk.libs.logging import TERMINAL_WIDTH
 from faebryk.libs.units import P, Quantity, to_si
 
 
@@ -138,7 +139,11 @@ class Times:
             samples = [str(len(vs))] if has_multisamples else []
             table.add_row(*categories, *samples, *values)
 
-        console = Console(record=True, file=io.StringIO())
+        console = Console(
+            record=True,
+            file=io.StringIO(),
+            width=int(TERMINAL_WIDTH) - 40,
+        )
         console.print(table)
         return console.export_text(styles=True)
 

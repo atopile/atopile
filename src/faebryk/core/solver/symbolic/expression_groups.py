@@ -32,7 +32,7 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-@algorithm("Reflexive predicates")
+@algorithm("Reflexive predicates", terminal=False)
 def reflexive_predicates(mutator: Mutator):
     """
     A not lit (done by literal_folding)
@@ -54,7 +54,7 @@ def reflexive_predicates(mutator: Mutator):
         alias_is_literal_and_check_predicate_eval(pred, True, mutator)
 
 
-@algorithm("Idempotent deduplicate")
+@algorithm("Idempotent deduplicate", terminal=False)
 def idempotent_deduplicate(mutator: Mutator):
     """
     Or(A, A, B) -> Or(A, B)
@@ -70,7 +70,7 @@ def idempotent_deduplicate(mutator: Mutator):
             mutator.mutate_expression(expr, operands=unique_operands)
 
 
-@algorithm("Idempotent unpack")
+@algorithm("Idempotent unpack", terminal=False)
 def idempotent_unpack(mutator: Mutator):
     """
     Abs(Abs(A)) -> Abs(A)
@@ -86,7 +86,7 @@ def idempotent_unpack(mutator: Mutator):
         mutator.mutate_unpack_expression(expr)
 
 
-@algorithm("Unary identity unpack")
+@algorithm("Unary identity unpack", terminal=False)
 def unary_identity_unpack(mutator: Mutator):
     """
     E(A), A not lit -> A
@@ -106,7 +106,7 @@ def unary_identity_unpack(mutator: Mutator):
             mutator.mutate_unpack_expression(expr)
 
 
-@algorithm("Involutory fold")
+@algorithm("Involutory fold", terminal=False)
 def involutory_fold(mutator: Mutator):
     """
     Not(Not(A)) -> A
@@ -128,7 +128,7 @@ def involutory_fold(mutator: Mutator):
             mutator.mutator_neutralize_expressions(expr)
 
 
-@algorithm("Associative expressions Full")
+@algorithm("Associative expressions", terminal=False)
 def associative_flatten(mutator: Mutator):
     """
     Makes
