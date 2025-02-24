@@ -340,6 +340,7 @@ def get_candidates(
     while candidates:
         # TODO deduplicate parts with same literals
         new_parts = _find_modules(modules, solver)
+
         parts.update({m: p for m, p in new_parts.items() if p})
         empty = {m for m, p in new_parts.items() if not p}
         for m in parts:
@@ -359,18 +360,9 @@ def get_candidates(
     return {}
 
 
-def check_and_attach_single(cmp: Module, part: Component, solver: Solver):
+def attach_single_no_check(cmp: Module, part: Component, solver: Solver):
     """
-    Find a component with matching parameters
+    Attach a single component to a module
+    Attention: Does not check compatibility before or after!
     """
-    try:
-        _attach(cmp, part)
-    except PickError as ex:
-        cmp_descr = f"{cmp.get_full_name()}<\n{cmp.pretty_params(solver)}>"
-        attr_str = f"- {part.lcsc_display} (attributes: {', '.join(
-                f"{name}={lit}" for name, lit in part.attribute_literals.items()
-            )})"
-        raise PickError(
-            f"Part not compatible with design for `{cmp_descr}`:\n" f"{attr_str}",
-            cmp,
-        ) from ex
+    _attach(cmp, part)

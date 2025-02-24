@@ -307,8 +307,8 @@ def pick_topologically(
     # TODO implement backtracking
 
     from faebryk.libs.picker.api.picker_lib import (
+        attach_single_no_check,
         check_and_attach_candidates,
-        check_and_attach_single,
         get_candidates,
     )
 
@@ -330,6 +330,10 @@ def pick_topologically(
                 f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates)}"
             )
         return candidates
+
+    def _get_single_candidate(module: Module):
+        parts = _get_candidates(Tree({module: Tree()}))[0][1]
+        return parts[0]
 
     def _update_progress(done: list[tuple[Module, Any]] | Module):
         if not progress:
@@ -369,17 +373,21 @@ def pick_topologically(
     # heuristic: try pick first candidate for rest
     with timings.as_global("fast-pick"):
         ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-    if ok:
-        _update_progress(candidates)
-        logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
-        return
+        if ok:
+            _update_progress(candidates)
+            logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
+            return
+        # no need to update candidates, slow picking does by itself
     logger.warning("Could not pick all parts atomically")
 
     logger.warning("Falling back to extremely slow picking one by one")
+    # Works by looking for each module again for compatible parts
+    # If no compatible parts are found,
+    #   it means we need to backtrack or there is no solution
     with timings.as_global("slow-pick", context=True):
         for module in tree:
-            parts = _get_candidates(Tree({module: Tree()}))[0][1]
-            check_and_attach_single(module, parts[0], solver)
+            part = _get_single_candidate(module)
+            attach_single_no_check(module, part, solver)
             _update_progress(module)
 
     logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
