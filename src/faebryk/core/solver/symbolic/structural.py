@@ -676,56 +676,6 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
 # Terminal -----------------------------------------------------------------------------
 
 
-@algorithm("Remove empty graphs", terminal=True)
-def remove_empty_graphs(mutator: Mutator):
-    """
-    If there is only one predicate, it can be replaced by True
-    If there are no predicates, the graph can be removed
-    """
-
-    # FIXME: rewrite with multi graph support
-    return
-
-    predicates = [
-        p
-        for p in mutator.nodes_of_type(ConstrainableExpression)
-        if p.constrained
-        # TODO consider marking predicates as irrelevant or something
-        # Ignore Is!!(P!!, True)
-        and not (
-            isinstance(p, Is)
-            and p._solver_evaluates_to_true
-            and (
-                # Is!!(P!!, True)
-                (
-                    BoolSet(True) in p.get_literal_operands().values()
-                    and all(
-                        isinstance(inner, ConstrainableExpression)
-                        and inner.constrained
-                        and inner._solver_evaluates_to_true
-                        for inner in p.get_operatable_operands()
-                    )
-                )
-                # Is!!(A, A)
-                or p.operands[0] is p.operands[1]
-            )
-        )
-    ]
-
-    if len(predicates) > 1:
-        return
-
-    for p in predicates:
-        alias_is_literal_and_check_predicate_eval(p, True, mutator)
-
-    # Never remove predicates
-    if predicates:
-        return
-
-    # If there are no predicates, the graph can be removed
-    mutator.remove_graph()
-
-
 @algorithm("Predicate unconstrained operands deduce", terminal=True)
 def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
