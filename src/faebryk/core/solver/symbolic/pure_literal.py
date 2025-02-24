@@ -82,7 +82,7 @@ def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral:
     return _CanonicalExpressions[type(expr)](*expr.operands)
 
 
-@algorithm("Fold pure literal expressions", destructive=False)
+@algorithm("Fold pure literal expressions", terminal=False)
 def fold_pure_literal_expressions(mutator: Mutator):
     exprs = mutator.nodes_of_types(
         tuple(_CanonicalExpressions.keys()), sort_by_depth=True

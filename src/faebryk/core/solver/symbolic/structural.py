@@ -66,7 +66,7 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-# TODO: mark destructive=False where applicable
+# TODO: mark terminal=False where applicable
 
 
 @algorithm("Check literal contradiction")
@@ -647,7 +647,7 @@ def isolate_lone_params(mutator: Mutator):
         mutator.mutate_expression(expr, operands=result)
 
 
-@algorithm("Distribute literals across alias classes", destructive=False)
+@algorithm("Distribute literals across alias classes", terminal=False)
 def distribute_literals_across_alias_classes(mutator: Mutator):
     """
     Distribute literals across alias classes
@@ -673,10 +673,10 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
                 subset_literal(alias, lit, mutator, from_ops=[p])
 
 
-# Destructive --------------------------------------------------------------------------
+# Terminal -----------------------------------------------------------------------------
 
 
-@algorithm("Remove empty graphs", destructive=True)
+@algorithm("Remove empty graphs", terminal=True)
 def remove_empty_graphs(mutator: Mutator):
     """
     If there is only one predicate, it can be replaced by True
@@ -726,7 +726,7 @@ def remove_empty_graphs(mutator: Mutator):
     mutator.remove_graph()
 
 
-@algorithm("Predicate unconstrained operands deduce", destructive=True)
+@algorithm("Predicate unconstrained operands deduce", terminal=True)
 def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
     A op! B | A or B unconstrained -> A op!! B
@@ -785,7 +785,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # Taken care of by singleton fold
         if any(is_replacable_by_literal(op) is not None for op in expr.operands):
             continue
-        # TODO: remove when splitting destructive/non-destructive
+        # TODO: remove when splitting terminal/non-terminal
         # optimization: don't take away from uncorrelated_alias_fold
         if (
             # not (expr in new_subsets and expr not in new_aliases)
@@ -805,7 +805,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         mutator.mutate_expression(expr, operands=operands, soft_mutate=IsSubset)
 
 
-@algorithm("Uncorrelated alias fold", destructive=True)
+@algorithm("Uncorrelated alias fold", terminal=True)
 def uncorrelated_alias_fold(mutator: Mutator):
     """
     If an operation contains only operands that are not correlated with each other,
@@ -815,7 +815,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
     -> op(As) is! op(As replaced by corresponding lits)
     ```
 
-    Destructive because relies on missing correlations.
+    Terminal because relies on missing correlations.
     """
 
     new_literal_mappings = mutator.get_literal_mappings(new_only=True)

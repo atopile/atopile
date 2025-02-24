@@ -781,7 +781,7 @@ class SolverAlgorithm:
     name: str
     func: SolverAlgorithmFunc
     single: bool
-    destructive: bool
+    terminal: bool
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -790,7 +790,7 @@ class SolverAlgorithm:
 def algorithm(
     name: str,
     single: bool = False,
-    destructive: bool = True,
+    terminal: bool = True,
 ) -> Callable[[SolverAlgorithmFunc], SolverAlgorithm]:
     """
     Decorator to wrap an algorithm function
@@ -798,7 +798,7 @@ def algorithm(
     Args:
     - single: if True, the algorithm is only applied once in the beginning.
         All other algorithms assume this one ran before
-    - destructive: Results are invalid if graph is mutated after solver is run
+    - terminal: Results are invalid if graph is mutated after solver is run
     """
 
     if not hasattr(algorithm, "_registered_algorithms"):
@@ -813,7 +813,7 @@ def algorithm(
             name=name,
             func=wrapped,
             single=single,
-            destructive=destructive,
+            terminal=terminal,
         )
         algorithm._registered_algorithms.append(out)
 

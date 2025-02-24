@@ -213,15 +213,15 @@ class DefaultSolver(Solver):
         self,
         *gs: Graph,
         print_context: ParameterOperatable.ReprContext | None = None,
-        destructive: bool = True,
+        terminal: bool = True,
     ) -> tuple[Mutator.ReprMap, ParameterOperatable.ReprContext]:
         """
         Args:
-        - destructive: if False, no destructive algorithms are allowed
+        - terminal: if False, no terminal algorithms are allowed
         """
         timings = Times(name="simplify")
 
-        if not destructive:
+        if not terminal:
             raise NotImplementedError()
 
         now = time.time()

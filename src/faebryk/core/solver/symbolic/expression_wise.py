@@ -782,8 +782,6 @@ def _get_fold_func(expr_type: type[CanonicalExpression]) -> Callable[[Mutator], 
 
 
 fold_algorithms = [
-    algorithm(f"Fold {expr_type.__name__}", destructive=False)(
-        _get_fold_func(expr_type)
-    )
+    algorithm(f"Fold {expr_type.__name__}", terminal=False)(_get_fold_func(expr_type))
     for expr_type in CanonicalExpressionR
 ]
