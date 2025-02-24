@@ -91,11 +91,13 @@ class Mutator:
         *Gs: Graph,
         print_context: ParameterOperatable.ReprContext,
         algo: SolverAlgorithm,
+        terminal: bool,
         iteration_repr_map: REPR_MAP | None = None,
         repr_map: REPR_MAP | None = None,
     ) -> None:
         self._G: set[Graph] = set(Gs)
         self.print_context = print_context
+        self.terminal = terminal
 
         if not iteration_repr_map:
             iteration_repr_map = {}

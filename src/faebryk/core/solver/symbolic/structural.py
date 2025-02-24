@@ -736,13 +736,14 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         # Taken care of by singleton fold
         if any(is_replacable_by_literal(op) is not None for op in expr.operands):
             continue
-        # TODO: remove when splitting terminal/non-terminal
         # optimization: don't take away from uncorrelated_alias_fold
-        # if (
-        #    # not (expr in new_subsets and expr not in new_aliases)
-        #    not any(get_correlations(expr)) and map_extract_literals(expr)[1]
-        # ):
-        #    continue
+        if (
+            mutator.terminal
+            # not (expr in new_subsets and expr not in new_aliases)
+            and not any(get_correlations(expr))
+            and map_extract_literals(expr)[1]
+        ):
+            continue
         # In subset useless to look at subset lits
         no_allow_subset_lit = isinstance(expr, IsSubset)
 

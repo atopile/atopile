@@ -150,6 +150,7 @@ class DefaultSolver(Solver):
         data: IterationData,
         algos: list[SolverAlgorithm],
         print_context: ParameterOperatable.ReprContext,
+        terminal: bool,
         phase_offset: int = 0,
     ) -> tuple[IterationState, ParameterOperatable.ReprContext]:
         iteration_state = DefaultSolver.IterationState(dirty=False)
@@ -167,6 +168,7 @@ class DefaultSolver(Solver):
             mutator = Mutator(
                 *data.graphs,
                 algo=algo,
+                terminal=terminal,
                 print_context=print_context,
                 iteration_repr_map=data.repr_since_last_iteration.get(algo),
             )
@@ -356,6 +358,7 @@ class DefaultSolver(Solver):
                     DefaultSolver._run_iteration(
                         iterno=iterno,
                         data=self.state.data,
+                        terminal=terminal,
                         algos=pre_algos if first_iter else it_algos,
                         print_context=self.state.print_context,
                     )
