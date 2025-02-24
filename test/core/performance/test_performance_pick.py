@@ -23,9 +23,12 @@ from faebryk.libs.picker.picker import (
 )
 from faebryk.libs.test.times import Times
 from faebryk.libs.units import P
-from faebryk.libs.util import indented_container
+from faebryk.libs.util import ConfigFlagInt, indented_container
 
 logger = logging.getLogger(__name__)
+
+GROUPS = ConfigFlagInt("GROUPS", 4)
+GROUP_SIZE = ConfigFlagInt("GROUP_SIZE", 4)
 
 
 @pytest.fixture(autouse=True)
@@ -75,21 +78,21 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 def test_performance_pick_rc_formulas():
-    GROUPS = 4
-    GROUP_SIZE = 4
+    _GROUPS = int(GROUPS)
+    _GROUP_SIZE = int(GROUP_SIZE)
     INCREASE = 10 * P.percent
     TOLERANCE = 20 * P.percent
 
     class App(Module):
-        res = L.list_field(GROUPS * GROUP_SIZE, F.Resistor)
+        res = L.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
 
         def __preinit__(self):
             increase = L.Range.from_center_rel(INCREASE, TOLERANCE) + L.Single(
                 100 * P.percent
             )
 
-            for i in range(GROUPS):
-                for m1, m2 in pairwise(self.res[i::GROUPS]):
+            for i in range(_GROUPS):
+                for m1, m2 in pairwise(self.res[i::_GROUPS]):
                     m2.resistance.constrain_subset(m1.resistance * increase)
                     # solver doesn't do equation reordering, so we need to reverse
                     m1.resistance.constrain_subset(m2.resistance / increase)
@@ -132,4 +135,4 @@ def test_performance_pick_rc_formulas():
     logger.info(f"Picked values: {indented_container(picked_values)}")
 
     pick_time = timings.get_formatted("pick", strat=Times.MultiSampleStrategy.ACC)
-    logger.info(f"Pick duration {GROUPS}x{GROUP_SIZE}: {pick_time}")
+    logger.info(f"Pick duration {_GROUPS}x{_GROUP_SIZE}: {pick_time}")
