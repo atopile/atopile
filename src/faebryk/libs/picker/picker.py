@@ -374,14 +374,14 @@ def pick_topologically(
         candidates = _get_candidates(tree)
 
     # heuristic: try pick first candidate for rest
-    # with timings.as_global("fast-pick"):
-    #     ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-    #     if ok:
-    #         _update_progress(candidates)
-    #         logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
-    #         return
-    #     # no need to update candidates, slow picking does by itself
-    # logger.warning("Could not pick all parts atomically")
+    with timings.as_global("fast-pick"):
+        ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
+        if ok:
+            _update_progress(candidates)
+            logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
+            return
+        # no need to update candidates, slow picking does by itself
+    logger.warning("Could not pick all parts atomically")
 
     logger.warning("Falling back to extremely slow picking one by one")
     # Works by looking for each module again for compatible parts
