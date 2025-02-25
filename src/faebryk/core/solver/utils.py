@@ -209,7 +209,7 @@ def alias_is_literal(
         )
     # prevent (A is X) is X
     if isinstance(po, Is):
-        if literal in po.get_literal_operands().values():
+        if literal in po.get_operand_literals().values():
             return
     out = mutator.create_expression(
         Is,
@@ -345,7 +345,7 @@ def is_numeric_literal(po: ParameterOperatable) -> TypeGuard[CanonicalNumber]:
 def is_literal_expression(
     po: ParameterOperatable | SolverAll,
 ) -> TypeGuard[Expression]:
-    return isinstance(po, Expression) and not po.get_involved_parameters()
+    return isinstance(po, Expression) and not po.get_operand_parameters(recursive=True)
 
 
 def is_pure_literal_expression(
@@ -358,7 +358,7 @@ def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
     return bool(
         isinstance(po, Is)
         and po.constrained
-        and po.get_literal_operands()
+        and po.get_operand_literals()
         and po.operatable_operands
     )
 
@@ -516,7 +516,7 @@ def get_lit_mapping_from_lit_expr(
 ) -> tuple[ParameterOperatable, SolverLiteral]:
     assert is_alias_is_literal(expr) or is_subset_literal(expr)
     return next(iter(expr.operatable_operands)), next(
-        iter(expr.get_literal_operands().values())
+        iter(expr.get_operand_literals().values())
     )
 
 
@@ -540,7 +540,7 @@ def get_expressions_involved_in[T: Expression](
             dependants.add(p)
 
         if not up_only:
-            dependants.update(p.get_expression_operands(recursive=True))
+            dependants.update(p.get_operand_expressions(recursive=True))
 
     res = {p for p in dependants if isinstance(p, type_filter)}
     return res
@@ -554,27 +554,28 @@ def get_constrained_expressions_involved_in[T: ConstrainableExpression](
     return res
 
 
-# TODO write tests for this
-def get_correlations(
-    expr: Expression,
-    exclude: set[Expression] | None = None,
-):
+def get_correlations(expr: Expression, exclude: set[Expression] | None = None):
     # TODO: might want to check if expr has aliases because those are correlated too
 
     if exclude is None:
         exclude = set()
 
     exclude.add(expr)
-    exclude.update(get_constrained_expressions_involved_in(expr, Is))
-    operables = [o for o in expr.operands if isinstance(o, ParameterOperatable)]
-
     excluded = {
         e for e in exclude if isinstance(e, ConstrainableExpression) and e.constrained
     }
+    excluded.update(get_constrained_expressions_involved_in(expr, Is))
 
+    operables = [o for o in expr.operands if isinstance(o, ParameterOperatable)]
     op_set = set(operables)
 
-    exprs = {o: get_constrained_expressions_involved_in(o, Is) for o in op_set}
+    def _get(e: ParameterOperatable):
+        vs = {e}
+        if isinstance(e, Expression):
+            vs = e.get_operand_leaves_operatable()
+        return {o for v in vs for o in get_constrained_expressions_involved_in(v, Is)}
+
+    exprs = {o: _get(o) for o in op_set}
     # check disjoint sets
     for e1, e2 in combinations(operables, 2):
         if e1 is e2:

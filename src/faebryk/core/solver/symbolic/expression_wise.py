@@ -104,9 +104,9 @@ def _collect_factors[T: Multiply | Power](
         if len(collect_op.operands) != 2:
             continue
         # handled by lit fold first
-        if len(collect_op.get_literal_operands()) > 1:
+        if len(collect_op.get_operand_literals()) > 1:
             continue
-        if not collect_op.get_literal_operands():
+        if not collect_op.get_operand_literals():
             continue
         # handled by lit fold completely
         if is_pure_literal_expression(collect_op):
@@ -554,7 +554,7 @@ def fold_is(
     if is_true_alias:
         # P1 is! True -> P1!
         # P1 is! P2!  -> P1! (implicit)
-        for p in expr.get_operatable_operands(ConstrainableExpression):
+        for p in expr.get_operand_operatables(ConstrainableExpression):
             mutator.constrain(p)
 
 

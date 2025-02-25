@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -395,12 +394,12 @@ class ParameterOperatable(Node):
                 literals = find(
                     lit
                     for op in ops
-                    for (i, lit) in op.get_literal_operands().items()
+                    for (i, lit) in op.get_operand_literals().items()
                     if i > 0
                 )
             else:
                 literals = find(
-                    lit for op in ops for (_, lit) in op.get_literal_operands().items()
+                    lit for op in ops for (_, lit) in op.get_operand_literals().items()
                 )
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
@@ -669,36 +668,40 @@ class Expression(ParameterOperatable):
     def domain(self) -> "Domain":
         return self._domain
 
-    def get_operatable_operands[T: ParameterOperatable](
-        self, types: type[T] = ParameterOperatable
+    def get_operand_operatables[T: ParameterOperatable](
+        self, types: type[T] = ParameterOperatable, recursive: bool = False
     ) -> set[T]:
-        return cast(
-            set[T],
-            self.operates_on.get_connected_nodes(types=[types]),
-        )
-
-    def get_expression_operands(self, recursive: bool = False) -> set["Expression"]:
-        out = {o for o in self.operatable_operands if isinstance(o, Expression)}
+        out = set(self.operatable_operands)
         if recursive:
             for o in list(out):
-                out.update(o.get_expression_operands(recursive=True))
-        return out
+                if not isinstance(o, Expression):
+                    continue
+                out.update(o.get_operand_operatables(recursive=True))
+        if types is not ParameterOperatable:
+            out = {o for o in out if isinstance(o, types)}
+        return cast(set[T], out)
 
-    def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
+    def get_operand_expressions(self, recursive: bool = False) -> set["Expression"]:
+        return self.get_operand_operatables(Expression, recursive=recursive)
+
+    def get_operand_parameters(self, recursive: bool = False) -> set["Parameter"]:
+        return self.get_operand_operatables(Parameter, recursive=recursive)
+
+    def get_operand_literals(self) -> dict[int, ParameterOperatable.Literal]:
         return {
             i: o
             for i, o in enumerate(self.operands)
             if ParameterOperatable.is_literal(o)
         }
 
-    def get_involved_parameters(self) -> Counter["Parameter"]:
-        params = [p for p in self.operands if isinstance(p, Parameter)] + [
-            p
-            for expr in self.operands
-            if isinstance(expr, Expression)
-            for p in expr.get_involved_parameters()
-        ]
-        return Counter(params)
+    def get_operand_leaves_operatable(self) -> set[ParameterOperatable]:
+        ops = self.get_operand_operatables(recursive=True)
+        return {
+            o
+            for o in ops
+            if not isinstance(o, Expression)
+            or not o.get_operand_operatables(recursive=False)
+        }
 
     def depth(self) -> int:
         """

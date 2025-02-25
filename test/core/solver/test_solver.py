@@ -1505,11 +1505,11 @@ def test_fold_correlated():
     lit_operand = Single(5)
     lit2 = op(lit1, lit_operand)
 
-    A.alias_is(lit1)
-    B.alias_is(lit2)
-    B.alias_is(op(A, lit_operand))
-
-    C.alias_is(op_inv(B, A))
+    A.alias_is(lit1)  # A is [5,10]
+    B.alias_is(lit2)  # B is [10,15]
+    # correlate A and B
+    B.alias_is(op(A, lit_operand))  # B is A + 5
+    C.alias_is(op_inv(B, A))  # C is B - A
 
     context = ParameterOperatable.ReprContext()
     for p in (A, B, C):
@@ -1523,13 +1523,13 @@ def test_fold_correlated():
     assert ss_lit is not None
 
     # Test for ss estimation
-    assert ss_lit.is_subset_of(op_inv(lit2, lit1))
+    assert ss_lit.is_subset_of(op_inv(lit2, lit1))  # C ss [10, 15] - 5 == [5, 10]
     # Test for not wrongful is estimation
-    assert is_lit != op_inv(lit2, lit1)
+    assert is_lit != op_inv(lit2, lit1)  # C not is [5, 10]
 
     # Test for correct is estimation
     try:
-        assert is_lit == lit_operand
+        assert is_lit == lit_operand  # C is 5
     except AssertionError:
         pytest.xfail("TODO")
 

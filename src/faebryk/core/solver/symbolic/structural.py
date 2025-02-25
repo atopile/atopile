@@ -224,7 +224,14 @@ def resolve_alias_classes(mutator: Mutator):
     full_eq = EquivalenceClasses[ParameterOperatable](param_ops)
     is_exprs = get_all_aliases(mutator)
     for is_expr in is_exprs:
-        full_eq.add_eq(*is_expr.operatable_operands)
+        ops = {
+            # Literal expressions are basically literals
+            o
+            for o in is_expr.get_operand_operatables()
+            if not is_literal_expression(o)
+        }
+        # eq between non-literal operands
+        full_eq.add_eq(*ops)
     p_eq_classes = full_eq.get()
 
     # Make new param repre for alias classes
@@ -232,25 +239,16 @@ def resolve_alias_classes(mutator: Mutator):
         if len(eq_class) <= 1:
             continue
 
-        alias_class_p_ops = [
-            p
-            for p in eq_class
-            if isinstance(p, ParameterOperatable)
-            # Literal expressions are basically literals
-            and not is_literal_expression(p)
-        ]
-        alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
-        alias_class_exprs = {p for p in alias_class_p_ops if isinstance(p, Expression)}
+        eq_class_params = [p for p in eq_class if isinstance(p, Parameter)]
+        eq_class_exprs = {p for p in eq_class if isinstance(p, Expression)}
 
-        if len(alias_class_p_ops) <= 1:
-            continue
-        if not alias_class_params:
+        if not eq_class_params:
             continue
 
-        if len(alias_class_params) == 1:
+        if len(eq_class_params) == 1:
             # check if all in eq_class already aliased
             # Then no need to to create new representative
-            _repr = alias_class_params[0]
+            _repr = eq_class_params[0]
             iss = _repr.get_operations(Is)
             iss_exprs = {
                 o
@@ -258,11 +256,11 @@ def resolve_alias_classes(mutator: Mutator):
                 for o in e.operatable_operands
                 if isinstance(o, Expression)
             }
-            if alias_class_exprs.issubset(iss_exprs):
+            if eq_class_exprs.issubset(iss_exprs):
                 # check if all predicates are already propagated
                 class_expressions = {
                     e
-                    for operand in alias_class_exprs
+                    for operand in eq_class_exprs
                     for e in operand.get_operations()
                     # skip POps Is, because they create the alias classes
                     # or literal aliases (done by distribute algo)
@@ -270,7 +268,7 @@ def resolve_alias_classes(mutator: Mutator):
                     # skip literal subsets (done by distribute algo)
                     and not (
                         isinstance(e, IsSubset)
-                        and e.get_literal_operands()
+                        and e.get_operand_literals()
                         and e.constrained
                     )
                 }
@@ -281,50 +279,37 @@ def resolve_alias_classes(mutator: Mutator):
             continue
 
         # Merge param alias classes
-        representative = merge_parameters(alias_class_params)
+        representative = merge_parameters(eq_class_params)
 
-        for p in alias_class_params:
+        for p in eq_class_params:
             mutator._mutate(p, representative)
 
     for eq_class in p_eq_classes:
         if len(eq_class) <= 1:
             continue
-        alias_class_p_ops = [
-            p
-            for p in eq_class
-            if isinstance(p, ParameterOperatable)
-            # Literal expressions are basically literals
-            and not is_literal_expression(p)
-        ]
-        alias_class_params = [p for p in alias_class_p_ops if isinstance(p, Parameter)]
-        alias_class_exprs = [p for p in alias_class_p_ops if isinstance(p, Expression)]
-
-        if len(alias_class_p_ops) <= 1:
-            continue
-
-        # TODO non unit/numeric params, i.e. enums, bools
+        eq_class_params = [p for p in eq_class if isinstance(p, Parameter)]
+        eq_class_exprs = [p for p in eq_class if isinstance(p, Expression)]
 
         # single domain
-        # TODO check domain for literals
-        domain = Domain.get_shared_domain(*(p.domain for p in alias_class_p_ops))
+        domain = Domain.get_shared_domain(*(op.domain for op in eq_class))
 
-        if alias_class_params:
+        if eq_class_params:
             # See len(alias_class_params) == 1 case above
-            if not mutator.has_been_mutated(alias_class_params[0]):
+            if not mutator.has_been_mutated(eq_class_params[0]):
                 continue
-            representative = mutator.get_mutated(alias_class_params[0])
+            representative = mutator.get_mutated(eq_class_params[0])
         else:
             # If not params or lits in class, create a new param as representative
             # for expressions
             representative = mutator.register_created_parameter(
-                Parameter(domain=domain), from_ops=alias_class_p_ops
+                Parameter(domain=domain), from_ops=list(eq_class)
             )
 
-        for e in alias_class_exprs:
+        for e in eq_class_exprs:
             mutator.soft_replace(e, representative)
-            if are_aliased(e, *alias_class_params):
+            if are_aliased(e, *eq_class_params):
                 continue
-            alias_to(e, representative, mutator, from_ops=alias_class_p_ops)
+            alias_to(e, representative, mutator, from_ops=list(eq_class))
 
 
 @algorithm("Merge intersecting subsets", terminal=False)
@@ -383,7 +368,7 @@ def empty_set(mutator: Mutator):
 
     # A is {} -> False
     for e in mutator.nodes_of_type(Is):
-        lits = cast(dict[int, SolverLiteral], e.get_literal_operands())
+        lits = cast(dict[int, SolverLiteral], e.get_operand_literals())
         if not lits:
             continue
         if any(lit.is_empty() for lit in lits.values()):
@@ -677,7 +662,7 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
         non_lit_aliases = {
             cast_assert(ParameterOperatable, e.get_other_operand(p))
             for e in p.get_operations(Is, constrained_only=True)
-            if not e.get_literal_operands()
+            if not e.get_operand_literals()
         }
         for alias in non_lit_aliases:
             if is_alias:

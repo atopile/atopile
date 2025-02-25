@@ -28,6 +28,7 @@ from faebryk.core.solver.utils import (
     FullyAssociative,
     algorithm,
     flatten_associative,
+    get_correlations,
     get_expressions_involved_in,
 )
 from faebryk.libs.library import L
@@ -136,3 +137,123 @@ def test_get_expressions_involved_in():
 
     res = get_expressions_involved_in(E2, up_only=False, include_root=True)
     assert res == {E1, E2, E3}
+
+
+def test_get_correlations_basic():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    # Create correlations between parameters
+    o = A.alias_is(B)  # A and B are correlated through an Is expression
+
+    # Create an expression with correlated operands
+    expr = Add(A, B, C)
+
+    # Test correlations
+    correlations = list(get_correlations(expr))
+
+    # We expect A and B to be correlated
+    assert len(correlations) == 1
+
+    # Unpack the correlation
+    op1, op2, overlap_exprs = correlations[0]
+
+    # Check that the correlated operands are A and B
+    assert {op1, op2} == {A, B}
+    assert overlap_exprs == {o}
+
+
+def test_get_correlations_nested_uncorrelated():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    o = A.alias_is(B)  # A and B are correlated through an Is expression
+    inner = A + B
+    expr = inner + C
+    correlations = list(get_correlations(expr))
+    inner_correlations = list(get_correlations(inner))
+
+    # no correlations between C and (A + B)
+    assert not correlations
+
+    assert len(inner_correlations) == 1
+    op1, op2, overlap_exprs = inner_correlations[0]
+    assert {op1, op2} == {A, B}
+    assert overlap_exprs == {o}
+
+
+def test_get_correlations_nested_correlated():
+    A = Parameter()
+    B = Parameter()
+    C = Parameter()
+
+    o = A.alias_is(B)  # A and B are correlated through an Is expression
+    inner = A + C
+    expr = inner + B
+    correlations = list(get_correlations(expr))
+    inner_correlations = list(get_correlations(inner))
+
+    # no correlations between C and A
+    assert not inner_correlations
+
+    assert len(correlations) == 1
+    op1, op2, overlap_exprs = correlations[0]
+    assert {op1, op2} == {inner, B}
+    assert overlap_exprs == {o}
+
+
+def test_get_correlations_self_correlated():
+    A = Parameter()
+    E = A + A
+    correlations = list(get_correlations(E))
+    assert len(correlations) == 1
+    op1, op2, overlap_exprs = correlations[0]
+    assert {op1, op2} == {A}
+    assert not overlap_exprs
+
+
+def test_get_correlations_shared_predicates():
+    A = Parameter()
+    B = Parameter()
+
+    E = A + B
+
+    correlations = list(get_correlations(E))
+    assert not correlations
+
+    E2 = Is(A * B, L.Range(0, 10))
+
+    correlations = list(get_correlations(E))
+    assert not correlations
+
+    E2.constrain()
+
+    correlations = list(get_correlations(E))
+    assert len(correlations) == 1
+
+    op1, op2, overlap_exprs = correlations[0]
+    assert {op1, op2} == {A, B}
+    assert overlap_exprs == {E2}
+
+
+def test_get_correlations_correlated_regression():
+    A = Parameter()
+    B = Parameter()
+
+    A.alias_is(L.Range(5, 10))
+    B.alias_is(L.Range(10, 15))
+
+    # correlate
+    o = B.alias_is(A + 5)
+
+    a_neg = A * -1
+    E = B + a_neg
+
+    correlations = list(get_correlations(E))
+    assert len(correlations) == 1
+
+    op1, op2, overlap_exprs = correlations[0]
+    assert {op1, op2} == {a_neg, B}
+    assert overlap_exprs == {o}

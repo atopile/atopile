@@ -55,6 +55,7 @@ from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
     cast_assert,
+    duplicates,
     groupby,
     indented_container,
     not_none,
@@ -797,9 +798,14 @@ class Mutator:
         # TODO better exceptions
 
         ops = self.get_literal_aliases(new_only=new_only)
-        mapping = [get_lit_mapping_from_lit_expr(op) for op in ops]
-        if not len({k for k, _ in mapping}) == len(mapping):
-            raise ContradictionByLiteral("Literal contradictions", [], [])
+        mapping = {get_lit_mapping_from_lit_expr(op) for op in ops}
+        dupes = duplicates(mapping, lambda x: x[0])
+        if dupes:
+            raise ContradictionByLiteral(
+                "Literal contradictions",
+                list(dupes.keys()),
+                list(v[1] for vs in dupes.values() for v in vs),
+            )
         mapping_dict = dict(mapping)
 
         if allow_subset:
@@ -807,13 +813,16 @@ class Mutator:
             mapping_ss = [get_lit_mapping_from_lit_expr(op) for op in ops_ss]
             grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
             for k, v in grouped_ss.items():
-                merged_ss = P_Set.intersect_all(*(ss_lit for _, ss_lit in v))
+                ss_lits = [ss_lit for _, ss_lit in v]
+                merged_ss = P_Set.intersect_all(*ss_lits)
                 if merged_ss.is_empty():
-                    raise ContradictionByLiteral("Empty intersection", [], [])
+                    raise ContradictionByLiteral("Empty intersection", [k], ss_lits)
                 if k in mapping_dict:
                     if not mapping_dict[k].is_subset_of(merged_ss):  # type: ignore
                         raise ContradictionByLiteral(
-                            "ss lit doesn't match is_lit", [], []
+                            "ss lit doesn't match is_lit",
+                            [k],
+                            [mapping_dict[k], *ss_lits],
                         )
                     continue
                 mapping_dict[k] = merged_ss
@@ -867,7 +876,7 @@ class Mutator:
             value = op.compact_repr(context_new)
             if is_alias_is_literal(op) or is_subset_literal(op):
                 expr = next(iter(op.operatable_operands))
-                lit = next(iter(op.get_literal_operands().values()))
+                lit = next(iter(op.get_operand_literals().values()))
                 if not SHOW_SS_IS and expr in created_ops:
                     continue
                 alias_type = "alias" if isinstance(op, Is) else "subset"
