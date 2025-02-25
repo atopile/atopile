@@ -156,6 +156,8 @@ class DefaultSolver(Solver):
         iteration_state = DefaultSolver.IterationState(dirty=False)
         iteration_repr_maps: list[REPR_MAP] = []
 
+        timings = Times(name="run_iteration")
+
         for phase_name, algo in enumerate(algos):
             phase_name = str(phase_name + phase_offset)
 
@@ -165,6 +167,7 @@ class DefaultSolver(Solver):
                     f" G:{len(data.graphs)}"
                 )
 
+            timings.add("_")
             mutator = Mutator(
                 *data.graphs,
                 algo=algo,
@@ -205,6 +208,11 @@ class DefaultSolver(Solver):
                             del reprs[old_s]
                             continue
                         reprs[old_s] = new_d
+            timings.add(
+                f"{algo.name}"
+                f" {'terminal' if terminal else 'non-terminal'}"
+                f" {'dirty' if algo_result.dirty else 'clean'}"
+            )
 
         data.total_repr_map = Mutator.create_concat_repr_map(
             data.total_repr_map.repr_map, *iteration_repr_maps

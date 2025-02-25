@@ -55,6 +55,7 @@ from faebryk.libs.util import cast_assert, partition
 logger = logging.getLogger(__name__)
 
 # TODO prettify
+# - e.g rename from fold
 
 Literal = SolverLiteral
 

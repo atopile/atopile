@@ -358,7 +358,10 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
     def get_operations[T: "Expression"](
-        self, types: type[T] | None = None, constrained_only: bool = False
+        self,
+        types: type[T] | None = None,
+        constrained_only: bool = False,
+        recursive: bool = False,
     ) -> set[T]:
         if types is None:
             types = Expression  # type: ignore
@@ -366,6 +369,9 @@ class ParameterOperatable(Node):
         assert issubclass(types, Expression)
 
         out = cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
+        if recursive:
+            for o in list(out):
+                out.update(o.get_operations(recursive=True))
         if constrained_only:
             assert issubclass(types, ConstrainableExpression)
             out = {i for i in out if cast(ConstrainableExpression, i).constrained}
@@ -670,6 +676,13 @@ class Expression(ParameterOperatable):
             set[T],
             self.operates_on.get_connected_nodes(types=[types]),
         )
+
+    def get_expression_operands(self, recursive: bool = False) -> set["Expression"]:
+        out = {o for o in self.operatable_operands if isinstance(o, Expression)}
+        if recursive:
+            for o in list(out):
+                out.update(o.get_expression_operands(recursive=True))
+        return out
 
     def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
         return {

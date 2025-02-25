@@ -16,7 +16,6 @@ from rich.console import Console
 from rich.table import Table
 
 from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.graphinterface import GraphInterfaceSelf
 from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Associative,
@@ -525,28 +524,21 @@ def get_params_for_expr(expr: Expression) -> set[Parameter]:
     return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
 
 
+# TODO make generator
 def get_expressions_involved_in[T: Expression](
     p: ParameterOperatable,
     type_filter: type[T] = Expression,
+    include_root: bool = False,
+    up_only: bool = True,
 ) -> set[T]:
-    # p.self -> p.operated_on -> e1.operates_on -> e1.self
-    dependants = p.bfs_node(
-        lambda path: isinstance(path[-1].node, ParameterOperatable)
-        and (
-            # self
-            isinstance(path[-1], GraphInterfaceSelf)
-            # operated on
-            or path[-1].node.operated_on is path[-1]
-            # operated on -> operates on
-            or (
-                len(path) >= 2
-                and isinstance(path[-2].node, ParameterOperatable)
-                and path[-2].node.operated_on is path[-2]
-                and isinstance(path[-1].node, Expression)
-                and path[-1].node.operates_on is path[-1]
-            )
-        )
-    )
+    dependants = p.get_operations(recursive=True)
+    if isinstance(p, Expression):
+        if include_root:
+            dependants.add(p)
+
+        if not up_only:
+            dependants.update(p.get_expression_operands(recursive=True))
+
     res = {p for p in dependants if isinstance(p, type_filter)}
     return res
 

@@ -28,6 +28,7 @@ from faebryk.core.solver.utils import (
     FullyAssociative,
     algorithm,
     flatten_associative,
+    get_expressions_involved_in,
 )
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -94,7 +95,7 @@ def test_mutator_no_graph_merge():
     def algo(mutator: Mutator):
         pass
 
-    mutator = Mutator(p0.get_graph(), print_context=context, algo=algo)
+    mutator = Mutator(p0.get_graph(), print_context=context, algo=algo, terminal=True)
     p0_new = cast_assert(Parameter, mutator.get_copy(p0))
     p3_new = cast_assert(Parameter, mutator.get_copy(p3))
     alias_new = cast_assert(Is, mutator.get_copy(alias))
@@ -106,3 +107,32 @@ def test_mutator_no_graph_merge():
     assert alias_new.get_graph() is G_new
     assert p3_new.get_graph() is not G_new
     assert cast_assert(Parameter, mutator.get_mutated(p1)).get_graph() is G_new
+
+
+def test_get_expressions_involved_in():
+    A = Parameter()
+    B = Parameter()
+
+    E1 = A + B
+
+    res = get_expressions_involved_in(E1)
+    assert res == set()
+
+    E2 = E1 + A
+
+    res = get_expressions_involved_in(E1)
+    assert res == {E2}
+
+    E3 = E2 + B
+
+    res = get_expressions_involved_in(E1)
+    assert res == {E2, E3}
+
+    res = get_expressions_involved_in(E2)
+    assert res == {E3}
+
+    res = get_expressions_involved_in(E2, up_only=False)
+    assert res == {E1, E3}
+
+    res = get_expressions_involved_in(E2, up_only=False, include_root=True)
+    assert res == {E1, E2, E3}

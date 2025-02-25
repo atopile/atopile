@@ -1922,3 +1922,10 @@ def repo_root() -> Path:
             raise FileNotFoundError("Could not find repo root")
     else:
         return repo_root
+
+
+def is_numeric_str(s: str) -> bool:
+    """
+    Check if a string is a numeric string.
+    """
+    return s.replace(".", "").strip().isnumeric()

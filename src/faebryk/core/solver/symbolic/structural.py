@@ -128,6 +128,8 @@ def remove_unconstrained(mutator: Mutator):
     """
     objs = mutator.nodes_of_type(Expression)
     for obj in objs:
+        if isinstance(obj, ConstrainableExpression) and obj.constrained:
+            continue
         if get_constrained_expressions_involved_in(obj):
             continue
         mutator.remove(obj)
