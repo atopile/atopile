@@ -25,7 +25,6 @@ from faebryk.core.parameter import (
     Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.core.solver.utils import get_graphs
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     ConfigFlag,
@@ -321,8 +320,8 @@ def pick_topologically(
         logger.info(f"Picking parts for \n\t{'\n\t'.join(names)}")
 
     def _get_candidates(_tree: Tree[Module]):
-        with timings.as_global("pre-solve"):
-            solver.simplify(*get_graphs(tree.keys()))
+        # with timings.as_global("pre-solve"):
+        #    solver.simplify(*get_graphs(tree.keys()))
         with timings.as_global("new estimates"):
             # Rerun solver for new system
             solver.update_superset_cache(*_tree)
