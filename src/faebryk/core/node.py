@@ -196,7 +196,7 @@ class Node(CNode):
 
     def __hash__(self) -> int:
         # TODO proper hash
-        return hash(id(self))
+        return id(self)
 
     def add[T: Node | GraphInterface](
         self,

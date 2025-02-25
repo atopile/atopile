@@ -422,6 +422,18 @@ def no_other_constrains(
     return no_other_constraints and not po.has_implicit_constraints_recursive()
 
 
+@dataclass
+class FlattenAssociativeResult[T]:
+    extracted_operands: list[ParameterOperatable.All]
+    """
+    Extracted operands
+    """
+    destroyed_operations: set[T]
+    """
+    ParameterOperables that got flattened and thus are not used anymore
+    """
+
+
 def flatten_associative[T: Associative](
     to_flatten: T,  # type: ignore
     check_destructable: Callable[[Expression, Expression], bool],
@@ -447,18 +459,7 @@ def flatten_associative[T: Associative](
         allowed to be flattened (=destructed)
     """
 
-    @dataclass
-    class Result[T2]:
-        extracted_operands: list[ParameterOperatable.All]
-        """
-        Extracted operands
-        """
-        destroyed_operations: set[T2]
-        """
-        ParameterOperables that got flattened and thus are not used anymore
-        """
-
-    out = Result[T](
+    out = FlattenAssociativeResult[T](
         extracted_operands=[],
         destroyed_operations=set(),
     )
