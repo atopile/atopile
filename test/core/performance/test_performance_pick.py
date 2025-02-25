@@ -127,7 +127,7 @@ def test_performance_pick_rc_formulas():
         # assert False
         return
     finally:
-        logger.info(f"\n{timings}")
+        logger.info(f"\n{timings.to_str(force_unit='ms')}")
 
     picked_values = {
         m.get_full_name(): str(m.resistance.try_get_literal()) for m in app.res
