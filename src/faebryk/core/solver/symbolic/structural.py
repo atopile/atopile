@@ -75,9 +75,7 @@ def check_literal_contradiction(mutator: Mutator):
     Check if a literal is contradictory
     """
 
-    lit_mappings = mutator.get_literal_mappings(new_only=False, allow_subset=True)
-    for op in lit_mappings:
-        try_extract_literal(op, allow_subset=True)
+    mutator.get_literal_mappings(new_only=False, allow_subset=True)
 
 
 @algorithm("Convert inequality with literal to subset", terminal=False)

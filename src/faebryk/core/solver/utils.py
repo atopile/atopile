@@ -511,7 +511,9 @@ def is_constrained(po: ParameterOperatable) -> TypeGuard[ConstrainableExpression
     return isinstance(po, ConstrainableExpression) and po.constrained
 
 
-def get_lit_mapping_from_lit_expr(expr: Is | IsSubset):
+def get_lit_mapping_from_lit_expr(
+    expr: Is | IsSubset,
+) -> tuple[ParameterOperatable, SolverLiteral]:
     assert is_alias_is_literal(expr) or is_subset_literal(expr)
     return next(iter(expr.operatable_operands)), next(
         iter(expr.get_literal_operands().values())

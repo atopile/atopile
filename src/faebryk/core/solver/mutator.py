@@ -29,6 +29,7 @@ from faebryk.core.solver.utils import (
     SHOW_SS_IS,
     VERBOSE_TABLE,
     CanonicalExpression,
+    ContradictionByLiteral,
     SolverAlgorithm,
     SolverAll,
     SolverAllExtended,
@@ -50,6 +51,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     Quantity_Set,
 )
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
     cast_assert,
@@ -792,10 +794,31 @@ class Mutator:
         return (expr for expr in subsets if is_subset_literal(expr))
 
     def get_literal_mappings(self, new_only: bool = True, allow_subset: bool = False):
+        # TODO better exceptions
+
         ops = self.get_literal_aliases(new_only=new_only)
+        mapping = [get_lit_mapping_from_lit_expr(op) for op in ops]
+        if not len({k for k, _ in mapping}) == len(mapping):
+            raise ContradictionByLiteral("Literal contradictions", [], [])
+        mapping_dict = dict(mapping)
+
         if allow_subset:
-            ops = chain(ops, self._get_literal_subsets(new_only=new_only))
-        return dict(get_lit_mapping_from_lit_expr(op) for op in ops)
+            ops_ss = self._get_literal_subsets(new_only=new_only)
+            mapping_ss = [get_lit_mapping_from_lit_expr(op) for op in ops_ss]
+            grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
+            for k, v in grouped_ss.items():
+                merged_ss = P_Set.intersect_all(*(ss_lit for _, ss_lit in v))
+                if merged_ss.is_empty():
+                    raise ContradictionByLiteral("Empty intersection", [], [])
+                if k in mapping_dict:
+                    if not mapping_dict[k].is_subset_of(merged_ss):  # type: ignore
+                        raise ContradictionByLiteral(
+                            "ss lit doesn't match is_lit", [], []
+                        )
+                    continue
+                mapping_dict[k] = merged_ss
+
+        return mapping_dict
 
     def run(self):
         self.algo(self)
