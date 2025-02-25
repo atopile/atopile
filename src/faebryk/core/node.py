@@ -489,11 +489,10 @@ class Node(CNode):
                         f = getattr(base, f_name)
                         f(self)
 
-    def __init__(self):
-        # super fast hash
-        _id = id(self)
-        self.__hash__ = lambda: _id
+    def __hash__(self):
+        return id(self)
 
+    def __init__(self):
         super().__init__()
         CNode.transfer_ownership(self)
         assert not hasattr(self, "_is_setup")
