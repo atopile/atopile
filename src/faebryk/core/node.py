@@ -194,10 +194,6 @@ class Node(CNode):
     class _Skipped(Exception):
         pass
 
-    def __hash__(self) -> int:
-        # TODO proper hash
-        return id(self)
-
     def add[T: Node | GraphInterface](
         self,
         obj: T,
@@ -494,6 +490,10 @@ class Node(CNode):
                         f(self)
 
     def __init__(self):
+        # super fast hash
+        _id = id(self)
+        self.__hash__ = lambda: _id
+
         super().__init__()
         CNode.transfer_ownership(self)
         assert not hasattr(self, "_is_setup")
