@@ -578,7 +578,7 @@ class Expression(ParameterOperatable):
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
     ) -> bool:
-        if self == other:
+        if self is other:
             return True
         if type(self) is not type(other):
             return False
