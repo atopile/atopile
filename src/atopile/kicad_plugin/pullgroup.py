@@ -1,11 +1,12 @@
 import logging
 from pathlib import Path
 
-import pcbnew
+import pcbnew  # pylint: disable=import-error, type: ignore
 
 from .common import (
     calculate_translation,
     flip_dict,
+    generate_net_map,
     get_group_footprints,
     get_layout_map,
     log_exceptions,
@@ -36,6 +37,20 @@ class PullGroup(pcbnew.ActionPlugin):
         target_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = target_board.GetFileName()
         known_layouts = get_layout_map(board_path)
+
+        log.info(f"Known layouts: {known_layouts}")
+
+        # Since we are one layer too high in the JSON, combine the maps from each group
+        combined_addr_map = {}
+        combined_uuid_map = {}
+        for group_key, group_val in known_layouts.items():
+            # Expect each group value to be a dict with a 'layout_path' key
+            if isinstance(group_val, dict) and "layout_path" in group_val:
+                combined_addr_map.update(group_val.get("addr_map", {}))
+                combined_uuid_map.update(group_val.get("uuid_to_addr_map", {}))
+
+        log.info(f"Combined addr_map: {combined_addr_map}")
+        log.info(f"Combined uuid_to_addr_map: {combined_uuid_map}")
 
         # Pull Selected Groups
         for g in target_board.Groups():
@@ -72,16 +87,75 @@ class PullGroup(pcbnew.ActionPlugin):
 
             layout_maps = known_layouts[g_name]
 
+            # Get addr_map and uuid_map for this specific layout
+            layout_addr_map = layout_maps.get("addr_map", {})
+            layout_uuid_map = layout_maps.get("uuid_to_addr_map", {})
+
+            if "addr_map" not in layout_maps:
+                log.error(
+                    f"[DEBUG] layout_maps keys for group {g_name}: "
+                    f"{list(layout_maps.keys())}"
+                )
+                log.warning(
+                    f"'addr_map' key not found in layout_maps for group {g_name}; "
+                    f"defaulting to empty mapping"
+                )
+            if "uuid_to_addr_map" not in layout_maps:
+                log.error(
+                    f"[DEBUG] layout_maps keys for group {g_name}: "
+                    f"{list(layout_maps.keys())}"
+                )
+                log.warning(
+                    f"'uuid_to_addr_map' key not found in layout_maps for"
+                    f" group {g_name}; defaulting to empty mapping"
+                )
+
+            # Generate net_map specifically for this source layout and target board
+            try:
+                net_map = generate_net_map(
+                    source_board=source_board,
+                    target_board=target_board,
+                    addr_map=flip_dict(layout_addr_map),
+                    uuid_map=layout_uuid_map,
+                )
+
+                # Log some info about the nets for debugging
+                # NetsByName() returns a dict where keys are the net names
+                source_nets = list(source_board.GetNetInfo().NetsByName().keys())
+                # Convert wxString to Python string for logging - used for display below
+                source_nets_as_str = [str(net) for net in source_nets]
+                log.info(f"Source board nets count: {len(source_nets)}")
+                log.info(f"Net map entries count: {len(net_map)}")
+
+                # Find unmapped nets that aren't empty
+                unmapped_nets = [
+                    net
+                    for net in source_nets_as_str
+                    if net not in net_map and net != ""
+                ]
+                log.info(f"Unmapped nets: {unmapped_nets}")
+
+            except KeyError as e:
+                log.error(
+                    f"KeyError in generate_net_map for group {g_name}: {e}. "
+                    f"Layout map keys: {list(layout_addr_map.keys())}"
+                )
+                raise
+
             sync_footprints(
                 source_board,
                 target_board,
-                flip_dict(layout_maps["addr_map"]),
-                layout_maps["uuid_to_addr_map"],
+                flip_dict(layout_maps.get("addr_map", {})),
+                layout_maps.get("uuid_to_addr_map", {}),
             )
 
             for track in source_board.GetTracks():
-                item = sync_track(source_board, track, target_board)
+                item = sync_track(source_board, track, target_board, net_map)
                 g.AddItem(item)
+
+            # for via in source_board.GetVias():
+            #     item = sync_via(source_board, via, target_board, net_map)
+            #     g.AddItem(item)
 
             for drawing in source_board.GetDrawings():
                 item = sync_drawing(source_board, drawing, target_board)
@@ -91,11 +165,8 @@ class PullGroup(pcbnew.ActionPlugin):
                 new_zone = sync_zone(zone, target_board)
                 update_zone_net(
                     zone,
-                    source_board,
                     new_zone,
-                    target_board,
-                    flip_dict(layout_maps["addr_map"]),
-                    layout_maps["uuid_to_addr_map"],
+                    net_map,
                 )
                 g.AddItem(new_zone)
 

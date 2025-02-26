@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-import pcbnew
+import pcbnew  # pylint: disable=import-error, type: ignore
 
 from .common import (
     footprints_by_addr,
@@ -74,8 +74,13 @@ class ReloadGroup(pcbnew.ActionPlugin):
             # Add all items to the group
             # Start with the footprints
             for fp_addr in expected_footprints - footprints_in_group:
-                g.AddItem(footprints[fp_addr])
-                log.debug(f"Added footprint {fp_addr}")
+                if fp_addr in footprints:
+                    g.AddItem(footprints[fp_addr])
+                    log.debug(f"Added footprint {fp_addr}")
+                else:
+                    log.warning(
+                        f"Footprint {fp_addr} not found in footprints dictionary"
+                    )
 
             # FIXME: nested groups are not yet supported
             if group_data["nested_groups"]:

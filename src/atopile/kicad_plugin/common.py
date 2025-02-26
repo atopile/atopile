@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-import pcbnew
+import pcbnew  # pylint: disable=import-error
 
 log = logging.getLogger(__name__)
 
@@ -88,18 +88,103 @@ def flip_dict(d: dict) -> dict:
     return {v: k for k, v in d.items()}
 
 
+# def sync_via(
+#     source_board: pcbnew.BOARD,
+#     via: pcbnew.PCB_VIA,
+#     target_board: pcbnew.BOARD,
+#     net_map: dict[str, str],
+# ) -> pcbnew.PCB_VIA:
+#     """Sync a via to the target board and update its net from net_map."""
+#     new_via: pcbnew.PCB_VIA = via.Duplicate().Cast()
+#     new_via.SetParent(target_board)
+#     new_via.SetPosition(via.GetPosition())
+#     new_via.SetNet(net_map[via.GetNetname()])
+#     target_board.Add(new_via)
+#     source_board.Remove(new_via)
+#     return new_via
+
+
 def sync_track(
-    source_board: pcbnew.BOARD, track: pcbnew.PCB_TRACK, target_board: pcbnew.BOARD
+    source_board: pcbnew.BOARD,
+    track: pcbnew.PCB_TRACK,
+    target_board: pcbnew.BOARD,
+    net_map: dict[str, str],
 ) -> pcbnew.PCB_TRACK:
-    """Sync a track to the target board."""
+    """Sync a track to the target board and update its net from net_map."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
     new_track.SetParent(target_board)
     new_track.SetStart(track.GetStart())
     new_track.SetEnd(track.GetEnd())
     new_track.SetLayer(track.GetLayer())
+
+    # Update the net using net_map
+    source_net = track.GetNetname()
+    if source_net in net_map:
+        target_net_name = net_map[source_net]
+        # Find the actual NETINFO_ITEM for the target net
+        target_net_info = target_board.FindNet(target_net_name)
+        if target_net_info:
+            new_track.SetNet(target_net_info)
+        else:
+            log.warning(f"Could not find net '{target_net_name}' in target board")
+            new_track.SetNetCode(0)  # No net
+    else:
+        new_track.SetNetCode(0)  # No net
+
     target_board.Add(new_track)
     source_board.Remove(new_track)
     return new_track
+
+
+def generate_net_map(
+    source_board: pcbnew.BOARD,
+    target_board: pcbnew.BOARD,
+    addr_map: dict[str, str],
+    uuid_map: dict[str, str],
+):
+    """Generates a mapping from source net names to target net names based on matching
+    addresses.
+
+    For each component in the source board, if its address exists in addr_map, the
+    target footprint is looked up. For each pad index in the source footprint, a mapping
+    is added from source pad net (e.g., 'VCC') to target pad net (e.g., 'VCC_3V3').
+    """
+    net_map: dict[str, str] = {}
+
+    # Obtain a dictionary of target footprints by their address
+    target_fps = footprints_by_addr(target_board, uuid_map)
+
+    # Iterate through each footprint in the source board
+    for src_fp in source_board.GetFootprints():
+        # Get the source footprint address
+        src_addr = get_footprint_addr(src_fp, uuid_map)
+        if not src_addr:
+            continue
+
+        # Check if there is a mapping for this source address
+        if src_addr not in addr_map:
+            continue
+        target_addr = addr_map[src_addr]
+
+        # Look up the corresponding target footprint
+        target_fp = target_fps.get(target_addr)
+        if not target_fp:
+            continue
+
+        # For each pad in the source footprint, map its net to the corresponding pad
+        # in the target footprint
+        src_pads = src_fp.Pads()
+        tgt_pads = target_fp.Pads()
+        for i, src_pad in enumerate(src_pads):
+            # Only proceed if the target footprint has this pad index
+            if i >= len(tgt_pads):
+                continue
+            src_net = src_pad.GetNetname()
+            tgt_net = tgt_pads[i].GetNetname()
+            # Add the mapping from source net to target net
+            net_map[src_net] = tgt_net
+
+    return net_map
 
 
 # also pull in any silkscreen items
@@ -115,45 +200,35 @@ def sync_drawing(
     return new_drawing
 
 
-# TODO: There must be a better way to update net of fill
 def update_zone_net(
     source_zone: pcbnew.ZONE,
-    source_board: pcbnew.BOARD,
     target_zone: pcbnew.ZONE,
-    target_board: pcbnew.BOARD,
-    addr_map: dict[str, str],
-    uuid_map: dict[str, str],
+    net_map: dict[str, str],
 ):
-    """Finds a pin connected to original zone, pulls pin net name from new board net"""
+    """Updates the target zone's net using net_map.
+
+    If the source zone's netname exists in net_map, the target zone's net is set
+    to the corresponding value. Otherwise, the net is set to no net (net code 0).
+    """
     source_netname = source_zone.GetNetname()
     log.info(
-        f"update_zone_net source_zone={source_zone}"
-        f" target_zone={target_zone} source_netname={source_netname}"
+        f"update_zone_net: source_zone net = {source_netname} "
+        f"for target_zone {target_zone}"
     )
-    matched_fp = None
-    matched_pad_index = None
-    for fp in source_board.GetFootprints():
-        for index, pad in enumerate(fp.Pads()):
-            if pad.GetNetname() == source_netname:
-                matched_fp = fp
-                matched_pad_index = index
-                break
-
-        if matched_fp and matched_pad_index is not None:
-            break
-
-    if matched_fp and matched_pad_index is not None:
-        if matched_fp_addr := get_footprint_addr(matched_fp, uuid_map):
-            if target_fp_addr := addr_map.get(matched_fp_addr, None):
-                target_fps = footprints_by_addr(target_board, uuid_map)
-                target_fp = target_fps.get(target_fp_addr, None)
-                if target_fp:
-                    new_netinfo = target_fp.Pads()[matched_pad_index].GetNet()
-                    target_zone.SetNet(new_netinfo)
-                    return
-
-    # TODO: Verify that this will always set net to no net
-    target_zone.SetNetCode(0)
+    if source_netname in net_map:
+        target_net_name = net_map[source_netname]
+        # We need to get the actual NETINFO_ITEM from the target board
+        target_board = target_zone.GetBoard()
+        target_net_info = target_board.FindNet(target_net_name)
+        if target_net_info:
+            target_zone.SetNet(target_net_info)
+        else:
+            log.warning(
+                f"Could not find net '{target_net_name}' in target board for zone"
+            )
+            target_zone.SetNetCode(0)
+    else:
+        target_zone.SetNetCode(0)
 
 
 def sync_zone(zone: pcbnew.ZONE, target: pcbnew.BOARD) -> pcbnew.ZONE:
