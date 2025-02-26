@@ -46,6 +46,7 @@ from faebryk.core.solver.utils import (
     Contradiction,
     ContradictionByLiteral,
 )
+from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
 from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
@@ -230,6 +231,7 @@ def test_solve_realworld():
     # TODO actually test something
 
 
+@pytest.mark.slow
 def test_solve_realworld_bigger():
     app = F.RP2040_ReferenceDesign()
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
@@ -237,6 +239,31 @@ def test_solve_realworld_bigger():
     solver = DefaultSolver()
     solver.simplify_symbolically(app.get_graph())
     # TODO actually test something
+
+
+@pytest.mark.slow
+def test_solve_realworld_biggest():
+    class App(Module):
+        led = L.f_field(F.LEDIndicator)(use_mosfet=False)
+        mcu: F.RP2040_ReferenceDesign
+        usb_power: F.USB_C_PSU_Vertical
+
+        def __preinit__(self):
+            self.led.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+            self.led.led.led.brightness.constrain_subset(
+                TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
+            )
+
+            self.usb_power.power_out.connect(self.mcu.usb.usb_if.buspower)
+            self.mcu.rp2040.gpio[25].connect(self.led.logic_in)
+            self.mcu.rp2040.pinmux.enable(self.mcu.rp2040.gpio[25])
+
+    app = App()
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    solver = DefaultSolver()
+    solver.simplify_symbolically(app.get_graph())
+
+    pick_part_recursively(app, solver)
 
 
 def test_inspect_known_superranges():
