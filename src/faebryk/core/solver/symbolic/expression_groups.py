@@ -3,11 +3,11 @@
 
 
 import logging
-from functools import partial
 from typing import cast
 
 from faebryk.core.parameter import (
     ConstrainableExpression,
+    Expression,
     IdempotentExpression,
     IdempotentOperands,
     Involutory,
@@ -23,7 +23,6 @@ from faebryk.core.solver.utils import (
     alias_is_literal_and_check_predicate_eval,
     flatten_associative,
     is_literal,
-    is_replacable,
 )
 from faebryk.libs.util import (
     unique,
@@ -147,10 +146,20 @@ def associative_flatten(mutator: Mutator):
     # get out deepest expr in compressable tree
     root_ops = [e for e in ops if type(e) not in {type(n) for n in e.get_operations()}]
 
+    def is_replacable(to_replace: Expression, parent_expr: Expression) -> bool:
+        """
+        Check if an expression can be replaced.
+        Only possible if not in use somewhere else or already mapped to new expr
+        """
+        # overly restrictive: equivalent replacement would be ok
+        if mutator.has_been_mutated(to_replace):
+            return False
+        if to_replace.get_operations() != {parent_expr}:
+            return False
+        return True
+
     for expr in root_ops:
-        res = flatten_associative(
-            expr, partial(is_replacable, mutator.transformations.mutated)
-        )
+        res = flatten_associative(expr, is_replacable)
         if not res.destroyed_operations:
             continue
 

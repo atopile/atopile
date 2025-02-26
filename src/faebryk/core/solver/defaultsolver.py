@@ -17,7 +17,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver.mutator import REPR_MAP, Mutator
+from faebryk.core.solver.mutator import REPR_MAP, Mutator, ReprMap
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.symbolic import (
     canonical,
@@ -106,7 +106,7 @@ class DefaultSolver(Solver):
     @dataclass
     class IterationData:
         graphs: list[Graph]
-        total_repr_map: Mutator.ReprMap
+        total_repr_map: ReprMap
         repr_since_last_iteration: dict[SolverAlgorithm, REPR_MAP]
 
         def __rich_repr__(self):
@@ -190,9 +190,9 @@ class DefaultSolver(Solver):
             iteration_state.dirty |= algo_result.dirty
             # TODO: optimize so only dirty
             if not algo.single:
-                data.repr_since_last_iteration[algo] = {
-                    k: k for k in mutator.get_output_operables()
-                }
+                data.repr_since_last_iteration[algo] = REPR_MAP(
+                    {k: k for k in mutator.get_output_operables()}
+                )
 
             if algo_result.dirty:
                 data.graphs = algo_result.graphs
@@ -214,7 +214,7 @@ class DefaultSolver(Solver):
                 f" {'dirty' if algo_result.dirty else 'clean'}"
             )
 
-        data.total_repr_map = Mutator.create_concat_repr_map(
+        data.total_repr_map = ReprMap.create_concat_repr_map(
             data.total_repr_map.repr_map, *iteration_repr_maps
         )
 
@@ -232,7 +232,7 @@ class DefaultSolver(Solver):
             self.state = DefaultSolver.PartialState(
                 data=DefaultSolver.IterationData(
                     graphs=_gs,
-                    total_repr_map=Mutator.ReprMap.create_from_graphs(*_gs),
+                    total_repr_map=ReprMap.create_from_graphs(*_gs),
                     repr_since_last_iteration={},
                 ),
                 print_context=print_context_,
@@ -257,7 +257,7 @@ class DefaultSolver(Solver):
             if p_op not in repr_map.repr_map and not repr_map.is_removed(p_op)
         }
 
-        repr_map_new = repr_map.repr_map.copy()
+        repr_map_new = REPR_MAP(repr_map.repr_map)
 
         # mutate new parameters
         new_params = [p for p in new_p_ops if isinstance(p, Parameter)]
@@ -304,7 +304,7 @@ class DefaultSolver(Solver):
         self.state = DefaultSolver.PartialState(
             data=DefaultSolver.IterationData(
                 graphs=list(graphs),
-                total_repr_map=Mutator.ReprMap(repr_map_new, removed=repr_map.removed),
+                total_repr_map=ReprMap(repr_map_new, removed=repr_map.removed),
                 repr_since_last_iteration={},
             ),
             print_context=print_context_,
@@ -316,7 +316,7 @@ class DefaultSolver(Solver):
         *gs: Graph | Node,
         print_context: ParameterOperatable.ReprContext | None = None,
         terminal: bool = True,
-    ) -> tuple[Mutator.ReprMap, ParameterOperatable.ReprContext]:
+    ) -> tuple[ReprMap, ParameterOperatable.ReprContext]:
         """
         Args:
         - terminal: if False, no terminal algorithms are allowed

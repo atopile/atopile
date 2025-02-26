@@ -63,11 +63,94 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
-
-type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
-
 if S_LOG:
     logger.setLevel(logging.DEBUG)
+
+
+class REPR_MAP(dict[ParameterOperatable, ParameterOperatable]):
+    pass
+
+
+class ReprMap:
+    def __init__(
+        self, repr_map: REPR_MAP, removed: set[ParameterOperatable] | None = None
+    ):
+        self.repr_map = repr_map
+        self.removed = removed or set()
+
+    def try_get_literal(
+        self, param: ParameterOperatable, allow_subset: bool = False
+    ) -> SolverLiteral | None:
+        if param not in self.repr_map:
+            return None
+        lit = try_extract_literal(self.repr_map[param], allow_subset=allow_subset)
+        if lit is None:
+            return None
+        if isinstance(lit, Quantity_Set):
+            fac = quantity(1, HasUnit.get_units(param))
+            return lit * fac / fac.to_base_units().m
+        return lit
+
+    def is_removed(self, param: ParameterOperatable) -> bool:
+        return param in self.removed
+
+    def __getitem__(self, param: ParameterOperatable) -> SolverLiteral:
+        return not_none(self.try_get_literal(param))
+
+    def __contains__(self, param: ParameterOperatable) -> bool:
+        return param in self.repr_map
+
+    def __repr__(self) -> str:
+        return f"ReprMap({self.repr_map})"
+
+    def __rich_repr__(self):
+        yield self.repr_map
+
+    @staticmethod
+    def create_from_graphs(*graphs: Graph) -> "ReprMap":
+        repr_map = REPR_MAP(
+            {
+                po: po
+                for g in graphs
+                for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            }
+        )
+        return ReprMap(repr_map)
+
+    @staticmethod
+    def concat_repr_maps(*repr_maps: REPR_MAP) -> REPR_MAP:
+        # TODO just removed assert
+        if not repr_maps:
+            return REPR_MAP()
+        if len(repr_maps) == 1:
+            return repr_maps[0]
+
+        concatenated = REPR_MAP()
+        for original_obj in repr_maps[0].keys():
+            chain_end = original_obj
+            chain_interrupted = False
+            for i, m in enumerate(repr_maps):
+                # CONSIDER: I think we can assert this
+                assert isinstance(chain_end, ParameterOperatable)
+                if chain_end not in m:
+                    assert (
+                        original_obj.get_parent() is None
+                    ), "should never remove root parameters"
+                    logger.debug(
+                        f"chain_end {original_obj} -> {chain_end} interrupted at {i}"
+                    )
+                    chain_interrupted = True
+                    break
+                chain_end = m[chain_end]
+            if not chain_interrupted:
+                concatenated[original_obj] = chain_end
+        return concatenated
+
+    @staticmethod
+    def create_concat_repr_map(*repr_maps: REPR_MAP) -> "ReprMap":
+        concatenated = ReprMap.concat_repr_maps(*repr_maps)
+        removed = repr_maps[0].keys() - concatenated.keys()
+        return ReprMap(concatenated, removed)
 
 
 @dataclass
@@ -81,7 +164,7 @@ class AlgoResult:
 class Mutator:
     @dataclass
     class _Transformations:
-        mutated: REPR_MAP
+        mutated: dict[ParameterOperatable, ParameterOperatable]
         removed: set[ParameterOperatable]
         copied: set[ParameterOperatable]
         created: dict[ParameterOperatable, list[ParameterOperatable]]
@@ -103,7 +186,7 @@ class Mutator:
         self.terminal = terminal
 
         if not iteration_repr_map:
-            iteration_repr_map = {}
+            iteration_repr_map = REPR_MAP()
 
         self._starting_operables = set(self.nodes_of_type(include_terminated=True))
 
@@ -118,7 +201,7 @@ class Mutator:
         }
 
         self.transformations = Mutator._Transformations(
-            mutated=repr_map or {},
+            mutated=repr_map or REPR_MAP(),
             removed=set(),
             copied=set(),
             created=defaultdict(list),
@@ -640,7 +723,7 @@ class Mutator:
 
     def close(self) -> AlgoResult:
         result = AlgoResult(
-            repr_map={},
+            repr_map=REPR_MAP(),
             graphs=[],
             dirty=self.dirty,
         )
@@ -650,7 +733,7 @@ class Mutator:
             self.check_no_illegal_mutations()
             self._copy_unmutated()
 
-            result.repr_map = self.transformations.mutated
+            result.repr_map = REPR_MAP(self.transformations.mutated)
             result.graphs = self.get_graphs()
 
             # Check if original graphs ended up in result
@@ -1009,85 +1092,6 @@ class Mutator:
             if not nodes:
                 continue
             print_out(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
-
-    @staticmethod
-    def concat_repr_maps(*repr_maps: REPR_MAP) -> REPR_MAP:
-        # TODO just removed assert
-        if not repr_maps:
-            return {}
-        if len(repr_maps) == 1:
-            return repr_maps[0]
-
-        concatenated = {}
-        for original_obj in repr_maps[0].keys():
-            chain_end = original_obj
-            chain_interrupted = False
-            for i, m in enumerate(repr_maps):
-                # CONSIDER: I think we can assert this
-                assert isinstance(chain_end, ParameterOperatable)
-                if chain_end not in m:
-                    assert (
-                        original_obj.get_parent() is None
-                    ), "should never remove root parameters"
-                    logger.debug(
-                        f"chain_end {original_obj} -> {chain_end} interrupted at {i}"
-                    )
-                    chain_interrupted = True
-                    break
-                chain_end = m[chain_end]
-            if not chain_interrupted:
-                concatenated[original_obj] = chain_end
-        return concatenated
-
-    class ReprMap:
-        def __init__(
-            self, repr_map: REPR_MAP, removed: set[ParameterOperatable] | None = None
-        ):
-            self.repr_map = repr_map
-            self.removed = removed or set()
-
-        def try_get_literal(
-            self, param: ParameterOperatable, allow_subset: bool = False
-        ) -> SolverLiteral | None:
-            if param not in self.repr_map:
-                return None
-            lit = try_extract_literal(self.repr_map[param], allow_subset=allow_subset)
-            if lit is None:
-                return None
-            if isinstance(lit, Quantity_Set):
-                fac = quantity(1, HasUnit.get_units(param))
-                return lit * fac / fac.to_base_units().m
-            return lit
-
-        def is_removed(self, param: ParameterOperatable) -> bool:
-            return param in self.removed
-
-        def __getitem__(self, param: ParameterOperatable) -> SolverLiteral:
-            return not_none(self.try_get_literal(param))
-
-        def __contains__(self, param: ParameterOperatable) -> bool:
-            return param in self.repr_map
-
-        def __repr__(self) -> str:
-            return f"ReprMap({self.repr_map})"
-
-        def __rich_repr__(self):
-            yield self.repr_map
-
-        @staticmethod
-        def create_from_graphs(*graphs: Graph) -> "Mutator.ReprMap":
-            repr_map = {
-                po: po
-                for g in graphs
-                for po in GraphFunctions(g).nodes_of_type(ParameterOperatable)
-            }
-            return Mutator.ReprMap(repr_map)
-
-    @staticmethod
-    def create_concat_repr_map(*repr_maps: REPR_MAP) -> ReprMap:
-        concatenated = Mutator.concat_repr_maps(*repr_maps)
-        removed = repr_maps[0].keys() - concatenated.keys()
-        return Mutator.ReprMap(concatenated, removed)
 
     def __repr__(self) -> str:
         old_context = self.print_context

@@ -45,7 +45,7 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
-    from faebryk.core.solver.mutator import REPR_MAP, Mutator
+    from faebryk.core.solver.mutator import Mutator
 
 logger = logging.getLogger(__name__)
 
@@ -489,22 +489,6 @@ def flatten_associative[T: Associative](
     out.extracted_operands.extend(nested_extracted_operands)
 
     return out
-
-
-def is_replacable(
-    repr_map: "REPR_MAP",
-    to_replace: Expression,
-    parent_expr: Expression,
-) -> bool:
-    """
-    Check if an expression can be replaced.
-    Only possible if not in use somewhere else or already mapped to new expr
-    """
-    if to_replace in repr_map:  # overly restrictive: equivalent replacement would be ok
-        return False
-    if to_replace.get_operations() != {parent_expr}:
-        return False
-    return True
 
 
 def is_constrained(po: ParameterOperatable) -> TypeGuard[ConstrainableExpression]:
