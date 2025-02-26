@@ -88,22 +88,6 @@ def flip_dict(d: dict) -> dict:
     return {v: k for k, v in d.items()}
 
 
-# def sync_via(
-#     source_board: pcbnew.BOARD,
-#     via: pcbnew.PCB_VIA,
-#     target_board: pcbnew.BOARD,
-#     net_map: dict[str, str],
-# ) -> pcbnew.PCB_VIA:
-#     """Sync a via to the target board and update its net from net_map."""
-#     new_via: pcbnew.PCB_VIA = via.Duplicate().Cast()
-#     new_via.SetParent(target_board)
-#     new_via.SetPosition(via.GetPosition())
-#     new_via.SetNet(net_map[via.GetNetname()])
-#     target_board.Add(new_via)
-#     source_board.Remove(new_via)
-#     return new_via
-
-
 def sync_track(
     source_board: pcbnew.BOARD,
     track: pcbnew.PCB_TRACK,
