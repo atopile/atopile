@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import io
 import logging
 import os
 import sys
@@ -8,6 +9,7 @@ import sys
 from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
+from rich.table import Table
 from rich.theme import Theme
 
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
@@ -34,6 +36,23 @@ TERMINAL_WIDTH = ConfigFlagInt(
     default=get_terminal_width(),
     descr="Width of the terminal",
 )
+NET_LINE_WIDTH = int(TERMINAL_WIDTH) - 40
+
+
+class NestedConsole(Console):
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            *args, record=True, width=NET_LINE_WIDTH, file=io.StringIO(), **kwargs
+        )
+
+    def __str__(self):
+        return self.export_text(styles=True)
+
+
+def table_to_string(table: Table) -> str:
+    console = NestedConsole()
+    console.print(table)
+    return str(console)
 
 
 def setup_basic_logging(

@@ -518,9 +518,6 @@ class ParameterOperatable(Node):
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
         return out
 
-    def __rich_repr__(self):
-        yield self.compact_repr()
-
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
     if isinstance(po, ParameterOperatable):
@@ -839,6 +836,9 @@ class Expression(ParameterOperatable):
         # out += self._get_lit_suffix()
 
         return out
+
+    def __rich_repr__(self):
+        yield self.compact_repr()
 
 
 @abstract
@@ -1797,7 +1797,7 @@ class Parameter(ParameterOperatable):
         return self.domain.unbounded(self)
 
     def get_last_known_deduced_superset(self, solver: "Solver") -> P_Set | None:
-        as_literal = solver.inspect_get_known_supersets(self, force_update=False)
+        as_literal = solver.inspect_get_known_supersets(self)
         return None if as_literal == self.domain_set() else as_literal
 
 

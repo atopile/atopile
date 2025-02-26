@@ -232,13 +232,10 @@ def resolve_alias_classes(mutator: Mutator):
         }
         # eq between non-literal operands
         full_eq.add_eq(*ops)
-    p_eq_classes = full_eq.get()
+    p_eq_classes = full_eq.get(only_multi=True)
 
     # Make new param repre for alias classes
     for eq_class in p_eq_classes:
-        if len(eq_class) <= 1:
-            continue
-
         eq_class_params = [p for p in eq_class if isinstance(p, Parameter)]
         eq_class_exprs = {p for p in eq_class if isinstance(p, Expression)}
 
@@ -285,8 +282,6 @@ def resolve_alias_classes(mutator: Mutator):
             mutator._mutate(p, representative)
 
     for eq_class in p_eq_classes:
-        if len(eq_class) <= 1:
-            continue
         eq_class_params = [p for p in eq_class if isinstance(p, Parameter)]
         eq_class_exprs = [p for p in eq_class if isinstance(p, Expression)]
 
@@ -722,7 +717,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     }
 
     exprs = {e for alias in new_exprs.keys() for e in alias.get_operations()}
-    exprs.update(mutator.mutated_since_last_run)
+    exprs.update(mutator.non_copy_mutated)
     exprs = ParameterOperatable.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:
@@ -777,7 +772,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         e for alias in new_literal_mappings_filtered for e in alias.get_operations()
     }
     # Include mutated since last run
-    exprs.update(mutator.mutated_since_last_run)
+    exprs.update(mutator.non_copy_mutated)
     exprs = ParameterOperatable.sort_by_depth(exprs, ascending=True)
 
     for expr in exprs:

@@ -22,14 +22,7 @@ LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 
 
 class Solver(Protocol):
-    # TODO booleanlike is very permissive
     type PredicateWithInfo[ArgType] = tuple[ConstrainableExpression, ArgType]
-
-    class SolverError(Exception): ...
-
-    class TimeoutError(SolverError): ...
-
-    class DivisionByZeroError(SolverError): ...
 
     @dataclass
     class SolveResult:
@@ -40,18 +33,6 @@ class Solver(Protocol):
         true_predicates: list["Solver.PredicateWithInfo[ArgType]"]
         false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
         unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-
-    @dataclass
-    class SolveResultAll(SolveResult):
-        has_solution: bool
-
-    # TODO: solver configuration
-
-    # timeout per solve call in milliseconds
-    # timeout: int
-    # threads: int
-    # in megabytes
-    # memory: int
 
     def get_any_single(
         self,
@@ -103,12 +84,7 @@ class Solver(Protocol):
         """
         ...
 
-    # run deferred work
-    def find_and_lock_solution(self, G: Graph) -> SolveResultAll: ...
-
-    def inspect_get_known_supersets(
-        self, value: Parameter, force_update: bool = False
-    ) -> P_Set: ...
+    def inspect_get_known_supersets(self, value: Parameter) -> P_Set: ...
 
     def update_superset_cache(self, *nodes: Node): ...
 

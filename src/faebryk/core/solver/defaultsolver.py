@@ -17,7 +17,12 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver.mutator import REPR_MAP, Mutator, ReprMap
+from faebryk.core.solver.mutator import (
+    MutationMap,
+    MutationStage,
+    Mutator,
+    Transformations,
+)
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.symbolic import (
     canonical,
@@ -34,14 +39,14 @@ from faebryk.core.solver.utils import (
     TIMEOUT,
     Contradiction,
     SolverAlgorithm,
-    debug_name_mappings,
     get_graphs,
 )
+from faebryk.libs.logging import NET_LINE_WIDTH
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import P_Set, as_lit
 from faebryk.libs.test.times import Times
 from faebryk.libs.units import dimensionless, quantity
-from faebryk.libs.util import groupby, times_out
+from faebryk.libs.util import not_none, times_out
 
 logger = logging.getLogger(__name__)
 
@@ -50,22 +55,6 @@ if S_LOG:
 
 
 class DefaultSolver(Solver):
-    """
-    General documentation
-
-    Naming:
-    - Predicate: A constrainable expression that is constrained
-    [Careful: not the same as the class Predicate]
-
-    Associativity of simplification:
-    - Goal: Simplify(B, Simplify(A)) == Simplify(A ^ B)
-    Note: Not 100% sure if that's possible and whether we are there yet
-
-    Debugging:
-    - Run with FBRK_SLOG=y to turn on debug
-    - Run with FRBK_SVERBOSE_TABLE=y for full expression names
-    """
-
     algorithms = SimpleNamespace(
         # TODO: get order from topo sort
         # and types from decorator
@@ -105,43 +94,21 @@ class DefaultSolver(Solver):
 
     @dataclass
     class IterationData:
-        graphs: list[Graph]
-        total_repr_map: ReprMap
-        repr_since_last_iteration: dict[SolverAlgorithm, REPR_MAP]
-
-        def __rich_repr__(self):
-            yield "graphs", self.graphs
-            yield "total_repr_map", self.total_repr_map
-
-        def _print(self):
-            from rich import print as rprint
-
-            rprint(self)
+        mutation_map: MutationMap
 
     @dataclass
     class IterationState:
         dirty: bool
 
     @dataclass
-    class PartialState:
+    class SolverState:
         data: "DefaultSolver.IterationData"
-        print_context: ParameterOperatable.ReprContext
 
     def __init__(self) -> None:
         super().__init__()
 
-        self.superset_cache: dict[Parameter, tuple[int, P_Set]] = {}
-
-        self.state: DefaultSolver.PartialState | None = None
-        self.simplified_state: DefaultSolver.PartialState | None = None
-
-    def has_no_solution(
-        self, total_repr_map: dict[ParameterOperatable, ParameterOperatable.All]
-    ) -> bool:
-        # any parameter is/subset literal is empty (implcit constraint that we forgot)
-        # any constrained expression got mapped to False
-        # any constrained expression literal is False
-        raise NotImplementedError()
+        self.state: DefaultSolver.SolverState | None = None
+        self.reusable_state: DefaultSolver.SolverState | None = None
 
     @classmethod
     def _run_iteration(
@@ -149,121 +116,78 @@ class DefaultSolver(Solver):
         iterno: int,
         data: IterationData,
         algos: list[SolverAlgorithm],
-        print_context: ParameterOperatable.ReprContext,
         terminal: bool,
-        phase_offset: int = 0,
-    ) -> tuple[IterationState, ParameterOperatable.ReprContext]:
+    ) -> "DefaultSolver.IterationState":
         iteration_state = DefaultSolver.IterationState(dirty=False)
-        iteration_repr_maps: list[REPR_MAP] = []
-
         timings = Times(name="run_iteration")
 
         for phase_name, algo in enumerate(algos):
-            phase_name = str(phase_name + phase_offset)
+            timings.add("_")
 
             if PRINT_START:
                 logger.debug(
                     f"START Iteration {iterno} Phase 2.{phase_name}: {algo.name}"
-                    f" G:{len(data.graphs)}"
+                    f" G:{len(data.mutation_map.output_graphs)}"
                 )
 
-            timings.add("_")
             mutator = Mutator(
-                *data.graphs,
+                data.mutation_map,
                 algo=algo,
                 terminal=terminal,
-                print_context=print_context,
-                iteration_repr_map=data.repr_since_last_iteration.get(algo),
+                iteration=iterno,
             )
-            mutator.run()
-            algo_result = mutator.close()
+            algo_result = mutator.run()
 
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
                     f"DONE  Iteration {iterno} Phase 1.{phase_name}: {algo.name} "
-                    f"G:{len(data.graphs)}"
+                    f"G:{len(data.mutation_map.output_graphs)}"
                 )
-                print_context = mutator.debug_print() or print_context
-
-            # TODO assert all new graphs
+                # atm only one stage
+                algo_result.mutation_stage.print_mutation_table()
 
             iteration_state.dirty |= algo_result.dirty
-            # TODO: optimize so only dirty
-            if not algo.single:
-                data.repr_since_last_iteration[algo] = REPR_MAP(
-                    {k: k for k in mutator.get_output_operables()}
-                )
+            data.mutation_map = data.mutation_map.extend(algo_result.mutation_stage)
 
-            if algo_result.dirty:
-                data.graphs = algo_result.graphs
-                iteration_repr_maps.append(algo_result.repr_map)
-                # append to per-algo iteration repr_map
-                assert algo_result.repr_map
-                for _algo, reprs in data.repr_since_last_iteration.items():
-                    if _algo is algo:
-                        continue
-                    for old_s, old_d in list(reprs.items()):
-                        new_d = algo_result.repr_map.get(old_d)
-                        if new_d is None:
-                            del reprs[old_s]
-                            continue
-                        reprs[old_s] = new_d
             timings.add(
                 f"{algo.name}"
                 f" {'terminal' if terminal else 'non-terminal'}"
                 f" {'dirty' if algo_result.dirty else 'clean'}"
             )
 
-        data.total_repr_map = ReprMap.create_concat_repr_map(
-            data.total_repr_map.repr_map, *iteration_repr_maps
-        )
+        return iteration_state
 
-        return iteration_state, print_context
-
-    def create_or_resume_state(
+    def _create_or_resume_state(
         self, print_context: ParameterOperatable.ReprContext | None, *gs: Graph | Node
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
         _gs = get_graphs(gs)
 
-        if self.simplified_state is None:
-            print_context_ = print_context or ParameterOperatable.ReprContext()
-
-            self.state = DefaultSolver.PartialState(
+        if self.reusable_state is None:
+            return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
-                    graphs=_gs,
-                    total_repr_map=ReprMap.create_from_graphs(*_gs),
-                    repr_since_last_iteration={},
+                    mutation_map=MutationMap.identity(*_gs, print_context=print_context)
                 ),
-                print_context=print_context_,
             )
-            return
-
-        # TODO this function is unreadable, refactor and document
-        # TODO consider using mutator
 
         if print_context is not None:
-            # TODO
-            logger.warning("Ignoring supplied print_context")
-            # raise ValueError("print_context not allowed when using simplified state")
+            raise ValueError("print_context not allowed when using reusable state")
 
-        print_context_ = self.simplified_state.print_context
-        repr_map = self.simplified_state.data.total_repr_map
-
+        mutation_map = self.reusable_state.data.mutation_map
         p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
-        new_p_ops = {
-            p_op
-            for p_op in p_ops
-            if p_op not in repr_map.repr_map and not repr_map.is_removed(p_op)
-        }
+        new_p_ops = {p_op for p_op in p_ops if not mutation_map.is_mapped(p_op)}
 
-        repr_map_new = REPR_MAP(repr_map.repr_map)
+        # TODO consider using mutator
+        transforms = Transformations.identity(
+            *mutation_map.last_stage.output_graphs,
+            input_print_context=mutation_map.output_print_context,
+        )
 
         # mutate new parameters
         new_params = [p for p in new_p_ops if isinstance(p, Parameter)]
         for p in new_params:
             # strip units and copy (for decoupling from old graph)
-            repr_map_new[p] = Parameter(
+            transforms.mutated[p] = Parameter(
                 domain=p.domain,
                 tolerance_guess=p.tolerance_guess,
                 likely_constrained=p.likely_constrained,
@@ -282,10 +206,10 @@ class DefaultSolver(Solver):
         for e in ParameterOperatable.sort_by_depth(new_exprs, ascending=True):
             op_mapped = []
             for op in e.operands:
-                if op in repr_map_new:
-                    op_mapped.append(repr_map_new[op])
+                if op in transforms.mutated:
+                    op_mapped.append(transforms.mutated[op])
                     continue
-                if repr_map.is_removed(op):
+                if mutation_map.is_removed(op):
                     # TODO
                     raise Exception("Using removed operand")
                 if ParameterOperatable.is_literal(op):
@@ -294,20 +218,22 @@ class DefaultSolver(Solver):
                         op = op.to_dimensionless()
                 op_mapped.append(op)
             e_mapped = type(e)(*op_mapped)
-            repr_map_new[e] = e_mapped
+            transforms.mutated[e] = e_mapped
             if isinstance(e, ConstrainableExpression) and e.constrained:
                 assert isinstance(e_mapped, ConstrainableExpression)
                 e_mapped.constrained = True
 
-        graphs = get_graphs(repr_map_new.values())
-
-        self.state = DefaultSolver.PartialState(
+        return DefaultSolver.SolverState(
             data=DefaultSolver.IterationData(
-                graphs=list(graphs),
-                total_repr_map=ReprMap(repr_map_new, removed=repr_map.removed),
-                repr_since_last_iteration={},
+                mutation_map.extend(
+                    MutationStage(
+                        "resume_state",
+                        iteration=0,
+                        transformations=transforms,
+                        print_context=mutation_map.output_print_context,
+                    )
+                )
             ),
-            print_context=print_context_,
         )
 
     @times_out(TIMEOUT)
@@ -316,26 +242,23 @@ class DefaultSolver(Solver):
         *gs: Graph | Node,
         print_context: ParameterOperatable.ReprContext | None = None,
         terminal: bool = True,
-    ) -> tuple[ReprMap, ParameterOperatable.ReprContext]:
+    ) -> SolverState:
         """
         Args:
-        - terminal: if False, no terminal algorithms are allowed
+        - terminal: if True, result of simplication can't be reused, but simplification
+            is more powerful
         """
         timings = Times(name="simplify")
 
         now = time.time()
         if LOG_PICK_SOLVE:
-            logger.info("Phase 1 Solving: Symbolic Solving ".ljust(80, "="))
+            logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
 
-        self.create_or_resume_state(print_context, *gs)
-        assert self.state is not None
+        self.state = self._create_or_resume_state(print_context, *gs)
 
         if S_LOG:
-            _gs = self.state.data.graphs
-            debug_name_mappings(self.state.print_context, *_gs)
-            Mutator.print_all(
-                *_gs, context=self.state.print_context, type_filter=Expression
-            )
+            self.state.data.mutation_map.print_name_mappings()
+            self.state.data.mutation_map.last_stage.print_graph_contents(Expression)
 
         pre_algos = self.algorithms.pre
         it_algos = self.algorithms.iterative
@@ -350,131 +273,45 @@ class DefaultSolver(Solver):
                 raise TimeoutError(
                     "Solver Bug: Too many iterations, likely stuck in a loop"
                 )
-            v_count = sum(
-                len(GraphFunctions(g).nodes_of_type(ParameterOperatable))
-                for g in self.state.data.graphs
-            )
             logger.debug(
-                (
-                    f"Iteration {iterno} "
-                    f"|graphs|: {len(self.state.data.graphs)}, |V|: {v_count}"
-                ).ljust(80, "-")
+                (f"Iteration {iterno} {self.state.data.mutation_map}").ljust(
+                    NET_LINE_WIDTH, "-"
+                )
             )
 
             try:
-                iteration_state, self.state.print_context = (
-                    DefaultSolver._run_iteration(
-                        iterno=iterno,
-                        data=self.state.data,
-                        terminal=terminal,
-                        algos=pre_algos if first_iter else it_algos,
-                        print_context=self.state.print_context,
-                    )
+                iteration_state = DefaultSolver._run_iteration(
+                    iterno=iterno,
+                    data=self.state.data,
+                    terminal=terminal,
+                    algos=pre_algos if first_iter else it_algos,
                 )
             except:
                 if S_LOG:
-                    Mutator.print_all(
-                        *self.state.data.graphs,
-                        context=self.state.print_context,
-                    )
+                    self.state.data.mutation_map.last_stage.print_graph_contents()
                 raise
 
             if not iteration_state.dirty:
                 break
 
-            if not len(self.state.data.graphs):
+            if not len(self.state.data.mutation_map.output_graphs):
                 break
 
             if S_LOG:
-                Mutator.print_all(
-                    *self.state.data.graphs,
-                    context=self.state.print_context,
-                )
+                self.state.data.mutation_map.last_stage.print_graph_contents()
 
         if LOG_PICK_SOLVE:
             logger.info(
                 f"Phase 1 Solving: Analytical Solving done in {iterno} iterations"
-                f" and {time.time() - now:.3f} seconds".ljust(80, "=")
+                f" and {time.time() - now:.3f} seconds".ljust(NET_LINE_WIDTH, "=")
             )
 
         timings.add("terminal" if terminal else "non-terminal")
 
         if not terminal:
-            self.simplified_state = self.state
+            self.reusable_state = self.state
 
-        return self.state.data.total_repr_map, self.state.print_context
-
-    @override
-    def get_any_single(
-        self,
-        operatable: Parameter,
-        lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
-    ) -> Any:
-        # TODO
-        if suppose_constraint is not None:
-            raise NotImplementedError()
-
-        # TODO
-        if minimize is not None:
-            raise NotImplementedError()
-
-        lit = self.inspect_get_known_supersets(operatable)
-        out = lit.any()
-        if lock:
-            operatable.alias_is(out)
-        return out
-
-    @override
-    def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
-        return Solver.SolveResultAll(
-            timed_out=False,
-            has_solution=True,
-        )
-        # raise NotImplementedError()
-
-    @override
-    def inspect_get_known_supersets(
-        self, param: Parameter, force_update: bool = False
-    ) -> P_Set:
-        all_params = GraphFunctions(param.get_graph()).nodes_of_type(
-            ParameterOperatable
-        )
-        g_hash = hash(tuple(sorted(all_params, key=id)))
-        cached_g_hash = self.superset_cache.get(param, (None, None))[0]
-
-        ignore_hash_mismatch = not force_update
-        hash_match = cached_g_hash == g_hash
-        no_cache = cached_g_hash is None
-        valid_hash = hash_match or ignore_hash_mismatch
-
-        if no_cache or not valid_hash:
-            self.update_superset_cache(param)
-
-        return self.superset_cache[param][1]
-
-    def update_superset_cache(self, *nodes: Node):
-        graphs = get_graphs(nodes)
-        try:
-            repr_map, _ = self.simplify_symbolically(*graphs)
-        except TimeoutError:
-            if not ALLOW_PARTIAL_STATE:
-                raise
-            if self.state is None:
-                raise
-            repr_map = self.state.data.total_repr_map
-
-        for g in graphs:
-            pos = GraphFunctions(g).nodes_of_type(ParameterOperatable)
-            g_hash = hash(tuple(sorted(pos, key=id)))
-            for p in pos:
-                if not isinstance(p, Parameter):
-                    continue
-                lit = repr_map.try_get_literal(p, allow_subset=True)
-                # during canonicalization we use domain set
-                assert lit is not None
-                self.superset_cache[p] = g_hash, lit
+        return self.state
 
     @override
     def assert_any_predicate[ArgType](
@@ -483,6 +320,7 @@ class DefaultSolver(Solver):
         lock: bool,
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
+        print_context: ParameterOperatable.ReprContext | None = None,
     ) -> Solver.SolveResultAny[ArgType]:
         # TODO
         if suppose_constraint is not None:
@@ -502,8 +340,6 @@ class DefaultSolver(Solver):
             unknown_predicates=[],
         )
 
-        print_context = ParameterOperatable.ReprContext()
-
         it = iter(predicates)
 
         for p in it:
@@ -511,8 +347,8 @@ class DefaultSolver(Solver):
             assert not pred.constrained
             pred.constrained = True
             try:
-                repr_map, print_context_new = self.simplify_symbolically(
-                    pred.get_graph(), print_context=print_context
+                solver_result = self.simplify_symbolically(
+                    pred.get_graph(), terminal=True
                 )
             except Contradiction as e:
                 if LOG_PICK_SOLVE:
@@ -528,58 +364,44 @@ class DefaultSolver(Solver):
                 if self.state is None:
                     result.unknown_predicates.append(p)
                     continue
-                repr_map, print_context_new = (
-                    self.state.data.total_repr_map,
-                    self.state.print_context,
-                )
+                solver_result = self.state
             finally:
                 pred.constrained = False
 
+            repr_map = solver_result.data.mutation_map
+
             # FIXME: is this correct?
             # definitely breaks a lot
-            new_Gs = get_graphs(repr_map.repr_map.values())
-            repr_pred = repr_map.repr_map.get(pred)
+            new_Gs = repr_map.output_graphs
+            repr_pred = repr_map.map_forward(pred).maps_to
+            print_context_new = repr_map.output_print_context
 
             # FIXME: workaround for above
             if repr_pred is not None:
                 new_Gs = [repr_pred.get_graph()]
 
-            new_preds = [
-                n
-                for new_G in new_Gs
-                for n in GraphFunctions(new_G).nodes_of_type(ConstrainableExpression)
-            ]
+            new_preds = GraphFunctions(*new_Gs).nodes_of_type(ConstrainableExpression)
             not_deducted = [
                 p for p in new_preds if p.constrained and not p._solver_terminated
             ]
 
             if not_deducted:
-                logger.warning(
-                    f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
-                    + (
-                        f" -> {repr_pred.compact_repr(print_context_new)}"
-                        if repr_pred is not None
-                        else ""
-                    )
-                )
-                logger.warning(
-                    f"NOT DEDUCED: \n    {'\n    '.join([
-                        p.compact_repr(print_context_new) for p in not_deducted])}"
-                )
-
                 if LOG_PICK_SOLVE:
-                    debug_name_mappings(
-                        print_context, pred.get_graph(), print_out=logger.warning
-                    )
-                    not_deduced_grouped = groupby(
-                        not_deducted, key=lambda p: p.get_graph()
-                    )
-                    for g, _ in not_deduced_grouped.items():
-                        Mutator.print_all(
-                            g,
-                            context=print_context_new,
-                            print_out=logger.warning,
+                    logger.warning(
+                        f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
+                        + (
+                            f" -> {repr_pred.compact_repr(print_context_new)}"
+                            if repr_pred is not None
+                            else ""
                         )
+                    )
+                    logger.warning(
+                        f"NOT DEDUCED: \n    {'\n    '.join([
+                            p.compact_repr(print_context_new) for p in not_deducted])}"
+                    )
+
+                    repr_map.print_name_mappings(log=logger.warning)
+                    repr_map.last_stage.print_graph_contents(log=logger.warning)
 
                 result.unknown_predicates.append(p)
                 continue
@@ -602,3 +424,50 @@ class DefaultSolver(Solver):
     @override
     def simplify(self, *gs: Graph | Node):
         self.simplify_symbolically(*gs, terminal=False)
+
+    def update_superset_cache(self, *nodes: Node):
+        try:
+            self.simplify_symbolically(*nodes, terminal=True)
+        except TimeoutError:
+            if not ALLOW_PARTIAL_STATE:
+                raise
+            if self.state is None:
+                raise
+
+    def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
+        """
+        Careful, only use after solver ran!
+        """
+        if not self.state:
+            lit = value.try_get_literal_subset()
+            if lit is None:
+                return value.domain_set()
+            return lit
+
+        return not_none(
+            self.state.data.mutation_map.try_get_literal(
+                value, allow_subset=True, domain_default=True
+            )
+        )
+
+    @override
+    def get_any_single(
+        self,
+        operatable: Parameter,
+        lock: bool,
+        suppose_constraint: Predicate | None = None,
+        minimize: Expression | None = None,
+    ) -> Any:
+        # TODO
+        if suppose_constraint is not None:
+            raise NotImplementedError()
+
+        # TODO
+        if minimize is not None:
+            raise NotImplementedError()
+
+        lit = self.inspect_get_known_supersets(operatable)
+        out = lit.any()
+        if lock:
+            operatable.alias_is(out)
+        return out

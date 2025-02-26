@@ -18,6 +18,7 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
     And,
+    ConstrainableExpression,
     Is,
     Or,
     Parameter,
@@ -151,7 +152,7 @@ def pick_module_by_params(
     }
 
     filtered_options = [o for o in options if not o.filter or o.filter(module)]
-    predicates: dict[PickerOption, ParameterOperatable.BooleanLike] = {}
+    predicates: dict[PickerOption, ConstrainableExpression] = {}
     for o in filtered_options:
         predicate_list: list[Predicate] = []
 

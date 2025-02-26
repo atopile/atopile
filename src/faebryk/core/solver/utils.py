@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 
-import io
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
@@ -12,10 +11,7 @@ from statistics import median
 from types import NoneType
 from typing import TYPE_CHECKING, Callable, Iterable, Sequence, TypeGuard, cast
 
-from rich.console import Console
-from rich.table import Table
-
-from faebryk.core.graph import Graph, GraphFunctions
+from faebryk.core.graph import Graph
 from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Associative,
@@ -736,27 +732,6 @@ def merge_parameters(params: Iterable[Parameter]) -> Parameter:
     )
 
 
-def debug_name_mappings(
-    context: ParameterOperatable.ReprContext,
-    *gs: Graph,
-    print_out: Callable[[str], None] = logger.debug,
-):
-    table = Table(title="Name mappings", show_lines=True)
-    table.add_column("Variable name")
-    table.add_column("Node name")
-
-    for g in gs:
-        for p in sorted(
-            GraphFunctions(g).nodes_of_type(Parameter), key=Parameter.get_full_name
-        ):
-            table.add_row(p.compact_repr(context), p.get_full_name())
-
-    if table.rows:
-        console = Console(record=True, width=80, file=io.StringIO())
-        console.print(table)
-        print_out(console.export_text(styles=True))
-
-
 type SolverAlgorithmFunc = "Callable[[Mutator], None]"
 
 
@@ -769,6 +744,9 @@ class SolverAlgorithm:
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 def algorithm(

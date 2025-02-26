@@ -1,7 +1,6 @@
 from types import SimpleNamespace
 from typing import Any
 
-from faebryk.core.cpp import Graph
 from faebryk.core.node import Node
 from faebryk.core.parameter import Expression, Parameter, Predicate
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -44,31 +43,20 @@ class NullSolver(DefaultSolver):
             unknown_predicates=[],
         )
 
-    def find_and_lock_solution(self, G: Graph) -> Solver.SolveResultAll:
-        return Solver.SolveResultAll(timed_out=False, has_solution=False)
-
     def update_superset_cache(self, *nodes: Node):
         pass
 
-    def inspect_get_known_supersets(
-        self, param: Parameter, force_update: bool = True
-    ) -> P_Set:
+    def inspect_get_known_supersets(self, param: Parameter) -> P_Set:
         if param in self._superset_cache:
             return self._superset_cache[param]
 
         if self._repr_map is None:
-            repr_map, _ = self.simplify_symbolically(param.get_graph())
-            self._repr_map = repr_map
+            self._repr_map = self.simplify_symbolically(param).data.mutation_map
 
-        if (
-            param in self._repr_map.repr_map
-            and (lit := self._repr_map.try_get_literal(param, allow_subset=True))
-            is not None
-        ):
-            result = P_Set.from_value(lit)
-        else:
-            result = param.domain_set()
+        lit = self._repr_map.try_get_literal(
+            param, allow_subset=True, domain_default=True
+        )
+        assert lit is not None
 
-        self._superset_cache[param] = result
-
-        return result
+        self._superset_cache[param] = lit
+        return lit

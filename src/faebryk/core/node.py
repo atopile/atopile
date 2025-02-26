@@ -571,7 +571,7 @@ class Node(CNode):
             for p in self.get_children(direct_only=True, types=Parameter)
         }
         params_str = "\n".join(
-            f"{k}: {solver.inspect_get_known_supersets(v, force_update=False)
+            f"{k}: {solver.inspect_get_known_supersets(v)
                     if solver else v}"
             for k, v in params.items()
         )

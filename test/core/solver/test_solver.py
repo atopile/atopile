@@ -61,7 +61,7 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
 from faebryk.libs.units import P, dimensionless, quantity
-from faebryk.libs.util import times
+from faebryk.libs.util import not_none, times
 
 logger = logging.getLogger(__name__)
 
@@ -169,8 +169,8 @@ def test_shortcircuit_logic_or():
     ored.constrain()
     G = ored.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(G)
-    assert repr_map[ored] == BoolSet(True)
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
+    assert repr_map.try_get_literal(ored) == BoolSet(True)
 
 
 def test_inequality_to_set():
@@ -178,6 +178,7 @@ def test_inequality_to_set():
     p0.constrain_le(2.0)
     p0.constrain_ge(1.0)
     solver = DefaultSolver()
+    solver.update_superset_cache(p0)
     assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((1.0, 2.0))
 
 
@@ -203,6 +204,7 @@ def test_subset_of_literal():
     p1.alias_is(p2)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(p0, p1, p2)
     for p in (p0, p1, p2):
         assert solver.inspect_get_known_supersets(p) == RangeWithGaps((0.0, 0.0))
 
@@ -270,6 +272,7 @@ def test_inspect_known_superranges():
     p0 = Parameter(units=P.V, within=Range(1 * P.V, 10 * P.V))
     p0.alias_is(Range(1 * P.V, 3 * P.V) + Range(4 * P.V, 6 * P.V))
     solver = DefaultSolver()
+    solver.update_superset_cache(p0)
     assert solver.inspect_get_known_supersets(p0) == RangeWithGaps((5 * P.V, 9 * P.V))
 
 
@@ -327,8 +330,8 @@ def test_subset_single_alias():
     A.constrain_subset(Single(1 * P.V))
 
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(A.get_graph())
-    assert repr_map[A] == Single(1 * P.V)
+    repr_map = solver.simplify_symbolically(A.get_graph()).data.mutation_map
+    assert repr_map.try_get_literal(A) == Single(1 * P.V)
 
 
 def test_very_simple_alias_class():
@@ -341,11 +344,12 @@ def test_very_simple_alias_class():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(
-        A.get_graph(), print_context=context
+    repr_map = solver.simplify_symbolically(A.get_graph()).data.mutation_map
+    assert (
+        repr_map.try_get_literal(A)
+        == repr_map.try_get_literal(B)
+        == repr_map.try_get_literal(C)
     )
-    r2_map = repr_map.repr_map
-    assert r2_map[A] == r2_map[B] == r2_map[C]
 
 
 def test_domain():
@@ -374,7 +378,7 @@ def test_less_obvious_contradiction_by_literal():
     G = A.get_graph()
     solver = DefaultSolver()
     with pytest.raises(ContradictionByLiteral):
-        repr_map, context = solver.simplify_symbolically(G, print_context=print_context)
+        solver.simplify_symbolically(G, print_context=print_context)
 
 
 def test_symmetric_inequality_correlated():
@@ -389,9 +393,9 @@ def test_symmetric_inequality_correlated():
 
     G = p0.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(G)
-    assert repr_map[p0] == repr_map[p1]
-    assert repr_map[p0] == Range(0 * P.V, 10 * P.V)
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
+    assert repr_map.try_get_literal(p0) == repr_map.try_get_literal(p1)
+    assert repr_map.try_get_literal(p0) == Range(0 * P.V, 10 * P.V)
 
 
 @pytest.mark.parametrize(
@@ -419,8 +423,7 @@ def test_simple_literal_folds_arithmetic(
     G = expr.get_graph()
 
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(G)
-    logger.info(f"{repr_map.repr_map}")
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
     deducted_subset = repr_map.try_get_literal(expr, allow_subset=True)
     assert deducted_subset == expected_result
 
@@ -448,8 +451,10 @@ def test_super_simple_literal_folding(
     (expr <= 100.0).constrain()
     G = expr.get_graph()
 
-    repr_map, context = solver.simplify_symbolically(G)
-    assert repr_map[expr] == Quantity_Interval_Disjoint.from_value(expected)
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
+    assert repr_map.try_get_literal(expr) == Quantity_Interval_Disjoint.from_value(
+        expected
+    )
 
 
 def test_literal_folding_add_multiplicative():
@@ -463,12 +468,13 @@ def test_literal_folding_add_multiplicative():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(G)
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
 
-    rep_add = repr_map.repr_map[expr]
-    rep_A = repr_map.repr_map[A]
-    rep_B = repr_map.repr_map[B]
+    rep_add = repr_map.map_forward(expr).maps_to
+    rep_A = repr_map.map_forward(A).maps_to
+    rep_B = repr_map.map_forward(B).maps_to
     assert isinstance(rep_add, Add)
+    context = repr_map.output_print_context
     assert len(rep_add.operands) == 2, f"{rep_add.compact_repr(context)}"
     mul1, mul2 = rep_add.operands
 
@@ -500,11 +506,12 @@ def test_literal_folding_add_multiplicative_2():
 
     G = expr.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(G)
-    rep_add = repr_map.repr_map[expr]
-    a_res = repr_map.repr_map[A]
-    b_res = repr_map.repr_map[B]
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
+    rep_add = repr_map.map_forward(expr).maps_to
+    a_res = repr_map.map_forward(A).maps_to
+    b_res = repr_map.map_forward(B).maps_to
     assert isinstance(rep_add, Add)
+    assert a_res is not None
     a_ops = [
         op
         for op in a_res.get_operations()
@@ -535,8 +542,10 @@ def test_transitive_subset():
     C.alias_is(Range(0, 10))
 
     solver = DefaultSolver()
-    result, context = solver.simplify_symbolically(A.get_graph(), print_context=context)
-    assert result.try_get_literal(A, allow_subset=True) == Range(0, 10)
+    repr_map = solver.simplify_symbolically(
+        A.get_graph(), print_context=context
+    ).data.mutation_map
+    assert repr_map.try_get_literal(A, allow_subset=True) == Range(0, 10)
 
 
 def test_nested_additions():
@@ -551,12 +560,12 @@ def test_nested_additions():
     D.alias_is(C + A)
 
     solver = DefaultSolver()
-    result, _ = solver.simplify_symbolically(A.get_graph())
+    repr_map = solver.simplify_symbolically(A.get_graph()).data.mutation_map
 
-    assert result.try_get_literal(A) == Quantity_Interval_Disjoint.from_value(1)
-    assert result.try_get_literal(B) == Quantity_Interval_Disjoint.from_value(1)
-    assert result.try_get_literal(C) == Quantity_Interval_Disjoint.from_value(2)
-    assert result.try_get_literal(D) == Quantity_Interval_Disjoint.from_value(3)
+    assert repr_map.try_get_literal(A) == Quantity_Interval_Disjoint.from_value(1)
+    assert repr_map.try_get_literal(B) == Quantity_Interval_Disjoint.from_value(1)
+    assert repr_map.try_get_literal(C) == Quantity_Interval_Disjoint.from_value(2)
+    assert repr_map.try_get_literal(D) == Quantity_Interval_Disjoint.from_value(3)
 
 
 def test_combined_add_and_multiply_with_ranges():
@@ -569,7 +578,7 @@ def test_combined_add_and_multiply_with_ranges():
     C.alias_is(2 * A + B)
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(A, B, C)
     assert solver.inspect_get_known_supersets(C) == Range.from_center_rel(4, 0.01)
 
 
@@ -589,6 +598,7 @@ def test_voltage_divider_find_v_out_no_division():
     # dependency problem prevents finding precise solution of [9/11, 100/11]
     # TODO: automatically rearrange expression to match
     # v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
+    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
 
 
@@ -604,7 +614,7 @@ def test_voltage_divider_find_v_out_with_division():
     v_out.alias_is(v_in * r_bottom / (r_top + r_bottom))
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert solver.inspect_get_known_supersets(v_out) == Range(0.45, 50)
 
 
@@ -620,7 +630,7 @@ def test_voltage_divider_find_v_out_single_variable_occurrences():
     v_out.alias_is(v_in * (1 / (1 + (r_top / r_bottom))))
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert solver.inspect_get_known_supersets(v_out) == Range(9 / 11, 100 / 11)
 
 
@@ -638,6 +648,7 @@ def test_voltage_divider_find_v_in():
     solver = DefaultSolver()
 
     # TODO: should find [9.9, 100]
+    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert solver.inspect_get_known_supersets(v_in) == Range(1.8, 200)
 
 
@@ -656,6 +667,7 @@ def test_voltage_divider_find_resistances():
 
     solver = DefaultSolver()
     # FIXME: this test looks funky
+    solver.update_superset_cache(v_in, v_out, r_top, r_bottom, r_total)
     assert solver.inspect_get_known_supersets(v_out) == Range(0.9 * P.V, 1 * P.V)
 
     # TODO: specify r_top (with tolerance), finish solving to find r_bottom
@@ -674,7 +686,7 @@ def test_voltage_divider_find_r_top():
     # r_top = (v_in * r_bottom) / v_out - r_bottom
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(v_in, v_out, r_top, r_bottom)
     assert solver.inspect_get_known_supersets(r_top) == Range(
         (10 * 0.99**2) / 1.01 - 1.01, (10 * 1.01**2) / 0.99 - 0.99
     )
@@ -705,8 +717,10 @@ def test_base_unit_switch():
 
     G = A.get_graph()
     solver = DefaultSolver()
-    repr_map, context = solver.simplify_symbolically(G)
-    assert repr_map[A] == RangeWithGaps.from_value((100 * P.mAh, 600 * P.mAh))
+    repr_map = solver.simplify_symbolically(G).data.mutation_map
+    assert repr_map.try_get_literal(A) == RangeWithGaps.from_value(
+        (100 * P.mAh, 600 * P.mAh)
+    )
 
 
 @pytest.mark.parametrize("predicate_type", [Is, IsSubset])
@@ -731,8 +745,8 @@ def test_congruence_filter():
     assert y1.is_congruent_to(y2)
 
     solver = DefaultSolver()
-    result, context = solver.simplify_symbolically(x.get_graph())
-    assert result.repr_map[y1] is result.repr_map[y2]
+    repr_map = solver.simplify_symbolically(x.get_graph()).data.mutation_map
+    assert repr_map.map_forward(y1).maps_to == repr_map.map_forward(y2).maps_to
 
 
 def test_inspect_enum_simple():
@@ -741,6 +755,7 @@ def test_inspect_enum_simple():
     A.constrain_subset(F.LED.Color.EMERALD)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A)
     assert solver.inspect_get_known_supersets(A) == F.LED.Color.EMERALD
 
 
@@ -763,6 +778,7 @@ def test_inspect_enum_led():
     led.color.constrain_subset(F.LED.Color.EMERALD)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(led.color)
     assert solver.inspect_get_known_supersets(led.color) == F.LED.Color.EMERALD
 
 
@@ -899,6 +915,7 @@ def test_simple_parameter_isolation(
     Y.alias_is(y)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(X, Y)
 
     assert solver.inspect_get_known_supersets(X) == x_expected
 
@@ -917,6 +934,7 @@ def test_abstract_lowpass():
 
     # solve
     solver = DefaultSolver()
+    solver.update_superset_cache(Li, C, fc)
 
     assert solver.inspect_get_known_supersets(C) == Range(
         6.158765796 * P.GF, 6.410118344 * P.GF
@@ -931,6 +949,7 @@ def test_param_isolation():
     Y.alias_is(Range.from_center_rel(1, 0.01))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(X, Y)
 
     assert solver.inspect_get_known_supersets(X) == Range.from_center_rel(2, 0.02)
 
@@ -959,6 +978,7 @@ def test_extracted_literal_folding(op):
     op(A, B).alias_is(C)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B, C)
 
     assert solver.inspect_get_known_supersets(C) == lito
 
@@ -974,7 +994,7 @@ def test_fold_pow():
     B.alias_is(A**lit_operand)
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(B.get_graph())
+    repr_map = solver.simplify_symbolically(B.get_graph()).data.mutation_map
 
     res = repr_map.try_get_literal(B)
     assert res == lit**lit_operand
@@ -997,10 +1017,13 @@ def test_graph_split():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(app.get_graph(), print_context=context)
+    repr_map = solver.simplify_symbolically(
+        app.get_graph(), print_context=context
+    ).data.mutation_map
 
     assert (
-        repr_map.repr_map[app.A].get_graph() is not repr_map.repr_map[app.B].get_graph()
+        not_none(repr_map.map_forward(app.A).maps_to).get_graph()
+        is not not_none(repr_map.map_forward(app.B).maps_to).get_graph()
     )
 
 
@@ -1013,7 +1036,7 @@ def test_ss_single_into_alias():
     C = A + B
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(C.get_graph())
+    repr_map = solver.simplify_symbolically(C.get_graph()).data.mutation_map
 
     assert repr_map.try_get_literal(B) == 5
     assert repr_map.try_get_literal(A) == Range(5, 10)
@@ -1079,6 +1102,7 @@ def test_can_add_parameters():
     C.alias_is((A + B))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B, C)
 
     assert solver.inspect_get_known_supersets(C) == Range(20, 200)
 
@@ -1105,6 +1129,7 @@ def test_fold_mul_zero():
     (A * B).alias_is(C)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B, C)
 
     assert solver.inspect_get_known_supersets(C) == 0
 
@@ -1119,7 +1144,7 @@ def test_fold_or_true():
     (A | B).alias_is(C)
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(A, B, C)
     assert solver.inspect_get_known_supersets(C) == BoolSet(True)
 
 
@@ -1131,7 +1156,7 @@ def test_fold_not():
     (Not(A)).alias_is(B)
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(A, B)
     assert solver.inspect_get_known_supersets(B) == BoolSet(True)
 
 
@@ -1145,7 +1170,7 @@ def test_fold_ss_transitive():
     A.operation_is_subset(B).constrain()
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(A, B, C)
     assert solver.inspect_get_known_supersets(A) == Range(0, 10)
 
 
@@ -1160,6 +1185,7 @@ def test_ss_intersect():
     C.constrain_subset(B)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B, C)
     assert solver.inspect_get_known_supersets(C) == Range(10, 15)
 
 
@@ -1226,6 +1252,7 @@ def test_fold_literals():
     A.alias_is(Add(Range(0, 10), Range(0, 10)))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A)
     assert solver.inspect_get_known_supersets(A) == Range(0, 20)
 
 
@@ -1263,6 +1290,7 @@ def test_implication():
     A.constrain_subset(Single(10))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B)
     assert solver.inspect_get_known_supersets(B) == Range.from_center_rel(500, 0.1)
 
 
@@ -1281,6 +1309,7 @@ def test_mapping(A_value):
     A.constrain_subset(A_value)
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B)
     assert solver.inspect_get_known_supersets(B) == mapping[A_value]
 
 
@@ -1292,6 +1321,7 @@ def test_subtract_zero(op):
     A.alias_is(op(make_lit(1), make_lit(0)))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A)
     assert solver.inspect_get_known_supersets(A) == make_lit(1)
 
 
@@ -1305,6 +1335,7 @@ def test_canonical_subtract_zero():
     B.alias_is(Add(make_lit(1), Multiply(make_lit(0), make_lit(-1))))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A, B)
     assert solver.inspect_get_known_supersets(A) == make_lit(0)
     assert solver.inspect_get_known_supersets(B) == make_lit(1)
 
@@ -1316,6 +1347,7 @@ def test_nested_fold_scalar():
     A.alias_is(Add(make_lit(1), Multiply(make_lit(2), make_lit(3))))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A)
     assert solver.inspect_get_known_supersets(A) == make_lit(7)
 
 
@@ -1324,6 +1356,7 @@ def test_regression_lit_mul_fold_powers():
     A.alias_is(Power(2, -1) * Power(2, 0.5))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A)
     assert solver.inspect_get_known_supersets(A) == 2**-0.5
 
 
@@ -1337,6 +1370,7 @@ def test_nested_fold_interval():
     )
 
     solver = DefaultSolver()
+    solver.update_superset_cache(A)
     assert solver.inspect_get_known_supersets(A) == Range(5.76, 8.36)
 
 
@@ -1387,6 +1421,7 @@ def test_simplify_non_terminal_manual_test_2():
     ps[origin[0]].alias_is(origin[1])
     solver.simplify(A)
 
+    solver.update_superset_cache(*ps)
     for i, p in enumerate(ps):
         # _inc = increase ** (i - origin[0])
         _inc = 1
@@ -1431,6 +1466,7 @@ def test_abstract_lowpass_ss():
 
     C_expected = 1 / (4 * math.pi**2 * Li_const * fc_const**2)
 
+    solver.update_superset_cache(Li, C, fc)
     assert solver.inspect_get_known_supersets(C) == C_expected
 
 
@@ -1450,7 +1486,7 @@ def test_voltage_divider_find_r_bottom():
     r_top.alias_is(Range.from_center_rel(9 * P.ohm, 0.01))
 
     solver = DefaultSolver()
-
+    solver.update_superset_cache(v_in, v_out, r_top)
     assert solver.inspect_get_known_supersets(r_bottom) == Range.from_center_rel(
         1 * P.ohm, 0.01
     )
@@ -1465,6 +1501,7 @@ def test_min_max_single():
     p1.alias_is(Max(p0))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(p0, p1)
     out = solver.inspect_get_known_supersets(p1)
     assert out == L.Single(10 * P.V)
 
@@ -1480,6 +1517,7 @@ def test_min_max_multi():
     p1.alias_is(Max(p0, p3))
 
     solver = DefaultSolver()
+    solver.update_superset_cache(p0, p1, p3)
     out = solver.inspect_get_known_supersets(p1)
     assert out == L.Single(15 * P.V)
 
@@ -1543,7 +1581,9 @@ def test_fold_correlated():
         p.compact_repr(context)
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(C.get_graph(), print_context=context)
+    repr_map = solver.simplify_symbolically(
+        C.get_graph(), print_context=context
+    ).data.mutation_map
 
     is_lit = repr_map.try_get_literal(C, allow_subset=False)
     ss_lit = repr_map.try_get_literal(C, allow_subset=True)
@@ -1606,7 +1646,7 @@ def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expe
     lits_converted = list(map(make_lit, lits))
     expected_converted = make_lit(expected)
 
-    expr = op(*lits_converted)
+    expr = op(*lits_converted)  # type: ignore
     assert _exec_pure_literal_expressions(expr) == expected_converted
 
     if op is GreaterThan:
@@ -1625,5 +1665,5 @@ def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expe
     result.alias_is(expr)
 
     solver = DefaultSolver()
-    repr_map, _ = solver.simplify_symbolically(result.get_graph())
+    repr_map = solver.simplify_symbolically(result.get_graph()).data.mutation_map
     assert repr_map.try_get_literal(result) == expected_converted

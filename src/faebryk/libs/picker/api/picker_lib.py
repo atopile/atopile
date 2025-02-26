@@ -261,7 +261,7 @@ def _get_compatible_parameters(
     for m_param, c_range in param_mapping:
         # TODO other loglevel
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
-        known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
+        known_superset = solver.inspect_get_known_supersets(m_param)
         if not known_superset.is_superset_of(c_range):
             if LOG_PICK_SOLVE:
                 logger.warning(

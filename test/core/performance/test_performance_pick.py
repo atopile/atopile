@@ -10,7 +10,6 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.core.solver.utils import S_LOG, set_log_level
@@ -65,9 +64,6 @@ def test_performance_pick_real_module(module_type: Callable[[], Module]):
     timings.add("pick tree")
 
     solver = DefaultSolver()
-    p = next(iter(app.get_children(direct_only=False, types=Parameter)))
-    solver.inspect_get_known_supersets(p)
-    timings.add("pre-solve")
 
     with timings.as_global("pick"):
         pick_topologically(pick_tree, solver)

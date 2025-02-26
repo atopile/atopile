@@ -1,16 +1,14 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import io
 import time
 from collections import defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
 
-from rich.console import Console
 from rich.table import Table
 
-from faebryk.libs.logging import TERMINAL_WIDTH
+from faebryk.libs.logging import table_to_string
 from faebryk.libs.units import P, Quantity, to_si
 from faebryk.libs.util import is_numeric_str
 
@@ -187,13 +185,7 @@ class Times:
         for row in rows:
             table.add_row(*row)
 
-        console = Console(
-            record=True,
-            file=io.StringIO(),
-            width=int(TERMINAL_WIDTH) - 40,
-        )
-        console.print(table)
-        return console.export_text(styles=True)
+        return table_to_string(table)
 
     def __repr__(self):
         return self.to_str()
