@@ -235,6 +235,11 @@ class MutationStage:
             ),
         )
 
+    @property
+    @once
+    def is_identity(self) -> bool:
+        return self.transformations.is_identity
+
     def as_identity(self, iteration: int = 0) -> "MutationStage":
         return MutationStage(
             algorithm="identity",
@@ -272,14 +277,24 @@ class MutationStage:
             log(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     def map_forward(self, param: ParameterOperatable) -> ParameterOperatable | None:
-        if not self.transformations:
+        if self.is_identity:
             return param
         return self.transformations.mutated.get(param)
 
+    @property
+    @once
+    def backwards_mapping(
+        self,
+    ) -> dict[ParameterOperatable, list[ParameterOperatable]]:
+        return groupby(
+            self.transformations.mutated.keys(),
+            key=lambda k: self.transformations.mutated[k],
+        )
+
     def map_backward(self, param: ParameterOperatable) -> list[ParameterOperatable]:
-        if not self.transformations:
+        if self.is_identity:
             return [param]
-        return [k for k, v in self.transformations.mutated.items() if v is param]
+        return self.backwards_mapping.get(param, [])
 
     @property
     def output_print_context(self) -> ParameterOperatable.ReprContext:
@@ -416,6 +431,11 @@ class MutationMap:
             raise ValueError("needs at least one stage")
         self.mutation_stages: list[MutationStage] = list(stages)
 
+    @property
+    @once
+    def non_identity_stages(self) -> list[MutationStage]:
+        return [m for m in self.mutation_stages if not m.is_identity]
+
     def map_forward(
         self, param: ParameterOperatable, seek_start: bool = False
     ) -> LookupResult:
@@ -423,12 +443,22 @@ class MutationMap:
         return mapped param, True if removed or False if not mapped
         """
         assert isinstance(param, ParameterOperatable)
+        is_root = param.get_parent() is not None
+
+        if not self.non_identity_stages:
+            out = self.first_stage.map_forward(param)
+            if out is None and is_root:
+                raise KeyErrorNotFound(
+                    f"Looking for root parameter not in graph: {param}"
+                )
+            return MutationMap.LookupResult(maps_to=out)
+
         chain_end: ParameterOperatable = param
         if seek_start:
             first_stage = first(
                 (
                     i
-                    for i, m in enumerate(self.mutation_stages)
+                    for i, m in enumerate(self.non_identity_stages)
                     if chain_end in m.input_operables
                 ),
                 None,
@@ -438,10 +468,9 @@ class MutationMap:
         else:
             first_stage = 0
 
-        for m in self.mutation_stages[first_stage:]:
+        for m in self.non_identity_stages[first_stage:]:
             maps_to = m.map_forward(chain_end)
             if maps_to is None:
-                is_root = param.get_parent() is not None
                 is_start = param is chain_end
                 assert not is_root or is_start, (
                     "should never remove root parameters"
@@ -1315,13 +1344,10 @@ class Mutator:
     def close(self) -> AlgoResult:
         if not self.transformations.dirty:
             return AlgoResult(
-                mutation_stage=MutationStage(
+                mutation_stage=MutationStage.identity(
+                    *self.mutation_map.output_graphs,
                     algorithm=self.algo,
                     iteration=self.iteration,
-                    transformations=Transformations.identity(
-                        *self.mutation_map.output_graphs,
-                        input_print_context=self.print_context,
-                    ),
                     print_context=self.print_context,
                 ),
                 dirty=False,
