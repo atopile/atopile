@@ -449,7 +449,7 @@ class DefaultSolver(Solver):
             lit = value.try_get_literal_subset()
             if lit is None:
                 return value.domain_set()
-            return lit
+            return as_lit(lit)
 
         return not_none(
             self.state.data.mutation_map.try_get_literal(

@@ -366,8 +366,8 @@ def pick_topologically(
             # TODO: Track contradicting constraints back to modules
             raise PickError(
                 "Could not pick all explicitly-specified parts."
-                "Likely contradicting constraints.",
-                module=(m for m, _ in single_part_modules),  # type: ignore # TODO
+                " Likely contradicting constraints.",
+                module=single_part_modules[0][0],  # type: ignore # TODO
             )
         _update_progress(single_part_modules)
 

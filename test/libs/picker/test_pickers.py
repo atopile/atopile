@@ -168,9 +168,10 @@ def test_pick_led_by_colour():
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.has_part_picked)
-    assert solver.inspect_get_known_supersets(
-        led.color, force_update=True
-    ).is_subset_of(EnumSet.from_value(color))
+    solver.update_superset_cache(led)
+    assert solver.inspect_get_known_supersets(led.color).is_subset_of(
+        EnumSet.from_value(color)
+    )
 
 
 def test_reject_diode_for_led():

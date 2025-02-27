@@ -53,6 +53,7 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
+    KeyErrorNotFound,
     cast_assert,
     duplicates,
     groupby,
@@ -448,7 +449,7 @@ class MutationMap:
                     f" {m.algorithm}:{m.iteration}"
                 )
                 if is_root and is_start:
-                    raise ValueError(
+                    raise KeyErrorNotFound(
                         f"Looking for root parameter not in graph: {param}"
                     )
                 return MutationMap.LookupResult(removed=chain_end is not param)
