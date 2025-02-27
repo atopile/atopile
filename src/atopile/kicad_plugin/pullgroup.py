@@ -38,9 +38,6 @@ class PullGroup(pcbnew.ActionPlugin):
         board_path = target_board.GetFileName()
         known_layouts = get_layout_map(board_path)
 
-        log.info(f"Known layouts: {known_layouts}")
-
-        # Since we are one layer too high in the JSON, combine the maps from each group
         combined_addr_map = {}
         combined_uuid_map = {}
         for group_key, group_val in known_layouts.items():
@@ -152,10 +149,6 @@ class PullGroup(pcbnew.ActionPlugin):
             for track in source_board.GetTracks():
                 item = sync_track(source_board, track, target_board, net_map)
                 g.AddItem(item)
-
-            # for via in source_board.GetVias():
-            #     item = sync_via(source_board, via, target_board, net_map)
-            #     g.AddItem(item)
 
             for drawing in source_board.GetDrawings():
                 item = sync_drawing(source_board, drawing, target_board)

@@ -134,6 +134,8 @@ def generate_net_map(
     is added from source pad net (e.g., 'VCC') to target pad net (e.g., 'VCC_3V3').
     """
     net_map: dict[str, str] = {}
+    # Track how many times we've seen each mapping for confidence
+    mapping_counts: dict[str, dict[str, int]] = {}
 
     # Obtain a dictionary of target footprints by their address
     target_fps = footprints_by_addr(target_board, uuid_map)
@@ -169,11 +171,12 @@ def generate_net_map(
                 p for p in target_pads if p.GetNumber() == pad_number
             ]
 
+            target_net = None
+
             if len(matching_target_pads) == 1:
                 # Exact match by number
                 target_pad = matching_target_pads[0]
                 target_net = target_pad.GetNetname()
-                net_map[source_net] = target_net
             elif len(matching_target_pads) > 1:
                 # Multiple pads with same number, find best match by size and shape
                 best_match = None
@@ -195,7 +198,50 @@ def generate_net_map(
 
                 if best_match:
                     target_net = best_match.GetNetname()
+
+            # If we found a target net, update the mapping
+            if target_net and source_net:
+                # Initialize count tracking for this source net if we haven't seen it
+                if source_net not in mapping_counts:
+                    mapping_counts[source_net] = {}
+
+                # Increment the count for this specific mapping
+                current_count = mapping_counts[source_net].get(target_net, 0)
+                mapping_counts[source_net][target_net] = current_count + 1
+
+                # If we've seen this source net before, verify the mapping
+                if source_net in net_map:
+                    # If the existing mapping doesn't match, log a warning
+                    if net_map[source_net] != target_net:
+                        log.warning(
+                            f"Conflicting net mapping for '{source_net}': "
+                            f"'{net_map[source_net]}' vs '{target_net}'. "
+                            f"Using most frequently seen mapping."
+                        )
+
+                        # Use the most frequently seen mapping
+                        most_frequent_target = max(
+                            mapping_counts[source_net].items(), key=lambda x: x[1]
+                        )[0]
+                        net_map[source_net] = most_frequent_target
+                else:
+                    # First time seeing this source net
                     net_map[source_net] = target_net
+
+    # Log mapping confidence statistics
+    for source_net, counts in mapping_counts.items():
+        if len(counts) > 1:
+            log.info(
+                f"Multiple mappings found for source net '{source_net}': {counts}"
+                f" - Using: '{net_map[source_net]}'"
+            )
+        else:
+            # Single mapping with count
+            target_net, count = next(iter(counts.items()))
+            log.debug(
+                f"Net mapping '{source_net}' -> '{target_net}' "
+                f"confirmed {count} times"
+            )
 
     return net_map
 

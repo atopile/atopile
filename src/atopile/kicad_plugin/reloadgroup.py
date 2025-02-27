@@ -76,22 +76,10 @@ class ReloadGroup(pcbnew.ActionPlugin):
             for fp_addr in expected_footprints - footprints_in_group:
                 if fp_addr in footprints:
                     g.AddItem(footprints[fp_addr])
-                    log.debug(f"Added footprint {fp_addr}")
-                else:
-                    log.warning(
-                        f"Footprint {fp_addr} not found in footprints dictionary"
-                    )
 
             # FIXME: nested groups are not yet supported
             if group_data["nested_groups"]:
                 raise NotImplementedError("Nested groups are not yet supported")
-            # Then sync the nested groups
-            # for nested_group_addr in group_data["nested_groups"]:
-            #     if nested_group_addr in groups:
-            #         g.AddItem(groups[nested_group_addr])
-            #         log.debug(f"Added nested group {nested_group_addr}")
-            #     else:
-            #         log.warning(f"Nested group {nested_group_addr} missing.")
 
 
 with log_exceptions():
