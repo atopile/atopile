@@ -24,6 +24,7 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
+from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
@@ -33,10 +34,7 @@ from faebryk.core.solver.mutator import (
 from faebryk.core.solver.utils import (
     Associative,
     FullyAssociative,
-    algorithm,
-    flatten_associative,
-    get_correlations,
-    get_expressions_involved_in,
+    MutatorUtils,
 )
 from faebryk.libs.library import L
 from faebryk.libs.units import P
@@ -81,7 +79,7 @@ def _create_letters(
 )
 def test_flatten_associative(op: type[Expression]):
     def flatten(op):
-        return flatten_associative(op, lambda _, __: True)
+        return MutatorUtils.flatten_associative(op, lambda _, __: True)
 
     if issubclass(op, Logic):
         domain = L.Domains.BOOL()
@@ -147,26 +145,26 @@ def test_get_expressions_involved_in():
 
     E1 = A + B
 
-    res = get_expressions_involved_in(E1)
+    res = MutatorUtils.get_expressions_involved_in(E1)
     assert res == set()
 
     E2 = E1 + A
 
-    res = get_expressions_involved_in(E1)
+    res = MutatorUtils.get_expressions_involved_in(E1)
     assert res == {E2}
 
     E3 = E2 + B
 
-    res = get_expressions_involved_in(E1)
+    res = MutatorUtils.get_expressions_involved_in(E1)
     assert res == {E2, E3}
 
-    res = get_expressions_involved_in(E2)
+    res = MutatorUtils.get_expressions_involved_in(E2)
     assert res == {E3}
 
-    res = get_expressions_involved_in(E2, up_only=False)
+    res = MutatorUtils.get_expressions_involved_in(E2, up_only=False)
     assert res == {E1, E3}
 
-    res = get_expressions_involved_in(E2, up_only=False, include_root=True)
+    res = MutatorUtils.get_expressions_involved_in(E2, up_only=False, include_root=True)
     assert res == {E1, E2, E3}
 
 
@@ -182,7 +180,7 @@ def test_get_correlations_basic():
     expr = Add(A, B, C)
 
     # Test correlations
-    correlations = list(get_correlations(expr))
+    correlations = list(MutatorUtils.get_correlations(expr))
 
     # We expect A and B to be correlated
     assert len(correlations) == 1
@@ -203,8 +201,8 @@ def test_get_correlations_nested_uncorrelated():
     o = A.alias_is(B)  # A and B are correlated through an Is expression
     inner = A + B
     expr = inner + C
-    correlations = list(get_correlations(expr))
-    inner_correlations = list(get_correlations(inner))
+    correlations = list(MutatorUtils.get_correlations(expr))
+    inner_correlations = list(MutatorUtils.get_correlations(inner))
 
     # no correlations between C and (A + B)
     assert not correlations
@@ -223,8 +221,8 @@ def test_get_correlations_nested_correlated():
     o = A.alias_is(B)  # A and B are correlated through an Is expression
     inner = A + C
     expr = inner + B
-    correlations = list(get_correlations(expr))
-    inner_correlations = list(get_correlations(inner))
+    correlations = list(MutatorUtils.get_correlations(expr))
+    inner_correlations = list(MutatorUtils.get_correlations(inner))
 
     # no correlations between C and A
     assert not inner_correlations
@@ -238,7 +236,7 @@ def test_get_correlations_nested_correlated():
 def test_get_correlations_self_correlated():
     A = Parameter()
     E = A + A
-    correlations = list(get_correlations(E))
+    correlations = list(MutatorUtils.get_correlations(E))
     assert len(correlations) == 1
     op1, op2, overlap_exprs = correlations[0]
     assert {op1, op2} == {A}
@@ -251,17 +249,17 @@ def test_get_correlations_shared_predicates():
 
     E = A + B
 
-    correlations = list(get_correlations(E))
+    correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
 
     E2 = Is(A * B, L.Range(0, 10))
 
-    correlations = list(get_correlations(E))
+    correlations = list(MutatorUtils.get_correlations(E))
     assert not correlations
 
     E2.constrain()
 
-    correlations = list(get_correlations(E))
+    correlations = list(MutatorUtils.get_correlations(E))
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]
@@ -282,7 +280,7 @@ def test_get_correlations_correlated_regression():
     a_neg = A * -1
     E = B + a_neg
 
-    correlations = list(get_correlations(E))
+    correlations = list(MutatorUtils.get_correlations(E))
     assert len(correlations) == 1
 
     op1, op2, overlap_exprs = correlations[0]

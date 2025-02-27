@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass
 from typing import Any, Protocol
 
 from faebryk.core.graph import Graph
@@ -22,18 +21,6 @@ LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 
 
 class Solver(Protocol):
-    type PredicateWithInfo[ArgType] = tuple[ConstrainableExpression, ArgType]
-
-    @dataclass
-    class SolveResult:
-        timed_out: bool
-
-    @dataclass
-    class SolveResultAny[ArgType](SolveResult):
-        true_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-        false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-        unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-
     def get_any_single(
         self,
         operatable: Parameter,
@@ -58,29 +45,26 @@ class Solver(Protocol):
         """
         ...
 
-    def assert_any_predicate[ArgType](
+    def try_fullfill(
         self,
-        predicates: list["Solver.PredicateWithInfo[ArgType]"],
+        predicate: ConstrainableExpression,
         lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
-    ) -> SolveResultAny[ArgType]:
+        allow_unknown: bool = False,
+    ) -> bool:
         """
-        Make at least one of the passed predicates true, unless that is impossible.
+        Try to fullfill the predicate.
 
         Args:
-            predicates: A list of predicates to solve.
-            suppose_constraint: An optional constraint that can be added to make solving
-                                easier. It is only in effect for the duration of the
-                                solve call.
-            minimize: An optional expression to minimize while solving.
-            lock: If True, add the solutions as constraints.
+            predicate: The predicate to fullfill.
+            lock: If True, ensure the result is part of the solution set of
+                  the expression.
 
         Returns:
-            A SolveResult object containing the true, false, and unknown predicates.
-
-        Note:
-            There is no specific order in which the predicates are solved.
+            True if found definite answer, False if allow_unknown and e.g Timeout or
+            no deduction possible
+        Raises:
+            TimeoutError if not allow_unknown and timeout
+            Contradiction if predicate proved false
         """
         ...
 

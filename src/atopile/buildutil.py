@@ -337,7 +337,6 @@ def generate_module_map(app: Module, solver: Solver) -> None:
 def generate_variable_report(app: Module, solver: Solver) -> None:
     """Generate a report of all the variable values in the design."""
     # TODO: support other file formats
-    solver.update_superset_cache(app)
     export_parameters_to_file(
         app, solver, config.build.paths.output_base.with_suffix(".variables.md")
     )

@@ -17,6 +17,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
+from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
@@ -37,8 +38,6 @@ from faebryk.core.solver.utils import (
     PRINT_START,
     S_LOG,
     TIMEOUT,
-    Contradiction,
-    SolverAlgorithm,
     get_graphs,
 )
 from faebryk.libs.logging import NET_LINE_WIDTH
@@ -321,112 +320,67 @@ class DefaultSolver(Solver):
         return self.state
 
     @override
-    def assert_any_predicate[ArgType](
+    def try_fullfill(
         self,
-        predicates: list["Solver.PredicateWithInfo[ArgType]"],
+        predicate: ConstrainableExpression,
         lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
-        print_context: ParameterOperatable.ReprContext | None = None,
-    ) -> Solver.SolveResultAny[ArgType]:
-        # TODO
-        if suppose_constraint is not None:
-            raise NotImplementedError()
+        allow_unknown: bool = True,
+    ) -> bool | None:
+        pred = predicate
+        assert not pred.constrained
+        pred.constrained = True
 
-        # TODO
-        if minimize is not None:
-            raise NotImplementedError()
+        try:
+            solver_result = self.simplify_symbolically(pred.get_graph(), terminal=True)
+        except TimeoutError:
+            if not allow_unknown:
+                raise
+            return None
+        finally:
+            pred.constrained = False
 
-        if not predicates:
-            raise ValueError("No predicates given")
+        repr_map = solver_result.data.mutation_map
 
-        result = Solver.SolveResultAny(
-            timed_out=False,
-            true_predicates=[],
-            false_predicates=[],
-            unknown_predicates=[],
-        )
+        # FIXME: is this correct?
+        # definitely breaks a lot
+        new_Gs = repr_map.output_graphs
+        repr_pred = repr_map.map_forward(pred).maps_to
+        print_context_new = repr_map.output_print_context
 
-        it = iter(predicates)
+        # FIXME: workaround for above
+        if repr_pred is not None:
+            new_Gs = [repr_pred.get_graph()]
 
-        for p in it:
-            pred, _ = p
-            assert not pred.constrained
-            pred.constrained = True
-            try:
-                solver_result = self.simplify_symbolically(
-                    pred.get_graph(), terminal=True
+        new_preds = GraphFunctions(*new_Gs).nodes_of_type(ConstrainableExpression)
+        not_deducted = [
+            p for p in new_preds if p.constrained and not p._solver_terminated
+        ]
+
+        if not_deducted:
+            if LOG_PICK_SOLVE:
+                logger.warning(
+                    f"PREDICATE not deducible: {pred.compact_repr()}"
+                    + (
+                        f" -> {repr_pred.compact_repr(print_context_new)}"
+                        if repr_pred is not None
+                        else ""
+                    )
                 )
-            except Contradiction as e:
-                if LOG_PICK_SOLVE:
-                    logger.warning(f"CONTRADICTION: {pred.compact_repr(print_context)}")
-                    logger.warning(f"CAUSE: {e}")
-                result.false_predicates.append(p)
-                continue
-            except TimeoutError:
-                if LOG_PICK_SOLVE:
-                    logger.warning(f"TIMEOUT: {pred.compact_repr(print_context)}")
-                if not ALLOW_PARTIAL_STATE:
-                    raise
-                if self.state is None:
-                    result.unknown_predicates.append(p)
-                    continue
-                solver_result = self.state
-            finally:
-                pred.constrained = False
-
-            repr_map = solver_result.data.mutation_map
-
-            # FIXME: is this correct?
-            # definitely breaks a lot
-            new_Gs = repr_map.output_graphs
-            repr_pred = repr_map.map_forward(pred).maps_to
-            print_context_new = repr_map.output_print_context
-
-            # FIXME: workaround for above
-            if repr_pred is not None:
-                new_Gs = [repr_pred.get_graph()]
-
-            new_preds = GraphFunctions(*new_Gs).nodes_of_type(ConstrainableExpression)
-            not_deducted = [
-                p for p in new_preds if p.constrained and not p._solver_terminated
-            ]
-
-            if not_deducted:
-                if LOG_PICK_SOLVE:
-                    logger.warning(
-                        f"PREDICATE not deducible: {pred.compact_repr(print_context)}"
-                        + (
-                            f" -> {repr_pred.compact_repr(print_context_new)}"
-                            if repr_pred is not None
-                            else ""
-                        )
-                    )
-                    logger.warning(
-                        f"NOT DEDUCED: \n    {'\n    '.join([
+                logger.warning(
+                    f"NOT DEDUCED: \n    {'\n    '.join([
                             p.compact_repr(print_context_new) for p in not_deducted])}"
-                    )
+                )
 
-                    repr_map.print_name_mappings(log=logger.warning)
-                    repr_map.last_stage.print_graph_contents(log=logger.warning)
+                repr_map.print_name_mappings(log=logger.warning)
+                repr_map.last_stage.print_graph_contents(log=logger.warning)
 
-                result.unknown_predicates.append(p)
-                continue
+            if not allow_unknown:
+                raise Exception("Could not deduce")
+            return None
 
-            result.true_predicates.append(p)
-            # This is allowed, but we might want to add an option to prohibit
-            # short-circuiting
-            break
-
-        result.unknown_predicates.extend(it)
-
-        if lock and result.true_predicates:
-            if len(result.true_predicates) > 1:
-                # TODO, move this decision to caller (see short-circuiting)
-                logger.warning("Multiple true predicates, locking first")
-            result.true_predicates[0][0].constrain()
-
-        return result
+        if lock:
+            pred.constrain()
+        return True
 
     @override
     def simplify(self, *gs: Graph | Node):

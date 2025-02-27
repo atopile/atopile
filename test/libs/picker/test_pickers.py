@@ -15,6 +15,7 @@ from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.api.picker_lib import (
+    NotCompatibleException,
     check_and_attach_candidates,
     get_candidates,
 )
@@ -184,9 +185,8 @@ def test_reject_diode_for_led():
 
     solver = DefaultSolver()
     candidates = get_candidates(diode.get_tree(types=F.Diode), solver)
-    ok = check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
-
-    assert not ok
+    with pytest.raises(NotCompatibleException):
+        check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
 
 
 def test_pick_error_group():

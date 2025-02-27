@@ -15,15 +15,9 @@ from faebryk.core.parameter import (
     Reflexive,
     UnaryIdentity,
 )
+from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
-from faebryk.core.solver.utils import (
-    FullyAssociative,
-    algorithm,
-    alias_is_literal,
-    alias_is_literal_and_check_predicate_eval,
-    flatten_associative,
-    is_literal,
-)
+from faebryk.core.solver.utils import FullyAssociative
 from faebryk.libs.util import (
     unique,
 )
@@ -50,7 +44,7 @@ def reflexive_predicates(mutator: Mutator):
         if pred.operands[0] is not pred.operands[1]:
             continue
 
-        alias_is_literal_and_check_predicate_eval(pred, True, mutator)
+        mutator.utils.alias_is_literal_and_check_predicate_eval(pred, True)
 
 
 @algorithm("Idempotent deduplicate", terminal=False)
@@ -99,8 +93,8 @@ def unary_identity_unpack(mutator: Mutator):
         if len(expr.operands) != 1:
             continue
         inner = expr.operands[0]
-        if is_literal(inner):
-            alias_is_literal(expr, inner, mutator, terminate=True)
+        if mutator.utils.is_literal(inner):
+            mutator.utils.alias_is_literal(expr, inner, terminate=True)
         else:
             mutator.mutate_unpack_expression(expr)
 
@@ -121,8 +115,8 @@ def involutory_fold(mutator: Mutator):
             continue
         assert isinstance(inner, type(expr))
         innest = inner.operands[0]
-        if is_literal(innest):
-            alias_is_literal(expr, innest, mutator, terminate=True)
+        if mutator.utils.is_literal(innest):
+            mutator.utils.alias_is_literal(expr, innest, terminate=True)
         else:
             mutator.mutator_neutralize_expressions(expr)
 
@@ -159,7 +153,7 @@ def associative_flatten(mutator: Mutator):
         return True
 
     for expr in root_ops:
-        res = flatten_associative(expr, is_replacable)
+        res = mutator.utils.flatten_associative(expr, is_replacable)
         if not res.destroyed_operations:
             continue
 

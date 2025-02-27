@@ -23,25 +23,18 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
+from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.utils import (
     S_LOG,
     SHOW_SS_IS,
     VERBOSE_TABLE,
     CanonicalExpression,
     ContradictionByLiteral,
-    SolverAlgorithm,
+    MutatorUtils,
     SolverAll,
     SolverAllExtended,
     SolverLiteral,
-    alias_is_literal,
-    find_congruent_expression,
-    get_aliases,
     get_graphs,
-    get_lit_mapping_from_lit_expr,
-    get_supersets,
-    is_alias_is_literal,
-    is_subset_literal,
-    try_extract_literal,
 )
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.logging import table_to_string
@@ -50,7 +43,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     Quantity_Set,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import P_Set, as_lit
 from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -263,7 +256,10 @@ class MutationStage:
                 nodes = [
                     n
                     for n in pre_nodes
-                    if not (is_alias_is_literal(n) or is_subset_literal(n))
+                    if not (
+                        MutatorUtils.is_alias_is_literal(n)
+                        or MutatorUtils.is_subset_literal(n)
+                    )
                 ]
             out = ""
             node_by_depth = groupby(nodes, key=ParameterOperatable.get_depth)
@@ -327,7 +323,9 @@ class MutationStage:
             key_from_ops = " \n  ".join(o.compact_repr(context_old) for o in from_ops)
             key_from_ops = f"  {key_from_ops}"
             value = op.compact_repr(context_new)
-            if is_alias_is_literal(op) or is_subset_literal(op):
+            if MutatorUtils.is_alias_is_literal(op) or MutatorUtils.is_subset_literal(
+                op
+            ):
                 expr = next(iter(op.operatable_operands))
                 lit = next(iter(op.get_operand_literals().values()))
                 if not SHOW_SS_IS and expr in created_ops:
@@ -365,7 +363,7 @@ class MutationStage:
             if (
                 isinstance(s, ConstrainableExpression)
                 and new.replace("✓", "") == old.replace("✓", "")
-                and try_extract_literal(d) != try_extract_literal(s)
+                and d.try_get_literal() != s.try_get_literal()
                 and new.count("✓") == old.count("✓") + 1
             ):
                 # done by proven/disproven
@@ -553,9 +551,12 @@ class MutationMap:
         maps_to = self.map_forward(param).maps_to
         if not isinstance(maps_to, ParameterOperatable):
             return _default()
-        lit = try_extract_literal(maps_to, allow_subset=allow_subset)
+        lit = ParameterOperatable.try_extract_literal(
+            maps_to, allow_subset=allow_subset
+        )
         if lit is None:
             return _default()
+        lit = as_lit(lit)
         if isinstance(lit, Quantity_Set):
             fac = quantity(1, HasUnit.get_units(param))
             return lit * fac / fac.to_base_units().m
@@ -818,8 +819,8 @@ class Mutator:
         copy_only = expression_factory is type(expr) and operands == expr.operands
         if not copy_only and not ignore_existing:
             assert issubclass(expression_factory, CanonicalExpression)
-            exists = find_congruent_expression(
-                expression_factory, *operands, mutator=self, allow_uncorrelated=False
+            exists = self.utils.find_congruent_expression(
+                expression_factory, *operands, allow_uncorrelated=False
             )
             if exists is not None:
                 return self._mutate(expr, self.get_copy(exists))
@@ -870,7 +871,11 @@ class Mutator:
         # Avoid alias X to Op1(lit) if X is!! Op2(lit)
         congruent = {
             alias
-            for alias in (get_aliases(expr) if soft is Is else get_supersets(expr))
+            for alias in (
+                self.utils.get_aliases(expr)
+                if soft is Is
+                else self.utils.get_supersets(expr)
+            )
             if isinstance(alias, expression_factory)
             and alias.is_congruent_to_factory(
                 expression_factory, operands, allow_uncorrelated=True
@@ -1006,10 +1011,9 @@ class Mutator:
         expr = None
         if check_exists:
             # TODO look in old & new graph
-            expr = find_congruent_expression(
+            expr = self.utils.find_congruent_expression(
                 expr_factory,
                 *operands,
-                mutator=self,
                 allow_uncorrelated=allow_uncorrelated,
             )
 
@@ -1051,7 +1055,7 @@ class Mutator:
     def constrain(self, *po: ConstrainableExpression, terminate: bool = False):
         for p in po:
             p.constrain()
-            alias_is_literal(p, True, self, terminate=terminate)
+            self.utils.alias_is_literal(p, True, terminate=terminate)
 
     def predicate_terminate(self, pred: ConstrainableExpression):
         assert pred.constrained
@@ -1144,10 +1148,10 @@ class Mutator:
             # Taking into account if op with no literal merged into a op with literal
             mapping = self._mutations_since_last_iteration.has_merged
             for new, olds in mapping.items():
-                new_lit = try_extract_literal(new)
+                new_lit = self.utils.try_extract_literal(new)
                 if new_lit is None:
                     continue
-                old_lits = {try_extract_literal(o) for o in olds}
+                old_lits = {self.utils.try_extract_literal(o) for o in olds}
                 if old_lits == {new_lit}:
                     continue
                 aliases.update(new.get_operations(Is, constrained_only=True))
@@ -1155,7 +1159,7 @@ class Mutator:
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
 
-        return (expr for expr in aliases if is_alias_is_literal(expr))
+        return (expr for expr in aliases if self.utils.is_alias_is_literal(expr))
 
     def _get_literal_subsets(self, new_only: bool = True):
         subsets: set[CanonicalExpression]
@@ -1167,10 +1171,12 @@ class Mutator:
             # Taking into account if op with no literal merged into a op with literal
             mapping = self._mutations_since_last_iteration.has_merged
             for new, olds in mapping.items():
-                new_lit = try_extract_literal(new, allow_subset=True)
+                new_lit = self.utils.try_extract_literal(new, allow_subset=True)
                 if new_lit is None:
                     continue
-                old_lits = {try_extract_literal(o, allow_subset=True) for o in olds}
+                old_lits = {
+                    self.utils.try_extract_literal(o, allow_subset=True) for o in olds
+                }
                 if old_lits == {new_lit}:
                     continue
                 subsets.update(new.get_operations(IsSubset, constrained_only=True))
@@ -1178,37 +1184,41 @@ class Mutator:
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
 
-        return (expr for expr in subsets if is_subset_literal(expr))
+        return (expr for expr in subsets if self.utils.is_subset_literal(expr))
 
     def get_literal_mappings(self, new_only: bool = True, allow_subset: bool = False):
         # TODO better exceptions
 
         ops = self.get_literal_aliases(new_only=new_only)
-        mapping = {get_lit_mapping_from_lit_expr(op) for op in ops}
+        mapping = {self.utils.get_lit_mapping_from_lit_expr(op) for op in ops}
         dupes = duplicates(mapping, lambda x: x[0])
         if dupes:
             raise ContradictionByLiteral(
                 "Literal contradictions",
                 list(dupes.keys()),
                 list(v[1] for vs in dupes.values() for v in vs),
+                mutator=self,
             )
         mapping_dict = dict(mapping)
 
         if allow_subset:
             ops_ss = self._get_literal_subsets(new_only=new_only)
-            mapping_ss = [get_lit_mapping_from_lit_expr(op) for op in ops_ss]
+            mapping_ss = [self.utils.get_lit_mapping_from_lit_expr(op) for op in ops_ss]
             grouped_ss = groupby(mapping_ss, key=lambda t: t[0])
             for k, v in grouped_ss.items():
                 ss_lits = [ss_lit for _, ss_lit in v]
                 merged_ss = P_Set.intersect_all(*ss_lits)
                 if merged_ss.is_empty():
-                    raise ContradictionByLiteral("Empty intersection", [k], ss_lits)
+                    raise ContradictionByLiteral(
+                        "Empty intersection", [k], ss_lits, mutator=self
+                    )
                 if k in mapping_dict:
                     if not mapping_dict[k].is_subset_of(merged_ss):  # type: ignore
                         raise ContradictionByLiteral(
                             "ss lit doesn't match is_lit",
                             [k],
                             [mapping_dict[k], *ss_lits],
+                            mutator=self,
                         )
                     continue
                 mapping_dict[k] = merged_ss
@@ -1236,6 +1246,8 @@ class Mutator:
         self.terminal = terminal
         self.mutation_map = mutation_map
         self.iteration = iteration
+
+        self.utils = MutatorUtils(self)
 
         self._G: set[Graph] = set(mutation_map.output_graphs)
         self.print_context = mutation_map.output_print_context

@@ -18,6 +18,7 @@ from faebryk.core.parameter import (
     Add,
     And,
     Arithmetic,
+    ConstrainableExpression,
     Expression,
     GreaterOrEqual,
     GreaterThan,
@@ -34,7 +35,6 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
     Power,
-    Predicate,
     Round,
     Sin,
     Subtract,
@@ -52,11 +52,8 @@ from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
 from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
 from faebryk.libs.picker.lcsc import LCSC_Part
-from faebryk.libs.picker.picker import (
-    PickerOption,
-    pick_module_by_params,
-    pick_part_recursively,
-)
+from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
+from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     Quantity_Set,
@@ -745,16 +742,13 @@ def test_base_unit_switch():
 
 
 @pytest.mark.parametrize("predicate_type", [Is, IsSubset])
-def test_assert_any_predicate_super_basic(predicate_type: type[Predicate]):
+def test_try_fullfill_super_basic(predicate_type: type[ConstrainableExpression]):
     p0 = Parameter(units=P.V)
     p0.alias_is(Range(0 * P.V, 10 * P.V))
 
     solver = DefaultSolver()
     pred = predicate_type(p0, Range(0 * P.V, 10 * P.V))
-    result = solver.assert_any_predicate([(pred, None)], lock=False)
-    assert result.true_predicates == [(pred, None)]
-    assert result.false_predicates == []
-    assert result.unknown_predicates == []
+    assert solver.try_fullfill(pred, lock=False)
 
 
 def test_congruence_filter():
@@ -786,11 +780,8 @@ def test_regression_enum_contradiction():
     A.constrain_subset(L.EnumSet(F.LED.Color.BLUE, F.LED.Color.RED))
 
     solver = DefaultSolver()
-    result = solver.assert_any_predicate(
-        [(Is(A, F.LED.Color.EMERALD), None)], lock=False
-    )
-    assert not result.true_predicates
-    assert result.false_predicates
+    with pytest.raises(Contradiction):
+        solver.try_fullfill(Is(A, F.LED.Color.EMERALD), lock=False)
 
 
 def test_inspect_enum_led():
@@ -819,7 +810,7 @@ def test_simple_pick():
                     "max_brightness": 285 * P.mcandela,
                     "forward_voltage": L.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
-                },
+                },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
         ],
@@ -845,7 +836,7 @@ def test_simple_negative_pick():
                     "max_brightness": 285 * P.mcandela,
                     "forward_voltage": L.Single(3.7 * P.volt),
                     "max_current": 100 * P.mA,
-                },
+                },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
             PickerOption(
@@ -855,7 +846,7 @@ def test_simple_negative_pick():
                     "max_brightness": 28.5 * P.mcandela,
                     "forward_voltage": L.Single(3.1 * P.volt),
                     "max_current": 100 * P.mA,
-                },
+                },  # type: ignore
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
         ],
@@ -1283,16 +1274,14 @@ def test_deduce_negative():
     p = Not(A)
 
     solver = DefaultSolver()
-    res = solver.assert_any_predicate([(p, None)], lock=False)
-    assert res.true_predicates == [(p, None)]
+    assert solver.try_fullfill(p, lock=False)
 
 
 def test_empty_and():
     solver = DefaultSolver()
 
     p = And()
-    res = solver.assert_any_predicate([(p, None)], lock=False)
-    assert res.true_predicates == [(p, None)]
+    assert solver.try_fullfill(p, lock=False)
 
 
 def test_implication():

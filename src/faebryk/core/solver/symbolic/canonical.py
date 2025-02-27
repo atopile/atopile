@@ -40,13 +40,11 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
+from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     SolverAllExtended,
-    algorithm,
-    alias_is_literal,
     make_lit,
-    subset_to,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
@@ -70,11 +68,10 @@ def constrain_within_domain(mutator: Mutator):
     for param in mutator.nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param, override_within=True, within=None)
         if param.within is not None:
-            subset_to(new_param, param.within, mutator, from_ops=[param])
-        subset_to(
+            mutator.utils.subset_to(new_param, param.within, from_ops=[param])
+        mutator.utils.subset_to(
             new_param,
             param.domain_set(),
-            mutator,
             from_ops=[param],
         )
 
@@ -90,7 +87,7 @@ def alias_predicates_to_true(mutator: Mutator):
             new_predicate = cast_assert(
                 ConstrainableExpression, mutator.mutate_expression(predicate)
             )
-            alias_is_literal(new_predicate, True, mutator)
+            mutator.utils.alias_is_literal(new_predicate, True)
             # reset solver flag
             mutator.predicate_reset_termination(new_predicate)
 

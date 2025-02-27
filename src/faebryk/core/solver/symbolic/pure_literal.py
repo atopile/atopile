@@ -25,13 +25,12 @@ from faebryk.core.parameter import (
     SymmetricDifference,
     Union,
 )
+from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalExpression,
+    MutatorUtils,
     SolverLiteral,
-    algorithm,
-    alias_is_literal_and_check_predicate_eval,
-    is_pure_literal_expression,
     make_lit,
 )
 from faebryk.libs.sets.quantity_sets import (
@@ -78,7 +77,7 @@ _CanonicalExpressions = {
 
 
 def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral:
-    assert is_pure_literal_expression(expr)
+    assert MutatorUtils.is_pure_literal_expression(expr)
     return _CanonicalExpressions[type(expr)](*expr.operands)
 
 
@@ -94,7 +93,7 @@ def fold_pure_literal_expressions(mutator: Mutator):
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
-        if not is_pure_literal_expression(expr):
+        if not mutator.utils.is_pure_literal_expression(expr):
             continue
 
         # if expression is not evaluatable that's fine
@@ -104,4 +103,4 @@ def fold_pure_literal_expressions(mutator: Mutator):
         except (ValueError, NotImplementedError, ZeroDivisionError):
             continue
         # type ignore because function sig is not 100% correct
-        alias_is_literal_and_check_predicate_eval(expr, result, mutator)  # type: ignore
+        mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)  # type: ignore

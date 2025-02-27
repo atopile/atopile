@@ -2,45 +2,50 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-import pprint
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from textwrap import indent
-from typing import Any, Callable, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 from rich.progress import Progress
 
 import faebryk.library._F as F
 from atopile.cli.console import error_console
+from faebryk.core.cpp import Graph
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
-    And,
-    ConstrainableExpression,
-    Is,
-    Or,
     Parameter,
-    ParameterOperatable,
-    Predicate,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.utils import Contradiction, get_graphs
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     ConfigFlag,
+    EquivalenceClasses,
     KeyErrorAmbiguous,
     KeyErrorNotFound,
     Tree,
     indented_container,
-    not_none,
     partition,
     try_or,
 )
 
+if TYPE_CHECKING:
+    from faebryk.libs.picker.localpick import PickerOption
+
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
 logger = logging.getLogger(__name__)
+
+
+class DescriptiveProperties(StrEnum):
+    manufacturer = "Manufacturer"
+    partno = "Partnumber"
+    datasheet = "Datasheet"
 
 
 class Supplier(ABC):
@@ -52,29 +57,6 @@ class Supplier(ABC):
 class Part:
     partno: str
     supplier: Supplier
-
-
-class DescriptiveProperties(StrEnum):
-    manufacturer = "Manufacturer"
-    partno = "Partnumber"
-    datasheet = "Datasheet"
-
-
-@dataclass(frozen=True)
-class PickerOption:
-    part: Part
-    params: dict[str, ParameterOperatable.SetLiteral] | None = None
-    """
-    Parameters that need to be matched for this option to be valid.
-
-    Assumes specified params are narrowest possible value for this part
-    """
-    filter: Callable[[Module], bool] | None = None
-    pinmap: dict[str, F.Electrical] | None = None
-    info: dict[str | DescriptiveProperties, str] | None = None
-
-    def __hash__(self):
-        return hash(self.part)
 
 
 class PickError(Exception):
@@ -115,82 +97,12 @@ class PickErrorChildren(PickError):
         }
 
 
-class PickErrorParams(PickError):
-    def __init__(self, module: Module, options: list[PickerOption], solver: Solver):
-        self.options = options
-
-        MAX = 5
-
-        options_str = "\n".join(
-            f"{pprint.pformat(o.params, indent=4)}" for o in self.options[:MAX]
-        )
-        if len(self.options) > MAX:
-            options_str += f"\n... and {len(self.options) - MAX} more"
-
-        message = (
-            f"Could not find part for {module}"
-            f"\nwith params:\n{indent(module.pretty_params(solver), ' '*4)}"
-            f"\nin options:\n {indent(options_str, ' '*4)}"
-        )
-        super().__init__(message, module)
+class NotCompatibleException(Exception):
+    pass
 
 
 class does_not_require_picker_check(Parameter.TraitT.decless()):
     pass
-
-
-def pick_module_by_params(
-    module: Module, solver: Solver, options: Iterable[PickerOption]
-):
-    if module.has_trait(F.has_part_picked):
-        logger.debug(f"Ignoring already picked module: {module}")
-        return
-
-    params = {
-        not_none(p.get_parent())[1]: p
-        for p in module.get_children(direct_only=True, types=Parameter)
-    }
-
-    filtered_options = [o for o in options if not o.filter or o.filter(module)]
-    predicates: dict[PickerOption, ConstrainableExpression] = {}
-    for o in filtered_options:
-        predicate_list: list[Predicate] = []
-
-        for k, v in (o.params or {}).items():
-            if not k.startswith("_"):
-                param = params[k]
-                predicate_list.append(Is(param, v))
-
-        # No predicates, thus always valid option
-        if len(predicate_list) == 0:
-            predicates[o] = Or(True)
-            continue
-
-        predicates[o] = And(*predicate_list)
-
-    if len(predicates) == 0:
-        raise PickErrorParams(module, list(options), solver)
-
-    solve_result = solver.assert_any_predicate(
-        [(p, k) for k, p in predicates.items()], lock=True
-    )
-
-    # FIXME handle failure parameters
-
-    # pick first valid option
-    if not solve_result.true_predicates:
-        raise PickErrorParams(module, list(options), solver)
-
-    _, option = next(iter(solve_result.true_predicates))
-
-    if option.pinmap:
-        module.add(F.can_attach_to_footprint_via_pinmap(option.pinmap))
-
-    option.part.supplier.attach(module, option)
-    module.add(F.has_part_picked(option.part))
-
-    logger.debug(f"Attached {option.part.partno} to {module}")
-    return option
 
 
 class PickerProgress:
@@ -300,6 +212,35 @@ def check_missing_picks(module: Module):
             )
 
 
+# TODO: tests & use
+def find_independend_groups(
+    modules: Iterable[Module], solver: Solver
+) -> list[list[Module]]:
+    """
+    Find groups of modules that are independent of each other.
+    """
+    from faebryk.core.solver.defaultsolver import DefaultSolver
+
+    assert isinstance(solver, DefaultSolver)
+    state = solver.reusable_state
+    if state is None:
+        return [list(modules)]
+
+    graphs = EquivalenceClasses()
+    graph_to_m = defaultdict[Graph, list[Module]](list)
+    for m in modules:
+        params = m.get_trait(F.is_pickable_by_type).get_parameters().values()
+        new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
+        m_graphs = get_graphs(new_params)
+        graphs.add_eq(*m_graphs)
+        for g in m_graphs:
+            graph_to_m[g].append(m)
+
+    graph_groups: list[set[Graph]] = graphs.get()
+    module_groups = [[m for g in gg for m in graph_to_m[g]] for gg in graph_groups]
+    return module_groups
+
+
 def pick_topologically(
     tree: Tree[Module],
     solver: Solver,
@@ -313,6 +254,7 @@ def pick_topologically(
         get_candidates,
     )
 
+    tree_backup = set(tree.keys())
     timings = Times(name="pick")
 
     if LOG_PICK_SOLVE:
@@ -361,14 +303,15 @@ def pick_topologically(
     ]
     if single_part_modules:
         with timings.as_global("pick single candidate modules"):
-            ok = check_and_attach_candidates(single_part_modules, solver)
-        if not ok:
-            # TODO: Track contradicting constraints back to modules
-            raise PickError(
-                "Could not pick all explicitly-specified parts."
-                " Likely contradicting constraints.",
-                module=single_part_modules[0][0],  # type: ignore # TODO
-            )
+            try:
+                check_and_attach_candidates(single_part_modules, solver)
+            except Contradiction:
+                # TODO: Track contradicting constraints back to modules
+                raise PickError(
+                    "Could not pick all explicitly-specified parts."
+                    " Likely contradicting constraints.",
+                    module=single_part_modules[0][0],  # type: ignore # TODO
+                )
         _update_progress(single_part_modules)
 
         tree = update_pick_tree(tree)
@@ -376,13 +319,17 @@ def pick_topologically(
 
     # heuristic: try pick first candidate for rest
     with timings.as_global("fast-pick"):
-        ok = check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-        if ok:
+        try:
+            check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
+        except Contradiction | NotCompatibleException:
+            logger.warning("Could not pick all parts atomically")
+            # no need to update candidates, slow picking does by itself
+        else:
+            # TODO remove
+            solver.update_superset_cache(*[m for m, _ in candidates])
             _update_progress(candidates)
             logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
             return
-        # no need to update candidates, slow picking does by itself
-    logger.warning("Could not pick all parts atomically")
 
     logger.warning("Falling back to extremely slow picking one by one")
     # Works by looking for each module again for compatible parts
@@ -395,6 +342,8 @@ def pick_topologically(
             _update_progress(module)
 
     logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
+    logger.info("Verify design")
+    solver.update_superset_cache(*tree_backup)
 
 
 # TODO should be a Picker

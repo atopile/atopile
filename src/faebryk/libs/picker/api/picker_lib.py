@@ -34,7 +34,11 @@ from faebryk.libs.picker.lcsc import (
     check_attachable,
     get_raw,
 )
-from faebryk.libs.picker.picker import PickError, does_not_require_picker_check
+from faebryk.libs.picker.picker import (
+    NotCompatibleException,
+    PickError,
+    does_not_require_picker_check,
+)
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -211,10 +215,6 @@ def _attach(module: Module, c: Component):
         )
 
 
-class NotCompatibleException(Exception):
-    pass
-
-
 def _get_compatible_parameters(
     module: Module, c: "Component", solver: Solver
 ) -> dict[Parameter, ParameterOperatable.Literal]:
@@ -282,14 +282,9 @@ def _check_candidates_compatible(
     """
 
     if not module_candidates:
-        return True
+        return
 
-    try:
-        mappings = [
-            _get_compatible_parameters(m, c, solver) for m, c in module_candidates
-        ]
-    except NotCompatibleException:
-        return False
+    mappings = [_get_compatible_parameters(m, c, solver) for m, c in module_candidates]
 
     if LOG_PICK_SOLVE:
         logger.info(f"Solving for modules:" f" {[m for m, _ in module_candidates]}")
@@ -300,9 +295,7 @@ def _check_candidates_compatible(
         for m_param, c_range in not_none(param_mapping).items()
     )
 
-    result = solver.assert_any_predicate([(And(*predicates), None)], lock=False)
-
-    return len(result.true_predicates) == 1
+    solver.try_fullfill(And(*predicates), lock=False)
 
 
 # public -------------------------------------------------------------------------------
@@ -314,9 +307,11 @@ def check_and_attach_candidates(
     """
     Check if given candidates are compatible with each other
     If so, attach them to the modules
+    Raises:
+        Contradiction
+        NotCompatibleException
     """
-    if not _check_candidates_compatible(candidates, solver):
-        return False
+    _check_candidates_compatible(candidates, solver)
 
     for m, part in candidates:
         _attach(m, part)
@@ -326,8 +321,6 @@ def check_and_attach_candidates(
                 f"Attached {part.lcsc_display} ('{part.description}') to "
                 f"'{m.get_full_name(types=False)}'"
             )
-
-    return True
 
 
 def get_candidates(
