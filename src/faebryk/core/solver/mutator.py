@@ -441,11 +441,17 @@ class MutationMap:
         for m in self.mutation_stages[first_stage:]:
             maps_to = m.map_forward(chain_end)
             if maps_to is None:
-                assert param.get_parent() is None, "should never remove root parameters"
-                logger.debug(
-                    f"chain_end {param} -> {chain_end} interrupted at"
+                is_root = param.get_parent() is not None
+                is_start = param is chain_end
+                assert not is_root or is_start, (
+                    "should never remove root parameters"
+                    f" chain_end {param} -> {chain_end} interrupted at"
                     f" {m.algorithm}:{m.iteration}"
                 )
+                if is_root and is_start:
+                    raise ValueError(
+                        f"Looking for root parameter not in graph: {param}"
+                    )
                 return MutationMap.LookupResult(removed=chain_end is not param)
             chain_end = maps_to
         return MutationMap.LookupResult(maps_to=chain_end)
