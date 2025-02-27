@@ -296,7 +296,7 @@ def test_mutation_map_compressed_mapping_forwards_identity():
     mapping = MutationMap.identity(graph, print_context=context)
 
     f = mapping.compressed_mapping_forwards
-    assert f == {v: v for v in variables}
+    assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
 
 
 def test_mutation_map_compressed_mapping_backwards_identity():

@@ -54,17 +54,17 @@ def test_voltage_propagation():
         p1.connect(p2)
 
     F.is_bus_parameter.resolve_bus_parameters(powers[0].get_graph())
-    assert (
-        DefaultSolver()
-        .inspect_get_known_supersets(powers[-1].voltage)
-        .is_subset_of(L.Range(10 * P.V, 15 * P.V))
+    solver = DefaultSolver()
+    solver.update_superset_cache(*powers)
+    assert solver.inspect_get_known_supersets(powers[-1].voltage).is_subset_of(
+        L.Range(10 * P.V, 15 * P.V)
     )
 
     powers[3].voltage.constrain_subset(10 * P.V)
-    assert (
-        DefaultSolver()
-        .inspect_get_known_supersets(powers[0].voltage)
-        .is_subset_of(L.Single(10 * P.V))
+
+    solver.update_superset_cache(*powers)
+    assert solver.inspect_get_known_supersets(powers[0].voltage).is_subset_of(
+        L.Single(10 * P.V)
     )
 
 
@@ -93,6 +93,7 @@ def test_current_consumption_sum_zero():
 
     F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
+    solver.update_superset_cache(test)
     out = solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
     assert out.is_subset_of(L.Single(0 * P.mA))
 
@@ -122,6 +123,6 @@ def test_current_consumption_sum_negative():
 
     F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
-
     with pytest.raises(Contradiction):
+        solver.update_superset_cache(test)
         solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
