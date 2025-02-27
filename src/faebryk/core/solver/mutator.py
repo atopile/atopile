@@ -6,7 +6,9 @@ import logging
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
+from enum import Enum, auto
 from itertools import chain
+from textwrap import indent
 from types import UnionType
 from typing import Any, Callable, Iterable, Sequence, cast
 
@@ -173,6 +175,154 @@ class Transformations:
             f", copied={copied}"
             f", terminated={terminated}"
         )
+
+
+@dataclass
+class Traceback:
+    class Type(Enum):
+        NOOP = auto()
+        PASSTHROUGH = auto()
+        COPIED = auto()
+        CREATED = auto()
+        SOFT_REPLACED = auto()
+        MERGED = auto()
+        MUTATED = auto()
+
+    @dataclass
+    class Stage:
+        srcs: list[ParameterOperatable]
+        dst: ParameterOperatable
+        algo: str
+        reason: "Traceback.Type"
+        src_context: ParameterOperatable.ReprContext
+        dst_context: ParameterOperatable.ReprContext
+
+    stage: Stage
+    back: "list[Traceback]" = field(default_factory=list)
+
+    def visit(self, visitor: Callable[["Traceback", int], bool]) -> None:
+        """
+        Visit all nodes in the traceback tree in a depth-first manner without recursion.
+
+        Args:
+            visitor: A function that takes a Traceback node and depth as arguments.
+                    Returns True to continue traversal into children, False to skip.
+        """
+        # Stack contains tuples of (node, depth)
+        stack = [(self, 0)]
+
+        while stack:
+            current, depth = stack.pop()
+
+            # Visit the current node
+            continue_traversal = visitor(current, depth)
+
+            # If visitor returns True and there are children, add them to the stack
+            if continue_traversal and current.back:
+                # Add children in reverse order to maintain DFS left-to-right traversal
+                for child in reversed(current.back):
+                    stack.append((child, depth + 1))
+
+    def filtered(self) -> "Traceback":
+        """
+        NOOP & PASSTHROUGH stages always have exactly one source
+            (which is the destination)
+        This function returns a new traceback with all NOOP & PASSTHROUGH stages removed
+        ```
+        CREATED
+         NOOP
+          COPIED
+        ```
+        becomes
+        ```
+        CREATED
+         COPIED
+        ```
+        """
+        # Create a mapping of original nodes to their filtered counterparts
+        node_map: dict[int, Traceback] = {}
+
+        # Create a new root traceback with the same stage as the original
+        result = Traceback(stage=self.stage)
+        node_map[id(self)] = result
+
+        # Stack for DFS traversal: (original_node, filtered_parent)
+        stack: list[tuple[Traceback, Traceback]] = []
+
+        # Initialize stack with children of root
+        for child in self.back:
+            stack.append((child, result))
+
+        while stack:
+            original, filtered_parent = stack.pop()
+
+            if original.stage.reason in {
+                Traceback.Type.NOOP,
+                Traceback.Type.PASSTHROUGH,
+                Traceback.Type.COPIED,
+            }:
+                # For NOOP stages, skip this node but process its children
+                for grandchild in original.back:
+                    stack.append((grandchild, filtered_parent))
+            else:
+                # For non-NOOP stages, create a filtered node
+                filtered_node = Traceback(stage=original.stage)
+                filtered_parent.back.append(filtered_node)
+                node_map[id(original)] = filtered_node
+
+                # Process children of this node
+                for child in original.back:
+                    stack.append((child, filtered_node))
+
+        return result
+
+    def get_leaves(self) -> list[ParameterOperatable]:
+        leaves = []
+
+        def _collect_leaves(node, depth):
+            if not node.back:
+                leaves.extend(node.stage.srcs)
+            return True
+
+        self.visit(_collect_leaves)
+        return leaves
+
+    def __str__(self) -> str:
+        lines = []
+
+        def build_string(node: "Traceback", depth: int):
+            reason = node.stage.reason.name
+            src_count = len(node.stage.srcs)
+
+            def _format_src(s: ParameterOperatable) -> str:
+                out = s.compact_repr(node.stage.src_context)
+                if s.get_parent() is not None:
+                    out += f":  {s.get_full_name()}"
+                return out
+
+            src_info = ""
+            if src_count > 1:
+                src_info += indented_container(_format_src(s) for s in node.stage.srcs)
+            elif src_count == 1:
+                src_info += " <- " + _format_src(node.stage.srcs[0])
+
+            line = indent(
+                f"{reason}[{node.stage.algo[:17].strip()}] {src_info}",
+                prefix=" " * depth,
+            )
+            lines.append(line)
+            return True  # Continue traversal
+
+        self.visit(build_string)
+        return "\n".join(lines)
+
+    def __repr__(self) -> str:
+        # TODO
+        return f"Traceback({id(self):04x}){self.stage.reason.name}"
+
+    def __rich_repr__(self):
+        # TODO
+        yield repr(self)
 
 
 class MutationStage:
@@ -417,6 +567,47 @@ class MutationStage:
 
             log(table_to_string(table))
 
+    def get_traceback_stage(self, param: ParameterOperatable) -> Traceback.Stage:
+        dst = param
+        algo = (
+            self.algorithm if isinstance(self.algorithm, str) else self.algorithm.name
+        )
+
+        if self.is_identity:
+            srcs = [param]
+            reason = Traceback.Type.NOOP
+        elif param in self.input_operables:
+            srcs = [param]
+            reason = Traceback.Type.PASSTHROUGH
+        elif param in self.transformations.created:
+            srcs = self.transformations.created[param]
+            reason = Traceback.Type.CREATED
+        elif param in self.transformations.soft_replaced:
+            srcs = [
+                k for k, v in self.transformations.soft_replaced.items() if v is param
+            ]
+            reason = Traceback.Type.SOFT_REPLACED
+        else:
+            origins = self.map_backward(param)
+            srcs = origins
+            if len(origins) == 1:
+                origin = origins[0]
+                if origin in self.transformations.copied:
+                    reason = Traceback.Type.COPIED
+                else:
+                    reason = Traceback.Type.MUTATED
+            else:
+                reason = Traceback.Type.MERGED
+
+        return Traceback.Stage(
+            srcs=srcs,
+            dst=dst,
+            reason=reason,
+            algo=algo,
+            src_context=self.input_print_context,
+            dst_context=self.output_print_context,
+        )
+
 
 class MutationMap:
     @dataclass
@@ -652,6 +843,21 @@ class MutationMap:
 
         if table.rows:
             log(table_to_string(table))
+
+    def get_traceback(self, param: ParameterOperatable) -> Traceback:
+        start = self.last_stage.get_traceback_stage(param)
+        out = Traceback(stage=start)
+        deepest = [out]
+        for m in reversed(self.mutation_stages[:-1]):
+            new_deepest = []
+            for tb in deepest:
+                for op in tb.stage.srcs:
+                    branch = m.get_traceback_stage(op)
+                    new_tb = Traceback(stage=branch)
+                    new_deepest.append(new_tb)
+                    tb.back.append(new_tb)
+            deepest = new_deepest
+        return out
 
     @property
     @once
@@ -1215,7 +1421,7 @@ class Mutator:
                 if k in mapping_dict:
                     if not mapping_dict[k].is_subset_of(merged_ss):  # type: ignore
                         raise ContradictionByLiteral(
-                            "ss lit doesn't match is_lit",
+                            "is lit not subset of ss lits",
                             [k],
                             [mapping_dict[k], *ss_lits],
                             mutator=self,

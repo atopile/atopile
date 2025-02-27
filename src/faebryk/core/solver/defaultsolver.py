@@ -24,7 +24,7 @@ from faebryk.core.solver.mutator import (
     Mutator,
     Transformations,
 )
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeductibleException, Solver
 from faebryk.core.solver.symbolic import (
     canonical,
     expression_groups,
@@ -324,7 +324,7 @@ class DefaultSolver(Solver):
         self,
         predicate: ConstrainableExpression,
         lock: bool,
-        allow_unknown: bool = True,
+        allow_unknown: bool = False,
     ) -> bool | None:
         pred = predicate
         assert not pred.constrained
@@ -375,7 +375,7 @@ class DefaultSolver(Solver):
                 repr_map.last_stage.print_graph_contents(log=logger.warning)
 
             if not allow_unknown:
-                raise Exception("Could not deduce")
+                raise NotDeductibleException(pred, not_deducted)
             return None
 
         if lock:

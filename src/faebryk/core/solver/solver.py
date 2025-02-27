@@ -20,6 +20,19 @@ logger = logging.getLogger(__name__)
 LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 
 
+class NotDeductibleException(Exception):
+    def __init__(
+        self,
+        predicate: ConstrainableExpression,
+        not_deduced: list[ConstrainableExpression],
+    ):
+        self.predicate = predicate
+        self.not_deduced = not_deduced
+
+    def __str__(self):
+        return f"Could not deduce predicate: {self.predicate}"
+
+
 class Solver(Protocol):
     def get_any_single(
         self,

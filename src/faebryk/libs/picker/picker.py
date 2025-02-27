@@ -20,7 +20,7 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
     Parameter,
 )
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeductibleException, Solver
 from faebryk.core.solver.utils import Contradiction, get_graphs
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -60,7 +60,7 @@ class Part:
 
 
 class PickError(Exception):
-    def __init__(self, message: str, module: Module):
+    def __init__(self, message: str, *module: Module):
         super().__init__(message)
         self.message = message
         self.module = module
@@ -265,9 +265,15 @@ def pick_topologically(
     def _get_candidates(_tree: Tree[Module]):
         # with timings.as_global("pre-solve"):
         #    solver.simplify(*get_graphs(tree.keys()))
-        with timings.as_global("new estimates"):
-            # Rerun solver for new system
-            solver.update_superset_cache(*_tree)
+        try:
+            with timings.as_global("new estimates"):
+                # Rerun solver for new system
+                solver.update_superset_cache(*_tree)
+        except Contradiction as e:
+            raise PickError(
+                f"Design contains contradiction: {str(e)}",
+                *_tree.keys(),
+            )
         with timings.as_global("get candidates"):
             candidates = list(get_candidates(_tree, solver).items())
         if LOG_PICK_SOLVE:
@@ -304,13 +310,14 @@ def pick_topologically(
     if single_part_modules:
         with timings.as_global("pick single candidate modules"):
             try:
-                check_and_attach_candidates(single_part_modules, solver)
-            except Contradiction:
-                # TODO: Track contradicting constraints back to modules
+                check_and_attach_candidates(
+                    single_part_modules, solver, allow_not_deductible=True
+                )
+            except Contradiction as e:
                 raise PickError(
                     "Could not pick all explicitly-specified parts."
-                    " Likely contradicting constraints.",
-                    module=single_part_modules[0][0],  # type: ignore # TODO
+                    f" Likely contradicting constraints: {str(e)}",
+                    *[m for m, _ in single_part_modules],
                 )
         _update_progress(single_part_modules)
 
@@ -321,10 +328,11 @@ def pick_topologically(
     with timings.as_global("fast-pick"):
         try:
             check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-        except Contradiction | NotCompatibleException:
+        except (Contradiction, NotCompatibleException, NotDeductibleException):
             logger.warning("Could not pick all parts atomically")
             # no need to update candidates, slow picking does by itself
         else:
+            # REALLLY DO REMOVE THIS
             # TODO remove
             solver.update_superset_cache(*[m for m, _ in candidates])
             _update_progress(candidates)

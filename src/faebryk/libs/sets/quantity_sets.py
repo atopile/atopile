@@ -80,7 +80,15 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
 
     def _format_number(self, number: Number, num_decimals: int = 9) -> str:
         if self.units.is_compatible_with(dimensionless):
+            if math.isinf(number):
+                return "∞" if number > 0 else "-∞"
+            if number == 0:
+                return "0"
+            rel_dif = abs((number - round(number)) / number)
+            if rel_dif < 1e-6:
+                return round_str(number, 0)
             return round_str(number, num_decimals)
+
         return to_si_str(
             self.base_to_units(number), self.units, num_decimals=num_decimals
         )

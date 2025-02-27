@@ -7,6 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations
 from statistics import median
+from textwrap import indent
 from types import NoneType
 from typing import TYPE_CHECKING, Callable, Counter, Iterable, Sequence, TypeGuard, cast
 
@@ -38,6 +39,7 @@ from faebryk.libs.util import (
     ConfigFlagFloat,
     ConfigFlagInt,
     KeyErrorAmbiguous,
+    indented_container,
     partition,
     unique_ref,
 )
@@ -89,7 +91,37 @@ class Contradiction(Exception):
         self.mutator = mutator
 
     def __str__(self):
-        return f"{self.msg}: Involved: {self.involved_exprs}"
+        involved_str = indented_container(
+            p.compact_repr(self.mutator.print_context) for p in self.involved_exprs
+        )
+
+        tracebacks = {
+            p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
+        }
+
+        def _get_origins(p: ParameterOperatable) -> list[ParameterOperatable]:
+            return tracebacks[p].get_leaves()
+
+        for p, tb in tracebacks.items():
+            tb_str = (
+                f"{p.compact_repr(self.mutator.print_context)}:"
+                f" <-\n{indent(str(tb.filtered()), ' ')}"
+            )
+            logger.warning(tb_str)
+
+        origins = [_get_origins(p) for p in self.involved_exprs]
+        origins_str = indented_container(
+            (
+                [
+                    f"{o.compact_repr(self.mutator.mutation_map.input_print_context)}:"
+                    f" {o.get_full_name()}"
+                    for o in os
+                ]
+                for os in origins
+            ),
+            recursive=True,
+        )
+        return f"{self.msg}\nInvolved: {involved_str}\nOrigins: {origins_str}"
 
 
 class ContradictionByLiteral(Contradiction):
@@ -104,7 +136,8 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
 
     def __str__(self):
-        return f"{super().__str__()}\n" f"Literals: {self.literals}"
+        literals_str = indented_container(str(lit) for lit in self.literals)
+        return f"{super().__str__()}\nLiterals: {literals_str}"
 
 
 SolverLiteral = CanonicalLiteral
