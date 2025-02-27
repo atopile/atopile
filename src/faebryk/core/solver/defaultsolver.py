@@ -175,7 +175,7 @@ class DefaultSolver(Solver):
 
         mutation_map = self.reusable_state.data.mutation_map
         p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
-        new_p_ops = {p_op for p_op in p_ops if not mutation_map.is_mapped(p_op)}
+        new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
         # TODO consider using mutator
         transforms = Transformations.identity(
@@ -183,7 +183,7 @@ class DefaultSolver(Solver):
             input_print_context=mutation_map.output_print_context,
         )
 
-        # mutate new parameters
+        # inject new parameters
         new_params = [p for p in new_p_ops if isinstance(p, Parameter)]
         for p in new_params:
             # strip units and copy (for decoupling from old graph)
@@ -201,17 +201,24 @@ class DefaultSolver(Solver):
                 guess=quantity(p.guess, dimensionless) if p.guess is not None else None,
             )
 
-        # mutate new expressions
+        # inject new expressions
         new_exprs = {e for e in new_p_ops if isinstance(e, Expression)}
         for e in ParameterOperatable.sort_by_depth(new_exprs, ascending=True):
+            if S_LOG:
+                logger.debug(
+                    f"injecting {e.compact_repr(mutation_map.input_print_context)}"
+                )
             op_mapped = []
             for op in e.operands:
                 if op in transforms.mutated:
                     op_mapped.append(transforms.mutated[op])
                     continue
-                if mutation_map.is_removed(op):
+                if isinstance(op, ParameterOperatable) and mutation_map.is_removed(op):
                     # TODO
                     raise Exception("Using removed operand")
+                if op in mutation_map.first_stage.input_operables:
+                    op_mapped.append(not_none(mutation_map.map_forward(op).maps_to))
+                    continue
                 if ParameterOperatable.is_literal(op):
                     op = as_lit(op)
                     if isinstance(op, Quantity_Interval_Disjoint):

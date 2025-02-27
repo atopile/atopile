@@ -10,7 +10,9 @@ from typing import Any, Iterable
 import pytest
 
 import faebryk.library._F as F
+from faebryk.core.cpp import Graph
 from faebryk.core.module import Module
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
     Abs,
     Add,
@@ -64,6 +66,25 @@ from faebryk.libs.units import P, dimensionless, quantity
 from faebryk.libs.util import not_none, times
 
 logger = logging.getLogger(__name__)
+
+
+def _create_letters(
+    n: int, units=dimensionless
+) -> tuple[ParameterOperatable.ReprContext, list[Parameter], Graph]:
+    context = ParameterOperatable.ReprContext()
+
+    out = []
+
+    class App(Node):
+        def __preinit__(self) -> None:
+            for _ in range(n):
+                p = Parameter(units=units)
+                name = p.compact_repr(context)
+                self.add(p, name)
+                out.append(p)
+
+    app = App()
+    return context, out, app.get_graph()
 
 
 def test_solve_phase_one():
@@ -1403,7 +1424,8 @@ def test_simplify_non_terminal_manual_test_2():
     FBRK_LOG_PICK_SOLVE=y FBRK_SLOG=y and read log
     """
 
-    A, B, C = ps = times(3, lambda: Parameter(units=P.V))
+    context, ps, graph = _create_letters(3, units=P.V)
+    A, B, C = ps
 
     INCREASE = 20 * P.percent
     TOLERANCE = 5 * P.percent
@@ -1415,7 +1437,7 @@ def test_simplify_non_terminal_manual_test_2():
         p1.constrain_subset(p2 / increase)
 
     solver = DefaultSolver()
-    solver.simplify(A)
+    solver.simplify_symbolically(A, terminal=False, print_context=context)
 
     origin = 1, as_lit(Range(9 * P.V, 11 * P.V))
     ps[origin[0]].alias_is(origin[1])
@@ -1433,7 +1455,7 @@ def test_simplify_non_terminal_manual_test_2():
                 _inc /= increase
 
         p_lit = solver.inspect_get_known_supersets(p)
-        print(f"p[{i}]_lit", p_lit)
+        print(f"{p.compact_repr(context)}, lit:", p_lit)
         assert p_lit.is_subset_of(origin[1] * _inc)
         p.alias_is(p_lit)
         solver.simplify(p)

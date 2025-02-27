@@ -193,6 +193,9 @@ class MutationStage:
         self.iteration = iteration
         self.transformations = transformations
         self.input_print_context = print_context
+        self.input_operables = GraphFunctions(*self.input_graphs).nodes_of_type(
+            ParameterOperatable
+        )
 
     @property
     def output_graphs(self) -> list[Graph]:
@@ -209,11 +212,6 @@ class MutationStage:
     @property
     def input_graphs(self) -> list[Graph]:
         return get_graphs(self.transformations.mutated.keys())
-
-    @property
-    @once
-    def input_operables(self) -> set[ParameterOperatable]:
-        return GraphFunctions(*self.input_graphs).nodes_of_type(ParameterOperatable)
 
     @property
     @once
@@ -423,6 +421,7 @@ class MutationMap:
         """
         return mapped param, True if removed or False if not mapped
         """
+        assert isinstance(param, ParameterOperatable)
         chain_end: ParameterOperatable = param
         if seek_start:
             first_stage = first(
@@ -533,7 +532,7 @@ class MutationMap:
         return lit
 
     def __repr__(self) -> str:
-        return f"ReprMap({self.mutation_stages})"
+        return f"ReprMap({str(self)})"
 
     def __str__(self) -> str:
         return (

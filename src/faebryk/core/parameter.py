@@ -838,7 +838,10 @@ class Expression(ParameterOperatable):
         return out
 
     def __rich_repr__(self):
-        yield self.compact_repr()
+        if not self._is_setup:
+            yield f"{type(self)}(not init)"
+        else:
+            yield self.compact_repr()
 
 
 @abstract
