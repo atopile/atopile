@@ -155,18 +155,47 @@ def generate_net_map(
         if not target_fp:
             continue
 
-        # For each pad in the source footprint, map its net to the corresponding pad
-        # in the target footprint
-        src_pads = src_fp.Pads()
-        tgt_pads = target_fp.Pads()
-        for i, src_pad in enumerate(src_pads):
-            # Only proceed if the target footprint has this pad index
-            if i >= len(tgt_pads):
-                continue
-            src_net = src_pad.GetNetname()
-            tgt_net = tgt_pads[i].GetNetname()
-            # Add the mapping from source net to target net
-            net_map[src_net] = tgt_net
+        # For each pad in the source footprint, map its net to the pad in the target
+        source_pads = list(src_fp.Pads())
+        target_pads = list(target_fp.Pads())
+
+        # Match pads by pad number, handling duplicate pad numbers by comparing size
+        for source_pad in source_pads:
+            pad_number = source_pad.GetNumber()
+            source_net = source_pad.GetNetname()
+
+            # Find matching target pads with the same number
+            matching_target_pads = [
+                p for p in target_pads if p.GetNumber() == pad_number
+            ]
+
+            if len(matching_target_pads) == 1:
+                # Exact match by number
+                target_pad = matching_target_pads[0]
+                target_net = target_pad.GetNetname()
+                net_map[source_net] = target_net
+            elif len(matching_target_pads) > 1:
+                # Multiple pads with same number, find best match by size and shape
+                best_match = None
+                min_diff = float("inf")
+
+                for candidate in matching_target_pads:
+                    # Calculate difference in size and shape
+                    size_diff = abs(
+                        candidate.GetSize().x - source_pad.GetSize().x
+                    ) + abs(candidate.GetSize().y - source_pad.GetSize().y)
+                    shape_diff = (
+                        0 if candidate.GetShape() == source_pad.GetShape() else 10
+                    )
+                    total_diff = size_diff + shape_diff
+
+                    if total_diff < min_diff:
+                        min_diff = total_diff
+                        best_match = candidate
+
+                if best_match:
+                    target_net = best_match.GetNetname()
+                    net_map[source_net] = target_net
 
     return net_map
 
@@ -258,8 +287,88 @@ def sync_footprints(
         target_ref.SetPosition(source_ref.GetPosition())
 
         # Pads
-        for target_pad in target_fp.Pads():
-            source_pad = source_fp.FindPadByNumber(target_pad.GetNumber())
+        source_pads = list(source_fp.Pads())
+        target_pads = list(target_fp.Pads())
+
+        # First try to match by pad number
+        for target_pad in target_pads:
+            pad_number = target_pad.GetNumber()
+            matching_source_pads = [
+                p for p in source_pads if p.GetNumber() == pad_number
+            ]
+
+            if len(matching_source_pads) == 1:
+                # Exact match by number
+                source_pad = matching_source_pads[0]
+            elif len(matching_source_pads) > 1:
+                # Multiple pads with same number, find best match by size and shape
+                best_match = None
+                min_diff = float("inf")
+
+                for candidate in matching_source_pads:
+                    # Calculate difference in size and shape
+                    size_diff = abs(
+                        candidate.GetSize().x - target_pad.GetSize().x
+                    ) + abs(candidate.GetSize().y - target_pad.GetSize().y)
+                    shape_diff = (
+                        0 if candidate.GetShape() == target_pad.GetShape() else 10
+                    )
+                    total_diff = size_diff + shape_diff
+
+                    if total_diff < min_diff:
+                        min_diff = total_diff
+                        best_match = candidate
+
+                source_pad = best_match
+            else:
+                # No matching pad by number, try to find closest by size and position
+                best_match = None
+                min_diff = float("inf")
+
+                for candidate in source_pads:
+                    # Calculate difference in size
+                    size_diff = abs(
+                        candidate.GetSize().x - target_pad.GetSize().x
+                    ) + abs(candidate.GetSize().y - target_pad.GetSize().y)
+
+                    # Only consider pads with similar size (threshold can be adjusted)
+                    if size_diff > 1.0:  # mm
+                        continue
+
+                    # If similar size, consider shape and layer
+                    shape_diff = (
+                        0 if candidate.GetShape() == target_pad.GetShape() else 10
+                    )
+                    layer_diff = (
+                        0 if candidate.GetLayer() == target_pad.GetLayer() else 5
+                    )
+
+                    total_diff = size_diff + shape_diff + layer_diff
+
+                    if total_diff < min_diff:
+                        min_diff = total_diff
+                        best_match = candidate
+
+                if best_match is not None:
+                    source_pad = best_match
+                    log.warning(
+                        f"Used fallback matching for pad {pad_number} in {t_addr}"
+                    )
+                else:
+                    log.warning(
+                        f"No suitable pad match found for {pad_number} in {s_addr}"
+                    )
+                    continue
+
+            # Make sure we found a valid source pad before proceeding
+            if source_pad is None:
+                log.warning(
+                    f"Failed to find suitable source pad match for target"
+                    f" pad {pad_number} in {s_addr}"
+                )
+                continue
+
+            # Apply the source pad's position and orientation to the target pad
             target_pad.SetPosition(source_pad.GetPosition())
             target_pad.SetOrientation(source_pad.GetOrientation())
             target_pad.SetLayer(source_pad.GetLayer())
