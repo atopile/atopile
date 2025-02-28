@@ -312,14 +312,24 @@ class Traceback:
         # TODO
         return f"Traceback({id(self):04x}){self.stage.reason.name}"
 
-    def as_rich_tree(self) -> Tree:
+    def as_rich_tree(self, visited: set[ParameterOperatable] | None = None) -> Tree:
         from rich.text import Text
 
-        root_text = Text(
-            f"{self.stage.dst.compact_repr(self.stage.dst_context)}",
-            style="bold blue",
-        )
-        tree = Tree(root_text)
+        if visited is None:
+            visited = set()
+
+        dst_text = self.stage.dst.compact_repr(self.stage.dst_context)
+        tree = Tree(Text(dst_text, style="bold blue"))
+
+        if self.stage.dst in visited:
+            tree.add(Text("...duplicate...", style="bold red"))
+            return tree
+
+        if self.stage.reason not in {
+            Traceback.Type.NOOP,
+            Traceback.Type.PASSTHROUGH,
+        }:
+            visited.add(self.stage.dst)
 
         reason = self.stage.reason.name
         algo = " ".join(self.stage.algo.split(" ")[:3])
@@ -336,13 +346,15 @@ class Traceback:
             node_text.append(f"[{algo}]", style="italic green")
             reason_branch = tree.add(node_text)
 
-        if not self.back:
+        if self.back:
+            for back_node in self.back:
+                reason_branch.add(back_node.as_rich_tree(visited))
+        elif self.stage.srcs:
             for src in self.stage.srcs:
                 src_text = src.compact_repr(self.stage.src_context, use_name=True)
                 reason_branch.add(Text(src_text, style="green"))
-
-        for back_node in self.back:
-            reason_branch.add(back_node.as_rich_tree())
+        else:
+            reason_branch.add(Text("...no sources...", style="bold red"))
 
         return tree
 
