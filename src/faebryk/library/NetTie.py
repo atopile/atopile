@@ -5,14 +5,17 @@ import logging
 from enum import StrEnum
 
 import faebryk.library._F as F
+from atopile.errors import UserBadParameterError
 from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
+from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
 
 
-class NetTie[T: ModuleInterface](Module):
+class NetTie(Module):
+    """A net tie component that can bridge different interfaces."""
+
     class PadType(StrEnum):
         SMD = "SMD"
         THT = "THT"
@@ -27,9 +30,10 @@ class NetTie[T: ModuleInterface](Module):
     @L.rt_field
     def footprint(self):
         width_mm = f"{self._width:.1f}mm"
-        if width_mm not in ["0.5mm", "2.0mm"]:
+        supported_widths = ["0.5mm", "2.0mm"]
+        if width_mm not in supported_widths:
             raise ValueError(
-                f"Width [{width_mm}] is currently not supported for NetTie"
+                f"Width [{width_mm}] is currently not supported for NetTie. Supported widths are: {supported_widths}"  # noqa: E501
             )
 
         if self._pin_count < 2 or self._pin_count > 4:
@@ -40,27 +44,43 @@ class NetTie[T: ModuleInterface](Module):
         fp = F.KicadFootprint(pin_names=[f"{i+1}" for i in range(self._pin_count)])
         fp.add(
             F.KicadFootprint.has_kicad_identifier(
-                f"NetTie:NetTie-{self._pin_count}_{self._pad_type}_Pad{self._pin_count}"
+                f"NetTie:NetTie-{self._pin_count}_{self._pad_type}_Pad{width_mm}"
             )
         )
         return F.has_footprint_defined(fp)
 
+    @L.rt_field
+    def power(self):
+        return times(self._pin_count, F.ElectricPower)
+
     def __init__(
         self,
-        width: float,
+        width: float = 0.5,
         pin_count: int = 2,
         pad_type: PadType = PadType.SMD,
-        interface_type: type[T] = F.Electrical,
+        connect_gnd: bool = True,
     ) -> None:
         super().__init__()
         self._width = width
         self._pin_count = pin_count
         self._pad_type = pad_type
-        self._interface_type = interface_type
+        self._connect_gnd = connect_gnd
 
     def __preinit__(self):
-        unnamed = L.list_field(self._pin_count, self._interface_type)
-        self.add(unnamed, "unnamed")
+        if self._pin_count == 1:
+            raise UserBadParameterError("NetTie with <2 pins is not allowed")
 
         if self._pin_count == 2:
-            self.add(F.can_bridge_defined(*unnamed))
+            self.add(F.can_bridge_defined(*self.power))
+
+        # Connect all interfaces to the first one
+        for p in self.power[1:]:
+            p.connect_shallow(self.power[0])
+
+        # connect to footprint
+        self.footprint.get_footprint().get_trait(F.can_attach_via_pinmap).attach(
+            pinmap={
+                f"{i+1}": power.lv if self._connect_gnd else power.hv
+                for i, power in enumerate(self.power)
+            }
+        )
