@@ -3,6 +3,7 @@
 
 
 import logging
+import math
 from itertools import combinations
 from typing import cast
 
@@ -23,6 +24,7 @@ from faebryk.core.parameter import (
 from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
+    Contradiction,
     ContradictionByLiteral,
     SolverLiteral,
     make_lit,
@@ -80,11 +82,25 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         if is_left:
             param = ge.operands[0]
             lit = Quantity_Interval_Disjoint.from_value(ge.operands[1])
-            interval = Quantity_Interval_Disjoint(Quantity_Interval(min=lit.max_elem))
+            boundary = lit.max_elem
+            if math.isinf(boundary):
+                raise Contradiction(
+                    "GreaterEqual inf not possible",
+                    involved=[param],
+                    mutator=mutator,
+                )
+            interval = Quantity_Interval_Disjoint(Quantity_Interval(min=boundary))
         else:
             param = ge.operands[1]
             lit = Quantity_Interval_Disjoint.from_value(ge.operands[0])
-            interval = Quantity_Interval_Disjoint(Quantity_Interval(max=lit.min_elem))
+            boundary = lit.min_elem
+            if math.isinf(boundary):
+                raise Contradiction(
+                    "LessEqual -inf not possible",
+                    involved=[param],
+                    mutator=mutator,
+                )
+            interval = Quantity_Interval_Disjoint(Quantity_Interval(max=boundary))
 
         mutator.mutate_expression(
             ge,
