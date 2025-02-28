@@ -1303,6 +1303,15 @@ class PCB_Transformer:
         LEFT = auto()
         RIGHT = auto()
 
+    def hide_all_designators(
+        self,
+    ) -> None:
+        for _, fp in self.get_all_footprints():
+            fp.propertys["Reference"].hide = True
+
+            for txt in [txt for txt in fp.fp_texts if txt.text == "${REFERENCE}"]:
+                txt.effects.hide = True
+
     def set_designator_position(
         self,
         offset: float,
