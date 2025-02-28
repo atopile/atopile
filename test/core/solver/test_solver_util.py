@@ -25,6 +25,7 @@ from faebryk.core.parameter import (
     Xor,
 )
 from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
@@ -445,3 +446,19 @@ def test_mutation_map_submap():
     )
 
     # TODO
+
+
+def test_traceback_filtering():
+    context, variables, graph = _create_letters(3)
+    A, B, C = variables
+
+    E = A + B
+    E2 = E + A
+
+    solver = DefaultSolver()
+    out = solver.simplify_symbolically(E2, print_context=context, terminal=False)
+
+    E2_new = out.data.mutation_map.map_forward(E2).maps_to
+    assert E2_new
+    tb = out.data.mutation_map.get_traceback(E2_new)
+    logger.info(tb.filtered())

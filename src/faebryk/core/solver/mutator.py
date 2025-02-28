@@ -239,6 +239,17 @@ class Traceback:
          COPIED
         ```
         """
+        if (
+            self.stage.reason
+            in [
+                Traceback.Type.NOOP,
+                Traceback.Type.PASSTHROUGH,
+                Traceback.Type.COPIED,
+            ]
+            and len(self.back) == 1
+        ):
+            return self.back[0].filtered()
+
         # Create a mapping of original nodes to their filtered counterparts
         node_map: dict[int, Traceback] = {}
 
@@ -290,6 +301,8 @@ class Traceback:
     def __str__(self) -> str:
         lines = []
 
+        lines.append(f"{self.stage.dst.compact_repr(self.stage.dst_context)} <-")
+
         def build_string(node: "Traceback", depth: int):
             reason = node.stage.reason.name
             src_count = len(node.stage.srcs)
@@ -308,7 +321,7 @@ class Traceback:
 
             line = indent(
                 f"{reason}[{node.stage.algo[:17].strip()}] {src_info}",
-                prefix=" " * depth,
+                prefix=" " * (depth + 1),
             )
             lines.append(line)
             return True  # Continue traversal

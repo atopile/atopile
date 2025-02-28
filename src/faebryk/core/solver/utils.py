@@ -7,7 +7,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from itertools import combinations
 from statistics import median
-from textwrap import indent
 from types import NoneType
 from typing import TYPE_CHECKING, Callable, Counter, Iterable, Sequence, TypeGuard, cast
 
@@ -103,10 +102,7 @@ class Contradiction(Exception):
             return tracebacks[p].get_leaves()
 
         for p, tb in tracebacks.items():
-            tb_str = (
-                f"{p.compact_repr(self.mutator.print_context)}:"
-                f" <-\n{indent(str(tb.filtered()), ' ')}"
-            )
+            tb_str = str(tb.filtered())
             logger.warning(tb_str)
 
         origins = [_get_origins(p) for p in self.involved_exprs]
