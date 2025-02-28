@@ -1354,6 +1354,10 @@ def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
             d[k] = visitor(k, v)
 
 
+def invert_dict[T, U](d: dict[T, U]) -> dict[U, list[T]]:
+    return groupby(d.keys(), key=lambda k: d[k])
+
+
 class DefaultFactoryDict[T, U](dict[T, U]):
     def __init__(self, factory: Callable[[T], U], *args, **kwargs):
         self.factory = factory

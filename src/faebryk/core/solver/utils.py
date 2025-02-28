@@ -218,9 +218,9 @@ class MutatorUtils:
         self,
         expr: Expression,
         allow_subset: bool = False,
-    ) -> tuple[list[SolverAll], bool]:
+    ) -> tuple[list[SolverAll], list[ParameterOperatable]]:
         out = []
-        any_lit = False
+        any_lit = []
         for op in expr.operands:
             if self.is_literal(op):
                 out.append(op)
@@ -230,7 +230,7 @@ class MutatorUtils:
                 out.append(op)
                 continue
             out.append(lit)
-            any_lit = True
+            any_lit.append(op)
         return out, any_lit
 
     def alias_is_literal(
@@ -325,10 +325,17 @@ class MutatorUtils:
         to: ParameterOperatable | SolverLiteral,
         check_existing: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
+        terminate: bool = False,
     ):
+        from_ops = from_ops or []
+        from_ops = [po] + list(from_ops)
         if self.is_literal(to):
             assert check_existing
-            return self.alias_is_literal(po, to, from_ops=from_ops)
+            return self.alias_is_literal(po, to, from_ops=from_ops, terminate=terminate)
+
+        # not sure why this would be needed anyway
+        if terminate:
+            raise NotImplementedError("Terminate not implemented for non-literals")
 
         # check if alias exists
         if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
@@ -354,6 +361,8 @@ class MutatorUtils:
         check_existing: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
     ):
+        from_ops = from_ops or []
+        from_ops = [po] + list(from_ops)
         if self.is_literal(to):
             assert check_existing
             return self.subset_literal(po, to, from_ops=from_ops)
@@ -383,7 +392,7 @@ class MutatorUtils:
         """
         Call this when 100% sure what the result of a predicate is.
         """
-        self.alias_is_literal(expr, value, terminate=True)
+        self.alias_to(expr, as_lit(value), terminate=True)
         if not isinstance(expr, ConstrainableExpression):
             return
         if not expr.constrained:

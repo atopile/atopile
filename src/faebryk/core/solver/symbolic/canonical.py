@@ -51,6 +51,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
     QuantityLikeR,
 )
+from faebryk.libs.sets.sets import as_lit
 from faebryk.libs.units import dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
@@ -87,7 +88,7 @@ def alias_predicates_to_true(mutator: Mutator):
             new_predicate = cast_assert(
                 ConstrainableExpression, mutator.mutate_expression(predicate)
             )
-            mutator.utils.alias_is_literal(new_predicate, True)
+            mutator.utils.alias_to(new_predicate, as_lit(True))
             # reset solver flag
             mutator.predicate_reset_termination(new_predicate)
 

@@ -52,7 +52,9 @@ from faebryk.libs.util import (
     duplicates,
     groupby,
     indented_container,
+    invert_dict,
     once,
+    unique_ref,
 )
 
 logger = logging.getLogger(__name__)
@@ -206,7 +208,7 @@ class Traceback:
         MUTATED = auto()
         CONSTRAINED = auto()
 
-    @dataclass
+    @dataclass(repr=False)
     class Stage:
         srcs: Sequence[ParameterOperatable]
         dst: ParameterOperatable
@@ -215,6 +217,9 @@ class Traceback:
         src_context: ParameterOperatable.ReprContext
         dst_context: ParameterOperatable.ReprContext
         related: list["Traceback.Stage"]
+
+        def __repr__(self) -> str:
+            return f"{self.reason.name} {self.algo}"
 
     stage: Stage
     back: "list[Traceback]" = field(default_factory=list)
@@ -310,7 +315,7 @@ class Traceback:
 
     def __repr__(self) -> str:
         # TODO
-        return f"Traceback({id(self):04x}){self.stage.reason.name}"
+        return f"Traceback({id(self):04x}) {self.stage}"
 
     def as_rich_tree(self, visited: set[ParameterOperatable] | None = None) -> Tree:
         from rich.text import Text
@@ -342,7 +347,7 @@ class Traceback:
         }:
             reason_branch = tree
         else:
-            node_text = Text(f"{reason}", style="bold yellow")
+            node_text = Text(f"{reason}", style="bold cyan")
             node_text.append(f"[{algo}]", style="italic green")
             reason_branch = tree.add(node_text)
 
@@ -357,9 +362,6 @@ class Traceback:
             reason_branch.add(Text("...no sources...", style="bold red"))
 
         return tree
-
-    def __rich_repr__(self):
-        return self.as_rich_tree()
 
 
 class MutationStage:
@@ -465,14 +467,10 @@ class MutationStage:
         return self.transformations.mutated.get(param)
 
     @property
-    @once
-    def backwards_mapping(
-        self,
-    ) -> dict[ParameterOperatable, list[ParameterOperatable]]:
-        return groupby(
-            self.transformations.mutated.keys(),
-            key=lambda k: self.transformations.mutated[k],
-        )
+    # FIXME not sure why but this breaks stuff, but is very necessary for speed
+    # @once
+    def backwards_mapping(self) -> dict[ParameterOperatable, list[ParameterOperatable]]:
+        return invert_dict(self.transformations.mutated)
 
     def map_backward(self, param: ParameterOperatable) -> list[ParameterOperatable]:
         if self.is_identity:
@@ -605,6 +603,7 @@ class MutationStage:
             log(rich_to_string(table))
 
     def get_traceback_stage(self, param: ParameterOperatable) -> Traceback.Stage:
+        assert param in self.output_operables
         dst = param
         algo = (
             self.algorithm if isinstance(self.algorithm, str) else self.algorithm.name
@@ -627,6 +626,8 @@ class MutationStage:
             reason = Traceback.Type.SOFT_REPLACED
         else:
             origins = self.map_backward(param)
+            # TODO remove (when backwards_mapping @once cache is fixed)
+            assert not duplicates(origins, id)
             srcs = origins
             if len(origins) == 1:
                 origin = origins[0]
@@ -634,9 +635,15 @@ class MutationStage:
                     new_constraints = self.transformations.get_new_constraints(origin)
                     if new_constraints:
                         reason = Traceback.Type.CONSTRAINED
-                        related.extend(
+                        related_ = [
                             self.get_traceback_stage(e) for e in new_constraints
-                        )
+                        ]
+                        for r in related_:
+                            for r_s in r.srcs:
+                                if r_s not in srcs:
+                                    srcs.append(r_s)
+
+                        # related.extend(related_)
                     else:
                         reason = Traceback.Type.COPIED
                 else:
@@ -902,10 +909,10 @@ class MutationMap:
                     new_tb = Traceback(stage=branch)
                     new_deepest.append(new_tb)
                     tb.back.append(new_tb)
-                    for r in branch.related:
-                        related_tb = Traceback(stage=r)
-                        new_deepest.append(related_tb)
-                        tb.back.append(related_tb)
+                    # for r in branch.related:
+                    #    related_tb = Traceback(stage=r)
+                    #    new_deepest.append(related_tb)
+                    #    tb.back.append(related_tb)
             deepest = new_deepest
         return out
 
@@ -1048,6 +1055,7 @@ class Mutator:
         expression_factory: type[Expression] | None = None,
         soft_mutate: type[Is] | type[IsSubset] | None = None,
         ignore_existing: bool = False,
+        from_ops: Sequence[ParameterOperatable] | None = None,
     ) -> CanonicalExpression:
         if expression_factory is None:
             expression_factory = type(expr)
@@ -1069,8 +1077,11 @@ class Mutator:
         if soft_mutate:
             assert issubclass(expression_factory, CanonicalExpression)
             return self.soft_mutate_expr(
-                expression_factory, expr, operands, soft_mutate
+                expression_factory, expr, operands, soft_mutate, from_ops=from_ops
             )
+
+        if from_ops is not None:
+            raise NotImplementedError("only supported for soft_mutate")
 
         copy_only = expression_factory is type(expr) and operands == expr.operands
         if not copy_only and not ignore_existing:
@@ -1116,6 +1127,7 @@ class Mutator:
         expr: Expression,
         operands: Iterable[SolverAllExtended],
         soft: type[Is] | type[IsSubset],
+        from_ops: Sequence[ParameterOperatable] | None = None,
     ) -> CanonicalExpression:
         operands = list(operands)
         # Don't create A is A, lit is lit
@@ -1143,10 +1155,10 @@ class Mutator:
         out = self.create_expression(
             expression_factory,
             *operands,
-            from_ops=[expr],
+            from_ops=[expr, *(from_ops or [])],
             allow_uncorrelated=soft is IsSubset,
         )
-        self.soft_mutate(soft, expr, out)
+        self.soft_mutate(soft, expr, out, from_ops=from_ops)
         return out
 
     # TODO make more use of soft_mutate for alias & ss with non-lit
@@ -1155,6 +1167,7 @@ class Mutator:
         soft: type[Is] | type[IsSubset],
         old: ParameterOperatable,
         new: ParameterOperatable,
+        from_ops: Sequence[ParameterOperatable] | None = None,
     ):
         # filter A is A, A ss A
         if new is old:
@@ -1164,7 +1177,7 @@ class Mutator:
             old,
             new,
             constrain=True,
-            from_ops=[old],
+            from_ops=unique_ref([old] + list(from_ops or [])),
             # FIXME
             allow_uncorrelated=True,
         )
@@ -1279,7 +1292,7 @@ class Mutator:
                 *operands,
                 constrain=constrain,
             )
-            self.transformations.created[expr] = list(from_ops or [])
+            self.transformations.created[expr] = list(unique_ref(from_ops or []))
 
         # TODO double constrain ugly
         if constrain and isinstance(expr, ConstrainableExpression):
@@ -1311,7 +1324,7 @@ class Mutator:
     def constrain(self, *po: ConstrainableExpression, terminate: bool = False):
         for p in po:
             p.constrain()
-            self.utils.alias_is_literal(p, True, terminate=terminate)
+            self.utils.alias_to(p, as_lit(True), terminate=terminate)
 
     def predicate_terminate(self, pred: ConstrainableExpression):
         assert pred.constrained

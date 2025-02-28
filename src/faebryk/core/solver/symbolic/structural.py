@@ -378,7 +378,7 @@ def transitive_subset(mutator: Mutator):
         # for non-lits done by eq classes
         X = mutator.utils.try_extract_literal(B)
         if X is not None:
-            mutator.utils.subset_to(A, X, from_ops=[ss_op])
+            mutator.utils.subset_to(A, X, from_ops=[ss_op, B])
 
 
 @algorithm("Predicate flat terminate", terminal=False)
@@ -641,15 +641,15 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
             continue
 
         non_lit_aliases = {
-            cast_assert(ParameterOperatable, e.get_other_operand(p))
+            e: cast_assert(ParameterOperatable, e.get_other_operand(p))
             for e in p.get_operations(Is, constrained_only=True)
             if not e.get_operand_literals()
         }
-        for alias in non_lit_aliases:
+        for alias_expr, alias in non_lit_aliases.items():
             if is_alias:
-                mutator.utils.alias_is_literal(alias, lit, from_ops=[p])
+                mutator.utils.alias_to(alias, lit, from_ops=[p, alias_expr])
             else:
-                mutator.utils.subset_literal(alias, lit, from_ops=[p])
+                mutator.utils.subset_to(alias, lit, from_ops=[p, alias_expr])
 
 
 # Terminal -----------------------------------------------------------------------------
@@ -736,8 +736,21 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         if not any_lit:
             continue
 
+        # TODO make this more efficient (include in extract)
+        lit_alias_origins = {
+            e
+            for p in any_lit
+            for e in p.get_operations(Is, constrained_only=True)
+            if e.get_operand_literals()
+        }
+
         # Make new expr with subset literals
-        mutator.mutate_expression(expr, operands=operands, soft_mutate=IsSubset)
+        mutator.mutate_expression(
+            expr,
+            operands=operands,
+            soft_mutate=IsSubset,
+            from_ops=[expr, *lit_alias_origins],
+        )
 
 
 @algorithm("Uncorrelated alias fold", terminal=True)
@@ -790,6 +803,14 @@ def uncorrelated_alias_fold(mutator: Mutator):
         if not any_lit:
             continue
 
+        # TODO make this more efficient (include in extract)
+        lit_alias_origins = {
+            e
+            for p in any_lit
+            for e in p.get_operations(Is, constrained_only=True)
+            if e.get_operand_literals()
+        }
+
         # no point in op! is op! (always true)
         if isinstance(expr, ConstrainableExpression) and expr.constrained:
             mutator.create_expression(
@@ -797,8 +818,13 @@ def uncorrelated_alias_fold(mutator: Mutator):
                 *operands,
                 constrain=True,
                 allow_uncorrelated=True,
-                from_ops=[expr],
+                from_ops=[expr, *lit_alias_origins],
             )
             continue
 
-        mutator.mutate_expression(expr, operands=operands, soft_mutate=Is)
+        mutator.mutate_expression(
+            expr,
+            operands=operands,
+            soft_mutate=Is,
+            from_ops=[expr, *lit_alias_origins],
+        )

@@ -42,7 +42,7 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
 )
-from faebryk.libs.sets.sets import BoolSet
+from faebryk.libs.sets.sets import BoolSet, as_lit
 from faebryk.libs.util import cast_assert, partition
 
 logger = logging.getLogger(__name__)
@@ -116,7 +116,7 @@ def fold_add(
     )
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        mutator.utils.alias_is_literal(new_expr, new_operands[0], terminate=True)
+        mutator.utils.alias_to(new_expr, new_operands[0], terminate=True)
 
 
 def fold_multiply(
@@ -176,7 +176,7 @@ def fold_multiply(
 
     # if only one literal operand, equal to it
     if len(new_operands) == 1:
-        mutator.utils.alias_is_literal(new_expr, new_operands[0], terminate=True)
+        mutator.utils.alias_to(new_expr, new_operands[0], terminate=True)
 
 
 def fold_pow(
@@ -208,7 +208,7 @@ def fold_pow(
         except NotImplementedError:
             # TODO either fix or raise a warning
             return
-        mutator.utils.alias_is_literal(expr, result, terminate=True)
+        mutator.utils.alias_to(expr, result, terminate=True)
         return
 
     if mutator.utils.is_numeric_literal(exp):
@@ -218,16 +218,16 @@ def fold_pow(
 
         # in python 0**0 is also 1
         if exp == 0:
-            mutator.utils.alias_is_literal(expr, 1, terminate=True)
+            mutator.utils.alias_to(expr, as_lit(1), terminate=True)
             return
 
     if mutator.utils.is_numeric_literal(base):
         if base == 0:
-            mutator.utils.alias_is_literal(expr, 0, terminate=True)
+            mutator.utils.alias_to(expr, as_lit(0), terminate=True)
             # FIXME: exp >! 0
             return
         if base == 1:
-            mutator.utils.alias_is_literal(expr, 1, terminate=True)
+            mutator.utils.alias_to(expr, as_lit(1), terminate=True)
             return
 
 
@@ -389,7 +389,7 @@ def fold_not(
         # ¬!P! | P constrained -> Contradiction
         if expr.constrained:
             raise Contradiction("¬!P!", involved=[expr], mutator=mutator)
-        mutator.utils.alias_is_literal(expr, False, terminate=True)
+        mutator.utils.alias_to(expr, as_lit(False), terminate=True)
         return
 
     if replacable_nonliteral_operands:
