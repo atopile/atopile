@@ -891,10 +891,28 @@ def test_jlcpcb_pick_led():
     print(led.get_trait(F.has_part_picked).get_part())
 
 
-def test_jlcpcb_pick_powered_led():
+def test_jlcpcb_pick_powered_led_simple():
     led = F.PoweredLED()
     led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
     led.power.voltage.constrain_subset(L.Range(1.8 * P.volt, 5.5 * P.volt))
+
+    solver = DefaultSolver()
+    children_mods = led.get_children_modules(direct_only=False, types=(Module,))
+
+    pick_part_recursively(led, solver)
+
+    picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
+    assert len(picked_parts) == 2
+    print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
+
+
+def test_jlcpcb_pick_powered_led_regression():
+    led = F.PoweredLED()
+    led.led.color.constrain_subset(F.LED.Color.RED)
+    led.power.voltage.alias_is(3 * P.V)
+    led.led.brightness.constrain_subset(
+        TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
+    )
 
     solver = DefaultSolver()
     children_mods = led.get_children_modules(direct_only=False, types=(Module,))
