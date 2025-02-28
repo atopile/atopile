@@ -176,6 +176,24 @@ class Transformations:
             f", terminated={terminated}"
         )
 
+    def get_new_constraints(
+        self, op: ParameterOperatable
+    ) -> list[ConstrainableExpression]:
+        # TODO could still happen, but then we have clash
+        # keep this in mind for future
+        if self.is_identity:
+            return []
+        if op not in self.copied:
+            return []
+        target = self.mutated[op]
+        out = []
+        for e in self.created:
+            if not isinstance(e, ConstrainableExpression) or not e.constrained:
+                continue
+            if target in e.get_operand_operatables():
+                out.append(e)
+        return out
+
 
 @dataclass
 class Traceback:
@@ -187,15 +205,17 @@ class Traceback:
         SOFT_REPLACED = auto()
         MERGED = auto()
         MUTATED = auto()
+        CONSTRAINED = auto()
 
     @dataclass
     class Stage:
-        srcs: list[ParameterOperatable]
+        srcs: Sequence[ParameterOperatable]
         dst: ParameterOperatable
         algo: str
         reason: "Traceback.Type"
         src_context: ParameterOperatable.ReprContext
         dst_context: ParameterOperatable.ReprContext
+        related: list["Traceback.Stage"]
 
     stage: Stage
     back: "list[Traceback]" = field(default_factory=list)
@@ -209,7 +229,7 @@ class Traceback:
                     Returns True to continue traversal into children, False to skip.
         """
         # Stack contains tuples of (node, depth)
-        stack = [(self, 0)]
+        stack: list[tuple[Traceback, int]] = [(self, 0)]
 
         while stack:
             current, depth = stack.pop()
@@ -228,6 +248,7 @@ class Traceback:
         NOOP & PASSTHROUGH stages always have exactly one source
             (which is the destination)
         This function returns a new traceback with all NOOP & PASSTHROUGH stages removed
+        Root is always kept.
         ```
         CREATED
          NOOP
@@ -239,16 +260,6 @@ class Traceback:
          COPIED
         ```
         """
-        if (
-            self.stage.reason
-            in [
-                Traceback.Type.NOOP,
-                Traceback.Type.PASSTHROUGH,
-                Traceback.Type.COPIED,
-            ]
-            and len(self.back) == 1
-        ):
-            return self.back[0].filtered()
 
         # Create a mapping of original nodes to their filtered counterparts
         node_map: dict[int, Traceback] = {}
@@ -300,7 +311,6 @@ class Traceback:
 
     def __str__(self) -> str:
         lines = []
-
         lines.append(f"{self.stage.dst.compact_repr(self.stage.dst_context)} <-")
 
         def build_string(node: "Traceback", depth: int):
@@ -326,7 +336,18 @@ class Traceback:
             lines.append(line)
             return True  # Continue traversal
 
-        self.visit(build_string)
+        if (
+            self.stage.reason
+            in {
+                Traceback.Type.NOOP,
+                Traceback.Type.PASSTHROUGH,
+                Traceback.Type.COPIED,
+            }
+            and len(self.back) == 1
+        ):
+            self.back[0].visit(build_string)
+        else:
+            self.visit(build_string)
         return "\n".join(lines)
 
     def __repr__(self) -> str:
@@ -585,6 +606,7 @@ class MutationStage:
         algo = (
             self.algorithm if isinstance(self.algorithm, str) else self.algorithm.name
         )
+        related = []
 
         if self.is_identity:
             srcs = [param]
@@ -606,7 +628,14 @@ class MutationStage:
             if len(origins) == 1:
                 origin = origins[0]
                 if origin in self.transformations.copied:
-                    reason = Traceback.Type.COPIED
+                    new_constraints = self.transformations.get_new_constraints(origin)
+                    if new_constraints:
+                        reason = Traceback.Type.CONSTRAINED
+                        related.extend(
+                            self.get_traceback_stage(e) for e in new_constraints
+                        )
+                    else:
+                        reason = Traceback.Type.COPIED
                 else:
                     reason = Traceback.Type.MUTATED
             else:
@@ -616,6 +645,7 @@ class MutationStage:
             srcs=srcs,
             dst=dst,
             reason=reason,
+            related=related,
             algo=algo,
             src_context=self.input_print_context,
             dst_context=self.output_print_context,
@@ -869,6 +899,10 @@ class MutationMap:
                     new_tb = Traceback(stage=branch)
                     new_deepest.append(new_tb)
                     tb.back.append(new_tb)
+                    for r in branch.related:
+                        related_tb = Traceback(stage=r)
+                        new_deepest.append(related_tb)
+                        tb.back.append(related_tb)
             deepest = new_deepest
         return out
 

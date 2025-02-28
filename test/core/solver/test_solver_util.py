@@ -448,7 +448,7 @@ def test_mutation_map_submap():
     # TODO
 
 
-def test_traceback_filtering():
+def test_traceback_filtering_chain():
     context, variables, graph = _create_letters(3)
     A, B, C = variables
 
@@ -462,3 +462,27 @@ def test_traceback_filtering():
     assert E2_new
     tb = out.data.mutation_map.get_traceback(E2_new)
     logger.info(tb.filtered())
+
+
+def test_traceback_filtering_tree():
+    context, variables, graph = _create_letters(3)
+    A, B, C = variables
+
+    B.constrain_subset(L.Range(0, 10))
+    C.constrain_subset(L.Range(5, 15))
+
+    A.constrain_subset(B)
+    A.constrain_subset(C)
+
+    solver = DefaultSolver()
+    out = solver.simplify_symbolically(A, print_context=context, terminal=True)
+
+    A_new = out.data.mutation_map.map_forward(A).maps_to
+    assert A_new
+    tb = out.data.mutation_map.get_traceback(A_new)
+    logger.info(tb.filtered())
+
+    # A{S|([5, 10])} <-
+    #  CONSTRAINED[Transitive subset]  <- A{S|([0, ∞])}
+    #   MUTATED[Constrain within]  <- A
+    #    MUTATED[Canonical literal]  <- A:  *46E8.A
