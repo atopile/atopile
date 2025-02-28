@@ -45,24 +45,26 @@ class TPS2116(F.PowerMux):
     @assert_once
     def set_mode(self, mode: Mode, switchover_voltage: SwitchoverVoltage):
         if mode == self.Mode.PRIORITY:
-            self.mode.line.connect(self.power_in[1].hv)
-            resistor_devider = self.select.add(F.ResistorVoltageDivider())
-            self.power_in[0].hv.connect_via(resistor_devider, self.select.line)
-            resistor_devider.node[2].connect(self.power_in[0].lv)
+            self.mode.set(on=True)
+            resistor_divider = self.select.add(
+                F.ResistorVoltageDivider()
+            )  # TODO move to reference design
+            self.power_in[0].connect(resistor_divider.power)
+            self.select.line.connect(resistor_divider.output.line)
             if switchover_voltage != self.SwitchoverVoltage.CUSTOM:
-                resistor_devider.resistor[1].resistance.constrain_subset(
+                resistor_divider.r_bottom.resistance.constrain_subset(
                     L.Range.from_center_rel(5 * P.kohm, 0.01)
                 )
             if switchover_voltage == self.SwitchoverVoltage._5V:
-                resistor_devider.resistor[0].resistance.constrain_subset(
+                resistor_divider.r_top.resistance.constrain_subset(
                     L.Range.from_center_rel(16.9 * P.kohm, 0.01)
                 )
             elif switchover_voltage == self.SwitchoverVoltage._3V3:
-                resistor_devider.resistor[0].resistance.constrain_subset(
+                resistor_divider.r_top.resistance.constrain_subset(
                     L.Range.from_center_rel(9.53 * P.kohm, 0.01)
                 )
             elif switchover_voltage == self.SwitchoverVoltage._1V8:
-                resistor_devider.resistor[0].resistance.constrain_subset(
+                resistor_divider.r_top.resistance.constrain_subset(
                     L.Range.from_center_rel(2.80 * P.kohm, 0.01)
                 )
         else:
