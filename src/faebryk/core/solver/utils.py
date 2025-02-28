@@ -91,10 +91,6 @@ class Contradiction(Exception):
         self.mutator = mutator
 
     def __str__(self):
-        involved_str = indented_container(
-            p.compact_repr(self.mutator.print_context) for p in self.involved_exprs
-        )
-
         tracebacks = {
             p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
         }
@@ -106,19 +102,22 @@ class Contradiction(Exception):
             tb_str = rich_to_string(tb.filtered().as_rich_tree())
             logger.warning(tb_str)
 
-        origins = [_get_origins(p) for p in self.involved_exprs]
+        origins = {p: _get_origins(p) for p in self.involved_exprs}
         origins_str = indented_container(
-            (
-                [
-                    f"{o.compact_repr(self.mutator.mutation_map.input_print_context)}:"
-                    f" {o.get_full_name()}"
-                    for o in os
+            {
+                p.compact_repr(
+                    self.mutator.mutation_map.input_print_context, use_name=True
+                ): [
+                    o.compact_repr(
+                        self.mutator.mutation_map.input_print_context, use_name=True
+                    )
+                    for o in set(os)
                 ]
-                for os in origins
-            ),
+                for p, os in origins.items()
+            },
             recursive=True,
         )
-        return f"{self.msg}\nInvolved: {involved_str}\nOrigins: {origins_str}"
+        return f"{self.msg}\nOrigins: {origins_str}"
 
 
 class ContradictionByLiteral(Contradiction):
