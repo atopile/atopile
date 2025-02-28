@@ -1,19 +1,18 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-
 import logging
 import sys
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from itertools import chain
-from textwrap import indent
 from types import UnionType
 from typing import Any, Callable, Iterable, Sequence, cast
 
 from more_itertools import first
 from rich.table import Table
+from rich.tree import Tree
 
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.parameter import (
@@ -39,7 +38,7 @@ from faebryk.core.solver.utils import (
     get_graphs,
 )
 from faebryk.libs.exceptions import downgrade
-from faebryk.libs.logging import table_to_string
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -309,54 +308,46 @@ class Traceback:
         self.visit(_collect_leaves)
         return leaves
 
-    def __str__(self) -> str:
-        lines = []
-        lines.append(f"{self.stage.dst.compact_repr(self.stage.dst_context)} <-")
-
-        def build_string(node: "Traceback", depth: int):
-            reason = node.stage.reason.name
-            src_count = len(node.stage.srcs)
-
-            def _format_src(s: ParameterOperatable) -> str:
-                out = s.compact_repr(node.stage.src_context)
-                if s.get_parent() is not None:
-                    out += f":  {s.get_full_name()}"
-                return out
-
-            src_info = ""
-            if src_count > 1:
-                src_info += indented_container(_format_src(s) for s in node.stage.srcs)
-            elif src_count == 1:
-                src_info += " <- " + _format_src(node.stage.srcs[0])
-
-            line = indent(
-                f"{reason}[{node.stage.algo[:17].strip()}] {src_info}",
-                prefix=" " * (depth + 1),
-            )
-            lines.append(line)
-            return True  # Continue traversal
-
-        if (
-            self.stage.reason
-            in {
-                Traceback.Type.NOOP,
-                Traceback.Type.PASSTHROUGH,
-                Traceback.Type.COPIED,
-            }
-            and len(self.back) == 1
-        ):
-            self.back[0].visit(build_string)
-        else:
-            self.visit(build_string)
-        return "\n".join(lines)
-
     def __repr__(self) -> str:
         # TODO
         return f"Traceback({id(self):04x}){self.stage.reason.name}"
 
+    def as_rich_tree(self) -> Tree:
+        from rich.text import Text
+
+        root_text = Text(
+            f"{self.stage.dst.compact_repr(self.stage.dst_context)}",
+            style="bold blue",
+        )
+        tree = Tree(root_text)
+
+        reason = self.stage.reason.name
+        algo = " ".join(self.stage.algo.split(" ")[:3])
+
+        # Create a node for the reason and algorithm
+        if self.stage.reason in {
+            Traceback.Type.NOOP,
+            Traceback.Type.PASSTHROUGH,
+            Traceback.Type.COPIED,
+        }:
+            reason_branch = tree
+        else:
+            node_text = Text(f"{reason}", style="bold yellow")
+            node_text.append(f"[{algo}]", style="italic green")
+            reason_branch = tree.add(node_text)
+
+        if not self.back:
+            for src in self.stage.srcs:
+                src_text = src.compact_repr(self.stage.src_context, use_name=True)
+                reason_branch.add(Text(src_text, style="green"))
+
+        for back_node in self.back:
+            reason_branch.add(back_node.as_rich_tree())
+
+        return tree
+
     def __rich_repr__(self):
-        # TODO
-        yield repr(self)
+        return self.as_rich_tree()
 
 
 class MutationStage:
@@ -599,7 +590,7 @@ class MutationStage:
                 else:
                     table.add_row(*row)
 
-            log(table_to_string(table))
+            log(rich_to_string(table))
 
     def get_traceback_stage(self, param: ParameterOperatable) -> Traceback.Stage:
         dst = param
@@ -885,7 +876,7 @@ class MutationMap:
             table.add_row(p.compact_repr(self.input_print_context), p.get_full_name())
 
         if table.rows:
-            log(table_to_string(table))
+            log(rich_to_string(table))
 
     def get_traceback(self, param: ParameterOperatable) -> Traceback:
         start = self.last_stage.get_traceback_stage(param)

@@ -8,7 +8,7 @@ from enum import Enum, auto
 
 from rich.table import Table
 
-from faebryk.libs.logging import table_to_string
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.units import P, Quantity, to_si
 from faebryk.libs.util import is_numeric_str
 
@@ -185,7 +185,7 @@ class Times:
         for row in rows:
             table.add_row(*row)
 
-        return table_to_string(table)
+        return rich_to_string(table)
 
     def __repr__(self):
         return self.to_str()

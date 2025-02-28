@@ -29,6 +29,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Power,
 )
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
@@ -102,7 +103,7 @@ class Contradiction(Exception):
             return tracebacks[p].get_leaves()
 
         for p, tb in tracebacks.items():
-            tb_str = str(tb.filtered())
+            tb_str = rich_to_string(tb.filtered().as_rich_tree())
             logger.warning(tb_str)
 
         origins = [_get_origins(p) for p in self.involved_exprs]

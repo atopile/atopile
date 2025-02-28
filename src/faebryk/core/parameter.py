@@ -479,7 +479,9 @@ class ParameterOperatable(Node):
             return hash(id(self))
 
     @once
-    def compact_repr(self, context: ReprContext | None = None) -> str:
+    def compact_repr(
+        self, context: ReprContext | None = None, use_name: bool = False
+    ) -> str:
         raise NotImplementedError()
 
     # TODO move to Expression
@@ -767,7 +769,9 @@ class Expression(ParameterOperatable):
     REPR_STYLE: ReprStyle = ReprStyle()
 
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        use_name: bool = False,
     ) -> str:
         if context is None:
             context = ParameterOperatable.ReprContext()
@@ -790,7 +794,7 @@ class Expression(ParameterOperatable):
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
                 return str(op)
-            op_out = op.compact_repr(context)
+            op_out = op.compact_repr(context, use_name=use_name)
             if isinstance(op, Expression) and len(op.operands) > 1:
                 op_out = f"({op_out})"
             return op_out
@@ -1747,7 +1751,9 @@ class Parameter(ParameterOperatable):
 
     @once
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        use_name: bool = False,
     ) -> str:
         """
         Unit only printed if not dimensionless.
@@ -1780,16 +1786,18 @@ class Parameter(ParameterOperatable):
                 param_id // len(alphabet)
             )
 
-        if context is None:
-            context = ParameterOperatable.ReprContext()
-
-        if self not in context.variable_mapping.mapping:
-            next_id = context.variable_mapping.next_id
-            context.variable_mapping.mapping[self] = next_id
-            context.variable_mapping.next_id += 1
+        if use_name and self.get_parent() is not None:
+            letter = self.get_full_name()
+        else:
+            if context is None:
+                context = ParameterOperatable.ReprContext()
+            if self not in context.variable_mapping.mapping:
+                next_id = context.variable_mapping.next_id
+                context.variable_mapping.mapping[self] = next_id
+                context.variable_mapping.next_id += 1
+            letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         unitstr = f" {self.units}" if self.units != dimensionless else ""
-        letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         out = f"{letter}{unitstr}"
         out += self._get_lit_suffix()

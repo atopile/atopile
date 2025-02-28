@@ -11,6 +11,7 @@ from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
 from rich.table import Table
 from rich.theme import Theme
+from rich.tree import Tree
 
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
@@ -49,9 +50,9 @@ class NestedConsole(Console):
         return self.export_text(styles=True)
 
 
-def table_to_string(table: Table) -> str:
+def rich_to_string(rich_obj: Table | Tree) -> str:
     console = NestedConsole()
-    console.print(table)
+    console.print(rich_obj)
     return str(console)
 
 

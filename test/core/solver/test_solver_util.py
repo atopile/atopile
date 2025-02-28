@@ -38,6 +38,7 @@ from faebryk.core.solver.utils import (
     MutatorUtils,
 )
 from faebryk.libs.library import L
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert, times
 
@@ -480,7 +481,7 @@ def test_traceback_filtering_tree():
     A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
     tb = out.data.mutation_map.get_traceback(A_new)
-    logger.info(tb.filtered())
+    logger.info(rich_to_string(tb.filtered().as_rich_tree()))
 
     # A{S|([5, 10])} <-
     #  CONSTRAINED[Transitive subset]  <- A{S|([0, ∞])}
