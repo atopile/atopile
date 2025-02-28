@@ -46,9 +46,9 @@ class TPS2116(F.PowerMux):
     def set_mode(self, mode: Mode, switchover_voltage: SwitchoverVoltage):
         if mode == self.Mode.PRIORITY:
             self.mode.line.connect(self.power_in[1].hv)
-            resistor_devider = self.select.add(F.ResistorVoltageDivider())
-            self.power_in[0].hv.connect_via(resistor_devider, self.select.line)
-            resistor_devider.node[2].connect(self.power_in[0].lv)
+            resistor_devider = self.select.add(F.VoltageDivider())
+            self.power_in[0].connect_via(resistor_devider, self.select.reference)
+            self.select.line.connect(self.select.reference.hv)  # TODO: Ugly
             if switchover_voltage != self.SwitchoverVoltage.CUSTOM:
                 resistor_devider.resistor[1].resistance.constrain_subset(
                     L.Range.from_center_rel(5 * P.kohm, 0.01)
