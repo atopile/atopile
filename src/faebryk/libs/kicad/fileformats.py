@@ -24,13 +24,14 @@ logger = logging.getLogger(__name__)
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
 # Release dates for reference:
+# KiCad 9.0.0 - February 19, 2025
 # KiCad 8.0.0 - January 31, 2024
 # KiCad 7.0.0 - March 1, 2023
 # KiCad 6.0.0 - December 15, 2021
 # KiCad 5.1.0 - May 22, 2019
 # KiCad 5.0.0 - July 21, 2018
 
-KICAD_PCB_VERSION = 20240108
+KICAD_PCB_VERSION = 20250219  # TODO: check if this is also what KiCad is saying
 
 
 @dataclass_json(undefined=Undefined.INCLUDE)
@@ -261,7 +262,7 @@ class C_kicad_project_file(JSON_File):
             @dataclass
             class C_teardrop_parameters:
                 td_allow_use_two_tracks: bool = True
-                td_curve_segcount: int = 0
+                td_curved_edges: bool = False
                 td_height_ratio: float = 1.0
                 td_length_ratio: float = 0.5
                 td_maxheight: float = 2.0
@@ -532,6 +533,8 @@ class C_arc:
     end: C_xy
     stroke: C_stroke
     layer: str
+    layers: Optional[list[str]] = None
+    solder_mask_margin: float
     uuid: UUID = field(default_factory=gen_uuid)
 
 
@@ -577,6 +580,29 @@ class C_rect:
 @dataclass
 class C_polygon:
     pts: C_pts
+
+
+@dataclass
+class C_table:
+    rows: list[list[str]]
+    columns: list[str]
+    at: C_xyr
+    layer: C_text_layer
+    uuid: UUID = field(default_factory=gen_uuid)
+
+
+@dataclass(kw_only=True)
+class C_teardrop:
+    enabled: bool = False
+    allow_two_segments: bool = False
+    prefer_zone_connections: bool = True
+    best_length_ratio: float
+    max_length: float
+    best_width_ratio: float
+    max_width: float
+    curve_points: int
+    curved_edges: bool
+    filter_ratio: float
 
 
 @dataclass(kw_only=True)
@@ -651,19 +677,91 @@ class C_footprint:
             size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
             offset: Optional[C_xy] = None
 
+        class E_chamfer(SymEnum):
+            top_left = "chamfer_top_left"
+            top_right = "chamfer_top_right"
+            bottom_left = "chamfer_bottom_left"
+            bottom_right = "chamfer_bottom_right"
+
+        class E_property(SymEnum):
+            bga = "pad_prop_bga"
+            fiducial_glob = "pad_prop_fiducial_glob"
+            fiducial_loc = "pad_prop_fiducial_loc"
+            testpoint = "pad_prop_testpoint"
+            castellated = "pad_prop_castellated"
+            heatsink = "pad_prop_heatsink"
+            mechanical = "pad_prop_mechanical"
+            none = ""
+
+        @dataclass
+        class C_padstack:
+            class E_mode(SymEnum):
+                front_inner_back = auto()
+                custom = auto()
+
+            @dataclass
+            class C_layer:
+                class E_shape(SymEnum):
+                    circle = auto()
+                    rectangle = auto()
+                    roundrect = auto()
+                    oval = auto()
+                    trapezoid = auto()
+                    custom = auto()
+
+                name: str
+                shape: E_shape
+                size: C_wh
+                offset: C_xy
+                ...  # TODO add till line 5935 pcb_io_kicad_sexpr_parser.cpp (v9)
+
+            mode: E_mode
+            layer: C_layer
+
+        @dataclass
+        class C_tenting:
+            class E_type(SymEnum):
+                front = auto()
+                back = auto()
+                none = auto()
+
+            type: E_type = field(**sexp_field(positional=True))
+
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
-        at: C_xyr
         size: C_wh
+        at: C_xyr
+        # rect_delta
         drill: Optional[C_drill] = None
         layers: list[str]
-        remove_unused_layers: bool = False
+        # pin_function
+        # pin_type
+        # die_length
+        # solder_mask_margin
+        # solder_paste_margin
+        # solder_paste_margin_ratio
+        # clearance
+        # teardrops:C_teardrop
+        # zone_connect
+        # thermal_width # legacy
+        # thermal_bridge_width
+        # thermal_bridge_angle
+        # thermal_gap
         roundrect_rratio: Optional[float] = None
-        die_length: Optional[float] = None
+        chamfer_ratio: Optional[float] = None
+        chamfer: Optional[E_chamfer] = None
+        properties: Optional[E_property] = None
         options: Optional[C_options] = None
+        padstack: Optional[C_padstack] = None  # see parsePadstack
+        # TODO: primitives: gr_line, gr_arc, gr_circle, gr_curve, gr_rect, gr_bbox or
+        # gr_poly
+        remove_unused_layers: Optional[bool] = True
+        keep_end_layers: Optional[bool] = True
+        tenting: C_tenting  # see parseTenting
+        # zone_layer_connections: Optional[list[str]] = None
+        die_length: Optional[float] = None
         uuid: UUID = field(default_factory=gen_uuid)
-        # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
 
     @dataclass
@@ -846,14 +944,36 @@ class C_kicad_pcb_file(SEXP_File):
             path: Optional[str] = None
             unknown: CatchAll = None
 
-        @dataclass
+        @dataclass(kw_only=True)
         class C_via:
+            @dataclass
+            class C_padstack:
+                class E_mode(SymEnum):
+                    front_inner_back = auto()
+                    custom = auto()
+
+                @dataclass
+                class C_layer:
+                    size: C_xy
+
+                mode: E_mode = field(**sexp_field(positional=True))
+                layer: C_layer
+
+            # blind: bool = False
+            # micro: bool = False
             at: C_xy
             size: float
             drill: float
-            net: int
-            uuid: UUID
             layers: list[str] = field(default_factory=list)
+            net: int
+            # remove_unused_layers
+            # keep_end_layers
+            # zone_layer_connections
+            padstack: C_padstack
+            teardrops: C_teardrop
+            # tenting
+            # free
+            uuid: UUID
             unknown: CatchAll = None
 
         @dataclass(kw_only=True)
@@ -1162,6 +1282,9 @@ class C_kicad_pcb_file(SEXP_File):
         )
         vias: list[C_via] = field(**sexp_field(multidict=True), default_factory=list)
         zones: list[C_zone] = field(**sexp_field(multidict=True), default_factory=list)
+        # target??
+        # embedded_fonts
+        # embedded_files
         segments: list[C_segment] = field(
             **sexp_field(multidict=True), default_factory=list
         )

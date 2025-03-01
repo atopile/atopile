@@ -98,6 +98,7 @@ class C_effects:
     class C_font:
         size: C_wh
         thickness: Optional[float] = None
+        unresolved_font_name: Optional[str] = None
 
     @dataclass
     class C_justify:
