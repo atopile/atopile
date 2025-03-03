@@ -34,6 +34,7 @@ from faebryk.core.solver.mutator import (
 )
 from faebryk.core.solver.utils import (
     Associative,
+    ContradictionByLiteral,
     FullyAssociative,
     MutatorUtils,
 )
@@ -487,3 +488,29 @@ def test_traceback_filtering_tree():
     #  CONSTRAINED[Transitive subset]  <- A{S|([0, ∞])}
     #   MUTATED[Constrain within]  <- A
     #    MUTATED[Canonical literal]  <- A:  *46E8.A
+
+
+def test_contradiction_message_subset():
+    context, variables, graph = _create_letters(1)
+    (A,) = variables
+
+    A.constrain_subset(L.Range(6, 7))
+    A.alias_is(L.Range(4, 5))
+
+    solver = DefaultSolver()
+
+    with pytest.raises(ContradictionByLiteral, match="subset"):
+        solver.simplify_symbolically(A, print_context=context, terminal=True)
+
+
+def test_contradiction_message_superset():
+    context, variables, graph = _create_letters(1)
+    (A,) = variables
+
+    A.constrain_superset(L.Range(0, 10))
+    A.alias_is(L.Range(4, 5))
+
+    solver = DefaultSolver()
+
+    with pytest.raises(ContradictionByLiteral, match="superset"):
+        solver.simplify_symbolically(A, print_context=context, terminal=True)
