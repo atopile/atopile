@@ -109,3 +109,35 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     r1, r2 = node.get_children_modules(direct_only=True, types=Module)
     assert r1.has_trait(F.has_part_picked)
     assert r2.has_trait(F.has_part_picked)
+
+
+def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
+
+    text = dedent(
+        """
+        import ResistorVoltageDivider
+
+        module App:
+            vdiv = new ResistorVoltageDivider
+
+            vdiv.total_resistance = 100kohm +/- 5%
+            vdiv.ratio = 0.1 +/- 10%
+            vdiv.max_current = 100mA +/- 5%
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    rdiv = Bob.get_node_attr(node, "App")
+    assert isinstance(rdiv, Module)
+
+    solver = DefaultSolver()
+    pick_part_recursively(rdiv, solver)
+
+    assert rdiv.has_trait(F.has_part_picked)

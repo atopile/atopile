@@ -26,7 +26,15 @@ class ResistorVoltageDivider(Module):
 
     def __preinit__(self):
         self.node[0].connect_via([self.resistor[0], self.resistor[1]], self.node[1])
-        self.total_resistance.alias_is(
-            self.resistor[0].resistance + self.resistor[1].resistance
-        )
-        self.ratio.alias_is(self.resistor[0].resistance / self.total_resistance)
+
+        ratio = self.ratio
+        R = self.total_resistance
+        r1 = self.resistor[0].resistance
+        r2 = self.resistor[1].resistance
+
+        R.alias_is(r1 + r2)
+        ratio.alias_is(r1 / R)
+
+        # help solver
+        r1.alias_is(R - r2)
+        r2.alias_is(R - r1)

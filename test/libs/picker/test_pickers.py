@@ -227,3 +227,13 @@ def test_pick_dependency_simple():
     r2r.constrain_subset(sum_lit - r1r)
 
     pick_part_recursively(app, solver)
+
+
+def test_pick_dependency_advanced():
+    rdiv = F.ResistorVoltageDivider()
+    rdiv.total_resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.05))
+    rdiv.ratio.constrain_subset(L.Range.from_center_rel(0.1, 0.1))
+    rdiv.max_current.alias_is(L.Range.from_center_rel(100 * P.milliamp, 0.05))
+
+    solver = DefaultSolver()
+    pick_part_recursively(rdiv, solver)
