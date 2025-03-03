@@ -23,8 +23,7 @@ class FilterElectricalLC(F.Filter):
     out: F.ElectricSignal
     capacitor: F.Capacitor
     inductor: F.Inductor
-
-    z0 = L.p_field(units=P.ohm)
+    characteristic_impedance = L.p_field(units=P.ohm)
 
     def __preinit__(self):
         (
@@ -43,13 +42,30 @@ class FilterElectricalLC(F.Filter):
     def build_lowpass(self):
         Li = self.inductor.inductance
         C = self.capacitor.capacitance
+        z0 = self.characteristic_impedance
         fc = self.cutoff_frequency
 
         # TODO other orders & types
         self.order.constrain_subset(2)
         self.response.constrain_subset(F.Filter.Response.LOWPASS)
 
+        z0.alias_is((Li / C).operation_sqrt())
         fc.alias_is(1 / (2 * math.pi * (C * Li).operation_sqrt()))
+
+        # alternative formulations as hints for solver
+        # TODO: make the solver powerful enough that these aren't needed
+
+        # characteristic impedance
+        Li.alias_is(z0**2 * C)
+        C.alias_is(Li / z0**2)
+
+        # cutoff frequency
+        Li.alias_is(1 / (4 * math.pi**2 * fc**2 * C))
+        C.alias_is(1 / (4 * math.pi**2 * fc**2 * Li))
+
+        # substituted
+        Li.alias_is(z0 / (2 * math.pi * fc))
+        C.alias_is(1 / (2 * math.pi * fc * z0))
 
         # low pass
         self.in_.line.connect_via(
