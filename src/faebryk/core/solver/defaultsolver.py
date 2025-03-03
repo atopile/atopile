@@ -400,17 +400,32 @@ class DefaultSolver(Solver):
         Careful, only use after solver ran!
         """
 
-        lit = value.try_get_literal_subset()
-        if not self.state or lit is not None:
-            if lit is None:
-                return value.domain_set()
-            return as_lit(lit)
+        is_lit = value.try_get_literal()
+        if is_lit is not None:
+            return as_lit(is_lit)
 
-        return not_none(
-            self.state.data.mutation_map.try_get_literal(
-                value, allow_subset=True, domain_default=True
+        if self.state is not None:
+            is_solver_lit = self.state.data.mutation_map.try_get_literal(
+                value, allow_subset=False, domain_default=False
             )
-        )
+            if is_solver_lit is not None:
+                return is_solver_lit
+
+        ss_lit = value.try_get_literal_subset()
+        if ss_lit is None:
+            ss_lit = value.domain_set()
+        ss_lit = as_lit(ss_lit)
+
+        solver_lit = None
+        if self.state is not None:
+            solver_lit = self.state.data.mutation_map.try_get_literal(
+                value, allow_subset=True, domain_default=False
+            )
+
+        if solver_lit is None:
+            return ss_lit
+
+        return ss_lit & solver_lit  # type: ignore
 
     @override
     def get_any_single(
