@@ -46,26 +46,29 @@ def test_voltage_propagation():
     import faebryk.library._F as F
     from faebryk.libs.units import P
 
+    # Setup
     powers = times(4, F.ElectricPower)
 
-    powers[0].voltage.constrain_subset(L.Range(10 * P.V, 15 * P.V))
+    X = L.Range(10 * P.V, 15 * P.V)
+    powers[0].voltage.constrain_subset(X)
 
     for p1, p2 in pairwise(powers):
         p1.connect(p2)
 
     F.is_bus_parameter.resolve_bus_parameters(powers[0].get_graph())
+
+    # Test 1, propagate X from p[0] to p[-1]
     solver = DefaultSolver()
     solver.update_superset_cache(*powers)
-    assert solver.inspect_get_known_supersets(powers[-1].voltage).is_subset_of(
-        L.Range(10 * P.V, 15 * P.V)
-    )
+    assert solver.inspect_get_known_supersets(powers[-1].voltage).is_subset_of(X)
 
-    powers[3].voltage.constrain_subset(10 * P.V)
+    # Test 2, back propagate Y from p[-1] to p[0]
+    Y = L.Single(10 * P.V)
+    powers[-1].voltage.constrain_subset(Y)
 
     solver.update_superset_cache(*powers)
-    assert solver.inspect_get_known_supersets(powers[0].voltage).is_subset_of(
-        L.Single(10 * P.V)
-    )
+    y_back = solver.inspect_get_known_supersets(powers[0].voltage)
+    assert y_back.is_subset_of(Y)
 
 
 def test_current_consumption_sum_zero():
