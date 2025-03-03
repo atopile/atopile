@@ -80,7 +80,7 @@ class USB2514B_ReferenceDesign(Module):
     #     modules, interfaces, parameters
     # ----------------------------------------
     hub_controller: F.USB2514B
-    vbus_voltage_divider: F.ResistorVoltageDivider
+    vbus_voltage_divider: F.VoltageDivider
     ldo_3v3: F.LDO
     suspend_indicator = L.f_field(F.LEDIndicator)(use_mosfet=False)
     power_3v3_indicator: F.PoweredLED
@@ -305,10 +305,12 @@ class USB2514B_ReferenceDesign(Module):
         )  # TODO: replace with pull?
 
         # voltage divider
-        vbus.hv.connect_via(
-            self.vbus_voltage_divider, self.hub_controller.vbus_detect.line
+        vbus.connect_via(
+            self.vbus_voltage_divider, self.hub_controller.vbus_detect.reference
         )
-        self.vbus_voltage_divider.node[2].connect(vbus.lv)
+        self.hub_controller.vbus_detect.line.connect(
+            self.hub_controller.vbus_detect.reference.hv
+        )  # TODO: ugly
 
         # USB upstream
         self.usb_ufp.usb_if.d.connect(self.hub_controller.usb_upstream)
