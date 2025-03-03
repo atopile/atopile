@@ -84,22 +84,28 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
             lit = Quantity_Interval_Disjoint.from_value(ge.operands[1])
             boundary = lit.max_elem
             if math.isinf(boundary):
-                raise Contradiction(
-                    "GreaterEqual inf not possible",
-                    involved=[param],
-                    mutator=mutator,
-                )
+                if ge.constrained:
+                    raise Contradiction(
+                        "GreaterEqual inf not possible",
+                        involved=[param],
+                        mutator=mutator,
+                    )
+                mutator.utils.alias_is_literal_and_check_predicate_eval(ge, False)
+                continue
             interval = Quantity_Interval_Disjoint(Quantity_Interval(min=boundary))
         else:
             param = ge.operands[1]
             lit = Quantity_Interval_Disjoint.from_value(ge.operands[0])
             boundary = lit.min_elem
             if math.isinf(boundary):
-                raise Contradiction(
-                    "LessEqual -inf not possible",
-                    involved=[param],
-                    mutator=mutator,
-                )
+                if ge.constrained:
+                    raise Contradiction(
+                        "LessEqual -inf not possible",
+                        involved=[param],
+                        mutator=mutator,
+                    )
+                mutator.utils.alias_is_literal_and_check_predicate_eval(ge, False)
+                continue
             interval = Quantity_Interval_Disjoint(Quantity_Interval(max=boundary))
 
         mutator.mutate_expression(
