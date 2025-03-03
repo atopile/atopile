@@ -260,6 +260,14 @@ class MutatorUtils:
         if isinstance(po, Is):
             if literal in po.get_operand_literals().values():
                 return
+        if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
+            if not ss_lit.is_superset_of(literal):  # type: ignore
+                raise ContradictionByLiteral(
+                    "Tried alias to literal incompatible with subset",
+                    involved=[po],
+                    literals=[ss_lit, literal],
+                    mutator=self.mutator,
+                )
         out = self.mutator.create_expression(
             Is,
             po,

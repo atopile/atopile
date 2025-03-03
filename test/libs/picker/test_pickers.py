@@ -209,3 +209,21 @@ def test_pick_error_group():
 
     assert len(ex.value.exceptions) == 1
     assert isinstance(ex.value.exceptions[0], PickError)
+
+
+def test_pick_dependency_simple():
+    class App(Module):
+        r1: F.Resistor
+        r2: F.Resistor
+
+    app = App()
+
+    solver = DefaultSolver()
+    r1r = app.r1.resistance
+    r2r = app.r2.resistance
+    sum_lit = L.Range.from_center_rel(100 * P.kohm, 0.2)
+    (r1r + r2r).constrain_subset(sum_lit)
+    r1r.constrain_subset(sum_lit - r2r)
+    r2r.constrain_subset(sum_lit - r1r)
+
+    pick_part_recursively(app, solver)

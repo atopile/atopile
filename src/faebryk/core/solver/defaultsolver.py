@@ -399,8 +399,9 @@ class DefaultSolver(Solver):
         """
         Careful, only use after solver ran!
         """
-        if not self.state:
-            lit = value.try_get_literal_subset()
+
+        lit = value.try_get_literal_subset()
+        if not self.state or lit is not None:
             if lit is None:
                 return value.domain_set()
             return as_lit(lit)
