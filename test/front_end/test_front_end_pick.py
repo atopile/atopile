@@ -134,10 +134,9 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
 
     assert isinstance(node, L.Module)
 
-    rdiv = Bob.get_node_attr(node, "App")
-    assert isinstance(rdiv, Module)
-
     solver = DefaultSolver()
-    pick_part_recursively(rdiv, solver)
+    pick_part_recursively(node, solver)
 
-    assert rdiv.has_trait(F.has_part_picked)
+    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    for r in rs:
+        assert r.has_trait(F.has_part_picked)
