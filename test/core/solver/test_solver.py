@@ -921,7 +921,9 @@ def test_jlcpcb_pick_powered_led_regression():
 
     picked_parts = [mod for mod in children_mods if mod.has_trait(F.has_part_picked)]
     assert len(picked_parts) == 2
-    print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
+    for p in picked_parts:
+        print(p.get_full_name(types=False), p.get_trait(F.has_part_picked).get_part())
+        print(p.pretty_params(solver))
 
 
 @pytest.mark.parametrize(
