@@ -894,7 +894,8 @@ def test_jlcpcb_pick_led():
 def test_jlcpcb_pick_powered_led_simple():
     led = F.PoweredLED()
     led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
-    led.power.voltage.constrain_subset(L.Range(1.8 * P.volt, 5.5 * P.volt))
+    led.power.voltage.constrain_subset(L.Range(1.8 * P.V, 5.5 * P.V))
+    led.led.forward_voltage.constrain_subset(L.Range(1 * P.V, 4 * P.V))
 
     solver = DefaultSolver()
     children_mods = led.get_children_modules(direct_only=False, types=(Module,))
