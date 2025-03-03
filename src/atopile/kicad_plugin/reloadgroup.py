@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-import pcbnew  # pylint: disable=import-error, type: ignore
+import pcbnew  # type: ignore
 
 from .common import (
     footprints_by_addr,
