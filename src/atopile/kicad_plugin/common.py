@@ -4,7 +4,7 @@ import logging
 from pathlib import Path
 from typing import Any, Iterable, Optional
 
-import pcbnew  # pylint: disable=import-error
+import pcbnew  # type: ignore
 
 log = logging.getLogger(__name__)
 
