@@ -857,27 +857,29 @@ class C_footprint:
 
             type: E_type = field(**sexp_field(positional=True))
 
+        @dataclass
+        class C_rect_delta:
+            width: float = field(**sexp_field(positional=True))
+            height: float = field(**sexp_field(positional=True))
+
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
         size: C_wh
         at: C_xyr
-        # rect_delta
+        rect_delta: Optional[C_rect_delta] = None
         drill: Optional[C_drill] = None
         layers: list[str]
-        # pin_function
-        # pin_type
-        # die_length
-        # solder_mask_margin
-        # solder_paste_margin
-        # solder_paste_margin_ratio
-        # clearance
-        # teardrops:C_teardrop
-        # zone_connect
-        # thermal_width # legacy
-        # thermal_bridge_width
-        # thermal_bridge_angle
-        # thermal_gap
+        die_length: Optional[float] = None
+        solder_mask_margin: Optional[float] = None
+        solder_paste_margin: Optional[float] = None
+        solder_paste_margin_ratio: Optional[float] = None
+        clearance: Optional[float] = None
+        teardrops: Optional[C_teardrop] = None
+        zone_connect: Optional[bool] = None
+        thermal_bridge_width: Optional[float] = None
+        thermal_bridge_angle: Optional[float] = None
+        thermal_gap: Optional[float] = None
         roundrect_rratio: Optional[float] = None
         chamfer_ratio: Optional[float] = None
         chamfer: Optional[E_chamfer] = None
@@ -888,9 +890,8 @@ class C_footprint:
         # gr_poly
         remove_unused_layers: Optional[bool] = True
         keep_end_layers: Optional[bool] = True
-        tenting: C_tenting  # see parseTenting
-        # zone_layer_connections: Optional[list[str]] = None
-        die_length: Optional[float] = None
+        tenting: Optional[C_tenting] = None
+        zone_layer_connections: Optional[list[str]] = None
         uuid: UUID = field(default_factory=gen_uuid)
         unknown: CatchAll = None
 
