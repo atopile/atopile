@@ -34,7 +34,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import run_checks
+from faebryk.libs.app.checks import check_parameters, run_checks
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -110,6 +110,8 @@ def build(app: Module) -> None:
     if parameters:
         logger.info("Simplifying parameter graph")
         solver.simplify(*parameters)
+
+        check_parameters(parameters, G, solver)
 
     # Pickers ------------------------------------------------------------------
     if config.build.keep_picked_parts:
