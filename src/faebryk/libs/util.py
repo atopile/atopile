@@ -1433,6 +1433,7 @@ def run_live(
     *args,
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
+    check: bool = True,
     **kwargs,
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1473,7 +1474,7 @@ def run_live(
     process.wait()
 
     # Get return code and check for errors
-    if process.returncode != 0:
+    if process.returncode != 0 and check:
         raise subprocess.CalledProcessError(
             process.returncode, args[0], "".join(stdout_lines), "".join(stderr_lines)
         )

@@ -244,6 +244,7 @@ class downgrade[T: Exception](Pacman):
         *exceptions: Type[T],
         default=None,
         to_level: int = logging.WARNING,
+        raise_anyway: bool = False,
         logger: logging.Logger = logger,
     ):
         super().__init__(*exceptions, default=default)
@@ -253,6 +254,7 @@ class downgrade[T: Exception](Pacman):
 
         self.to_level = to_level
         self.logger = logger
+        self.raise_anyway = raise_anyway
 
     def nom_nom_nom(self, exc: T, original_exinfo):
         if isinstance(exc, ExceptionGroup):
@@ -262,6 +264,8 @@ class downgrade[T: Exception](Pacman):
 
         for e in exceptions:
             self.logger.log(self.to_level, str(e), exc_info=e, extra={"markdown": True})
+
+        return self.raise_anyway
 
 
 class suppress_after_count[T: Exception](Pacman):

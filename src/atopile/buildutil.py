@@ -42,6 +42,7 @@ from faebryk.libs.app.designators import (
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
+    check_net_names,
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
@@ -103,7 +104,7 @@ def build(app: Module) -> None:
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-    load_designators(G, attach=True)
+    load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
     # Pre-run solver -----------------------------------------------------------
     parameters = app.get_children(False, types=Parameter)
@@ -140,6 +141,7 @@ def build(app: Module) -> None:
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
+    check_net_names(G)
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
