@@ -499,7 +499,7 @@ def test_contradiction_message_subset():
 
     solver = DefaultSolver()
 
-    with pytest.raises(ContradictionByLiteral, match="subset"):
+    with pytest.raises(ContradictionByLiteral, match="is lit not subset of ss lits"):
         solver.simplify_symbolically(A, print_context=context, terminal=True)
 
 
@@ -512,5 +512,7 @@ def test_contradiction_message_superset():
 
     solver = DefaultSolver()
 
-    with pytest.raises(ContradictionByLiteral, match="superset"):
+    with pytest.raises(
+        ContradictionByLiteral, match="Tried alias to different literal"
+    ):
         solver.simplify_symbolically(A, print_context=context, terminal=True)
