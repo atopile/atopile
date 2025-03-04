@@ -123,9 +123,40 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
         module App:
             vdiv = new ResistorVoltageDivider
 
-            vdiv.total_resistance = 100kohm +/- 5%
-            vdiv.ratio = 0.1 +/- 10%
-            vdiv.max_current = 100mA +/- 5%
+            vdiv.v_in = 10V +/- 1%
+            assert vdiv.v_out within 3V to 3.2V
+            assert vdiv.max_current within 1mA to 3mA
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    solver = DefaultSolver()
+    pick_part_recursively(node, solver)
+
+    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    for r in rs:
+        assert r.has_trait(F.has_part_picked)
+
+
+def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
+
+    text = dedent(
+        """
+        from "vdivs.ato" import VDiv
+
+        module App:
+            vdiv = new VDiv
+
+            vdiv.v_in = 10V +/- 1%
+            assert vdiv.v_out within 3V to 3.2V
+            assert vdiv.i_q within 1mA to 3mA
         """
     )
 

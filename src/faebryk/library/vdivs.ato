@@ -2,9 +2,10 @@ import ResistorVoltageDivider, ElectricPower, ElectricSignal
 
 
 module VDiv from ResistorVoltageDivider:
+    # renaming
     out = new ElectricSignal
-
     out ~ output
 
+    # renaming
     i_q: current
-    i_q = max_current
+    assert i_q is max_current
