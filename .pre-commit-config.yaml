@@ -12,4 +12,8 @@ repos:
     hooks:
       - id: ruff
       - id: ruff-format
-
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.5.18
+    hooks:
+      - id: uv-lock
+        entry: sh -c 'uv sync --frozen && uv lock'
