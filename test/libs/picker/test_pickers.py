@@ -277,3 +277,35 @@ def test_null_solver():
         .inspect_get_known_supersets(app.cap.capacitance)
         .is_subset_of(capacitance)
     )
+
+
+@pytest.mark.slow
+def test_pick_voltage_divider_complex():
+    class App(Module):
+        supply: F.ElectricPower
+        rdiv: F.ResistorVoltageDivider
+        adc_input: F.ElectricSignal
+
+        def __preinit__(self):
+            self.supply.connect(self.rdiv.power)
+            self.rdiv.output.connect(self.adc_input)
+
+            # param
+            self.supply.voltage.alias_is(L.Range(9.9 * P.V, 10.1 * P.V))
+            self.adc_input.reference.voltage.constrain_subset(
+                L.Range(3.0 * P.V, 3.2 * P.V)
+            )
+            self.rdiv.max_current.constrain_subset(L.Range(1 * P.mA, 2 * P.mA))
+
+    app = App()
+    F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
+    solver = DefaultSolver()
+
+    solver.simplify_symbolically(app)
+
+    # pick_part_recursively(app, solver)
+
+    # for m in app.get_children_modules(types=Module):
+    #    if not m.has_trait(F.has_part_picked):
+    #        continue
+    #    print(m.get_full_name(), m.pretty_params(solver))

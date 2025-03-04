@@ -3,8 +3,10 @@
 
 import logging
 import math
+from decimal import Decimal
 from itertools import pairwise
 from operator import add, mul, sub, truediv
+from random import random
 from typing import Any, Iterable
 
 import pytest
@@ -59,7 +61,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Set,
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
-from faebryk.libs.units import P, dimensionless, quantity
+from faebryk.libs.units import P, Quantity, dimensionless, quantity
 from faebryk.libs.util import not_none, times
 
 logger = logging.getLogger(__name__)
@@ -1699,3 +1701,70 @@ def test_exec_pure_literal_expressions(op: type[CanonicalExpression], lits, expe
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(result.get_graph()).data.mutation_map
     assert repr_map.try_get_literal(result) == expected_converted
+
+
+@pytest.mark.slow
+# @pytest.mark.parametrize(
+#    "v_in, v_out, total_current",
+#    [
+#        (
+#            Range(9.9 * P.V, 10.1 * P.V),
+#            Range(3.0 * P.V, 3.2 * P.V),
+#            Range(1 * P.mA, 3 * P.mA),
+#        ),
+#    ],
+# )
+# def test_solve_voltage_divider_complex(v_in, v_out, total_current):
+def test_solve_voltage_divider_complex():
+    v_in, v_out, total_current = (
+        as_lit(Range(9.9 * P.V, 10.1 * P.V)),
+        as_lit(Range(3.0 * P.V, 3.2 * P.V)),
+        as_lit(Range(1 * P.mA, 3 * P.mA)),
+    )
+
+    rdiv = F.ResistorVoltageDivider()
+
+    rdiv.v_in.alias_is(v_in)
+    rdiv.v_out.constrain_subset(v_out)
+    rdiv.max_current.constrain_subset(total_current)
+
+    # Solve for r_top
+    print("Solving for r_top")
+    solver = DefaultSolver()
+    solver.update_superset_cache(rdiv)
+
+    r_top = solver.inspect_get_known_supersets(rdiv.r_top.resistance)
+    assert isinstance(r_top, Quantity_Interval_Disjoint)
+    print(f"r_top: {r_top}")
+
+    # Pick a random valid resistor for r_top
+    rand_ = Decimal(random())
+    r_any_nominal = r_top.min_elem + rand_ * (r_top.max_elem - r_top.min_elem)
+    assert isinstance(r_any_nominal, Quantity)
+    r_any = L.Range.from_center_rel(r_any_nominal, 0.01)
+    rdiv.r_top.resistance.alias_is(r_any)
+    print(f"Set r_top to {r_any}")
+
+    # Solve for r_bottom
+    solver.update_superset_cache(rdiv)
+    r_bottom = solver.inspect_get_known_supersets(rdiv.r_bottom.resistance)
+    assert isinstance(r_bottom, Quantity_Interval_Disjoint)
+    print(f"r_bottom: {r_bottom}")
+
+    # print results
+    res_total_current = v_in / (r_any + r_bottom)
+    res_v_out = v_in * r_bottom / (r_any + r_bottom)
+    solver_total_current = solver.inspect_get_known_supersets(rdiv.max_current)
+    solver_v_out = solver.inspect_get_known_supersets(rdiv.v_out)
+    print(f"Resulting current {res_total_current} ss! {total_current}")
+    print(f"Solver thinks current is {solver_total_current}")
+    print(f"Resulting v_out {res_v_out} ss! {v_out}")
+    print(f"Solver thinks v_out is {solver_v_out}")
+
+    # check valid result
+    assert res_total_current.is_subset_of(total_current)
+    assert res_v_out.is_subset_of(v_out)
+
+    # check solver knowing result
+    assert solver_v_out == res_v_out
+    assert solver_total_current == res_total_current
