@@ -32,6 +32,7 @@ class App(Module):
 
     def __preinit__(self) -> None:
         self.leds.power.connect(self.battery.power)
+        self.battery.power.voltage.alias_is(3 * P.V)
 
         # Parametrize
         self.leds.led.color.constrain_subset(F.LED.Color.YELLOW)

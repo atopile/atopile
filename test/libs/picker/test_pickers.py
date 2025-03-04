@@ -15,7 +15,11 @@ from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.library import L
-from faebryk.libs.picker.api.picker_lib import get_candidates, pick_atomically
+from faebryk.libs.picker.api.picker_lib import (
+    NotCompatibleException,
+    check_and_attach_candidates,
+    get_candidates,
+)
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import P
@@ -166,9 +170,10 @@ def test_pick_led_by_colour():
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.has_part_picked)
-    assert solver.inspect_get_known_supersets(
-        led.color, force_update=True
-    ).is_subset_of(EnumSet.from_value(color))
+    solver.update_superset_cache(led)
+    assert solver.inspect_get_known_supersets(led.color).is_subset_of(
+        EnumSet.from_value(color)
+    )
 
 
 def test_reject_diode_for_led():
@@ -181,9 +186,8 @@ def test_reject_diode_for_led():
 
     solver = DefaultSolver()
     candidates = get_candidates(diode.get_tree(types=F.Diode), solver)
-    ok = pick_atomically([(led, c) for c in candidates[diode]], solver)
-
-    assert not ok
+    with pytest.raises(NotCompatibleException):
+        check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
 
 
 def test_pick_error_group():
@@ -208,6 +212,46 @@ def test_pick_error_group():
     assert isinstance(ex.value.exceptions[0], PickError)
 
 
+def test_pick_dependency_simple():
+    class App(Module):
+        r1: F.Resistor
+        r2: F.Resistor
+
+    app = App()
+
+    solver = DefaultSolver()
+    r1r = app.r1.resistance
+    r2r = app.r2.resistance
+    sum_lit = L.Range.from_center_rel(100 * P.kohm, 0.2)
+    (r1r + r2r).constrain_subset(sum_lit)
+    r1r.constrain_subset(sum_lit - r2r)
+    r2r.constrain_subset(sum_lit - r1r)
+
+    pick_part_recursively(app, solver)
+
+
+@pytest.mark.slow
+def test_pick_dependency_advanced_1():
+    rdiv = F.ResistorVoltageDivider()
+    rdiv.total_resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.05))
+    rdiv.ratio.constrain_subset(L.Range.from_center_rel(0.1, 0.1))
+    rdiv.max_current.alias_is(L.Range.from_center_rel(100 * P.milliamp, 0.05))
+
+    solver = DefaultSolver()
+    pick_part_recursively(rdiv, solver)
+
+
+@pytest.mark.slow
+def test_pick_dependency_advanced_2():
+    rdiv = F.ResistorVoltageDivider()
+
+    rdiv.v_in.alias_is(L.Range.from_center_rel(10 * P.V, 0.1))
+    rdiv.v_out.constrain_subset(L.Range.from_center_rel(1 * P.V, 0.2))
+
+    solver = DefaultSolver()
+    pick_part_recursively(rdiv, solver)
+
+
 def test_null_solver():
     capacitance = L.Range.from_center_rel(10 * P.nF, 0.2)
 
@@ -216,7 +260,7 @@ def test_null_solver():
 
         def __preinit__(self):
             self.cap.add(F.has_package(F.has_package.Package.C0805))
-            self.cap.capacitance.alias_is(capacitance)
+            self.cap.capacitance.constrain_subset(capacitance)
 
     app = App()
 
@@ -228,6 +272,8 @@ def test_null_solver():
         app.cap.get_trait(F.has_package).get_package(solver)
         == F.has_package.Package.C0805
     )
-    assert solver.inspect_get_known_supersets(
-        app.cap.capacitance, force_update=False
-    ).is_subset_of(capacitance)
+    assert (
+        (solver)
+        .inspect_get_known_supersets(app.cap.capacitance)
+        .is_subset_of(capacitance)
+    )

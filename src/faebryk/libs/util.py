@@ -116,7 +116,7 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
-def duplicates(it, key):
+def duplicates[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
     return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
 
 
@@ -1354,6 +1354,10 @@ def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
             d[k] = visitor(k, v)
 
 
+def invert_dict[T, U](d: dict[T, U]) -> dict[U, list[T]]:
+    return groupby(d.keys(), key=lambda k: d[k])
+
+
 class DefaultFactoryDict[T, U](dict[T, U]):
     def __init__(self, factory: Callable[[T], U], *args, **kwargs):
         self.factory = factory
@@ -1383,8 +1387,10 @@ class EquivalenceClasses[T: Hashable]:
     def is_eq(self, a: T, b: T) -> bool:
         return self.classes[a] is self.classes[b]
 
-    def get(self) -> list[set[T]]:
+    def get(self, only_multi: bool = False) -> list[set[T]]:
         sets = {id(s): s for s in self.classes.values()}
+        if only_multi:
+            sets = {k: v for k, v in sets.items() if len(v) > 1}
         return list(sets.values())
 
 
@@ -1922,3 +1928,10 @@ def repo_root() -> Path:
             raise FileNotFoundError("Could not find repo root")
     else:
         return repo_root
+
+
+def is_numeric_str(s: str) -> bool:
+    """
+    Check if a string is a numeric string.
+    """
+    return s.replace(".", "").strip().isnumeric()
