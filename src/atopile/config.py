@@ -931,17 +931,17 @@ class Config:
                 build_cfg.frozen = frozen
 
             if build_cfg.frozen:
-                # FIXME: is wish these were properly symbolic references, but
-                # annoyingly you can't key off pydantic fields from the class
                 frozen_required_options = {
-                    "keep_picked_parts": True,
-                    "keep_net_names": True,
-                    "keep_designators": True,
+                    "keep_picked_parts": (build_cfg.keep_picked_parts, True),
+                    "keep_net_names": (build_cfg.keep_net_names, True),
+                    "keep_designators": (build_cfg.keep_designators, True),
                 }
 
-                for key, value in frozen_required_options.items():
-                    if getattr(build_cfg, key) is not value:
-                        raise UserBadParameterError(f"`{key}` conflict with `frozen`")
+                for key, (value, expected) in frozen_required_options.items():
+                    if value is not expected:
+                        raise UserBadParameterError(
+                            f"`{key}={value}` conflicts with `frozen`"
+                        )
 
     def should_open_layout_on_build(self) -> bool:
         """Returns whether atopile should open the layout after building"""
