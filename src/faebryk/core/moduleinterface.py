@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 IMPLIED_PATHS = ConfigFlag("IMPLIED_PATHS", default=False, descr="Use implied paths")
 
+type Bridgable[T: "ModuleInterface"] = Node | T
+
 
 class ModuleInterface(Node):
     class TraitT(Trait): ...
@@ -116,15 +118,23 @@ class ModuleInterface(Node):
 
         return ret
 
-    def connect_via(self, bridge: Node | Sequence[Node], *other: Self, link=None):
+    def connect_via(
+        self,
+        bridge: Bridgable[Self] | Sequence[Bridgable[Self]],
+        *other: Self,
+        link=None,
+    ):
         from faebryk.library.can_bridge import can_bridge
 
-        bridges = [bridge] if isinstance(bridge, Node) else bridge
+        bridges = [bridge] if isinstance(bridge, Node | ModuleInterface) else bridge
         intf = self
         for sub_bridge in bridges:
-            t = sub_bridge.get_trait(can_bridge)
-            intf.connect(t.get_in(), link=link)
-            intf = t.get_out()
+            if isinstance(sub_bridge, type(self)):
+                intf.connect(sub_bridge, link=link)
+            else:
+                t = sub_bridge.get_trait(can_bridge)
+                intf.connect(t.get_in(), link=link)
+                intf = t.get_out()
 
         intf.connect(*other, link=link)
 

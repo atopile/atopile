@@ -78,7 +78,7 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
             Quantity, quantity(value, self.interval_units).to(self.units)
         )
 
-    def _format_number(self, number: Number, num_decimals: int = 9) -> str:
+    def _format_number(self, number: Number, num_decimals: int = 3) -> str:
         if self.units.is_compatible_with(dimensionless):
             if math.isinf(number):
                 return "∞" if number > 0 else "-∞"
