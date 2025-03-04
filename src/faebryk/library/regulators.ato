@@ -1,9 +1,9 @@
 import ElectricPower, Regulator
-from "vdivs.ato" import _VDiv
+from "vdivs.ato" import VDiv
 
 module AdjustableRegulator from Regulator:
     # using vanilla voltage divider without equations
-    feedback_div = new _VDiv
+    feedback_div = new VDiv
     v_ref: voltage
     i_q: current
     r_total: resistance

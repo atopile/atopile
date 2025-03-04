@@ -7,6 +7,7 @@ import faebryk.library._F as F
 from atopile.datatypes import Ref
 from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
+from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -76,3 +77,97 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     pick_part_recursively(r1, DefaultSolver())
 
     assert r1.has_trait(F.has_part_picked)
+
+
+def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
+
+    text = dedent(
+        """
+        from "generics/resistors.ato" import Resistor
+
+        module App:
+            r1 = new Resistor
+            r2 = new Resistor
+
+            assert r1.resistance + r2.resistance within 100kohm +/- 20%
+            assert r1.resistance within 100kohm +/- 20% - r2.resistance
+            assert r2.resistance within 100kohm +/- 20% - r1.resistance
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    solver = DefaultSolver()
+    pick_part_recursively(node, solver)
+
+    r1, r2 = node.get_children_modules(direct_only=True, types=Module)
+    assert r1.has_trait(F.has_part_picked)
+    assert r2.has_trait(F.has_part_picked)
+
+
+def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
+
+    text = dedent(
+        """
+        import ResistorVoltageDivider
+
+        module App:
+            vdiv = new ResistorVoltageDivider
+
+            vdiv.v_in = 10V +/- 1%
+            assert vdiv.v_out within 3V to 3.2V
+            assert vdiv.max_current within 1mA to 3mA
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    solver = DefaultSolver()
+    pick_part_recursively(node, solver)
+
+    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    for r in rs:
+        assert r.has_trait(F.has_part_picked)
+
+
+def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
+
+    text = dedent(
+        """
+        from "vdivs.ato" import VDiv
+
+        module App:
+            vdiv = new VDiv
+
+            vdiv.v_in = 10V +/- 1%
+            assert vdiv.v_out within 3V to 3.2V
+            assert vdiv.i_q within 1mA to 3mA
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    solver = DefaultSolver()
+    pick_part_recursively(node, solver)
+
+    rs = node.get_children_modules(direct_only=False, types=F.Resistor)
+    for r in rs:
+        assert r.has_trait(F.has_part_picked)

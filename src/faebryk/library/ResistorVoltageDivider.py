@@ -12,21 +12,61 @@ logger = logging.getLogger(__name__)
 
 
 class ResistorVoltageDivider(Module):
-    resistor = L.list_field(2, F.Resistor)
+    """
+    A voltage divider using two resistors.
+    node[0] ~ resistor[1] ~ node[1] ~ resistor[2] ~ node[2]
+    power.hv ~ node[0]
+    power.lv ~ node[2]
+    output.line ~ node[1]
+    output.reference.lv ~ node[2]
+    """
 
-    node = L.list_field(3, F.Electrical)
+    # External interfaces
+    power: F.ElectricPower
+    output: F.ElectricSignal
 
+    # Components
+    r_bottom: F.Resistor
+    r_top: F.Resistor
+
+    # Variables
+    v_in = L.p_field(units=P.V)
+    v_out = L.p_field(units=P.V)
+    max_current = L.p_field(units=P.A)
     total_resistance = L.p_field(units=P.Ω)
     ratio = L.p_field(units=P.dimensionless)
-    max_current = L.p_field(units=P.A)
 
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.node[0], self.node[1])
+        return F.can_bridge_defined(self.power.hv, self.power.lv)
 
     def __preinit__(self):
-        self.node[0].connect_via([self.resistor[0], self.resistor[1]], self.node[1])
-        self.total_resistance.alias_is(
-            self.resistor[0].resistance + self.resistor[1].resistance
+        # Connections
+        self.power.hv.connect_via(
+            [self.r_top, self.output.line, self.r_bottom], self.power.lv
         )
-        self.ratio.alias_is(self.resistor[0].resistance / self.total_resistance)
+
+        # Short variables
+        ratio = self.ratio
+        r_total = self.total_resistance
+        r_top = self.r_top.resistance
+        r_bottom = self.r_bottom.resistance
+        v_out = self.v_out
+        v_in = self.v_in
+        max_current = self.max_current
+
+        # Link interface voltages
+        v_out.alias_is(self.output.reference.voltage)
+        v_in.alias_is(self.power.voltage)
+
+        # Equations
+        r_top.alias_is((v_in / max_current) - r_bottom)
+        r_bottom.alias_is((v_in / max_current) - r_top)
+        r_top.alias_is((v_in - v_out) / max_current)
+        r_bottom.alias_is(v_out / max_current)
+
+        # Calculate outputs
+        r_total.alias_is(r_top + r_bottom)
+        v_out.alias_is(v_in * r_bottom / r_total)
+        max_current.alias_is(v_in / r_total)
+        ratio.alias_is(r_bottom / r_total)

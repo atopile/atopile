@@ -14,6 +14,7 @@ from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,8 @@ class App(Module):
         self.led.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
+
+        self.battery.power.voltage.alias_is(3 * P.V)
 
 
 # PCB layout etc ---------------------------------------------------------------

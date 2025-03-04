@@ -19,9 +19,9 @@ from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVe
 import faebryk.library._F as F
 from atopile.config import config
 from faebryk.core.module import Module
+from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
     Part,
-    PickerOption,
     Supplier,
 )
 from faebryk.libs.util import ConfigFlag
