@@ -8,12 +8,13 @@ import faebryk.library._F as F
 from atopile import errors
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
-from faebryk.core.parameter import ConstrainableExpression, Parameter
+from faebryk.core.parameter import ConstrainableExpression, Is, IsSubset, Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.app.erc import simple_erc
 from faebryk.libs.exceptions import accumulate
+from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.util import cast_assert, not_none
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,20 @@ class UnspecifiedParameterError(ParameterError):
             f"Parameter `{orig_param}` is constrained but has not been specified.\n\n"
             f"Constrained by: \n{constraints}",
         )
+
+
+def _is_constrained_to_true(pred: ConstrainableExpression) -> bool:
+    return isinstance(pred, Is) and set(pred.get_operand_literals().values()) == {
+        BoolSet(True)
+    }
+
+
+def _is_domain_constraint(pred: ConstrainableExpression, param: Parameter) -> bool:
+    return bool(
+        isinstance(pred, IsSubset)
+        and pred.constrained
+        and pred.operands[1] == param.domain_set()
+    )
 
 
 def check_parameters(parameters: set[Parameter], G: Graph, solver: Solver):
@@ -92,10 +107,8 @@ def check_parameters(parameters: set[Parameter], G: Graph, solver: Solver):
                     constraints = [
                         pred
                         for pred in preds
-                        if any(
-                            lit != param.domain_set()
-                            for lit in pred.get_operand_literals().values()
-                        )
+                        if not _is_domain_constraint(pred, orig_param)
+                        and not _is_constrained_to_true(pred)
                     ]
 
                     if constraints:
