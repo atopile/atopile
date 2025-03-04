@@ -1,17 +1,10 @@
-import Capacitor, ResistorVoltageDivider, ElectricPower, ElectricSignal
+import ResistorVoltageDivider, ElectricPower, ElectricSignal
 
-module VDiv:
-    power = new ElectricPower
+
+module VDiv from ResistorVoltageDivider:
     out = new ElectricSignal
-    vdiv = new ResistorVoltageDivider
-    power ~ vdiv.power
-    out ~ vdiv.output
 
-    v_in: voltage
-    v_out: voltage
+    out ~ output
+
     i_q: current
-
-    v_in = vdiv.v_in
-    v_out = vdiv.v_out
-    i_q = vdiv.max_current
-
+    i_q = max_current

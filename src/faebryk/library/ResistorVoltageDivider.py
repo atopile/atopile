@@ -21,18 +21,20 @@ class ResistorVoltageDivider(Module):
     output.reference.lv ~ node[2]
     """
 
-    r_bottom: F.Resistor
-    r_top: F.Resistor
+    # External interfaces
     power: F.ElectricPower
-    # input: F.ElectricSignal
     output: F.ElectricSignal
 
-    total_resistance = L.p_field(units=P.Ω)
-    ratio = L.p_field(units=P.dimensionless)
-    max_current = L.p_field(units=P.A)
+    # Components
+    r_bottom: F.Resistor
+    r_top: F.Resistor
 
+    # Variables
     v_in = L.p_field(units=P.V)
     v_out = L.p_field(units=P.V)
+    max_current = L.p_field(units=P.A)
+    total_resistance = L.p_field(units=P.Ω)
+    ratio = L.p_field(units=P.dimensionless)
 
     @L.rt_field
     def can_bridge(self):
@@ -44,10 +46,7 @@ class ResistorVoltageDivider(Module):
             [self.r_top, self.output.line, self.r_bottom], self.power.lv
         )
 
-        # self.power.connect(self.input.reference)
-        # self.power.hv.connect(self.input.line)
-
-        # Variables
+        # Short variables
         ratio = self.ratio
         r_total = self.total_resistance
         r_top = self.r_top.resistance
@@ -56,7 +55,7 @@ class ResistorVoltageDivider(Module):
         v_in = self.v_in
         max_current = self.max_current
 
-        # Link variables
+        # Link interface voltages
         v_out.alias_is(self.output.reference.voltage)
         v_in.alias_is(self.power.voltage)
 
