@@ -47,7 +47,7 @@ class TPS2116_ReferenceDesign(Module):
         if mode == self.Mode.PRIORITY:
             self.tps2116.mode.set(on=True)
             self.tps2116.power_in[0].connect(self.resistor_divider.power)
-            self.tps2116.select.line.connect(self.resistor_divider.output.line)
+            self.tps2116.select.connect(self.resistor_divider.output)
             if switchover_voltage != self.SwitchoverVoltage.CUSTOM:
                 self.resistor_divider.r_bottom.resistance.constrain_subset(
                     L.Range.from_center_rel(5 * P.kohm, 0.01)
