@@ -6,8 +6,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
 
-from more_itertools import first
-
 from atopile import layout
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
@@ -112,7 +110,7 @@ def build(app: Module) -> None:
     parameters = app.get_children(False, types=Parameter)
     if parameters:
         logger.info("Simplifying parameter graph")
-        solver.inspect_get_known_supersets(first(parameters), force_update=True)
+        solver.simplify(*parameters)
 
     # Pickers ------------------------------------------------------------------
     if config.build.keep_picked_parts:

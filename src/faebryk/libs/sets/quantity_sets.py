@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from collections.abc import Generator
 from typing import Any, TypeVar, cast, override
 
 from faebryk.libs.sets.numeric_sets import (
     Number,
+    NumberLike,
+    NumberLikeR,
     Numeric_Interval,
     Numeric_Interval_Disjoint,
 )
@@ -42,8 +45,8 @@ QuantityT = TypeVar(
     covariant=False,
 )
 
-type QuantityLike = Quantity | int | float | Number  # | Unit
-QuantityLikeR = (Quantity, int, float, Number)
+type QuantityLike = Quantity | NumberLike  # | Unit
+QuantityLikeR = (Quantity, *NumberLikeR)
 
 
 type Numeric = int | float
@@ -77,10 +80,17 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
 
     def _format_number(self, number: Number, num_decimals: int = 9) -> str:
         if self.units.is_compatible_with(dimensionless):
+            if math.isinf(number):
+                return "∞" if number > 0 else "-∞"
+            if number == 0:
+                return "0"
+            rel_dif = abs((number - round(number)) / number)
+            if rel_dif < 1e-6:
+                return round_str(number, 0)
             return round_str(number, num_decimals)
-        return to_si_str(
-            self.base_to_units(number), self.units, num_decimals=num_decimals
-        )
+
+        # ignore num_decimals because si prefixes scale the number
+        return to_si_str(self.base_to_units(number), self.units, num_decimals=3)
 
     @override
     def serialize_pset(self) -> dict:
@@ -581,9 +591,44 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_log()
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
+    def op_sqrt(self) -> "Quantity_Interval_Disjoint":
+        return self**0.5
+
     def op_sin(self) -> "Quantity_Interval_Disjoint":
+        if not self.units.is_compatible_with(dimensionless):
+            raise ValueError("sin only defined for dimensionless quantities")
         _interval = self._intervals.op_sin()
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_cos(self) -> "Quantity_Interval_Disjoint":
+        return (self + quantity(math.pi / 2, self.units)).op_sin()
+
+    def op_floor(self) -> "Quantity_Interval_Disjoint":
+        return (self - quantity(0.5, self.units)).op_round()
+
+    def op_ceil(self) -> "Quantity_Interval_Disjoint":
+        return (self + quantity(0.5, self.units)).op_round()
+
+    def op_total_span(self) -> Quantity:
+        """Returns the sum of the spans of all intervals in this disjoint set.
+        For a single interval, this is equivalent to max - min.
+        For multiple intervals, this sums the spans of each disjoint interval."""
+        return quantity(
+            sum(abs(r.max_elem - r.min_elem) for r in self._intervals), self.units
+        )
+
+    def op_deviation_to(
+        self, other: QuantitySetLike, relative: bool = False
+    ) -> Quantity:
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        sym_diff = self.op_symmetric_difference_intervals(other_qty)
+        deviation = sym_diff.op_total_span()
+        if relative:
+            deviation /= max(abs(self).max_elem, abs(other_qty).max_elem)
+        return deviation
 
     def __contains__(self, item: Any) -> bool:
         if isinstance(item, (float, int, Number)):
@@ -646,7 +691,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return Quantity_Set_Discrete(other)
         if isinstance(other, tuple) and len(other) == 2:
             return Quantity_Interval_Disjoint(other)
-        if isinstance(other, (int, float)):
+        if isinstance(other, NumberLike):
             return Quantity_Set_Discrete(quantity(other))
         raise ValueError(f"unsupported type: {type(other)}")
 
@@ -779,6 +824,10 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return False
         return self.min_elem == self.max_elem  # type: ignore #TODO
 
+    @property
+    def is_integer(self) -> bool:
+        return all(r.is_integer for r in self._intervals.intervals)
+
     def as_gapless(self) -> "Quantity_Interval":
         if self.is_empty():
             raise ValueError("empty interval cannot be gapless")
@@ -802,6 +851,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         out = cls(units=getattr(P, data["unit"]))
         out._intervals = P_Set.deserialize(data["intervals"])
         return out
+
+    def to_dimensionless(self) -> "Quantity_Interval_Disjoint":
+        return Quantity_Interval_Disjoint._from_intervals(
+            self._intervals, dimensionless
+        )
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

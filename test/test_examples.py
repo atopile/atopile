@@ -20,6 +20,7 @@ XFAILURES = {
 }
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "example",
     (

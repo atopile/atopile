@@ -1201,6 +1201,7 @@ def test_regression_rp2040_usb_diffpair():
         assert set(connected.keys()) == set(refs)
 
 
+@pytest.mark.slow
 def test_regression_rp2040_usb_diffpair_full():
     app = F.RP2040_ReferenceDesign()
     rp2040_2 = F.RP2040()
