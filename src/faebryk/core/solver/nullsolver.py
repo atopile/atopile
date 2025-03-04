@@ -21,10 +21,15 @@ class NullSolver(Solver):
         suppose_constraint: Predicate | None = None,
         minimize: Expression | None = None,
     ) -> Any:
-        return operatable.domain_set.any()
+        return operatable.domain_set().any()
 
     @override
-    def try_fulfill(self, predicate: ConstrainableExpression, lock: bool) -> bool:
+    def try_fulfill(
+        self,
+        predicate: ConstrainableExpression,
+        lock: bool,
+        allow_unknown: bool = False,
+    ) -> bool:
         if lock:
             predicate.constrain()
         return True
@@ -34,10 +39,10 @@ class NullSolver(Solver):
         pass
 
     @override
-    def inspect_get_known_supersets(self, param: Parameter) -> P_Set:
-        lit = param.try_get_literal_subset()
+    def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
+        lit = value.try_get_literal_subset()
         if lit is None:
-            lit = param.domain_set()
+            lit = value.domain_set()
         return as_lit(lit)
 
     @override

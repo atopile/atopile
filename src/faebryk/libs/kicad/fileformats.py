@@ -551,12 +551,16 @@ class C_fp_text:
         reference = auto()
         value = auto()
 
+    class C_fp_text_effects(C_effects):
+        hide: Optional[bool] = None
+
     type: E_type = field(**sexp_field(positional=True))
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
     layer: C_text_layer
+    hide: Optional[bool] = None
     uuid: UUID = field(default_factory=gen_uuid)
-    effects: C_effects
+    effects: C_fp_text_effects
     unlocked: bool = False
 
 

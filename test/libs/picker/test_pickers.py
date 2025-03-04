@@ -13,6 +13,7 @@ import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.api.picker_lib import (
     NotCompatibleException,
@@ -249,3 +250,30 @@ def test_pick_dependency_advanced_2():
 
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)
+
+
+def test_null_solver():
+    capacitance = L.Range.from_center_rel(10 * P.nF, 0.2)
+
+    class App(Module):
+        cap: F.Capacitor
+
+        def __preinit__(self):
+            self.cap.add(F.has_package(F.has_package.Package.C0805))
+            self.cap.capacitance.alias_is(capacitance)
+
+    app = App()
+
+    solver = NullSolver()
+    pick_part_recursively(app, solver)
+
+    assert app.cap.has_trait(F.has_part_picked)
+    assert (
+        app.cap.get_trait(F.has_package).get_package(solver)
+        == F.has_package.Package.C0805
+    )
+    assert (
+        (solver)
+        .inspect_get_known_supersets(app.cap.capacitance)
+        .is_subset_of(capacitance)
+    )
