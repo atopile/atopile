@@ -1277,6 +1277,9 @@ class Mutator:
         allow_uncorrelated: bool = False,
     ) -> T:
         assert issubclass(expr_factory, CanonicalExpression)
+        from_ops = [
+            x for x in unique_ref(from_ops or []) if isinstance(x, ParameterOperatable)
+        ]
 
         expr = None
         if check_exists:
@@ -1293,7 +1296,7 @@ class Mutator:
                 *operands,
                 constrain=constrain,
             )
-            self.transformations.created[expr] = list(unique_ref(from_ops or []))
+            self.transformations.created[expr] = from_ops
 
         # TODO double constrain ugly
         if constrain and isinstance(expr, ConstrainableExpression):

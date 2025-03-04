@@ -335,6 +335,7 @@ class MutatorUtils:
         from_ops: Sequence[ParameterOperatable] | None = None,
         terminate: bool = False,
     ):
+        assert isinstance(po, ParameterOperatable)
         from_ops = from_ops or []
         from_ops = [po] + list(from_ops)
         if self.is_literal(to):
@@ -364,14 +365,16 @@ class MutatorUtils:
 
     def subset_to(
         self,
-        po: ParameterOperatable,
+        po: ParameterOperatable | SolverLiteral,
         to: ParameterOperatable | SolverLiteral,
         check_existing: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
     ):
         from_ops = from_ops or []
-        from_ops = [po] + list(from_ops)
-        if self.is_literal(to):
+        from_ops = [
+            x for x in [po, to] + list(from_ops) if isinstance(x, ParameterOperatable)
+        ]
+        if self.is_literal(to) and isinstance(po, ParameterOperatable):
             assert check_existing
             return self.subset_literal(po, to, from_ops=from_ops)
 
@@ -381,6 +384,10 @@ class MutatorUtils:
                 Is, constrained_only=True
             ):
                 return
+
+        if self.is_literal(po) and check_existing:
+            # TODO implement
+            pass
 
         return self.mutator.create_expression(
             IsSubset,
