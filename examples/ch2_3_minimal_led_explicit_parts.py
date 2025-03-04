@@ -9,6 +9,7 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -32,3 +33,4 @@ class App(Module):
                 pinmap={"1": self.battery.power.lv, "2": self.battery.power.hv},
             )
         )
+        buttoncell.power.voltage.alias_is(3 * P.V)

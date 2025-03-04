@@ -15,7 +15,6 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
-from faebryk.libs.util import groupby
 
 logger = logging.getLogger(__name__)
 
@@ -206,17 +205,6 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     raise ERCFaultShort(
                         f"Shorted nets: {friendly_shorted}",
                     )
-
-        # net name collisions
-        net_name_collisions = {
-            k: v
-            for k, v in groupby(
-                nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
-            ).items()
-            if len(v) > 1
-        }
-        if net_name_collisions:
-            raise ERCFault(f"Net name collision: {net_name_collisions}")
 
         # shorted components
         # parts = [n for n in nodes if n.has_trait(has_footprint)]

@@ -12,7 +12,10 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
-    from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint, QuantityLike
+    from faebryk.libs.sets.quantity_sets import (
+        Quantity_Interval_Disjoint,
+        QuantitySetLike,
+    )
 
 
 # Protocols ----------------------------------------------------------------------------
@@ -296,7 +299,7 @@ def as_lit(x: BoolSetLike) -> BoolSet: ...
 
 
 @overload
-def as_lit(x: "QuantityLike") -> "Quantity_Interval_Disjoint": ...
+def as_lit(x: "QuantitySetLike") -> "Quantity_Interval_Disjoint": ...
 
 
 @overload

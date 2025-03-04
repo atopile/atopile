@@ -5,9 +5,12 @@ import time
 import unittest
 from itertools import combinations
 
+import pytest
+
 from faebryk.libs.util import (
     SharedReference,
     assert_once,
+    invert_dict,
     once,
     times_out,
     zip_non_locked,
@@ -142,3 +145,37 @@ class TestUtil(unittest.TestCase):
 
         self.assertRaises(TimeoutError, do, 0.5)
         do(0)
+
+
+class _DictTestObjBrokenHash:
+    def __init__(self, value: object):
+        self.value = value
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _DictTestObjBrokenHash):
+            return False
+        return self.value == other.value
+
+    def __hash__(self) -> int:
+        return 5
+
+
+@pytest.mark.parametrize(
+    "to_test, expected",
+    [
+        ({1: "a", 2: "b", 3: "c"}, {"a": [1], "b": [2], "c": [3]}),
+        ({1: "a", 2: "a", 3: "a"}, {"a": [1, 2, 3]}),
+        ({1: "a", 2: "b", 3: "a"}, {"a": [1, 3], "b": [2]}),
+        (
+            {
+                1: (a := _DictTestObjBrokenHash("a")),
+                2: (b := _DictTestObjBrokenHash("b")),
+                3: a,
+            },
+            {a: [1, 3], b: [2]},
+        ),
+    ],
+)
+def test_invert_dict(to_test: dict, expected: dict):
+    out = invert_dict(to_test)
+    assert out == expected
