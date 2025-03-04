@@ -221,8 +221,12 @@ def _get_compatible_parameters(
     """
     Check if the parameters of a component are compatible with the module
     """
-    # Nothing to check
-    if not module.has_trait(F.is_pickable_by_type):
+    # only check parametric picks
+    if (
+        module.has_trait(F.is_pickable_by_supplier_id)
+        or module.has_trait(F.is_pickable_by_part_number)
+        or not module.has_trait(F.is_pickable_by_type)
+    ):
         return {}
 
     # shortcut because solving slow
