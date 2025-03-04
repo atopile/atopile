@@ -24,7 +24,7 @@ class NullSolver(Solver):
         return operatable.domain_set.any()
 
     @override
-    def try_fullfill(self, predicate: ConstrainableExpression, lock: bool) -> bool:
+    def try_fulfill(self, predicate: ConstrainableExpression, lock: bool) -> bool:
         if lock:
             predicate.constrain()
         return True

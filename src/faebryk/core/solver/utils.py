@@ -643,7 +643,7 @@ class MutatorUtils:
         )
 
     @staticmethod
-    def no_other_constrains(
+    def no_other_constraints(
         po: ParameterOperatable,
         *other: ConstrainableExpression,
         unfulfilled_only: bool = False,

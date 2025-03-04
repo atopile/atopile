@@ -442,8 +442,8 @@ def test_simple_literal_folds_arithmetic(
 
     solver = DefaultSolver()
     repr_map = solver.simplify_symbolically(G).data.mutation_map
-    deducted_subset = repr_map.try_get_literal(expr, allow_subset=True)
-    assert deducted_subset == expected_result
+    deduced_subset = repr_map.try_get_literal(expr, allow_subset=True)
+    assert deduced_subset == expected_result
 
 
 @pytest.mark.parametrize(
@@ -742,13 +742,13 @@ def test_base_unit_switch():
 
 
 @pytest.mark.parametrize("predicate_type", [Is, IsSubset])
-def test_try_fullfill_super_basic(predicate_type: type[ConstrainableExpression]):
+def test_try_fulfill_super_basic(predicate_type: type[ConstrainableExpression]):
     p0 = Parameter(units=P.V)
     p0.alias_is(Range(0 * P.V, 10 * P.V))
 
     solver = DefaultSolver()
     pred = predicate_type(p0, Range(0 * P.V, 10 * P.V))
-    assert solver.try_fullfill(pred, lock=False)
+    assert solver.try_fulfill(pred, lock=False)
 
 
 def test_congruence_filter():
@@ -781,7 +781,7 @@ def test_regression_enum_contradiction():
 
     solver = DefaultSolver()
     with pytest.raises(Contradiction):
-        solver.try_fullfill(Is(A, F.LED.Color.EMERALD), lock=False)
+        solver.try_fulfill(Is(A, F.LED.Color.EMERALD), lock=False)
 
 
 def test_inspect_enum_led():
@@ -1295,14 +1295,14 @@ def test_deduce_negative():
     p = Not(A)
 
     solver = DefaultSolver()
-    assert solver.try_fullfill(p, lock=False)
+    assert solver.try_fulfill(p, lock=False)
 
 
 def test_empty_and():
     solver = DefaultSolver()
 
     p = And()
-    assert solver.try_fullfill(p, lock=False)
+    assert solver.try_fulfill(p, lock=False)
 
 
 def test_implication():

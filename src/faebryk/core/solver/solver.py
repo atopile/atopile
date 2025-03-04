@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 
 
-class NotDeductibleException(Exception):
+class NotDeducibleException(Exception):
     def __init__(
         self,
         predicate: ConstrainableExpression,
@@ -58,17 +58,17 @@ class Solver(Protocol):
         """
         ...
 
-    def try_fullfill(
+    def try_fulfill(
         self,
         predicate: ConstrainableExpression,
         lock: bool,
         allow_unknown: bool = False,
     ) -> bool:
         """
-        Try to fullfill the predicate.
+        Try to fulfill the predicate.
 
         Args:
-            predicate: The predicate to fullfill.
+            predicate: The predicate to fulfill.
             lock: If True, ensure the result is part of the solution set of
                   the expression.
 
