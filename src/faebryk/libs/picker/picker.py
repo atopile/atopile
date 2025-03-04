@@ -319,6 +319,12 @@ def pick_topologically(
                     f" Likely contradicting constraints: {str(e)}",
                     *[m for m, _ in single_part_modules],
                 )
+            except (NotCompatibleException, NotDeducibleException):
+                # TODO: more informationq
+                raise PickError(
+                    "Could not pick all explicitly-specified parts",
+                    *[m for m, _ in single_part_modules],
+                )
         _update_progress(single_part_modules)
 
         tree = update_pick_tree(tree)
