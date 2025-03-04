@@ -281,7 +281,7 @@ def attach(
 
         # footprint
         fp = F.KicadFootprint([p.number for p in easyeda_footprint.pads])
-        fp.add(F.KicadFootprint.has_file(footprint_filepath))
+        fp.add(F.KicadFootprint.has_footprint_file(footprint_filepath))
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:

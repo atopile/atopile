@@ -8,8 +8,7 @@ from typing import Callable, Optional
 
 from atopile import layout
 from atopile.config import config
-from atopile.errors import UserException, UserPickError
-from atopile.front_end import DeprecatedException
+from atopile.errors import DeprecatedException, UserException, UserPickError
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver

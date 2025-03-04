@@ -33,5 +33,5 @@ class DIP(F.Footprint):
 
         return _has_kicad_footprint()
 
-    equal_pins_in_ifs: F.has_equal_pins_in_ifs
-    attach_via_pinmap: F.can_attach_via_pinmap_equal
+    equal_pins_in_ifs: F.Footprint.has_equal_pins
+    attach_via_pinmap: F.Footprint.can_attach_via_pinmap_equal

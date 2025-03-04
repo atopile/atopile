@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 from typing import Sequence
-from warnings import deprecated
+
+from deprecated import deprecated
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
