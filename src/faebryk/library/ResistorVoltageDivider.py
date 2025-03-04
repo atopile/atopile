@@ -12,9 +12,20 @@ logger = logging.getLogger(__name__)
 
 
 class ResistorVoltageDivider(Module):
-    resistor = L.list_field(2, F.Resistor)
+    """
+    A voltage divider using two resistors.
+    node[0] ~ resistor[1] ~ node[1] ~ resistor[2] ~ node[2]
+    power.hv ~ node[0]
+    power.lv ~ node[2]
+    output.line ~ node[1]
+    output.reference.lv ~ node[2]
+    """
 
-    node = L.list_field(3, F.Electrical)
+    r_bottom: F.Resistor
+    r_top: F.Resistor
+    power: F.ElectricPower
+    # input: F.ElectricSignal
+    output: F.ElectricSignal
 
     total_resistance = L.p_field(units=P.Ω)
     ratio = L.p_field(units=P.dimensionless)
@@ -25,25 +36,43 @@ class ResistorVoltageDivider(Module):
 
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.node[0], self.node[1])
+        return F.can_bridge_defined(self.power.hv, self.power.lv)
 
     def __preinit__(self):
-        self.node[0].connect_via([self.resistor[0], self.resistor[1]], self.node[1])
+        # Connections
+        self.power.hv.connect_via(
+            [self.r_top, self.output.line, self.r_bottom], self.power.lv
+        )
 
+        # self.power.connect(self.input.reference)
+        # self.power.hv.connect(self.input.line)
+
+        # Variables
         ratio = self.ratio
-        R = self.total_resistance
-        r1 = self.resistor[0].resistance
-        r2 = self.resistor[1].resistance
+        r_total = self.total_resistance
+        r_top = self.r_top.resistance
+        r_bottom = self.r_bottom.resistance
         v_out = self.v_out
         v_in = self.v_in
+        max_current = self.max_current
 
-        R.alias_is(r1 + r2)
-        ratio.alias_is(r1 / R)
+        # Equations
+        v_out.alias_is(self.output.reference.voltage)
+        v_in.alias_is(self.power.voltage)
+        r_total.alias_is(r_top + r_bottom)
+        ratio.alias_is(r_bottom / r_total)
         v_out.alias_is(v_in * ratio)
+        ratio.alias_is(v_out / v_in)
+        max_current.alias_is(v_in / r_total)
 
         # help solver
-        r1.alias_is(R - r2)
-        r2.alias_is(R - r1)
-        r1.alias_is(ratio * R)
-        R.alias_is(r1 / ratio)
-        ratio.alias_is(v_out / v_in)
+        r_top.alias_is(r_total - r_bottom)
+        r_bottom.alias_is(r_total - r_top)
+        r_bottom.alias_is(ratio * r_total)
+        r_total.alias_is(r_bottom / ratio)
+        r_total.alias_is(v_in / max_current)
+        v_in.alias_is(max_current * r_total)
+        r_top.alias_is((v_in / max_current) - r_bottom)
+        r_bottom.alias_is((v_in / max_current) - r_top)
+        r_top.alias_is((v_in - v_out) / max_current)
+        r_bottom.alias_is(v_out / max_current)
