@@ -9,12 +9,14 @@ updates:
     labels:
       - 'no-changelog'
 
-  - package-ecosystem: 'uv'
-    directory: /
-    schedule:
-      interval: daily
-    labels:
-      - 'no-changelog'
+  # TODO: reenable, for now more annoying than useful
+  # need to take uv.lock into account
+  #- package-ecosystem: 'uv'
+  #  directory: /
+  #  schedule:
+  #    interval: daily
+  #  labels:
+  #    - 'no-changelog'
 
   - package-ecosystem: 'npm'
     directory: /src/vscode-atopile/
