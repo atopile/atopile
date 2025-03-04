@@ -38,18 +38,17 @@ class UnspecifiedParameterError(ParameterError):
         mutation_map: MutationMap,
         *args: object,
     ) -> None:
-        # TODO: fix `assert param in self.output_operables`
-        # print_context = mutation_map.output_print_context
-        # tracebacks = [mutation_map.get_traceback(pred).filtered() for pred in preds]
-        # constraints = "\n".join(
-        #     f" - {leaf.compact_repr(print_context, use_name=True)}"
-        #     for tb in tracebacks
-        #     for leaf in tb.get_leaves()
-        # )
+        print_context = mutation_map.output_print_context
+        tracebacks = [mutation_map.get_traceback(pred).filtered() for pred in preds]
+        constraints = "\n".join(
+            f" - {leaf.compact_repr(print_context, use_name=True)}"
+            for tb in tracebacks
+            for leaf in tb.get_leaves()
+        )
 
         super().__init__(
-            f"Parameter `{orig_param}` is constrained but has not been specified. ",
-            # f"Constrained by: \n{constraints}",
+            f"Parameter `{orig_param}` is constrained but has not been specified.\n\n"
+            f"Constrained by: \n{constraints}",
         )
 
 
