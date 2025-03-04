@@ -38,7 +38,7 @@ class App(Module):
         self._set_layout()
 
         # TODO remove when we have a fuse picker
-        fuse = self.usb_power.fuse
+        fuse = self.usb_power.get_first_child_of_type(F.Fuse)
         fuse.add(F.has_explicit_part.by_supplier("C914087"))
         fuse.fuse_type.alias_is(F.Fuse.FuseType.RESETTABLE)
         fuse.response_type.alias_is(F.Fuse.ResponseType.FAST)
