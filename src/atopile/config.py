@@ -352,6 +352,7 @@ class BuildTargetConfig(BaseConfigModel):
 
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
+    keep_designators: bool = Field(default=True)
     keep_picked_parts: bool = Field(default=False)
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
@@ -870,6 +871,8 @@ class Config:
         option: Iterable[str] = (),
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
+        frozen: bool | None = None,
+        **kwargs: Any,
     ) -> None:
         entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
 
@@ -907,15 +910,38 @@ class Config:
             self.selected_builds = list(selected_builds)
 
         for build_name in self.selected_builds:
+            build_cfg = self.project.builds[build_name]
+
             if build_name not in self.project.builds:
                 raise UserBadParameterError(
                     f"Build `{build_name}` not found in project config"
                 )
 
             if entry_addr_override is not None:
-                self.project.builds[build_name].address = entry_addr_override
+                build_cfg.address = entry_addr_override
             if target:
-                self.project.builds[build_name].targets = list(target)
+                build_cfg.targets = list(target)
+
+            # Attach CLI options passed via kwargs
+            for key, value in kwargs.items():
+                if value is not None:
+                    setattr(self.project.builds[build_name], key, value)
+
+            if frozen is not None:
+                build_cfg.frozen = frozen
+
+            if build_cfg.frozen:
+                frozen_required_options = {
+                    "keep_picked_parts": (build_cfg.keep_picked_parts, True),
+                    "keep_net_names": (build_cfg.keep_net_names, True),
+                    "keep_designators": (build_cfg.keep_designators, True),
+                }
+
+                for key, (value, expected) in frozen_required_options.items():
+                    if value is not expected:
+                        raise UserBadParameterError(
+                            f"`{key}={value}` conflicts with `frozen`"
+                        )
 
     def should_open_layout_on_build(self) -> bool:
         """Returns whether atopile should open the layout after building"""

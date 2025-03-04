@@ -4,6 +4,7 @@
 import logging
 import re
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import cast
 
 from natsort import natsorted
@@ -11,6 +12,7 @@ from natsort import natsorted
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.pcb.kicad.transformer import PCB, PCB_Transformer
+from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.library import L
 from faebryk.libs.util import duplicates, groupby
 
@@ -74,7 +76,9 @@ def attach_random_designators(graph: Graph):
     assert not dupes, f"Duplcicate designators: {dupes}"
 
 
-def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
+def load_designators(
+    graph: Graph, attach: bool = False, raise_duplicates: bool = True
+) -> dict[L.Node, str]:
     """
     Load designators from attached footprints and attach them to the nodes.
     """
@@ -102,6 +106,13 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
     }
 
     if attach:
+        if dups := duplicates(known_designators.values(), lambda x: x):
+            with (
+                nullcontext() if raise_duplicates else downgrade(UserResourceException)
+            ):
+                raise UserResourceException(
+                    f"Duplicate designators found in layout: {dups}"
+                )
         for node, designator in known_designators.items():
             node.add(F.has_designator(designator))
 
