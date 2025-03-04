@@ -8,7 +8,7 @@ import faebryk.library._F as F
 from atopile import errors
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter, Predicate
+from faebryk.core.parameter import ConstrainableExpression, Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import MutationMap
 from faebryk.core.solver.solver import Solver
@@ -34,7 +34,7 @@ class UnspecifiedParameterError(ParameterError):
         self,
         orig_param: Parameter,
         param: Parameter,
-        preds: list[Predicate],
+        preds: list[ConstrainableExpression],
         mutation_map: MutationMap,
         *args: object,
     ) -> None:
@@ -78,15 +78,15 @@ def check_parameters(parameters: set[Parameter], G: Graph, solver: Solver):
 
             for orig_param in module.get_parameters():
                 with accumulator.collect():
-                    if (
-                        maps_to := mutation_map.map_forward(orig_param).maps_to
-                    ) is None:
-                        continue
+                    maps_to = mutation_map.map_forward(orig_param).maps_to
+                    assert maps_to is not None
 
                     param = cast_assert(Parameter, maps_to)
-                    preds = param.get_operations(Predicate, constrained_only=True)
+                    preds = param.get_operations(
+                        ConstrainableExpression, constrained_only=True, recursive=True
+                    )
 
-                    if param.try_get_literal() is not None:
+                    if orig_param.try_get_literal() is not None:
                         continue
 
                     constraints = [
