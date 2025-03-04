@@ -260,7 +260,7 @@ def test_null_solver():
 
         def __preinit__(self):
             self.cap.add(F.has_package(F.has_package.Package.C0805))
-            self.cap.capacitance.alias_is(capacitance)
+            self.cap.capacitance.constrain_subset(capacitance)
 
     app = App()
 
