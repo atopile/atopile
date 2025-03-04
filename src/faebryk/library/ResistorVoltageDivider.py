@@ -56,23 +56,18 @@ class ResistorVoltageDivider(Module):
         v_in = self.v_in
         max_current = self.max_current
 
-        # Equations
+        # Link variables
         v_out.alias_is(self.output.reference.voltage)
         v_in.alias_is(self.power.voltage)
-        r_total.alias_is(r_top + r_bottom)
-        ratio.alias_is(r_bottom / r_total)
-        v_out.alias_is(v_in * ratio)
-        ratio.alias_is(v_out / v_in)
-        max_current.alias_is(v_in / r_total)
 
-        # help solver
-        r_top.alias_is(r_total - r_bottom)
-        r_bottom.alias_is(r_total - r_top)
-        r_bottom.alias_is(ratio * r_total)
-        r_total.alias_is(r_bottom / ratio)
-        r_total.alias_is(v_in / max_current)
-        v_in.alias_is(max_current * r_total)
+        # Equations
         r_top.alias_is((v_in / max_current) - r_bottom)
         r_bottom.alias_is((v_in / max_current) - r_top)
         r_top.alias_is((v_in - v_out) / max_current)
         r_bottom.alias_is(v_out / max_current)
+
+        # Calculate outputs
+        r_total.alias_is(r_top + r_bottom)
+        v_out.alias_is(v_in * r_bottom / r_total)
+        max_current.alias_is(v_in / r_total)
+        ratio.alias_is(r_bottom / r_total)
