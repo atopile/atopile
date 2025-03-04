@@ -693,7 +693,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
             continue
 
         for op in p.operatable_operands:
-            if mutator.utils.no_other_constrains(op, p, unfulfilled_only=True):
+            if mutator.utils.no_other_constraints(op, p, unfulfilled_only=True):
                 mutator.utils.alias_is_literal_and_check_predicate_eval(p, True)
                 break
 

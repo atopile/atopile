@@ -89,9 +89,8 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
                 return round_str(number, 0)
             return round_str(number, num_decimals)
 
-        return to_si_str(
-            self.base_to_units(number), self.units, num_decimals=num_decimals
-        )
+        # ignore num_decimals because si prefixes scale the number
+        return to_si_str(self.base_to_units(number), self.units, num_decimals=3)
 
     @override
     def serialize_pset(self) -> dict:

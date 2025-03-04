@@ -24,7 +24,7 @@ from faebryk.core.solver.mutator import (
     Mutator,
     Transformations,
 )
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeductibleException, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.core.solver.symbolic import (
     canonical,
     expression_groups,
@@ -320,7 +320,7 @@ class DefaultSolver(Solver):
         return self.state
 
     @override
-    def try_fullfill(
+    def try_fulfill(
         self,
         predicate: ConstrainableExpression,
         lock: bool,
@@ -352,11 +352,11 @@ class DefaultSolver(Solver):
             new_Gs = [repr_pred.get_graph()]
 
         new_preds = GraphFunctions(*new_Gs).nodes_of_type(ConstrainableExpression)
-        not_deducted = [
+        not_deduced = [
             p for p in new_preds if p.constrained and not p._solver_terminated
         ]
 
-        if not_deducted:
+        if not_deduced:
             if LOG_PICK_SOLVE:
                 logger.warning(
                     f"PREDICATE not deducible: {pred.compact_repr()}"
@@ -368,14 +368,14 @@ class DefaultSolver(Solver):
                 )
                 logger.warning(
                     f"NOT DEDUCED: \n    {'\n    '.join([
-                            p.compact_repr(print_context_new) for p in not_deducted])}"
+                            p.compact_repr(print_context_new) for p in not_deduced])}"
                 )
 
                 repr_map.print_name_mappings(log=logger.warning)
                 repr_map.last_stage.print_graph_contents(log=logger.warning)
 
             if not allow_unknown:
-                raise NotDeductibleException(pred, not_deducted)
+                raise NotDeducibleException(pred, not_deduced)
             return None
 
         if lock:

@@ -93,7 +93,7 @@ def pick_module_by_params(
 
         predicate = And(*predicate_list)
         try:
-            solver.try_fullfill(predicate, lock=True)
+            solver.try_fulfill(predicate, lock=True)
         except Contradiction as c:
             contradictions.append(c)
         else:

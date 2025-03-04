@@ -20,7 +20,7 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
     Parameter,
 )
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeductibleException, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.core.solver.utils import Contradiction, get_graphs
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -213,7 +213,7 @@ def check_missing_picks(module: Module):
 
 
 # TODO: tests & use
-def find_independend_groups(
+def find_independent_groups(
     modules: Iterable[Module], solver: Solver
 ) -> list[list[Module]]:
     """
@@ -311,12 +311,18 @@ def pick_topologically(
         with timings.as_global("pick single candidate modules"):
             try:
                 check_and_attach_candidates(
-                    single_part_modules, solver, allow_not_deductible=True
+                    single_part_modules, solver, allow_not_deducible=True
                 )
             except Contradiction as e:
                 raise PickError(
                     "Could not pick all explicitly-specified parts."
                     f" Likely contradicting constraints: {str(e)}",
+                    *[m for m, _ in single_part_modules],
+                )
+            except (NotCompatibleException, NotDeducibleException):
+                # TODO: more informationq
+                raise PickError(
+                    "Could not pick all explicitly-specified parts",
                     *[m for m, _ in single_part_modules],
                 )
         _update_progress(single_part_modules)
@@ -328,7 +334,7 @@ def pick_topologically(
     with timings.as_global("fast-pick"):
         try:
             check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-        except (Contradiction, NotCompatibleException, NotDeductibleException):
+        except (Contradiction, NotCompatibleException, NotDeducibleException):
             logger.warning("Could not pick all parts atomically")
             # no need to update candidates, slow picking does by itself
         else:

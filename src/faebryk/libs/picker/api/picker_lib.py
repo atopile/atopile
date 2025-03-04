@@ -10,7 +10,7 @@ import more_itertools
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeductibleException, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
@@ -295,7 +295,7 @@ def _check_candidates_compatible(
         for m_param, c_range in not_none(param_mapping).items()
     )
 
-    solver.try_fullfill(And(*predicates), lock=False)
+    solver.try_fulfill(And(*predicates), lock=False)
 
 
 # public -------------------------------------------------------------------------------
@@ -304,7 +304,7 @@ def _check_candidates_compatible(
 def check_and_attach_candidates(
     candidates: list[tuple[Module, Component]],
     solver: Solver,
-    allow_not_deductible: bool = False,
+    allow_not_deducible: bool = False,
 ):
     """
     Check if given candidates are compatible with each other
@@ -315,8 +315,8 @@ def check_and_attach_candidates(
     """
     try:
         _check_candidates_compatible(candidates, solver)
-    except NotDeductibleException:
-        if not allow_not_deductible:
+    except NotDeducibleException:
+        if not allow_not_deducible:
             raise
 
     for m, part in candidates:

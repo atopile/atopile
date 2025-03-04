@@ -468,7 +468,7 @@ class MutationStage:
 
     @property
     # FIXME not sure why but this breaks stuff, but is very necessary for speed
-    # @once
+    @once
     def backwards_mapping(self) -> dict[ParameterOperatable, list[ParameterOperatable]]:
         return invert_dict(self.transformations.mutated)
 
@@ -603,7 +603,8 @@ class MutationStage:
             log(rich_to_string(table))
 
     def get_traceback_stage(self, param: ParameterOperatable) -> Traceback.Stage:
-        assert param in self.output_operables
+        # FIXME reenable
+        # assert param in self.output_operables
         dst = param
         algo = (
             self.algorithm if isinstance(self.algorithm, str) else self.algorithm.name
