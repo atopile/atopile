@@ -6,6 +6,5 @@ module VDiv from ResistorVoltageDivider:
     out = new ElectricSignal
     out ~ output
 
-    # renaming
     i_q: current
     assert i_q is max_current
