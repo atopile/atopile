@@ -1464,7 +1464,8 @@ class Mutator:
 
         ops = self.get_literal_aliases(new_only=new_only)
         mapping = {self.utils.get_lit_mapping_from_lit_expr(op) for op in ops}
-        dupes = duplicates(mapping, lambda x: x[0])
+        dupes = duplicates(mapping, lambda x: x[0], by_eq=True)
+
         if dupes:
             raise ContradictionByLiteral(
                 "Literal contradictions",
