@@ -116,8 +116,17 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
-def duplicates[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
-    return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
+def duplicates[T, U](
+    it: Iterable[T], key: Callable[[T], U], by_eq: bool = False
+) -> dict[U, list[T]]:
+    if by_eq:
+        return {
+            k: uv
+            for k, v in groupby(it, key).items()
+            if len(uv := unique(v, key=lambda x: x)) > 1
+        }
+    else:
+        return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
 
 
 def get_dict(obj, key, default):
