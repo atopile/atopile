@@ -191,7 +191,7 @@ def remove_congruent_expressions(mutator: Mutator):
         mutator._mutate(expr, repres[eq_id])
 
 
-@algorithm("Alias classes")
+@algorithm("Alias classes", terminal=False)
 def resolve_alias_classes(mutator: Mutator):
     """
     Resolve alias classes
