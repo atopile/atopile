@@ -155,6 +155,7 @@ from faebryk.library.Comparator import Comparator
 from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.Fan import Fan
 from faebryk.library.LED import LED
+from faebryk.library.NetTie import NetTie
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay

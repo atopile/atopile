@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from itertools import chain
+from itertools import chain, pairwise
 
 import pytest
 
@@ -689,6 +689,32 @@ def test_chains_mixed_shallow_nested():
     assert el[0].is_connected_to(el[2])
 
 
+def test_loooooong_chain():
+    """Let's make it hard"""
+    mifs = times(2**10, F.ElectricPower)
+    for left, right in pairwise(mifs):
+        left.connect(right)
+
+    assert mifs[0].is_connected_to(mifs[-1])
+
+
+# FIXME: this should be WAYYY higher than 16
+@pytest.mark.parametrize("length", [16])
+def test_alternating_long_chain(length):
+    """Let's make it hard"""
+    mifs = times(length, F.ElectricPower)
+    for i, (left, right) in enumerate(pairwise(mifs)):
+        if i % 2:
+            left.connect(right)
+        else:
+            left.lv.connect(right.lv)
+            left.hv.connect(right.hv)
+
+    assert mifs[0].is_connected_to(mifs[-1])
+    assert mifs[0].lv.is_connected_to(mifs[-1].lv)
+    assert mifs[0].hv.is_connected_to(mifs[-1].hv)
+
+
 def test_shallow_bridge_simple():
     """
     ```
@@ -1175,6 +1201,7 @@ def test_regression_rp2040_usb_diffpair():
         assert set(connected.keys()) == set(refs)
 
 
+@pytest.mark.slow
 def test_regression_rp2040_usb_diffpair_full():
     app = F.RP2040_ReferenceDesign()
     rp2040_2 = F.RP2040()
