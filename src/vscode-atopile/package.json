@@ -213,7 +213,7 @@
         "glob": "^10.4.2",
         "prettier": "^3.4.2",
         "ts-loader": "^9.5.1",
-        "webpack": "^5.97.1",
+        "webpack": "^5.98.0",
         "typescript": "^5.7.2",
         "webpack-cli": "^5.1.4"
     }
