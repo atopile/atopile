@@ -5,9 +5,6 @@ import logging
 import math
 
 import faebryk.library._F as F
-from faebryk.libs.library import L
-from faebryk.libs.units import P
-from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
@@ -19,34 +16,21 @@ class FilterElectricalRC(F.Filter):
 
     in_: F.ElectricSignal
     out: F.ElectricSignal
-    capacitor: F.Capacitor
     resistor: F.Resistor
-
-    z0 = L.p_field(
-        units=P.ohm,
-        soft_set=L.Range(1000 * P.ohm, 100000 * P.ohm),
-    )
+    capacitor: F.Capacitor
 
     def __preinit__(self):
-        self.response.operation_is_subset(F.Filter.Response.LOWPASS)
-        self.order.operation_is_subset(1)
+        self.response.alias_is(F.Filter.Response.LOWPASS)
+        self.order.alias_is(1)
 
-    @once
-    def build_lowpass(self):
         R = self.resistor.resistance
         C = self.capacitor.capacitance
         fc = self.cutoff_frequency
 
-        self.order.constrain_subset(1)
-        self.response.constrain_subset(F.Filter.Response.LOWPASS)
-
         # Equations
-        R.alias_is(self.z0)
-        C.alias_is(1 / (2 * math.pi * fc * R))
-
-        # Solve for output
+        C.alias_is(1 / (R * 2 * math.pi * fc))
+        R.alias_is(1 / (C * 2 * math.pi * fc))
         fc.alias_is(1 / (2 * math.pi * R * C))
-        self.z0.alias_is(R)
 
         # Connections
         self.in_.line.connect_via(
