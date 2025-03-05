@@ -15,6 +15,8 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.spinner import Spinner
+from rich.style import Style
+from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
 from rich.traceback import Traceback
@@ -260,7 +262,8 @@ class LiveLogHandler(LogHandler):
             self.status._warning_count += 1
 
         try:
-            self.status._log_messages.append(log_renderable)
+            dim_renderable = Styled(log_renderable, style=Style(dim=True))
+            self.status._log_messages.append(dim_renderable)
             self.status._live.update(self.status._render_status())
         except Exception:
             self.handleError(record)
