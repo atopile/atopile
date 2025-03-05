@@ -323,7 +323,7 @@ class LoggingStage:
             plural = "s" if self._warning_count > 1 else ""
             status_text += f" ([yellow]{self._warning_count} warning{plural}[/yellow])"
 
-        if self._info_log_path:
+        if self._info_log_path and self._console.width >= 120:
             table = Table.grid(padding=0, expand=True)
             table.add_column()
             table.add_column(justify="right")

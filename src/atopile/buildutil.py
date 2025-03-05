@@ -223,7 +223,9 @@ def build(app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            with LoggingStage(f"target-{target_name}", f"Building '{target_name}'"):
+            with LoggingStage(
+                f"target-{target_name}", f"Building [green]'{target_name}'[/green]"
+            ):
                 with accumulator.collect():
                     muster.targets[target_name](app, solver)
                 built_targets.append(target_name)
