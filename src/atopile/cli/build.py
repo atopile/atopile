@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from more_itertools import first
 
+from atopile.cli.logging import LoggingStage
 from atopile.config import config
 from faebryk.libs.app.pcb import open_pcb
 
@@ -72,17 +73,21 @@ def build(
     with accumulate() as accumulator:
         for build in config.builds:
             with accumulator.collect(), log_user_errors(logger), build:
-                logger.info("Building '%s'", config.build.name)
-                match config.build.build_type:
-                    case BuildType.ATO:
-                        app = _init_ato_app()
-                    case BuildType.PYTHON:
-                        app = _init_python_app()
-                        app.add(F.is_app_root())
-                    case _:
-                        raise ValueError(
-                            f"Unknown build type: {config.build.build_type}"
-                        )
+                with LoggingStage(
+                    name=f"build-{config.build.name}",
+                    description=f"Building '{config.build.name}'",
+                ):
+                    logger.info("Building '%s'", config.build.name)
+                    match config.build.build_type:
+                        case BuildType.ATO:
+                            app = _init_ato_app()
+                        case BuildType.PYTHON:
+                            app = _init_python_app()
+                            app.add(F.is_app_root())
+                        case _:
+                            raise ValueError(
+                                f"Unknown build type: {config.build.build_type}"
+                            )
 
                 # TODO: add a way to override the following with custom build machinery
                 buildutil.build(app)
