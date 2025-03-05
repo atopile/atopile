@@ -382,7 +382,7 @@ class LoggingStage:
             root_logger.addHandler(file_handler)
 
             if level_name == "info":
-                self._info_log_path = log_file
+                self._info_log_path = log_file.relative_to(Path.cwd())
 
     def _restore_logging(self) -> None:
         if not self._log_handler and not self._file_handlers:
