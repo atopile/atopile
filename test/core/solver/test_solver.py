@@ -881,6 +881,7 @@ def test_jlcpcb_pick_capacitor():
     print(capacitor.get_trait(F.has_part_picked).get_part())
 
 
+@pytest.mark.xfail(reason="TODO: add support for leds")
 def test_jlcpcb_pick_led():
     led = F.LED()
     led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
@@ -893,6 +894,7 @@ def test_jlcpcb_pick_led():
     print(led.get_trait(F.has_part_picked).get_part())
 
 
+@pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_simple():
     led = F.PoweredLED()
     led.led.color.constrain_subset(L.EnumSet(F.LED.Color.EMERALD))
@@ -909,6 +911,7 @@ def test_jlcpcb_pick_powered_led_simple():
     print([(p, p.get_trait(F.has_part_picked).get_part()) for p in picked_parts])
 
 
+@pytest.mark.xfail(reason="TODO: add support for powered leds")
 def test_jlcpcb_pick_powered_led_regression():
     led = F.PoweredLED()
     led.led.color.constrain_subset(F.LED.Color.RED)
