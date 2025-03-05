@@ -19,6 +19,3 @@ jobs:
         python-version-file: 'pyproject.toml'
 
     - uses: pre-commit/action@v3.0.1
-
-    - name: Fail on diff after pre-commit is run
-      run: git diff --exit-code
