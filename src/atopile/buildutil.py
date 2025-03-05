@@ -6,8 +6,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
 
-from more_itertools import first
-
 from atopile import layout
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
@@ -15,6 +13,8 @@ from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -42,6 +42,7 @@ from faebryk.libs.app.designators import (
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
+    check_net_names,
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
@@ -51,6 +52,7 @@ from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
     downgrade,
+    iter_leaf_exceptions,
     iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats import (
@@ -58,26 +60,39 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
+
+SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
+
+
+def _get_solver() -> Solver:
+    if SKIP_SOLVING:
+        logger.warning("Assertion checking is disabled")
+        return NullSolver()
+    else:
+        return DefaultSolver()
 
 
 def build(app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
-    solver = DefaultSolver()
+    solver = _get_solver()
 
-    logger.info("Resolving bus parameters")
-    try:
-        F.is_bus_parameter.resolve_bus_parameters(G)
-    # FIXME: this is a hack around a compiler bug
-    except KeyErrorAmbiguous as ex:
-        raise UserException(
-            "Unfortunately, there's a compiler bug at the moment that means that "
-            "this sometimes fails. Try again, and it'll probably work. "
-            "See https://github.com/atopile/atopile/issues/807"
-        ) from ex
+    if not SKIP_SOLVING:
+        logger.info("Resolving bus parameters")
+        try:
+            F.is_bus_parameter.resolve_bus_parameters(G)
+        # FIXME: this is a hack around a compiler bug
+        except KeyErrorAmbiguous as ex:
+            raise UserException(
+                "Unfortunately, there's a compiler bug at the moment that means that "
+                "this sometimes fails. Try again, and it'll probably work. "
+                "See https://github.com/atopile/atopile/issues/807"
+            ) from ex
+    else:
+        logger.warning("Skipping bus parameter resolution")
 
     logger.info("Running checks")
     run_checks(app, G)
@@ -89,21 +104,24 @@ def build(app: Module) -> None:
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-    load_designators(G, attach=True)
+    load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
     # Pre-run solver -----------------------------------------------------------
     parameters = app.get_children(False, types=Parameter)
     if parameters:
         logger.info("Simplifying parameter graph")
-        solver.inspect_get_known_supersets(first(parameters), force_update=True)
+        solver.simplify(*parameters)
 
     # Pickers ------------------------------------------------------------------
     if config.build.keep_picked_parts:
         load_descriptive_properties(G)
     try:
         pick_part_recursively(app, solver)
-    except PickError as ex:
-        raise UserPickError.from_pick_error(ex) from ex
+    except* PickError as ex:
+        raise ExceptionGroup(
+            "Failed to pick parts for some modules",
+            [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
+        ) from ex
 
     # Footprints ----------------------------------------------------------------
     # Use standard footprints for known packages regardless of
@@ -123,6 +141,7 @@ def build(app: Module) -> None:
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
+    check_net_names(G)
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")
@@ -215,7 +234,7 @@ def build(app: Module) -> None:
     )
 
 
-TargetType = Callable[[Module, DefaultSolver], None]
+TargetType = Callable[[Module, Solver], None]
 
 
 class Muster:
@@ -250,7 +269,7 @@ muster = Muster()
 
 
 @muster.register("bom")
-def generate_bom(app: Module, solver: DefaultSolver) -> None:
+def generate_bom(app: Module, solver: Solver) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
@@ -259,7 +278,7 @@ def generate_bom(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("mfg-data", default=False)
-def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
+def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """Generate a designator map for the project."""
     export_step(
         config.build.paths.layout,
@@ -288,7 +307,7 @@ def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("manifest")
-def generate_manifest(app: Module, solver: DefaultSolver) -> None:
+def generate_manifest(app: Module, solver: Solver) -> None:
     """Generate a manifest for the project."""
     with accumulate() as accumulator:
         with accumulator.collect():
@@ -311,13 +330,13 @@ def generate_manifest(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("layout-module-map")
-def generate_module_map(app: Module, solver: DefaultSolver) -> None:
+def generate_module_map(app: Module, solver: Solver) -> None:
     """Generate a designator map for the project."""
     layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
-def generate_variable_report(app: Module, solver: DefaultSolver) -> None:
+def generate_variable_report(app: Module, solver: Solver) -> None:
     """Generate a report of all the variable values in the design."""
     # TODO: support other file formats
     export_parameters_to_file(
@@ -421,9 +440,5 @@ def consolidate_footprints(app: Module) -> None:
             assert False, "How'd we get here?"
 
         raise ex.derive(
-            [
-                _make_user_resource_exception(e)
-                for e in ex.exceptions
-                if isinstance(e, (FileNotFoundError, LibNotInTable))
-            ]
+            [_make_user_resource_exception(e) for e in iter_leaf_exceptions(ex)]
         ) from ex

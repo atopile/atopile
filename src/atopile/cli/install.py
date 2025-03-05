@@ -7,9 +7,10 @@ This CLI command provides the `ato install` command to:
 """
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Annotated, Optional
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import questionary
 import requests
@@ -19,13 +20,12 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 
 import faebryk.libs.exceptions
 from atopile import errors, version
-from atopile.config import Dependency, ProjectConfig, config
+from atopile.config import Dependency, ProjectConfig, Source, config
 from faebryk.libs.util import robustly_rm_dir
-
-yaml = ruamel.yaml.YAML()
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+yaml = ruamel.yaml.YAML()
 
 
 def install(
@@ -40,6 +40,9 @@ def install(
             help="Copy the contents of this dependency into the repo",
         ),
     ] = False,
+    local: Annotated[
+        Path | None, typer.Option("--local", "-l", help="Install from local path")
+    ] = None,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
     ] = False,
@@ -55,7 +58,7 @@ def install(
 
     config.apply_options(None)
 
-    do_install(to_install, vendor, upgrade, path)
+    do_install(to_install, vendor, upgrade, path, local)
 
 
 def do_install(
@@ -63,6 +66,7 @@ def do_install(
     vendor: bool,
     upgrade: bool,
     path: Path | None,
+    local: Path | None,
 ):
     """
     Actually do the installation of the dependencies.
@@ -77,7 +81,10 @@ def do_install(
     else:
         logger.info(f"Installing {to_install} in {config.project.paths.root}")
 
-    if to_install:
+    if local:
+        # eg. "ato install --local /path/to/local/module local_module"
+        install_single_local(local, name=to_install)
+    elif to_install:
         # eg. "ato install some-atopile-module"
         install_single_dependency(to_install, vendor, upgrade)
     else:
@@ -92,9 +99,9 @@ def get_package_repo_from_registry(module_name: str) -> str:
     Get the git repo for a package from the ato registry.
     """
     try:
-        response = requests.post(
-            config.project.services.packages.url,
-            json={"name": module_name},
+        encoded_name = quote(module_name)
+        response = requests.get(
+            f"{config.project.services.packages.url}/v0/package/{encoded_name}",
             timeout=10,
         )
     except requests.exceptions.ReadTimeout as ex:
@@ -102,12 +109,26 @@ def get_package_repo_from_registry(module_name: str) -> str:
             f"Request to registry timed out for package '{module_name}'"
         ) from ex
 
-    if response.status_code == 500:
+    try:
+        response.raise_for_status()
+    except requests.exceptions.HTTPError as ex:
+        try:
+            _ = response.json()["detail"]
+            if response.status_code == 404:
+                raise errors.UserException(
+                    f"Could not find package '{module_name}' in registry.",
+                    markdown=False,
+                ) from None
+        except (KeyError, requests.exceptions.JSONDecodeError):
+            pass
+
         raise errors.UserException(
-            f"Could not find package '{module_name}' in registry."
+            f"Error getting data for package '{module_name}': \n{ex}",
+            markdown=False,
         )
-    response.raise_for_status()
+
     return_data = response.json()
+
     try:
         return_url = return_data["data"]["repo_url"]
     except KeyError as ex:
@@ -115,6 +136,40 @@ def get_package_repo_from_registry(module_name: str) -> str:
             f"No repo_url found for package '{module_name}'"
         ) from ex
     return return_url
+
+
+def add_dependency(config_data, new_data):
+    config_data["dependencies"] = [
+        dep.model_dump()
+        # add_dependencies is the field validator that loads the dependencies
+        # from the config file. It ensures the format of the ato.yaml
+        for dep in ProjectConfig.add_dependencies(
+            config_data.get("dependencies"),
+        )  # type: ignore  add_dependencies is a classmethod
+    ]
+
+    for i, dep in enumerate(config_data["dependencies"]):
+        if dep["name"] == new_data["name"]:
+            config_data["dependencies"][i] = new_data
+            break
+    else:
+        config_data["dependencies"] = config_data["dependencies"] + [new_data]
+
+    return config_data
+
+
+def install_single_local(path: Path, name: str | None = None):
+    name = name or path.name
+    dependency = Dependency(
+        name=name,
+        source=Source(local=path),
+        path=(config.project.paths.modules / name).relative_to(
+            config.project.paths.root
+        ),
+        project_config=ProjectConfig.from_path(path),
+    )
+    install_local_dependency(dependency)
+    config.update_project_config(add_dependency, dependency.model_dump())
 
 
 def install_single_dependency(to_install: str, vendor: bool, upgrade: bool):
@@ -154,25 +209,6 @@ def install_single_dependency(to_install: str, vendor: bool, upgrade: bool):
         # use the one we just installed as a basis
         dependency.version_spec = f"@{installed_version}"
 
-    def add_dependency(config_data, new_data):
-        config_data["dependencies"] = [
-            dep.model_dump()
-            # add_dependencies is the field validator that loads the dependencies
-            # from the config file. It ensures the format of the ato.yaml
-            for dep in ProjectConfig.add_dependencies(
-                config_data.get("dependencies"),
-            )  # type: ignore  add_dependencies is a classmethod
-        ]
-
-        for i, dep in enumerate(config_data["dependencies"]):
-            if dep["name"] == new_data["name"]:
-                config_data["dependencies"][i] = new_data
-                break
-        else:
-            config_data["dependencies"] = config_data["dependencies"] + [new_data]
-
-        return config_data
-
     config.update_project_config(add_dependency, dependency.model_dump())
 
 
@@ -181,6 +217,10 @@ def install_project_dependencies(upgrade: bool):
         config.project.dependencies or []
     ):
         with _ctx():
+            if dependency.source and dependency.source.local:
+                install_local_dependency(dependency)
+                continue
+
             if not dependency.link_broken:
                 # FIXME: these dependency objects are a little too entangled
                 name = _name_and_clone_url_helper(dependency.name)[0]
@@ -197,6 +237,18 @@ def install_project_dependencies(upgrade: bool):
                             "Please move or remove it before installing this new content."  # noqa: E501  # pre-existing
                         ) from ex
                     raise
+
+
+def install_local_dependency(dependency: Dependency):
+    if not dependency.source or not dependency.source.local:
+        raise errors.UserFileNotFoundError(
+            "Local dependency must have a source with local path"
+        )
+    src = dependency.source.local
+    dst = dependency.path or config.project.paths.modules / dependency.name
+    if not src.exists():
+        raise errors.UserException(f"Local dependency path {src} does not exist")
+    shutil.copytree(src, dst, dirs_exist_ok=True)
 
 
 def install_dependency(

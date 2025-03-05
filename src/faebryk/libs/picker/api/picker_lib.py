@@ -4,15 +4,13 @@
 import logging
 import re
 from dataclasses import fields
-from textwrap import indent
-from typing import Iterable
 
 import more_itertools
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
@@ -37,12 +35,18 @@ from faebryk.libs.picker.lcsc import (
     get_raw,
 )
 from faebryk.libs.picker.picker import (
-    MultiPickError,
+    NotCompatibleException,
     PickError,
     does_not_require_picker_check,
 )
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import Tree, groupby, not_none
+from faebryk.libs.test.times import Times
+from faebryk.libs.util import (
+    Tree,
+    cast_assert,
+    groupby,
+    not_none,
+)
 
 logger = logging.getLogger(__name__)
 client = get_api_client()
@@ -95,11 +99,13 @@ def _prepare_query(
             part_number=trait.get_partno(),
             quantity=qty,
         )
+
     elif trait := module.try_get_trait(F.is_pickable_by_supplier_id):
         if trait.get_supplier() == F.is_pickable_by_supplier_id.Supplier.LCSC:
             return LCSCParams(
                 lcsc=_extract_numeric_id(trait.get_supplier_part_id()), quantity=qty
             )
+
     elif trait := module.try_get_trait(F.is_pickable_by_type):
         pick_type = trait.get_pick_type()
         params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
@@ -149,130 +155,67 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
 def _find_modules(
     modules: Tree[Module], solver: Solver
 ) -> dict[Module, list[Component]]:
+    timings = Times(name="find_modules")
+
     params = {m: _prepare_query(m, solver) for m in modules}
+    timings.add("prepare queries")
+
     grouped = groupby(params.items(), lambda p: p[1])
     queries = list(grouped.keys())
+
+    def _map_response[T](results: list[T]) -> dict[Module, T]:
+        assert len(results) == len(queries)
+        return {m: r for ms, r in zip(grouped.values(), results) for m, _ in ms}
+
     try:
         results = client.fetch_parts_multiple(queries)
+        timings.add("fetch parts")
     except ApiHTTPError as e:
-        if e.response.status_code == 404:
-            raise MultiPickError("Failed to fetch one or more parts", modules) from e
+        if e.response.status_code == 400:
+            response = cast_assert(dict, e.response.json())
+            if errors := response.get("detail", {}).get("errors", None):
+                raise ExceptionGroup(
+                    "Failed to fetch one or more parts",
+                    [
+                        PickError(f"{error['message']}\n{query.pretty_str()}", module)
+                        for module, (query, error) in _map_response(
+                            list(zip(queries, errors))
+                        ).items()
+                        if error is not None
+                    ],
+                ) from e
+            else:
+                raise
         raise e
 
-    assert len(results) == len(queries)
-
-    return {
-        m: _process_candidates(m, r)
-        for ms, r in zip(grouped.values(), results)
-        for m, _ in ms
-    }
+    out = {m: _process_candidates(m, r) for m, r in _map_response(results).items()}
+    timings.add("process candidates")
+    return out
 
 
-def get_candidates(
-    modules: Tree[Module], solver: Solver
-) -> dict[Module, list[Component]]:
-    candidates = modules.copy()
-    parts = {}
-    empty = set()
-
-    while candidates:
-        # TODO deduplicate parts with same literals
-        new_parts = _find_modules(modules, solver)
-        parts.update({m: p for m, p in new_parts.items() if p})
-        empty = {m for m, p in new_parts.items() if not p}
-        for m in parts:
-            if m in candidates:
-                candidates.pop(m)
-        if not empty:
-            return parts
-        for m in empty:
-            subtree = candidates.pop(m)
-            if not subtree:
-                raise PickError(
-                    f"No candidates found for `{m}`:\n{m.pretty_params(solver)}", m
-                )
-            candidates.update(subtree)
-
-    # should fail earlier
-    return {}
-
-
-def filter_by_module_params_and_attach(
-    cmp: Module, parts: list[Component], solver: Solver
-):
+def _attach(module: Module, c: Component):
     """
-    Find a component with matching parameters
+    Calls LCSC attach and wraps errors into PickError
     """
-    # FIXME: should take the desired qty and respect it
-    tried = []
-
-    def parts_gen():
-        for part in parts:
-            if check_compatible_parameters([(cmp, part)], solver):
-                tried.append(part)
-                yield part
 
     try:
-        try_attach(cmp, parts_gen(), qty=1)
-    except PickError as ex:
-        cmp_descr = f"{cmp.get_full_name()}<{cmp.pretty_params(solver)}>"
-        attr_str = "\n".join(
-            f"- {c.lcsc_display} (attributes: {', '.join(
-                f"{name}={lit}" for name, lit in c.attribute_literals.items()
-            )})"
-            for c in parts
-        )
-        raise PickError(
-            f"No parts found that are compatible with design for `{cmp_descr}`:\n"
-            f"{attr_str}",
-            cmp,
-        ) from ex
-
-
-def try_attach(module: Module, parts: Iterable[Component], qty: int):
-    # TODO remove ignore_exceptions
-    # was used to handle TBDs
-
-    failures = []
-    for c in parts:
-        try:
-            c.attach(module, qty)
-            return
-        except (ValueError, Component.ParseError) as e:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
-            failures.append((c, e))
-        except LCSC_NoDataException as e:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
-            failures.append((c, e))
-        except LCSC_PinmapException as e:
-            if LOG_PICK_SOLVE:
-                logger.warning(f"Failed to attach {c} to `{module}`: {e}")
-            failures.append((c, e))
-
-    if failures:
-        fail_str = indent(
-            "\n" + f"{'\n'.join(f'{c}: {e}' for c, e in failures)}", " " * 4
-        )
+        c.attach(module)
+    except (
+        ValueError,
+        Component.ParseError,
+        LCSC_NoDataException,
+        LCSC_PinmapException,
+    ) as e:
+        if LOG_PICK_SOLVE:
+            logger.warning(f"Failed to attach {c} to `{module}`: {e}")
 
         raise PickError(
-            f"Failed to attach any components to module `{module}`: {len(failures)}"
-            f" {fail_str}",
+            f"Failed to attach component {c} to module `{module}`: {e}",
             module,
         )
 
-    raise PickError(
-        "No components found that match the parameters and that can be attached",
-        module,
-    )
 
-
-class NotCompatibleException(Exception):
-    pass
-
-
-def get_compatible_parameters(
+def _get_compatible_parameters(
     module: Module, c: "Component", solver: Solver
 ) -> dict[Parameter, ParameterOperatable.Literal]:
     """
@@ -318,7 +261,7 @@ def get_compatible_parameters(
     for m_param, c_range in param_mapping:
         # TODO other loglevel
         # logger.warning(f"Checking obvious incompatibility for param {m_param}")
-        known_superset = solver.inspect_get_known_supersets(m_param, force_update=False)
+        known_superset = solver.inspect_get_known_supersets(m_param)
         if not known_superset.is_superset_of(c_range):
             if LOG_PICK_SOLVE:
                 logger.warning(
@@ -330,18 +273,18 @@ def get_compatible_parameters(
     return {p: c_range for p, c_range in param_mapping}
 
 
-def check_compatible_parameters(
+def _check_candidates_compatible(
     module_candidates: list[tuple[Module, Component]], solver: Solver
 ):
-    # check for every param whether the candidate component's range is
-    # compatible by querying the solver
+    """
+    Check if combination of all candidates is compatible with each other
+    Checks each candidate first for individual compatibility
+    """
 
-    try:
-        mappings = [
-            get_compatible_parameters(m, c, solver) for m, c in module_candidates
-        ]
-    except NotCompatibleException:
-        return False
+    if not module_candidates:
+        return
+
+    mappings = [_get_compatible_parameters(m, c, solver) for m, c in module_candidates]
 
     if LOG_PICK_SOLVE:
         logger.info(f"Solving for modules:" f" {[m for m, _ in module_candidates]}")
@@ -352,20 +295,73 @@ def check_compatible_parameters(
         for m_param, c_range in not_none(param_mapping).items()
     )
 
-    result = solver.assert_any_predicate([(And(*predicates), None)], lock=False)
-
-    return len(result.true_predicates) == 1
+    solver.try_fulfill(And(*predicates), lock=False)
 
 
-def pick_atomically(candidates: list[tuple[Module, Component]], solver: Solver):
-    module_candidate_params = [(module, part) for module, part in candidates]
-    if not check_compatible_parameters(module_candidate_params, solver):
-        return False
-    for m, part in module_candidate_params:
-        try_attach(m, [part], qty=1)
-        logger.debug(
-            f"Attached {part.lcsc_display} ('{part.description}') to "
-            f"'{m.get_full_name(types=False)}'"
-        )
+# public -------------------------------------------------------------------------------
 
-    return True
+
+def check_and_attach_candidates(
+    candidates: list[tuple[Module, Component]],
+    solver: Solver,
+    allow_not_deducible: bool = False,
+):
+    """
+    Check if given candidates are compatible with each other
+    If so, attach them to the modules
+    Raises:
+        Contradiction
+        NotCompatibleException
+    """
+    try:
+        _check_candidates_compatible(candidates, solver)
+    except NotDeducibleException:
+        if not allow_not_deducible:
+            raise
+
+    for m, part in candidates:
+        _attach(m, part)
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Attached {part.lcsc_display} ('{part.description}') to "
+                f"'{m.get_full_name(types=False)}'"
+            )
+
+
+def get_candidates(
+    modules: Tree[Module], solver: Solver
+) -> dict[Module, list[Component]]:
+    candidates = modules.copy()
+    parts = {}
+    empty = set()
+
+    while candidates:
+        # TODO deduplicate parts with same literals
+        new_parts = _find_modules(modules, solver)
+
+        parts.update({m: p for m, p in new_parts.items() if p})
+        empty = {m for m, p in new_parts.items() if not p}
+        for m in parts:
+            if m in candidates:
+                candidates.pop(m)
+        if not empty:
+            return parts
+        for m in empty:
+            subtree = candidates.pop(m)
+            if not subtree:
+                raise PickError(
+                    f"No candidates found for `{m}`:\n{m.pretty_params(solver)}", m
+                )
+            candidates.update(subtree)
+
+    # should fail earlier
+    return {}
+
+
+def attach_single_no_check(cmp: Module, part: Component, solver: Solver):
+    """
+    Attach a single component to a module
+    Attention: Does not check compatibility before or after!
+    """
+    _attach(cmp, part)

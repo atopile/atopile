@@ -116,7 +116,7 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
-def duplicates(it, key):
+def duplicates[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
     return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
 
 
@@ -788,18 +788,39 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
     # might not be desirable if different instances with same hash
     # return same values here
     # check if f is a method with only self
-    if list(inspect.signature(f).parameters) == ["self"]:
+    params = inspect.signature(f).parameters
+    # optimization: if takes self, cache in instance (saves hash of instance)
+    if "self" in params:
         name = f.__name__
         attr_name = f"_{name}_once"
+        param_list = list(params)
 
-        def wrapper_single(self) -> Any:
+        # optimization: if takes only self, no need for dict
+        if len(param_list) == 1:
+
+            def wrapper_single(self) -> Any:
+                if not hasattr(self, attr_name):
+                    setattr(self, attr_name, f(self))
+                return getattr(self, attr_name)
+
+            return wrapper_single
+
+        # optimization: if takes self + args, use self as cache
+        def wrapper_self(*args: P.args, **kwargs: P.kwargs) -> Any:
+            self = args[0]
+            lookup = (args[1:], tuple(kwargs.items()))
             if not hasattr(self, attr_name):
-                setattr(self, attr_name, f(self))
-            return getattr(self, attr_name)
+                setattr(self, attr_name, {})
 
-        return wrapper_single
+            cache = getattr(self, attr_name)
+            if lookup in cache:
+                return cache[lookup]
 
-    # TODO optimization: if takes self + args, use self as cache
+            result = f(*args, **kwargs)
+            cache[lookup] = result
+            return result
+
+        return wrapper_self
 
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         lookup = (args, tuple(kwargs.items()))
@@ -851,18 +872,30 @@ class _ConfigFlagBase[T]:
         self.default = default
         self.descr = descr
         self._type: type[T] = type(default)
-        self.get()
+        self.value = self._get()
+        self._has_been_read = False
 
     @property
     def name(self) -> str:
         return f"FBRK_{self._name}"
 
+    def set(self, value: T, force: bool = False):
+        if self._has_been_read and value != self.value and not force:
+            raise ValueError(
+                f"Can't write flag {self.name}"
+                ", has already been read with different value"
+            )
+        self.value = value
+
     @property
     def raw_value(self) -> str | None:
         return os.getenv(self.name, None)
 
-    @once
     def get(self) -> T:
+        self._has_been_read = True
+        return self.value
+
+    def _get(self) -> T:
         raw_val = self.raw_value
 
         if raw_val is None:
@@ -933,6 +966,17 @@ class ConfigFlagInt(_ConfigFlagBase[int]):
         return int(float(raw_val))
 
     def __int__(self) -> int:
+        return self.get()
+
+
+class ConfigFlagFloat(_ConfigFlagBase[float]):
+    def __init__(self, name: str, default: float = 0.0, descr: str = "") -> None:
+        super().__init__(name, default, descr)
+
+    def _convert(self, raw_val: str) -> float:
+        return float(raw_val)
+
+    def __float__(self) -> float:
         return self.get()
 
 
@@ -1292,6 +1336,7 @@ def abstract[T: type](cls: T) -> T:
         return old_new(cls_, *args, **kwargs)
 
     cls.__new__ = _new
+    cls.__is_abstract__ = cls
     return cls
 
 
@@ -1307,6 +1352,10 @@ def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
             dict_value_visitor(v, visitor)
         else:
             d[k] = visitor(k, v)
+
+
+def invert_dict[T, U](d: dict[T, U]) -> dict[U, list[T]]:
+    return groupby(d.keys(), key=lambda k: d[k])
 
 
 class DefaultFactoryDict[T, U](dict[T, U]):
@@ -1338,8 +1387,10 @@ class EquivalenceClasses[T: Hashable]:
     def is_eq(self, a: T, b: T) -> bool:
         return self.classes[a] is self.classes[b]
 
-    def get(self) -> list[set[T]]:
+    def get(self, only_multi: bool = False) -> list[set[T]]:
         sets = {id(s): s for s in self.classes.values()}
+        if only_multi:
+            sets = {k: v for k, v in sets.items() if len(v) > 1}
         return list(sets.values())
 
 
@@ -1382,6 +1433,7 @@ def run_live(
     *args,
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
+    check: bool = True,
     **kwargs,
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1422,7 +1474,7 @@ def run_live(
     process.wait()
 
     # Get return code and check for errors
-    if process.returncode != 0:
+    if process.returncode != 0 and check:
         raise subprocess.CalledProcessError(
             process.returncode, args[0], "".join(stdout_lines), "".join(stderr_lines)
         )
@@ -1729,11 +1781,11 @@ AUTO_RECOMPILE = ConfigFlag(
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
-    return (
-        json.loads(distro.read_text("direct_url.json") or "")
-        .get("dir_info", {})
-        .get("editable", False)
-    )
+
+    if dist_info := distro.read_text("direct_url.json"):
+        return json.loads(dist_info).get("dir_info", {}).get("editable", False)
+
+    return False
 
 
 class SerializableEnum[E: Enum](Serializable):
@@ -1819,16 +1871,19 @@ def indented_container(
     recursive: bool = False,
     use_repr: bool = True,
 ) -> str:
-    kvs = obj.items() if isinstance(obj, dict) else enumerate(obj)
+    kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
+    _indent = "  " * indent_level
+    ind = "\n" + _indent
 
     def format_v(v: Any) -> str:
+        if not use_repr and isinstance(v, str):
+            return indent(v, prefix=_indent)
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
             return repr(v) if use_repr else str(v)
         return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
 
-    ind = "\n" + "  " * indent_level
     inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
-    if kvs:
+    if len(kvs):
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}}}"
@@ -1874,3 +1929,10 @@ def repo_root() -> Path:
             raise FileNotFoundError("Could not find repo root")
     else:
         return repo_root
+
+
+def is_numeric_str(s: str) -> bool:
+    """
+    Check if a string is a numeric string.
+    """
+    return s.replace(".", "").strip().isnumeric()

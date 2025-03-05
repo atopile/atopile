@@ -260,7 +260,7 @@ class USB2514B_ReferenceDesign(Module):
         ).capacitance.constrain_subset(L.Range.from_center_rel(100 * P.nF, 0.5))
 
         # VBUS detect
-        for r in self.vbus_voltage_divider.resistor:
+        for r in [self.vbus_voltage_divider.r_top, self.vbus_voltage_divider.r_bottom]:
             r.resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.01))
 
         # reset
@@ -305,10 +305,8 @@ class USB2514B_ReferenceDesign(Module):
         )  # TODO: replace with pull?
 
         # voltage divider
-        vbus.hv.connect_via(
-            self.vbus_voltage_divider, self.hub_controller.vbus_detect.line
-        )
-        self.vbus_voltage_divider.node[2].connect(vbus.lv)
+        vbus.connect(self.vbus_voltage_divider.power)
+        self.vbus_voltage_divider.output.connect(self.hub_controller.vbus_detect)
 
         # USB upstream
         self.usb_ufp.usb_if.d.connect(self.hub_controller.usb_upstream)

@@ -352,6 +352,7 @@ class BuildTargetConfig(BaseConfigModel):
 
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
+    keep_designators: bool = Field(default=True)
     keep_picked_parts: bool = Field(default=False)
     keep_net_names: bool = Field(default=False)
     frozen: bool = Field(default=False)
@@ -409,11 +410,20 @@ class BuildTargetConfig(BaseConfigModel):
         return address.entry_section
 
 
+class Source(BaseConfigModel):
+    local: Path | None = None
+
+    @field_serializer("local")
+    def serialize_local(self, path: Path | None, _info: Any) -> str | None:
+        return str(path) if path else None
+
+
 class Dependency(BaseConfigModel):
     name: str
     version_spec: str | None = None
     link_broken: bool = False
     path: Path | None = None
+    source: Source | None = None
 
     project_config: "ProjectConfig | None" = Field(
         default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
@@ -445,7 +455,7 @@ class ServicesConfig(BaseConfigModel):
         """Components URL"""
 
     class Packages(BaseConfigModel):
-        url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
+        url: str = Field(default="https://packages.atopileapi.com")
         """Packages URL"""
 
     @field_validator("components", mode="before")
@@ -489,7 +499,7 @@ class ProjectConfig(BaseConfigModel):
     """A map of all the build targets (/ "builds") in this project."""
 
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    pcbnew_auto: bool = Field(default=False)
+    open_layout_on_build: bool | None = None
     """Automatically open pcbnew when applying netlist"""
 
     @classmethod
@@ -861,6 +871,8 @@ class Config:
         option: Iterable[str] = (),
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
+        frozen: bool | None = None,
+        **kwargs: Any,
     ) -> None:
         entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
 
@@ -898,15 +910,52 @@ class Config:
             self.selected_builds = list(selected_builds)
 
         for build_name in self.selected_builds:
+            build_cfg = self.project.builds[build_name]
+
             if build_name not in self.project.builds:
                 raise UserBadParameterError(
                     f"Build `{build_name}` not found in project config"
                 )
 
             if entry_addr_override is not None:
-                self.project.builds[build_name].address = entry_addr_override
+                build_cfg.address = entry_addr_override
             if target:
-                self.project.builds[build_name].targets = list(target)
+                build_cfg.targets = list(target)
+
+            # Attach CLI options passed via kwargs
+            for key, value in kwargs.items():
+                if value is not None:
+                    setattr(self.project.builds[build_name], key, value)
+
+            if frozen is not None:
+                build_cfg.frozen = frozen
+
+            if build_cfg.frozen:
+                frozen_required_options = {
+                    "keep_picked_parts": (build_cfg.keep_picked_parts, True),
+                    "keep_net_names": (build_cfg.keep_net_names, True),
+                    "keep_designators": (build_cfg.keep_designators, True),
+                }
+
+                for key, (value, expected) in frozen_required_options.items():
+                    if value is not expected:
+                        raise UserBadParameterError(
+                            f"`{key}={value}` conflicts with `frozen`"
+                        )
+
+    def should_open_layout_on_build(self) -> bool:
+        """Returns whether atopile should open the layout after building"""
+        # If the project config has an explicit setting, use that
+        if self.project is not None and self.project.open_layout_on_build is not None:
+            return self.project.open_layout_on_build
+
+        # Otherwise, default to opening the layout if we're only building a
+        # single target and we're running interactively
+        return (
+            (self.project is None or self.project.open_layout_on_build is None)
+            and len(list(self.selected_builds)) == 1
+            and self.interactive
+        )
 
 
 _project_dir: Path | None = None

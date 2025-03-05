@@ -5,14 +5,26 @@ on:
     branches:
       - main
   pull_request:
+  pull_request_target:
   workflow_dispatch:
 
 jobs:
   pytest:
+    if: |
+      (github.event_name == 'push') ||
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: blacksmith-8vcpu-ubuntu-2204
     steps:
+    - name: Fail if not run-tests from fork
+      if: (github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository && !contains(github.event.pull_request.labels.*.name, 'run-tests'))
+      run: exit 1
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.ref || '' }}
+        repository: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || '' }}
 
     # Required due to a bug in the checkout action
     # https://github.com/actions/checkout/issues/1471

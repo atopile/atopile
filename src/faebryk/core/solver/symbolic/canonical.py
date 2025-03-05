@@ -28,7 +28,6 @@ from faebryk.core.parameter import (
     Min,
     Multiply,
     Not,
-    Numbers,
     Or,
     Parameter,
     ParameterOperatable,
@@ -41,20 +40,19 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
+from faebryk.core.solver.algorithm import algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
-    algorithm,
-    alias_is_literal,
+    SolverAllExtended,
     make_lit,
-    subset_to,
 )
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.units import Quantity, dimensionless, quantity
+from faebryk.libs.sets.sets import as_lit
+from faebryk.libs.units import dimensionless, quantity
 from faebryk.libs.util import cast_assert
 
 logger = logging.getLogger(__name__)
@@ -62,36 +60,40 @@ logger = logging.getLogger(__name__)
 NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
-@algorithm("Constrain within and domain", single=True, destructive=False)
+@algorithm("Constrain within and domain", single=True, terminal=False)
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
-    Alias predicates to True since we need to assume they are true.
     """
 
     for param in mutator.nodes_of_type(Parameter):
         new_param = mutator.mutate_parameter(param, override_within=True, within=None)
         if param.within is not None:
-            subset_to(new_param, param.within, mutator, from_ops=[param])
-        if isinstance(new_param.domain, Numbers) and not new_param.domain.negative:
-            subset_to(
-                new_param,
-                make_lit(Quantity_Interval(min=0, units=param.units)),
-                mutator,
-                from_ops=[param],
-            )
+            mutator.utils.subset_to(new_param, param.within, from_ops=[param])
+        mutator.utils.subset_to(
+            new_param,
+            param.domain_set(),
+            from_ops=[param],
+        )
+
+
+@algorithm("Alias predicates to true", single=True, terminal=False)
+def alias_predicates_to_true(mutator: Mutator):
+    """
+    Alias predicates to True since we need to assume they are true.
+    """
 
     for predicate in mutator.nodes_of_type(ConstrainableExpression):
         if predicate.constrained:
             new_predicate = cast_assert(
                 ConstrainableExpression, mutator.mutate_expression(predicate)
             )
-            alias_is_literal(new_predicate, True, mutator)
+            mutator.utils.alias_to(new_predicate, as_lit(True))
             # reset solver flag
             mutator.predicate_reset_termination(new_predicate)
 
 
-@algorithm("Canonical literal form", single=True, destructive=False)
+@algorithm("Canonical literal form", single=True, terminal=False)
 def convert_to_canonical_literals(mutator: Mutator):
     """
     - remove units for NumberLike
@@ -108,16 +110,10 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_parameter(
                 po,
                 units=dimensionless,
-                soft_set=Quantity_Interval_Disjoint._from_intervals(
-                    Quantity_Interval_Disjoint.from_value(po.soft_set)._intervals,
-                    dimensionless,
-                )
+                soft_set=make_lit(po.soft_set).to_dimensionless()
                 if po.soft_set is not None
                 else None,
-                within=Quantity_Interval_Disjoint._from_intervals(
-                    Quantity_Interval_Disjoint.from_value(po.within)._intervals,
-                    dimensionless,
-                )
+                within=make_lit(po.within).to_dimensionless()
                 if po.within is not None
                 else None,
                 guess=quantity(po.guess, dimensionless)
@@ -129,38 +125,20 @@ def convert_to_canonical_literals(mutator: Mutator):
         # Expression
         elif isinstance(po, Expression):
 
-            def mutate(
-                i: int, operand: ParameterOperatable.All
-            ) -> ParameterOperatable.All:
-                if isinstance(operand, NumericLiteralR):
-                    if isinstance(operand, int | float | Quantity) and not isinstance(
-                        operand, bool
-                    ):
-                        return Quantity_Interval_Disjoint.from_value(
-                            quantity(operand, dimensionless)
-                        )
-                    if isinstance(operand, Quantity_Interval_Disjoint):
-                        return Quantity_Interval_Disjoint._from_intervals(
-                            operand._intervals, dimensionless
-                        )
-                    if isinstance(operand, Quantity_Interval):
-                        return Quantity_Interval_Disjoint(
-                            Quantity_Interval._from_interval(
-                                operand._interval, dimensionless
-                            )
-                        )
-                if ParameterOperatable.is_literal(operand):
-                    return P_Set.from_value(operand)
-
-                assert isinstance(operand, ParameterOperatable)
-                return operand
+            def mutate(i: int, operand: SolverAllExtended) -> SolverAllExtended:
+                if not ParameterOperatable.is_literal(operand):
+                    return operand
+                lit = make_lit(operand)
+                if isinstance(lit, Quantity_Interval_Disjoint):
+                    return lit.to_dimensionless()
+                return lit
 
             # need to ignore existing because non-canonical literals
             # are congruent to canonical
             mutator.mutate_expression_with_op_map(po, mutate, ignore_existing=True)
 
 
-@algorithm("Canonical expression form", single=True, destructive=False)
+@algorithm("Canonical expression form", single=True, terminal=False)
 def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add

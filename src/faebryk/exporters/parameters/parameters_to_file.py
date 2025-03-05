@@ -10,7 +10,7 @@ from atopile.errors import UserBadParameterError
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Expression, Is, Parameter, Predicate
-from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import EquivalenceClasses, groupby, ind, typename
 
@@ -204,7 +204,7 @@ def _generate_txt_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> st
     return out
 
 
-def export_parameters_to_file(module: Module, solver: DefaultSolver, path: Path):
+def export_parameters_to_file(module: Module, solver: Solver, path: Path):
     """Write all parameters of the given module to a file."""
     # {module_name: [{param_name: param_value}, {param_name: param_value},...]}
 

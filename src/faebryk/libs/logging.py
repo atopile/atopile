@@ -1,17 +1,59 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import io
 import logging
+import os
+import sys
 
 from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
+from rich.table import Table
 from rich.theme import Theme
+from rich.tree import Tree
 
-from faebryk.libs.util import ConfigFlag
+from faebryk.libs.util import ConfigFlag, ConfigFlagInt
+
+
+def is_piped_to_file() -> bool:
+    return not sys.stdout.isatty()
+
+
+def get_terminal_width() -> int:
+    if is_piped_to_file():
+        if "COLUMNS" in os.environ:
+            return int(os.environ["COLUMNS"])
+        else:
+            return 240
+    else:
+        return Console().size.width
+
 
 PLOG = ConfigFlag("PLOG", descr="Enable picker debug log")
 FLOG_FMT = ConfigFlag("LOG_FMT", descr="Enable (old) log formatting")
+TERMINAL_WIDTH = ConfigFlagInt(
+    "TERMINAL_WIDTH",
+    default=get_terminal_width(),
+    descr="Width of the terminal",
+)
+NET_LINE_WIDTH = int(TERMINAL_WIDTH) - 40
+
+
+class NestedConsole(Console):
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            *args, record=True, width=NET_LINE_WIDTH, file=io.StringIO(), **kwargs
+        )
+
+    def __str__(self):
+        return self.export_text(styles=True)
+
+
+def rich_to_string(rich_obj: Table | Tree) -> str:
+    console = NestedConsole()
+    console.print(rich_obj)
+    return str(console)
 
 
 def setup_basic_logging(
@@ -30,6 +72,7 @@ def setup_basic_logging(
                         safe_box=False,
                         theme=theme,
                         force_terminal=True,
+                        width=int(TERMINAL_WIDTH),
                     ),
                     highlighter=NodeHighlighter(),
                 )

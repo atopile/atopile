@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 # Also in C++
 INDIV_MEASURE = ConfigFlag(
-    "INDIV_MEASURE", default=True, descr="Measure individual paths"
+    "INDIV_MEASURE", default=False, descr="Measure individual paths"
 )
 set_indiv_measure(bool(INDIV_MEASURE))
 
