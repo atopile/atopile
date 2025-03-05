@@ -211,7 +211,7 @@ def export_parameters_to_file(module: Module, solver: Solver, path: Path):
     parameters = dict[str, dict[str, P_Set[Any]]]()
 
     for m in module.get_children_modules(types=Module):
-        module_name = m.get_full_name(types=True).split(".", maxsplit=1)[-1]
+        module_name = m.get_full_name(types=True)
         module_params = m.get_children(direct_only=True, types=Parameter)
         param_names = [param.get_full_name().split(".")[-1] for param in module_params]
         param_values = [
