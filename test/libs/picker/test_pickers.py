@@ -232,7 +232,6 @@ def test_pick_dependency_simple():
     pick_part_recursively(app, solver)
 
 
-@pytest.mark.xfail(reason="TODO: requires more solver power")
 @pytest.mark.slow
 def test_pick_dependency_advanced_1():
     rdiv = F.ResistorVoltageDivider()
