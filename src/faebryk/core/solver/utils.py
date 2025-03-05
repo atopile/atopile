@@ -2,68 +2,49 @@
 # SPDX-License-Identifier: MIT
 
 
-import io
 import logging
-import sys
+from collections import defaultdict
 from dataclasses import dataclass
-from enum import Enum
+from itertools import combinations
 from statistics import median
 from types import NoneType
-from typing import Callable, Iterable, Iterator, TypeGuard, cast
+from typing import TYPE_CHECKING, Callable, Counter, Iterable, Sequence, TypeGuard, cast
 
-from rich.console import Console
-from rich.table import Table
-
-from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.core.graphinterface import GraphInterfaceSelf
+from faebryk.core.graph import Graph
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
-    Abs,
-    Add,
     Associative,
+    CanonicalExpression,
+    CanonicalLiteral,
+    CanonicalNumber,
+    Commutative,
     ConstrainableExpression,
-    Difference,
     Domain,
     Expression,
     FullyAssociative,
-    GreaterOrEqual,
-    GreaterThan,
-    Intersection,
     Is,
     IsSubset,
-    Log,
     Multiply,
-    Not,
-    Or,
     Parameter,
     ParameterOperatable,
     Power,
-    Round,
-    Sin,
-    SymmetricDifference,
-    Union,
 )
-from faebryk.libs.exceptions import downgrade
 from faebryk.libs.sets.quantity_sets import (
-    Quantity_Interval,
     Quantity_Interval_Disjoint,
-    Quantity_Set,
-    Quantity_Set_Discrete,
-    QuantityLike,
-    QuantityLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, P_Set
-from faebryk.libs.units import HasUnit, Quantity, Unit, quantity
+from faebryk.libs.sets.sets import BoolSet, P_Set, as_lit
 from faebryk.libs.util import (
     ConfigFlag,
+    ConfigFlagFloat,
+    ConfigFlagInt,
     KeyErrorAmbiguous,
-    cast_assert,
-    groupby,
     indented_container,
-    not_none,
-    once,
     partition,
     unique_ref,
 )
+
+if TYPE_CHECKING:
+    from faebryk.core.solver.mutator import Mutator
 
 logger = logging.getLogger(__name__)
 
@@ -76,20 +57,67 @@ SHOW_SS_IS = ConfigFlag(
     descr="Show subset/is predicates in graph print",
 )
 PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of solver")
+MAX_ITERATIONS_HEURISTIC = int(
+    ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
+)
+TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
+ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
 if S_LOG:
     logger.setLevel(logging.DEBUG)
 
 
+def set_log_level(level: int):
+    from faebryk.core.solver.defaultsolver import logger as defaultsolver_logger
+    from faebryk.core.solver.mutator import logger as mutator_logger
+
+    loggers = [logger, mutator_logger, defaultsolver_logger]
+    for lo in loggers:
+        lo.setLevel(level)
+
+
 class Contradiction(Exception):
-    def __init__(self, msg: str, involved: list[ParameterOperatable]):
+    def __init__(
+        self,
+        msg: str,
+        involved: list[ParameterOperatable],
+        mutator: "Mutator",
+    ):
         super().__init__(msg)
         self.msg = msg
         self.involved_exprs = involved
+        self.mutator = mutator
 
     def __str__(self):
-        return f"{self.msg}: Involved: {self.involved_exprs}"
+        tracebacks = {
+            p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
+        }
+
+        def _get_origins(p: ParameterOperatable) -> list[ParameterOperatable]:
+            return tracebacks[p].get_leaves()
+
+        # TODO reenable
+        # for p, tb in tracebacks.items():
+        #    tb_str = rich_to_string(tb.filtered().as_rich_tree())
+        #    logger.warning(tb_str)
+
+        origins = {p: _get_origins(p) for p in self.involved_exprs}
+        origins_str = indented_container(
+            {
+                p.compact_repr(
+                    self.mutator.mutation_map.input_print_context, use_name=True
+                ): [
+                    o.compact_repr(
+                        self.mutator.mutation_map.input_print_context, use_name=True
+                    )
+                    for o in set(os)
+                ]
+                for p, os in origins.items()
+            },
+            recursive=True,
+        )
+        return f"{self.msg}\nOrigins: {origins_str}"
 
 
 class ContradictionByLiteral(Contradiction):
@@ -98,916 +126,801 @@ class ContradictionByLiteral(Contradiction):
         msg: str,
         involved: list[ParameterOperatable],
         literals: list["SolverLiteral"],
+        mutator: "Mutator",
     ):
-        super().__init__(msg, involved)
+        super().__init__(msg, involved, mutator)
         self.literals = literals
 
     def __str__(self):
-        return f"{super().__str__()}\n" f"Literals: {self.literals}"
+        literals_str = indented_container(str(lit) for lit in self.literals)
+        return f"{super().__str__()}\nLiterals: {literals_str}"
 
 
-CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
-CanonicalBoolean = BoolSet
-CanonicalEnum = P_Set[Enum]
-# TODO Canonical set?
-CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
 SolverLiteral = CanonicalLiteral
-
-CanonicalNumericOperation = Add | Multiply | Power | Round | Abs | Sin | Log
-CanonicalLogicOperation = Or | Not
-CanonicalSeticOperation = Intersection | Union | SymmetricDifference | Difference
-CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+SolverAll = ParameterOperatable | SolverLiteral
+SolverAllExtended = ParameterOperatable.All | SolverLiteral
 
 
-CanonicalOperation = (
-    CanonicalNumericOperation
-    | CanonicalLogicOperation
-    | CanonicalSeticOperation
-    | CanonicalPredicate
-)
-
-SolverOperatable = ParameterOperatable | SolverLiteral
-
-
-def make_lit(val):
-    return P_Set.from_value(val)
-
-
-def try_extract_literal(po, allow_subset: bool = False) -> SolverLiteral | None:
-    try:
-        lit = ParameterOperatable.try_extract_literal(po, allow_subset=allow_subset)
-    except KeyErrorAmbiguous as e:
-        raise ContradictionByLiteral(
-            "Duplicate unequal is literals",
-            involved=[po],
-            literals=e.duplicates,
-        ) from e
-    assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set, NoneType))
-    return lit
-
-
-def try_extract_numeric_literal(
-    po, allow_subset: bool = False
-) -> CanonicalNumber | None:
-    lit = try_extract_literal(po, allow_subset)
-    assert isinstance(lit, (CanonicalNumber, NoneType))
-    return lit
-
-
-def try_extract_boolset(po, allow_subset: bool = False) -> CanonicalBoolean | None:
-    lit = try_extract_literal(po, allow_subset)
-    assert isinstance(lit, (CanonicalBoolean, NoneType))
-    return lit
-
-
-def try_extract_all_literals[T: P_Set](
-    expr: Expression,
-    allow_subset: bool = False,
-    lit_type: type[T] = P_Set,
-    accept_partial: bool = False,
-) -> list[T] | None:
-    as_lits = [try_extract_literal(o, allow_subset) for o in expr.operands]
-
-    if None in as_lits and not accept_partial:
-        return None
-    as_lits = [lit for lit in as_lits if lit is not None]
-    assert all(isinstance(lit, lit_type) for lit in as_lits)
-    return cast(list[T], as_lits)
-
-
-def alias_is_literal(
-    po: ParameterOperatable, literal: ParameterOperatable.Literal, mutator: "Mutator"
-):
-    literal = make_lit(literal)
-    existing = try_extract_literal(po)
-
-    if existing is not None:
-        if existing == literal:
-            return
-        raise ContradictionByLiteral(
-            "Tried alias to different literal",
-            involved=[po],
-            literals=[existing, literal],
-        )
-    # prevent (A is X) is X
-    if isinstance(po, Is):
-        if literal in po.get_literal_operands().values():
-            return
-    return mutator.create_expression(Is, po, literal).constrain()
-
-
-def is_literal(po: ParameterOperatable) -> TypeGuard[SolverLiteral]:
-    # allowed because of canonicalization
-    return ParameterOperatable.is_literal(po)
-
-
-def alias_is_literal_and_check_predicate_eval(
-    expr: ConstrainableExpression, value: BoolSet | bool, mutator: "Mutator"
-):
-    alias_is_literal(expr, value, mutator)
-    if not expr.constrained:
-        return
-    # all predicates alias to True, so alias False will already throw
-    assert value == BoolSet(True)
-    mutator.mark_predicate_true(expr)
-
-    # TODO is this still needed?
-    # mark all alias_is P -> True as true
-    for op in expr.get_operations(Is):
-        if not op.constrained:
-            continue
-        lit = try_extract_literal(op)
-        if lit is None:
-            continue
-        if lit != BoolSet(True):
-            continue
-        mutator.mark_predicate_true(op)
-
-
-def no_other_constrains(
-    po: ParameterOperatable,
-    *other: ConstrainableExpression,
-    unfulfilled_only: bool = False,
-) -> bool:
-    no_other_constraints = (
-        len(
-            [
-                x
-                for x in get_constrained_expressions_involved_in(po).difference(other)
-                if not unfulfilled_only or not x._solver_evaluates_to_true
-            ]
-        )
-        == 0
+# TODO move
+def get_graphs(values: Iterable) -> list[Graph]:
+    return unique_ref(
+        p.get_graph() if isinstance(p, Node) else p
+        for p in values
+        if isinstance(p, (Node, Graph))
     )
-    return no_other_constraints and not po.has_implicit_constraints_recursive()
 
 
-def flatten_associative[T: Associative](
-    to_flatten: T,  # type: ignore
-    check_destructable: Callable[[Expression, Expression], bool],
-):
-    """
-    Recursively extract operands from nested expressions of the same type.
+# alias
+make_lit = as_lit
 
-    ```
-    (A + B) + C + (D + E)
-       Y    Z   X    W
-    flatten(Z) -> flatten(Y) + [C] + flatten(X)
-      flatten(Y) -> [A, B]
-      flatten(X) -> flatten(W) + [D, E]
-      flatten(W) -> [C]
-    -> [A, B, C, D, E] = extracted operands
-    -> {Z, X, W, Y} = destroyed operations
-    ```
 
-    Note: `W` flattens only for right associative operations
+class MutatorUtils:
+    def __init__(self, mutator: "Mutator"):
+        self.mutator = mutator
 
-    Args:
-    - check_destructable(expr, parent_expr): function to check if an expression is
-        allowed to be flattened (=destructed)
-    """
+    # TODO should be part of mutator
+    def try_extract_literal(
+        self,
+        po: ParameterOperatable,
+        allow_subset: bool = False,
+        check_pre_transform: bool = False,
+    ) -> SolverLiteral | None:
+        pos = {po}
+
+        # TODO should be mutator api
+        if check_pre_transform and po in self.mutator.transformations.mutated.values():
+            pos |= {
+                k
+                for k, v in self.mutator.transformations.mutated.items()
+                if v is po and k not in self.mutator.transformations.removed
+            }
+
+        lits = set()
+        try:
+            for po in pos:
+                lit = ParameterOperatable.try_extract_literal(
+                    po, allow_subset=allow_subset
+                )
+                if lit is not None:
+                    lits.add(lit)
+        except KeyErrorAmbiguous as e:
+            raise ContradictionByLiteral(
+                "Duplicate unequal is literals",
+                involved=[po],
+                literals=e.duplicates,
+                mutator=self.mutator,
+            ) from e
+        if len(lits) > 1:
+            raise ContradictionByLiteral(
+                "Multiple literals found",
+                involved=list(pos),
+                literals=list(lits),
+                mutator=self.mutator,
+            )
+        lit = next(iter(lits), None)
+        assert isinstance(lit, (CanonicalNumber, BoolSet, P_Set, NoneType))
+        return lit
+
+    def try_extract_literal_info(
+        self,
+        po: ParameterOperatable,
+    ) -> tuple[SolverLiteral | None, bool]:
+        """
+        returns (literal, is_alias)
+        """
+        lit = self.try_extract_literal(po, allow_subset=False)
+        if lit is not None:
+            return lit, True
+        lit = self.try_extract_literal(po, allow_subset=True)
+        return lit, False
+
+    def map_extract_literals(
+        self,
+        expr: Expression,
+        allow_subset: bool = False,
+    ) -> tuple[list[SolverAll], list[ParameterOperatable]]:
+        out = []
+        any_lit = []
+        for op in expr.operands:
+            if self.is_literal(op):
+                out.append(op)
+                continue
+            lit = self.try_extract_literal(op, allow_subset=allow_subset)
+            if lit is None:
+                out.append(op)
+                continue
+            out.append(lit)
+            any_lit.append(op)
+        return out, any_lit
+
+    def alias_is_literal(
+        self,
+        po: ParameterOperatable,
+        literal: ParameterOperatable.Literal | SolverLiteral,
+        from_ops: Sequence[ParameterOperatable] | None = None,
+        terminate: bool = False,
+    ):
+        literal = make_lit(literal)
+        existing = self.try_extract_literal(po, check_pre_transform=True)
+        if existing is not None:
+            if existing == literal:
+                if terminate:
+                    for op in po.get_operations(Is, constrained_only=True):
+                        if existing in op.operands:
+                            self.mutator.predicate_terminate(op)
+                    return
+                return
+            raise ContradictionByLiteral(
+                "Tried alias to different literal",
+                involved=[po],
+                literals=[existing, literal],
+                mutator=self.mutator,
+            )
+        # prevent (A is X) is X
+        if isinstance(po, Is):
+            if literal in po.get_operand_literals().values():
+                return
+        if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
+            if not ss_lit.is_superset_of(literal):  # type: ignore
+                raise ContradictionByLiteral(
+                    "Tried alias to literal incompatible with subset",
+                    involved=[po],
+                    literals=[ss_lit, literal],
+                    mutator=self.mutator,
+                )
+        out = self.mutator.create_expression(
+            Is,
+            po,
+            literal,
+            from_ops=from_ops,
+            constrain=True,
+            # already checked for uncorrelated lit, op needs to be correlated
+            allow_uncorrelated=False,
+        )
+        if terminate:
+            self.mutator.predicate_terminate(out)
+        return out
+
+    def subset_literal(
+        self,
+        po: ParameterOperatable,
+        literal: ParameterOperatable.Literal | SolverLiteral,
+        from_ops: Sequence[ParameterOperatable] | None = None,
+    ):
+        literal = make_lit(literal)
+
+        if literal.is_empty():
+            raise ContradictionByLiteral(
+                "Tried subset to empty set",
+                involved=[po],
+                literals=[literal],
+                mutator=self.mutator,
+            )
+
+        existing_alias = self.try_extract_literal(po, check_pre_transform=True)
+        if existing_alias is not None:
+            if not existing_alias.is_subset_of(literal):  # type: ignore #TODO
+                raise ContradictionByLiteral(
+                    "Tried subset to different literal",
+                    involved=[po],
+                    literals=[existing_alias, literal],
+                    mutator=self.mutator,
+                )
+            return
+
+        existing = self.try_extract_literal(
+            po, allow_subset=True, check_pre_transform=True
+        )
+        if existing is not None:
+            # no point in adding more general subset
+            if existing.is_subset_of(literal):  # type: ignore #TODO
+                return
+            # other cases handled by intersect subsets algo
+
+        return self.mutator.create_expression(
+            IsSubset,
+            po,
+            literal,
+            from_ops=from_ops,
+            constrain=True,
+            # already checked for uncorrelated lit, op needs to be correlated
+            allow_uncorrelated=False,
+        )
+
+    def alias_to(
+        self,
+        po: ParameterOperatable,
+        to: ParameterOperatable | SolverLiteral,
+        check_existing: bool = True,
+        from_ops: Sequence[ParameterOperatable] | None = None,
+        terminate: bool = False,
+    ):
+        assert isinstance(po, ParameterOperatable)
+        from_ops = from_ops or []
+        from_ops = [po] + list(from_ops)
+        if self.is_literal(to):
+            assert check_existing
+            return self.alias_is_literal(po, to, from_ops=from_ops, terminate=terminate)
+
+        # not sure why this would be needed anyway
+        if terminate:
+            raise NotImplementedError("Terminate not implemented for non-literals")
+
+        # check if alias exists
+        if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
+            if po.get_operations(Is, constrained_only=True) & to.get_operations(
+                Is, constrained_only=True
+            ):
+                return
+
+        return self.mutator.create_expression(
+            Is,
+            po,
+            to,
+            from_ops=from_ops,
+            constrain=True,
+            check_exists=check_existing,
+            allow_uncorrelated=True,
+        )
+
+    def subset_to(
+        self,
+        po: ParameterOperatable | SolverLiteral,
+        to: ParameterOperatable | SolverLiteral,
+        check_existing: bool = True,
+        from_ops: Sequence[ParameterOperatable] | None = None,
+    ):
+        from_ops = from_ops or []
+        from_ops = [
+            x for x in [po, to] + list(from_ops) if isinstance(x, ParameterOperatable)
+        ]
+        if self.is_literal(to) and isinstance(po, ParameterOperatable):
+            assert check_existing
+            return self.subset_literal(po, to, from_ops=from_ops)
+
+        # check if alias exists
+        if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
+            if po.get_operations(Is, constrained_only=True) & to.get_operations(
+                Is, constrained_only=True
+            ):
+                return
+
+        if self.is_literal(po) and check_existing:
+            # TODO implement
+            pass
+
+        return self.mutator.create_expression(
+            IsSubset,
+            po,
+            to,
+            from_ops=from_ops,
+            constrain=True,
+            check_exists=check_existing,
+            allow_uncorrelated=True,
+        )
+
+    def alias_is_literal_and_check_predicate_eval(
+        self,
+        expr: ParameterOperatable,
+        value: BoolSet | bool,
+    ):
+        """
+        Call this when 100% sure what the result of a predicate is.
+        """
+        self.alias_to(expr, as_lit(value), terminate=True)
+        if not isinstance(expr, ConstrainableExpression):
+            return
+        if not expr.constrained:
+            return
+        # all predicates alias to True, so alias False will already throw
+        if value != BoolSet(True):
+            raise Contradiction(
+                "Constrained predicate deduced to False",
+                involved=[expr],
+                mutator=self.mutator,
+            )
+        self.mutator.predicate_terminate(expr)
+
+        # TODO is this still needed?
+        # terminate all alias_is P -> True
+        for op in expr.get_operations(Is):
+            if not op.constrained:
+                continue
+            lit = self.try_extract_literal(op)
+            if lit is None:
+                continue
+            if lit != BoolSet(True):
+                continue
+            self.mutator.predicate_terminate(op)
+
+    def is_replacable_by_literal(self, op: ParameterOperatable.All):
+        if not isinstance(op, ParameterOperatable):
+            return None
+
+        # special case for Is(True, True) due to alias_is_literal check
+        if isinstance(op, Is) and {BoolSet(True)} == set(op.operands):
+            return BoolSet(True)
+
+        lit = self.try_extract_literal(op, allow_subset=False)
+        if lit is None:
+            return None
+        if not self.is_correlatable_literal(lit):
+            return None
+        return lit
+
+    def find_congruent_expression[T: CanonicalExpression](
+        self,
+        expr_factory: type[T],
+        *operands: SolverAll,
+        allow_uncorrelated: bool = False,
+    ) -> T | None:
+        non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
+        literal_expr = all(
+            self.is_literal(op) or self.is_literal_expression(op) for op in operands
+        )
+        if literal_expr:
+            lit_ops = {
+                op
+                for op in self.mutator.nodes_of_type(
+                    expr_factory, created_only=False, include_terminated=True
+                )
+                if self.is_literal_expression(op)
+                # check congruence
+                and Expression.are_pos_congruent(
+                    op.operands,
+                    cast(Sequence[ParameterOperatable.All], operands),
+                    allow_uncorrelated=allow_uncorrelated,
+                )
+            }
+            if lit_ops:
+                return next(iter(lit_ops))
+            return None
+
+        # TODO: might have to check in repr_map
+        candidates = [
+            expr
+            for expr in non_lits[0].get_operations()
+            if isinstance(expr, expr_factory)
+        ]
+        for c in candidates:
+            # TODO congruence check instead
+            if c.operands == operands:
+                return c
+        return None
+
+    def get_all_aliases(self) -> set[Is]:
+        return {
+            op
+            for op in self.mutator.nodes_of_type(Is, include_terminated=True)
+            if op.constrained
+        }
+
+    def get_all_subsets(self) -> set[IsSubset]:
+        return {
+            op
+            for op in self.mutator.nodes_of_type(IsSubset, include_terminated=True)
+            if op.constrained
+        }
+
+    def collect_factors[T: Multiply | Power](
+        self, counter: Counter[ParameterOperatable], collect_type: type[T]
+    ):
+        # Convert the counter to a dict for easy manipulation
+        factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
+            counter.items()
+        )
+        # Store operations of type collect_type grouped by their non-literal operand
+        same_literal_factors: dict[ParameterOperatable, list[T]] = defaultdict(list)
+
+        # Look for operations matching collect_type and gather them
+        for collect_op in set(factors.keys()):
+            if not isinstance(collect_op, collect_type):
+                continue
+            # Skip if operation doesn't have exactly two operands
+            # TODO unnecessary strict
+            if len(collect_op.operands) != 2:
+                continue
+            # handled by lit fold first
+            if len(collect_op.get_operand_literals()) > 1:
+                continue
+            if not collect_op.get_operand_literals():
+                continue
+            # handled by lit fold completely
+            if self.is_pure_literal_expression(collect_op):
+                continue
+            if not issubclass(collect_type, Commutative):
+                if not issubclass(collect_type, Power):
+                    raise NotImplementedError(
+                        f"Non-commutative {collect_type.__name__} not implemented"
+                    )
+                # For power, ensure second operand is literal
+                if not self.is_literal(collect_op.operands[1]):
+                    continue
+
+            # pick non-literal operand
+            paramop = next(iter(collect_op.operatable_operands))
+            # Collect these factors under the non-literal operand
+            same_literal_factors[paramop].append(collect_op)  # type: ignore #TODO
+            # If this operand isn't in factors yet, initialize it with 0
+            if paramop not in factors:
+                factors[paramop] = make_lit(0)
+            # Remove this operation from the main factors
+            del factors[collect_op]
+
+        # new_factors: combined literal counts, old_factors: leftover items
+        new_factors = {}
+        old_factors = []
+
+        # Combine literals for each non-literal operand
+        for var, count in factors.items():
+            muls = same_literal_factors[var]
+            # If no effective multiplier or only a single factor, treat as leftover
+            if count == 0 and len(muls) <= 1:
+                old_factors.extend(muls)
+                continue
+
+            # If only count=1 and no additional factors, just keep the variable
+            if count == 1 and not muls:
+                old_factors.append(var)
+                continue
+
+            # Extract literal parts from collected operations
+            mul_lits = [
+                next(o for o in mul.operands if ParameterOperatable.is_literal(o))
+                for mul in muls
+            ]
+
+            # Sum all literal multipliers plus the leftover count
+            new_factors[var] = sum(mul_lits) + make_lit(count)  # type: ignore
+
+        return new_factors, old_factors
+
+    # TODO better name
+    @staticmethod
+    def fold_op(
+        operands: Sequence[SolverLiteral],
+        operator: Callable[[SolverLiteral, SolverLiteral], SolverLiteral],
+        identity: SolverLiteral,
+    ):
+        """
+        Return 'sum' of all literals in the iterable, or empty list if sum is identity.
+        """
+        if not operands:
+            return []
+
+        literal_it = iter(operands)
+        const_sum = next(literal_it)
+        for c in literal_it:
+            const_sum = operator(const_sum, c)
+
+        # TODO make work with all the types
+        if const_sum == identity:
+            return []
+
+        return [const_sum]
+
+    @staticmethod
+    def are_aliased(po: ParameterOperatable, *other: ParameterOperatable) -> bool:
+        return bool(
+            po.get_operations(Is, constrained_only=True)
+            & {o for o in other for o in o.get_operations(Is, constrained_only=True)}
+        )
+
+    @staticmethod
+    def is_literal(po: ParameterOperatable | SolverAll) -> TypeGuard[SolverLiteral]:
+        # allowed because of canonicalization
+        return ParameterOperatable.is_literal(po)
+
+    @staticmethod
+    def is_numeric_literal(po: ParameterOperatable) -> TypeGuard[CanonicalNumber]:
+        return MutatorUtils.is_literal(po) and isinstance(po, CanonicalNumber)
+
+    @staticmethod
+    def is_literal_expression(
+        po: ParameterOperatable | SolverAll,
+    ) -> TypeGuard[Expression]:
+        return isinstance(po, Expression) and not po.get_operand_parameters(
+            recursive=True
+        )
+
+    @staticmethod
+    def is_pure_literal_expression(
+        po: ParameterOperatable | SolverAll,
+    ) -> TypeGuard[CanonicalExpression]:
+        return isinstance(po, Expression) and all(
+            MutatorUtils.is_literal(op) for op in po.operands
+        )
+
+    @staticmethod
+    def is_alias_is_literal(po: ParameterOperatable) -> TypeGuard[Is]:
+        return bool(
+            isinstance(po, Is)
+            and po.constrained
+            and po.get_operand_literals()
+            and po.operatable_operands
+        )
+
+    @staticmethod
+    def is_subset_literal(po: ParameterOperatable) -> TypeGuard[IsSubset]:
+        return bool(
+            isinstance(po, IsSubset)
+            and po.constrained
+            and MutatorUtils.is_literal(po.operands[1])
+            and isinstance(po.operands[0], ParameterOperatable)
+        )
+
+    @staticmethod
+    def no_other_constraints(
+        po: ParameterOperatable,
+        *other: ConstrainableExpression,
+        unfulfilled_only: bool = False,
+    ) -> bool:
+        no_other_constraints = (
+            len(
+                [
+                    x
+                    for x in MutatorUtils.get_constrained_expressions_involved_in(
+                        po
+                    ).difference(other)
+                    if not unfulfilled_only or not x._solver_terminated
+                ]
+            )
+            == 0
+        )
+        return no_other_constraints and not po.has_implicit_constraints_recursive()
 
     @dataclass
-    class Result[T2]:
+    class FlattenAssociativeResult[T]:
         extracted_operands: list[ParameterOperatable.All]
         """
         Extracted operands
         """
-        destroyed_operations: set[T2]
+        destroyed_operations: set[T]
         """
         ParameterOperables that got flattened and thus are not used anymore
         """
 
-    out = Result[T](
-        extracted_operands=[],
-        destroyed_operations=set(),
-    )
+    @staticmethod
+    def flatten_associative[T: Associative](
+        to_flatten: T,  # type: ignore
+        check_destructable: Callable[[Expression, Expression], bool],
+    ):
+        """
+        Recursively extract operands from nested expressions of the same type.
 
-    def can_be_flattened(o: ParameterOperatable.All) -> TypeGuard[T]:
-        if not isinstance(to_flatten, Associative):
-            return False
-        if not isinstance(to_flatten, FullyAssociative):
-            if to_flatten.operands[0] is not o:
+        ```
+        (A + B) + C + (D + E)
+        Y    Z   X    W
+        flatten(Z) -> flatten(Y) + [C] + flatten(X)
+        flatten(Y) -> [A, B]
+        flatten(X) -> flatten(W) + [D, E]
+        flatten(W) -> [C]
+        -> [A, B, C, D, E] = extracted operands
+        -> {Z, X, W, Y} = destroyed operations
+        ```
+
+        Note: `W` flattens only for right associative operations
+
+        Args:
+        - check_destructable(expr, parent_expr): function to check if an expression is
+            allowed to be flattened (=destructed)
+        """
+
+        out = MutatorUtils.FlattenAssociativeResult[T](
+            extracted_operands=[],
+            destroyed_operations=set(),
+        )
+
+        def can_be_flattened(o: ParameterOperatable.All) -> TypeGuard[T]:
+            if not isinstance(to_flatten, Associative):
                 return False
-        return type(o) is type(to_flatten) and check_destructable(o, to_flatten)
+            if not isinstance(to_flatten, FullyAssociative):
+                if to_flatten.operands[0] is not o:
+                    return False
+            return type(o) is type(to_flatten) and check_destructable(o, to_flatten)
 
-    non_compressible_operands, nested_compressible_operations = partition(
-        can_be_flattened,
-        to_flatten.operands,
-    )
-    out.extracted_operands.extend(non_compressible_operands)
+        non_compressible_operands, nested_compressible_operations = partition(
+            can_be_flattened,
+            to_flatten.operands,
+        )
+        out.extracted_operands.extend(non_compressible_operands)
 
-    nested_extracted_operands = []
-    for nested_to_flatten in nested_compressible_operations:
-        out.destroyed_operations.add(nested_to_flatten)
+        nested_extracted_operands = []
+        for nested_to_flatten in nested_compressible_operations:
+            out.destroyed_operations.add(nested_to_flatten)
 
-        res = flatten_associative(nested_to_flatten, check_destructable)
-        nested_extracted_operands += res.extracted_operands
-        out.destroyed_operations.update(res.destroyed_operations)
-
-    out.extracted_operands.extend(nested_extracted_operands)
-
-    return out
-
-
-def is_replacable(
-    repr_map: "Mutator.REPR_MAP",
-    to_replace: Expression,
-    parent_expr: Expression,
-) -> bool:
-    """
-    Check if an expression can be replaced.
-    Only possible if not in use somewhere else or already mapped to new expr
-    """
-    if to_replace in repr_map:  # overly restrictive: equivalent replacement would be ok
-        return False
-    if to_replace.get_operations() != {parent_expr}:
-        return False
-    return True
-
-
-def get_params_for_expr(expr: Expression) -> set[Parameter]:
-    param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
-    expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
-
-    return param_ops | {op for e in expr_ops for op in get_params_for_expr(e)}
-
-
-def get_constrained_expressions_involved_in(
-    p: ParameterOperatable,
-) -> set[ConstrainableExpression]:
-    # p.self -> p.operated_on -> e1.operates_on -> e1.self
-    dependants = p.bfs_node(
-        lambda path: isinstance(path[-1].node, ParameterOperatable)
-        and (
-            # self
-            isinstance(path[-1], GraphInterfaceSelf)
-            # operated on
-            or path[-1].node.operated_on is path[-1]
-            # operated on -> operates on
-            or (
-                len(path) >= 2
-                and isinstance(path[-2].node, ParameterOperatable)
-                and path[-2].node.operated_on is path[-2]
-                and isinstance(path[-1].node, Expression)
-                and path[-1].node.operates_on is path[-1]
+            res = MutatorUtils.flatten_associative(
+                nested_to_flatten, check_destructable
             )
+            nested_extracted_operands += res.extracted_operands
+            out.destroyed_operations.update(res.destroyed_operations)
+
+        out.extracted_operands.extend(nested_extracted_operands)
+
+        return out
+
+    @staticmethod
+    def is_constrained(po: ParameterOperatable) -> TypeGuard[ConstrainableExpression]:
+        return isinstance(po, ConstrainableExpression) and po.constrained
+
+    @staticmethod
+    def get_lit_mapping_from_lit_expr(
+        expr: Is | IsSubset,
+    ) -> tuple[ParameterOperatable, SolverLiteral]:
+        assert MutatorUtils.is_alias_is_literal(expr) or MutatorUtils.is_subset_literal(
+            expr
         )
-    )
-    res = {
-        p
-        for p in dependants
-        if isinstance(p, ConstrainableExpression) and p.constrained
-    }
-    return res
-
-
-def is_replacable_by_literal(op: ParameterOperatable.All):
-    if not isinstance(op, ParameterOperatable):
-        return None
-
-    # special case for Is(True, True) due to alias_is_literal check
-    if isinstance(op, Is) and {BoolSet(True)} == set(op.operands):
-        return BoolSet(True)
-
-    lit = try_extract_literal(op, allow_subset=False)
-    if lit is None:
-        return None
-    if not lit.is_single_element():
-        return None
-    return lit
-
-
-def make_if_doesnt_exist[T: Expression](
-    expr_factory: type[T], *operands: SolverOperatable
-) -> T:
-    non_lits = [op for op in operands if isinstance(op, ParameterOperatable)]
-    if not non_lits:
-        # TODO implement better
-        return expr_factory(*operands)  # type: ignore #TODO
-    candidates = [
-        expr for expr in non_lits[0].get_operations() if isinstance(expr, expr_factory)
-    ]
-    for c in candidates:
-        # TODO congruence check instead
-        if c.operands == operands:
-            return c
-    return expr_factory(*operands)  # type: ignore #TODO
-
-
-def remove_predicate(
-    pred: ConstrainableExpression,
-    representative: ConstrainableExpression,
-    mutator: "Mutator",
-):
-    """
-    VERY CAREFUL WITH THIS ONE!
-    Replaces pred in all parent expressions with true
-    """
-
-    ops = pred.get_operations()
-    for op in ops:
-        mutator.mutate_expression_with_op_map(
-            op,
-            operand_mutator=lambda _, op: (make_lit(True) if op is pred else op),
+        return next(iter(expr.operatable_operands)), next(
+            iter(expr.get_operand_literals().values())
         )
 
-    mutator._mutate(pred, mutator.get_copy(representative))
+    @staticmethod
+    def get_params_for_expr(expr: Expression) -> set[Parameter]:
+        param_ops = {op for op in expr.operatable_operands if isinstance(op, Parameter)}
+        expr_ops = {op for op in expr.operatable_operands if isinstance(op, Expression)}
 
-
-# TODO move to Mutator
-def get_graphs(values: Iterable) -> list[Graph]:
-    return unique_ref(
-        p.get_graph() for p in values if isinstance(p, ParameterOperatable)
-    )
-
-
-NumericLiteral = QuantityLike | Quantity_Interval_Disjoint | Quantity_Interval
-NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
-BoolLiteral = BoolSet | bool
-
-
-def merge_parameters(params: Iterable[Parameter]) -> Parameter:
-    params = list(params)
-
-    domain = Domain.get_shared_domain(*(p.domain for p in params))
-    # intersect ranges
-
-    # heuristic:
-    # intersect soft sets
-    soft_sets = {p.soft_set for p in params if p.soft_set is not None}
-    soft_set = None
-    if soft_sets:
-        soft_set = Quantity_Interval_Disjoint.op_intersect_intervals(*soft_sets)
-
-    # heuristic:
-    # get median
-    guesses = {p.guess for p in params if p.guess is not None}
-    guess = None
-    if guesses:
-        guess = median(guesses)  # type: ignore
-
-    # heuristic:
-    # max tolerance guess
-    tolerance_guesses = {
-        p.tolerance_guess for p in params if p.tolerance_guess is not None
-    }
-    tolerance_guess = None
-    if tolerance_guesses:
-        tolerance_guess = max(tolerance_guesses)
-
-    likely_constrained = any(p.likely_constrained for p in params)
-
-    return Parameter(
-        domain=domain,
-        # In stage-0 removed: within, units
-        soft_set=soft_set,
-        guess=guess,
-        tolerance_guess=tolerance_guess,
-        likely_constrained=likely_constrained,
-    )
-
-
-# TODO use Mutator everywhere instead of repr_maps
-class Mutator:
-    type REPR_MAP = dict[ParameterOperatable, ParameterOperatable]
-
-    def __init__(
-        self,
-        G: Graph,
-        print_context: ParameterOperatable.ReprContext,
-        repr_map: REPR_MAP | None = None,
-    ) -> None:
-        self._G = G
-        self.repr_map = repr_map or {}
-        self.removed = set()
-        self.copied = set()
-        self.print_context = print_context
-
-        # TODO make api for contraining
-        # TODO involve marked & new_ops in printing
-        self.marked: list[ConstrainableExpression] = []
-        self._old_ops = GraphFunctions(G).nodes_of_type(ParameterOperatable)
-        self._new_ops: set[ParameterOperatable] = set()
-
-    @property
-    def G(self) -> Graph:
-        g = self._G
-        if g.node_count > 0:
-            return g
-        # Handle graph merge
-        gs = get_graphs(self._old_ops)
-        assert len(gs) == 1
-        self._G = gs[0]
-        return self._G
-
-    def has_been_mutated(self, po: ParameterOperatable) -> bool:
-        return po in self.repr_map
-
-    def get_mutated(self, po: ParameterOperatable) -> ParameterOperatable:
-        return self.repr_map[po]
-
-    def _mutate[T: ParameterOperatable](self, po: ParameterOperatable, new_po: T) -> T:
-        """
-        Low-level mutation function, you are on your own.
-        Consider using mutate_parameter or mutate_expression instead.
-        """
-        if self.has_been_mutated(po):
-            if self.get_mutated(po) is not new_po:
-                raise ValueError(f"already mutated to: {self.get_mutated(po)}")
-
-        if self.is_removed(po):
-            raise ValueError("Object marked removed")
-
-        self.repr_map[po] = new_po
-        return new_po
-
-    def _override_repr(self, po: ParameterOperatable, new_po: ParameterOperatable):
-        """
-        Do not use this if you don't understand the consequences.
-        Honestly I don't.
-        """
-        # TODO not sure this is the best way to handle ghost exprs
-        if po in self.repr_map:
-            self._new_ops.add(self.repr_map[po])
-
-        self.repr_map[po] = new_po
-
-    def mutate_parameter(
-        self,
-        param: Parameter,
-        units: Unit | Quantity | None = None,
-        domain: Domain | None = None,
-        soft_set: Quantity_Interval_Disjoint | Quantity_Interval | None = None,
-        guess: Quantity | int | float | None = None,
-        tolerance_guess: float | None = None,
-        likely_constrained: bool | None = None,
-    ) -> Parameter:
-        if param in self.repr_map:
-            out = self.get_mutated(param)
-            assert isinstance(out, Parameter)
-            assert out.units == units
-            assert out.domain == domain
-            assert out.soft_set == soft_set
-            assert out.guess == guess
-            assert out.tolerance_guess == tolerance_guess
-            assert out.likely_constrained == likely_constrained
-            return out
-
-        new_param = Parameter(
-            units=units if units is not None else param.units,
-            within=None,
-            domain=domain if domain is not None else param.domain,
-            soft_set=soft_set if soft_set is not None else param.soft_set,
-            guess=guess if guess is not None else param.guess,
-            tolerance_guess=tolerance_guess
-            if tolerance_guess is not None
-            else param.tolerance_guess,
-            likely_constrained=likely_constrained
-            if likely_constrained is not None
-            else param.likely_constrained,
-        )
-
-        return self._mutate(param, new_param)
-
-    def mutate_expression(
-        self,
-        expr: Expression,
-        operands: Iterable[ParameterOperatable.All] | None = None,
-        expression_factory: Callable[..., Expression] | None = None,
-    ) -> Expression:
-        if expr in self.repr_map:
-            out = self.get_mutated(expr)
-            assert isinstance(out, Expression)
-            # TODO more checks
-            return out
-
-        if expression_factory is None:
-            expression_factory = type(expr)
-
-        if operands is None:
-            operands = expr.operands
-
-        new_operands = [self.get_copy(op) for op in operands]
-        new_expr = expression_factory(*new_operands)
-        new_expr.non_operands = expr.non_operands
-
-        for op in new_operands:
-            if isinstance(op, ParameterOperatable):
-                assert op.get_graph() == new_expr.get_graph()
-        if isinstance(expr, ConstrainableExpression):
-            new_expr = cast_assert(ConstrainableExpression, new_expr)
-            new_expr.constrained = expr.constrained
-            if self.is_predicate_true(expr):
-                self.mark_predicate_true(new_expr)
-
-        return self._mutate(expr, new_expr)
-
-    def mutate_expression_with_op_map(
-        self,
-        expr: Expression,
-        operand_mutator: Callable[[int, ParameterOperatable], ParameterOperatable.All],
-        expression_factory: Callable[..., Expression] | None = None,
-    ) -> Expression:
-        """
-        operand_mutator: Only allowed to return old Graph objects
-        """
-        return self.mutate_expression(
-            expr,
-            operands=[operand_mutator(i, op) for i, op in enumerate(expr.operands)],
-            expression_factory=expression_factory,
-        )
-
-    def get_copy(self, obj: ParameterOperatable.All) -> ParameterOperatable.All:
-        if not isinstance(obj, ParameterOperatable):
-            return obj
-
-        if self.has_been_mutated(obj):
-            return self.get_mutated(obj)
-
-        # purely for debug
-        self.copied.add(obj)
-
-        if isinstance(obj, Expression):
-            return self.mutate_expression(obj)
-        elif isinstance(obj, Parameter):
-            return self.mutate_parameter(obj)
-
-        assert False
-
-    def create_expression[T: CanonicalOperation](
-        self,
-        expr_factory: type[T],
-        *operands: SolverOperatable,
-        check_exists: bool = True,
-    ) -> T:
-        assert issubclass(expr_factory, CanonicalOperation)
-
-        if check_exists:
-            expr = make_if_doesnt_exist(expr_factory, *operands)
-        else:
-            expr = expr_factory(*operands)  # type: ignore
-        self._new_ops.add(expr)
-        return expr
-
-    def remove(self, *po: ParameterOperatable):
-        assert not any(p in self.repr_map for p in po), "Object already in repr_map"
-        root_pos = [p for p in po if p.get_parent() is not None]
-        assert not root_pos, f"should never remove root parameters: {root_pos}"
-        self.removed.update(po)
-
-    def remove_graph(self):
-        # TODO implementing graph removal has to be more explicit
-        # e.g mark as no more use, and then future mutators ignore it for the algos
-        # for now at least remove expressions
-        self.remove(*GraphFunctions(self.G).nodes_of_type(Expression))
-
-    def is_removed(self, po: ParameterOperatable) -> bool:
-        return po in self.removed
-
-    def copy_unmutated(
-        self,
-        exclude_filter: Callable[[ParameterOperatable], bool] | None = None,
-    ):
-        if exclude_filter is None:
-            exclude_filter = self.is_removed
-
-        # TODO might not need to sort
-        other_param_op = ParameterOperatable.sort_by_depth(
-            (
-                p
-                for p in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
-                if not self.has_been_mutated(p) and not exclude_filter(p)
-            ),
-            ascending=True,
-        )
-        for o in other_param_op:
-            self.get_copy(o)
-
-    def register_created_parameter(self, param: Parameter):
-        self._new_ops.add(param)
-        return param
-
-    @property
-    def dirty(self) -> bool:
-        return bool(self.needs_copy or self._new_ops or self.marked)
-
-    @property
-    def needs_copy(self) -> bool:
-        # optimization: if just new_ops, no need to copy
-        return bool(self.removed or self.repr_map)
-
-    def check_no_illegal_mutations(self):
-        # TODO should only run during dev
-
-        # Check modifications to original graph
-        post_mut_nodes = GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
-        removed = self._old_ops.difference(post_mut_nodes, self.removed)
-        added = post_mut_nodes.difference(self._old_ops, self._new_ops)
-        removed_compact = [op.compact_repr(self.print_context) for op in removed]
-        added_compact = [op.compact_repr(self.print_context) for op in added]
-        assert (
-            not removed
-        ), f"Mutator {self.G} removed {indented_container(removed_compact)}"
-        assert not added, f"Mutator {self.G} added {indented_container(added_compact)}"
-
-        # don't need to check original graph, done above seperately
-        all_new_graphs = get_graphs(self.repr_map.values())
-        all_new_params = {
-            op
-            for g in all_new_graphs
-            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+        return param_ops | {
+            op for e in expr_ops for op in MutatorUtils.get_params_for_expr(e)
         }
-        non_registered = all_new_params.difference(
-            self._new_ops, self.repr_map.values()
-        )
-        if non_registered:
-            compact = (op.compact_repr(self.print_context) for op in non_registered)
-            graphs = get_graphs(non_registered)
-            # FIXME: this is currently hit during legitimate build
-            with downgrade(AssertionError, logger=logger, to_level=logging.DEBUG):
-                assert False, (
-                    f"Mutator {self.G} has non-registered new ops: "
-                    f"{indented_container(compact)}."
-                    f"{indented_container(graphs)}"
-                )
 
-    def close(self) -> tuple[REPR_MAP, bool]:
-        self.check_no_illegal_mutations()
-        if not self.needs_copy:
+    # TODO make generator
+    @staticmethod
+    def get_expressions_involved_in[T: Expression](
+        p: ParameterOperatable,
+        type_filter: type[T] = Expression,
+        include_root: bool = False,
+        up_only: bool = True,
+    ) -> set[T]:
+        dependants = p.get_operations(recursive=True)
+        if isinstance(p, Expression):
+            if include_root:
+                dependants.add(p)
+
+            if not up_only:
+                dependants.update(p.get_operand_expressions(recursive=True))
+
+        res = {p for p in dependants if isinstance(p, type_filter)}
+        return res
+
+    @staticmethod
+    def get_constrained_expressions_involved_in[T: ConstrainableExpression](
+        p: ParameterOperatable,
+        type_filter: type[T] = ConstrainableExpression,
+    ) -> set[T]:
+        res = {
+            p
+            for p in MutatorUtils.get_expressions_involved_in(p, type_filter)
+            if p.constrained
+        }
+        return res
+
+    @staticmethod
+    def get_correlations(expr: Expression, exclude: set[Expression] | None = None):
+        # TODO: might want to check if expr has aliases because those are correlated too
+
+        if exclude is None:
+            exclude = set()
+
+        exclude.add(expr)
+        excluded = {
+            e
+            for e in exclude
+            if isinstance(e, ConstrainableExpression) and e.constrained
+        }
+        excluded.update(MutatorUtils.get_constrained_expressions_involved_in(expr, Is))
+
+        operables = [o for o in expr.operands if isinstance(o, ParameterOperatable)]
+        op_set = set(operables)
+
+        def _get(e: ParameterOperatable):
+            vs = {e}
+            if isinstance(e, Expression):
+                vs = e.get_operand_leaves_operatable()
             return {
-                po: po
-                for po in GraphFunctions(self.G).nodes_of_type(ParameterOperatable)
-            }, False
-        self.copy_unmutated()
+                o
+                for v in vs
+                for o in MutatorUtils.get_constrained_expressions_involved_in(v, Is)
+            }
 
-        assert self.G not in get_graphs(self.repr_map.values())
-        return self.repr_map, True
+        exprs = {o: _get(o) for o in op_set}
+        # check disjoint sets
+        for e1, e2 in combinations(operables, 2):
+            if e1 is e2:
+                yield e1, e2, exprs[e1].difference(excluded)
+            overlap = (exprs[e1] & exprs[e2]).difference(excluded)
+            if overlap:
+                yield e1, e2, overlap
 
-    def mark_predicate_true(self, pred: ConstrainableExpression):
-        assert pred.constrained
-        if pred._solver_evaluates_to_true:
-            return
-        pred._solver_evaluates_to_true = True
-        self.marked.append(pred)
+    @staticmethod
+    def find_unique_params(po: ParameterOperatable) -> set[ParameterOperatable]:
+        match po:
+            case Parameter():
+                return {po}
+            case Expression():
+                return {
+                    p for op in po.operands for p in MutatorUtils.find_unique_params(op)
+                }
+            case _:
+                return set()
 
-    def is_predicate_true(self, pred: ConstrainableExpression) -> bool:
-        return pred._solver_evaluates_to_true
+    @staticmethod
+    def count_param_occurrences(po: ParameterOperatable) -> dict[Parameter, int]:
+        counts: dict[Parameter, int] = defaultdict(int)
 
-    def mark_predicate_false(self, pred: ConstrainableExpression):
-        assert pred.constrained
-        if not pred._solver_evaluates_to_true:
-            return
-        pred._solver_evaluates_to_true = False
-        self.marked.append(pred)
+        match po:
+            case Parameter():
+                counts[po] += 1
+            case Expression():
+                for op in po.operands:
+                    for param, count in MutatorUtils.count_param_occurrences(
+                        op
+                    ).items():
+                        counts[param] += count
 
-    def get_all_param_ops(self) -> set[ParameterOperatable]:
+        return counts
+
+    @staticmethod
+    def is_correlatable_literal(op):
+        if not MutatorUtils.is_literal(op):
+            return False
+        return op.is_single_element() or op.is_empty()
+
+    @staticmethod
+    def get_supersets(
+        op: ParameterOperatable,
+    ) -> dict[ParameterOperatable | SolverLiteral, IsSubset]:
         return {
-            op
-            for g in get_graphs(self.repr_map.values())
-            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
+            e.operands[1]: e
+            for e in op.get_operations(IsSubset, constrained_only=True)
+            if e.operands[0] is op
         }
 
+    @staticmethod
+    def get_aliases(
+        op: ParameterOperatable,
+    ) -> dict[ParameterOperatable | SolverLiteral, Is]:
+        return {
+            e.get_other_operand(op): e
+            for e in op.get_operations(Is, constrained_only=True)
+        }
 
-class Mutators:
-    def __init__(self, *graphs: Graph, print_context: ParameterOperatable.ReprContext):
-        self.mutators = [Mutator(g, print_context=print_context) for g in graphs]
-        self.result_repr_map = {}
-        self.print_context = print_context
+    @staticmethod
+    def merge_parameters(params: Iterable[Parameter]) -> Parameter:
+        params = list(params)
 
-    def close(self) -> tuple[Mutator.REPR_MAP, list[Graph], bool]:
-        if not any(m.dirty for m in self.mutators):
-            return {}, [], False
+        domain = Domain.get_shared_domain(*(p.domain for p in params))
+        # intersect ranges
 
-        repr_map = {}
-        for m in self.mutators:
-            repr_map.update(m.close()[0])
-        graphs = get_graphs(repr_map.values())
+        # heuristic:
+        # intersect soft sets
+        soft_sets = {p.soft_set for p in params if p.soft_set is not None}
+        soft_set = None
+        if soft_sets:
+            soft_set = Quantity_Interval_Disjoint.op_intersect_intervals(*soft_sets)
 
-        assert not (set(m.G for m in self.mutators if m.needs_copy) & set(graphs))
-        self.result_repr_map = repr_map
+        # heuristic:
+        # get median
+        guesses = {p.guess for p in params if p.guess is not None}
+        guess = None
+        if guesses:
+            guess = median(guesses)  # type: ignore
 
-        return repr_map, graphs, True
+        # heuristic:
+        # max tolerance guess
+        tolerance_guesses = {
+            p.tolerance_guess for p in params if p.tolerance_guess is not None
+        }
+        tolerance_guess = None
+        if tolerance_guesses:
+            tolerance_guess = max(tolerance_guesses)
 
-    def run(self, algo: Callable[[Mutator], None]):
-        for m in self.mutators:
-            algo(m)
+        likely_constrained = any(p.likely_constrained for p in params)
 
-    def __iter__(self) -> Iterator[Mutator]:
-        return iter(self.mutators)
-
-    @once
-    def get_new_print_context(self) -> ParameterOperatable.ReprContext:
-        context_old = self.print_context
-
-        context_new = ParameterOperatable.ReprContext()
-        context_new.variable_mapping.next_id = context_old.variable_mapping.next_id
-
-        for s, d in self.result_repr_map.items():
-            if isinstance(s, Parameter) and isinstance(d, Parameter):
-                s.compact_repr(context_old)
-                s_mapping = context_old.variable_mapping.mapping[s]
-                d_mapping = context_new.variable_mapping.mapping.get(d, None)
-                if d_mapping is None or d_mapping > s_mapping:
-                    context_new.variable_mapping.mapping[d] = s_mapping
-
-        return context_new
-
-    def debug_print(self):
-        if not self.result_repr_map:
-            return
-
-        if getattr(sys, "gettrace", lambda: None)():
-            log = print
-        else:
-            log = logger.debug
-            if not logger.isEnabledFor(logging.DEBUG):
-                return
-
-        context_old = self.print_context
-        context_new = self.get_new_print_context()
-
-        table = Table(title="Mutations", show_lines=True)
-        table.add_column("Before")
-        table.add_column("After")
-
-        graphs = get_graphs(self.result_repr_map.values())
-
-        new_ops = {op for m in self.mutators for op in m._new_ops}.difference(
-            self.result_repr_map.values()
+        return Parameter(
+            domain=domain,
+            # In stage-0 removed: within, units
+            soft_set=soft_set,
+            guess=guess,
+            tolerance_guess=tolerance_guess,
+            likely_constrained=likely_constrained,
         )
-
-        rows: list[tuple[str, str]] = []
-
-        for op in new_ops:
-            rows.append(("new", op.compact_repr(context_new)))
-
-        marked = {op for m in self.mutators for op in m.marked}.difference(
-            new_ops, self.result_repr_map.values()
-        )
-        for op in marked:
-            rows.append(("marked", op.compact_repr(context_new)))
-
-        copied = {op for m in self.mutators for op in m.copied}
-
-        for s, d in self.result_repr_map.items():
-            if not VERBOSE_TABLE:
-                if s in copied:
-                    continue
-
-                # for no-op mutations (non dirty)
-                if s is d:
-                    continue
-
-            old = s.compact_repr(context_old)
-            new = d.compact_repr(context_new)
-            if VERBOSE_TABLE:
-                old += "\n\n" + repr(s)
-                new += "\n\n" + repr(d)
-            if old == new:
-                continue
-            rows.append((old, new))
-
-        for m in self.mutators:
-            for s in m.removed:
-                old = s.compact_repr(context_old)
-                if VERBOSE_TABLE:
-                    old += "\n\n" + repr(s)
-                rows.append((old, "removed"))
-
-        if rows:
-            rows.sort(key=lambda r: tuple(r))
-            for row in rows:
-                table.add_row(*row)
-            console = Console(record=True, width=80, file=io.StringIO())
-            console.print(table)
-            log(console.export_text(styles=True))
-
-        # TODO remove
-        if len(graphs) != len(self.mutators):
-            logger.debug(
-                f"Mutators created/destroyed graphs: "
-                f"{len(self.mutators)} -> {len(graphs)}"
-            )
-            # print_all(graphs, context_new)
-
-        return context_new
-
-    @staticmethod
-    def print_all(
-        *graphs: Graph,
-        context: ParameterOperatable.ReprContext,
-        type_filter: type[ParameterOperatable] = ParameterOperatable,
-        print_out: Callable[[str], None] = logger.debug,
-    ):
-        for i, g in enumerate(graphs):
-            pre_nodes = GraphFunctions(g).nodes_of_type(type_filter)
-            if SHOW_SS_IS:
-                nodes = pre_nodes
-            else:
-                nodes = [
-                    n
-                    for n in pre_nodes
-                    if not (
-                        isinstance(n, (Is, IsSubset))
-                        and n.constrained
-                        and n._solver_evaluates_to_true
-                        and (
-                            # A is/ss Lit
-                            any(ParameterOperatable.is_literal(o) for o in n.operands)
-                            # A is/ss A
-                            or n.operands[0] is n.operands[1]
-                        )
-                    )
-                ]
-            out = ""
-            node_by_depth = groupby(nodes, key=ParameterOperatable.get_depth)
-            for depth, dnodes in sorted(node_by_depth.items(), key=lambda t: t[0]):
-                out += f"\n  --Depth {depth}--"
-                for n in dnodes:
-                    out += f"\n      {n.compact_repr(context)}"
-
-            if not nodes:
-                continue
-            print_out(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
-
-    @staticmethod
-    def concat_repr_maps(*repr_maps: Mutator.REPR_MAP) -> Mutator.REPR_MAP:
-        # TODO just removed assert
-        if not repr_maps:
-            return {}
-        if len(repr_maps) == 1:
-            return repr_maps[0]
-
-        concatenated = {}
-        for original_obj in repr_maps[0].keys():
-            chain_end = original_obj
-            chain_interrupted = False
-            i = 0
-            for m in repr_maps:
-                # CONSIDER: I think we can assert this
-                assert isinstance(chain_end, ParameterOperatable)
-                if chain_end not in m:
-                    assert (
-                        original_obj.get_parent() is None
-                    ), "should never remove root parameters"
-                    logger.debug(
-                        f"chain_end {original_obj} -> {chain_end} interrupted at {i}"
-                    )
-                    chain_interrupted = True
-                    break
-                chain_end = m[chain_end]
-                i += 1
-            if not chain_interrupted:
-                concatenated[original_obj] = chain_end
-        return concatenated
-
-    class ReprMap:
-        def __init__(self, repr_map: Mutator.REPR_MAP):
-            self.repr_map = repr_map
-
-        def try_get_literal(
-            self, param: ParameterOperatable, allow_subset: bool = False
-        ) -> SolverLiteral | None:
-            if param not in self.repr_map:
-                return None
-            lit = try_extract_literal(self.repr_map[param], allow_subset=allow_subset)
-            if lit is None:
-                return None
-            if isinstance(lit, Quantity_Set):
-                fac = quantity(1, HasUnit.get_units(param))
-                return lit * fac / fac.to_base_units().m
-            return lit
-
-        def __getitem__(self, param: ParameterOperatable) -> SolverLiteral:
-            return not_none(self.try_get_literal(param))
-
-        def __contains__(self, param: ParameterOperatable) -> bool:
-            return param in self.repr_map
-
-        def __repr__(self) -> str:
-            return f"ReprMap({self.repr_map})"
-
-    @staticmethod
-    def create_concat_repr_map(*repr_maps: Mutator.REPR_MAP) -> ReprMap:
-        return Mutators.ReprMap(Mutators.concat_repr_maps(*repr_maps))
-
-
-def debug_name_mappings(
-    context: ParameterOperatable.ReprContext,
-    g: Graph,
-    print_out: Callable[[str], None] = logger.debug,
-):
-    table = Table(title="Name mappings", show_lines=True)
-    table.add_column("Before")
-    table.add_column("After")
-
-    for p in sorted(
-        GraphFunctions(g).nodes_of_type(Parameter), key=Parameter.get_full_name
-    ):
-        table.add_row(p.compact_repr(context), p.get_full_name())
-
-    if table.rows:
-        console = Console(record=True, width=80, file=io.StringIO())
-        console.print(table)
-        print_out(console.export_text(styles=True))

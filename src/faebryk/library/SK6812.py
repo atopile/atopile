@@ -35,7 +35,7 @@ class SK6812(Module):
         return F.can_bridge_defined(self.data_in, self.data_out)
 
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C5378720"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.LED
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -52,8 +52,8 @@ class SK6812(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.data_in.signal: ["DIN"],
-                self.data_out.signal: ["DOUT"],
+                self.data_in.line: ["DIN"],
+                self.data_out.line: ["DOUT"],
                 self.power.lv: ["VSS", "GND"],
                 self.power.hv: ["VDD"],
             },

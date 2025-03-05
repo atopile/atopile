@@ -5,29 +5,30 @@ import logging
 import os
 import shutil
 import sys
-from collections import defaultdict
 from pathlib import Path
-from typing import Mapping
 
 import psutil
-from more_itertools import first
 
 import faebryk.library._F as F
 from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node, NodeException
-from faebryk.exporters.pcb.kicad.pcb import PCB
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
-    C_kicad_netlist_file,
-    C_kicad_pcb_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import hash_string, not_none, once
+from faebryk.libs.util import (
+    cast_assert,
+    duplicates,
+    groupby,
+    hash_string,
+    not_none,
+    once,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -179,59 +180,39 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def apply_netlist(files: tuple[C_kicad_pcb_file, C_kicad_netlist_file] | None = None):
-    set_kicad_netlist_path_in_project(
-        config.build.paths.kicad_project, config.build.paths.netlist
-    )
-
-    # Import netlist into pcb
-    if files:
-        pcb, netlist = files
-        PCB.apply_netlist(pcb, netlist, config.build.paths.fp_lib_table)
-    else:
-        logger.info(f"Apply netlist to {config.build.paths.layout}")
-        PCB.apply_netlist_to_file(config.build.paths.layout, config.build.paths.netlist)
-
-
-def load_nets(
-    graph: Graph, attach: bool = False, match_threshold: float = 0.8
-) -> dict[F.Net, str]:
+def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
 
-    if match_threshold < 0.5:
-        # This is because we rely on being >50% sure to ensure we're the most
-        # likely match.
-        raise ValueError("match_threshold must be at least 0.5")
+    gf = GraphFunctions(graph)
+    net_names: dict[F.Net, str] = {
+        cast_assert(F.Net, net): pcb_net_t.get_net().name
+        for net, pcb_net_t in gf.nodes_with_trait(PCB_Transformer.has_linked_kicad_net)
+    }
 
-    known_nets: dict[F.Net, str] = {}
-    for net in GraphFunctions(graph).nodes_of_type(F.Net):
-        total_pads = 0
-        net_candidates: Mapping[str, int] = defaultdict(int)
+    if dups := duplicates(net_names.values(), lambda x: x):
+        with downgrade(UserResourceException, raise_anyway=raise_duplicates):
+            raise UserResourceException(f"Multiple nets are named the same: {dups}")
 
-        for ato_pad, ato_fp in net.get_fps().items():
-            if pcb_pad_t := ato_pad.try_get_trait(PCB_Transformer.has_linked_kicad_pad):
-                pcb_fp, pcb_pads = pcb_pad_t.get_pad()
-                net_names = set(
-                    pcb_pad.net.name if pcb_pad.net is not None else None
-                    for pcb_pad in pcb_pads
-                )
-                if len(net_names) == 1 and (net_name := first(net_names)) is not None:
-                    net_candidates[net_name] += 1
-            total_pads += 1
+    for net, name in net_names.items():
+        net.add(F.has_overriden_name_defined(name))
 
-        if net_candidates:
-            best_net = max(net_candidates, key=lambda x: net_candidates[x])
-            if best_net and net_candidates[best_net] > total_pads * match_threshold:
-                known_nets[net] = best_net
 
-    if attach:
-        for net, name in known_nets.items():
-            if not net.has_trait(F.has_overriden_name):
-                net.add(F.has_overriden_name_defined(name))
+def check_net_names(graph: Graph):
+    """Raise an error if any nets have the same name."""
+    gf = GraphFunctions(graph)
+    nets = gf.nodes_of_type(F.Net)
 
-    return known_nets
+    net_name_collisions = {
+        k: v
+        for k, v in groupby(
+            nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
+        ).items()
+        if len(v) > 1
+    }
+    if net_name_collisions:
+        raise UserResourceException(f"Net name collision: {net_name_collisions}")
 
 
 def create_footprint_library(app: Module) -> None:
@@ -245,6 +226,10 @@ def create_footprint_library(app: Module) -> None:
     Check all of the KicadFootprints have a manual identifier. Raise an error if they
     don't.
     """
+    from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
+
+    package_fp_paths = set(KNOWN_PACKAGES_TO_FOOTPRINT.values())
+
     LIB_NAME = "atopile"
 
     # Create the library it doesn't exist
@@ -253,21 +238,7 @@ def create_footprint_library(app: Module) -> None:
     ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
 
     # Cache the mapping from path to identifier and the path to the new file
-    path_to_fp_id: dict[Path, str] = {}
-    path_map: dict[Path, Path] = {}
-
-    def _ensure_fp(path: Path) -> tuple[str, Path]:
-        """
-        Ensure the footprint is in the library
-        Return the identifier and the path to the new file
-        """
-        if path not in path_to_fp_id:
-            mini_hash = hash_string(str(path))[:6]
-            path_to_fp_id[path] = f"{LIB_NAME}:{path.stem}-{mini_hash}"
-            path_map[path] = atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
-            shutil.copy(path, path_map[path])
-
-        return path_to_fp_id[path], path_map[path]
+    path_map: dict[Path, tuple[str, Path]] = {}
 
     for fp in app.get_children(direct_only=False, types=F.KicadFootprint):
         # has_kicad_identifier implies has_kicad_footprint, but not the other way around
@@ -278,13 +249,47 @@ def create_footprint_library(app: Module) -> None:
             pass
         else:
             if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
-                # Copy the footprint to the new library with a
-                # pseudo-guaranteed unique name
-                path = Path(has_file_t.file).expanduser().resolve()
-                lib_path, fp_path = _ensure_fp(path)
-                fp.add(F.KicadFootprint.has_file(fp_path))  # Override with new path
+                path = has_file_t.file
+                # We priverliage packages and assume this is what's dribing
+                if path in package_fp_paths:
+                    if path in path_map:
+                        id_, new_path = path_map[path]
+                    else:
+                        id_ = f"{LIB_NAME}:{path.stem}"
+                        new_path = atopile_fp_dir / path.name
+                        shutil.copy(path, new_path)
+                        path_map[path] = (id_, new_path)
+
+                else:
+                    try:
+                        prj_rel_path = path.relative_to(config.project.paths.root)
+
+                    # Raised when the file isn't relative to the project directory
+                    except ValueError as ex:
+                        raise UserResourceException(
+                            f"Footprint file {path} is outside the project"
+                            " directory. Footprint files must be in the project"
+                            " directory.",
+                            markdown=False,
+                        ) from ex
+
+                    # Copy the footprint to the new library with a
+                    # pseudo-guaranteed unique name
+                    if prj_rel_path in path_map:
+                        id_, new_path = path_map[prj_rel_path]
+                    else:
+                        mini_hash = hash_string(str(prj_rel_path))[:6]
+                        id_ = f"{LIB_NAME}:{prj_rel_path.stem}-{mini_hash}"
+                        new_path = (
+                            atopile_fp_dir
+                            / f"{prj_rel_path.stem}-{mini_hash}{prj_rel_path.suffix}"
+                        )
+                        shutil.copy(path, new_path)
+                        path_map[prj_rel_path] = (id_, new_path)
+
+                fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
                 # Attach the newly minted identifier
-                fp.add(F.KicadFootprint.has_kicad_identifier(lib_path))
+                fp.add(F.KicadFootprint.has_kicad_identifier(id_))
             else:
                 # This shouldn't happen
                 # KicadFootprint should always have a file, or an identifier

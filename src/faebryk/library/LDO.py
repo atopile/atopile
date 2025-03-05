@@ -43,7 +43,7 @@ class LDO(Module):
         likely_constrained=True,
         soft_set=L.Range(1 * P.mV, 100 * P.mV),
     )
-    psrr = L.p_field(
+    ripple_rejection_ratio = L.p_field(
         units=P.dB,
         likely_constrained=True,
         soft_set=L.Range(quantity(1, P.dB), quantity(100, P.dB)),
@@ -63,7 +63,22 @@ class LDO(Module):
     power_in: F.ElectricPower
     power_out = L.d_field(lambda: F.ElectricPower().make_source())
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.LDO)
+    @L.rt_field
+    def pickable(self) -> F.is_pickable_by_type:
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.LDO,
+            {
+                "max_input_voltage": self.max_input_voltage,
+                "output_voltage": self.output_voltage,
+                "quiescent_current": self.quiescent_current,
+                "dropout_voltage": self.dropout_voltage,
+                # TODO: add support in backend
+                # "ripple_rejection_ratio": self.ripple_rejection_ratio,
+                "output_polarity": self.output_polarity,
+                "output_type": self.output_type,
+                "output_current": self.output_current,
+            },
+        )
 
     def __preinit__(self):
         self.max_input_voltage.constrain_ge(self.power_in.voltage)
@@ -96,14 +111,14 @@ class LDO(Module):
         return F.has_simple_value_representation_based_on_params_chain(
             S(self.output_voltage, tolerance=True),
             S(self.output_current),
-            S(self.psrr),
+            S(self.ripple_rejection_ratio),
             S(self.dropout_voltage),
             S(self.max_input_voltage, prefix="Vin max"),
             S(self.quiescent_current, prefix="Iq"),
             prefix="LDO",
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -114,7 +129,7 @@ class LDO(Module):
                 self.power_in.hv: ["Vin", "Vi", "in"],
                 self.power_out.hv: ["Vout", "Vo", "out", "output"],
                 self.power_in.lv: ["GND", "V-", "ADJ/GND"],
-                self.enable.enable.signal: ["EN", "Enable"],
+                self.enable.enable.line: ["EN", "Enable"],
             },
             accept_prefix=False,
             case_sensitive=False,

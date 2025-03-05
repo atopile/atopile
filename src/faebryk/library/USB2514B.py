@@ -50,8 +50,8 @@ class USB2514B(Module):
 
         def __preinit__(self):
             F.ElectricLogic.connect_all_module_references(self)
-            self.usb_port_disable_p.signal.connect(self.usb.p.signal)
-            self.usb_port_disable_n.signal.connect(self.usb.n.signal)
+            self.usb_port_disable_p.line.connect(self.usb.p.line)
+            self.usb_port_disable_n.line.connect(self.usb.n.line)
             self.usb_power_enable.connect(self.battery_charging_enable)
 
     class ConfigurationSource(Enum):
@@ -165,12 +165,12 @@ class USB2514B(Module):
     xtal_if: F.XtalIF
     external_clock_input: F.ElectricLogic
 
-    usb_bias_resistor_input: F.SignalElectrical
-    vbus_detect: F.SignalElectrical
+    usb_bias_resistor_input: F.ElectricSignal
+    vbus_detect: F.ElectricSignal
 
     test: F.Electrical
     reset: F.ElectricLogic
-    local_power_detection: F.SignalElectrical
+    local_power_detection: F.ElectricSignal
 
     usb_removability_configuration_intput = L.list_field(2, F.ElectricLogic)
     configuration_source_input = L.list_field(2, F.ElectricLogic)
@@ -183,7 +183,7 @@ class USB2514B(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -200,49 +200,41 @@ class USB2514B(Module):
     def can_attach_to_footprint(self):
         return F.can_attach_to_footprint_via_pinmap(
             {
-                "1": self.configurable_downstream_usb[0].usb.n.signal,
-                "2": self.configurable_downstream_usb[0].usb.p.signal,
-                "3": self.configurable_downstream_usb[1].usb.n.signal,
-                "4": self.configurable_downstream_usb[1].usb.p.signal,
+                "1": self.configurable_downstream_usb[0].usb.n.line,
+                "2": self.configurable_downstream_usb[0].usb.p.line,
+                "3": self.configurable_downstream_usb[1].usb.n.line,
+                "4": self.configurable_downstream_usb[1].usb.p.line,
                 "5": self.power_3v3_analog.hv,
-                "6": self.configurable_downstream_usb[2].usb.n.signal,
-                "7": self.configurable_downstream_usb[2].usb.p.signal,
-                "8": self.configurable_downstream_usb[3].usb.n.signal,
-                "9": self.configurable_downstream_usb[3].usb.p.signal,
+                "6": self.configurable_downstream_usb[2].usb.n.line,
+                "7": self.configurable_downstream_usb[2].usb.p.line,
+                "8": self.configurable_downstream_usb[3].usb.n.line,
+                "9": self.configurable_downstream_usb[3].usb.p.line,
                 "10": self.power_3v3_analog.hv,
                 "11": self.test,
-                "12": self.configurable_downstream_usb[
-                    0
-                ].battery_charging_enable.signal,
-                "13": self.configurable_downstream_usb[0].over_current_sense.signal,
+                "12": self.configurable_downstream_usb[0].battery_charging_enable.line,
+                "13": self.configurable_downstream_usb[0].over_current_sense.line,
                 "14": self.power_core.hv,
                 "15": self.power_3v3_regulator.hv,
-                "16": self.configurable_downstream_usb[
-                    1
-                ].battery_charging_enable.signal,
-                "17": self.configurable_downstream_usb[1].over_current_sense.signal,
-                "18": self.configurable_downstream_usb[
-                    2
-                ].battery_charging_enable.signal,
-                "19": self.configurable_downstream_usb[2].over_current_sense.signal,
-                "20": self.configurable_downstream_usb[
-                    3
-                ].battery_charging_enable.signal,
-                "21": self.configurable_downstream_usb[3].over_current_sense.signal,
-                "22": self.usb_removability_configuration_intput[1].signal,
+                "16": self.configurable_downstream_usb[1].battery_charging_enable.line,
+                "17": self.configurable_downstream_usb[1].over_current_sense.line,
+                "18": self.configurable_downstream_usb[2].battery_charging_enable.line,
+                "19": self.configurable_downstream_usb[2].over_current_sense.line,
+                "20": self.configurable_downstream_usb[3].battery_charging_enable.line,
+                "21": self.configurable_downstream_usb[3].over_current_sense.line,
+                "22": self.usb_removability_configuration_intput[1].line,
                 "23": self.power_io.hv,
-                "24": self.configuration_source_input[0].signal,
-                "25": self.configuration_source_input[1].signal,
-                "26": self.reset.signal,
-                "27": self.vbus_detect.signal,
-                "28": self.usb_removability_configuration_intput[0].signal,
+                "24": self.configuration_source_input[0].line,
+                "25": self.configuration_source_input[1].line,
+                "26": self.reset.line,
+                "27": self.vbus_detect.line,
+                "28": self.usb_removability_configuration_intput[0].line,
                 "29": self.power_3v3_analog.hv,
-                "30": self.usb_upstream.n.signal,
-                "31": self.usb_upstream.p.signal,
+                "30": self.usb_upstream.n.line,
+                "31": self.usb_upstream.p.line,
                 "32": self.xtal_if.xout,
                 "33": self.xtal_if.xin,
                 "34": self.power_pll.hv,
-                "35": self.usb_bias_resistor_input.signal,
+                "35": self.usb_bias_resistor_input.line,
                 "36": self.power_3v3_analog.hv,
                 "37": self.power_3v3_analog.lv,
             }
@@ -254,69 +246,61 @@ class USB2514B(Module):
             mapping={
                 self.power_core.hv: ["CRFILT"],
                 self.power_core.lv: ["EP"],
-                self.configuration_source_input[1].signal: ["HS_IND/CFG_SEL1"],
-                self.configurable_downstream_usb[0].over_current_sense.signal: [
-                    "OCS_N1"
-                ],
-                self.configurable_downstream_usb[1].over_current_sense.signal: [
-                    "OCS_N2"
-                ],
-                self.configurable_downstream_usb[2].over_current_sense.signal: [
-                    "OCS_N3"
-                ],
-                self.configurable_downstream_usb[3].over_current_sense.signal: [
-                    "OCS_N4"
-                ],
+                self.configuration_source_input[1].line: ["HS_IND/CFG_SEL1"],
+                self.configurable_downstream_usb[0].over_current_sense.line: ["OCS_N1"],
+                self.configurable_downstream_usb[1].over_current_sense.line: ["OCS_N2"],
+                self.configurable_downstream_usb[2].over_current_sense.line: ["OCS_N3"],
+                self.configurable_downstream_usb[3].over_current_sense.line: ["OCS_N4"],
                 self.power_pll.hv: ["PLLFILT"],
-                self.configurable_downstream_usb[0].battery_charging_enable.signal: [
+                self.configurable_downstream_usb[0].battery_charging_enable.line: [
                     "PRTPWR1/BC_EN1"
                 ],
-                self.configurable_downstream_usb[1].battery_charging_enable.signal: [
+                self.configurable_downstream_usb[1].battery_charging_enable.line: [
                     "PRTPWR2/BC_EN2"
                 ],
-                self.configurable_downstream_usb[2].battery_charging_enable.signal: [
+                self.configurable_downstream_usb[2].battery_charging_enable.line: [
                     "PRTPWR3/BC_EN3"
                 ],
-                self.configurable_downstream_usb[3].battery_charging_enable.signal: [
+                self.configurable_downstream_usb[3].battery_charging_enable.line: [
                     "PRTPWR4/BC_EN4"
                 ],
-                self.usb_bias_resistor_input.signal: ["RBIAS"],
-                self.reset.signal: ["RESET_N"],
-                self.configuration_source_input[0].signal: ["SCL/SMBCLK/CFG_SEL0"],
-                self.usb_removability_configuration_intput[1].signal: [
+                self.usb_bias_resistor_input.line: ["RBIAS"],
+                self.reset.line: ["RESET_N"],
+                self.configuration_source_input[0].line: ["SCL/SMBCLK/CFG_SEL0"],
+                self.usb_removability_configuration_intput[1].line: [
                     "SDA/SMBDATA/NON_REM1"
                 ],
-                self.usb_removability_configuration_intput[0].signal: [
+                self.usb_removability_configuration_intput[0].line: [
                     "SUSP_IND/LOCAL_PWR/NON_REM0"
                 ],
                 self.test: ["TEST"],
-                self.configurable_downstream_usb[0].usb.n.signal: [
+                self.configurable_downstream_usb[0].usb.n.line: [
                     "USBDM_DN1/PRT_DIS_M1"
                 ],
-                self.configurable_downstream_usb[1].usb.n.signal: [
+                self.configurable_downstream_usb[1].usb.n.line: [
                     "USBDM_DN2/PRT_DIS_M2"
                 ],
-                self.configurable_downstream_usb[2].usb.n.signal: [
+                self.configurable_downstream_usb[2].usb.n.line: [
                     "USBDM_DN3/PRT_DOS_M3"
                 ],
-                self.configurable_downstream_usb[3].usb.n.signal: [
+                self.configurable_downstream_usb[3].usb.n.line: [
                     "USBDM_DN4/PRT_DIS_M4"
                 ],
-                self.usb_upstream.p.signal: ["USBDM_UP"],
-                self.configurable_downstream_usb[0].usb.p.signal: [
+                self.usb_upstream.p.line: ["USBDM_UP"],
+                self.configurable_downstream_usb[0].usb.p.line: [
                     "USBDP_DN1/PRT_DIS_P1"
                 ],
-                self.configurable_downstream_usb[1].usb.p.signal: [
+                self.configurable_downstream_usb[1].usb.p.line: [
                     "USBDP_DN2/PRT_DIS_P2"
                 ],
-                self.configurable_downstream_usb[2].usb.p.signal: [
+                self.configurable_downstream_usb[2].usb.p.line: [
                     "USBDP_DN3/PRT_DIS_P3"
                 ],
-                self.configurable_downstream_usb[3].usb.p.signal: [
+                self.configurable_downstream_usb[3].usb.p.line: [
                     "USBDP_DN4/PRT_DIS_P4"
                 ],
-                self.usb_upstream.p.signal: ["USBDP_UP"],
-                self.vbus_detect.signal: ["VBUS_DET"],
+                self.usb_upstream.p.line: ["USBDP_UP"],
+                self.vbus_detect.line: ["VBUS_DET"],
                 self.power_3v3_regulator.hv: ["VDD33"],
                 self.power_3v3_analog.hv: ["VDDA33"],
                 self.xtal_if.xin: ["XTALIN/CLKIN"],
@@ -332,9 +316,9 @@ class USB2514B(Module):
         # ----------------------------------------
         self.configuration_source_input[0].connect(self.i2c.scl)
         self.configuration_source_input[1].connect(self.high_speed_upstream_indicator)
-        self.usb_removability_configuration_intput[0].signal.connect(
-            self.suspense_indicator.signal,
-            self.local_power_detection.signal,
+        self.usb_removability_configuration_intput[0].line.connect(
+            self.suspense_indicator.line,
+            self.local_power_detection.line,
         )
         self.usb_removability_configuration_intput[1].connect(self.i2c.sda)
         self.test.connect(self.power_core.lv)

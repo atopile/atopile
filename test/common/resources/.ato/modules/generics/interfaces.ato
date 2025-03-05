@@ -1,0 +1,2 @@
+interface Power:
+    """A power interface"""

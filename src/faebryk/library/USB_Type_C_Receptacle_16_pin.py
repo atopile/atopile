@@ -31,16 +31,16 @@ class USB_Type_C_Receptacle_16_pin(Module):
                 "A1": gnd,
                 "A4": vbus,
                 "A5": self.cc1,
-                "A6": self.d.p.signal,
-                "A7": self.d.n.signal,
+                "A6": self.d.p.line,
+                "A7": self.d.n.line,
                 "A8": self.sbu1,
                 "A9": vbus,
                 "A12": gnd,
                 "B1": gnd,
                 "B4": vbus,
                 "B5": self.cc2,
-                "B6": self.d.p.signal,
-                "B7": self.d.n.signal,
+                "B6": self.d.p.line,
+                "B7": self.d.n.line,
                 "B8": self.sbu2,
                 "B9": vbus,
                 "B12": gnd,
@@ -62,8 +62,8 @@ class USB_Type_C_Receptacle_16_pin(Module):
                 vbus: ["VBUS"],
                 self.cc1: ["CC1"],
                 self.cc2: ["CC2"],
-                self.d.p.signal: ["DP1", "DP2"],
-                self.d.n.signal: ["DN1", "DN2"],
+                self.d.p.line: ["DP1", "DP2"],
+                self.d.n.line: ["DN1", "DN2"],
                 self.sbu1: ["SBU1"],
                 self.sbu2: ["SBU2"],
                 self.shield: ["SHELL"],
@@ -72,6 +72,6 @@ class USB_Type_C_Receptacle_16_pin(Module):
             case_sensitive=False,
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )

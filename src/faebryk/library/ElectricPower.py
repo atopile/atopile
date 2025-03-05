@@ -121,3 +121,13 @@ class ElectricPower(F.Power):
         )
 
         self.lv.add(F.has_net_name("gnd"))
+
+    @property
+    def vcc(self) -> F.Electrical:
+        """Higher-voltage side of the power interface."""
+        return self.hv
+
+    @property
+    def gnd(self) -> F.Electrical:
+        """Lower-voltage side of the power interface."""
+        return self.lv

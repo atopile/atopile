@@ -1,0 +1,34 @@
+import ElectricPower, Resistor
+
+
+module VoltageDivider:
+    """
+    A simple voltage divider
+
+    Connect to the in and out interfaces
+    Configure via:
+    - r_top.voltage
+    - r_bottom.voltage
+    - max_i_q
+    """
+
+    in = new ElectricPower
+    out = new ElectricPower
+    max_i_q: current
+
+    r_top = new Resistor
+    r_bottom = new Resistor
+
+    in.vcc ~ r_top.p1; r_top.p2 ~ out.vcc; out.vcc ~ r_bottom.p1; r_bottom.p2 ~ in.gnd
+    in.gnd ~ out.gnd
+
+    assert out.voltage within in.voltage * r_bottom.resistance / (r_top.resistance + r_bottom.resistance)
+    assert in.voltage >= out.voltage
+    assert in.max_current * r_bottom.resistance / (r_top.resistance + r_bottom.resistance) within max_i_q
+
+
+module App:
+    my_vdiv = new VoltageDivider
+    my_vdiv.in.voltage = 10V +/- 10%
+    my_vdiv.out.voltage = 3.3V +/- 10%
+    my_vdiv.max_i_q = 10uA to 100uA

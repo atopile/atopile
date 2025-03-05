@@ -19,16 +19,16 @@ class USBLC6_2P6(Module):
         x = self
         return F.can_attach_to_footprint_via_pinmap(
             {
-                "1": x.usb.usb_if.d.p.signal,
+                "1": x.usb.usb_if.d.p.line,
                 "2": x.usb.usb_if.buspower.lv,
-                "3": x.usb.usb_if.d.n.signal,
-                "4": x.usb.usb_if.d.n.signal,
+                "3": x.usb.usb_if.d.n.line,
+                "4": x.usb.usb_if.d.n.line,
                 "5": x.usb.usb_if.buspower.hv,
-                "6": x.usb.usb_if.d.p.signal,
+                "6": x.usb.usb_if.d.p.line,
             }
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(

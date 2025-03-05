@@ -14,6 +14,7 @@ from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,11 @@ class App(Module):
         self._set_layout()
 
         # TODO remove when we have a fuse picker
-        self.usb_power.fuse.add(F.has_explicit_part.by_supplier("C914087"))
+        fuse = self.usb_power.get_first_child_of_type(F.Fuse)
+        fuse.add(F.has_explicit_part.by_supplier("C914087"))
+        fuse.fuse_type.alias_is(F.Fuse.FuseType.RESETTABLE)
+        fuse.response_type.alias_is(F.Fuse.ResponseType.FAST)
+        fuse.trip_current.alias_is(1 * P.A)
 
     def _set_layout(self):
         LT = F.has_pcb_position.layer_type

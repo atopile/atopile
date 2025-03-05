@@ -36,14 +36,14 @@ class DE9RS232Connector(Module):
         # ------------------------------------
         #           connections
         # ------------------------------------
-        self.rs232.tx.signal.connect(self.connector.contact[2])
-        self.rs232.rx.signal.connect(self.connector.contact[1])
-        self.rs232.dtr.signal.connect(self.connector.contact[3])
-        self.rs232.dcd.signal.connect(self.connector.contact[0])
-        self.rs232.dsr.signal.connect(self.connector.contact[5])
-        self.rs232.ri.signal.connect(self.connector.contact[8])
-        self.rs232.rts.signal.connect(self.connector.contact[6])
-        self.rs232.cts.signal.connect(self.connector.contact[7])
+        self.rs232.tx.line.connect(self.connector.contact[2])
+        self.rs232.rx.line.connect(self.connector.contact[1])
+        self.rs232.dtr.line.connect(self.connector.contact[3])
+        self.rs232.dcd.line.connect(self.connector.contact[0])
+        self.rs232.dsr.line.connect(self.connector.contact[5])
+        self.rs232.ri.line.connect(self.connector.contact[8])
+        self.rs232.rts.line.connect(self.connector.contact[6])
+        self.rs232.cts.line.connect(self.connector.contact[7])
 
         self.rs232.get_trait(
             F.has_single_electric_reference

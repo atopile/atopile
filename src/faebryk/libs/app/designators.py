@@ -4,11 +4,15 @@
 import logging
 import re
 from collections import defaultdict
+from contextlib import nullcontext
 from typing import cast
+
+from natsort import natsorted
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.pcb.kicad.transformer import PCB, PCB_Transformer
+from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.library import L
 from faebryk.libs.util import duplicates, groupby
 
@@ -17,7 +21,9 @@ logger = logging.getLogger(__name__)
 
 def attach_random_designators(graph: Graph):
     """
-    sorts nodes by path and then sequentially assigns designators
+    Sorts nodes by path and then sequentially attaches designators
+
+    This ensures that everything which has a footprint must have a designator.
     """
 
     nodes = {n for n, _ in GraphFunctions(graph).nodes_with_trait(F.has_footprint)}
@@ -46,7 +52,7 @@ def attach_random_designators(graph: Graph):
                 return i + 1
         return len(used) + 1
 
-    nodes_sorted = sorted(nodes, key=lambda x: x.get_full_name())
+    nodes_sorted = natsorted(nodes, key=lambda x: x.get_full_name())
 
     for n in nodes_sorted:
         if n.has_trait(F.has_designator):
@@ -54,12 +60,12 @@ def attach_random_designators(graph: Graph):
         if not n.has_trait(F.has_designator_prefix):
             prefix = type(n).__name__
             logger.warning(f"Node {prefix} has no designator prefix")
-
-        prefix = n.get_trait(F.has_designator_prefix).get_prefix()
+        else:
+            prefix = n.get_trait(F.has_designator_prefix).get_prefix()
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
-        n.add(F.has_designator_defined(designator))
+        n.add(F.has_designator(designator))
 
         assigned[prefix].append(next_num)
 
@@ -70,22 +76,9 @@ def attach_random_designators(graph: Graph):
     assert not dupes, f"Duplcicate designators: {dupes}"
 
 
-def override_names_with_designators(graph: Graph):
-    for n, t in GraphFunctions(graph).nodes_with_trait(F.has_designator):
-        name = t.get_designator()
-        if n.has_trait(F.has_overriden_name):
-            logger.warning(
-                f"Renaming: {n.get_trait(F.has_overriden_name).get_name()} -> {name}"
-            )
-        n.add(F.has_overriden_name_defined(name))
-
-
-def attach_hierarchical_designators(graph: Graph):
-    # TODO
-    raise NotImplementedError()
-
-
-def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
+def load_designators(
+    graph: Graph, attach: bool = False, raise_duplicates: bool = True
+) -> dict[L.Node, str]:
     """
     Load designators from attached footprints and attach them to the nodes.
     """
@@ -113,11 +106,14 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
     }
 
     if attach:
-        attach_designators(known_designators)
+        if dups := duplicates(known_designators.values(), lambda x: x):
+            with (
+                nullcontext() if raise_duplicates else downgrade(UserResourceException)
+            ):
+                raise UserResourceException(
+                    f"Duplicate designators found in layout: {dups}"
+                )
+        for node, designator in known_designators.items():
+            node.add(F.has_designator(designator))
 
     return known_designators
-
-
-def attach_designators(designators: dict[L.Node, str]):
-    for node, designator in designators.items():
-        node.add(F.has_designator_defined(designator))

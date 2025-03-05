@@ -3,30 +3,102 @@
 
 import inspect
 import logging
-from typing import Callable, Iterable, Sequence
+from typing import Callable, Iterable, cast
+
+from more_itertools import first
 
 import faebryk.library._F as F
+from atopile import errors
+from faebryk.core.cpp import Path
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
-from faebryk.libs.util import groupby
 
 logger = logging.getLogger(__name__)
 
 
-class ERCFault(Exception):
-    def __init__(self, faulting_ifs: Sequence[ModuleInterface], *args: object) -> None:
-        super().__init__(*args, faulting_ifs)
-        self.faulting_ifs = faulting_ifs
+class ERCFault(errors.UserException):
+    """Base class for ERC faults."""
+
+
+class ModuleInterfacePath(list[ModuleInterface]):
+    """A path of ModuleInterfaces."""
+
+    @classmethod
+    def from_path(cls, path: Path) -> "ModuleInterfacePath":
+        """
+        Convert a Path (of GraphInterfaces) to a ModuleInterfacePath.
+        """
+        mifs = cast(
+            list[ModuleInterface],
+            [gif.node for gif in path if gif.node.isinstance(ModuleInterface)],
+        )
+        return cls(mifs)
+
+    def snip_head(
+        self, scissors: Callable[[ModuleInterface], bool], include_last: bool = True
+    ) -> "ModuleInterfacePath":
+        """
+        Keep the head until the scissors predicate returns False.
+        """
+        for i, mif in enumerate(self):
+            if not scissors(mif):
+                return type(self)(self[: i + include_last])
+        return self
+
+    def snip_tail(
+        self, scissors: Callable[[ModuleInterface], bool], include_first: bool = True
+    ) -> "ModuleInterfacePath":
+        """
+        Keep the tail until the scissors predicate returns False.
+        """
+        for i, mif in reversed(list(enumerate(self))):
+            if not scissors(mif):
+                return type(self)(self[i + (not include_first) :])
+        return self
+
+    @classmethod
+    def from_connection(
+        cls, a: ModuleInterface, b: ModuleInterface
+    ) -> "ModuleInterfacePath | None":
+        """
+        Return a ModuleInterfacePath between two ModuleInterfaces, if it exists,
+        else None.
+        """
+        if paths := a.is_connected_to(b):
+            # FIXME: Notes: from the master of graphs:
+            #  - iterate through all paths
+            #  - make a helper function
+            #    ModuleInterfacePath.get_subpaths(path: Path, search: SubpathSearch)
+            #    e.g SubpathSearch = tuple[Callable[[ModuleInterface], bool], ...]
+            #  - choose out of subpaths
+            #    - be careful with LinkDirectDerived edges (if there is a faulting edge
+            #      is derived, save it as candidate and only yield it if no other found)
+            #    - choose first shortest
+            return cls.from_path(first(paths))
+        return None
 
 
 class ERCFaultShort(ERCFault):
-    def __init__(self, faulting_ifs: Sequence[ModuleInterface], *args: object) -> None:
-        paths = faulting_ifs[0].is_connected_to(faulting_ifs[1])
-        assert paths
+    """Exception raised for short circuits."""
 
-        super().__init__(faulting_ifs, *args)
+
+class ERCFaultShortedModuleInterfaces(ERCFaultShort):
+    """Short circuit between two ModuleInterfaces."""
+
+    def __init__(self, msg: str, path: ModuleInterfacePath, *args: object) -> None:
+        super().__init__(msg, path, *args)
+        self.path = path
+
+    @classmethod
+    def from_path(cls, path: ModuleInterfacePath) -> "ERCFaultShortedModuleInterfaces":
+        """
+        Given two shorted ModuleInterfaces, return an exception that describes the
+        narrowest path for the fault.
+        """
+        return cls(f"`{" ~ ".join(mif.get_full_name() for mif in path)}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
@@ -35,7 +107,7 @@ class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
             f"ElectricPower with undefined or unsolved voltage: {faulting_EP}:"
             f" {faulting_EP.voltage}"
         )
-        super().__init__([faulting_EP], msg, *args)
+        super().__init__(msg, [faulting_EP], *args)
 
 
 class ERCPowerSourcesShortedError(ERCFault):
@@ -63,86 +135,119 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
     """
     logger.info("Checking graph for ERC violations")
 
-    # shorted power
-    electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
-    logger.info(f"Checking {len(electricpower)} Power")
-    for ep in electricpower:
-        if ep.lv.is_connected_to(ep.hv):
-            raise ERCFaultShort([ep], "shorted power")
-        if ep.has_trait(F.Power.is_power_source):
-            other_sources = [
-                other
-                for other in ep.get_connected()
-                if isinstance(other, F.ElectricPower)
-                and other.has_trait(F.Power.is_power_source)
-            ]
-            if other_sources:
-                raise ERCPowerSourcesShortedError([ep] + other_sources)
+    with accumulate(ERCFault) as accumulator:
+        # shorted power
+        electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
+        logger.info(f"Checking {len(electricpower)} Power")
 
-    # shorted nets
-    nets = GraphFunctions(G).nodes_of_type(F.Net)
-    logger.info(f"Checking {len(nets)} explicit nets")
-    for net in nets:
-        collisions = {
-            p[0]
-            for mif in net.part_of.get_connected()
-            if (p := mif.get_parent()) and isinstance(p[0], F.Net)
-        }
+        # We do collection both inside and outside the loop because we don't
+        # want to continue the loop if we've already raised a short exception
+        with accumulator.collect():
+            accounted_for_power_sources = set()
+            for ep in electricpower:
+                if mif_path := ModuleInterfacePath.from_connection(ep.lv, ep.hv):
 
-        if collisions:
-            shorted = collisions | {net}
-            raise ERCFaultShort(
-                [n.part_of for n in shorted], f"shorted nets: {shorted}"
-            )
+                    def _keep_head(x: ModuleInterface) -> bool:
+                        if parent := x.get_parent():
+                            parent_node, _ = parent
+                            if isinstance(parent_node, F.ElectricPower):
+                                return parent_node.hv is not x
 
-    # net name collisions
-    net_name_collisions = {
-        k: v
-        for k, v in groupby(
-            nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
-        ).items()
-        if len(v) > 1
-    }
-    if net_name_collisions:
-        raise ERCFault([], f"Net name collision: {net_name_collisions}")
+                        return True
 
-    # shorted components
-    # parts = [n for n in nodes if n.has_trait(has_footprint)]
-    # sym_fps = [
-    #    n.get_trait(has_footprint).get_footprint()
-    #    for n in parts
-    #    if n.has_trait(can_attach_to_footprint_symmetrically)
-    # ]
-    # logger.info(f"Checking {len(sym_fps)} symmetric footprints")
-    # for fp in sym_fps:
-    #    mifs = set(fp.get_all())
-    #    checked = set()
-    #    for mif in mifs:
-    #        checked.add(mif)
-    #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
-    #            raise ERCFault([mif], "shorted symmetric footprint")
-    comps = GraphFunctions(G).nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
-    logger.info(f"Checking {len(comps)} passives")
-    for comp in comps:
-        assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
-        # TODO make prettier
-        if (
-            comp.has_trait(F.has_part_picked)
-            and comp.get_trait(F.has_part_picked).removed
-        ):
-            continue
-        if comp.unnamed[0].is_connected_to(comp.unnamed[1]):
-            raise ERCFaultShort(comp.unnamed, "shorted component")
+                    def _keep_tail(x: ModuleInterface) -> bool:
+                        if parent := x.get_parent():
+                            parent_node, _ = parent
+                            if isinstance(parent_node, F.ElectricPower):
+                                return parent_node.lv is not x
 
-    ## unmapped Electricals
-    # fps = [n for n in nodes if isinstance(n, Footprint)]
-    # logger.info(f"Checking {len(fps)} footprints")
-    # for fp in fps:
-    #    for mif in fp.get_all():
-    #        if not mif.get_direct_connections():
-    #            raise ERCFault([mif], "no connections")
+                        return True
 
-    # TODO check multiple pulls per logic
+                    raise ERCFaultShortedModuleInterfaces.from_path(
+                        mif_path.snip_head(_keep_head).snip_tail(_keep_tail)
+                    )
+
+                with accumulator.collect():
+                    if ep.has_trait(F.Power.is_power_source):
+                        if ep in accounted_for_power_sources:
+                            continue
+
+                        other_sources = [
+                            other
+                            for other in ep.get_connected()
+                            if isinstance(other, F.ElectricPower)
+                            and other.has_trait(F.Power.is_power_source)
+                        ]
+
+                        if other_sources:
+                            all_sources = [ep] + other_sources
+                            accounted_for_power_sources.update(all_sources)
+                            friendly_sources = ", ".join(
+                                n.get_full_name() for n in all_sources
+                            )
+                            raise ERCPowerSourcesShortedError(
+                                f"Power sources shorted: {friendly_sources}"
+                            )
+
+        # shorted nets
+        nets = GraphFunctions(G).nodes_of_type(F.Net)
+        logger.info(f"Checking {len(nets)} explicit nets")
+        for net in nets:
+            with accumulator.collect():
+                collisions = {
+                    p[0]
+                    for mif in net.part_of.get_connected()
+                    if (p := mif.get_parent()) and isinstance(p[0], F.Net)
+                }
+
+                if collisions:
+                    friendly_shorted = ", ".join(n.get_full_name() for n in collisions)
+                    raise ERCFaultShort(
+                        f"Shorted nets: {friendly_shorted}",
+                    )
+
+        # shorted components
+        # parts = [n for n in nodes if n.has_trait(has_footprint)]
+        # sym_fps = [
+        #    n.get_trait(has_footprint).get_footprint()
+        #    for n in parts
+        #    if n.has_trait(can_attach_to_footprint_symmetrically)
+        # ]
+        # logger.info(f"Checking {len(sym_fps)} symmetric footprints")
+        # for fp in sym_fps:
+        #    mifs = set(fp.get_all())
+        #    checked = set()
+        #    for mif in mifs:
+        #        checked.add(mif)
+        #        if any(mif.is_connected_to(other) for other in (mifs - checked)):
+        #            raise ERCFault([mif], "shorted symmetric footprint")
+
+        comps = GraphFunctions(G).nodes_of_types((F.Resistor, F.Capacitor, F.Fuse))
+        logger.info(f"Checking {len(comps)} passives")
+        for comp in comps:
+            with accumulator.collect():
+                assert isinstance(comp, (F.Resistor, F.Capacitor, F.Fuse))
+                # TODO make prettier
+                if (
+                    comp.has_trait(F.has_part_picked)
+                    and comp.get_trait(F.has_part_picked).removed
+                ):
+                    continue
+
+                if path := ModuleInterfacePath.from_connection(
+                    comp.unnamed[0], comp.unnamed[1]
+                ):
+                    raise ERCFaultShortedModuleInterfaces.from_path(path)
+
+        ## unmapped Electricals
+        # fps = [n for n in nodes if isinstance(n, Footprint)]
+        # logger.info(f"Checking {len(fps)} footprints")
+        # for fp in fps:
+        #    for mif in fp.get_all():
+        #        if not mif.get_direct_connections():
+        #            raise ERCFault([mif], "no connections")
+
+        # TODO check multiple pulls per logic
 
 
 def check_modules_for_erc(module: Iterable[Module]):

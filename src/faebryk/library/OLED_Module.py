@@ -45,7 +45,7 @@ class OLED_Module(Module):
     def __preinit__(self):
         self.power.voltage.constrain_subset(L.Range(3.0 * P.V, 5 * P.V))
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.DS
     )
 

@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -76,8 +77,8 @@ class _BH1750FVI_TR(Module):
         self.power.voltage.constrain_subset(L.Range(2.4 * P.V, 3.6 * P.V))
 
         # TODO: self.dvi.low_pass(self.dvi_capacitor, self.dvi_resistor)
-        self.dvi.signal.connect_via(self.dvi_capacitor, self.power.lv)
-        self.dvi.signal.connect_via(self.dvi_resistor, self.power.hv)
+        self.dvi.line.connect_via(self.dvi_capacitor, self.power.lv)
+        self.dvi.line.connect_via(self.dvi_resistor, self.power.hv)
 
     @L.rt_field
     def single_electric_reference(self):
@@ -85,7 +86,7 @@ class _BH1750FVI_TR(Module):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -94,18 +95,27 @@ class _BH1750FVI_TR(Module):
         return F.can_attach_to_footprint_via_pinmap(
             {
                 "1": self.power.hv,
-                "2": self.addr.signal,
+                "2": self.addr.line,
                 "3": self.power.lv,
-                "4": self.i2c.sda.signal,
-                "5": self.dvi.signal,
-                "6": self.i2c.scl.signal,
-                "7": self.ep.signal,
+                "4": self.i2c.sda.line,
+                "5": self.dvi.line,
+                "6": self.i2c.scl.line,
+                "7": self.ep.line,
             }
         )
 
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/1811081611_ROHM-Semicon-BH1750FVI-TR_C78960.pdf"
     )
+
+    mfr = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "ROHM Semicon",
+            DescriptiveProperties.partno: "BH1750FVI-TR",
+        }
+    )
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C78960"})
 
 
 # TODO should be a reference design

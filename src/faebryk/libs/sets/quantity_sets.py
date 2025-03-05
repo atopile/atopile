@@ -2,13 +2,16 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import math
 from collections.abc import Generator
 from typing import Any, TypeVar, cast, override
 
 from faebryk.libs.sets.numeric_sets import (
+    Number,
+    NumberLike,
+    NumberLikeR,
     Numeric_Interval,
     Numeric_Interval_Disjoint,
-    NumericT,
 )
 from faebryk.libs.sets.sets import BoolSet, P_Set, P_UnitSet
 from faebryk.libs.units import (
@@ -42,8 +45,8 @@ QuantityT = TypeVar(
     covariant=False,
 )
 
-type QuantityLike = Quantity | int | float  # | Unit
-QuantityLikeR = (Quantity, int, float)
+type QuantityLike = Quantity | NumberLike  # | Unit
+QuantityLikeR = (Quantity, *NumberLikeR)
 
 
 type Numeric = int | float
@@ -70,17 +73,24 @@ class Quantity_Set(P_UnitSet[QuantityLike]):
         self.units = units
         self.interval_units = base_units(units)
 
-    def base_to_units(self, value: NumericT) -> Quantity:
+    def base_to_units(self, value: Number) -> Quantity:
         return cast_assert(
             Quantity, quantity(value, self.interval_units).to(self.units)
         )
 
-    def _format_number(self, number: float, num_decimals: int = 9) -> str:
+    def _format_number(self, number: Number, num_decimals: int = 3) -> str:
         if self.units.is_compatible_with(dimensionless):
+            if math.isinf(number):
+                return "∞" if number > 0 else "-∞"
+            if number == 0:
+                return "0"
+            rel_dif = abs((number - round(number)) / number)
+            if rel_dif < 1e-6:
+                return round_str(number, 0)
             return round_str(number, num_decimals)
-        return to_si_str(
-            self.base_to_units(number), self.units, num_decimals=num_decimals
-        )
+
+        # ignore num_decimals because si prefixes scale the number
+        return to_si_str(self.base_to_units(number), self.units, num_decimals=3)
 
     @override
     def serialize_pset(self) -> dict:
@@ -128,14 +138,14 @@ class Quantity_Interval(Quantity_Set):
 
         if isinstance(min, Quantity):
             num_min = min.to_base_units().magnitude
-            if not isinstance(num_min, (float, int)):
+            if not isinstance(num_min, (float, int, Number)):
                 raise ValueError("min must be a float or int quantity")
         else:
             num_min = min
 
         if isinstance(max, Quantity):
             num_max = max.to_base_units().magnitude
-            if not isinstance(num_max, (float, int)):
+            if not isinstance(num_max, (float, int, Number)):
                 raise ValueError("max must be a float or int quantity")
         else:
             num_max = max
@@ -150,12 +160,31 @@ class Quantity_Interval(Quantity_Set):
 
     @staticmethod
     def from_center(center: QuantityLike, abs_tol: QuantityLike) -> "Quantity_Interval":
+        if isinstance(center, float):
+            center = Number(center)
+        if isinstance(center, Quantity) and not isinstance(center.magnitude, Number):
+            center = Quantity(Number(center.magnitude), center.units)  # type: ignore
+            assert isinstance(center, Quantity)
+        if isinstance(abs_tol, float):
+            abs_tol = Number(abs_tol)
+        if isinstance(abs_tol, Quantity) and not isinstance(abs_tol.magnitude, Number):
+            abs_tol = Quantity(Number(abs_tol.magnitude), abs_tol.units)  # type: ignore
+            assert isinstance(abs_tol, Quantity)
         left = cast_assert(QuantityLikeR, center - abs_tol)
         right = cast_assert(QuantityLikeR, center + abs_tol)
         return Quantity_Interval(left, right)
 
     @staticmethod
-    def from_center_rel(center: QuantityLike, rel_tol: float) -> "Quantity_Interval":
+    def from_center_rel(
+        center: QuantityLike, rel_tol: float | Number
+    ) -> "Quantity_Interval":
+        if isinstance(center, float):
+            center = Number(center)
+        if isinstance(center, Quantity) and not isinstance(center.magnitude, Number):
+            center = Quantity(Number(center.magnitude), center.units)  # type: ignore
+            assert isinstance(center, Quantity)
+        if isinstance(rel_tol, float):
+            rel_tol = Number(rel_tol)
         return Quantity_Interval(
             cast_assert(QuantityLikeR, center - center * rel_tol),
             cast_assert(QuantityLikeR, center + center * rel_tol),
@@ -170,7 +199,7 @@ class Quantity_Interval(Quantity_Set):
         )
 
     def as_center_tuple(self, relative: bool = False) -> tuple[QuantityT, QuantityT]:
-        center = cast_assert(QuantityLikeR, (self.min_elem + self.max_elem) / 2)
+        center = cast_assert(QuantityLikeR, (self.min_elem + self.max_elem)) / 2
         delta = (self.max_elem - self.min_elem) / 2
         if relative:
             delta /= center
@@ -252,14 +281,15 @@ class Quantity_Interval(Quantity_Set):
     #    return r
 
     def __contains__(self, item: Any) -> bool:
+        if isinstance(item, (float, int, Number)):
+            item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
                 return False
             item = item.to(self.interval_units).magnitude
-            if not isinstance(item, float) and not isinstance(item, int):
-                return False
-            return self._interval.__contains__(item)
-        return False
+        if not isinstance(item, float) and not isinstance(item, int):
+            return False
+        return self._interval.__contains__(item)
 
     # yucky with floats
     def __eq__(self, value: Any) -> bool:
@@ -289,7 +319,7 @@ class Quantity_Interval(Quantity_Set):
         if min_ == max_:
             return f"[{min_}]"
         center, rel = self._interval.as_center_rel()
-        if rel < 1:
+        if rel < 0.5 and round(rel, 2) == rel:
             return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
         return f"[{min_}, {max_}]"
 
@@ -334,6 +364,10 @@ class Quantity_Singleton(Quantity_Interval):
     """
 
     def __init__(self, value: QuantityLike):
+        # FIXME: handle inf Quantity too
+        if value == float("inf") or value == float("-inf"):
+            raise ValueError("value cannot be infinity for quantity singleton")
+
         super().__init__(min=value, max=value)
 
     def get_value(self) -> Quantity:
@@ -388,7 +422,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     @classmethod
     def _from_intervals(
         cls: type[Quantity_Interval_DisjointT],
-        intervals: "Numeric_Interval_Disjoint[NumericT]",
+        intervals: "Numeric_Interval_Disjoint",
         units: Unit,
     ) -> Quantity_Interval_DisjointT:
         r = cls.__new__(cls)
@@ -474,6 +508,22 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_union_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
 
+    def op_difference_intervals(
+        self, other: "Quantity_Interval_Disjoint"
+    ) -> "Quantity_Interval_Disjoint":
+        if not self.units.is_compatible_with(other.units):
+            raise ValueError("incompatible units")
+        _interval = self._intervals.op_difference_intervals(other._intervals)
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_symmetric_difference_intervals(
+        self, other: "Quantity_Interval_Disjoint"
+    ) -> "Quantity_Interval_Disjoint":
+        if not self.units.is_compatible_with(other.units):
+            raise ValueError("incompatible units")
+        _interval = self._intervals.op_symmetric_difference_intervals(other._intervals)
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
     def op_add_intervals(
         self, other: "Quantity_Interval_Disjoint"
     ) -> "Quantity_Interval_Disjoint":
@@ -529,15 +579,67 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         _interval = self._intervals.op_pow_intervals(other._intervals)
         return Quantity_Interval_Disjoint._from_intervals(_interval, units)
 
+    def op_round(self, ndigits: int = 0) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_round(ndigits)
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_abs(self) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_abs()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_log(self) -> "Quantity_Interval_Disjoint":
+        _interval = self._intervals.op_log()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_sqrt(self) -> "Quantity_Interval_Disjoint":
+        return self**0.5
+
+    def op_sin(self) -> "Quantity_Interval_Disjoint":
+        if not self.units.is_compatible_with(dimensionless):
+            raise ValueError("sin only defined for dimensionless quantities")
+        _interval = self._intervals.op_sin()
+        return Quantity_Interval_Disjoint._from_intervals(_interval, self.units)
+
+    def op_cos(self) -> "Quantity_Interval_Disjoint":
+        return (self + quantity(math.pi / 2, self.units)).op_sin()
+
+    def op_floor(self) -> "Quantity_Interval_Disjoint":
+        return (self - quantity(0.5, self.units)).op_round()
+
+    def op_ceil(self) -> "Quantity_Interval_Disjoint":
+        return (self + quantity(0.5, self.units)).op_round()
+
+    def op_total_span(self) -> Quantity:
+        """Returns the sum of the spans of all intervals in this disjoint set.
+        For a single interval, this is equivalent to max - min.
+        For multiple intervals, this sums the spans of each disjoint interval."""
+        return quantity(
+            sum(abs(r.max_elem - r.min_elem) for r in self._intervals), self.units
+        )
+
+    def op_deviation_to(
+        self, other: QuantitySetLike, relative: bool = False
+    ) -> Quantity:
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        sym_diff = self.op_symmetric_difference_intervals(other_qty)
+        deviation = sym_diff.op_total_span()
+        if relative:
+            deviation /= max(abs(self).max_elem, abs(other_qty).max_elem)
+        return deviation
+
     def __contains__(self, item: Any) -> bool:
+        if isinstance(item, (float, int, Number)):
+            item = quantity(item)
         if isinstance(item, Quantity):
             if not item.units.is_compatible_with(self.units):
                 return False
             item = item.to(self.interval_units).magnitude
-            if not isinstance(item, float) and not isinstance(item, int):
-                return False
-            return self._intervals.__contains__(item)
-        return False
+        if not isinstance(item, float) and not isinstance(item, int):
+            return False
+        return self._intervals.__contains__(item)
 
     @once
     def __hash__(self) -> int:
@@ -545,16 +647,16 @@ class Quantity_Interval_Disjoint(Quantity_Set):
 
     @once
     def __repr__(self) -> str:
-        return f"{self.__class__.__name__}({self})"
+        return f"Quantity_Interval_Disjoint({self})"
 
     @once
     def __str__(self) -> str:
-        def _format_interval(r: Numeric_Interval[NumericT]) -> str:
+        def _format_interval(r: Numeric_Interval) -> str:
             if r._min == r._max:
                 return f"[{self._format_number(r._min)}]"
             try:
                 center, rel = r.as_center_rel()
-                if rel < 1:
+                if rel < 0.5 and round(rel, 2) == rel:
                     return f"[{self._format_number(center)} ± {rel * 100:.2f}%]"
             except ZeroDivisionError:
                 pass
@@ -589,7 +691,7 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             return Quantity_Set_Discrete(other)
         if isinstance(other, tuple) and len(other) == 2:
             return Quantity_Interval_Disjoint(other)
-        if isinstance(other, (int, float)):
+        if isinstance(other, NumberLike):
             return Quantity_Set_Discrete(quantity(other))
         raise ValueError(f"unsupported type: {type(other)}")
 
@@ -676,11 +778,27 @@ class Quantity_Interval_Disjoint(Quantity_Set):
     def __ror__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
         return Quantity_Interval_Disjoint.from_value(other) | self
 
+    def __xor__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        try:
+            other_qty = Quantity_Interval_Disjoint.from_value(other)
+        except ValueError:
+            return NotImplemented
+        return self.op_symmetric_difference_intervals(other_qty)
+
+    def __rxor__(self, other: QuantitySetLike) -> "Quantity_Interval_Disjoint":
+        return Quantity_Interval_Disjoint.from_value(other) ^ self
+
     def __ge__(self, other: QuantitySetLike) -> BoolSet:
         other_q = Quantity_Interval_Disjoint.from_value(other)
         if not self.units.is_compatible_with(other_q.units):
             raise ValueError("incompatible units")
         return self._intervals >= other_q._intervals
+
+    def __gt__(self, other: QuantitySetLike) -> BoolSet:
+        other_q = Quantity_Interval_Disjoint.from_value(other)
+        if not self.units.is_compatible_with(other_q.units):
+            raise ValueError("incompatible units")
+        return self._intervals > other_q._intervals
 
     def __le__(self, other: QuantitySetLike) -> BoolSet:
         other_q = Quantity_Interval_Disjoint.from_value(other)
@@ -688,11 +806,27 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             raise ValueError("incompatible units")
         return self._intervals <= other_q._intervals
 
+    def __lt__(self, other: QuantitySetLike) -> BoolSet:
+        other_q = Quantity_Interval_Disjoint.from_value(other)
+        if not self.units.is_compatible_with(other_q.units):
+            raise ValueError("incompatible units")
+        return self._intervals < other_q._intervals
+
+    def __round__(self, ndigits: int = 0) -> "Quantity_Interval_Disjoint":
+        return self.op_round(ndigits)
+
+    def __abs__(self) -> "Quantity_Interval_Disjoint":
+        return self.op_abs()
+
     @once
     def is_single_element(self) -> bool:
         if self.is_empty():
             return False
         return self.min_elem == self.max_elem  # type: ignore #TODO
+
+    @property
+    def is_integer(self) -> bool:
+        return all(r.is_integer for r in self._intervals.intervals)
 
     def as_gapless(self) -> "Quantity_Interval":
         if self.is_empty():
@@ -717,6 +851,11 @@ class Quantity_Interval_Disjoint(Quantity_Set):
         out = cls(units=getattr(P, data["unit"]))
         out._intervals = P_Set.deserialize(data["intervals"])
         return out
+
+    def to_dimensionless(self) -> "Quantity_Interval_Disjoint":
+        return Quantity_Interval_Disjoint._from_intervals(
+            self._intervals, dimensionless
+        )
 
 
 class Quantity_Set_Discrete(Quantity_Interval_Disjoint):

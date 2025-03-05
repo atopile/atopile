@@ -5,6 +5,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 
@@ -56,10 +57,19 @@ class SCD40(Module):
                 "21": self.power.lv,
                 "7": self.power.hv,
                 "19": self.power.hv,
-                "9": self.i2c.scl.signal,
-                "10": self.i2c.sda.signal,
+                "9": self.i2c.scl.line,
+                "10": self.i2c.sda.line,
             }
         )
+
+    mfr = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "Sensirion",
+            DescriptiveProperties.partno: "SCD40-D-R1",
+        }
+    )
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C3037696"})
 
     def __preinit__(self):
         self.power.voltage.constrain_subset(L.Range.from_center_rel(3.3 * P.V, 0.05))
@@ -70,7 +80,7 @@ class SCD40(Module):
             F.I2C.define_max_frequency_capability(F.I2C.SpeedMode.fast_speed)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(

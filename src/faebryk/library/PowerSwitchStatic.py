@@ -19,8 +19,8 @@ class PowerSwitchStatic(F.PowerSwitch):
         self.power_in.connect(self.switched_power_out)
         if self._normally_closed:
             self.logic_in.reference.hv.connect(self.power_in.hv)
-            self.logic_in.signal.connect(self.power_in.lv)
+            self.logic_in.line.connect(self.power_in.lv)
         else:
             self.logic_in.reference.lv.connect(self.power_in.lv)
-            self.logic_in.signal.connect(self.power_in.hv)
+            self.logic_in.line.connect(self.power_in.hv)
         self.logic_in.reference.voltage.constrain_subset(self.power_in.voltage)

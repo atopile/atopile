@@ -28,10 +28,10 @@ class pf_74AHCT2G125(Module):
         x = self
         return F.can_attach_to_footprint_via_pinmap(
             {
-                "1": x.oe.signal,
-                "2": x.a.signal,
+                "1": x.oe.line,
+                "2": x.a.line,
                 "3": x.power.lv,
-                "4": x.y.signal,
+                "4": x.y.line,
                 "5": x.power.hv,
             }
         )
@@ -45,7 +45,7 @@ class pf_74AHCT2G125(Module):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 

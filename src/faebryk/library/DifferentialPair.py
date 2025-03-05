@@ -10,8 +10,8 @@ from faebryk.libs.units import P
 
 
 class DifferentialPair(ModuleInterface):
-    p: F.SignalElectrical
-    n: F.SignalElectrical
+    p: F.ElectricSignal
+    n: F.ElectricSignal
 
     impedance = L.p_field(
         units=P.Ω,
@@ -26,8 +26,8 @@ class DifferentialPair(ModuleInterface):
         for r in rs:
             r.resistance.alias_is(self.impedance)
 
-        terminated_bus.p.signal.connect_via(rs[0], self.p.signal)
-        terminated_bus.n.signal.connect_via(rs[1], self.n.signal)
+        terminated_bus.p.line.connect_via(rs[0], self.p.line)
+        terminated_bus.n.line.connect_via(rs[1], self.n.line)
         self.connect_shallow(terminated_bus)
 
         return terminated_bus

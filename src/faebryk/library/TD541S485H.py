@@ -20,7 +20,7 @@ class TD541S485H(Module):
     read_enable: F.ElectricLogic
     write_enable: F.ElectricLogic
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -31,16 +31,16 @@ class TD541S485H(Module):
             {
                 "1": x.power.lv,
                 "2": x.power.hv,
-                "3": x.uart.rx.signal,
-                "4": x.read_enable.signal,
-                "5": x.write_enable.signal,
-                "6": x.uart.tx.signal,
+                "3": x.uart.rx.line,
+                "4": x.read_enable.line,
+                "5": x.write_enable.line,
+                "6": x.uart.tx.line,
                 "7": x.power.hv,
                 "8": x.power.lv,
                 "9": x.power_iso_out.lv,
                 "10": x.power_iso_out.hv,
-                "13": x.rs485.diff_pair.n.signal,
-                "14": x.rs485.diff_pair.p.signal,
+                "13": x.rs485.diff_pair.n.line,
+                "14": x.rs485.diff_pair.p.line,
                 "15": x.power_iso_in.hv,
                 "16": x.power_iso_in.lv,
             }

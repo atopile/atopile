@@ -19,7 +19,7 @@ class EnablePin(ModuleInterface):
         self.enable.set(value)
 
     def set_weak(self, value: bool, owner: Module):
-        self.enable.set_weak(value, owner=owner)
+        return self.enable.set_weak(value, owner=owner)
 
     @L.rt_field
     def has_single_electric_reference(self):
@@ -34,4 +34,4 @@ class EnablePin(ModuleInterface):
 
     def get_enable_signal(self):
         self.make_required()
-        return self.enable.signal
+        return self.enable.line

@@ -4,6 +4,7 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 
@@ -71,9 +72,9 @@ class HLK_LD2410B_P(Module):
             {
                 "5": x.power.hv,
                 "4": x.power.lv,
-                "3": x.uart.rx.signal,
-                "2": x.uart.tx.signal,
-                "1": x.out.signal,
+                "3": x.uart.rx.line,
+                "2": x.uart.tx.line,
+                "1": x.out.line,
             }
         )
 
@@ -87,10 +88,19 @@ class HLK_LD2410B_P(Module):
             F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/2209271801_HI-LINK-HLK-LD2410B-P_C5183132.pdf"
     )
+
+    mfr = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "HI-LINK",
+            DescriptiveProperties.partno: "HLK-LD2410B-P",
+        }
+    )
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C5183132"})

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from itertools import chain
+from itertools import chain, pairwise
 
 import pytest
 
@@ -16,7 +16,11 @@ from faebryk.core.link import (
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
 from faebryk.core.node import NodeException
-from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
+from faebryk.libs.app.erc import (
+    ERCFaultShortedModuleInterfaces,
+    ERCPowerSourcesShortedError,
+    simple_erc,
+)
 from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
 
@@ -29,6 +33,13 @@ def test_self():
 
 
 def test_up_connect_simple_single():
+    """
+    ```
+    H1      H2
+     L1 -->  L1
+    ```
+    """
+
     class High(ModuleInterface):
         lower: ModuleInterface
 
@@ -39,7 +50,15 @@ def test_up_connect_simple_single():
     assert high1.is_connected_to(high2)
 
 
-def test_up_connect_simple_multiple():
+def test_up_connect_simple_two():
+    """
+    ```
+    H1      H2
+     L1 -->  L1
+     L2 -->  L2
+    ```
+    """
+
     class High(ModuleInterface):
         lower1: ModuleInterface
         lower2: ModuleInterface
@@ -52,7 +71,469 @@ def test_up_connect_simple_multiple():
     assert high1.is_connected_to(high2)
 
 
-def test_up_connect_simple_multiple_negative():
+def test_up_connect_simple_multiple():
+    """
+    ```
+    H1      H2
+     L1 -->  L1
+     L2 -->  L2
+     L3 -->  L3
+    ```
+    """
+
+    class High(ModuleInterface):
+        lower1: ModuleInterface
+        lower2: ModuleInterface
+        lower3: ModuleInterface
+
+    high1 = High()
+    high2 = High()
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high2.lower2)
+    high1.lower3.connect(high2.lower3)
+    assert high1.is_connected_to(high2)
+
+
+def test_up_connect_chain_simple():
+    """
+    ```
+    H1            H2
+     L1 --> M -->  L1
+     L2 -------->  L2
+    ```
+    """
+
+    class High(ModuleInterface):
+        lower1: ModuleInterface
+        lower2: ModuleInterface
+
+    high1 = High()
+    high2 = High()
+
+    middle = ModuleInterface()
+
+    high1.lower1.connect(middle)
+    high2.lower1.connect(middle)
+    high1.lower2.connect(high2.lower2)
+
+    assert high1.is_connected_to(high2)
+
+
+def test_up_connect_chain_multiple_same():
+    """
+    ```
+    H1      H2      H3
+     L1 -->  L1 -->  L1
+     L2 -->  L2 -->  L2
+    ```
+    """
+
+    class High(ModuleInterface):
+        lower1: ModuleInterface
+        lower2: ModuleInterface
+
+    high1 = High()
+    high2 = High()
+    high3 = High()
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high2.lower2)
+    high2.lower1.connect(high3.lower1)
+    high2.lower2.connect(high3.lower2)
+
+    assert high1.is_connected_to(high3)
+
+
+def test_up_connect_chain_multiple_mixed():
+    """
+    ```
+    H1      H2  ==>  H3      H4
+     L1 -->  L1       L1 -->  L1
+     L2 -->  L2       L2 -->  L2
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    high1, high2, high3, high4 = times(4, High)
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high2.lower2)
+    high2.connect_shallow(high3)
+    high3.lower1.connect(high4.lower1)
+    high3.lower2.connect(high4.lower2)
+
+    assert high1.is_connected_to(high4)
+
+
+def test_split_chain_single():
+    """
+    Miro: Implied bus connection 2
+    ```
+    H1     H2 --> H3
+     L1 --> L1     L1
+     L2     L2     L2
+      |             ^
+      +-------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    high1, high2, high3 = times(3, High)
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high3.lower2)
+    high2.connect(high3)
+
+    assert high1.is_connected_to(high3)
+
+
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+def test_split_chain_double_flat_no_inter():
+    """
+    ```
+    H1     H2 --> H3     H4
+     L1 --> L1     L1 --> L1
+     L2     L2     L2     L2
+      |                    ^
+      +--------------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class App(Module):
+        high = L.list_field(4, High)
+
+    app = App()
+
+    high1, high2, high3, high4 = app.high
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high4.lower2)
+    high2.connect(high3)
+    high3.lower1.connect(high4.lower1)
+
+    assert high1.lower1.is_connected_to(high4.lower1)
+    x = high1.is_connected_to(high3)
+    print(x)
+    assert not x
+    # assert not high1.is_connected_to(high3)
+    assert high1.is_connected_to(high4)
+
+    # TODO: See pathfinder.cpp:67 for failure
+
+
+def test_split_chain_double_flat_inter():
+    # TODO this test is not difficult enough
+    # the intermediate is trivially connected since the double split is resolved
+    # maybe insert extra node between H2 and H3?
+    """
+    ```
+    H1     H2 --> H3     H4
+     L1 --> L1     L1 --> L1
+     L2     L2     L2 --> L2
+      |                    ^
+      +--------------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class App(Module):
+        high = L.list_field(4, High)
+
+    app = App()
+
+    high1, high2, high3, high4 = app.high
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high4.lower2)
+    high2.connect(high3)
+    high3.lower1.connect(high4.lower1)
+    high3.lower2.connect(high4.lower2)
+
+    assert high1.lower1.is_connected_to(high4.lower1)
+    assert high1.is_connected_to(high3)
+    assert high1.is_connected_to(high4)
+
+
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+def test_split_chain_double_hierarchy():
+    """
+    ```
+                 R1 --> R2
+    H1     H2 --> H      H      H3
+     L1 --> L1     L1     L1 --> L1
+     L2     L2     L2     L2     L2
+      |                           ^
+      +---------------------------+
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class Higher(ModuleInterface):
+        high: High
+
+    class App(Module):
+        high = L.list_field(3, High)
+        higher = L.list_field(2, Higher)
+
+    app = App()
+
+    high1, high2, high3 = app.high
+    higher1, higher2 = app.higher
+
+    high1.lower1.connect(higher1.high.lower1)
+    high1.lower2.connect(high3.lower2)
+    high2.connect(higher1.high)
+    higher1.connect_shallow(higher2)
+    higher2.high.lower1.connect(high3.lower1)
+
+    assert high1.lower1.is_connected_to(high3.lower1)
+    assert high1.is_connected_to(high3)
+
+
+def test_split_chain_flip():
+    """
+    Miro: Implied Double-Flip Bus Connection
+    ```
+    H1     H2 ==> H3     H4
+     L1 --> L2     L2 --> L1
+     L2 --> L1     L1 --> L2
+    ```
+    Note: Shallowness not important, just makes it harder
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class App(Module):
+        high = L.list_field(4, High)
+
+    app = App()
+
+    high1, high2, high3, high4 = app.high
+
+    high1.lower1.connect(high2.lower2)
+    high1.lower2.connect(high2.lower1)
+    high2.connect_shallow(high3)
+    high3.lower1.connect(high4.lower2)
+    high3.lower2.connect(high4.lower1)
+
+    assert high1.is_connected_to(high4)
+
+
+def test_split_flip_negative():
+    """
+    Miro: Implied Bus Non-Connection
+    ```
+    H1     H2
+     L1 --> L2
+     L2 --> L1
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    high1, high2 = times(2, High)
+
+    high1.lower1.connect(high2.lower2)
+    high1.lower2.connect(high2.lower1)
+
+    assert not high1.is_connected_to(high2)
+
+
+def test_up_connect_chain_multiple_mixed_simulate_realworld():
+    """
+    ```
+    H1      H2  ==>  H3      H4
+     L1 -->  L1       L1 -->  L1
+     L2 ---  L2 ----- L2 ---  L2
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    high1, high2, high3, high4 = times(4, High)
+
+    high1.lower1.connect(high2.lower1)
+    high2.connect_shallow(high3)
+    high3.lower1.connect(high4.lower1)
+
+    high1.lower2.connect(high2.lower2, high3.lower2, high4.lower2)
+
+    assert high1.is_connected_to(high4)
+
+
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+def test_up_connect_chain_multiple_realworld():
+    """
+    ```
+    L1      L2 ==>  L3     L4
+     S -->  S       S -->  S
+     R ---  R ----- R ---  R
+      HV     HV      HV     HV
+      LV     LV      LV     LV
+    ```
+    """
+
+    l1, l2, l3, l4 = times(4, F.ElectricLogic)
+
+    l1.signal.connect(l2.signal)
+    l2.connect_shallow(l3)
+    l3.signal.connect(l4.signal)
+
+    l1.reference.connect(l2.reference, l3.reference, l4.reference)
+
+    assert l1.is_connected_to(l4)
+
+
+def test_up_connect_chain_hierarchy():
+    """
+    ```
+    R1              R2
+     H1     HM1 ==>  H1
+      L1 -->  L1      L1
+      L2 -->  L2      L2
+     H2 ==> HM2      H2
+      L1      L1 -->  L1
+      L2      L2 -->  L2
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class Higher(ModuleInterface):
+        high1: High
+        high2: High
+
+    higher_begin = Higher()
+    higher_end = Higher()
+
+    high_middle1 = High()
+    high_middle2 = High()
+
+    higher_begin.high1.lower1.connect(high_middle1.lower1)
+    higher_begin.high1.lower2.connect(high_middle1.lower2)
+    higher_begin.high2.connect_shallow(high_middle2)
+    higher_end.high1.connect_shallow(high_middle1)
+    higher_end.high2.lower1.connect(high_middle2.lower1)
+    higher_end.high2.lower2.connect(high_middle2.lower2)
+
+    assert higher_begin.is_connected_to(higher_end)
+
+
+def test_up_connect_hierarchy():
+    """
+    ```
+    R1      R2
+     H1      H1
+      L1 -->  L1
+      L2 -->  L2
+     H2      H2
+      L1 -->  L1
+      L2 -->  L2
+    ```
+    """
+
+    class High(ModuleInterface):
+        lower1: ModuleInterface
+        lower2: ModuleInterface
+
+    class Higher(ModuleInterface):
+        high1: High
+        high2: High
+
+    higher1 = Higher()
+    higher2 = Higher()
+
+    higher1.high1.lower1.connect(higher2.high1.lower1)
+    higher1.high1.lower2.connect(higher2.high1.lower2)
+    higher1.high2.lower1.connect(higher2.high2.lower1)
+    higher1.high2.lower2.connect(higher2.high2.lower2)
+    assert higher1.is_connected_to(higher2)
+
+
+def test_up_connect_hierarchy_mixed():
+    """
+    ```
+    R1      R2
+     H1      H1
+      L1 -->  L1
+      L2 -->  L2
+     H2 ==>  H2
+      L1      L1
+      L2      L2
+    ```
+    """
+
+    class Low(ModuleInterface): ...
+
+    class High(ModuleInterface):
+        lower1: Low
+        lower2: Low
+
+    class Higher(ModuleInterface):
+        high1: High
+        high2: High
+
+    higher1 = Higher()
+    higher2 = Higher()
+
+    higher1.high1.lower1.connect(higher2.high1.lower1)
+    higher1.high1.lower2.connect(higher2.high1.lower2)
+    higher1.high2.connect_shallow(higher2.high2)
+    assert higher1.is_connected_to(higher2)
+
+
+def test_up_connect_simple_two_negative():
+    """
+    ```
+    H1      H2
+     L1 -->  L1
+     L2      L2
+    ```
+    """
+
     class High(ModuleInterface):
         lower1: ModuleInterface
         lower2: ModuleInterface
@@ -64,19 +545,58 @@ def test_up_connect_simple_multiple_negative():
     assert not high1.is_connected_to(high2)
 
 
+def test_up_connect_simple_multiple_negative():
+    """
+    ```
+    H1      H2
+     L1 -->  L1
+     L2 -->  L2
+     L3      L3
+    ```
+    """
+
+    class High(ModuleInterface):
+        lower1: ModuleInterface
+        lower2: ModuleInterface
+        lower3: ModuleInterface
+
+    high1 = High()
+    high2 = High()
+
+    high1.lower1.connect(high2.lower1)
+    high1.lower2.connect(high2.lower2)
+    assert not high1.is_connected_to(high2)
+
+
 def test_up_connect():
+    """
+    ```
+    BI     BO
+     RX      RX
+      S -->  S
+      R -->  R
+       HV      HV
+       LV      LV
+     TX      TX
+      S -->  S
+      R -->  R
+       HV      HV
+       LV      LV
+    ```
+    """
+
     class UARTBuffer(Module):
         bus_in: F.UART_Base
         bus_out: F.UART_Base
 
         def __preinit__(self) -> None:
-            self.bus_in.rx.signal.connect(self.bus_out.rx.signal)
-            self.bus_in.tx.signal.connect(self.bus_out.tx.signal)
+            self.bus_in.rx.line.connect(self.bus_out.rx.line)
+            self.bus_in.tx.line.connect(self.bus_out.tx.line)
             self.bus_in.rx.reference.connect(self.bus_out.rx.reference)
 
     app = UARTBuffer()
 
-    assert app.bus_in.rx.signal.is_connected_to(app.bus_out.rx.signal)
+    assert app.bus_in.rx.line.is_connected_to(app.bus_out.rx.line)
     assert app.bus_in.rx.reference.is_connected_to(app.bus_out.rx.reference)
     assert app.bus_in.rx.is_connected_to(app.bus_out.rx)
     assert app.bus_in.tx.is_connected_to(app.bus_out.tx)
@@ -84,6 +604,14 @@ def test_up_connect():
 
 
 def test_down_connect():
+    """
+    ```
+    P1 -->  P2
+     HV      HV
+     LV      LV
+    ```
+    """
+
     ep = times(2, F.ElectricPower)
     ep[0].connect(ep[1])
 
@@ -93,6 +621,12 @@ def test_down_connect():
 
 
 def test_chains_direct():
+    """
+    ```
+    M1 --> M2 --> M3
+    ```
+    """
+
     mifs = times(3, ModuleInterface)
     mifs[0].connect(mifs[1])
     mifs[1].connect(mifs[2])
@@ -100,6 +634,12 @@ def test_chains_direct():
 
 
 def test_chains_double_shallow_flat():
+    """
+    ```
+    M1 ==> M2 ==> M3
+    ```
+    """
+
     mifs = times(3, ModuleInterface)
     mifs[0].connect_shallow(mifs[1])
     mifs[1].connect_shallow(mifs[2])
@@ -107,6 +647,12 @@ def test_chains_double_shallow_flat():
 
 
 def test_chains_mixed_shallow_flat():
+    """
+    ```
+    M1 ==> M2 --> M3
+    ```
+    """
+
     mifs = times(3, ModuleInterface)
     mifs[0].connect_shallow(mifs[1])
     mifs[1].connect(mifs[2])
@@ -114,27 +660,71 @@ def test_chains_mixed_shallow_flat():
 
 
 def test_chains_mixed_shallow_nested():
+    """
+    ```
+    L1  ==>  L2 -->  L3
+     S        S       S
+     R        R       R
+      HV       HV      HV
+      LV       LV      LV
+    ```
+    """
     # Test hierarchy down filter & chain resolution
     el = times(3, F.ElectricLogic)
     el[0].connect_shallow(el[1])
     el[1].connect(el[2])
     assert el[0].is_connected_to(el[2])
 
-    assert el[1].signal.is_connected_to(el[2].signal)
+    assert el[1].line.is_connected_to(el[2].line)
     assert el[1].reference.is_connected_to(el[2].reference)
-    assert not el[0].signal.is_connected_to(el[1].signal)
+    assert not el[0].line.is_connected_to(el[1].line)
     assert not el[0].reference.is_connected_to(el[1].reference)
-    assert not el[0].signal.is_connected_to(el[2].signal)
+    assert not el[0].line.is_connected_to(el[2].line)
     assert not el[0].reference.is_connected_to(el[2].reference)
 
     # Test duplicate resolution
-    el[0].signal.connect(el[1].signal)
+    el[0].line.connect(el[1].line)
     el[0].reference.connect(el[1].reference)
     assert el[0].is_connected_to(el[1])
     assert el[0].is_connected_to(el[2])
 
 
+def test_loooooong_chain():
+    """Let's make it hard"""
+    mifs = times(2**10, F.ElectricPower)
+    for left, right in pairwise(mifs):
+        left.connect(right)
+
+    assert mifs[0].is_connected_to(mifs[-1])
+
+
+# FIXME: this should be WAYYY higher than 16
+@pytest.mark.parametrize("length", [16])
+def test_alternating_long_chain(length):
+    """Let's make it hard"""
+    mifs = times(length, F.ElectricPower)
+    for i, (left, right) in enumerate(pairwise(mifs)):
+        if i % 2:
+            left.connect(right)
+        else:
+            left.lv.connect(right.lv)
+            left.hv.connect(right.hv)
+
+    assert mifs[0].is_connected_to(mifs[-1])
+    assert mifs[0].lv.is_connected_to(mifs[-1].lv)
+    assert mifs[0].hv.is_connected_to(mifs[-1].hv)
+
+
 def test_shallow_bridge_simple():
+    """
+    ```
+                B
+    H1      HI ===> HO     H2
+     L1 -->  L1      L1 --> L1
+     L2 -->  L2      L2 --> L2
+    ```
+    """
+
     class Low(ModuleInterface): ...
 
     class High(ModuleInterface):
@@ -164,13 +754,55 @@ def test_shallow_bridge_simple():
     assert not high1.lower2.is_connected_to(high2.lower2)
 
 
-def test_shallow_bridge():
+@pytest.mark.xfail(reason="No support atm for split chains with ambiguous split/hier")
+def test_shallow_bridge_partial():
+    """
+    ```
+             ________B__________
+     L1          LI ===> LO          L2
+      S -->  I -> S       S -> O -->  S
+      R --------  R ----- R --------  R
+    ```
+    """
+
+    class Buffer(Module):
+        ins: F.Electrical
+        outs: F.Electrical
+
+        ins_l: F.ElectricLogic
+        outs_l: F.ElectricLogic
+
+        def __preinit__(self) -> None:
+            self.ins_l.signal.connect(self.ins)
+            self.outs_l.signal.connect(self.outs)
+
+            self.ins_l.connect_shallow(self.outs_l)
+
+        @L.rt_field
+        def single_electric_reference(self):
+            return F.has_single_electric_reference_defined(
+                F.ElectricLogic.connect_all_module_references(self)
+            )
+
+    l1 = F.ElectricLogic()
+    l2 = F.ElectricLogic()
+    b = Buffer()
+
+    l1.signal.connect(b.ins)
+    l2.signal.connect(b.outs)
+    l1.reference.connect(b.single_electric_reference.get_reference())
+    l2.reference.connect(b.single_electric_reference.get_reference())
+
+    assert l1.is_connected_to(l2)
+
+
+def test_shallow_bridge_full():
     """
     Test the bridge connection between two UART interfaces through a buffer:
 
     ```
     U1 ---> _________B________ ---> U2
-     TX          IL ===> OL          TX
+     TX          LI ===> LO          TX
       S -->  I -> S       S -> O -->  S
       R --------  R ----- R --------  R
     ```
@@ -204,7 +836,7 @@ def test_shallow_bridge():
                 zip(self.ins, self.ins_l),
                 zip(self.outs, self.outs_l),
             ):
-                lo.signal.connect(el)
+                lo.line.connect(el)
 
             for l1, l2 in zip(self.ins_l, self.outs_l):
                 l1.connect_shallow(l2)
@@ -225,10 +857,10 @@ def test_shallow_bridge():
             bus_o = self.bus_out
             buf = self.buf
 
-            bus_i.tx.signal.connect(buf.ins[0])
-            bus_i.rx.signal.connect(buf.ins[1])
-            bus_o.tx.signal.connect(buf.outs[0])
-            bus_o.rx.signal.connect(buf.outs[1])
+            bus_i.tx.line.connect(buf.ins[0])
+            bus_i.rx.line.connect(buf.ins[1])
+            bus_o.tx.line.connect(buf.outs[0])
+            bus_o.rx.line.connect(buf.outs[1])
 
         @L.rt_field
         def single_electric_reference(self):
@@ -245,14 +877,14 @@ def test_shallow_bridge():
     # Check that the two buffer sides are not connected electrically
     assert not buf.ins[0].is_connected_to(buf.outs[0])
     assert not buf.ins[1].is_connected_to(buf.outs[1])
-    assert not bus_i.rx.signal.is_connected_to(bus_o.rx.signal)
-    assert not bus_i.tx.signal.is_connected_to(bus_o.tx.signal)
+    assert not bus_i.rx.line.is_connected_to(bus_o.rx.line)
+    assert not bus_i.tx.line.is_connected_to(bus_o.tx.line)
 
     # direct connect
-    assert bus_i.tx.signal.is_connected_to(buf.ins[0])
-    assert bus_i.rx.signal.is_connected_to(buf.ins[1])
-    assert bus_o.tx.signal.is_connected_to(buf.outs[0])
-    assert bus_o.rx.signal.is_connected_to(buf.outs[1])
+    assert bus_i.tx.line.is_connected_to(buf.ins[0])
+    assert bus_i.rx.line.is_connected_to(buf.ins[1])
+    assert bus_o.tx.line.is_connected_to(buf.outs[0])
+    assert bus_o.rx.line.is_connected_to(buf.outs[1])
 
     # connect through trait
     assert (
@@ -313,7 +945,10 @@ def test_specialize_link():
     # test special link
     class _Link(LinkDirectConditional):
         def __init__(self):
-            super().__init__(lambda path: LinkDirectConditionalFilterResult.FILTER_PASS)
+            super().__init__(
+                lambda path: LinkDirectConditionalFilterResult.FILTER_PASS,
+                needs_only_first_in_path=True,
+            )
 
     mifs = times(3, ModuleInterface)
     mifs_special = times(3, Specialized)
@@ -371,7 +1006,7 @@ def test_isolated_connect_simple():
     x1.connect(x2, link=F.ElectricLogic.LinkIsolatedReference)
 
     assert x1.is_connected_to(x2)
-    assert x1.signal.is_connected_to(x2.signal)
+    assert x1.line.is_connected_to(x2.line)
 
     assert not x1.reference.is_connected_to(x2.reference)
     assert not x1.reference.hv.is_connected_to(x2.reference.hv)
@@ -400,11 +1035,29 @@ def test_isolated_connect_erc():
 
     a1.connect(b1, link=F.ElectricLogic.LinkIsolatedReference)
     assert a1.is_connected_to(b1)
-    assert a1.scl.signal.is_connected_to(b1.scl.signal)
-    assert a1.sda.signal.is_connected_to(b1.sda.signal)
+    assert a1.scl.line.is_connected_to(b1.scl.line)
+    assert a1.sda.line.is_connected_to(b1.sda.line)
 
     assert not a1.scl.reference.is_connected_to(b1.scl.reference)
     assert not a1.sda.reference.is_connected_to(b1.sda.reference)
+
+
+def test_simple_erc_ElectricPower_short():
+    ep1 = F.ElectricPower()
+    ep2 = F.ElectricPower()
+
+    ep1.connect(ep2)
+
+    # This is okay!
+    simple_erc(ep1.get_graph())
+
+    ep1.lv.connect(ep2.hv)
+
+    # This is not okay!
+    with pytest.raises(ERCFaultShortedModuleInterfaces) as ex:
+        simple_erc(ep1.get_graph())
+
+    assert set(ex.value.path) == {ep1.lv, ep2.hv}
 
 
 @pytest.mark.skipif(not IMPLIED_PATHS, reason="IMPLIED_PATHS is not set")
@@ -548,6 +1201,7 @@ def test_regression_rp2040_usb_diffpair():
         assert set(connected.keys()) == set(refs)
 
 
+@pytest.mark.slow
 def test_regression_rp2040_usb_diffpair_full():
     app = F.RP2040_ReferenceDesign()
     rp2040_2 = F.RP2040()

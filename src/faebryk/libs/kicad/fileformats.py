@@ -551,12 +551,16 @@ class C_fp_text:
         reference = auto()
         value = auto()
 
+    class C_fp_text_effects(C_effects):
+        hide: Optional[bool] = None
+
     type: E_type = field(**sexp_field(positional=True))
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
     layer: C_text_layer
+    hide: Optional[bool] = None
     uuid: UUID = field(default_factory=gen_uuid)
-    effects: C_effects
+    effects: C_fp_text_effects
     unlocked: bool = False
 
 
@@ -588,13 +592,17 @@ class C_footprint:
 
     @dataclass(kw_only=True)
     class C_property:
+        @dataclass(kw_only=True)
+        class C_footprint_property_effects(C_effects):
+            hide: Optional[bool] = None
+
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_effects
+        effects: C_footprint_property_effects
 
     @dataclass
     class C_footprint_polygon(C_polygon):
@@ -643,18 +651,6 @@ class C_footprint:
             size_y: Optional[float] = field(**sexp_field(positional=True), default=None)
             offset: Optional[C_xy] = None
 
-        # TODO: replace with generic gr item
-        @dataclass(kw_only=True)
-        class C_gr:
-            @dataclass
-            class C_gr_poly(C_polygon):
-                width: float
-                fill: bool | None = None
-
-            gr_poly: list[C_gr_poly] = field(
-                **sexp_field(multidict=True), default_factory=list
-            )
-
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
@@ -666,7 +662,6 @@ class C_footprint:
         roundrect_rratio: Optional[float] = None
         die_length: Optional[float] = None
         options: Optional[C_options] = None
-        primitives: Optional[C_gr] = None
         uuid: UUID = field(default_factory=gen_uuid)
         # TODO: primitives: add: gr_line, gr_arc, gr_circle, gr_rect, gr_curve, gr_bbox
         unknown: CatchAll = None
@@ -942,9 +937,8 @@ class C_kicad_pcb_file(SEXP_File):
             @dataclass(kw_only=True)
             class C_filled_polygon:
                 layer: str
-                island: Optional[bool] = field(
-                    **sexp_field(positional=True), default=None
-                )
+                # FIXME: decode (island), a bracketed positional
+                # We're currently relying on the CatchAll to re-serialise it
                 pts: C_pts
                 unknown: CatchAll = None
 

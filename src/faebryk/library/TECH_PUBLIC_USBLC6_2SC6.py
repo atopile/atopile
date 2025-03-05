@@ -41,8 +41,8 @@ class TECH_PUBLIC_USBLC6_2SC6(F.USB2_0_ESD_Protection):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
                 self.usb[0].usb_if.buspower.lv: ["GND"],
-                self.usb[0].usb_if.d.n.signal: ["IO1"],
-                self.usb[0].usb_if.d.p.signal: ["IO2"],
+                self.usb[0].usb_if.d.n.line: ["IO1"],
+                self.usb[0].usb_if.d.p.line: ["IO2"],
                 self.usb[0].usb_if.buspower.hv: ["VBUS"],
             },
             accept_prefix=False,

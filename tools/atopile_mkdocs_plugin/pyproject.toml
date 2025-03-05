@@ -1,0 +1,19 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "atopile_mkdocs_plugin"
+version = "0.0.1"
+authors = [
+    { name = "atopile", email = "info@atopile.io" },
+]
+description = "atopile's helper MkDocs plugin"
+requires-python = ">=3.13"
+dependencies = []  # all handled by installer
+
+[project.entry-points."mkdocs.plugins"]
+atopile_json_schema = "plugin:JsonSchemaPlugin"
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]

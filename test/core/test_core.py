@@ -147,7 +147,8 @@ class TestGraph(unittest.TestCase):
         class _Link(LinkDirectConditional):
             def __init__(self):
                 super().__init__(
-                    lambda path: LinkDirectConditionalFilterResult.FILTER_PASS
+                    lambda path: LinkDirectConditionalFilterResult.FILTER_PASS,
+                    needs_only_first_in_path=True,
                 )
 
         gif1 = GraphInterface()

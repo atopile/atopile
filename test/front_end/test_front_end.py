@@ -2,30 +2,16 @@ from pathlib import Path
 from textwrap import dedent
 
 import pytest
-from antlr4 import ParserRuleContext
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import errors
 from atopile.datatypes import Ref
-from atopile.front_end import Bob, has_ato_cmp_attrs
+from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import cast_assert
-
-
-@pytest.fixture
-def bob() -> Bob:
-    return Bob()
-
-
-@pytest.fixture
-def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / "pyproject.toml").exists():
-        repo_root = repo_root.parent
-    return repo_root
 
 
 def test_empty_module_build(bob: Bob):
@@ -89,7 +75,7 @@ def test_simple_new(bob: Bob):
 
     assert isinstance(node, L.Module)
     child = Bob.get_node_attr(node, "child")
-    assert child.has_trait(has_ato_cmp_attrs)
+    assert child.has_trait(_has_ato_cmp_attrs)
 
     a = Bob.get_node_attr(child, "a")
     assert isinstance(a, F.Electrical)
@@ -130,7 +116,9 @@ def test_nested_nodes(bob: Bob):
 
 
 def test_resistor(bob: Bob, repo_root: Path):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         """
@@ -157,9 +145,11 @@ def test_standard_library_import(bob: Bob):
     text = dedent(
         """
         import Resistor
+        from "interfaces.ato" import PowerAC
 
         module A:
             r1 = new Resistor
+            power_in = new PowerAC
         """
     )
 
@@ -170,6 +160,8 @@ def test_standard_library_import(bob: Bob):
 
     r1 = Bob.get_node_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
+
+    assert Bob.get_node_attr(node, "power_in")
 
 
 @pytest.mark.parametrize(
@@ -198,7 +190,9 @@ def test_reserved_attrs(
     pkg: F.has_package.Package,
     repo_root: Path,
 ):
-    bob.search_paths.append(repo_root / "examples" / ".ato" / "modules")
+    bob.search_paths.append(
+        repo_root / "test" / "common" / "resources" / ".ato" / "modules"
+    )
 
     text = dedent(
         f"""
@@ -406,14 +400,12 @@ def test_duck_type_connect(bob: Bob):
 
 
 def test_shim_power(bob: Bob):
-    from atopile._shim import ShimPower
+    from atopile.attributes import Power
 
-    ctx = ParserRuleContext()
-
-    a = ShimPower()
+    a = Power()
     b = F.ElectricPower()
 
-    bob._connect(a, b, ctx)
+    bob._connect(a, b, None)
 
     assert a.lv.is_connected_to(b.lv)
     assert a.hv.is_connected_to(b.hv)

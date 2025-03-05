@@ -7,12 +7,14 @@ import logging
 import pytest
 
 import faebryk.library._F as F
-from faebryk.exporters.netlist.graph import attach_nets_and_kicad_info
-from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
+from faebryk.exporters.netlist.graph import attach_nets
+from faebryk.exporters.netlist.kicad.netlist_kicad import (
+    attach_kicad_info,
+    faebryk_netlist_to_kicad,
+)
 from faebryk.exporters.netlist.netlist import FBRKNetlist, make_fbrk_netlist_from_graph
 from faebryk.libs.app.designators import (
     attach_random_designators,
-    override_names_with_designators,
 )
 from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
 from faebryk.libs.units import P
@@ -45,7 +47,7 @@ def netlist_graph():
             F.SMDTwoPin(F.SMDTwoPin.Type._0805)
         )
         r.add(
-            F.has_designator_defined(
+            F.has_designator(
                 resistor1.get_trait(F.has_designator_prefix).get_prefix() + str(i + 1)
             )
         )
@@ -53,8 +55,8 @@ def netlist_graph():
     # make netlist
     G = resistor1.get_graph
     attach_random_designators(G())
-    override_names_with_designators(G())
-    attach_nets_and_kicad_info(G())
+    attach_nets(G())
+    attach_kicad_info(G())
     return make_fbrk_netlist_from_graph(G())
 
 

@@ -49,7 +49,7 @@ def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
                         component=t.get_kicad_obj(),
                         pin=t.get_pin_name(mif),
                     )
-                    for mif, fp in net.get_fps().items()
+                    for mif, fp in net.get_connected_pads().items()
                     if (t := fp.get_trait(can_represent_kicad_footprint)) is not None
                 ],
                 key=lambda v: (v.component.name, v.pin),

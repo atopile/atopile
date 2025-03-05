@@ -1,0 +1,17 @@
+import I2C, ElectricPower, Resistor
+
+
+module I2CPullup:
+    r_sda = new Resistor
+    r_scl = new Resistor
+    power = new ElectricPower
+    i2c = new I2C
+
+    r_sda.resistance = 10kohm +/- 20%
+    r_scl.resistance = 10kohm +/- 20%
+
+    r_sda.package = "R0402"
+    r_scl.package = "R0402"
+
+    i2c.sda ~ r_sda.p1; r_sda.p2 ~ power.vcc
+    i2c.scl ~ r_scl.p1; r_scl.p2 ~ power.vcc

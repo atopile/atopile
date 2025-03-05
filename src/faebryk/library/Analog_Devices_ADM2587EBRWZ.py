@@ -34,7 +34,7 @@ class Analog_Devices_ADM2587EBRWZ(Module):
     #                 traits
     # ----------------------------------------
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C12081"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -54,21 +54,21 @@ class Analog_Devices_ADM2587EBRWZ(Module):
                 "1": self.power_unisolated.lv,
                 "2": self.power_unisolated.hv,
                 "3": self.power_unisolated.lv,
-                "4": self.uart.rx.signal,
-                "5": self.read_enable.signal,
-                "6": self.write_enable.signal,
-                "7": self.uart.tx.signal,
+                "4": self.uart.rx.line,
+                "5": self.read_enable.line,
+                "6": self.write_enable.line,
+                "7": self.uart.tx.line,
                 "8": self.power_unisolated.hv,
                 "9": self.power_unisolated.lv,
                 "10": self.power_unisolated.lv,
                 "11": self.power_isolated_out.lv,
                 "12": self.power_isolated_out.hv,
-                "13": self.rs485.diff_pair.p.signal,
+                "13": self.rs485.diff_pair.p.line,
                 "14": self.power_isolated_out.lv,
-                "15": self.rs485.diff_pair.n.signal,
+                "15": self.rs485.diff_pair.n.line,
                 "16": self.power_isolated_out.lv,
-                "17": self.rs485.diff_pair.n.signal,
-                "18": self.rs485.diff_pair.p.signal,
+                "17": self.rs485.diff_pair.n.line,
+                "18": self.rs485.diff_pair.p.line,
                 "19": self.power_isolated_in.hv,
                 "20": self.power_isolated_out.lv,
             }
@@ -78,19 +78,19 @@ class Analog_Devices_ADM2587EBRWZ(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.rs485.diff_pair.p.signal: ["A"],
-                self.rs485.diff_pair.n.signal: ["B"],
-                self.write_enable.signal: ["DE"],
+                self.rs485.diff_pair.p.line: ["A"],
+                self.rs485.diff_pair.n.line: ["B"],
+                self.write_enable.line: ["DE"],
                 self.power_unisolated.lv: ["GND1"],
                 self.power_isolated_out.lv: ["GND2"],
-                self.read_enable.signal: ["RE#"],
-                self.uart.rx.signal: ["RXD"],
-                self.uart.tx.signal: ["TXD"],
+                self.read_enable.line: ["RE#"],
+                self.uart.rx.line: ["RXD"],
+                self.uart.tx.line: ["TXD"],
                 self.power_unisolated.hv: ["VCC"],
                 self.power_isolated_in.hv: ["VISOIN"],
                 self.power_isolated_out.hv: ["VISOOUT"],
-                self.rs485.diff_pair.p.signal: ["Y"],
-                self.rs485.diff_pair.n.signal: ["Z"],
+                self.rs485.diff_pair.p.line: ["Y"],
+                self.rs485.diff_pair.n.line: ["Z"],
             },
             accept_prefix=False,
             case_sensitive=False,

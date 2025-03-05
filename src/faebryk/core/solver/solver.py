@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass
 from typing import Any, Protocol
 
 from faebryk.core.graph import Graph
+from faebryk.core.node import Node
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -20,36 +20,20 @@ logger = logging.getLogger(__name__)
 LOG_PICK_SOLVE = ConfigFlag("LOG_PICK_SOLVE", False)
 
 
+class NotDeducibleException(Exception):
+    def __init__(
+        self,
+        predicate: ConstrainableExpression,
+        not_deduced: list[ConstrainableExpression],
+    ):
+        self.predicate = predicate
+        self.not_deduced = not_deduced
+
+    def __str__(self):
+        return f"Could not deduce predicate: {self.predicate}"
+
+
 class Solver(Protocol):
-    # TODO booleanlike is very permissive
-    type PredicateWithInfo[ArgType] = tuple[ConstrainableExpression, ArgType]
-
-    class SolverError(Exception): ...
-
-    class TimeoutError(SolverError): ...
-
-    class DivisionByZeroError(SolverError): ...
-
-    @dataclass
-    class SolveResult:
-        timed_out: bool
-
-    @dataclass
-    class SolveResultAny[ArgType](SolveResult):
-        true_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-        false_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-        unknown_predicates: list["Solver.PredicateWithInfo[ArgType]"]
-
-    @dataclass
-    class SolveResultAll(SolveResult):
-        has_solution: bool
-
-    # timeout per solve call in milliseconds
-    timeout: int
-    # threads: int
-    # in megabytes
-    # memory: int
-
     def get_any_single(
         self,
         operatable: Parameter,
@@ -74,35 +58,31 @@ class Solver(Protocol):
         """
         ...
 
-    def assert_any_predicate[ArgType](
+    def try_fulfill(
         self,
-        predicates: list["Solver.PredicateWithInfo[ArgType]"],
+        predicate: ConstrainableExpression,
         lock: bool,
-        suppose_constraint: Predicate | None = None,
-        minimize: Expression | None = None,
-    ) -> SolveResultAny[ArgType]:
+        allow_unknown: bool = False,
+    ) -> bool:
         """
-        Make at least one of the passed predicates true, unless that is impossible.
+        Try to fulfill the predicate.
 
         Args:
-            predicates: A list of predicates to solve.
-            suppose_constraint: An optional constraint that can be added to make solving
-                                easier. It is only in effect for the duration of the
-                                solve call.
-            minimize: An optional expression to minimize while solving.
-            lock: If True, add the solutions as constraints.
+            predicate: The predicate to fulfill.
+            lock: If True, ensure the result is part of the solution set of
+                  the expression.
 
         Returns:
-            A SolveResult object containing the true, false, and unknown predicates.
-
-        Note:
-            There is no specific order in which the predicates are solved.
+            True if found definite answer, False if allow_unknown and e.g Timeout or
+            no deduction possible
+        Raises:
+            TimeoutError if not allow_unknown and timeout
+            Contradiction if predicate proved false
         """
         ...
 
-    # run deferred work
-    def find_and_lock_solution(self, G: Graph) -> SolveResultAll: ...
+    def inspect_get_known_supersets(self, value: Parameter) -> P_Set: ...
 
-    def inspect_get_known_supersets(
-        self, value: Parameter, force_update: bool = True
-    ) -> P_Set: ...
+    def update_superset_cache(self, *nodes: Node): ...
+
+    def simplify(self, *gs: Graph | Node): ...

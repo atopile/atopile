@@ -17,6 +17,6 @@ class USB3_connector(Module):
     def __preinit__(self):
         self.usb3.usb3_if.usb_if.buspower.lv.connect(self.usb3.usb3_if.gnd_drain)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )

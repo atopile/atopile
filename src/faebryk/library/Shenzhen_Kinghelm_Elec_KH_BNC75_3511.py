@@ -20,14 +20,14 @@ class Shenzhen_Kinghelm_Elec_KH_BNC75_3511(Module):
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
-    signal: F.SignalElectrical
+    line: F.ElectricSignal
     shield: F.Electrical
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C2837588"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -44,7 +44,7 @@ class Shenzhen_Kinghelm_Elec_KH_BNC75_3511(Module):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.signal.signal: ["OUT"],
+                self.line.line: ["OUT"],
                 self.shield: ["2", "3", "4"],
             },
             accept_prefix=False,

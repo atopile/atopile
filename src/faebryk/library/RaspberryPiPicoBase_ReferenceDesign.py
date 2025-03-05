@@ -31,7 +31,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             self.logic_out.set_weak(True, owner=self).resistance.alias_is(
                 self.resistor.resistance
             )
-            self.logic_out.signal.connect_via(
+            self.logic_out.line.connect_via(
                 [self.resistor, self.switch], self.logic_out.reference.lv
             )
 
@@ -43,7 +43,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         swd: F.SWD
 
         lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C160389"})
-        designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+        designator_prefix = L.f_field(F.has_designator_prefix)(
             F.has_designator_prefix.Prefix.J
         )
 
@@ -51,9 +51,9 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         def can_attach_to_footprint(self):
             return F.can_attach_to_footprint_via_pinmap(
                 pinmap={
-                    "1": self.swd.dio.signal,
+                    "1": self.swd.dio.line,
                     "2": self.swd.dio.reference.lv,
-                    "3": self.swd.clk.signal,
+                    "3": self.swd.clk.line,
                 }
             )
 
@@ -85,8 +85,8 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             # self.reference_out.voltage.constrain_subset(L.Range(2 * P.V, 3 * P.V))
 
             self.power_in.connect(self.rc_filter.in_.reference)
-            self.power_in.hv.connect(self.rc_filter.in_.signal)
-            self.reference_out.hv.connect(self.rc_filter.out.signal)
+            self.power_in.hv.connect(self.rc_filter.in_.line)
+            self.reference_out.hv.connect(self.rc_filter.out.line)
             self.reference_out.lv.connect(self.rc_filter.out.reference.lv)
 
             # Specialize
@@ -278,7 +278,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
 
         self.rp2040.swd.connect(self.debug_header.swd)
 
-        self.rp2040.run.signal.connect_via(
+        self.rp2040.run.line.connect_via(
             self.reset_button, self.rp2040.run.reference.lv
         )
 

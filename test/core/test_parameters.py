@@ -54,9 +54,9 @@ def test_compact_repr():
     expr3str = expr3.compact_repr(context)
     assert expr3str == "¬C"
 
-    expr4 = And(expr3, (expr > 10 * P.V))
+    expr4 = And(expr3, (expr >= 10 * P.V))
     expr4str = expr4.compact_repr(context)
-    assert expr4str == "¬C ∧ ((((A volt + B volt) + 5 volt) * 10) > 10 volt)"
+    assert expr4str == "¬C ∧ ((((A volt + B volt) + 5 volt) * 10) ≥ 10 volt)"
 
     manyps = times(ord("Z") - ord("C") - 1, Parameter)
     Additive.sum(manyps).compact_repr(context)
@@ -93,8 +93,8 @@ def test_expression_congruence():
         Add(p1, p2, Quantity_Singleton(0))
     )
 
-    assert not Add(Quantity_Interval(0, 1)).is_congruent_to(
-        Add(Quantity_Interval(0, 1))
+    assert Add(Quantity_Interval(0, 1)).is_congruent_to(
+        Add(Quantity_Interval(0, 1)), allow_uncorrelated=True
     )
     assert not (p1 - p2).is_congruent_to(p2 - p1)
 

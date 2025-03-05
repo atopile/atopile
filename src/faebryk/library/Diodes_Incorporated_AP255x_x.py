@@ -35,7 +35,7 @@ class Diodes_Incorporated_AP255x_x(Module):
 
         current_limit_setting_resistor = self.ilim.add(F.Resistor())
 
-        self.ilim.signal.connect_via(
+        self.ilim.line.connect_via(
             current_limit_setting_resistor, self.ilim.reference.lv
         )  # TODO: bit ugly
 
@@ -64,7 +64,7 @@ class Diodes_Incorporated_AP255x_x(Module):
     power_out: F.ElectricPower
     enable: F.ElectricLogic
     fault: F.ElectricLogic
-    ilim: F.SignalElectrical
+    ilim: F.ElectricSignal
 
     current_limit = L.p_field(
         units=P.A,
@@ -75,7 +75,7 @@ class Diodes_Incorporated_AP255x_x(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -89,9 +89,9 @@ class Diodes_Incorporated_AP255x_x(Module):
             mapping={
                 self.power_in.hv: ["IN"],
                 self.power_in.lv: ["GND"],
-                self.enable.signal: ["EN/EN#", "EN"],
-                self.fault.signal: ["FAULT#", "FAULT"],
-                self.ilim.signal: ["ILIM"],
+                self.enable.line: ["EN/EN#", "EN"],
+                self.fault.line: ["FAULT#", "FAULT"],
+                self.ilim.line: ["ILIM"],
                 self.power_out.hv: ["OUT"],
             },
             accept_prefix=False,
@@ -113,7 +113,7 @@ class Diodes_Incorporated_AP255x_x(Module):
             LVL(
                 mod_type=F.Resistor,
                 layout=LayoutNextTo(
-                    self.ilim.signal,
+                    self.ilim.line,
                     params=Params(
                         distance_between_pad_edges=1,
                         extra_rotation_of_footprint=90,

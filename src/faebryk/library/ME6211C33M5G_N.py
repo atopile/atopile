@@ -3,6 +3,7 @@
 
 import faebryk.library._F as F
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 
@@ -24,7 +25,7 @@ class ME6211C33M5G_N(F.LDO):
         if self._default_enabled:
             self.enable.set(True)
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
 
@@ -42,3 +43,12 @@ class ME6211C33M5G_N(F.LDO):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/1811131510_MICRONE-Nanjing-Micro-One-Elec-ME6211C33M5G-N_C82942.pdf"
     )
+
+    mfr = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "MICRONE(Nanjing Micro One Elec)",
+            DescriptiveProperties.partno: "ME6211C33M5G-N",
+        }
+    )
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C82942"})

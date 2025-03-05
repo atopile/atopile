@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from deprecated import deprecated
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import ParameterOperatable
@@ -45,7 +47,17 @@ class Diode(Module):
     anode: F.Electrical
     cathode: F.Electrical
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Diode)
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.Diode,
+            {
+                "forward_voltage": self.forward_voltage,
+                "reverse_working_voltage": self.reverse_working_voltage,
+                "reverse_leakage_current": self.reverse_leakage_current,
+                "max_current": self.max_current,
+            },
+        )
 
     @L.rt_field
     def can_bridge(self):
@@ -58,7 +70,7 @@ class Diode(Module):
             S(self.forward_voltage),
         )
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.D
     )
 
@@ -76,6 +88,7 @@ class Diode(Module):
     def __preinit__(self):
         self.current.constrain_le(self.max_current)
 
+    @deprecated(reason="Use parameter constraints instead")
     def get_needed_series_resistance_for_current_limit(
         self, input_voltage_V: ParameterOperatable
     ):

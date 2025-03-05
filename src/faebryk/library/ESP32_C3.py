@@ -30,7 +30,7 @@ class ESP32_C3(Module):
     uart = L.list_field(2, F.UART_Base)
     # ... etc
 
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
@@ -80,7 +80,7 @@ class ESP32_C3(Module):
         # rc delay circuit on enable pin for startup delay
         # https://www.espressif.com/sites/default/files/documentation/esp32-c3-mini-1_datasheet_en.pdf page 24  # noqa E501
         # TODO: add lowpass filter
-        # self.enable.signal.connect_via(
+        # self.enable.line.connect_via(
         #    self.en_rc_capacitor, self.pwr3v3.lv
         # )
         # FIXME: this has to be done in ReferenceDesign or parent
@@ -200,14 +200,14 @@ class ESP32_C3(Module):
     # def set_mux(self, gpio: F.ElectricLogic, target: F.ElectricLogic):
     #    """Careful not checked"""
     #    pin, _ = self.get_mux_pin(gpio)
-    #    self.pinmap[pin] = target.signal
+    #    self.pinmap[pin] = target.line
 
     # def get_mux_pin(self, target: F.ElectricLogic) -> tuple[str, int]:
     #    """Returns pin & gpio number"""
-    #    pin = [k for k, v in self.pinmap.items() if v == target.signal][0]
+    #    pin = [k for k, v in self.pinmap.items() if v == target.line][0]
     #    gpio = self.pinmap_default[pin]
     #    gpio_index = [
-    #        i for i, g in enumerate(self.gpio) if g.signal == gpio
+    #        i for i, g in enumerate(self.gpio) if g.line == gpio
     #    ][0]
     #    return pin, gpio_index
 

@@ -4,9 +4,10 @@ import logging
 from typing import TYPE_CHECKING, Annotated
 
 import typer
+from more_itertools import first
 
-from atopile import errors
 from atopile.config import config
+from faebryk.libs.app.pcb import open_pcb
 
 if TYPE_CHECKING:
     from faebryk.core.module import Module
@@ -34,7 +35,11 @@ def build(
     ] = None,
     keep_picked_parts: bool | None = None,
     keep_net_names: bool | None = None,
+    keep_designators: bool | None = None,
     standalone: bool = False,
+    open_layout: Annotated[
+        bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
+    ] = None,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -42,6 +47,7 @@ def build(
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
     from atopile import buildutil
+    from atopile.cli.install import check_missing_deps_or_offer_to_install
     from atopile.config import BuildType
     from faebryk.library import _F as F
     from faebryk.libs.exceptions import accumulate, log_user_errors
@@ -52,31 +58,16 @@ def build(
         target=target,
         option=option,
         standalone=standalone,
+        frozen=frozen,
+        keep_picked_parts=keep_picked_parts,
+        keep_net_names=keep_net_names,
+        keep_designators=keep_designators,
     )
 
-    for build_cfg in config.project.builds.values():
-        if keep_picked_parts is not None:
-            build_cfg.keep_picked_parts = keep_picked_parts
+    check_missing_deps_or_offer_to_install()
 
-        if keep_net_names is not None:
-            build_cfg.keep_net_names = keep_net_names
-
-        if frozen is not None:
-            build_cfg.frozen = frozen
-            if frozen:
-                if keep_picked_parts is False:  # is, ignores None
-                    raise errors.UserBadParameterError(
-                        "`--keep-picked-parts` conflict with `--frozen`"
-                    )
-
-                build_cfg.keep_picked_parts = True
-
-                if keep_net_names is False:  # is, ignores None
-                    raise errors.UserBadParameterError(
-                        "`--keep-net-names` conflict with `--frozen`"
-                    )
-
-                build_cfg.keep_net_names = True
+    if open_layout is not None:
+        config.project.open_layout_on_build = open_layout
 
     with accumulate() as accumulator:
         for build in config.builds:
@@ -97,6 +88,25 @@ def build(
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
+
+    if config.should_open_layout_on_build():
+        selected_build_names = list(config.selected_builds)
+        if len(selected_build_names) == 1:
+            build = config.project.builds[first(selected_build_names)]
+            try:
+                open_pcb(build.paths.layout)
+            except FileNotFoundError:
+                pass
+            except RuntimeError as e:
+                logger.info(
+                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
+                )
+
+        elif len(selected_build_names) > 1:
+            logger.warning(
+                "`--open` option is only supported when building "
+                "a single build. It will be ignored."
+            )
 
 
 def _init_python_app() -> "Module":

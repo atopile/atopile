@@ -27,7 +27,7 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     #                 traits
     # ----------------------------------------
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C97521"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -44,13 +44,13 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.qspi.chip_select.signal: ["CS#"],
-                self.qspi.data[0].signal: ["DO"],
-                self.qspi.data[2].signal: ["IO2"],
+                self.qspi.chip_select.line: ["CS#"],
+                self.qspi.data[0].line: ["DO"],
+                self.qspi.data[2].line: ["IO2"],
                 self.power.lv: ["GND"],
-                self.qspi.data[1].signal: ["DI"],
-                self.qspi.clock.signal: ["CLK"],
-                self.qspi.data[3].signal: ["IO3"],
+                self.qspi.data[1].line: ["DI"],
+                self.qspi.clock.line: ["CLK"],
+                self.qspi.data[3].line: ["IO3"],
                 self.power.hv: ["VCC"],
             },
             accept_prefix=False,

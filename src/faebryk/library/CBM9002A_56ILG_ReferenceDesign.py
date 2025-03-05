@@ -20,9 +20,9 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
         logic: F.ElectricLogic
 
         def __preinit__(self):
-            self.logic.signal.connect_via(self.diode, self.logic.reference.hv)
+            self.logic.line.connect_via(self.diode, self.logic.reference.hv)
             self.logic.pulled.pull(up=True, owner=self)
-            self.logic.signal.connect_via(self.cap, self.logic.reference.lv)
+            self.logic.line.connect_via(self.cap, self.logic.reference.lv)
 
             self.cap.capacitance.constrain_subset(
                 L.Range.from_center_rel(1 * P.uF, 0.05)

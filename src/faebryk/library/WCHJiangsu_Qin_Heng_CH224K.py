@@ -63,15 +63,15 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
     vbus_detect: F.ElectricLogic
     cfg = L.list_field(3, F.ElectricLogic)
     power_good: F.ElectricLogic
-    cc2: F.SignalElectrical
-    cc1: F.SignalElectrical
+    cc2: F.ElectricSignal
+    cc1: F.ElectricSignal
     usb: F.USB2_0_IF.Data
 
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
     lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C970725"})
-    designator_prefix = L.f_field(F.has_designator_prefix_defined)(
+    designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
     descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
@@ -89,15 +89,15 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
         return F.can_attach_to_footprint_via_pinmap(
             {
                 "1": self.power.hv,
-                "2": self.cfg[1].signal,
-                "3": self.cfg[2].signal,
-                "4": self.usb.p.signal,
-                "5": self.usb.n.signal,
-                "6": self.cc2.signal,
-                "7": self.cc1.signal,
-                "8": self.vbus_detect.signal,
-                "9": self.cfg[0].signal,
-                "10": self.power_good.signal,
+                "2": self.cfg[1].line,
+                "3": self.cfg[2].line,
+                "4": self.usb.p.line,
+                "5": self.usb.n.line,
+                "6": self.cc2.line,
+                "7": self.cc1.line,
+                "8": self.vbus_detect.line,
+                "9": self.cfg[0].line,
+                "10": self.power_good.line,
                 "11": self.power.lv,
             }
         )
