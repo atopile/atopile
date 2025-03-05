@@ -37,8 +37,8 @@ class QFN(F.Footprint):
     def pins(self):
         return times(self._pin_cnt, F.Pad)
 
-    equal_pins: F.has_equal_pins_in_ifs
-    attach_via_pinmap: F.can_attach_via_pinmap_equal
+    equal_pins: F.Footprint.has_equal_pins
+    attach_via_pinmap: F.Footprint.can_attach_via_pinmap_equal
 
     @L.rt_field
     def kicad_footprint(self):
