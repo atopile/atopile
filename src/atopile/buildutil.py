@@ -81,7 +81,7 @@ def build(app: Module) -> None:
     G = app.get_graph()
     solver = _get_solver()
 
-    with ProgressStage("Running pre-build checks"):
+    with ProgressStage("prebuild", "Running pre-build checks"):
         if not SKIP_SOLVING:
             logger.info("Resolving bus parameters")
             try:
@@ -103,18 +103,18 @@ def build(app: Module) -> None:
         # Make sure the footprint libraries we're looking for exist
         consolidate_footprints(app)
 
-    with ProgressStage("Loading PCB"):
+    with ProgressStage("load-pcb", "Loading PCB"):
         pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
         transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
         load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
-    with ProgressStage("Solving for parameters"):
+    with ProgressStage("solver", "Solving for parameters"):
         parameters = app.get_children(False, types=Parameter)
         if parameters:
             logger.info("Simplifying parameter graph")
             solver.simplify(*parameters)
 
-    with ProgressStage("Picking components"):
+    with ProgressStage("picker", "Picking components"):
         if config.build.keep_picked_parts:
             load_descriptive_properties(G)
         try:
@@ -125,14 +125,14 @@ def build(app: Module) -> None:
                 [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
             ) from ex
 
-    with ProgressStage("Handling footprints"):
+    with ProgressStage("footprints", "Handling footprints"):
         # Use standard footprints for known packages regardless of
         # what's otherwise been specified.
         # FIXME: this currently includes explicitly set footprints, but shouldn't
         F.has_package.standardize_footprints(app, solver)
         create_footprint_library(app)
 
-    with ProgressStage("Preparing nets"):
+    with ProgressStage("nets", "Preparing nets"):
         attach_random_designators(G)
         nets = attach_nets(G)
         # We have to re-attach the footprints, and subsequently nets, because the first
@@ -145,7 +145,7 @@ def build(app: Module) -> None:
         attach_net_names(nets)
         check_net_names(G)
 
-    with ProgressStage("Updating PCB"):
+    with ProgressStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb)
         transformer.apply_design(config.build.paths.fp_lib_table)
         transformer.check_unattached_fps()
@@ -223,7 +223,7 @@ def build(app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            with ProgressStage(f"Building '{target_name}'"):
+            with ProgressStage(f"target-{target_name}", f"Building '{target_name}'"):
                 with accumulator.collect():
                     muster.targets[target_name](app, solver)
                 built_targets.append(target_name)

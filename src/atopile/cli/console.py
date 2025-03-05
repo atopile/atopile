@@ -24,8 +24,11 @@ _STAGE_FAILURE = "[red]✗[/red]"
 class ProgressStage:
     # TODO: smarter indenting
 
-    def __init__(self, name: str, max_log_messages: int = 15, indent: int = 20):
+    def __init__(
+        self, name: str, description: str, max_log_messages: int = 15, indent: int = 20
+    ):
         self.name = name
+        self.description = description
         self.indent = indent
         self._console = error_console
         self._spinner = Spinner("dots")
@@ -39,7 +42,7 @@ class ProgressStage:
     def _render_status(self) -> RenderableType:
         pad = (0, 0, 0, self.indent)  # (top, right, bottom, left)
         spinner_with_text = Padding(
-            Columns([self._spinner, Text(self.name)], padding=(0, 1)), pad
+            Columns([self._spinner, Text(self.description)], padding=(0, 1)), pad
         )
 
         if self._log_messages:
@@ -57,7 +60,7 @@ class ProgressStage:
         self._restore_logging()
         self._live.stop()
         indicator = _STAGE_SUCCESS if exc_type is None else _STAGE_FAILURE
-        self._console.print(f"{' ' * self.indent}{indicator} {self.name}")
+        self._console.print(f"{' ' * self.indent}{indicator} {self.description}")
 
     def _setup_logging(self) -> None:
         # TODO: contextvar?
