@@ -116,7 +116,7 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
-def duplicates(it, key):
+def duplicates[T, U](it: Iterable[T], key: Callable[[T], U]) -> dict[U, list[T]]:
     return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
 
 
@@ -1336,6 +1336,7 @@ def abstract[T: type](cls: T) -> T:
         return old_new(cls_, *args, **kwargs)
 
     cls.__new__ = _new
+    cls.__is_abstract__ = cls
     return cls
 
 
@@ -1351,6 +1352,10 @@ def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
             dict_value_visitor(v, visitor)
         else:
             d[k] = visitor(k, v)
+
+
+def invert_dict[T, U](d: dict[T, U]) -> dict[U, list[T]]:
+    return groupby(d.keys(), key=lambda k: d[k])
 
 
 class DefaultFactoryDict[T, U](dict[T, U]):
@@ -1382,8 +1387,10 @@ class EquivalenceClasses[T: Hashable]:
     def is_eq(self, a: T, b: T) -> bool:
         return self.classes[a] is self.classes[b]
 
-    def get(self) -> list[set[T]]:
+    def get(self, only_multi: bool = False) -> list[set[T]]:
         sets = {id(s): s for s in self.classes.values()}
+        if only_multi:
+            sets = {k: v for k, v in sets.items() if len(v) > 1}
         return list(sets.values())
 
 
@@ -1426,6 +1433,7 @@ def run_live(
     *args,
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
+    check: bool = True,
     **kwargs,
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1466,7 +1474,7 @@ def run_live(
     process.wait()
 
     # Get return code and check for errors
-    if process.returncode != 0:
+    if process.returncode != 0 and check:
         raise subprocess.CalledProcessError(
             process.returncode, args[0], "".join(stdout_lines), "".join(stderr_lines)
         )
@@ -1921,3 +1929,10 @@ def repo_root() -> Path:
             raise FileNotFoundError("Could not find repo root")
     else:
         return repo_root
+
+
+def is_numeric_str(s: str) -> bool:
+    """
+    Check if a string is a numeric string.
+    """
+    return s.replace(".", "").strip().isnumeric()

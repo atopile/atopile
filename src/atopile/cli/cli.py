@@ -106,6 +106,9 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    # FIXME: this won't work properly when configs
+    # are reloaded from a pointed-to file (eg in `ato build path/to/file`)
+    # from outside a project directory
     if non_interactive is not None:
         config.interactive = not non_interactive
 

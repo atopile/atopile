@@ -6,8 +6,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
 
-from more_itertools import first
-
 from atopile import layout
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
@@ -44,6 +42,7 @@ from faebryk.libs.app.designators import (
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
+    check_net_names,
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
@@ -105,13 +104,13 @@ def build(app: Module) -> None:
     # Load PCB / cached --------------------------------------------------------
     pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
     transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-    load_designators(G, attach=True)
+    load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
     # Pre-run solver -----------------------------------------------------------
     parameters = app.get_children(False, types=Parameter)
     if parameters:
         logger.info("Simplifying parameter graph")
-        solver.inspect_get_known_supersets(first(parameters), force_update=True)
+        solver.simplify(*parameters)
 
     # Pickers ------------------------------------------------------------------
     if config.build.keep_picked_parts:
@@ -142,6 +141,7 @@ def build(app: Module) -> None:
     if config.build.keep_net_names:
         load_net_names(G)
     attach_net_names(nets)
+    check_net_names(G)
 
     # Update PCB --------------------------------------------------------------
     logger.info("Updating PCB")

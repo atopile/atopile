@@ -369,30 +369,30 @@ To manage the combinatorial complexity of this search, we employ several strateg
 Constraint solving is fundamental to atopile's operation. It enables part picking, design verification, abstraction, modularity, collaboration, and code reuse. While essential, it's also computationally challenging due to the large number of constraints in typical designs.
 
 The solver combines constraint solving with computer algebra and (planned) optimization. It operates in these theoretical stages:
- 1. Non-destructive canonicalization
- 2. Non-destructive symbolic solving
- 3. Destructive symbolic solving
- 4. Destructive symbolic optimization
- 5. Destructive numerical solving
- 6. Destructive numerical optimization
+ 1. Non-terminal canonicalization
+ 2. Non-terminal symbolic solving
+ 3. Terminal symbolic solving
+ 4. Terminal symbolic optimization
+ 5. Terminal numerical solving
+ 6. Terminal numerical optimization
 
 Currently, only phases 1-3 are implemented, which suffice for most needs. Phases 2 and 3 are currently combined.
 
-"Destructive" means the solver can assume no new constraints will be added:
+"Terminal" means the solver can assume no new constraints will be added:
 ```
 A, B = Parameter(), Parameter()
 (A >= B).constrain()
 
-# non-destructive: no action possible
+# non-terminal: no action possible
 
-# destructive
+# terminal
 # Since A and B are unconstrained, we can satisfy A >= B
 # by setting them equal, so we can conclude (A>=B) is True
 ```
 
 Phases 2/3 iterate through available `algorithms` until no algorithm produces changes in an iteration.
 
-Most symbolic algorithms are in [analytical.py](../../core/solver/analytical.py). The `idempotent_deduplicate` algorithm provides a good starting point for understanding the system.
+Most symbolic algorithms are in [symbolic/](../../core/solver/symbolic/). The `idempotent_deduplicate` algorithm provides a good starting point for understanding the system.
 
 ## Optimization - WIP
 When working with a specification like `100kOhm +/-10%`, multiple optimization goals are possible:

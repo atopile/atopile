@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 IMPLIED_PATHS = ConfigFlag("IMPLIED_PATHS", default=False, descr="Use implied paths")
 
+type Bridgable[T: "ModuleInterface"] = Node | T
+
 
 class ModuleInterface(Node):
     class TraitT(Trait): ...
@@ -87,12 +89,30 @@ class ModuleInterface(Node):
     def connect(
         self: Self, *other: Self, link: type[Link] | Link | None = None
     ) -> Self:
-        if not {type(o) for o in other}.issubset({type(self)}):
-            raise NodeException(
-                self,
-                f"Can only connect modules of same type: {{{type(self)}}},"
-                f" got {{{','.join(str(type(o)) for o in other)}}}",
-            )
+        mismatched = [o for o in other if type(o) is not type(self)]
+        if mismatched:
+            if len(mismatched) == 1:
+                raise NodeException(
+                    self,
+                    (
+                        f"Cannot connect module {self} (type {type(self).__name__}) "
+                        f"with module {mismatched[0]} "
+                        f"(type {type(mismatched[0]).__name__}). "
+                        "Modules must be of the same type."
+                    ),
+                )
+            else:
+                mismatches_str = ", ".join(
+                    f"{m} (type {type(m).__name__})" for m in mismatched
+                )
+                raise NodeException(
+                    self,
+                    (
+                        f"Cannot connect module {self} (type {type(self).__name__}) "
+                        f"with modules: {mismatches_str}. "
+                        "Modules must be of the same type."
+                    ),
+                )
 
         # TODO: consider returning self always
         # - con: if construcing anonymous stuff in connection no ref
@@ -116,15 +136,23 @@ class ModuleInterface(Node):
 
         return ret
 
-    def connect_via(self, bridge: Node | Sequence[Node], *other: Self, link=None):
+    def connect_via(
+        self,
+        bridge: Bridgable[Self] | Sequence[Bridgable[Self]],
+        *other: Self,
+        link=None,
+    ):
         from faebryk.library.can_bridge import can_bridge
 
-        bridges = [bridge] if isinstance(bridge, Node) else bridge
+        bridges = [bridge] if isinstance(bridge, Node | ModuleInterface) else bridge
         intf = self
         for sub_bridge in bridges:
-            t = sub_bridge.get_trait(can_bridge)
-            intf.connect(t.get_in(), link=link)
-            intf = t.get_out()
+            if isinstance(sub_bridge, type(self)):
+                intf.connect(sub_bridge, link=link)
+            else:
+                t = sub_bridge.get_trait(can_bridge)
+                intf.connect(t.get_in(), link=link)
+                intf = t.get_out()
 
         intf.connect(*other, link=link)
 

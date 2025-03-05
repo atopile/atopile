@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -358,7 +357,10 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
     def get_operations[T: "Expression"](
-        self, types: type[T] | None = None, constrained_only: bool = False
+        self,
+        types: type[T] | None = None,
+        constrained_only: bool = False,
+        recursive: bool = False,
     ) -> set[T]:
         if types is None:
             types = Expression  # type: ignore
@@ -366,6 +368,9 @@ class ParameterOperatable(Node):
         assert issubclass(types, Expression)
 
         out = cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
+        if recursive:
+            for o in list(out):
+                out.update(o.get_operations(recursive=True))
         if constrained_only:
             assert issubclass(types, ConstrainableExpression)
             out = {i for i in out if cast(ConstrainableExpression, i).constrained}
@@ -389,12 +394,12 @@ class ParameterOperatable(Node):
                 literals = find(
                     lit
                     for op in ops
-                    for (i, lit) in op.get_literal_operands().items()
+                    for (i, lit) in op.get_operand_literals().items()
                     if i > 0
                 )
             else:
                 literals = find(
-                    lit for op in ops for (_, lit) in op.get_literal_operands().items()
+                    lit for op in ops for (_, lit) in op.get_operand_literals().items()
                 )
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
@@ -474,7 +479,9 @@ class ParameterOperatable(Node):
             return hash(id(self))
 
     @once
-    def compact_repr(self, context: ReprContext | None = None) -> str:
+    def compact_repr(
+        self, context: ReprContext | None = None, use_name: bool = False
+    ) -> str:
         raise NotImplementedError()
 
     # TODO move to Expression
@@ -512,9 +519,6 @@ class ParameterOperatable(Node):
         except KeyErrorAmbiguous as e:
             out = f"{{AMBIGUOUS: {e.duplicates}}}"
         return out
-
-    def __rich_repr__(self):
-        yield self.compact_repr()
 
 
 def has_implicit_constraints_recursive(po: ParameterOperatable.All) -> bool:
@@ -572,7 +576,7 @@ class Expression(ParameterOperatable):
         allow_uncorrelated: bool = False,
         check_constrained: bool = True,
     ) -> bool:
-        if self == other:
+        if self is other:
             return True
         if type(self) is not type(other):
             return False
@@ -663,29 +667,40 @@ class Expression(ParameterOperatable):
     def domain(self) -> "Domain":
         return self._domain
 
-    def get_operatable_operands[T: ParameterOperatable](
-        self, types: type[T] = ParameterOperatable
+    def get_operand_operatables[T: ParameterOperatable](
+        self, types: type[T] = ParameterOperatable, recursive: bool = False
     ) -> set[T]:
-        return cast(
-            set[T],
-            self.operates_on.get_connected_nodes(types=[types]),
-        )
+        out = set(self.operatable_operands)
+        if recursive:
+            for o in list(out):
+                if not isinstance(o, Expression):
+                    continue
+                out.update(o.get_operand_operatables(recursive=True))
+        if types is not ParameterOperatable:
+            out = {o for o in out if isinstance(o, types)}
+        return cast(set[T], out)
 
-    def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
+    def get_operand_expressions(self, recursive: bool = False) -> set["Expression"]:
+        return self.get_operand_operatables(Expression, recursive=recursive)
+
+    def get_operand_parameters(self, recursive: bool = False) -> set["Parameter"]:
+        return self.get_operand_operatables(Parameter, recursive=recursive)
+
+    def get_operand_literals(self) -> dict[int, ParameterOperatable.Literal]:
         return {
             i: o
             for i, o in enumerate(self.operands)
             if ParameterOperatable.is_literal(o)
         }
 
-    def get_involved_parameters(self) -> Counter["Parameter"]:
-        params = [p for p in self.operands if isinstance(p, Parameter)] + [
-            p
-            for expr in self.operands
-            if isinstance(expr, Expression)
-            for p in expr.get_involved_parameters()
-        ]
-        return Counter(params)
+    def get_operand_leaves_operatable(self) -> set[ParameterOperatable]:
+        ops = self.get_operand_operatables(recursive=True)
+        return {
+            o
+            for o in ops
+            if not isinstance(o, Expression)
+            or not o.get_operand_operatables(recursive=False)
+        }
 
     def depth(self) -> int:
         """
@@ -754,7 +769,9 @@ class Expression(ParameterOperatable):
     REPR_STYLE: ReprStyle = ReprStyle()
 
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        use_name: bool = False,
     ) -> str:
         if context is None:
             context = ParameterOperatable.ReprContext()
@@ -777,7 +794,7 @@ class Expression(ParameterOperatable):
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
                 return str(op)
-            op_out = op.compact_repr(context)
+            op_out = op.compact_repr(context, use_name=use_name)
             if isinstance(op, Expression) and len(op.operands) > 1:
                 op_out = f"({op_out})"
             return op_out
@@ -823,6 +840,12 @@ class Expression(ParameterOperatable):
         # out += self._get_lit_suffix()
 
         return out
+
+    def __rich_repr__(self):
+        if not self._is_setup:
+            yield f"{type(self)}(not init)"
+        else:
+            yield self.compact_repr()
 
 
 @abstract
@@ -1048,6 +1071,13 @@ class Log(Arithmetic):
             raise ValueError("operand must have dimensionless unit")
         self.units = unit
 
+        # TODO, be careful makes solver run forever like this
+        # implicit constraint
+        # if isinstance(operand, ParameterOperatable):
+        #    operand.constrain_ge(lit(0))
+        # elif Quantity_Interval_Disjoint.from_value(operand).min_elem < 0:
+        #    raise ValueError("operand must be non-negative")
+
     def has_implicit_constraint(self) -> bool:
         return True  # non-negative
 
@@ -1170,7 +1200,13 @@ class Max(Arithmetic):
         return False
 
 
-class Integrate(Arithmetic):
+@abstract
+class Functional(Arithmetic):
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+
+
+class Integrate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="∫",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
@@ -1184,7 +1220,7 @@ class Integrate(Arithmetic):
         return False
 
 
-class Differentiate(Arithmetic):
+class Differentiate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="d",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
@@ -1715,7 +1751,9 @@ class Parameter(ParameterOperatable):
 
     @once
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        use_name: bool = False,
     ) -> str:
         """
         Unit only printed if not dimensionless.
@@ -1748,16 +1786,18 @@ class Parameter(ParameterOperatable):
                 param_id // len(alphabet)
             )
 
-        if context is None:
-            context = ParameterOperatable.ReprContext()
-
-        if self not in context.variable_mapping.mapping:
-            next_id = context.variable_mapping.next_id
-            context.variable_mapping.mapping[self] = next_id
-            context.variable_mapping.next_id += 1
+        if use_name and self.get_parent() is not None:
+            letter = self.get_full_name()
+        else:
+            if context is None:
+                context = ParameterOperatable.ReprContext()
+            if self not in context.variable_mapping.mapping:
+                next_id = context.variable_mapping.next_id
+                context.variable_mapping.mapping[self] = next_id
+                context.variable_mapping.next_id += 1
+            letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         unitstr = f" {self.units}" if self.units != dimensionless else ""
-        letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         out = f"{letter}{unitstr}"
         out += self._get_lit_suffix()
@@ -1768,7 +1808,7 @@ class Parameter(ParameterOperatable):
         return self.domain.unbounded(self)
 
     def get_last_known_deduced_superset(self, solver: "Solver") -> P_Set | None:
-        as_literal = solver.inspect_get_known_supersets(self, force_update=False)
+        as_literal = solver.inspect_get_known_supersets(self)
         return None if as_literal == self.domain_set() else as_literal
 
 
@@ -1807,3 +1847,24 @@ UnaryIdentity = Add | Multiply | Or | Union | Intersection
 FullyAssociative = Add | Multiply | Or | Union | Intersection
 Associative = FullyAssociative
 Involutory = Not
+
+
+# python help --------------------------------------------------------------------------
+CanonicalExpressionR = (
+    Add,
+    Multiply,
+    Power,
+    Round,
+    Abs,
+    Sin,
+    Log,
+    Or,
+    Not,
+    Intersection,
+    Union,
+    SymmetricDifference,
+    Is,
+    GreaterOrEqual,
+    GreaterThan,
+    IsSubset,
+)

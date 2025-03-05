@@ -137,11 +137,9 @@ from faebryk.library.has_package import has_package
 from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Potentiometer import Potentiometer
-from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
-from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.MultiCapacitor import MultiCapacitor
@@ -155,6 +153,7 @@ from faebryk.library.Comparator import Comparator
 from faebryk.library.ElectricSignal import ElectricSignal
 from faebryk.library.Fan import Fan
 from faebryk.library.LED import LED
+from faebryk.library.NetTie import NetTie
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay
@@ -166,6 +165,7 @@ from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
+from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
 from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.PoweredLED import PoweredLED
@@ -196,6 +196,7 @@ from faebryk.library.XL_3528RGBW_WS2812B import XL_3528RGBW_WS2812B
 from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.pf_74AHCT2G125 import pf_74AHCT2G125
 from faebryk.library.TPS2116 import TPS2116
+from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
@@ -228,6 +229,7 @@ from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.WCHJiangsu_Qin_Heng_CH224K import WCHJiangsu_Qin_Heng_CH224K
 from faebryk.library.can_switch_power_defined import can_switch_power_defined
+from faebryk.library.TPS2116_ReferenceDesign import TPS2116_ReferenceDesign
 from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
 from faebryk.library.CD4011 import CD4011
 from faebryk.library.ME6211C33M5G_N import ME6211C33M5G_N

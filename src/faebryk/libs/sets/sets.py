@@ -3,13 +3,19 @@
 
 from collections.abc import Iterable, Iterator
 from enum import Enum
-from typing import Any, Protocol, override, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, overload, override, runtime_checkable
 
 from faebryk.libs.units import Unit, dimensionless
 from faebryk.libs.util import (
     Serializable,
     SerializableEnum,
 )
+
+if TYPE_CHECKING:
+    from faebryk.libs.sets.quantity_sets import (
+        Quantity_Interval_Disjoint,
+        QuantitySetLike,
+    )
 
 
 # Protocols ----------------------------------------------------------------------------
@@ -285,3 +291,20 @@ class EnumSet[E: Enum](PlainSet[SerializableEnum.Value[E]]):
     def deserialize_pset(cls, data: dict):
         enum = SerializableEnum.deserialize(data["enum"])
         return cls(*(enum.deserialize_value(e) for e in data["elements"]), enum)
+
+
+# Helpers ------------------------------------------------------------------------------
+@overload
+def as_lit(x: BoolSetLike) -> BoolSet: ...
+
+
+@overload
+def as_lit(x: "QuantitySetLike") -> "Quantity_Interval_Disjoint": ...
+
+
+@overload
+def as_lit(x: Enum) -> EnumSet: ...
+
+
+def as_lit(x):
+    return P_Set.from_value(x)
