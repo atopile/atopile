@@ -14,6 +14,7 @@ from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.spinner import Spinner
+from rich.table import Table
 from rich.text import Text
 from rich.traceback import Traceback
 
@@ -22,10 +23,7 @@ import faebryk
 import faebryk.libs
 import faebryk.libs.logging
 from atopile.config import config
-from atopile.errors import (
-    UserPythonModuleError,
-    _BaseBaseUserException,
-)
+from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 
 from . import console
 
@@ -243,6 +241,13 @@ class LoggingStage:
     _INDICATOR_SUCCESS = "[green]✓[/green]"
     _INDICATOR_FAILURE = "[red]✗[/red]"
 
+    _LOG_LEVELS = {
+        logging.DEBUG: "debug",
+        logging.INFO: "info",
+        logging.WARNING: "warning",
+        logging.ERROR: "error",
+    }
+
     def __init__(
         self, name: str, description: str, max_log_messages: int = 15, indent: int = 20
     ):
@@ -252,12 +257,13 @@ class LoggingStage:
         self._console = console.error_console
         self._spinner = Spinner("dots")
         self._log_messages = deque(maxlen=max_log_messages)
-
+        self._warning_count = 0
+        self._info_log_path = None
         self._log_handler = None
         self._file_handlers = []
         self._original_handlers = {}
-
         self._live = Live(self._render_status(), console=self._console, transient=True)
+        self._sanitized_name = pathvalidate.sanitize_filename(self.name)
 
     def _render_status(self) -> RenderableType:
         pad = (0, 0, 0, self.indent)  # (top, right, bottom, left)
@@ -279,15 +285,43 @@ class LoggingStage:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._restore_logging()
         self._live.stop()
+
         indicator = (
             self._INDICATOR_SUCCESS if exc_type is None else self._INDICATOR_FAILURE
         )
-        self._console.print(f"{' ' * self.indent}{indicator} {self.description}")
+        status_text = f"{' ' * self.indent}{indicator} {self.description}"
+
+        if self._warning_count > 0:
+            plural = "s" if self._warning_count > 1 else ""
+            status_text += f" ([yellow]{self._warning_count} warning{plural}[/yellow])"
+
+        if self._info_log_path:
+            table = Table.grid(padding=0, expand=True)
+            table.add_column()
+            table.add_column(justify="right")
+            table.add_row(status_text, f"[dim]{self._info_log_path}[/dim]")
+            self._console.print(table)
+        else:
+            self._console.print(status_text)
+
+    def _create_log_dir(self) -> Path:
+        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_dir = Path(config.project.paths.logs) / now
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        latest_link = Path(config.project.paths.logs) / "latest"
+        if latest_link.exists():
+            if latest_link.is_symlink():
+                latest_link.unlink()
+            else:
+                shutil.rmtree(latest_link)
+        latest_link.symlink_to(log_dir, target_is_directory=True)
+
+        return log_dir
 
     def _setup_logging(self) -> None:
-        # TODO: contextvar?
-
         root_logger = logging.getLogger()
+
         self._original_level = root_logger.level
         self._original_handlers = {"root": root_logger.handlers.copy()}
 
@@ -306,6 +340,7 @@ class LoggingStage:
                         if record.levelno >= logging.ERROR:
                             formatted_msg = f"{indent_str}[bold red]ERROR[/bold red]   {record.getMessage()}"
                         elif record.levelno >= logging.WARNING:
+                            self.status._warning_count += 1
                             formatted_msg = f"{indent_str}[yellow]WARNING[/yellow] {record.getMessage()}"
                         else:
                             formatted_msg = f"{indent_str}[blue]INFO[/blue]    {record.getMessage()}"
@@ -317,18 +352,7 @@ class LoggingStage:
 
         self._log_handler = LiveStatusHandler(self)
 
-        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        log_dir = Path(config.project.paths.logs) / now
-        log_dir.mkdir(parents=True, exist_ok=True)
-
-        latest_link = Path(config.project.paths.logs) / "latest"
-        if latest_link.exists():
-            if latest_link.is_symlink():
-                latest_link.unlink()
-            else:
-                shutil.rmtree(latest_link)
-        latest_link.symlink_to(log_dir, target_is_directory=True)
-
+        log_dir = self._create_log_dir()
         formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
@@ -337,18 +361,15 @@ class LoggingStage:
             root_logger.removeHandler(handler)
 
         root_logger.addHandler(self._log_handler)
-        self._file_handlers = []
-        log_levels = {
-            logging.DEBUG: "debug",
-            logging.INFO: "info",
-            logging.WARNING: "warning",
-            logging.ERROR: "error",
-        }
 
-        sanitized_name = pathvalidate.sanitize_filename(self.name)
-        for level, level_name in log_levels.items():
-            log_file = log_dir / f"{sanitized_name}.{level_name}.log"
+        self._file_handlers = []
+
+        for level, level_name in self._LOG_LEVELS.items():
+            log_file = log_dir / f"{self._sanitized_name}.{level_name}.log"
             file_handler = logging.FileHandler(log_file, mode="w")
+
+            if level_name == "info":
+                self._info_log_path = log_file
 
             def filter_for_level(record, lvl=level):
                 return record.levelno >= lvl
