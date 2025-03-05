@@ -255,16 +255,17 @@ class LiveLogHandler(LogHandler):
         self.status = status
 
     def emit(self, record: logging.LogRecord) -> None:
-        if (log_renderable := self._prepare_emit(record)) is None:
-            return
-
-        if record.levelno >= logging.WARNING:
-            self.status._warning_count += 1
-
         try:
-            dim_renderable = Styled(log_renderable, style=Style(dim=True))
-            self.status._log_messages.append(dim_renderable)
-            self.status._live.update(self.status._render_status())
+            if (log_renderable := self._prepare_emit(record)) is None:
+                self.status._live.update(self.status._render_status())
+                return
+
+            if record.levelno >= logging.WARNING:
+                self.status._warning_count += 1
+            self.status._log_messages.append(
+                Styled(log_renderable, style=Style(dim=True))
+            )
+            self.status._live.update(self.status._render_status(), refresh=True)
         except Exception:
             self.handleError(record)
 
@@ -294,7 +295,14 @@ class LoggingStage:
         self._log_handler = None
         self._file_handlers = []
         self._original_handlers = {}
-        self._live = Live(self._render_status(), console=self._console, transient=True)
+        self._live = Live(
+            self._render_status(),
+            console=self._console,
+            transient=True,
+            auto_refresh=True,
+            refresh_per_second=10,
+            vertical_overflow="visible",
+        )
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
 
     def _render_status(self) -> RenderableType:
