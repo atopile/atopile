@@ -154,7 +154,7 @@ def test_performance_pick_rc_formulas():
 
         timings.add_seperator()
         for algo in get_algorithms():
-            timings.make_group("Total " + algo.name, lambda k: algo.name in k)
+            timings.make_group("Total " + algo.name, lambda k: algo.name + " " in k)
         timings.add_seperator()
         for i in [None, True, False]:
             for j in [None, True, False]:
