@@ -38,7 +38,7 @@ class ResistorVoltageDivider(Module):
 
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.power.hv, self.power.lv)
+        return F.can_bridge_defined(self.power.hv, self.output.line)
 
     def __preinit__(self):
         # Connections
