@@ -277,7 +277,7 @@ class LoggingStage:
     }
 
     def __init__(
-        self, name: str, description: str, max_log_messages: int = 15, indent: int = 20
+        self, name: str, description: str, max_log_messages: int = 5, indent: int = 20
     ):
         self.name = name
         self.description = description
