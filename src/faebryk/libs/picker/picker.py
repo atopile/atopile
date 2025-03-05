@@ -370,10 +370,10 @@ def pick_part_recursively(module: Module, solver: Solver):
 
     check_missing_picks(module)
 
-    pp = PickerProgress(pick_tree)
+    # pp = PickerProgress(pick_tree)
     try:
-        with pp.context():
-            pick_topologically(pick_tree, solver, pp)
+        # with pp.context():
+        pick_topologically(pick_tree, solver)
     # FIXME: This does not get called anymore
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
