@@ -43,11 +43,20 @@ class LogHandler(RichHandler):
     def __init__(
         self,
         *args,
-        tracebacks_suppress_map: dict[type[BaseException], list[ModuleType]]
-        | None = None,
-        tracebacks_unwrap: list[type[BaseException]] | None = None,
-        hide_traceback_types: tuple[type[BaseException], ...] = (),
-        always_show_traceback_types: tuple[type[BaseException], ...] = (),
+        console: Console,
+        rich_tracebacks: bool = True,
+        show_path: bool = False,
+        tracebacks_suppress: list[str] | None = ["typer"],
+        tracebacks_suppress_map: dict[type[BaseException], list[ModuleType]] | None = {
+            UserPythonModuleError: [atopile, faebryk]
+        },
+        tracebacks_unwrap: list[type[BaseException]] | None = [UserPythonModuleError],
+        hide_traceback_types: tuple[type[BaseException], ...] = (
+            _BaseBaseUserException,
+        ),
+        always_show_traceback_types: tuple[type[BaseException], ...] = (
+            UserPythonModuleError,
+        ),
         traceback_level: int = logging.ERROR,
         **kwargs,
     ):
@@ -182,13 +191,15 @@ class LogHandler(RichHandler):
 
         return exc
 
-    def emit(self, record: logging.LogRecord) -> None:
-        """Invoked by logging."""
+    def _prepare_emit(self, record: logging.LogRecord) -> None | ConsoleRenderable:
         hashable = self._get_hashable(record)
 
-        if hashable and hashable in _logged_exceptions:
-            # we've already logged this
-            return
+        if hashable:
+            if hashable in _logged_exceptions:
+                # we've already logged this
+                return
+            else:
+                _logged_exceptions.add(hashable)
 
         traceback = self._get_traceback(record)
 
@@ -206,6 +217,14 @@ class LogHandler(RichHandler):
         log_renderable = self.render(
             record=record, traceback=traceback, message_renderable=message_renderable
         )
+
+        return log_renderable
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Invoked by logging."""
+        if (log_renderable := self._prepare_emit(record)) is None:
+            return
+
         if isinstance(self.console.file, NullFile):
             # Handles pythonw, where stdout/stderr are null, and we return NullFile
             # instance from Console.file. In this case, we still want to make a log record # noqa: E501  # pre-existing
@@ -216,23 +235,6 @@ class LogHandler(RichHandler):
                 self.console.print(log_renderable, highlight=True)
             except Exception:
                 self.handleError(record)
-
-        if hashable:
-            _logged_exceptions.add(hashable)
-
-
-def _build_handler(console: Console):
-    return LogHandler(
-        console=console,
-        rich_tracebacks=True,
-        show_path=False,
-        tracebacks_suppress=["typer"],
-        tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
-        tracebacks_unwrap=[UserPythonModuleError],
-        hide_traceback_types=(_BaseBaseUserException,),
-        always_show_traceback_types=(UserPythonModuleError,),
-        traceback_level=logging.ERROR,
-    )
 
 
 class LoggingStage:
@@ -272,8 +274,7 @@ class LoggingStage:
         )
 
         if self._log_messages:
-            log_renderables = [Text.from_markup(msg) for msg in self._log_messages]
-            return Group(spinner_with_text, *log_renderables)
+            return Group(spinner_with_text, *self._log_messages)
 
         return spinner_with_text
 
@@ -327,30 +328,31 @@ class LoggingStage:
 
         root_logger.setLevel(logging.DEBUG)
 
-        class LiveStatusHandler(logging.Handler):
-            def __init__(self, status: "LoggingStage"):
-                super().__init__()
+        class LiveLogHandler(LogHandler):
+            def __init__(self, status: "LoggingStage", *args, **kwargs):
+                super().__init__(*args, console=status._console, **kwargs)
                 self.status = status
 
             def emit(self, record: logging.LogRecord) -> None:
+                if (log_renderable := self._prepare_emit(record)) is None:
+                    return
+
+                if record.levelno >= logging.WARNING:
+                    self.status._warning_count += 1
+
                 try:
-                    indent_str = " " * self.status.indent
-
-                    if record.levelno >= logging.INFO:
-                        if record.levelno >= logging.ERROR:
-                            formatted_msg = f"{indent_str}[bold red]ERROR[/bold red]   {record.getMessage()}"
-                        elif record.levelno >= logging.WARNING:
-                            self.status._warning_count += 1
-                            formatted_msg = f"{indent_str}[yellow]WARNING[/yellow] {record.getMessage()}"
-                        else:
-                            formatted_msg = f"{indent_str}[blue]INFO[/blue]    {record.getMessage()}"
-
-                        self.status._add_log_message(formatted_msg)
-
+                    self.status._log_messages.append(log_renderable)
+                    self.status._live.update(self.status._render_status())
                 except Exception:
                     self.handleError(record)
 
-        self._log_handler = LiveStatusHandler(self)
+        self._log_handler = LiveLogHandler(self)
+        self._log_handler.setFormatter(
+            logging.Formatter(f"{' ' * self.indent}%(message)s", datefmt="[%X]")
+        )
+        self._log_handler.addFilter(
+            lambda record: record.levelno >= self._original_level
+        )
 
         log_dir = self._create_log_dir()
         formatter = logging.Formatter(
@@ -371,10 +373,7 @@ class LoggingStage:
             if level_name == "info":
                 self._info_log_path = log_file
 
-            def filter_for_level(record, lvl=level):
-                return record.levelno >= lvl
-
-            file_handler.addFilter(filter_for_level)
+            file_handler.addFilter(lambda record: record.levelno >= level)
             file_handler.setLevel(level)
             file_handler.setFormatter(formatter)
 
@@ -406,14 +405,10 @@ class LoggingStage:
         self._log_handler = None
         self._file_handlers = []
 
-    def _add_log_message(self, message: str) -> None:
-        self._log_messages.append(message)
-        self._live.update(self._render_status())
-
 
 logger = logging.getLogger(__name__)
 
-handler = _build_handler(console.error_console)
+handler = LogHandler(console=console.error_console)
 
 handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
 
