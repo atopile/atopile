@@ -229,7 +229,7 @@ def _get_compatible_parameters(
     try:
         get_raw(c.lcsc_display)
     except LCSC_NoDataException as e:
-        raise NotCompatibleException from e
+        raise NotCompatibleException(module, c) from e
 
     design_params = module.get_trait(F.is_pickable_by_type).get_parameters()
     component_params = c.attribute_literals
@@ -268,7 +268,7 @@ def _get_compatible_parameters(
                     f"Known superset {known_superset} is not a superset of {c_range}"
                     f" for part C{c.lcsc}"
                 )
-            raise NotCompatibleException
+            raise NotCompatibleException(module, c, m_param, c_range)
 
     return {p: c_range for p, c_range in param_mapping}
 
