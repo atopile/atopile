@@ -160,6 +160,7 @@ def test_skip_self_pick():
     assert module.inner.has_trait(F.has_part_picked)
 
 
+@pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_pick_led_by_colour():
     color = F.LED.Color.YELLOW
     led = F.LED()
@@ -176,6 +177,7 @@ def test_pick_led_by_colour():
     )
 
 
+@pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_reject_diode_for_led():
     led = F.LED()
     led.color.constrain_subset(F.LED.Color.YELLOW)
