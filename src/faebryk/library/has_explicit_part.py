@@ -13,6 +13,7 @@ class has_explicit_part(Module.TraitT.decless()):
     supplier_id: str
     supplier_partno: str
     pinmap: dict[str, F.Electrical | None] | None
+    override_footprint: tuple[F.Footprint, str] | None = None
 
     @classmethod
     def by_mfr(
@@ -20,11 +21,13 @@ class has_explicit_part(Module.TraitT.decless()):
         mfr: str,
         partno: str,
         pinmap: dict[str, F.Electrical | None] | None = None,
+        override_footprint: tuple[F.Footprint, str] | None = None,
     ):
         out = cls()
         out.mfr = mfr
         out.partno = partno
         out.pinmap = pinmap
+        out.override_footprint = override_footprint
         return out
 
     @classmethod
@@ -33,6 +36,7 @@ class has_explicit_part(Module.TraitT.decless()):
         supplier_partno: str,
         supplier_id: str = "lcsc",
         pinmap: dict[str, F.Electrical | None] | None = None,
+        override_footprint: tuple[F.Footprint, str] | None = None,
     ):
         if supplier_id != "lcsc":
             raise NotImplementedError(f"Supplier {supplier_id} not supported")
@@ -40,6 +44,7 @@ class has_explicit_part(Module.TraitT.decless()):
         out.supplier_id = supplier_id
         out.supplier_partno = supplier_partno
         out.pinmap = pinmap
+        out.override_footprint = override_footprint
         return out
 
     @override
@@ -61,3 +66,8 @@ class has_explicit_part(Module.TraitT.decless()):
 
         if self.pinmap:
             obj.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
+
+        if self.override_footprint:
+            fp, fp_kicad_id = self.override_footprint
+            fp.add(F.KicadFootprint.has_kicad_identifier(fp_kicad_id))
+            obj.get_trait(F.can_attach_to_footprint).attach(fp)
