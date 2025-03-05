@@ -1,6 +1,7 @@
 import logging
 import shutil
 from collections import deque
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from types import ModuleType, TracebackType
@@ -18,7 +19,6 @@ from rich.table import Table
 from rich.text import Text
 from rich.traceback import Traceback
 
-import atopile
 import faebryk
 import faebryk.libs
 import faebryk.libs.logging
@@ -31,6 +31,8 @@ _logged_exceptions: set[tuple[type[Exception], tuple]] = set()
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+_DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 
 
 class LogHandler(RichHandler):
@@ -47,8 +49,8 @@ class LogHandler(RichHandler):
         rich_tracebacks: bool = True,
         show_path: bool = False,
         tracebacks_suppress: list[str] | None = ["typer"],
-        tracebacks_suppress_map: dict[type[BaseException], list[ModuleType]] | None = {
-            UserPythonModuleError: [atopile, faebryk]
+        tracebacks_suppress_map: dict[type[BaseException], Iterable[str]] | None = {
+            UserPythonModuleError: ["atopile", "faebryk"]
         },
         tracebacks_unwrap: list[type[BaseException]] | None = [UserPythonModuleError],
         hide_traceback_types: tuple[type[BaseException], ...] = (
@@ -60,7 +62,14 @@ class LogHandler(RichHandler):
         traceback_level: int = logging.ERROR,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            *args,
+            console=console,
+            rich_tracebacks=rich_tracebacks,
+            show_path=show_path,
+            **kwargs,
+        )
+        self.tracebacks_suppress = tracebacks_suppress or []
         self.tracebacks_suppress_map = tracebacks_suppress_map or {}
         self.tracebacks_unwrap = tracebacks_unwrap or []
         self.hide_traceback_types = hide_traceback_types
@@ -237,9 +246,26 @@ class LogHandler(RichHandler):
                 self.handleError(record)
 
 
-class LoggingStage:
-    # TODO: smarter indenting
+class LiveLogHandler(LogHandler):
+    def __init__(self, status: "LoggingStage", *args, **kwargs):
+        super().__init__(*args, console=status._console, **kwargs)
+        self.status = status
 
+    def emit(self, record: logging.LogRecord) -> None:
+        if (log_renderable := self._prepare_emit(record)) is None:
+            return
+
+        if record.levelno >= logging.WARNING:
+            self.status._warning_count += 1
+
+        try:
+            self.status._log_messages.append(log_renderable)
+            self.status._live.update(self.status._render_status())
+        except Exception:
+            self.handleError(record)
+
+
+class LoggingStage:
     _INDICATOR_SUCCESS = "[green]✓[/green]"
     _INDICATOR_FAILURE = "[red]✗[/red]"
 
@@ -328,36 +354,13 @@ class LoggingStage:
 
         root_logger.setLevel(logging.DEBUG)
 
-        class LiveLogHandler(LogHandler):
-            def __init__(self, status: "LoggingStage", *args, **kwargs):
-                super().__init__(*args, console=status._console, **kwargs)
-                self.status = status
-
-            def emit(self, record: logging.LogRecord) -> None:
-                if (log_renderable := self._prepare_emit(record)) is None:
-                    return
-
-                if record.levelno >= logging.WARNING:
-                    self.status._warning_count += 1
-
-                try:
-                    self.status._log_messages.append(log_renderable)
-                    self.status._live.update(self.status._render_status())
-                except Exception:
-                    self.handleError(record)
-
         self._log_handler = LiveLogHandler(self)
-        self._log_handler.setFormatter(
-            logging.Formatter(f"{' ' * self.indent}%(message)s", datefmt="[%X]")
-        )
+        self._log_handler.setFormatter(_DEFAULT_FORMATTER)
         self._log_handler.addFilter(
             lambda record: record.levelno >= self._original_level
         )
 
         log_dir = self._create_log_dir()
-        formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-        )
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
@@ -365,20 +368,21 @@ class LoggingStage:
         root_logger.addHandler(self._log_handler)
 
         self._file_handlers = []
+        self._file_handles = {}
 
         for level, level_name in self._LOG_LEVELS.items():
             log_file = log_dir / f"{self._sanitized_name}.{level_name}.log"
-            file_handler = logging.FileHandler(log_file, mode="w")
+
+            self._file_handles[level_name] = log_file.open("w")
+            file_console = Console(file=self._file_handles[level_name], width=500)
+            file_handler = LogHandler(console=file_console)
+            file_handler.setFormatter(_DEFAULT_FORMATTER)
+            file_handler.setLevel(level)
+            self._file_handlers.append(file_handler)
+            root_logger.addHandler(file_handler)
 
             if level_name == "info":
                 self._info_log_path = log_file
-
-            file_handler.addFilter(lambda record: record.levelno >= level)
-            file_handler.setLevel(level)
-            file_handler.setFormatter(formatter)
-
-            self._file_handlers.append(file_handler)
-            root_logger.addHandler(file_handler)
 
     def _restore_logging(self) -> None:
         if not self._log_handler and not self._file_handlers:
@@ -393,6 +397,9 @@ class LoggingStage:
             if file_handler in root_logger.handlers:
                 root_logger.removeHandler(file_handler)
                 file_handler.close()
+
+        for file_handle in self._file_handles.values():
+            file_handle.close()
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
@@ -410,6 +417,6 @@ logger = logging.getLogger(__name__)
 
 handler = LogHandler(console=console.error_console)
 
-handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
+handler.setFormatter(_DEFAULT_FORMATTER)
 
 faebryk.libs.logging.setup_basic_logging(handlers=[handler])
