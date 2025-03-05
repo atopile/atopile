@@ -2,7 +2,7 @@ import logging
 from types import ModuleType, TracebackType
 
 from rich._null_file import NullFile
-from rich.console import ConsoleRenderable
+from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.text import Text
@@ -213,19 +213,23 @@ class LogHandler(RichHandler):
             _logged_exceptions.add(hashable)
 
 
+def _build_handler(console: Console):
+    return LogHandler(
+        console=console,
+        rich_tracebacks=True,
+        show_path=False,
+        tracebacks_suppress=["typer"],
+        tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
+        tracebacks_unwrap=[UserPythonModuleError],
+        hide_traceback_types=(_BaseBaseUserException,),
+        always_show_traceback_types=(UserPythonModuleError,),
+        traceback_level=logging.ERROR,
+    )
+
+
 logger = logging.getLogger(__name__)
 
-handler = LogHandler(
-    console=console.error_console,
-    rich_tracebacks=True,
-    show_path=False,
-    tracebacks_suppress=["typer"],
-    tracebacks_suppress_map={UserPythonModuleError: [atopile, faebryk]},
-    tracebacks_unwrap=[UserPythonModuleError],
-    hide_traceback_types=(_BaseBaseUserException,),
-    always_show_traceback_types=(UserPythonModuleError,),
-    traceback_level=logging.ERROR,
-)
+handler = _build_handler(console.error_console)
 
 handler.setFormatter(logging.Formatter("%(message)s", datefmt="[%X]"))
 
