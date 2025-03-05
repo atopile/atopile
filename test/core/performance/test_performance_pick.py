@@ -10,6 +10,7 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.solver.algorithm import get_algorithms
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.core.solver.utils import S_LOG, set_log_level
@@ -123,6 +124,41 @@ def test_performance_pick_rc_formulas():
         # assert False
         return
     finally:
+
+        def _is_algo(
+            k: str, dirty: bool | None = None, terminal: bool | None = None
+        ) -> bool:
+            if "run_iteration:" not in k:
+                return False
+            if dirty is not None:
+                if dirty and "dirty" not in k:
+                    return False
+                if not dirty and "clean" not in k:
+                    return False
+            if terminal is not None:
+                if terminal and " terminal" not in k:
+                    return False
+                if not terminal and "non-terminal" not in k:
+                    return False
+            return True
+
+        def _make_algo_group(dirty: bool | None = None, terminal: bool | None = None):
+            dirty_str = "" if dirty is None else "dirty " if dirty else "clean "
+            terminal_str = (
+                "" if terminal is None else "terminal " if terminal else "non-terminal "
+            )
+            timings.make_group(
+                f"{dirty_str}{terminal_str}algos",
+                lambda k: _is_algo(k, dirty=dirty, terminal=terminal),
+            )
+
+        timings.add_seperator()
+        for algo in get_algorithms():
+            timings.make_group("Total " + algo.name, lambda k: algo.name + " " in k)
+        timings.add_seperator()
+        for i in [None, True, False]:
+            for j in [None, True, False]:
+                _make_algo_group(dirty=i, terminal=j)
         logger.info(f"\n{timings.to_str(force_unit='ms')}")
 
     picked_values = {
