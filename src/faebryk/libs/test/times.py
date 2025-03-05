@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import random
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -132,7 +133,11 @@ class Times:
                 table.add_column("Unit", style="yellow")
 
         rows = []
+        seps = []
         for k, vs in self.times.items():
+            if k.startswith("_separator"):
+                seps.append(len(rows))
+                continue
             if any(_k.startswith("_") for _k in k.split(":")):
                 continue
 
@@ -183,7 +188,9 @@ class Times:
                     # Apply rich formatting
                     rows[row_i][col_i] = f"[{color}]{rows[row_i][col_i]}[/{color}]"
 
-        for row in rows:
+        for i, row in enumerate(rows):
+            if i in seps:
+                table.add_section()
             table.add_row(*row)
 
         return rich_to_string(table)
@@ -221,3 +228,6 @@ class Times:
         if not group:
             return
         self.times[group_name] = group
+
+    def add_seperator(self):
+        self.times["_separator" + hex(random.randint(0, 100000))] = []

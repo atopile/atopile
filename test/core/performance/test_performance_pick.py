@@ -10,6 +10,7 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.solver.algorithm import get_algorithms
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE
 from faebryk.core.solver.utils import S_LOG, set_log_level
@@ -151,6 +152,10 @@ def test_performance_pick_rc_formulas():
                 lambda k: _is_algo(k, dirty=dirty, terminal=terminal),
             )
 
+        timings.add_seperator()
+        for algo in get_algorithms():
+            timings.make_group("Total " + algo.name, lambda k: algo.name in k)
+        timings.add_seperator()
         for i in [None, True, False]:
             for j in [None, True, False]:
                 _make_algo_group(dirty=i, terminal=j)
