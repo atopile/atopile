@@ -80,131 +80,132 @@ def build(app: Module) -> None:
     G = app.get_graph()
     solver = _get_solver()
 
-    if not SKIP_SOLVING:
-        logger.info("Resolving bus parameters")
-        try:
-            F.is_bus_parameter.resolve_bus_parameters(G)
-        # FIXME: this is a hack around a compiler bug
-        except KeyErrorAmbiguous as ex:
-            raise UserException(
-                "Unfortunately, there's a compiler bug at the moment that means that "
-                "this sometimes fails. Try again, and it'll probably work. "
-                "See https://github.com/atopile/atopile/issues/807"
-            ) from ex
-    else:
-        logger.warning("Skipping bus parameter resolution")
+    from atopile.cli.console import ProgressStage
 
-    logger.info("Running checks")
-    run_checks(app, G)
-
-    # Pre-pick project checks - things to look at before time is spend ---------
-    # Make sure the footprint libraries we're looking for exist
-    consolidate_footprints(app)
-
-    # Load PCB / cached --------------------------------------------------------
-    pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-    load_designators(G, attach=True, raise_duplicates=config.build.frozen)
-
-    # Pre-run solver -----------------------------------------------------------
-    parameters = app.get_children(False, types=Parameter)
-    if parameters:
-        logger.info("Simplifying parameter graph")
-        solver.simplify(*parameters)
-
-    # Pickers ------------------------------------------------------------------
-    if config.build.keep_picked_parts:
-        load_descriptive_properties(G)
-    try:
-        pick_part_recursively(app, solver)
-    except* PickError as ex:
-        raise ExceptionGroup(
-            "Failed to pick parts for some modules",
-            [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
-        ) from ex
-
-    # Footprints ----------------------------------------------------------------
-    # Use standard footprints for known packages regardless of
-    # what's otherwise been specified.
-    # FIXME: this currently includes explicitly set footprints, but shouldn't
-    F.has_package.standardize_footprints(app, solver)
-    create_footprint_library(app)
-
-    # Pre-netlist preparation ---------------------------------------------------
-    attach_random_designators(G)
-    nets = attach_nets(G)
-    # We have to re-attach the footprints, and subsequently nets, because the first
-    # attachment is typically done before the footprints have been created
-    # and therefore many nets won't be re-attached properly. Also, we just created
-    # and attached them to the design above, so they weren't even there to attach
-    transformer.attach()
-    if config.build.keep_net_names:
-        load_net_names(G)
-    attach_net_names(nets)
-    check_net_names(G)
-
-    # Update PCB --------------------------------------------------------------
-    logger.info("Updating PCB")
-    original_pcb = deepcopy(pcb)
-    transformer.apply_design(config.build.paths.fp_lib_table)
-    transformer.check_unattached_fps()
-
-    if transform_trait := app.try_get_trait(F.has_layout_transform):
-        logger.info("Transforming PCB")
-        transform_trait.transform(transformer)
-
-    # set layout
-    apply_layouts(app)
-    transformer.move_footprints()
-    apply_routing(app, transformer)
-
-    if pcb == original_pcb:
-        if config.build.frozen:
-            logger.info("No changes to layout. Passed --frozen check.")
-        else:
-            logger.info(
-                f"No changes to layout. Not writing {config.build.paths.layout}"
-            )
-    elif config.build.frozen:
-        original_path = config.build.paths.output_base.with_suffix(
-            ".original.kicad_pcb"
-        )
-        updated_path = config.build.paths.output_base.with_suffix(".updated.kicad_pcb")
-        original_pcb.dumps(original_path)
-        pcb.dumps(updated_path)
-
-        # TODO: make this a real util
-        def _try_relative(path: Path) -> Path:
+    with ProgressStage("Running pre-build checks"):
+        if not SKIP_SOLVING:
+            logger.info("Resolving bus parameters")
             try:
-                return path.relative_to(Path.cwd(), walk_up=True)
-            except ValueError:
-                return path
+                F.is_bus_parameter.resolve_bus_parameters(G)
+            # FIXME: this is a hack around a compiler bug
+            except KeyErrorAmbiguous as ex:
+                raise UserException(
+                    "Unfortunately, there's a compiler bug at the moment that means that "
+                    "this sometimes fails. Try again, and it'll probably work. "
+                    "See https://github.com/atopile/atopile/issues/807"
+                ) from ex
+        else:
+            logger.warning("Skipping bus parameter resolution")
 
-        original_relative = _try_relative(original_path)
-        updated_relative = _try_relative(updated_path)
+        logger.info("Running checks")
+        run_checks(app, G)
 
-        raise UserException(
-            "Built as frozen, but layout changed. \n"
-            f"Original layout: {original_relative}\n"
-            f"Updated layout: {updated_relative}\n"
-            "You can see the changes by running:\n"
-            f'`diff --color "{original_relative}" "{updated_relative}"`',
-            title="Frozen failed",
-            # No markdown=False here because we have both a command and paths
-        )
-    else:
-        backup_file = config.build.paths.output_base.with_suffix(
-            f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
-        )
-        logger.info(f"Backing up layout to {backup_file}")
-        with config.build.paths.layout.open("rb") as f:
-            backup_file.write_bytes(f.read())
+        # Pre-pick project checks - things to look at before time is spend ---------
+        # Make sure the footprint libraries we're looking for exist
+        consolidate_footprints(app)
 
-        logger.info(f"Updating layout {config.build.paths.layout}")
-        pcb.dumps(config.build.paths.layout)
+    with ProgressStage("Loading PCB / cached"):
+        pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
+        transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
+        load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
-    # Build targets -----------------------------------------------------------
-    logger.info("Building targets")
+    with ProgressStage("Running solver"):
+        parameters = app.get_children(False, types=Parameter)
+        if parameters:
+            logger.info("Simplifying parameter graph")
+            solver.simplify(*parameters)
+
+    with ProgressStage("Picking components"):
+        if config.build.keep_picked_parts:
+            load_descriptive_properties(G)
+        try:
+            pick_part_recursively(app, solver)
+        except* PickError as ex:
+            raise ExceptionGroup(
+                "Failed to pick parts for some modules",
+                [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
+            ) from ex
+
+    with ProgressStage("Handling footprints"):
+        # Use standard footprints for known packages regardless of
+        # what's otherwise been specified.
+        # FIXME: this currently includes explicitly set footprints, but shouldn't
+        F.has_package.standardize_footprints(app, solver)
+        create_footprint_library(app)
+
+    with ProgressStage("Preparing nets"):
+        attach_random_designators(G)
+        nets = attach_nets(G)
+        # We have to re-attach the footprints, and subsequently nets, because the first
+        # attachment is typically done before the footprints have been created
+        # and therefore many nets won't be re-attached properly. Also, we just created
+        # and attached them to the design above, so they weren't even there to attach
+        transformer.attach()
+        if config.build.keep_net_names:
+            load_net_names(G)
+        attach_net_names(nets)
+        check_net_names(G)
+
+    with ProgressStage("Updating PCB"):
+        original_pcb = deepcopy(pcb)
+        transformer.apply_design(config.build.paths.fp_lib_table)
+        transformer.check_unattached_fps()
+
+        if transform_trait := app.try_get_trait(F.has_layout_transform):
+            logger.info("Transforming PCB")
+            transform_trait.transform(transformer)
+
+        # set layout
+        apply_layouts(app)
+        transformer.move_footprints()
+        apply_routing(app, transformer)
+
+        if pcb == original_pcb:
+            if config.build.frozen:
+                logger.info("No changes to layout. Passed --frozen check.")
+            else:
+                logger.info(
+                    f"No changes to layout. Not writing {config.build.paths.layout}"
+                )
+        elif config.build.frozen:
+            original_path = config.build.paths.output_base.with_suffix(
+                ".original.kicad_pcb"
+            )
+            updated_path = config.build.paths.output_base.with_suffix(
+                ".updated.kicad_pcb"
+            )
+            original_pcb.dumps(original_path)
+            pcb.dumps(updated_path)
+
+            # TODO: make this a real util
+            def _try_relative(path: Path) -> Path:
+                try:
+                    return path.relative_to(Path.cwd(), walk_up=True)
+                except ValueError:
+                    return path
+
+            original_relative = _try_relative(original_path)
+            updated_relative = _try_relative(updated_path)
+
+            raise UserException(
+                "Built as frozen, but layout changed. \n"
+                f"Original layout: {original_relative}\n"
+                f"Updated layout: {updated_relative}\n"
+                "You can see the changes by running:\n"
+                f'`diff --color "{original_relative}" "{updated_relative}"`',
+                title="Frozen failed",
+                # No markdown=False here because we have both a command and paths
+            )
+        else:
+            backup_file = config.build.paths.output_base.with_suffix(
+                f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
+            )
+            logger.info(f"Backing up layout to {backup_file}")
+            with config.build.paths.layout.open("rb") as f:
+                backup_file.write_bytes(f.read())
+
+            logger.info(f"Updating layout {config.build.paths.layout}")
+            pcb.dumps(config.build.paths.layout)
 
     # Figure out what targets to build
     if config.build.targets == ["__default__"]:
@@ -223,15 +224,10 @@ def build(app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            logger.info(f"Building '{target_name}' for '{config.build.name}' config")
-            with accumulator.collect():
-                muster.targets[target_name](app, solver)
-            built_targets.append(target_name)
-
-    logger.info(
-        f"Built {', '.join(f'\'{target}\'' for target in built_targets)} "
-        f"for '{config.build.name}' config"
-    )
+            with ProgressStage(f"Building '{target_name}'"):
+                with accumulator.collect():
+                    muster.targets[target_name](app, solver)
+                built_targets.append(target_name)
 
 
 TargetType = Callable[[Module, Solver], None]
