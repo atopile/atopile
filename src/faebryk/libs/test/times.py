@@ -5,6 +5,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
+from typing import Callable
 
 from rich.table import Table
 
@@ -214,3 +215,9 @@ class Times:
                     self._add(name, time.perf_counter() - start)
                 else:
                     self.add(name)
+
+    def make_group(self, group_name: str, include_filter: Callable[[str], bool]):
+        group = [v for k, vs in self.times.items() if include_filter(k) for v in vs]
+        if not group:
+            return
+        self.times[group_name] = group

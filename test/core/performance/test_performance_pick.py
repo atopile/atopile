@@ -123,6 +123,37 @@ def test_performance_pick_rc_formulas():
         # assert False
         return
     finally:
+
+        def _is_algo(
+            k: str, dirty: bool | None = None, terminal: bool | None = None
+        ) -> bool:
+            if "run_iteration:" not in k:
+                return False
+            if dirty is not None:
+                if dirty and "dirty" not in k:
+                    return False
+                if not dirty and "clean" not in k:
+                    return False
+            if terminal is not None:
+                if terminal and " terminal" not in k:
+                    return False
+                if not terminal and "non-terminal" not in k:
+                    return False
+            return True
+
+        def _make_algo_group(dirty: bool | None = None, terminal: bool | None = None):
+            dirty_str = "" if dirty is None else "dirty " if dirty else "clean "
+            terminal_str = (
+                "" if terminal is None else "terminal " if terminal else "non-terminal "
+            )
+            timings.make_group(
+                f"{dirty_str}{terminal_str}algos",
+                lambda k: _is_algo(k, dirty=dirty, terminal=terminal),
+            )
+
+        for i in [None, True, False]:
+            for j in [None, True, False]:
+                _make_algo_group(dirty=i, terminal=j)
         logger.info(f"\n{timings.to_str(force_unit='ms')}")
 
     picked_values = {
