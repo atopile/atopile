@@ -89,8 +89,8 @@ def build(app: Module) -> None:
             # FIXME: this is a hack around a compiler bug
             except KeyErrorAmbiguous as ex:
                 raise UserException(
-                    "Unfortunately, there's a compiler bug at the moment that means that "
-                    "this sometimes fails. Try again, and it'll probably work. "
+                    "Unfortunately, there's a compiler bug at the moment that means "
+                    "that this sometimes fails. Try again, and it'll probably work. "
                     "See https://github.com/atopile/atopile/issues/807"
                 ) from ex
         else:
