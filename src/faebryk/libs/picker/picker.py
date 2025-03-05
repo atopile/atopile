@@ -60,13 +60,15 @@ class Part:
 
 
 class PickError(Exception):
-    def __init__(self, message: str, *module: Module):
-        super().__init__(message)
+    def __init__(self, message: str, *modules: Module):
         self.message = message
-        self.module = module
+        self.modules = modules
 
     def __repr__(self):
-        return f"{type(self).__name__}({self.module}, {self.message})"
+        return f"{type(self).__name__}({self.modules}, {self.message})"
+
+    def __str__(self):
+        return self.message
 
 
 class PickErrorNotImplemented(PickError):
@@ -270,10 +272,7 @@ def pick_topologically(
                 # Rerun solver for new system
                 solver.update_superset_cache(*_tree)
         except Contradiction as e:
-            raise PickError(
-                f"Design contains contradiction: {str(e)}",
-                *_tree.keys(),
-            )
+            raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
             candidates = list(get_candidates(_tree, solver).items())
         if LOG_PICK_SOLVE:
