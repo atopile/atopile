@@ -1,5 +1,4 @@
 import logging
-import shutil
 from collections import deque
 from collections.abc import Iterable
 from datetime import datetime
@@ -335,15 +334,6 @@ class LoggingStage:
         now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         log_dir = Path(config.project.paths.logs) / now
         log_dir.mkdir(parents=True, exist_ok=True)
-
-        latest_link = Path(config.project.paths.logs) / "latest"
-        if latest_link.exists():
-            if latest_link.is_symlink():
-                latest_link.unlink()
-            else:
-                shutil.rmtree(latest_link)
-        latest_link.symlink_to(log_dir, target_is_directory=True)
-
         return log_dir
 
     def _setup_logging(self) -> None:
