@@ -31,6 +31,8 @@ class App(Module):
 
         self.battery.add(F.has_designator_prefix("B"))
         self.battery.power.voltage.constrain_superset(L.Range(2.5 * P.V, 4.2 * P.V))
+        self.battery.add(F.has_descriptive_properties_defined({"LCSC": "C5239862"}))
+        self.battery.voltage.alias_is(3 * P.V)
         self.battery.add(
             F.has_explicit_part.by_supplier(
                 "C5239862",

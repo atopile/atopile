@@ -22,6 +22,8 @@ class App(Module):
         self.led.power.connect(self.battery.power)
 
         self.led.led.add(F.has_explicit_part.by_supplier("C965802"))
+        self.led.led.forward_voltage.alias_is(2.4 * P.V)
+
         self.led.current_limiting_resistor.add(
             F.has_explicit_part.by_supplier("C159037")
         )
@@ -33,4 +35,7 @@ class App(Module):
                 pinmap={"1": self.battery.power.lv, "2": self.battery.power.hv},
             )
         )
-        buttoncell.power.voltage.alias_is(3 * P.V)
+        buttoncell.voltage.alias_is(3 * P.V)
+
+
+# FIXME: delete this file
