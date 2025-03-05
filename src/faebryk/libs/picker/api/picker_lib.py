@@ -17,15 +17,15 @@ from faebryk.libs.picker.api.models import (
     BaseParams,
     CapacitorParams,
     Component,
-    DiodeParams,
-    InductorParams,
+    # DiodeParams,
+    # InductorParams,
     LCSCParams,
-    LDOParams,
-    LEDParams,
+    # LDOParams,
+    # LEDParams,
     ManufacturerPartParams,
-    MOSFETParams,
+    # MOSFETParams,
     ResistorParams,
-    TVSParams,
+    # TVSParams,
 )
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
@@ -76,12 +76,12 @@ def _extract_numeric_id(lcsc_id: str) -> int:
 TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
     F.is_pickable_by_type.Type.Resistor: ResistorParams,
     F.is_pickable_by_type.Type.Capacitor: CapacitorParams,
-    F.is_pickable_by_type.Type.Inductor: InductorParams,
-    F.is_pickable_by_type.Type.TVS: TVSParams,
-    F.is_pickable_by_type.Type.LED: LEDParams,
-    F.is_pickable_by_type.Type.Diode: DiodeParams,
-    F.is_pickable_by_type.Type.LDO: LDOParams,
-    F.is_pickable_by_type.Type.MOSFET: MOSFETParams,
+    # F.is_pickable_by_type.Type.Inductor: InductorParams,
+    # F.is_pickable_by_type.Type.TVS: TVSParams,
+    # F.is_pickable_by_type.Type.LED: LEDParams,
+    # F.is_pickable_by_type.Type.Diode: DiodeParams,
+    # F.is_pickable_by_type.Type.LDO: LDOParams,
+    # F.is_pickable_by_type.Type.MOSFET: MOSFETParams,
 }
 
 
