@@ -1,6 +1,10 @@
 import logging
+import shutil
 from collections import deque
+from datetime import datetime
+from pathlib import Path
 
+import pathvalidate
 import rich
 from rich.columns import Columns
 from rich.console import Group, RenderableType
@@ -10,6 +14,7 @@ from rich.spinner import Spinner
 from rich.text import Text
 
 import faebryk.libs.logging
+from atopile.config import config
 
 rich.reconfigure(theme=faebryk.libs.logging.theme)
 
@@ -35,6 +40,7 @@ class ProgressStage:
         self._log_messages = deque(maxlen=max_log_messages)
 
         self._log_handler = None
+        self._file_handlers = []
         self._original_handlers = {}
 
         self._live = Live(self._render_status(), console=self._console, transient=True)
@@ -78,37 +84,80 @@ class ProgressStage:
                 try:
                     indent_str = " " * self.status.indent
 
-                    if record.levelno >= logging.ERROR:
-                        formatted_msg = f"{indent_str}[bold red]ERROR[/bold red]   {record.getMessage()}"
-                    elif record.levelno >= logging.WARNING:
-                        formatted_msg = f"{indent_str}[yellow]WARNING[/yellow] {record.getMessage()}"
-                    elif record.levelno >= logging.INFO:
-                        formatted_msg = (
-                            f"{indent_str}[blue]INFO[/blue]    {record.getMessage()}"
-                        )
-                    else:
-                        formatted_msg = (
-                            f"{indent_str}[dim]DEBUG[/dim]   {record.getMessage()}"
-                        )
+                    # Only add non-debug messages to the console display
+                    if record.levelno >= logging.INFO:
+                        if record.levelno >= logging.ERROR:
+                            formatted_msg = f"{indent_str}[bold red]ERROR[/bold red]   {record.getMessage()}"
+                        elif record.levelno >= logging.WARNING:
+                            formatted_msg = f"{indent_str}[yellow]WARNING[/yellow] {record.getMessage()}"
+                        else:  # This is INFO level
+                            formatted_msg = f"{indent_str}[blue]INFO[/blue]    {record.getMessage()}"
 
-                    self.status._add_log_message(formatted_msg)
+                        # Only add messages that aren't debug level to the console
+                        self.status._add_log_message(formatted_msg)
+                    # Debug messages are still logged to the file via the file handler,
+                    # but we don't add them to the console display
                 except Exception:
                     self.handleError(record)
 
         self._log_handler = LiveStatusHandler(self)
 
+        now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_dir = Path(config.project.paths.logs) / now
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        latest_link = Path(config.project.paths.logs) / "latest"
+        if latest_link.exists():
+            if latest_link.is_symlink():
+                latest_link.unlink()
+            else:
+                shutil.rmtree(latest_link)
+        latest_link.symlink_to(log_dir, target_is_directory=True)
+
+        formatter = logging.Formatter(
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        )
+
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
 
         root_logger.addHandler(self._log_handler)
+        self._file_handlers = []
+        log_levels = {
+            logging.DEBUG: "debug",
+            logging.INFO: "info",
+            logging.WARNING: "warning",
+            logging.ERROR: "error",
+        }
+
+        sanitized_name = pathvalidate.sanitize_filename(self.name)
+        for level, level_name in log_levels.items():
+            log_file = log_dir / f"{sanitized_name}.{level_name}.log"
+            file_handler = logging.FileHandler(log_file, mode="w")
+
+            def filter_for_level(record, lvl=level):
+                return record.levelno >= lvl
+
+            file_handler.addFilter(filter_for_level)
+            file_handler.setLevel(level)
+            file_handler.setFormatter(formatter)
+
+            self._file_handlers.append(file_handler)
+            root_logger.addHandler(file_handler)
 
     def _restore_logging(self) -> None:
-        if not self._log_handler:
+        if not self._log_handler and not self._file_handlers:
             return
 
         root_logger = logging.getLogger()
+
         if self._log_handler in root_logger.handlers:
             root_logger.removeHandler(self._log_handler)
+
+        for file_handler in self._file_handlers:
+            if file_handler in root_logger.handlers:
+                root_logger.removeHandler(file_handler)
+                file_handler.close()
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
@@ -118,6 +167,7 @@ class ProgressStage:
 
         self._original_handlers = {}
         self._log_handler = None
+        self._file_handlers = []
 
     def _add_log_message(self, message: str) -> None:
         self._log_messages.append(message)
