@@ -30,10 +30,11 @@ class App(Module):
         )
 
         self.battery.add(F.has_designator_prefix("B"))
-        self.battery.power.voltage.constrain_superset(
-            L.Range(2.5 * P.volt, 4.2 * P.volt)
-        )
+        # self.battery.power.voltage.constrain_superset(
+        #     L.Range(2.5 * P.volt, 4.2 * P.volt)
+        # )
         self.battery.add(F.has_descriptive_properties_defined({"LCSC": "C5239862"}))
+        self.battery.voltage.alias_is(3 * P.V)
         self.battery.add(
             F.can_attach_to_footprint_via_pinmap(
                 {
