@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from atopile import layout
+from atopile.cli.console import ProgressStage
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
@@ -80,8 +81,6 @@ def build(app: Module) -> None:
     G = app.get_graph()
     solver = _get_solver()
 
-    from atopile.cli.console import ProgressStage
-
     with ProgressStage("Running pre-build checks"):
         if not SKIP_SOLVING:
             logger.info("Resolving bus parameters")
@@ -104,12 +103,12 @@ def build(app: Module) -> None:
         # Make sure the footprint libraries we're looking for exist
         consolidate_footprints(app)
 
-    with ProgressStage("Loading PCB / cached"):
+    with ProgressStage("Loading PCB"):
         pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
         transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
         load_designators(G, attach=True, raise_duplicates=config.build.frozen)
 
-    with ProgressStage("Running solver"):
+    with ProgressStage("Solving for parameters"):
         parameters = app.get_children(False, types=Parameter)
         if parameters:
             logger.info("Simplifying parameter graph")

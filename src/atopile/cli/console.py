@@ -17,6 +17,9 @@ rich.reconfigure(theme=faebryk.libs.logging.theme)
 console = rich.get_console()
 error_console = rich.console.Console(theme=faebryk.libs.logging.theme, stderr=True)
 
+_STAGE_SUCCESS = "[green]✓[/green]"
+_STAGE_FAILURE = "[red]✗[/red]"
+
 
 class ProgressStage:
     # TODO: smarter indenting
@@ -53,7 +56,7 @@ class ProgressStage:
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._restore_logging()
         self._live.stop()
-        indicator = "[green]✓[/green]" if exc_type is None else "[red]✗[/red]"
+        indicator = _STAGE_SUCCESS if exc_type is None else _STAGE_FAILURE
         self._console.print(f"{' ' * self.indent}{indicator} {self.name}")
 
     def _setup_logging(self) -> None:
@@ -72,7 +75,6 @@ class ProgressStage:
                 try:
                     indent_str = " " * self.status.indent
 
-                    # Format log message based on level
                     if record.levelno >= logging.ERROR:
                         formatted_msg = f"{indent_str}[bold red]ERROR[/bold red]   {record.getMessage()}"
                     elif record.levelno >= logging.WARNING:
