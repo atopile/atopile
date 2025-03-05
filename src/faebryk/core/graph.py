@@ -33,6 +33,15 @@ class GraphFunctions:
             if n.has_trait(trait)
         ]
 
+    def nodes_with_any_trait(
+        self, *traits: type["Trait"]
+    ) -> list[tuple["Node", dict[type["Trait"], "Trait"]]]:
+        return [
+            (n, {trait: n.get_trait(trait) for trait in traits if n.has_trait(trait)})
+            for n in self.node_projection()
+            if any(n.has_trait(trait) for trait in traits)
+        ]
+
     # TODO: Waiting for python to add support for type mapping
     def nodes_with_traits[*Ts](
         self, traits: tuple[*Ts]
