@@ -1,6 +1,5 @@
 import logging
 import shutil
-from collections import deque
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
@@ -9,14 +8,12 @@ from types import ModuleType, TracebackType
 import pathvalidate
 from rich._null_file import NullFile
 from rich.columns import Columns
-from rich.console import Console, ConsoleRenderable, Group, RenderableType
+from rich.console import Console, ConsoleRenderable, RenderableType
 from rich.live import Live
 from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.spinner import Spinner
-from rich.style import Style
-from rich.styled import Styled
 from rich.table import Table
 from rich.text import Text
 from rich.traceback import Traceback
@@ -235,17 +232,11 @@ class LiveLogHandler(LogHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            if (log_renderable := self._prepare_emit(record)) is None:
-                self.status._live.update(self.status._render_status())
-                return
-
             if record.levelno >= logging.ERROR:
                 self.status._error_count += 1
             elif record.levelno >= logging.WARNING:
                 self.status._warning_count += 1
-            self.status._log_messages.append(
-                Styled(log_renderable, style=Style(dim=True))
-            )
+
             self.status._live.update(self.status._render_status(), refresh=True)
         except Exception:
             self.handleError(record)
@@ -263,15 +254,12 @@ class LoggingStage:
         logging.ERROR: "error",
     }
 
-    def __init__(
-        self, name: str, description: str, max_log_messages: int = 5, indent: int = 20
-    ):
+    def __init__(self, name: str, description: str, indent: int = 20):
         self.name = name
         self.description = description
         self.indent = indent
         self._console = console.error_console
         self._spinner = Spinner("dots")
-        self._log_messages = deque(maxlen=max_log_messages)
         self._warning_count = 0
         self._error_count = 0
         self._info_log_path = None
@@ -280,7 +268,7 @@ class LoggingStage:
         self._original_handlers = {}
         self._live = Live(
             self._render_status(),
-            console=self._live_console,
+            console=self._console,
             transient=True,
             auto_refresh=True,
             refresh_per_second=10,
@@ -295,10 +283,6 @@ class LoggingStage:
         pad = (0, 0, 0, self.indent)  # (top, right, bottom, left)
         text = Text.from_markup(self.description)
         spinner_with_text = Padding(Columns([self._spinner, text], padding=(0, 1)), pad)
-
-        if self._log_messages:
-            return Group(spinner_with_text, *self._log_messages)
-
         return spinner_with_text
 
     def _get_status_text(self, exc: bool = False) -> str:
