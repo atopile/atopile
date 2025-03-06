@@ -74,8 +74,8 @@ def build(
         for build in config.builds:
             with accumulator.collect(), log_user_errors(logger), build:
                 with LoggingStage(
-                    name=f"build-{config.build.name}",
-                    description=f"Building [green]'{config.build.name}'[/green]",
+                    name=f"init-{config.build.name}",
+                    description=f"Initializing [green]'{config.build.name}'[/green]",
                 ):
                     logger.info("Building '%s'", config.build.name)
                     match config.build.build_type:
