@@ -75,9 +75,9 @@ def build(
             with accumulator.collect(), log_user_errors(logger), build:
                 with LoggingStage(
                     name=f"build-{config.build.name}",
-                    description=f"Building '{config.build.name}'",
+                    description=f"Building [green]'{config.build.name}'[/green]",
                 ):
-                    logger.info("Building [green]'%s'[/green]", config.build.name)
+                    logger.info("Building '%s'", config.build.name)
                     match config.build.build_type:
                         case BuildType.ATO:
                             app = _init_ato_app()
