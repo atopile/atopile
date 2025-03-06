@@ -32,6 +32,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+_SHOW_LOG_FILE_PATH_THRESHOLD = 120
 
 
 class LogHandler(RichHandler):
@@ -315,10 +316,10 @@ class LoggingStage:
             pad=(0, 0, 0, self.indent),  # (top, right, bottom, left)
         )
 
-        if self._info_log_path and self._console.width >= 120:
+        if self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD:
             table = Table.grid(padding=0, expand=True)
-            table.add_column()
-            table.add_column(justify="right")
+            table.add_column(max_width=self.indent + 32)
+            table.add_column(justify="right", overflow="ellipsis")
             table.add_row(spinner_with_text, f"[dim]{self._info_log_path}[/dim]")
             return table
         else:
