@@ -352,7 +352,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
 
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
-    keep_designators: bool | None = Field(default=None)
+    keep_designators: bool | None = Field(default=True)
     keep_picked_parts: bool | None = Field(default=None)
     keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
@@ -399,6 +399,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
                 )
             if not self.keep_net_names:
                 raise ValueError("`keep_net_names` must be true when `frozen` is true")
+
         return self
 
     @property
