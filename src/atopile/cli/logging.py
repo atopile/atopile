@@ -303,10 +303,10 @@ class LoggingStage:
         else:
             return spinner_with_text
 
-    def __enter__(self) -> "LoggingStage":
+    def __enter__(self) -> Console:
         self._setup_logging()
         self._live.start()
-        return self
+        return self._console
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._restore_logging()
