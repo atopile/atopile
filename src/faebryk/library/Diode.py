@@ -47,17 +47,17 @@ class Diode(Module):
     anode: F.Electrical
     cathode: F.Electrical
 
-    @L.rt_field
-    def pickable(self):
-        return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Diode,
-            {
-                "forward_voltage": self.forward_voltage,
-                "reverse_working_voltage": self.reverse_working_voltage,
-                "reverse_leakage_current": self.reverse_leakage_current,
-                "max_current": self.max_current,
-            },
-        )
+    # @L.rt_field
+    # def pickable(self):
+    #     return F.is_pickable_by_type(
+    #         F.is_pickable_by_type.Type.Diode,
+    #         {
+    #             "forward_voltage": self.forward_voltage,
+    #             "reverse_working_voltage": self.reverse_working_voltage,
+    #             "reverse_leakage_current": self.reverse_leakage_current,
+    #             "max_current": self.max_current,
+    #         },
+    #     )
 
     @L.rt_field
     def can_bridge(self):

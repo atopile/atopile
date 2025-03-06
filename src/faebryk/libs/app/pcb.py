@@ -215,7 +215,7 @@ def check_net_names(graph: Graph):
         raise UserResourceException(f"Net name collision: {net_name_collisions}")
 
 
-def create_footprint_library(app: Module) -> None:
+def create_footprint_library(app: Module, no_fp_lib: bool = False) -> None:
     """
     Ensure all KicadFootprints have a kicad identifier (via the F.has_kicad_footprint
     trait).
@@ -225,6 +225,9 @@ def create_footprint_library(app: Module) -> None:
 
     Check all of the KicadFootprints have a manual identifier. Raise an error if they
     don't.
+
+    Args:
+        no_fp_lib: If True, don't create a footprint library (only useful for testing)
     """
     from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
 
@@ -235,7 +238,8 @@ def create_footprint_library(app: Module) -> None:
     # Create the library it doesn't exist
     atopile_fp_dir = config.project.paths.get_footprint_lib("atopile")
     atopile_fp_dir.mkdir(parents=True, exist_ok=True)
-    ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
+    if not no_fp_lib:
+        ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
 
     # Cache the mapping from path to identifier and the path to the new file
     path_map: dict[Path, tuple[str, Path]] = {}

@@ -125,7 +125,6 @@ from faebryk.library.Switch import Switch
 from faebryk.library.B4B_ZR_SM4_TF import B4B_ZR_SM4_TF
 from faebryk.library.DE9Connector import DE9Connector
 from faebryk.library.Header import Header
-from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.pf_533984002 import pf_533984002
 from faebryk.library.DIP import DIP
 from faebryk.library.QFN import QFN
@@ -133,6 +132,7 @@ from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.Mounting_Hole import Mounting_Hole
+from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_package import has_package
 from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
@@ -195,8 +195,8 @@ from faebryk.library.Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR import Wuxi_I_core_El
 from faebryk.library.XL_3528RGBW_WS2812B import XL_3528RGBW_WS2812B
 from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.pf_74AHCT2G125 import pf_74AHCT2G125
-from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.TPS2116 import TPS2116
+from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
@@ -229,6 +229,7 @@ from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.WCHJiangsu_Qin_Heng_CH224K import WCHJiangsu_Qin_Heng_CH224K
 from faebryk.library.can_switch_power_defined import can_switch_power_defined
+from faebryk.library.TPS2116_ReferenceDesign import TPS2116_ReferenceDesign
 from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
 from faebryk.library.CD4011 import CD4011
 from faebryk.library.ME6211C33M5G_N import ME6211C33M5G_N

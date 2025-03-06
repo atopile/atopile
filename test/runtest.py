@@ -33,7 +33,10 @@ def main(
         module = importlib.util.module_from_spec(spec)
         if spec.loader is None:
             continue
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            continue
         for v in vars(module).values():
             if not hasattr(v, "__name__"):
                 continue
