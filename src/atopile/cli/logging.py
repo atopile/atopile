@@ -18,6 +18,7 @@ from rich.table import Table
 from rich.text import Text
 from rich.traceback import Traceback
 
+import atopile
 import faebryk
 import faebryk.libs
 import faebryk.libs.logging
@@ -47,9 +48,8 @@ class LogHandler(RichHandler):
         rich_tracebacks: bool = True,
         show_path: bool = False,
         tracebacks_suppress: list[str] | None = ["typer"],
-        tracebacks_suppress_map: dict[type[BaseException], Iterable[str]] | None = {
-            UserPythonModuleError: ["atopile", "faebryk"]
-        },
+        tracebacks_suppress_map: dict[type[BaseException], Iterable[ModuleType]]
+        | None = {UserPythonModuleError: [atopile, faebryk]},
         tracebacks_unwrap: list[type[BaseException]] | None = [UserPythonModuleError],
         hide_traceback_types: tuple[type[BaseException], ...] = (
             _BaseBaseUserException,
