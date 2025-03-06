@@ -260,7 +260,9 @@ class LiveLogHandler(LogHandler):
                 self.status._live.update(self.status._render_status())
                 return
 
-            if record.levelno >= logging.WARNING:
+            if record.levelno >= logging.ERROR:
+                self.status._error_count += 1
+            elif record.levelno >= logging.WARNING:
                 self.status._warning_count += 1
             self.status._log_messages.append(
                 Styled(log_renderable, style=Style(dim=True))
@@ -273,6 +275,7 @@ class LiveLogHandler(LogHandler):
 class LoggingStage:
     _INDICATOR_SUCCESS = "[green]✓[/green]"
     _INDICATOR_FAILURE = "[red]✗[/red]"
+    _INDICATOR_WARNING = "[yellow]⚠[/yellow]"
 
     _LOG_LEVELS = {
         logging.DEBUG: "debug",
@@ -291,6 +294,7 @@ class LoggingStage:
         self._spinner = Spinner("dots")
         self._log_messages = deque(maxlen=max_log_messages)
         self._warning_count = 0
+        self._error_count = 0
         self._info_log_path = None
         self._log_handler = None
         self._file_handlers = []
@@ -316,6 +320,27 @@ class LoggingStage:
 
         return spinner_with_text
 
+    def _get_status_text(self, exc: bool = False) -> str:
+        if exc or self._error_count > 0:
+            indicator = self._INDICATOR_FAILURE
+        elif self._warning_count > 0:
+            indicator = self._INDICATOR_WARNING
+        else:
+            indicator = self._INDICATOR_SUCCESS
+
+        problems = []
+        if self._error_count > 0:
+            plural_e = "s" if self._error_count > 1 else ""
+            problems.append(f"[red]{self._error_count} error{plural_e}[/red]")
+
+        if self._warning_count > 0:
+            plural_w = "s" if self._warning_count > 1 else ""
+            problems.append(f"[yellow]{self._warning_count} warning{plural_w}[/yellow]")
+
+        problems_text = f" ({', '.join(problems)})" if problems else ""
+
+        return f"{' ' * self.indent}{indicator} {self.description}{problems_text}"
+
     def __enter__(self) -> "LoggingStage":
         self._setup_logging()
         self._live.start()
@@ -325,14 +350,7 @@ class LoggingStage:
         self._restore_logging()
         self._live.stop()
 
-        indicator = (
-            self._INDICATOR_SUCCESS if exc_type is None else self._INDICATOR_FAILURE
-        )
-        status_text = f"{' ' * self.indent}{indicator} {self.description}"
-
-        if self._warning_count > 0:
-            plural = "s" if self._warning_count > 1 else ""
-            status_text += f" ([yellow]{self._warning_count} warning{plural}[/yellow])"
+        status_text = self._get_status_text(exc_type is not None)
 
         if self._info_log_path and self._console.width >= 120:
             table = Table.grid(padding=0, expand=True)
