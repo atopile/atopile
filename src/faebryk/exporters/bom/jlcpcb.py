@@ -25,6 +25,11 @@ class BOMLine:
     Partnumber: str
     LCSC_Partnumber: str
 
+    def to_dict(self) -> dict[str, str]:
+        out = vars(self)
+        out["LCSC Part #"] = out.pop("LCSC_Partnumber")
+        return out
+
 
 def rename_column(rows: list[dict[str, str]], old: str, new: str) -> None:
     for row in rows:
@@ -40,19 +45,22 @@ def split_designator(designator: str) -> tuple[str, int]:
     return (prefix, number)
 
 
+def make_bom(components: set[Module]):
+    bomlines = [line for c in components if (line := _get_bomline(c))]
+    bomlines = sorted(
+        _compact_bomlines(bomlines),
+        key=lambda x: split_designator(x.Designator.split(", ")[0]),
+    )
+
+    rows = [line.to_dict() for line in bomlines]
+    return rows
+
+
 def write_bom_jlcpcb(components: set[Module], path: Path) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
     with open(path, "w", newline="") as bom_csv:
-        bomlines = [line for c in components if (line := _get_bomline(c))]
-        bomlines = sorted(
-            _compact_bomlines(bomlines),
-            key=lambda x: split_designator(x.Designator.split(", ")[0]),
-        )
-
-        rows = [vars(line) for line in bomlines]
-        rename_column(rows, "LCSC_Partnumber", "LCSC Part #")
-
+        rows = make_bom(components)
         if rows:
             writer = csv.DictWriter(
                 bom_csv,

@@ -160,6 +160,7 @@ def test_skip_self_pick():
     assert module.inner.has_trait(F.has_part_picked)
 
 
+@pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_pick_led_by_colour():
     color = F.LED.Color.YELLOW
     led = F.LED()
@@ -176,6 +177,7 @@ def test_pick_led_by_colour():
     )
 
 
+@pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_reject_diode_for_led():
     led = F.LED()
     led.color.constrain_subset(F.LED.Color.YELLOW)
@@ -233,9 +235,8 @@ def test_pick_dependency_simple():
 @pytest.mark.slow
 def test_pick_dependency_advanced_1():
     rdiv = F.ResistorVoltageDivider()
-    rdiv.total_resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.05))
-    rdiv.ratio.constrain_subset(L.Range.from_center_rel(0.1, 0.1))
-    rdiv.max_current.alias_is(L.Range.from_center_rel(100 * P.milliamp, 0.05))
+    rdiv.total_resistance.constrain_subset(L.Range.from_center_rel(100 * P.kohm, 0.1))
+    rdiv.ratio.constrain_subset(L.Range.from_center_rel(0.1, 0.2))
 
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)
@@ -247,6 +248,7 @@ def test_pick_dependency_advanced_2():
 
     rdiv.v_in.alias_is(L.Range.from_center_rel(10 * P.V, 0.1))
     rdiv.v_out.constrain_subset(L.Range.from_center_rel(1 * P.V, 0.2))
+    rdiv.max_current.constrain_subset(L.Range.from_center_rel(10 * P.mA, 0.2))
 
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)

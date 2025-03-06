@@ -125,7 +125,6 @@ from faebryk.library.Switch import Switch
 from faebryk.library.B4B_ZR_SM4_TF import B4B_ZR_SM4_TF
 from faebryk.library.DE9Connector import DE9Connector
 from faebryk.library.Header import Header
-from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.pf_533984002 import pf_533984002
 from faebryk.library.DIP import DIP
 from faebryk.library.QFN import QFN
@@ -133,6 +132,7 @@ from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.Mounting_Hole import Mounting_Hole
+from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.has_package import has_package
 from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
