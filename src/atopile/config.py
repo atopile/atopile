@@ -328,7 +328,7 @@ class BuildTargetPaths(BaseConfigModel):
         return True
 
 
-class BuildTargetConfig(BaseConfigModel):
+class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     _project_paths: ProjectPaths
 
     name: str
@@ -352,9 +352,9 @@ class BuildTargetConfig(BaseConfigModel):
 
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
-    keep_designators: bool = Field(default=True)
-    keep_picked_parts: bool = Field(default=False)
-    keep_net_names: bool = Field(default=False)
+    keep_designators: bool | None = Field(default=None)
+    keep_picked_parts: bool | None = Field(default=None)
+    keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
     paths: BuildTargetPaths
 
@@ -376,6 +376,30 @@ class BuildTargetConfig(BaseConfigModel):
             case _:
                 raise ValueError(f"Invalid build paths: {data.get('paths')}")
         return data
+
+    def _set_frozen(self, frozen: bool):
+        if self.keep_designators is None:
+            self.keep_designators = frozen
+        if self.keep_picked_parts is None:
+            self.keep_picked_parts = frozen
+        if self.keep_net_names is None:
+            self.keep_net_names = frozen
+        self.frozen = frozen
+
+    @model_validator(mode="after")
+    def validate_frozen_after(self) -> Self:
+        if self.frozen:
+            if not self.keep_designators:
+                raise ValueError(
+                    "`keep_designators` must be true when `frozen` is true"
+                )
+            if not self.keep_picked_parts:
+                raise ValueError(
+                    "`keep_picked_parts` must be true when `frozen` is true"
+                )
+            if not self.keep_net_names:
+                raise ValueError("`keep_net_names` must be true when `frozen` is true")
+        return self
 
     @property
     def build_type(self) -> BuildType:
@@ -925,23 +949,16 @@ class Config:
             # Attach CLI options passed via kwargs
             for key, value in kwargs.items():
                 if value is not None:
-                    setattr(self.project.builds[build_name], key, value)
+                    setattr(build_cfg, key, value)
 
             if frozen is not None:
-                build_cfg.frozen = frozen
-
-            if build_cfg.frozen:
-                frozen_required_options = {
-                    "keep_picked_parts": (build_cfg.keep_picked_parts, True),
-                    "keep_net_names": (build_cfg.keep_net_names, True),
-                    "keep_designators": (build_cfg.keep_designators, True),
-                }
-
-                for key, (value, expected) in frozen_required_options.items():
-                    if value is not expected:
-                        raise UserBadParameterError(
-                            f"`{key}={value}` conflicts with `frozen`"
-                        )
+                try:
+                    build_cfg._set_frozen(frozen)
+                except ValidationError as e:
+                    raise UserBadParameterError(
+                        f"Invalid value for `frozen`: {e}",
+                        title="Bad 'frozen' parameter",
+                    )
 
     def should_open_layout_on_build(self) -> bool:
         """Returns whether atopile should open the layout after building"""

@@ -103,6 +103,7 @@ def load_designators(
         node: ref
         for node, trait in nodes
         if (ref := _get_pcb_designator(trait)) is not None
+        and not isinstance(node, F.Footprint)
     }
 
     if attach:
