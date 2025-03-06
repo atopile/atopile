@@ -272,27 +272,11 @@ class LoggingStage:
             transient=True,
             auto_refresh=True,
             refresh_per_second=10,
-            redirect_stdout=False,
-            redirect_stderr=False,
-            vertical_overflow="ellipsis",
         )
-        # self._console.options.max_height = 10
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
+        self._result = None
 
-    def _render_status(self) -> RenderableType:
-        pad = (0, 0, 0, self.indent)  # (top, right, bottom, left)
-        text = Text.from_markup(self.description)
-        spinner_with_text = Padding(Columns([self._spinner, text], padding=(0, 1)), pad)
-        return spinner_with_text
-
-    def _get_status_text(self, exc: bool = False) -> str:
-        if exc or self._error_count > 0:
-            indicator = self._INDICATOR_FAILURE
-        elif self._warning_count > 0:
-            indicator = self._INDICATOR_WARNING
-        else:
-            indicator = self._INDICATOR_SUCCESS
-
+    def _render_status(self, indicator: str | None = None) -> RenderableType:
         problems = []
         if self._error_count > 0:
             plural_e = "s" if self._error_count > 1 else ""
@@ -303,8 +287,21 @@ class LoggingStage:
             problems.append(f"[yellow]{self._warning_count} warning{plural_w}[/yellow]")
 
         problems_text = f" ({', '.join(problems)})" if problems else ""
+        text = Text.from_markup(f"{self.description}{problems_text}")
 
-        return f"{' ' * self.indent}{indicator} {self.description}{problems_text}"
+        spinner_with_text = Padding(
+            Columns([indicator or self._spinner, text], padding=(0, 1)),
+            pad=(0, 0, 0, self.indent),  # (top, right, bottom, left)
+        )
+
+        if self._info_log_path and self._console.width >= 120:
+            table = Table.grid(padding=0, expand=True)
+            table.add_column()
+            table.add_column(justify="right")
+            table.add_row(spinner_with_text, f"[dim]{self._info_log_path}[/dim]")
+            return table
+        else:
+            return spinner_with_text
 
     def __enter__(self) -> "LoggingStage":
         self._setup_logging()
@@ -313,18 +310,16 @@ class LoggingStage:
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._restore_logging()
-        self._live.stop()
 
-        status_text = self._get_status_text(exc_type is not None)
-
-        if self._info_log_path and self._console.width >= 120:
-            table = Table.grid(padding=0, expand=True)
-            table.add_column()
-            table.add_column(justify="right")
-            table.add_row(status_text, f"[dim]{self._info_log_path}[/dim]")
-            self._console.print(table)
+        if exc_type is not None or self._error_count > 0:
+            indicator = self._INDICATOR_FAILURE
+        elif self._warning_count > 0:
+            indicator = self._INDICATOR_WARNING
         else:
-            self._console.print(status_text)
+            indicator = self._INDICATOR_SUCCESS
+
+        self._live.stop()
+        self._console.print(self._render_status(indicator))
 
     def _create_log_dir(self) -> Path:
         log_dir = Path(config.project.paths.logs) / _NOW
