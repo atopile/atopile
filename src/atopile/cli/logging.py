@@ -183,16 +183,13 @@ class LogHandler(RichHandler):
     def render_message(
         self, record: logging.LogRecord, message: str
     ) -> ConsoleRenderable:
-        # special handling for exceptions only
-        if record.exc_info is None:
-            return self._render_message(record, message)
+        if record.exc_info is not None and isinstance(
+            (exc := record.exc_info[1]), ConsoleRenderable
+        ):
+            # UserExceptions are already renderables
+            return exc
 
-        _, exc, _ = record.exc_info
-
-        if not isinstance(exc, ConsoleRenderable):
-            return self._render_message(record, message)
-
-        return exc
+        return self._render_message(record, message)
 
     def _prepare_emit(self, record: logging.LogRecord) -> None | ConsoleRenderable:
         traceback = self._get_traceback(record)
@@ -221,8 +218,8 @@ class LogHandler(RichHandler):
 
         if isinstance(self.console.file, NullFile):
             # Handles pythonw, where stdout/stderr are null, and we return NullFile
-            # instance from Console.file. In this case, we still want to make a log record # noqa: E501  # pre-existing
-            # even though we won't be writing anything to a file.
+            # instance from Console.file. In this case, we still want to make a log
+            # record even though we won't be writing anything to a file.
             self.handleError(record)
         else:
             try:
@@ -283,19 +280,21 @@ class LoggingStage:
         self._original_handlers = {}
         self._live = Live(
             self._render_status(),
-            console=self._console,
+            console=self._live_console,
             transient=True,
             auto_refresh=True,
             refresh_per_second=10,
-            vertical_overflow="visible",
+            redirect_stdout=False,
+            redirect_stderr=False,
+            vertical_overflow="ellipsis",
         )
+        # self._console.options.max_height = 10
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
 
     def _render_status(self) -> RenderableType:
         pad = (0, 0, 0, self.indent)  # (top, right, bottom, left)
-        spinner_with_text = Padding(
-            Columns([self._spinner, Text(self.description)], padding=(0, 1)), pad
-        )
+        text = Text.from_markup(self.description)
+        spinner_with_text = Padding(Columns([self._spinner, text], padding=(0, 1)), pad)
 
         if self._log_messages:
             return Group(spinner_with_text, *self._log_messages)
@@ -363,13 +362,12 @@ class LoggingStage:
         self._original_level = root_logger.level
         self._original_handlers = {"root": root_logger.handlers.copy()}
 
+        # log all messages to at least one handler
         root_logger.setLevel(logging.DEBUG)
 
         self._log_handler = LiveLogHandler(self)
         self._log_handler.setFormatter(_DEFAULT_FORMATTER)
-        self._log_handler.addFilter(
-            lambda record: record.levelno >= self._original_level
-        )
+        self._log_handler.setLevel(self._original_level)
 
         log_dir = self._create_log_dir()
 
