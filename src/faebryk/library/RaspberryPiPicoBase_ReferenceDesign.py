@@ -82,7 +82,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
                 L.Range.from_center_rel(360 * P.Hz, 0.1)
             )
             self.rc_filter.resistor.resistance.constrain_subset(
-                L.Range.from_center_rel(1 * P.kohm, 0.05)
+                L.Range.from_center_rel(200 * P.ohm, 0.05)
             )
             # self.reference_out.voltage.constrain_subset(L.Range(2 * P.V, 3 * P.V))
 
