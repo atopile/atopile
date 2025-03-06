@@ -138,10 +138,6 @@ class DeprecatedException(errors.UserException):
     Raised when a deprecated feature is used.
     """
 
-    def get_frozen(self) -> tuple:
-        # TODO: this is a bit of a hack to make the logger de-dup these for us
-        return errors._BaseBaseUserException.get_frozen(self)
-
 
 class SequenceMixin:
     """

@@ -130,15 +130,6 @@ class _BaseUserException(_BaseBaseUserException):
         )
         return instance
 
-    def get_frozen(self) -> tuple:
-        if self.origin_start and self.origin_stop:
-            return (
-                super().get_frozen()
-                + get_src_info_from_token(self.origin_start)
-                + get_src_info_from_token(self.origin_stop)
-            )
-        return super().get_frozen()
-
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:

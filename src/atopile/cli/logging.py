@@ -29,8 +29,6 @@ from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 
 from . import console
 
-_logged_exceptions: set[tuple[type[Exception], tuple]] = set()
-
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
@@ -115,13 +113,6 @@ class LogHandler(RichHandler):
 
         return exc_type, exc_value, exc_traceback
 
-    def _get_hashable(self, record: logging.LogRecord) -> tuple | None:
-        if exc_info := getattr(record, "exc_info", None):
-            _, exc_value, _ = exc_info
-            if exc_value and isinstance(exc_value, _BaseBaseUserException):
-                return exc_value.get_frozen()
-        return None
-
     def _get_traceback(self, record: logging.LogRecord) -> Traceback | None:
         if not record.exc_info:
             return None
@@ -204,15 +195,6 @@ class LogHandler(RichHandler):
         return exc
 
     def _prepare_emit(self, record: logging.LogRecord) -> None | ConsoleRenderable:
-        hashable = self._get_hashable(record)
-
-        if hashable:
-            if hashable in _logged_exceptions:
-                # we've already logged this
-                return
-            else:
-                _logged_exceptions.add(hashable)
-
         traceback = self._get_traceback(record)
 
         if self.formatter:
