@@ -261,6 +261,20 @@ class GlobalAttributes(L.Module):
     def override_net_name(self, name: str):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
+    @property
+    def suggested_net_name(self):
+        """
+        Suggested net name which will have a higher priority than generated net names.
+        """
+        return self.get_trait(F.has_net_name).name
+
+    @suggested_net_name.setter
+    def suggested_net_name(self, name: str):
+        """
+        Suggested net name which will have a higher priority than generated net names.
+        """
+        self.add(F.has_net_name(name, level=F.has_net_name.Level.SUGGESTED))
+
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
     try:
