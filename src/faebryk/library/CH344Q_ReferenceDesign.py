@@ -148,5 +148,5 @@ class CH344Q_ReferenceDesign(Module):
             L.Range.from_center_rel(100 * P.Hz, 0.1)
         )
         self.reset_lowpass.resistor.resistance.constrain_subset(
-            L.Range.from_center_rel(1 * P.kohm, 0.05)
+            L.Range.from_center_rel(4.7 * P.kohm, 0.05)
         )
