@@ -955,7 +955,8 @@ class Config:
             if frozen is not None:
                 try:
                     build_cfg._set_frozen(frozen)
-                except ValidationError as e:
+                except Exception as e:
+                    # TODO: better error message
                     raise UserBadParameterError(
                         f"Invalid value for `frozen`: {e}",
                         title="Bad 'frozen' parameter",
