@@ -197,6 +197,7 @@ def publish_errors(uri: str):
     file = get_file(uri)
 
     error_diagnostics = []
+    processed_errors = set()
     for error in _error_accumulators[file].errors:
         if (
             isinstance(error, atopile.errors._BaseUserException)
@@ -204,6 +205,11 @@ def publish_errors(uri: str):
             and error.src_col
             and error.src_line
         ):
+            # don't duplicate errors
+            if error.get_frozen() in processed_errors:
+                continue
+            processed_errors.add(error.get_frozen())
+
             message = f"{error.title} - {error.message}"
 
             # stop properly if we have information, but we don't always,

@@ -73,6 +73,7 @@ class LogHandler(RichHandler):
         self.hide_traceback_types = hide_traceback_types
         self.always_show_traceback_types = always_show_traceback_types
         self.traceback_level = traceback_level
+        self._logged_exceptions = set()
 
     def _get_suppress(
         self, exc_type: type[BaseException] | None
@@ -188,7 +189,14 @@ class LogHandler(RichHandler):
 
         return self._render_message(record, message)
 
-    def _prepare_emit(self, record: logging.LogRecord) -> None | ConsoleRenderable:
+    def _get_hashable(self, record: logging.LogRecord) -> tuple | None:
+        if exc_info := getattr(record, "exc_info", None):
+            _, exc_value, _ = exc_info
+            if exc_value and isinstance(exc_value, _BaseBaseUserException):
+                return exc_value.get_frozen()
+        return None
+
+    def _prepare_emit(self, record: logging.LogRecord) -> ConsoleRenderable:
         traceback = self._get_traceback(record)
 
         if self.formatter:
@@ -210,8 +218,11 @@ class LogHandler(RichHandler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Invoked by logging."""
-        if (log_renderable := self._prepare_emit(record)) is None:
-            return
+        hashable = self._get_hashable(record)
+        if hashable and hashable in self._logged_exceptions:
+            return None
+
+        log_renderable = self._prepare_emit(record)
 
         if isinstance(self.console.file, NullFile):
             # Handles pythonw, where stdout/stderr are null, and we return NullFile
@@ -223,6 +234,9 @@ class LogHandler(RichHandler):
                 self.console.print(log_renderable, highlight=True)
             except Exception:
                 self.handleError(record)
+            finally:
+                if hashable:
+                    self._logged_exceptions.add(hashable)
 
 
 class LiveLogHandler(LogHandler):
@@ -231,6 +245,10 @@ class LiveLogHandler(LogHandler):
         self.status = status
 
     def emit(self, record: logging.LogRecord) -> None:
+        hashable = self._get_hashable(record)
+        if hashable and hashable in self._logged_exceptions:
+            return
+
         try:
             if record.levelno >= logging.ERROR:
                 self.status._error_count += 1
@@ -240,6 +258,9 @@ class LiveLogHandler(LogHandler):
             self.status._live.update(self.status._render_status(), refresh=True)
         except Exception:
             self.handleError(record)
+        finally:
+            if hashable:
+                self._logged_exceptions.add(hashable)
 
 
 class LoggingStage:
