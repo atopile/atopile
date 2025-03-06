@@ -266,7 +266,7 @@ class GlobalAttributes(L.Module):
         """
         Suggested net name which will have a higher priority than generated net names.
         """
-        return self.get_trait(F.has_net_name).name
+        raise AttributeError("write-only")
 
     @suggested_net_name.setter
     def suggested_net_name(self, name: str):
