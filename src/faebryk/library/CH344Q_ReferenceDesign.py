@@ -144,12 +144,9 @@ class CH344Q_ReferenceDesign(Module):
         )
 
         # reset lowpass
-        self.reset_lowpass.response.constrain_subset(F.Filter.Response.LOWPASS)
         self.reset_lowpass.cutoff_frequency.constrain_subset(
             L.Range.from_center_rel(100 * P.Hz, 0.1)
         )
-
-        # Specialize
-        special = self.reset_lowpass.specialize(F.FilterElectricalRC())
-        # Construct
-        special.build_lowpass()
+        self.reset_lowpass.resistor.resistance.constrain_subset(
+            L.Range.from_center_rel(1 * P.kohm, 0.05)
+        )

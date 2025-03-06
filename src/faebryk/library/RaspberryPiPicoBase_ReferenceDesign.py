@@ -78,9 +78,11 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
         #    return F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
 
         def __preinit__(self):
-            self.rc_filter.response.constrain_subset(F.Filter.Response.LOWPASS)
             self.rc_filter.cutoff_frequency.constrain_subset(
                 L.Range.from_center_rel(360 * P.Hz, 0.1)
+            )
+            self.rc_filter.resistor.resistance.constrain_subset(
+                L.Range.from_center_rel(1 * P.kohm, 0.05)
             )
             # self.reference_out.voltage.constrain_subset(L.Range(2 * P.V, 3 * P.V))
 
@@ -88,11 +90,6 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             self.power_in.hv.connect(self.rc_filter.in_.line)
             self.reference_out.hv.connect(self.rc_filter.out.line)
             self.reference_out.lv.connect(self.rc_filter.out.reference.lv)
-
-            # Specialize
-            special = self.rc_filter.specialize(F.FilterElectricalRC())
-            # Construct
-            special.build_lowpass()
 
     # ----------------------------------------
     #     modules, interfaces, parameters
