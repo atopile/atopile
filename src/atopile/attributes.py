@@ -262,14 +262,14 @@ class GlobalAttributes(L.Module):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
     @property
-    def suggested_net_name(self):
+    def suggest_net_name(self):
         """
         Suggested net name which will have a higher priority than generated net names.
         """
         raise AttributeError("write-only")
 
-    @suggested_net_name.setter
-    def suggested_net_name(self, name: str):
+    @suggest_net_name.setter
+    def suggest_net_name(self, name: str):
         """
         Suggested net name which will have a higher priority than generated net names.
         """
