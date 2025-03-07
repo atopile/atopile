@@ -997,7 +997,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             ) from ex
 
-        assert isinstance(node, Parameter)
+        if not isinstance(node, Parameter):
+            raise errors.UserSyntaxError.from_ctx(
+                src_ctx,
+                f"Node {name} is {type(node)} not a Parameter",
+                traceback=self.get_traceback(),
+            )
         return node
 
     def _ensure_param(
