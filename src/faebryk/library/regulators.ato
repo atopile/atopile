@@ -1,4 +1,4 @@
-import ElectricPower, Regulator, ResistorVoltageDivider
+import Regulator, ResistorVoltageDivider
 
 module AdjustableRegulator from Regulator:
     # using vanilla voltage divider without equations
