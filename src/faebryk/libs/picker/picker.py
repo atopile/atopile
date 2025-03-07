@@ -331,21 +331,21 @@ def pick_topologically(
         candidates = _get_candidates(tree)
 
     # heuristic: try pick first candidate for rest
-    with timings.as_global("fast-pick"):
-        try:
-            check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-        except (Contradiction, NotCompatibleException, NotDeducibleException):
-            logger.warning("Could not pick all parts atomically")
-            # no need to update candidates, slow picking does by itself
-        else:
-            # REALLLY DO REMOVE THIS
-            # TODO remove
-            solver.update_superset_cache(*[m for m, _ in candidates])
-            _update_progress(candidates)
-            logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
-            return
+    # with timings.as_global("fast-pick"):
+    #     try:
+    #         check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
+    #     except (Contradiction, NotCompatibleException, NotDeducibleException):
+    #         logger.warning("Could not pick all parts atomically")
+    #         # no need to update candidates, slow picking does by itself
+    #     else:
+    #         # REALLLY DO REMOVE THIS
+    #         # TODO remove
+    #         solver.update_superset_cache(*[m for m, _ in candidates])
+    #         _update_progress(candidates)
+    #         logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
+    #         return
 
-    logger.warning("Falling back to extremely slow picking one by one")
+    # logger.warning("Falling back to extremely slow picking one by one")
     # Works by looking for each module again for compatible parts
     # If no compatible parts are found,
     #   it means we need to backtrack or there is no solution
