@@ -402,7 +402,8 @@ def pick_topologically(
                 attach_single_no_check(module, part, solver)
                 _update_progress(module)
 
-            logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
+    if candidates:
+        logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
 
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
