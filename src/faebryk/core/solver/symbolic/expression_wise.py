@@ -39,7 +39,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
 )
 from faebryk.libs.sets.sets import BoolSet, as_lit
-from faebryk.libs.util import cast_assert, partition_as_list
+from faebryk.libs.util import cast_assert, groupby, partition_as_list
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,13 @@ logger = logging.getLogger(__name__)
 
 # Boilerplate ==========================================================================
 
+MERGED = False
+
 fold_algorithms: list[SolverAlgorithm] = []
+expr_wise_algos: dict[
+    type[CanonicalExpression],
+    Callable[[CanonicalExpression, Mutator], None],
+] = {}
 
 
 def fold_literals[T: CanonicalExpression](
@@ -69,7 +75,7 @@ def fold_literals[T: CanonicalExpression](
     Not(Not(A)) -> neutralize=replace: A
     ```
     """
-    exprs = mutator.nodes_of_type(expr_type, sort_by_depth=True)
+    exprs = mutator.nodes_of_type(expr_type, sort_by_depth=True, new_only=False)
     for expr in exprs:
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
@@ -81,16 +87,49 @@ def fold_literals[T: CanonicalExpression](
         f(expr, mutator)
 
 
+@algorithm("Expression-wise", terminal=False)
+def expression_wise(mutator: Mutator):
+    exprs = mutator.nodes_of_types(
+        tuple(expr_wise_algos.keys()), sort_by_depth=True, new_only=False
+    )
+    exprs_by_type = groupby(exprs, lambda e: type(e))
+    for expr_type, exprs in exprs_by_type.items():
+        for expr in exprs:
+            if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
+                continue
+
+            # covered by pure literal folding
+            if mutator.utils.is_pure_literal_expression(expr):
+                continue
+            expr_wise_algos[expr_type](expr, mutator)  # type: ignore
+
+
 def expression_wise_algorithm[T: CanonicalExpression](expr_type: type[T]):
     def wrap(func: Callable[[T, Mutator], None]) -> SolverAlgorithm:
-        @algorithm(f"Fold {expr_type.__name__}", terminal=False)
-        def wrapped(mutator: Mutator):
-            fold_literals(mutator, expr_type, func)
+        if MERGED:
+            expr_wise_algos[expr_type] = func  # type: ignore
+            if expression_wise not in fold_algorithms:
+                fold_algorithms.append(expression_wise)
+            return expression_wise
+        else:
 
-        fold_algorithms.append(wrapped)
-        return wrapped
+            @algorithm(f"Fold {expr_type.__name__}", terminal=False)
+            def wrapped(mutator: Mutator):
+                fold_literals(mutator, expr_type, func)
+
+            fold_algorithms.append(wrapped)
+            return wrapped
 
     return wrap
+
+
+# TODO REMOVE JUST A TEST
+@algorithm("NOOOP")
+def noop(mutator: Mutator):
+    pass
+
+
+fold_algorithms.append(noop)
 
 
 # Arithmetic ---------------------------------------------------------------------------
