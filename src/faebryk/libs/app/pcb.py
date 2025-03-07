@@ -163,7 +163,15 @@ def open_pcb(pcb_path: os.PathLike):
             if process.info["cmdline"] and str(pcb_path) in process.info["cmdline"]:
                 raise RuntimeError(f"PCBnew is already running with {pcb_path}")
 
-    subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
+    subprocess.Popen(
+        [str(pcbnew), str(pcb_path)],
+        env={
+            k: v
+            for k, v in os.environ.items()
+            if k not in {"VIRTUAL_ENV", "PYTHONPATH"}
+        },
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
