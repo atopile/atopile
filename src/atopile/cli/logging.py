@@ -48,7 +48,7 @@ class LogHandler(RichHandler):
         console: Console,
         rich_tracebacks: bool = True,
         show_path: bool = False,
-        tracebacks_suppress: list[str] | None = ["typer"],
+        tracebacks_suppress: Iterable[str] | None = ["typer"],
         tracebacks_suppress_map: dict[type[BaseException], Iterable[ModuleType]]
         | None = {UserPythonModuleError: [atopile, faebryk]},
         tracebacks_unwrap: list[type[BaseException]] | None = [UserPythonModuleError],
@@ -76,13 +76,18 @@ class LogHandler(RichHandler):
         self.traceback_level = traceback_level
         self._logged_exceptions = set()
 
+        self.addFilter(
+            lambda record: record.name.startswith("atopile")
+            or record.name.startswith("faebryk")
+        )
+
     def _get_suppress(
         self, exc_type: type[BaseException] | None
-    ) -> list[str | ModuleType]:
+    ) -> Iterable[str | ModuleType]:
         """
         Get extended list of modules to suppress from tracebacks.
         """
-        suppress = set(self.tracebacks_suppress)
+        suppress: set[str | ModuleType] = set(self.tracebacks_suppress)
         if exc_type is not None:
             for _type in self.tracebacks_suppress_map:
                 if issubclass(exc_type, _type) or isinstance(exc_type, _type):
