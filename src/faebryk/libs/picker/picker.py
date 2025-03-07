@@ -234,9 +234,10 @@ def find_independent_groups(
     """
     from faebryk.core.solver.defaultsolver import DefaultSolver
 
-    assert isinstance(solver, DefaultSolver)
-    state = solver.reusable_state
-    if state is None:
+    if (
+        not isinstance(solver, DefaultSolver)
+        or (state := solver.reusable_state) is None
+    ):
         module_eqs = EquivalenceClasses[Module](modules)
         for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(
             ConstrainableExpression
