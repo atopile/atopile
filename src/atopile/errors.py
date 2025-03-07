@@ -286,6 +286,12 @@ class UserAssertionError(UserException):
     """
 
 
+class UserContradictionException(UserException):
+    """
+    Raised when user-provided constraints contradict.
+    """
+
+
 class UserPickError(UserException):
     """
     Raised when there's an error in the picker.
@@ -295,14 +301,14 @@ class UserPickError(UserException):
     def from_pick_error(cls, ex: "PickError") -> "UserPickError":
         from atopile.front_end import from_dsl
 
-        modules = ex.module
+        modules = ex.modules
         # TODO not just first module
         if modules and (origin_t := modules[0].try_get_trait(from_dsl)):
             origin = origin_t.src_ctx
         else:
             origin = None
 
-        return cls.from_ctx(origin, ex.message)
+        return cls.from_ctx(origin, str(ex))
 
 
 class UserActionWithoutEffectError(UserException):

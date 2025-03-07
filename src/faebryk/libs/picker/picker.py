@@ -24,6 +24,7 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
 from faebryk.core.solver.utils import Contradiction, get_graphs
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     ConfigFlag,
@@ -37,7 +38,9 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
+    from faebryk.libs.picker.api.models import Component
     from faebryk.libs.picker.localpick import PickerOption
+
 
 NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 
@@ -62,13 +65,15 @@ class Part:
 
 
 class PickError(Exception):
-    def __init__(self, message: str, *module: Module):
-        super().__init__(message)
+    def __init__(self, message: str, *modules: Module):
         self.message = message
-        self.module = module
+        self.modules = modules
 
     def __repr__(self):
-        return f"{type(self).__name__}({self.module}, {self.message})"
+        return f"{type(self).__name__}({self.modules}, {self.message})"
+
+    def __str__(self):
+        return self.message
 
 
 class PickErrorNotImplemented(PickError):
@@ -100,7 +105,27 @@ class PickErrorChildren(PickError):
 
 
 class NotCompatibleException(Exception):
-    pass
+    def __init__(
+        self,
+        module: Module,
+        component: "Component",
+        param: Parameter | None = None,
+        c_range: P_Set | None = None,
+    ):
+        self.module = module
+        self.component = component
+        self.param = param
+        self.c_range = c_range
+
+        if param is None or c_range is None:
+            msg = f"{component.lcsc_display} is not compatible with `{module}`"
+        else:
+            msg = (
+                f"`{param}` ({param.try_get_literal_subset()}) is not "
+                f"compatible with {component.lcsc_display} ({c_range})"
+            )
+
+        super().__init__(msg)
 
 
 class does_not_require_picker_check(Parameter.TraitT.decless()):
@@ -298,10 +323,7 @@ def pick_topologically(
                 # Rerun solver for new system
                 solver.update_superset_cache(*_tree)
         except Contradiction as e:
-            raise PickError(
-                f"Design contains contradiction: {str(e)}",
-                *_tree.keys(),
-            )
+            raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
             candidates = list(get_candidates(_tree, solver).items())
         if LOG_PICK_SOLVE:
@@ -352,10 +374,9 @@ def pick_topologically(
                     f" Likely contradicting constraints: {str(e)}",
                     *[m for m, _ in single_part_modules],
                 )
-            except (NotCompatibleException, NotDeducibleException):
-                # TODO: more informationq
+            except (NotCompatibleException, NotDeducibleException) as e:
                 raise PickError(
-                    "Could not pick all explicitly-specified parts",
+                    f"Could not pick all explicitly-specified parts: {e}",
                     *[m for m, _ in single_part_modules],
                 )
             _update_progress(single_part_modules)
