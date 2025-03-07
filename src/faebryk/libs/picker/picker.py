@@ -132,6 +132,7 @@ class does_not_require_picker_check(Parameter.TraitT.decless()):
     pass
 
 
+# FIXME: remove? uses wrong console
 class PickerProgress:
     def __init__(self, tree: Tree[Module]):
         self.tree = tree
@@ -440,10 +441,8 @@ def pick_part_recursively(module: Module, solver: Solver):
 
     check_missing_picks(module)
 
-    pp = PickerProgress(pick_tree)
     try:
-        with pp.context():
-            pick_topologically(pick_tree, solver, pp)
+        pick_topologically(pick_tree, solver)
     # FIXME: This does not get called anymore
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()
