@@ -56,11 +56,7 @@ def rich_to_string(rich_obj: Table | Tree) -> str:
     return str(console)
 
 
-def setup_basic_logging(
-    force_fmt: bool = False, handlers: list[logging.Handler] | None = None
-):
-    if handlers is None:
-        handlers = []
+def setup_basic_logging(force_fmt: bool = False):
     if FLOG_FMT or force_fmt:
         logging.basicConfig(
             format="%(message)s",
@@ -78,8 +74,6 @@ def setup_basic_logging(
                 )
             ],
         )
-    else:
-        logging.basicConfig(level=logging.INFO, handlers=handlers)
 
     if PLOG:
         from faebryk.libs.picker.picker import logger as plog

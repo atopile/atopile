@@ -24,6 +24,7 @@ import faebryk.libs
 import faebryk.libs.logging
 from atopile.config import config
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
+from faebryk.libs.logging import FLOG_FMT
 
 from . import console
 
@@ -430,10 +431,12 @@ class LoggingStage:
         self._file_handlers = []
 
 
-logger = logging.getLogger(__name__)
-
 handler = LogHandler(console=console.error_console)
-
 handler.setFormatter(_DEFAULT_FORMATTER)
 
-faebryk.libs.logging.setup_basic_logging(handlers=[handler])
+if FLOG_FMT:
+    faebryk.libs.logging.setup_basic_logging()
+else:
+    logging.basicConfig(level=logging.INFO, handlers=[handler])
+
+logger = logging.getLogger(__name__)
