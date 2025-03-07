@@ -191,7 +191,7 @@ def remove_congruent_expressions(mutator: Mutator):
         mutator._mutate(expr, repres[eq_id])
 
 
-@algorithm("Alias classes")
+@algorithm("Alias classes", terminal=False)
 def resolve_alias_classes(mutator: Mutator):
     """
     Resolve alias classes
@@ -494,8 +494,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         mutator.mutate_expression(e, operands=ops)
 
 
-# TODO terminal?
-@algorithm("Isolate lone parameters")
+@algorithm("Isolate lone parameters", terminal=False)
 def isolate_lone_params(mutator: Mutator):
     """
     If an expression is aliased to a literal, and only one parameter in the expression

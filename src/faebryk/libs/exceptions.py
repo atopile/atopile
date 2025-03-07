@@ -50,9 +50,7 @@ class UserException(Exception):
         return titlecase(error_name.removeprefix("User"))
 
     def get_frozen(self) -> tuple:
-        """
-        Return a frozen version of this error.
-        """
+        """Return a frozen version of this error."""
         return (self.__class__, self.message, self._title)
 
     def __rich_console__(

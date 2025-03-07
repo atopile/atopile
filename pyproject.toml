@@ -61,6 +61,7 @@ dependencies = [
     "pydantic-settings>=2.7.1",
     "hypothesis>=6.124.7",
     "cookiecutter>=2.6.0",
+    "pathvalidate>=3.2.1",
 ]
 
 [project.urls]
@@ -91,7 +92,6 @@ dev = [
     "pytest-history @ git+https://github.com/atopile/pytest-history.git",
     "mkdocstrings[python]>=0.27.0",
     "griffe-typingdoc>=0.2.7",
-    "pathvalidate>=3.2.1",
     "mike>=2.1.3",
     "hatch>=1.14.0",
     "atopile-mkdocs-plugin",

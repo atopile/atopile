@@ -15,10 +15,21 @@ from sexpdata import Symbol
 
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.sexp.util import prettify_sexp_string
-from faebryk.libs.util import cast_assert, duplicates, groupby, zip_non_locked
+from faebryk.libs.util import (
+    ConfigFlag,
+    cast_assert,
+    duplicates,
+    groupby,
+    zip_non_locked,
+)
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
+
+SEXP_LOG = ConfigFlag(
+    "SEXP_LOG", default=False, descr="Enable sexp decode logging (very verbose)"
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +193,7 @@ def _decode[T: DataclassInstance](
     stack: list[tuple[str, type]] | None = None,
     ignore_assertions: bool = False,
 ) -> T:
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"parse into: {t.__name__} {'-'*40}")
         logger.debug(f"sexp: {sexp}")
 
@@ -238,7 +249,7 @@ def _decode[T: DataclassInstance](
         # and positional_fields[i].name not in value_dict
     }
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"processing: {_prettify_stack(stack)}")
         logger.debug(f"key_fields: {list(key_fields.keys())}")
         logger.debug(
@@ -380,7 +391,7 @@ def _decode[T: DataclassInstance](
     if catch_all_fields and not unprocessed:
         value_dict[catch_all_fields[0].name] = None
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"value_dict: {value_dict}")
 
     try:
@@ -496,7 +507,7 @@ def _encode(t) -> netlist_type:
         for i, v in sorted(catch_all.items(), key=lambda x: x[0]):
             sexp.insert(i, v)
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"Dumping {type(t).__name__} {'-'*40}")
         logger.debug(f"Obj: {t}")
         logger.debug(f"Sexp: {sexp}")

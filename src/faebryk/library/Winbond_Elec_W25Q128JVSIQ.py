@@ -26,7 +26,10 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C97521"})
+    @L.rt_field
+    def has_pick(self):
+        return F.has_explicit_part.by_supplier("C97521", supplier_id="lcsc")
+
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )

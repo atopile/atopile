@@ -29,6 +29,8 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Power,
 )
+from faebryk.core.solver.solver import LOG_PICK_SOLVE
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
@@ -38,7 +40,6 @@ from faebryk.libs.util import (
     ConfigFlagFloat,
     ConfigFlagInt,
     KeyErrorAmbiguous,
-    indented_container,
     partition,
     unique_ref,
 )
@@ -60,7 +61,7 @@ PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of so
 MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
-TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
+TIMEOUT = ConfigFlagFloat("STIMEOUT", default=150, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
@@ -93,31 +94,30 @@ class Contradiction(Exception):
         tracebacks = {
             p: self.mutator.mutation_map.get_traceback(p) for p in self.involved_exprs
         }
+        print_ctx = self.mutator.mutation_map.input_print_context
 
         def _get_origins(p: ParameterOperatable) -> list[ParameterOperatable]:
             return tracebacks[p].get_leaves()
 
         # TODO reenable
-        # for p, tb in tracebacks.items():
-        #    tb_str = rich_to_string(tb.filtered().as_rich_tree())
-        #    logger.warning(tb_str)
+        if LOG_PICK_SOLVE:
+            for p, tb in tracebacks.items():
+                tb_str = rich_to_string(tb.filtered().as_rich_tree())
+                logger.warning(tb_str)
 
         origins = {p: _get_origins(p) for p in self.involved_exprs}
-        origins_str = indented_container(
-            {
-                p.compact_repr(
-                    self.mutator.mutation_map.input_print_context, use_name=True
-                ): [
-                    o.compact_repr(
-                        self.mutator.mutation_map.input_print_context, use_name=True
-                    )
-                    for o in set(os)
-                ]
-                for p, os in origins.items()
-            },
-            recursive=True,
+        origins_str = "\n".join(
+            [
+                f" - {origin.compact_repr(print_ctx, use_name=True)}\n"
+                + "\n".join(
+                    f"   - {o.compact_repr(print_ctx, use_name=True)}"
+                    for o in set(origins[origin])
+                )
+                for origin in origins
+            ]
         )
-        return f"{self.msg}\nOrigins: {origins_str}"
+
+        return f"Contradiction: {self.msg}\n\nOrigins:\n{origins_str}"
 
 
 class ContradictionByLiteral(Contradiction):
@@ -132,8 +132,8 @@ class ContradictionByLiteral(Contradiction):
         self.literals = literals
 
     def __str__(self):
-        literals_str = indented_container(str(lit) for lit in self.literals)
-        return f"{super().__str__()}\nLiterals: {literals_str}"
+        literals_str = "\n".join(f" - {lit}" for lit in self.literals)
+        return f"{super().__str__()}\n\nLiterals:\n{literals_str}"
 
 
 SolverLiteral = CanonicalLiteral
