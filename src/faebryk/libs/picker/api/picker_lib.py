@@ -10,7 +10,7 @@ import more_itertools
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
-from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
+from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
@@ -274,7 +274,9 @@ def _get_compatible_parameters(
 
 
 def _check_candidates_compatible(
-    module_candidates: list[tuple[Module, Component]], solver: Solver
+    module_candidates: list[tuple[Module, Component]],
+    solver: Solver,
+    allow_not_deducible: bool = False,
 ):
     """
     Check if combination of all candidates is compatible with each other
@@ -295,7 +297,7 @@ def _check_candidates_compatible(
         for m_param, c_range in not_none(param_mapping).items()
     )
 
-    solver.try_fulfill(And(*predicates), lock=False)
+    solver.try_fulfill(And(*predicates), lock=False, allow_unknown=allow_not_deducible)
 
 
 # public -------------------------------------------------------------------------------
@@ -313,11 +315,7 @@ def check_and_attach_candidates(
         Contradiction
         NotCompatibleException
     """
-    try:
-        _check_candidates_compatible(candidates, solver)
-    except NotDeducibleException:
-        if not allow_not_deducible:
-            raise
+    _check_candidates_compatible(candidates, solver, allow_not_deducible)
 
     for m, part in candidates:
         _attach(m, part)

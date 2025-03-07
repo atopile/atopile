@@ -29,6 +29,8 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Power,
 )
+from faebryk.core.solver.solver import LOG_PICK_SOLVE
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval_Disjoint,
 )
@@ -60,7 +62,7 @@ PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of so
 MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
-TIMEOUT = ConfigFlagFloat("STIMEOUT", default=120, descr="Solver timeout").get()
+TIMEOUT = ConfigFlagFloat("STIMEOUT", default=150, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 
@@ -98,9 +100,10 @@ class Contradiction(Exception):
             return tracebacks[p].get_leaves()
 
         # TODO reenable
-        # for p, tb in tracebacks.items():
-        #    tb_str = rich_to_string(tb.filtered().as_rich_tree())
-        #    logger.warning(tb_str)
+        if LOG_PICK_SOLVE:
+            for p, tb in tracebacks.items():
+                tb_str = rich_to_string(tb.filtered().as_rich_tree())
+                logger.warning(tb_str)
 
         origins = {p: _get_origins(p) for p in self.involved_exprs}
         origins_str = indented_container(

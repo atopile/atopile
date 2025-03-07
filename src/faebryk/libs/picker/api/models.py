@@ -258,5 +258,8 @@ class Component:
                 f"{indent(module.pretty_params(), ' '*4)}"
             )
 
+    def __rich_repr__(self):
+        yield f"{type(self).__name__}({self.lcsc_display})"
+
     class ParseError(Exception):
         pass
