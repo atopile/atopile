@@ -140,10 +140,13 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
         logger.info(f"Checking {len(electricpower)} Power")
 
+        buses_grouped = ModuleInterface._group_into_buses(electricpower)
+        buses = list(buses_grouped.values())
+
         # We do collection both inside and outside the loop because we don't
         # want to continue the loop if we've already raised a short exception
         with accumulator.collect():
-            accounted_for_power_sources = set()
+            logger.info("Checking for hv/lv shorts")
             for ep in electricpower:
                 if mif_path := ModuleInterfacePath.from_connection(ep.lv, ep.hv):
 
@@ -167,27 +170,19 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                         mif_path.snip_head(_keep_head).snip_tail(_keep_tail)
                     )
 
+            logger.info("Checking for power source shorts")
+            for bus in buses:
                 with accumulator.collect():
-                    if ep.has_trait(F.Power.is_power_source):
-                        if ep in accounted_for_power_sources:
-                            continue
+                    sources = {
+                        ep for ep in bus if ep.has_trait(F.Power.is_power_source)
+                    }
+                    if not sources:
+                        continue
 
-                        other_sources = [
-                            other
-                            for other in ep.get_connected()
-                            if isinstance(other, F.ElectricPower)
-                            and other.has_trait(F.Power.is_power_source)
-                        ]
-
-                        if other_sources:
-                            all_sources = [ep] + other_sources
-                            accounted_for_power_sources.update(all_sources)
-                            friendly_sources = ", ".join(
-                                n.get_full_name() for n in all_sources
-                            )
-                            raise ERCPowerSourcesShortedError(
-                                f"Power sources shorted: {friendly_sources}"
-                            )
+                    friendly_sources = ", ".join(n.get_full_name() for n in sources)
+                    raise ERCPowerSourcesShortedError(
+                        f"Power sources shorted: {friendly_sources}"
+                    )
 
         # shorted nets
         nets = GraphFunctions(G).nodes_of_type(F.Net)

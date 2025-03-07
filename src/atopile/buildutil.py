@@ -10,8 +10,10 @@ from atopile import layout
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
+from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
+from faebryk.core.pathfinder import MAX_PATHS
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.core.solver.solver import Solver
@@ -79,6 +81,15 @@ def build(app: Module) -> None:
     """Build the project."""
     G = app.get_graph()
     solver = _get_solver()
+
+    # TODO remove hack
+    # Disables children pathfinding
+    # ```
+    # power1.lv ~ power2.lv
+    # power1.hv ~ power2.hv
+    # -> power1 is not connected power2
+    # ```
+    set_max_paths(int(MAX_PATHS), 0, 0)
 
     if not SKIP_SOLVING:
         logger.info("Resolving bus parameters")
