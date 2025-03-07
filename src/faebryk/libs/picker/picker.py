@@ -15,9 +15,11 @@ from rich.progress import Progress
 import faebryk.library._F as F
 from atopile.cli.console import error_console
 from faebryk.core.cpp import Graph
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
+    ConstrainableExpression,
     Parameter,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
@@ -156,10 +158,19 @@ def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
     return tree
 
 
-def update_pick_tree(tree: Tree[Module]):
-    # TODO: have to filter the lower levels too,
-    # but atm only first level is picked anyway
-    return Tree((k, v) for k, v in tree.items() if not k.has_trait(F.has_part_picked))
+def update_pick_tree(tree: Tree[Module]) -> tuple[Tree[Module], bool]:
+    if not tree:
+        return tree, False
+
+    filtered_tree = Tree(
+        (k, sub[0])
+        for k, v in tree.items()
+        if not k.has_trait(F.has_part_picked) and not (sub := update_pick_tree(v))[1]
+    )
+    if not filtered_tree:
+        return filtered_tree, True
+
+    return filtered_tree, False
 
 
 def check_missing_picks(module: Module):
@@ -213,9 +224,11 @@ def check_missing_picks(module: Module):
 
 
 # TODO: tests & use
+# TODO: consider grouping by relation
+# e.g if its just aliases (all same repr), then very different
 def find_independent_groups(
     modules: Iterable[Module], solver: Solver
-) -> list[list[Module]]:
+) -> list[set[Module]]:
     """
     Find groups of modules that are independent of each other.
     """
@@ -224,20 +237,34 @@ def find_independent_groups(
     assert isinstance(solver, DefaultSolver)
     state = solver.reusable_state
     if state is None:
-        return [list(modules)]
+        module_eqs = EquivalenceClasses[Module](modules)
+        for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(
+            ConstrainableExpression
+        ):
+            if not e.constrained:
+                continue
+            ps = e.get_operand_parameters(recursive=True)
+            modules = {
+                m
+                for p in ps
+                if (parent := p.get_parent()) is not None
+                and isinstance(m := parent[0], Module)
+            }
+            module_eqs.add_eq(*modules)
+        return module_eqs.get()
 
     graphs = EquivalenceClasses()
-    graph_to_m = defaultdict[Graph, list[Module]](list)
+    graph_to_m = defaultdict[Graph, set[Module]](set)
     for m in modules:
         params = m.get_trait(F.is_pickable_by_type).get_parameters().values()
         new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
         m_graphs = get_graphs(new_params)
         graphs.add_eq(*m_graphs)
         for g in m_graphs:
-            graph_to_m[g].append(m)
+            graph_to_m[g].add(m)
 
     graph_groups: list[set[Graph]] = graphs.get()
-    module_groups = [[m for g in gg for m in graph_to_m[g]] for gg in graph_groups]
+    module_groups = [{m for g in gg for m in graph_to_m[g]} for gg in graph_groups]
     return module_groups
 
 
@@ -302,13 +329,18 @@ def pick_topologically(
     timings.add("setup")
 
     candidates = _get_candidates(tree)
+    _pick_count = len(candidates)
 
     # heuristic: pick all single part modules in one go
-    single_part_modules = [
-        (module, parts[0]) for module, parts in candidates if len(parts) == 1
-    ]
-    if single_part_modules:
-        with timings.as_global("pick single candidate modules"):
+    # TODO split explicit from single-candidate
+    with timings.as_global("pick single candidate modules"):
+        single_part_modules = [
+            (module, parts[0])
+            for module, parts in candidates
+            if len(parts) == 1 or module.has_trait(F.has_explicit_part)
+        ]
+        if single_part_modules:
+            logger.info("Picking single part modules")
             try:
                 check_and_attach_candidates(
                     single_part_modules, solver, allow_not_deducible=True
@@ -325,39 +357,54 @@ def pick_topologically(
                     "Could not pick all explicitly-specified parts",
                     *[m for m, _ in single_part_modules],
                 )
-        _update_progress(single_part_modules)
+            _update_progress(single_part_modules)
 
-        tree = update_pick_tree(tree)
-        candidates = _get_candidates(tree)
+            tree, _ = update_pick_tree(tree)
+            candidates = _get_candidates(tree)
 
-    # heuristic: try pick first candidate for rest
-    # with timings.as_global("fast-pick"):
-    #     try:
-    #         check_and_attach_candidates([(m, p[0]) for m, p in candidates], solver)
-    #     except (Contradiction, NotCompatibleException, NotDeducibleException):
-    #         logger.warning("Could not pick all parts atomically")
-    #         # no need to update candidates, slow picking does by itself
-    #     else:
-    #         # REALLLY DO REMOVE THIS
-    #         # TODO remove
-    #         solver.update_superset_cache(*[m for m, _ in candidates])
-    #         _update_progress(candidates)
-    #         logger.info(f"Fast-picked parts in {timings.get_formatted('fast-pick')}")
-    #         return
+    with timings.as_global("singleton group fast-pick"):
+        pickable_modules = [m for (m, _) in candidates]
+        # solver.simplify(*pickable_modules)
+        groups = find_independent_groups(pickable_modules, solver)
+        singletons = {next(iter(g)) for g in groups if len(g) == 1}
+        singleton_candidates = [(m, cs[0]) for m, cs in candidates if m in singletons]
+        if singleton_candidates:
+            logger.info("Picking independent parts")
+            try:
+                check_and_attach_candidates(
+                    singleton_candidates, solver, allow_not_deducible=True
+                )
+            except Contradiction as e:
+                raise PickError(
+                    "Could not pick all independent parts." f"  {str(e)}",
+                    *singletons,
+                )
+            except (NotCompatibleException, NotDeducibleException):
+                # TODO: more informationq
+                raise PickError(
+                    "Could not pick all independent parts",
+                    *singletons,
+                )
+            _update_progress(singleton_candidates)
+            tree, _ = update_pick_tree(tree)
+            candidates = [(m, cs) for m, cs in candidates if m not in singletons]
 
-    # logger.warning("Falling back to extremely slow picking one by one")
     # Works by looking for each module again for compatible parts
     # If no compatible parts are found,
     #   it means we need to backtrack or there is no solution
     with timings.as_global("slow-pick", context=True):
-        for module in tree:
-            if LOG_PICK_SOLVE:
-                logger.info(f"Picking part for {module}")
-            part = _get_single_candidate(module)
-            attach_single_no_check(module, part, solver)
-            _update_progress(module)
+        if candidates:
+            logger.warning("Falling back to extremely slow picking one by one")
+            for module in tree:
+                if LOG_PICK_SOLVE:
+                    logger.info(f"Picking part for {module}")
+                part = _get_single_candidate(module)
+                attach_single_no_check(module, part, solver)
+                _update_progress(module)
 
-    logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
+            logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
+
+    logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
     solver.update_superset_cache(*tree_backup)
 
