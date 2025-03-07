@@ -176,7 +176,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     sources = {
                         ep for ep in bus if ep.has_trait(F.Power.is_power_source)
                     }
-                    if not sources:
+                    if len(sources) <= 1:
                         continue
 
                     friendly_sources = ", ".join(n.get_full_name() for n in sources)
