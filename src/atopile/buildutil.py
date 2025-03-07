@@ -9,13 +9,14 @@ from typing import Callable, Optional
 from atopile import layout
 from atopile.cli.logging import LoggingStage
 from atopile.config import config
-from atopile.errors import UserException, UserPickError
+from atopile.errors import UserContradictionException, UserException, UserPickError
 from atopile.front_end import DeprecatedException
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.core.solver.solver import Solver
+from faebryk.core.solver.utils import Contradiction
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -112,7 +113,10 @@ def build(app: Module) -> None:
         parameters = app.get_children(False, types=Parameter)
         if parameters:
             logger.info("Simplifying parameter graph")
-            solver.simplify(*parameters)
+            try:
+                solver.simplify(*parameters)
+            except Contradiction as e:
+                raise UserContradictionException(str(e)) from e
 
     with LoggingStage("picker", "Picking components"):
         if config.build.keep_picked_parts:
