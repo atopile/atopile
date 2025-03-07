@@ -381,7 +381,7 @@ def pick_topologically(
                     *singletons,
                 )
             except (NotCompatibleException, NotDeducibleException):
-                # TODO: more informationq
+                # TODO: more information
                 raise PickError(
                     "Could not pick all independent parts",
                     *singletons,
