@@ -1384,8 +1384,12 @@ class Mutator:
         t: tuple[type[ParameterOperatable], ...] | UnionType,
         sort_by_depth: bool = False,
         include_terminated: bool = False,
+        new_only: bool = False,
     ) -> list[ParameterOperatable] | set[ParameterOperatable]:
-        out = GraphFunctions(*self.G).nodes_of_types(t)
+        if new_only:
+            out = {n for n in self._new_operables if isinstance(n, t)}
+        else:
+            out = GraphFunctions(*self.G).nodes_of_types(t)
         out = cast(set[ParameterOperatable], out)
         if not include_terminated:
             out = {
