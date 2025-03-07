@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import Sequence
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -13,9 +13,6 @@ from atopile.parse_utils import (
     get_src_info_from_token,
 )
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
-
-if TYPE_CHECKING:
-    from faebryk.libs.picker.picker import PickError
 
 
 def _render_tokens(
@@ -296,19 +293,6 @@ class UserPickError(UserException):
     """
     Raised when there's an error in the picker.
     """
-
-    @classmethod
-    def from_pick_error(cls, ex: "PickError") -> "UserPickError":
-        from atopile.front_end import from_dsl
-
-        modules = ex.modules
-        # TODO not just first module
-        if modules and (origin_t := modules[0].try_get_trait(from_dsl)):
-            origin = origin_t.src_ctx
-        else:
-            origin = None
-
-        return cls.from_ctx(origin, str(ex))
 
 
 class UserActionWithoutEffectError(UserException):
