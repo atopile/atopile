@@ -9,8 +9,6 @@ module AdjustableRegulator from Regulator:
     v_in: voltage
     v_out: voltage
 
-    # Default value
-    # assert i_q within 100uA to 200uA
     assert feedback_div.v_in is v_out
     assert feedback_div.v_out is v_ref
     assert feedback_div.max_current is i_q
