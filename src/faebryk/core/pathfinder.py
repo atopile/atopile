@@ -16,6 +16,10 @@ from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
 logger = logging.getLogger(__name__)
 
+PATHFINDER_LOG = ConfigFlag(
+    "PATHFINDER_LOG", default=False, descr="Log filter counters (expensive)"
+)
+
 # Also in C++
 INDIV_MEASURE = ConfigFlag(
     "INDIV_MEASURE", default=False, descr="Measure individual paths"
@@ -36,7 +40,7 @@ set_max_paths(int(MAX_PATHS), int(MAX_PATHS_NO_NEW_WEAK), int(MAX_PATHS_NO_WEAK)
 def find_paths(src: Node, dst: Sequence[Node]) -> Sequence[Path]:
     paths, counters = find_paths_cpp(src, dst)
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if PATHFINDER_LOG:
         logger.debug(Counters(counters))
     return paths
 
