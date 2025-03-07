@@ -357,24 +357,24 @@ class DefaultSolver(Solver):
         ]
 
         if not_deduced:
-            if LOG_PICK_SOLVE:
-                logger.warning(
-                    f"PREDICATE not deducible: {pred.compact_repr()}"
-                    + (
-                        f" -> {repr_pred.compact_repr(print_context_new)}"
-                        if repr_pred is not None
-                        else ""
-                    )
-                )
-                logger.warning(
-                    f"NOT DEDUCED: \n    {'\n    '.join([
-                            p.compact_repr(print_context_new) for p in not_deduced])}"
-                )
-
-                repr_map.print_name_mappings(log=logger.warning)
-                repr_map.last_stage.print_graph_contents(log=logger.warning)
-
             if not allow_unknown:
+                if LOG_PICK_SOLVE:
+                    logger.warning(
+                        f"PREDICATE not deducible: {pred.compact_repr()}"
+                        + (
+                            f" -> {repr_pred.compact_repr(print_context_new)}"
+                            if repr_pred is not None
+                            else ""
+                        )
+                    )
+                    logger.warning(
+                        f"NOT DEDUCED: \n    {'\n    '.join([
+                            p.compact_repr(print_context_new) for p in not_deduced])}"
+                    )
+
+                    repr_map.print_name_mappings(log=logger.warning)
+                    repr_map.last_stage.print_graph_contents(log=logger.warning)
+
                 raise NotDeducibleException(pred, not_deduced)
             return None
 
