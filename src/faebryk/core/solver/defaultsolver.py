@@ -143,7 +143,9 @@ class DefaultSolver(Solver):
                     f"G:{len(data.mutation_map.output_graphs)}"
                 )
                 # atm only one stage
-                algo_result.mutation_stage.print_mutation_table()
+                # expensive
+                if S_LOG:
+                    algo_result.mutation_stage.print_mutation_table()
 
             iteration_state.dirty |= algo_result.dirty
             data.mutation_map = data.mutation_map.extend(algo_result.mutation_stage)
