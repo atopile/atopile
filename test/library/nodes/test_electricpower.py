@@ -7,6 +7,7 @@ import pytest
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
+from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
@@ -40,6 +41,41 @@ def test_fused_power():
     cur = solver.inspect_get_known_supersets(power_out.max_current)
     assert isinstance(cur, Quantity_Interval_Disjoint)
     assert (cur <= L.Single(500 * P.mA)) == BoolSet(True)
+
+
+def test_power_source_short():
+    """
+    Test that a power source is shorted when connected to another power source
+    """
+    import faebryk.library._F as F
+
+    power_out_1 = F.ElectricPower()
+    power_out_2 = F.ElectricPower()
+
+    power_out_1.connect(power_out_2)
+    power_out_2.connect(power_out_1)
+
+    power_out_1.make_source()
+    power_out_2.make_source()
+
+    with pytest.raises(ERCPowerSourcesShortedError):
+        simple_erc(power_out_1.get_graph())
+
+
+def test_power_source_no_short():
+    """
+    Test that a power source is not shorted when connected to another non-power source
+    """
+    import faebryk.library._F as F
+
+    power_out_1 = F.ElectricPower()
+    power_out_2 = F.ElectricPower()
+
+    power_out_1.make_source()
+
+    power_out_1.connect(power_out_2)
+
+    simple_erc(power_out_1.get_graph())
 
 
 def test_voltage_propagation():
