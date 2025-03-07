@@ -1,9 +1,8 @@
-import ElectricPower, Regulator
-from "vdivs.ato" import VDiv
+import ElectricPower, Regulator, ResistorVoltageDivider
 
 module AdjustableRegulator from Regulator:
     # using vanilla voltage divider without equations
-    feedback_div = new VDiv
+    feedback_div = new ResistorVoltageDivider
     v_ref: voltage
     i_q: current
     r_total: resistance
@@ -11,11 +10,10 @@ module AdjustableRegulator from Regulator:
     v_out: voltage
 
     # Default value
-    i_q = 100uA to 200uA
-
-    assert v_ref * (1 + feedback_div.r_top.resistance / feedback_div.r_bottom.resistance) within v_out
-    assert v_out / (feedback_div.r_top.resistance + feedback_div.r_bottom.resistance) within i_q
-
+    # assert i_q within 100uA to 200uA
+    assert feedback_div.v_in is v_out
+    assert feedback_div.v_out is v_ref
+    assert feedback_div.max_current is i_q
 
 module Buck from AdjustableRegulator:
     pass
