@@ -286,6 +286,12 @@ class UserAssertionError(UserException):
     """
 
 
+class UserContradictionException(UserException):
+    """
+    Raised when user-provided constraints contradict.
+    """
+
+
 class UserPickError(UserException):
     """
     Raised when there's an error in the picker.
