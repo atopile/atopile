@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from more_itertools import first
 
-from atopile.cli.logging import LoggingStage
+from atopile.cli.logging import LOGS_DIR, LoggingStage
 from atopile.config import config
 from faebryk.libs.app.pcb import open_pcb
 
@@ -93,6 +93,7 @@ def build(
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
+    logger.info("Logs saved to %s", LOGS_DIR)
 
     if config.should_open_layout_on_build():
         selected_build_names = list(config.selected_builds)

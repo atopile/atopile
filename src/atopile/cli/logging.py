@@ -34,6 +34,8 @@ _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _SHOW_LOG_FILE_PATH_THRESHOLD = 120
 
+LOGS_DIR = (config.project.paths.logs / _NOW).absolute()
+
 
 class LogHandler(RichHandler):
     """
