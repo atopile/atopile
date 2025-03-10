@@ -17,7 +17,7 @@ import sys
 import time
 import uuid
 from abc import abstractmethod
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import Enum, StrEnum
@@ -1897,6 +1897,43 @@ def indented_container(
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}{_indent_prefix * (indent_level - 1)}}}"
+
+
+def md_list(
+    obj: Iterable | dict, indent_level: int = 0, recursive: bool = False
+) -> str:
+    """
+    Convert an iterable or dictionary into a nested markdown list.
+    """
+    indent = f"{'  ' * indent_level}"
+
+    if isinstance(obj, dict):
+        kvs = obj.items()
+    elif isinstance(obj, str):
+        return f"{indent}- {obj}"
+    else:
+        try:
+            kvs = list(enumerate(obj))
+        except TypeError:
+            return f"{indent}- {str(obj)}"
+
+    if not kvs:
+        return f"{indent}- *(empty)*"
+
+    lines = deque()
+    for k, v in kvs:
+        key_str = f" **{k}**:" if isinstance(obj, dict) else ""
+
+        if recursive and isinstance(v, Iterable) and not isinstance(v, str):
+            if isinstance(obj, dict):
+                lines.append(f"{indent}-{key_str}")
+            nested = md_list(v, indent_level + 1, recursive)
+            lines.append(nested)
+        else:
+            value_str = str(v)
+            lines.append(f"{indent}-{key_str} {value_str}")
+
+    return "\n".join(lines)
 
 
 def robustly_rm_dir(path: os.PathLike) -> None:
