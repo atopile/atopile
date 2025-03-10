@@ -1218,10 +1218,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             # TODO: @v0.4 remove this deprecated import form
             with downgrade(errors.UserTypeError):
+                a, b = pair
+                a_type = a.__class__.__name__
+                b_type = b.__class__.__name__
                 raise errors.UserTypeError.from_ctx(
                     ctx,
-                    f"Connected `{pair[0]}`, a `signal` / `Electrical` to "
-                    f"`{pair[1]}.line`, because `{pair[1]}` is a `{type(pair[1])}`. "
+                    f"Connected `{a}` (type {a_type}) to "
+                    f"`{b}.line`, because `{b}` is an `{b_type}`. "
                     "This means that the reference isn't also connected through.",
                     traceback=self.get_traceback(),
                 )
