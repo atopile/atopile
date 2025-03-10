@@ -130,6 +130,10 @@ def test_performance_pick_rc_formulas():
         ) -> bool:
             if "run_iteration:" not in k:
                 return False
+            if "setup" in k:
+                return False
+            if "clean" not in k and "dirty" not in k:
+                return False
             if dirty is not None:
                 if dirty and "dirty" not in k:
                     return False
@@ -159,6 +163,10 @@ def test_performance_pick_rc_formulas():
         for i in [None, True, False]:
             for j in [None, True, False]:
                 _make_algo_group(dirty=i, terminal=j)
+        timings.add_seperator()
+        timings.make_group("mutator setup", lambda k: "run_iteration:setup" in k)
+        timings.make_group("backend wait", lambda k: "fetch parts" in k)
+        timings.make_group("solver", lambda k: "algos" == k)
         logger.info(f"\n{timings.to_str(force_unit='ms')}")
 
     picked_values = {
