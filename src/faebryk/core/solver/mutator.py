@@ -748,7 +748,6 @@ class MutationMap:
         return collected
 
     @property
-    @once
     def compressed_mapping_forwards(self) -> dict[ParameterOperatable, LookupResult]:
         return {
             start: self.map_forward(start, seek_start=False)
@@ -1533,15 +1532,18 @@ class Mutator:
 
         self._starting_operables = set(self.nodes_of_type(include_terminated=True))
 
-        self._last_run_operables = set()
+        self.transformations = Transformations(input_print_context=self.print_context)
+
+    @property
+    @once
+    def _new_operables(self) -> set[ParameterOperatable]:
+        _last_run_operables = set()
         if self._mutations_since_last_iteration is not None:
-            self._last_run_operables = set(
+            _last_run_operables = set(
                 self._mutations_since_last_iteration.compressed_mapping_forwards_complete.values()
             )
-        assert self._last_run_operables.issubset(self._starting_operables)
-        self._new_operables = self._starting_operables - self._last_run_operables
-
-        self.transformations = Transformations(input_print_context=self.print_context)
+        assert _last_run_operables.issubset(self._starting_operables)
+        return self._starting_operables - _last_run_operables
 
     @property
     def G(self) -> set[Graph]:
