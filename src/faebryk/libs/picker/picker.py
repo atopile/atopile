@@ -82,6 +82,12 @@ class PickErrorNotImplemented(PickError):
         super().__init__(message, module)
 
 
+class PickVerificationError(PickError):
+    def __init__(self, message: str, *modules: Module):
+        message = f"Post-pick verification failed for picked parts:\n{message}"
+        super().__init__(message, *modules)
+
+
 class PickErrorChildren(PickError):
     def __init__(self, module: Module, children: dict[Module, PickError]):
         self.children = children
@@ -430,7 +436,10 @@ def pick_topologically(
 
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
-    solver.update_superset_cache(*tree_backup)
+    try:
+        solver.update_superset_cache(*tree_backup)
+    except Contradiction as e:
+        raise PickVerificationError(str(e), *tree_backup) from e
 
 
 # TODO should be a Picker

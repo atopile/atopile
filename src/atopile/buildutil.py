@@ -137,7 +137,7 @@ def build(app: Module) -> None:
         except* PickError as ex:
             raise ExceptionGroup(
                 "Failed to pick parts for some modules",
-                [UserPickError.from_pick_error(e) for e in iter_leaf_exceptions(ex)],
+                [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
             ) from ex
 
     with LoggingStage("footprints", "Handling footprints"):
