@@ -43,7 +43,7 @@ logger.setLevel(logging.INFO)
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
-create_app = typer.Typer()
+create_app = typer.Typer(rich_markup_mode="rich")
 
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
