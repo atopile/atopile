@@ -20,10 +20,12 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.parameter import (
     ConstrainableExpression,
+    Is,
     Parameter,
+    ParameterOperatable,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, NotDeducibleException, Solver
-from faebryk.core.solver.utils import Contradiction, get_graphs
+from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get_graphs
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -35,6 +37,7 @@ from faebryk.libs.util import (
     indented_container,
     partition,
     try_or,
+    unique,
 )
 
 if TYPE_CHECKING:
@@ -266,25 +269,58 @@ def find_independent_groups(
     """
     from faebryk.core.solver.defaultsolver import DefaultSolver
 
+    modules = set(modules)
+
     if (
         not isinstance(solver, DefaultSolver)
         or (state := solver.reusable_state) is None
     ):
-        module_eqs = EquivalenceClasses[Module](modules)
+        # Find params aliased to lits
+        aliased = EquivalenceClasses[ParameterOperatable]()
+        lits = dict[ParameterOperatable, ParameterOperatable.Literal]()
+        for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(Is):
+            if not e.constrained:
+                continue
+            aliased.add_eq(*e.operatable_operands)
+            if e.get_operand_literals():
+                lits[e.get_operand_operatables().pop()] = next(
+                    iter(e.get_operand_literals().values())
+                )
+        for alias_group in aliased.get():
+            lits_eq = unique((lits[p] for p in alias_group if p in lits), lambda x: x)
+            if not lits_eq:
+                continue
+            if len(lits_eq) > 1:
+                # TODO
+                raise ContradictionByLiteral("", [], [], None)
+            for p in alias_group:
+                lits[p] = lits_eq[0]
+
+        # find params related to each other
+        param_eqs = EquivalenceClasses[Parameter]()
         for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(
             ConstrainableExpression
         ):
             if not e.constrained:
                 continue
             ps = e.get_operand_parameters(recursive=True)
-            modules = {
+            ps.difference_update(lits.keys())
+            param_eqs.add_eq(*ps)
+
+        # find modules that are dependent on each other
+        module_eqs = EquivalenceClasses[Module](modules)
+        for p_eq in param_eqs.get():
+            p_modules = {
                 m
-                for p in ps
+                for p in p_eq
                 if (parent := p.get_parent()) is not None
                 and isinstance(m := parent[0], Module)
+                and m in modules
             }
-            module_eqs.add_eq(*modules)
-        return module_eqs.get()
+            module_eqs.add_eq(*p_modules)
+        out = module_eqs.get()
+        logger.debug(indented_container(out, recursive=True))
+        return out
 
     graphs = EquivalenceClasses()
     graph_to_m = defaultdict[Graph, set[Module]](set)
@@ -332,19 +368,19 @@ def pick_topologically(
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
-            candidates = list(get_candidates(_tree, solver).items())
+            candidates = get_candidates(_tree, solver)
         if LOG_PICK_SOLVE:
             logger.info(
                 "Candidates: \n\t"
-                f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates)}"
+                f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
             )
         return candidates
 
-    def _get_single_candidate(module: Module):
-        parts = _get_candidates(Tree({module: Tree()}))[0][1]
-        return parts[0]
+    def _get_single_candidate(*modules: Module):
+        parts = _get_candidates(Tree({m: Tree() for m in modules}))
+        return {m: parts[m][0] for m in modules}
 
-    def _update_progress(done: list[tuple[Module, Any]] | Module):
+    def _update_progress(done: Iterable[tuple[Module, Any]] | Module):
         if not progress:
             return
 
@@ -366,7 +402,7 @@ def pick_topologically(
     with timings.as_global("pick single candidate modules"):
         single_part_modules = [
             (module, parts[0])
-            for module, parts in candidates
+            for module, parts in candidates.items()
             if len(parts) == 1 or module.has_trait(F.has_explicit_part)
         ]
         if single_part_modules:
@@ -391,48 +427,43 @@ def pick_topologically(
             tree, _ = update_pick_tree(tree)
             candidates = _get_candidates(tree)
 
-    with timings.as_global("singleton group fast-pick"):
-        pickable_modules = [m for (m, _) in candidates]
-        # solver.simplify(*pickable_modules)
-        groups = find_independent_groups(pickable_modules, solver)
-        singletons = {next(iter(g)) for g in groups if len(g) == 1}
-        singleton_candidates = [(m, cs[0]) for m, cs in candidates if m in singletons]
-        if singleton_candidates:
-            logger.info("Picking independent parts")
-            try:
-                check_and_attach_candidates(
-                    singleton_candidates, solver, allow_not_deducible=True
-                )
-            except Contradiction as e:
-                raise PickError(
-                    "Could not pick all independent parts." f"  {str(e)}",
-                    *singletons,
-                )
-            except (NotCompatibleException, NotDeducibleException):
-                # TODO: more information
-                raise PickError(
-                    "Could not pick all independent parts",
-                    *singletons,
-                )
-            _update_progress(singleton_candidates)
-            tree, _ = update_pick_tree(tree)
-            candidates = [(m, cs) for m, cs in candidates if m not in singletons]
-
     # Works by looking for each module again for compatible parts
     # If no compatible parts are found,
     #   it means we need to backtrack or there is no solution
-    with timings.as_global("slow-pick", context=True):
+    with timings.as_global("parallel slow-pick", context=True):
         if candidates:
-            logger.warning("Falling back to extremely slow picking one by one")
-            for module in tree:
-                if LOG_PICK_SOLVE:
-                    logger.info(f"Picking part for {module}")
-                part = _get_single_candidate(module)
-                attach_single_no_check(module, part, solver)
-                _update_progress(module)
+            logger.warning("Slow picking modules in parallel")
+            while candidates:
+                groups = find_independent_groups(candidates.keys(), solver)
+
+                # heuristic: pick singleton groups first
+                singleton_groups = [g for g in groups if len(g) == 1]
+                if singleton_groups:
+                    groups = singleton_groups
+
+                group_heads = [next(iter(g)) for g in groups]
+                logger.debug(f"Picking parts for {group_heads}")
+                try:
+                    parts = _get_single_candidate(*group_heads)
+                except Contradiction as e:
+                    # TODO better error
+                    raise PickError(
+                        "Contradiction in system."
+                        "Unfixable due to lack of backtracking." + str(e),
+                        *[],
+                    )
+                for m, part in parts.items():
+                    attach_single_no_check(m, part, solver)
+                _update_progress(parts.items())
+                tree, _ = update_pick_tree(tree)
+                candidates = {
+                    m: cs for m, cs in candidates.items() if m not in group_heads
+                }
 
     if candidates:
-        logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
+        logger.info(
+            f"Slow-picked parts in {timings.get_formatted('parallel slow-pick')}"
+        )
 
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
