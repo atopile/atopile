@@ -56,8 +56,8 @@ def rich_to_string(rich_obj: Table | Tree) -> str:
     return str(console)
 
 
-def setup_basic_logging(force_fmt: bool = False):
-    if FLOG_FMT or force_fmt:
+def setup_basic_logging():
+    if FLOG_FMT:
         logging.basicConfig(
             format="%(message)s",
             level=logging.INFO,
