@@ -258,9 +258,6 @@ def check_missing_picks(module: Module):
             )
 
 
-# TODO: tests & use
-# TODO: consider grouping by relation
-# e.g if its just aliases (all same repr), then very different
 def find_independent_groups(
     modules: Iterable[Module], solver: Solver
 ) -> list[set[Module]]:
@@ -337,6 +334,10 @@ def find_independent_groups(
     return module_groups
 
 
+def _list_to_hack_tree(modules: Iterable[Module]) -> Tree[Module]:
+    return Tree({m: Tree() for m in modules})
+
+
 def pick_topologically(
     tree: Tree[Module],
     solver: Solver,
@@ -345,10 +346,25 @@ def pick_topologically(
     # TODO implement backtracking
 
     from faebryk.libs.picker.api.picker_lib import (
+        _find_modules,
         attach_single_no_check,
         check_and_attach_candidates,
         get_candidates,
     )
+
+    explicit_modules = [
+        m
+        for m in tree.keys()
+        if m.has_trait(F.is_pickable_by_part_number)
+        or m.has_trait(F.is_pickable_by_supplier_id)
+    ]
+    explicit_parts = _find_modules(_list_to_hack_tree(explicit_modules), solver)
+    for m, parts in explicit_parts.items():
+        assert len(parts) == 1
+        part = parts[0]
+        attach_single_no_check(m, part, solver)
+    if explicit_parts:
+        tree, _ = update_pick_tree(tree)
 
     tree_backup = set(tree.keys())
     timings = Times(name="pick")
@@ -377,7 +393,7 @@ def pick_topologically(
         return candidates
 
     def _get_single_candidate(*modules: Module):
-        parts = _get_candidates(Tree({m: Tree() for m in modules}))
+        parts = _get_candidates(_list_to_hack_tree(modules))
         return {m: parts[m][0] for m in modules}
 
     def _update_progress(done: Iterable[tuple[Module, Any]] | Module):
@@ -403,7 +419,7 @@ def pick_topologically(
         single_part_modules = [
             (module, parts[0])
             for module, parts in candidates.items()
-            if len(parts) == 1 or module.has_trait(F.has_explicit_part)
+            if len(parts) == 1
         ]
         if single_part_modules:
             logger.info("Picking single part modules")
