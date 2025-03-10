@@ -267,10 +267,13 @@ def find_independent_groups(
     """
     from faebryk.core.solver.defaultsolver import DefaultSolver
 
+    modules = set(modules)
+
     if (
         not isinstance(solver, DefaultSolver)
         or (state := solver.reusable_state) is None
     ):
+        param_eqs = EquivalenceClasses[Parameter]()
         module_eqs = EquivalenceClasses[Module](modules)
         for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(
             ConstrainableExpression
@@ -278,13 +281,16 @@ def find_independent_groups(
             if not e.constrained:
                 continue
             ps = e.get_operand_parameters(recursive=True)
-            modules = {
+            param_eqs.add_eq(*ps)
+        for p_eq in param_eqs.get():
+            p_modules = {
                 m
-                for p in ps
+                for p in p_eq
                 if (parent := p.get_parent()) is not None
                 and isinstance(m := parent[0], Module)
+                and m in modules
             }
-            module_eqs.add_eq(*modules)
+            module_eqs.add_eq(*p_modules)
         return module_eqs.get()
 
     graphs = EquivalenceClasses()
@@ -395,6 +401,7 @@ def pick_topologically(
     with timings.as_global("singleton group fast-pick"):
         # solver.simplify(*pickable_modules)
         groups = find_independent_groups(candidates.keys(), solver)
+        print(indented_container(groups, recursive=True))
         singletons = {next(iter(g)) for g in groups if len(g) == 1}
         singleton_candidates = [
             (m, cs[0]) for m, cs in candidates.items() if m in singletons
