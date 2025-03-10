@@ -1881,7 +1881,8 @@ def indented_container(
     use_repr: bool = True,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
-    _indent = "  " * indent_level
+    _indent_prefix = "  "
+    _indent = _indent_prefix * indent_level
     ind = "\n" + _indent
 
     def format_v(v: Any) -> str:
@@ -1895,7 +1896,7 @@ def indented_container(
     if len(kvs):
         inside = f"{ind}{inside}\n"
 
-    return f"{{{inside}}}"
+    return f"{{{inside}{_indent_prefix * (indent_level - 1)}}}"
 
 
 def robustly_rm_dir(path: os.PathLike) -> None:

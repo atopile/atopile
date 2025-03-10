@@ -81,6 +81,7 @@ def test_performance_pick_rc_formulas():
     TOLERANCE = 20 * P.percent
 
     class App(Module):
+        alias_res = L.list_field(_GROUPS, F.Resistor)
         res = L.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
 
         def __preinit__(self):
@@ -93,6 +94,7 @@ def test_performance_pick_rc_formulas():
                     m2.resistance.constrain_subset(m1.resistance * increase)
                     # solver doesn't do equation reordering, so we need to reverse
                     m1.resistance.constrain_subset(m2.resistance / increase)
+                self.alias_res[i].resistance.alias_is(self.res[i].resistance)
 
     timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
 
