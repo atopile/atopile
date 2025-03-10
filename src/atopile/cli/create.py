@@ -582,7 +582,7 @@ def component(
         assert filename is not None
 
         filepath = Path(filename)
-        if filepath.absolute():
+        if filepath.is_absolute():
             out_path = filepath.resolve()
         else:
             out_path = (config.project.paths.src / filename).resolve()
