@@ -353,6 +353,13 @@ class LoggingStage:
 
     def _create_log_dir(self) -> Path:
         log_dir = Path(config.project.paths.logs) / _NOW
+
+        try:
+            build_cfg = config.build
+            log_dir = log_dir / build_cfg.name
+        except RuntimeError:
+            pass
+
         log_dir.mkdir(parents=True, exist_ok=True)
 
         latest_link = Path(config.project.paths.logs) / "latest"
