@@ -7,6 +7,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import zip_longest
 from textwrap import indent
 from typing import TYPE_CHECKING, Any, Iterable
 
@@ -332,19 +333,19 @@ def pick_topologically(
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
-            candidates = list(get_candidates(_tree, solver).items())
+            candidates = get_candidates(_tree, solver)
         if LOG_PICK_SOLVE:
             logger.info(
                 "Candidates: \n\t"
-                f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates)}"
+                f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
             )
         return candidates
 
-    def _get_single_candidate(module: Module):
-        parts = _get_candidates(Tree({module: Tree()}))[0][1]
-        return parts[0]
+    def _get_single_candidate(*modules: Module):
+        parts = _get_candidates(Tree({m: Tree() for m in modules}))
+        return {m: parts[m][0] for m in modules}
 
-    def _update_progress(done: list[tuple[Module, Any]] | Module):
+    def _update_progress(done: Iterable[tuple[Module, Any]] | Module):
         if not progress:
             return
 
@@ -366,7 +367,7 @@ def pick_topologically(
     with timings.as_global("pick single candidate modules"):
         single_part_modules = [
             (module, parts[0])
-            for module, parts in candidates
+            for module, parts in candidates.items()
             if len(parts) == 1 or module.has_trait(F.has_explicit_part)
         ]
         if single_part_modules:
@@ -392,11 +393,12 @@ def pick_topologically(
             candidates = _get_candidates(tree)
 
     with timings.as_global("singleton group fast-pick"):
-        pickable_modules = [m for (m, _) in candidates]
         # solver.simplify(*pickable_modules)
-        groups = find_independent_groups(pickable_modules, solver)
+        groups = find_independent_groups(candidates.keys(), solver)
         singletons = {next(iter(g)) for g in groups if len(g) == 1}
-        singleton_candidates = [(m, cs[0]) for m, cs in candidates if m in singletons]
+        singleton_candidates = [
+            (m, cs[0]) for m, cs in candidates.items() if m in singletons
+        ]
         if singleton_candidates:
             logger.info("Picking independent parts")
             try:
@@ -416,23 +418,26 @@ def pick_topologically(
                 )
             _update_progress(singleton_candidates)
             tree, _ = update_pick_tree(tree)
-            candidates = [(m, cs) for m, cs in candidates if m not in singletons]
+            candidates = {m: cs for m, cs in candidates.items() if m not in singletons}
+            # solver.simplify(*pickable_modules)
+            groups = find_independent_groups(candidates.keys(), solver)
 
     # Works by looking for each module again for compatible parts
     # If no compatible parts are found,
     #   it means we need to backtrack or there is no solution
-    with timings.as_global("slow-pick", context=True):
+    with timings.as_global("parallel slow-pick", context=True):
         if candidates:
-            logger.warning("Falling back to extremely slow picking one by one")
-            for module in tree:
-                if LOG_PICK_SOLVE:
-                    logger.info(f"Picking part for {module}")
-                part = _get_single_candidate(module)
-                attach_single_no_check(module, part, solver)
-                _update_progress(module)
+            logger.warning("Slow picking modules in parallel")
+            for group_heads in zip_longest(*groups, fillvalue=None):
+                parts = _get_single_candidate(*group_heads)
+                for m, part in parts.items():
+                    attach_single_no_check(m, part, solver)
+                _update_progress(parts.items())
 
     if candidates:
-        logger.info(f"Slow-picked parts in {timings.get_formatted('slow-pick')}")
+        logger.info(
+            f"Slow-picked parts in {timings.get_formatted('parallel slow-pick')}"
+        )
 
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
