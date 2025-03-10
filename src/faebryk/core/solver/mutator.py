@@ -107,7 +107,7 @@ class Transformations:
          the old node with the new one
         - if a node was removed, we need to copy the graph to remove it
         """
-        return {n.get_graph() for n in self.removed | self.mutated.keys()}
+        return set(get_graphs(self.removed | self.mutated.keys()))
 
     @staticmethod
     def identity(
@@ -1561,34 +1561,26 @@ class Mutator:
 
     def _copy_unmutated(
         self,
-        exclude_filter: Callable[[ParameterOperatable], bool] | None = None,
     ):
-        # TODO: for graph that need no copy, just do {po: po}
-
-        if exclude_filter is None:
-            exclude_filter = self.is_removed
-
         _touched_graphs = self.transformations.touched_graphs
+        touched = self.transformations.mutated.keys() | self.transformations.removed
 
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
             (
-                p
-                for G in self.G
-                if G in _touched_graphs
-                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-                if not self.has_been_mutated(p) and not exclude_filter(p)
+                GraphFunctions(*_touched_graphs).nodes_of_type(ParameterOperatable)
+                - touched
             ),
             ascending=True,
         )
-        for o in other_param_op:
-            self.get_copy(o)
+        for p in other_param_op:
+            self.get_copy(p)
 
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
-        for g in self.G - _touched_graphs:
-            for p in GraphFunctions(g).nodes_of_type(ParameterOperatable):
-                self.transformations.mutated[p] = p
+        untouched_graphs = self.G - _touched_graphs
+        for p in GraphFunctions(*untouched_graphs).nodes_of_type(ParameterOperatable):
+            self.transformations.mutated[p] = p
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev
