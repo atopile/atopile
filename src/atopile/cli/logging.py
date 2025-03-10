@@ -356,7 +356,7 @@ class LoggingStage:
 
         try:
             build_cfg = config.build
-            log_dir = log_dir / build_cfg.name
+            log_dir = log_dir / pathvalidate.sanitize_filename(build_cfg.name)
         except RuntimeError:
             pass
 
