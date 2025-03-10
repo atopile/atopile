@@ -305,3 +305,19 @@ class UserAlreadyExistsError(UserException):
     """
     Raised when something already exists.
     """
+
+
+class UserNoProjectException(UserException):
+    """
+    Raised when the project directory is not found.
+    """
+
+    def __init__(
+        self,
+        msg: str = (
+            "Could not find the project directory, are you within an ato project?"
+        ),
+        *args,
+        **kwargs,
+    ):
+        super().__init__(msg, *args, **kwargs)
