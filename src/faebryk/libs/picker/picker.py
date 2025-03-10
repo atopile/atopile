@@ -429,6 +429,8 @@ def pick_topologically(
         if candidates:
             logger.warning("Slow picking modules in parallel")
             for group_heads in zip_longest(*groups, fillvalue=None):
+                if LOG_PICK_SOLVE:
+                    logger.info(f"Picking parts for {group_heads}")
                 parts = _get_single_candidate(*group_heads)
                 for m, part in parts.items():
                     attach_single_no_check(m, part, solver)
