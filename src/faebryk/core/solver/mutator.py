@@ -1344,7 +1344,8 @@ class Mutator:
         pred._solver_terminated = False
 
     # Algorithm Query ------------------------------------------------------------------
-    def is_predicate_terminated(self, pred: ConstrainableExpression) -> bool:
+    def is_predicate_terminated(self, pred: ParameterOperatable) -> bool:
+        assert isinstance(pred, ConstrainableExpression)
         return pred._solver_terminated
 
     def nodes_of_type[T: "ParameterOperatable"](
