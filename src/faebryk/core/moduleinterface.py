@@ -95,9 +95,10 @@ class ModuleInterface(Node):
                 raise NodeException(
                     self,
                     (
-                        f"Cannot connect module {self} (type {type(self).__name__}) "
-                        f"with module {mismatched[0]} "
-                        f"(type {type(mismatched[0]).__name__}). "
+                        f"Cannot connect module `{self}` "
+                        f"(type `{type(self).__name__}`) "
+                        f"with module `{mismatched[0]}` "
+                        f"(type `{type(mismatched[0]).__name__}`). "
                         "Modules must be of the same type."
                     ),
                 )

@@ -1232,6 +1232,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 a.connect(b)
 
             except NodeException as top_ex:
+                top_ex = errors.UserNodeException.from_node_exception(
+                    top_ex, ctx, self.get_traceback()
+                )
+
                 # If that fails, try connecting via duck-typing
                 for name, (c_a, c_b) in a.zip_children_by_name_with(
                     b, L.ModuleInterface
@@ -1240,13 +1244,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         if has_attr_or_property(a, name):
                             c_a = getattr(a, name)
                         else:
-                            raise
+                            raise top_ex
 
                     if c_b is None:
                         if has_attr_or_property(b, name):
                             c_b = getattr(b, name)
                         else:
-                            raise
+                            raise top_ex
 
                     try:
                         self._connect(c_a, c_b, None)
