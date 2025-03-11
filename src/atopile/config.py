@@ -35,6 +35,7 @@ from atopile.errors import (
     UserBadParameterError,
     UserException,
     UserFileNotFoundError,
+    UserNoProjectException,
     UserNotImplementedError,
 )
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
@@ -910,6 +911,9 @@ class Config:
         else:
             if config_file_path := _find_project_config_file(entry_arg_file_path):
                 self.project_dir = config_file_path.parent
+            elif entry is None:
+                raise UserNoProjectException()
+
             else:
                 raise UserBadParameterError(
                     f"Specified entry path is not a file or directory: "

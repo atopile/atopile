@@ -135,6 +135,8 @@ class DefaultSolver(Solver):
                 terminal=terminal,
                 iteration=iterno,
             )
+
+            timings.add(f"setup {algo.name}")
             algo_result = mutator.run()
 
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
