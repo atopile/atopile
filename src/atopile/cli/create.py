@@ -15,7 +15,6 @@ import git
 import questionary
 import rich
 import typer
-import urllib3
 from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from natsort import natsorted
@@ -220,17 +219,6 @@ def project(
     else:
         template_branch = None
 
-    if create_github_repo is None:
-        create_github_repo = (
-            query_helper(
-                "Create a GitHub repo for this project?",
-                bool,
-                default=True,
-            )
-            if config.interactive
-            else False
-        )
-
     if create_github_repo is True and not config.interactive:
         raise errors.UserException(
             "Cannot create a GitHub repo when running non-interactively."
@@ -257,6 +245,17 @@ def project(
         raise errors.UserException(
             "Directory already exists. Please choose a different name."
         ) from e
+
+    if create_github_repo is None:
+        create_github_repo = (
+            query_helper(
+                "Create a GitHub repo for this project?",
+                bool,
+                default=True,
+            )
+            if config.interactive
+            else False
+        )
 
     # Get a repo
     if create_github_repo:
@@ -295,19 +294,19 @@ def project(
 
         def _repo_validator(url: str) -> bool:
             try:
-                urllib3.request("GET", url)
+                repo.create_remote("origin", url).push()
                 return True
             except Exception:
                 return False
 
-        if url := query_helper(
+        query_helper(
             ":rocket: What's the [cyan]repo's URL?[/]",
             str,
             default=f"https://github.com/{github_username}/{project_path.name}",
             validator=_repo_validator,
+            validation_failure_msg="Remote could not be added: {value}",
             validate_default=False,
-        ):
-            repo.create_remote("origin", url).push()
+        )
 
     # Wew! New repo created!
     rich.print(
