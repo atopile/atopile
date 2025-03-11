@@ -107,7 +107,7 @@ class Transformations:
          the old node with the new one
         - if a node was removed, we need to copy the graph to remove it
         """
-        return {n.get_graph() for n in self.removed | self.mutated.keys()}
+        return set(get_graphs(self.removed | self.mutated.keys()))
 
     @staticmethod
     def identity(
@@ -748,7 +748,6 @@ class MutationMap:
         return collected
 
     @property
-    @once
     def compressed_mapping_forwards(self) -> dict[ParameterOperatable, LookupResult]:
         return {
             start: self.map_forward(start, seek_start=False)
@@ -1344,7 +1343,8 @@ class Mutator:
         pred._solver_terminated = False
 
     # Algorithm Query ------------------------------------------------------------------
-    def is_predicate_terminated(self, pred: ConstrainableExpression) -> bool:
+    def is_predicate_terminated(self, pred: ParameterOperatable) -> bool:
+        assert isinstance(pred, ConstrainableExpression)
         return pred._solver_terminated
 
     def nodes_of_type[T: "ParameterOperatable"](
@@ -1532,15 +1532,18 @@ class Mutator:
 
         self._starting_operables = set(self.nodes_of_type(include_terminated=True))
 
-        self._last_run_operables = set()
+        self.transformations = Transformations(input_print_context=self.print_context)
+
+    @property
+    @once
+    def _new_operables(self) -> set[ParameterOperatable]:
+        _last_run_operables = set()
         if self._mutations_since_last_iteration is not None:
-            self._last_run_operables = set(
+            _last_run_operables = set(
                 self._mutations_since_last_iteration.compressed_mapping_forwards_complete.values()
             )
-        assert self._last_run_operables.issubset(self._starting_operables)
-        self._new_operables = self._starting_operables - self._last_run_operables
-
-        self.transformations = Transformations(input_print_context=self.print_context)
+        assert _last_run_operables.issubset(self._starting_operables)
+        return self._starting_operables - _last_run_operables
 
     @property
     def G(self) -> set[Graph]:
@@ -1558,34 +1561,26 @@ class Mutator:
 
     def _copy_unmutated(
         self,
-        exclude_filter: Callable[[ParameterOperatable], bool] | None = None,
     ):
-        # TODO: for graph that need no copy, just do {po: po}
-
-        if exclude_filter is None:
-            exclude_filter = self.is_removed
-
         _touched_graphs = self.transformations.touched_graphs
+        touched = self.transformations.mutated.keys() | self.transformations.removed
 
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
             (
-                p
-                for G in self.G
-                if G in _touched_graphs
-                for p in GraphFunctions(G).nodes_of_type(ParameterOperatable)
-                if not self.has_been_mutated(p) and not exclude_filter(p)
+                GraphFunctions(*_touched_graphs).nodes_of_type(ParameterOperatable)
+                - touched
             ),
             ascending=True,
         )
-        for o in other_param_op:
-            self.get_copy(o)
+        for p in other_param_op:
+            self.get_copy(p)
 
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
-        for g in self.G - _touched_graphs:
-            for p in GraphFunctions(g).nodes_of_type(ParameterOperatable):
-                self.transformations.mutated[p] = p
+        untouched_graphs = self.G - _touched_graphs
+        for p in GraphFunctions(*untouched_graphs).nodes_of_type(ParameterOperatable):
+            self.transformations.mutated[p] = p
 
     def check_no_illegal_mutations(self):
         # TODO should only run during dev

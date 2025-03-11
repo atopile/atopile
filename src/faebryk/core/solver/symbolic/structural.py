@@ -123,7 +123,7 @@ def remove_unconstrained(mutator: Mutator):
     """
     objs = mutator.nodes_of_type(Expression)
     for obj in objs:
-        if isinstance(obj, ConstrainableExpression) and obj.constrained:
+        if obj.constrained:
             continue
         if mutator.utils.get_constrained_expressions_involved_in(obj):
             continue
@@ -444,11 +444,7 @@ def predicate_terminated_is_true(mutator: Mutator):
         if not p.operatable_operands:
             continue
         op = next(iter(p.operatable_operands))
-        if (
-            not isinstance(op, ConstrainableExpression)
-            or not op.constrained
-            or not mutator.is_predicate_terminated(op)
-        ):
+        if not op.constrained or not mutator.is_predicate_terminated(op):
             continue
 
         mutator.predicate_terminate(p)
@@ -833,7 +829,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         }
 
         # no point in op! is op! (always true)
-        if isinstance(expr, ConstrainableExpression) and expr.constrained:
+        if expr.constrained:
             mutator.create_expression(
                 type(expr),
                 *operands,

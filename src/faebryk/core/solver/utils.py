@@ -276,6 +276,7 @@ class MutatorUtils:
             constrain=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
+            check_exists=False,
         )
         if terminate:
             self.mutator.predicate_terminate(out)
@@ -325,6 +326,7 @@ class MutatorUtils:
             constrain=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
+            check_exists=False,
         )
 
     def alias_to(
