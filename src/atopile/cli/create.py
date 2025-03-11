@@ -95,10 +95,10 @@ def query_helper[T: str | Path | bool](
         if not isinstance(default, type_):
             raise ValueError(f"Default value {default} is not of type {type_}")
 
-    # Make a queryier
+    # Make a querier
     if type_ is str:
 
-        def queryier() -> str:
+        def querier() -> str:
             return questionary.text(
                 "",
                 default=str(default or ""),
@@ -106,7 +106,7 @@ def query_helper[T: str | Path | bool](
 
     elif type_ is Path:
 
-        def queryier() -> Path:
+        def querier() -> Path:
             return Path(
                 questionary.path(
                     "",
@@ -117,7 +117,7 @@ def query_helper[T: str | Path | bool](
     elif type_ is bool:
         assert default is None or isinstance(default, bool)
 
-        def queryier() -> bool:
+        def querier() -> bool:
             return questionary.confirm(
                 "",
                 default=default or True,
@@ -174,7 +174,7 @@ def query_helper[T: str | Path | bool](
 
     for _ in stuck_user_helper_generator:
         if value is None:
-            value = clarifier(queryier())  # type: ignore
+            value = clarifier(querier())  # type: ignore
         assert isinstance(value, type_)
 
         if (proposed_value := upgrader(value)) != value:
