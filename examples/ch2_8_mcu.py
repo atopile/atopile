@@ -12,7 +12,8 @@ from faebryk.core.module import Module
 from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
 from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
 from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
-from faebryk.libs.brightness import TypicalLuminousIntensity
+
+# from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -25,11 +26,13 @@ class App(Module):
     usb_power: F.USB_C_PSU_Vertical
 
     def __preinit__(self) -> None:
-        # Parametrize
-        self.led.led.led.color.constrain_subset(F.LED.Color.YELLOW)
-        self.led.led.led.brightness.constrain_subset(
-            TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
-        )
+        # Parametrize - Need to add picker for LED
+        # self.led.led.led.color.constrain_subset(F.LED.Color.YELLOW)
+        # self.led.led.led.brightness.constrain_subset(
+        #     TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
+        # )
+        # TODO remove when we have a LED picker
+        self.led.led.led.add(F.has_explicit_part.by_supplier("C136118"))
 
         self.usb_power.power_out.connect(self.mcu.usb.usb_if.buspower)
         self.mcu.rp2040.gpio[25].connect(self.led.logic_in)
