@@ -12,6 +12,7 @@ module AdjustableRegulator from Regulator:
     assert feedback_div.v_in is v_out
     assert feedback_div.v_out is v_ref
     assert feedback_div.max_current is i_q
+    assert i_q is feedback_div.max_current
 
 module Buck from AdjustableRegulator:
     pass
