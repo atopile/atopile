@@ -340,10 +340,6 @@ def merge_intersect_subsets(mutator: Mutator):
 
         intersected = P_Set.intersect_all(*ss_lits.keys())
 
-        # already exists
-        if intersected in ss_lits:
-            continue
-
         # short-cut, would be detected by subset_to
         if intersected.is_empty():
             raise ContradictionByLiteral(
@@ -353,7 +349,18 @@ def merge_intersect_subsets(mutator: Mutator):
                 mutator=mutator,
             )
 
-        mutator.utils.subset_to(param, intersected, from_ops=list(ss_lits.values()))
+        # already exists
+        if intersected in ss_lits:
+            target = ss_lits[intersected]
+        else:
+            target = mutator.utils.subset_to(
+                param, intersected, from_ops=list(ss_lits.values())
+            )
+            assert isinstance(target, (IsSubset, Is))
+
+        # Merge
+        for old_ss in ss_lits.values():
+            mutator._mutate(old_ss, mutator.get_copy(target))
 
 
 @algorithm("Empty set", terminal=False)

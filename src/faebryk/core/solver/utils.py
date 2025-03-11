@@ -214,6 +214,19 @@ class MutatorUtils:
         lit = self.try_extract_literal(po, allow_subset=True)
         return lit, False
 
+    def try_extract_lit_op(
+        self, po: ParameterOperatable
+    ) -> tuple[SolverLiteral, Is | IsSubset] | None:
+        aliases = self.get_aliases(po)
+        alias_lits = [(k, v) for k, v in aliases.items() if self.is_literal(k)]
+        if alias_lits:
+            return alias_lits[0]
+        subsets = self.get_supersets(po)
+        subset_lits = [(k, v) for k, v in subsets.items() if self.is_literal(k)]
+        if subset_lits:
+            return subset_lits[0]
+        return None
+
     def map_extract_literals(
         self,
         expr: Expression,
@@ -288,7 +301,7 @@ class MutatorUtils:
         po: ParameterOperatable,
         literal: ParameterOperatable.Literal | SolverLiteral,
         from_ops: Sequence[ParameterOperatable] | None = None,
-    ) -> IsSubset | BoolSet:
+    ) -> IsSubset | Is | BoolSet:
         literal = make_lit(literal)
 
         if literal.is_empty():
@@ -299,24 +312,23 @@ class MutatorUtils:
                 mutator=self.mutator,
             )
 
-        existing_alias = self.try_extract_literal(po, check_pre_transform=True)
-        if existing_alias is not None:
-            if not existing_alias.is_subset_of(literal):  # type: ignore #TODO
-                raise ContradictionByLiteral(
-                    "Tried subset to different literal",
-                    involved=[po],
-                    literals=[existing_alias, literal],
-                    mutator=self.mutator,
-                )
-            return make_lit(True)
-
-        existing = self.try_extract_literal(
-            po, allow_subset=True, check_pre_transform=True
-        )
+        # TODO do we need to add check_pre_transform to this function?
+        existing = self.try_extract_lit_op(po)
         if existing is not None:
+            ex_lit, ex_op = existing
+            if isinstance(ex_op, Is):
+                if not ex_lit.is_subset_of(literal):  # type: ignore #TODO
+                    raise ContradictionByLiteral(
+                        "Tried subset to different literal",
+                        involved=[po],
+                        literals=[ex_lit, literal],
+                        mutator=self.mutator,
+                    )
+                return ex_op
+
             # no point in adding more general subset
-            if existing.is_subset_of(literal):  # type: ignore #TODO
-                return make_lit(True)
+            if ex_lit.is_subset_of(literal):  # type: ignore #TODO
+                return ex_op
             # other cases handled by intersect subsets algo
 
         return self.mutator.create_expression(
@@ -329,7 +341,7 @@ class MutatorUtils:
             allow_uncorrelated=False,
             check_exists=False,
             _relay=False,
-        )
+        )  # type: ignore
 
     def alias_to(
         self,
