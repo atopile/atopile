@@ -290,12 +290,15 @@ class GlobalAttributes(L.Module):
 
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
+    if (prefixed_value := f"{starts_with}{value}") in F.has_package.Package.__members__:
+        value = prefixed_value
+
     try:
-        pkg = F.has_package.Package(starts_with + value)
+        pkg = F.has_package.Package(value)
     except ValueError:
         valid_packages = ", ".join(
             [
-                f"`{k.lstrip(starts_with)}`"
+                f"`{k}`"
                 for k in F.has_package.Package.__members__.keys()
                 if k.startswith(starts_with)
             ]
