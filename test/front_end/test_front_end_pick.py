@@ -111,6 +111,7 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     assert r2.has_trait(F.has_part_picked)
 
 
+@pytest.mark.slow
 def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
     bob.search_paths.append(
         repo_root / "test" / "common" / "resources" / ".ato" / "modules"
@@ -142,6 +143,7 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
         assert r.has_trait(F.has_part_picked)
 
 
+@pytest.mark.slow
 def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
     bob.search_paths.append(
         repo_root / "test" / "common" / "resources" / ".ato" / "modules"

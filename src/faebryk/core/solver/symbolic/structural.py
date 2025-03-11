@@ -830,19 +830,13 @@ def uncorrelated_alias_fold(mutator: Mutator):
 
         # no point in op! is op! (always true)
         if expr.constrained:
-            if isinstance(expr, IsSubset):
-                mutator.utils.subset_to(
-                    operands[0],
-                    operands[1],
-                    from_ops=[expr, *lit_alias_origins],
-                )
-            else:
-                mutator.create_expression(
-                    type(expr),
-                    *operands,
-                    constrain=True,
-                    allow_uncorrelated=True,
-                )
+            mutator.create_expression(
+                type(expr),
+                *operands,
+                constrain=True,
+                allow_uncorrelated=True,
+                from_ops=[expr, *lit_alias_origins],
+            )
             continue
 
         mutator.mutate_expression(

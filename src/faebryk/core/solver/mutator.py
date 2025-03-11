@@ -1076,9 +1076,11 @@ class Mutator:
 
         if soft_mutate:
             assert issubclass(expression_factory, CanonicalExpression)
+            # TODO: technically the return type is incorrect, but it's not used anywhere
+            # if run with soft_mutaste
             return self.soft_mutate_expr(
                 expression_factory, expr, operands, soft_mutate, from_ops=from_ops
-            )
+            )  # type: ignore
 
         if from_ops is not None:
             raise NotImplementedError("only supported for soft_mutate")
@@ -1128,7 +1130,7 @@ class Mutator:
         operands: Iterable[SolverAllExtended],
         soft: type[Is] | type[IsSubset],
         from_ops: Sequence[ParameterOperatable] | None = None,
-    ) -> CanonicalExpression:
+    ):
         operands = list(operands)
         # Don't create A is A, lit is lit
         if expr.is_congruent_to_factory(
@@ -1166,7 +1168,7 @@ class Mutator:
         self,
         soft: type[Is] | type[IsSubset],
         old: ParameterOperatable,
-        new: ParameterOperatable,
+        new: SolverAll,
         from_ops: Sequence[ParameterOperatable] | None = None,
     ):
         # filter A is A, A ss A
@@ -1274,11 +1276,31 @@ class Mutator:
         from_ops: Sequence[ParameterOperatable] | None = None,
         constrain: bool = False,
         allow_uncorrelated: bool = False,
-    ) -> T:
+        _relay: bool = True,
+    ) -> T | IsSubset | Is | SolverLiteral:
+        from faebryk.core.solver.symbolic.pure_literal import (
+            _exec_pure_literal_operands,
+        )
+
         assert issubclass(expr_factory, CanonicalExpression)
         from_ops = [
             x for x in unique_ref(from_ops or []) if isinstance(x, ParameterOperatable)
         ]
+        if _relay:
+            if constrain and expr_factory is IsSubset:
+                return self.utils.subset_to(operands[0], operands[1], from_ops=from_ops)
+            if constrain and expr_factory is Is:
+                return self.utils.alias_to(operands[0], operands[1], from_ops=from_ops)
+            res = _exec_pure_literal_operands(expr_factory, operands)
+            if res is not None:
+                if constrain and res != as_lit(True):
+                    raise ContradictionByLiteral(
+                        "Literal is not true",
+                        involved=from_ops,
+                        literals=[res],
+                        mutator=self,
+                    )
+                return res
 
         expr = None
         if check_exists:
