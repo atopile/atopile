@@ -1222,10 +1222,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             # TODO: @v0.4 remove this deprecated import form
             with downgrade(errors.UserTypeError):
+                a, b = pair
+                a_type = a.__class__.__name__
+                b_type = b.__class__.__name__
                 raise errors.UserTypeError.from_ctx(
                     ctx,
-                    f"Connected `{pair[0]}`, a `signal` / `Electrical` to "
-                    f"`{pair[1]}.line`, because `{pair[1]}` is a `{type(pair[1])}`. "
+                    f"Connected `{a}` (type {a_type}) to "
+                    f"`{b}.line`, because `{b}` is an `{b_type}`. "
                     "This means that the reference isn't also connected through.",
                     traceback=self.get_traceback(),
                 )
@@ -1236,6 +1239,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 a.connect(b)
 
             except NodeException as top_ex:
+                top_ex = errors.UserNodeException.from_node_exception(
+                    top_ex, ctx, self.get_traceback()
+                )
+
                 # If that fails, try connecting via duck-typing
                 for name, (c_a, c_b) in a.zip_children_by_name_with(
                     b, L.ModuleInterface
@@ -1244,13 +1251,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         if has_attr_or_property(a, name):
                             c_a = getattr(a, name)
                         else:
-                            raise
+                            raise top_ex
 
                     if c_b is None:
                         if has_attr_or_property(b, name):
                             c_b = getattr(b, name)
                         else:
-                            raise
+                            raise top_ex
 
                     try:
                         self._connect(c_a, c_b, None)

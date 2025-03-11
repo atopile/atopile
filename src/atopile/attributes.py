@@ -183,6 +183,17 @@ class GlobalAttributes(L.Module):
             )
 
     @property
+    def datasheet_url(self) -> str:
+        """
+        The URL of the datasheet for this component.
+        """
+        raise AttributeError("write-only")
+
+    @datasheet_url.setter
+    def datasheet_url(self, value: str):
+        self.add(F.has_datasheet_defined(value))
+
+    @property
     def designator_prefix(self):
         """
         The prefix used for automatically-generated designators on this module.
