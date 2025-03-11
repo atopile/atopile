@@ -408,34 +408,34 @@ def pick_topologically(
     with timings.as_global("parallel slow-pick", context=True):
         if tree:
             logger.info(f"Picking {len(tree)} modules in parallel")
-            while tree:
-                try:
-                    candidates = _get_candidates(tree)
-                except Contradiction as e:
-                    # TODO better error, also remove from get_candidates
-                    raise PickError(
-                        "Contradiction in system."
-                        "Unfixable due to lack of backtracking." + str(e),
-                        *[],
-                    )
-                groups = find_independent_groups(candidates.keys(), solver)
-                # pick module with least candidates first
-                picked = [
-                    (
-                        m := min(group, key=lambda _m: len(candidates[_m])),
-                        candidates[m][0],
-                    )
-                    for group in groups
-                ]
-                logger.info(
-                    f"Picking {len(groups)} independent groups: "
-                    f"{indented_container([m for m, _ in picked])}"
+        while tree:
+            try:
+                candidates = _get_candidates(tree)
+            except Contradiction as e:
+                # TODO better error, also remove from get_candidates
+                raise PickError(
+                    "Contradiction in system."
+                    "Unfixable due to lack of backtracking." + str(e),
+                    *[],
                 )
-                for m, part in picked:
-                    picker_lib.attach_single_no_check(m, part, solver)
+            groups = find_independent_groups(candidates.keys(), solver)
+            # pick module with least candidates first
+            picked = [
+                (
+                    m := min(group, key=lambda _m: len(candidates[_m])),
+                    candidates[m][0],
+                )
+                for group in groups
+            ]
+            logger.info(
+                f"Picking {len(groups)} independent groups: "
+                f"{indented_container([m for m, _ in picked])}"
+            )
+            for m, part in picked:
+                picker_lib.attach_single_no_check(m, part, solver)
 
-                _update_progress(picked)
-                tree, _ = update_pick_tree(tree)
+            _update_progress(picked)
+            tree, _ = update_pick_tree(tree)
 
     if _pick_count:
         logger.info(
