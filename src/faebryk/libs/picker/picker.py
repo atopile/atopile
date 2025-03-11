@@ -345,11 +345,7 @@ def pick_topologically(
 ):
     # TODO implement backtracking
 
-    from faebryk.libs.picker.api.picker_lib import (
-        _find_modules,
-        attach_single_no_check,
-        get_candidates,
-    )
+    import faebryk.libs.picker.api.picker_lib as picker_lib
 
     timings = Times(name="pick")
     logger.info(f"Picking {len(tree)} modules")
@@ -361,11 +357,13 @@ def pick_topologically(
         or m.has_trait(F.is_pickable_by_supplier_id)
     ]
     logger.info(f"Picking {len(explicit_modules)} explicit parts")
-    explicit_parts = _find_modules(_list_to_hack_tree(explicit_modules), solver)
+    explicit_parts = picker_lib._find_modules(
+        _list_to_hack_tree(explicit_modules), solver
+    )
     for m, parts in explicit_parts.items():
         assert len(parts) == 1
         part = parts[0]
-        attach_single_no_check(m, part, solver)
+        picker_lib.attach_single_no_check(m, part, solver)
     if explicit_parts:
         tree, _ = update_pick_tree(tree)
 
@@ -382,17 +380,13 @@ def pick_topologically(
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
-            candidates = get_candidates(_tree, solver)
+            candidates = picker_lib.get_candidates(_tree, solver)
         if LOG_PICK_SOLVE:
             logger.info(
                 "Candidates: \n\t"
                 f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
             )
         return candidates
-
-    def _get_single_candidate(*modules: Module):
-        parts = _get_candidates(_list_to_hack_tree(modules))
-        return {m: parts[m][0] for m in modules}
 
     def _update_progress(done: Iterable[tuple[Module, Any]] | Module):
         if not progress:
@@ -408,38 +402,6 @@ def pick_topologically(
 
     timings.add("setup")
 
-    # candidates = _get_candidates(tree)
-
-    # heuristic: pick all single part modules in one go
-    # TODO split explicit from single-candidate
-    # with timings.as_global("pick single candidate modules"):
-    #    single_part_modules = [
-    #        (module, parts[0])
-    #        for module, parts in candidates.items()
-    #        if len(parts) == 1
-    #    ]
-    #    if single_part_modules:
-    #        logger.info("Picking single part modules")
-    #        try:
-    #            check_and_attach_candidates(
-    #                single_part_modules, solver, allow_not_deducible=True
-    #            )
-    #        except Contradiction as e:
-    #            raise PickError(
-    #                "Could not pick all explicitly-specified parts."
-    #                f" Likely contradicting constraints: {str(e)}",
-    #                *[m for m, _ in single_part_modules],
-    #            )
-    #        except (NotCompatibleException, NotDeducibleException) as e:
-    #            raise PickError(
-    #                f"Could not pick all explicitly-specified parts: {e}",
-    #                *[m for m, _ in single_part_modules],
-    #            )
-    #        _update_progress(single_part_modules)
-
-    #        tree, _ = update_pick_tree(tree)
-    #        candidates = _get_candidates(tree)
-
     # Works by looking for each module again for compatible parts
     # If no compatible parts are found,
     #   it means we need to backtrack or there is no solution
@@ -448,7 +410,7 @@ def pick_topologically(
             logger.info(f"Picking {len(tree)} modules in parallel")
             while tree:
                 try:
-                    candidates = get_candidates(tree, solver)
+                    candidates = _get_candidates(tree)
                 except Contradiction as e:
                     # TODO better error, also remove from get_candidates
                     raise PickError(
@@ -467,10 +429,10 @@ def pick_topologically(
                 ]
                 logger.info(
                     f"Picking {len(groups)} independent groups: "
-                    f"{indented_container(picked)}"
+                    f"{indented_container([m for m, _ in picked])}"
                 )
                 for m, part in picked:
-                    attach_single_no_check(m, part, solver)
+                    picker_lib.attach_single_no_check(m, part, solver)
 
                 _update_progress(picked)
                 tree, _ = update_pick_tree(tree)
