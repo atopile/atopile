@@ -1403,6 +1403,184 @@ class EquivalenceClasses[T: Hashable]:
         return list(sets.values())
 
 
+# class TotalOrder[T: Hashable]:
+#     """
+#     Given a set of relations like:
+#       A < B, B < D, C < D
+#     the total order “chains” are:
+#       {A: [[A, B, D]],
+#        B: [[A, B, D]],
+#        C: [[C, D]],
+#        D: [[A, B, D], [C, D]]}
+#     """
+#
+#     def __init__(self, base: Iterable[T] | None = None):
+#         # We'll build a directed graph of relations.
+#         self.graph: dict[T, list[T]] = defaultdict(list)
+#         self.elements: set[T] = set(base or [])
+#
+#     def add_rel(self, *ordered: T):
+#         self.elements.update(ordered)
+#         for a, b in pairwise(ordered):
+#             self.graph[a].append(b)
+#
+#     def get(self) -> dict[T, list[list[T]]]:
+#         # Identify minimal nodes (those with no incoming edge).
+#         all_targets = {b for targets in self.graph.values() for b in targets}
+#         minimal = self.elements - all_targets
+#
+#         # We'll collect all maximal paths from each minimal node.
+#         result: dict[T, list[list[T]]] = {e: [] for e in self.elements}
+#
+#         def dfs(node: T, path: list[T]):
+#             if node not in self.graph or not self.graph[node]:
+#                 yield path
+#             else:
+#                 for nxt in self.graph[node]:
+#                     yield from dfs(nxt, path + [nxt])
+#
+#         for start in minimal:
+#             for path in dfs(start, [start]):
+#                 # Add this chain to every element in the path.
+#                 for e in path:
+#                     result[e].append(path)
+#
+#         # If an element never appears in a chain (isolated),
+#         # its default chain remains as [e]
+#         # For elements that participated in relations,
+#         #  we assume chains are of length > 1.
+#         # (Could filter out trivial chains if needed.)
+#         for e in result:
+#             # remove duplicates if any
+#             unique = []
+#             for p in result[e]:
+#                 if p not in unique:
+#                     unique.append(p)
+#             result[e] = unique
+#
+#         return result
+
+
+class TotalOrder[T: Hashable]:
+    """
+    Given a set of relations like:
+      A < B, B < D, C < D
+    the total order “chains” are:
+      {A: [[A, B, D]],
+       B: [[A, B, D]],
+       C: [[C, D]],
+       D: [[A, B, D], [C, D]]}
+
+    In case of cycles (contradictions), the chain for each element in a cycle
+    is set to a trivial chain [element], and get_cycles() returns the SCC.
+    """
+
+    def __init__(self, base: Iterable[T] | None = None):
+        self.graph: dict[T, list[T]] = defaultdict(list)
+        self.elements: set[T] = set(base or [])
+
+    def add_rel(self, *ordered: T):
+        self.elements.update(ordered)
+        for a, b in pairwise(ordered):
+            self.graph[a].append(b)
+
+    def get(self) -> dict[T, list[list[T]]]:
+        # First, compute cycles via Tarjan.
+        cycles = self.get_cycles()
+        cycle_nodes = set(cycles.keys())
+        non_cycle_nodes = self.elements - cycle_nodes
+
+        result: dict[T, list[list[T]]] = {e: [] for e in self.elements}
+
+        # Build non-cycle graph: only include edges where both nodes are non-cyclic.
+        non_cycle_graph: dict[T, list[T]] = defaultdict(list)
+        for u in non_cycle_nodes:
+            for v in self.graph.get(u, []):
+                if v in non_cycle_nodes:
+                    non_cycle_graph[u].append(v)
+
+        # Identify minimal nodes (no incoming edge) in the non-cycle graph.
+        incoming: set[T] = set()
+        for targets in non_cycle_graph.values():
+            incoming.update(targets)
+        minimal = {u for u in non_cycle_nodes if u not in incoming}
+
+        def dfs(node: T, path: List[T]):
+            if node not in non_cycle_graph or not non_cycle_graph[node]:
+                yield path
+            else:
+                for nxt in non_cycle_graph[node]:
+                    yield from dfs(nxt, path + [nxt])
+
+        for start in minimal:
+            for _chain in dfs(start, [start]):
+                for e in _chain:
+                    result[e].append(_chain)
+        # For non-cycle nodes not reached by DFS, add trivial chain.
+        for e in non_cycle_nodes:
+            if not result[e]:
+                result[e].append([e])
+        # For cycle nodes, override with trivial chain.
+        for e in cycle_nodes:
+            result[e] = [[e]]
+        return result
+
+    def get_cycles(self) -> dict[T, set[T]]:
+        """
+        Returns a dict mapping each node in a cycle to the full strongly connected
+        component.
+        """
+        sccs = self._tarjan_scc()
+        cycles: dict[T, set[T]] = {}
+        for comp in sccs:
+            if len(comp) > 1:
+                for node in comp:
+                    cycles[node] = comp
+            elif len(comp) == 1:
+                # a self-loop is a cycle
+                node = next(iter(comp))
+                if node in self.graph and node in self.graph[node]:
+                    cycles[node] = comp
+        return cycles
+
+    def _tarjan_scc(self) -> list[set[T]]:
+        """Tarjan's algorithm for strongly connected components."""
+        index = 0
+        indices: dict[T, int] = {}
+        lowlink: dict[T, int] = {}
+        stack: list[T] = []
+        on_stack: set[T] = set()
+        sccs: list[set[T]] = []
+
+        def strongconnect(v: T):
+            nonlocal index
+            indices[v] = index
+            lowlink[v] = index
+            index += 1
+            stack.append(v)
+            on_stack.add(v)
+            for w in self.graph.get(v, []):
+                if w not in indices:
+                    strongconnect(w)
+                    lowlink[v] = min(lowlink[v], lowlink[w])
+                elif w in on_stack:
+                    lowlink[v] = min(lowlink[v], indices[w])
+            if lowlink[v] == indices[v]:
+                comp = set()
+                while True:
+                    w = stack.pop()
+                    on_stack.remove(w)
+                    comp.add(w)
+                    if w == v:
+                        break
+                sccs.append(comp)
+
+        for v in self.elements:
+            if v not in indices:
+                strongconnect(v)
+        return sccs
+
+
 def common_prefix_to_tree(iterable: list[str]) -> Iterable[str]:
     """
     Turns:

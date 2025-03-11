@@ -71,6 +71,7 @@ class LogHandler(RichHandler):
             show_path=show_path,
             **kwargs,
         )
+        tracebacks_suppress_map = {}
         self.tracebacks_suppress = tracebacks_suppress or []
         self.tracebacks_suppress_map = tracebacks_suppress_map or {}
         self.tracebacks_unwrap = tracebacks_unwrap or []

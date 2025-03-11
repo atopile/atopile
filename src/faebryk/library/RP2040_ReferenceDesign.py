@@ -157,7 +157,8 @@ class RP2040_ReferenceDesign(Module):
             direct_only=False,
             types=F.Capacitor,
             f_filter=lambda c: bool(
-                c.capacitance.try_get_literal()
+                not isinstance(c, F.MultiCapacitor)
+                and c.capacitance.try_get_literal()
                 == L.Range.from_center_rel(100 * P.nF, 0.2)
             ),
         )

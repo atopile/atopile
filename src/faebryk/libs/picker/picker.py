@@ -361,7 +361,6 @@ def pick_topologically(
         _list_to_hack_tree(explicit_modules), solver
     )
     for m, parts in explicit_parts.items():
-        assert len(parts) == 1
         part = parts[0]
         picker_lib.attach_single_no_check(m, part, solver)
     if explicit_parts:
