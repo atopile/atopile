@@ -12,6 +12,7 @@ from atopile.parse_utils import (
     PygmentsLexerReconstructor,
     get_src_info_from_token,
 )
+from faebryk.core.node import NodeException
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
 
 
@@ -305,6 +306,29 @@ class UserAlreadyExistsError(UserException):
     """
     Raised when something already exists.
     """
+
+
+class UserNodeException(UserException):
+    """
+    Raised when there's an error with a node operation.
+    """
+
+    @classmethod
+    def from_node_exception(
+        cls,
+        node_ex: NodeException,
+        origin: ParserRuleContext,
+        traceback: Sequence[ParserRuleContext | None] | None,
+        *args,
+        **kwargs,
+    ) -> "UserNodeException":
+        return cls.from_ctx(
+            origin,
+            node_ex.message,
+            *args,
+            traceback=traceback,
+            **kwargs,
+        )
 
 
 class UserNoProjectException(UserException):
