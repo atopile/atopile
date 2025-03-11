@@ -219,9 +219,16 @@ def project(
     else:
         template_branch = None
 
-    # Default to creating a Github repo if running interactively
     if create_github_repo is None:
-        create_github_repo = config.interactive
+        create_github_repo = (
+            query_helper(
+                "Create a GitHub repo for this project?",
+                bool,
+                default=True,
+            )
+            if config.interactive
+            else False
+        )
 
     if create_github_repo is True and not config.interactive:
         raise errors.UserException(
