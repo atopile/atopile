@@ -308,7 +308,6 @@ class UserAlreadyExistsError(UserException):
     """
 
 
-
 class UserNodeException(UserException):
     """
     Raised when there's an error with a node operation.
@@ -331,6 +330,7 @@ class UserNodeException(UserException):
             **kwargs,
         )
 
+
 class UserNoProjectException(UserException):
     """
     Raised when the project directory is not found.
@@ -345,4 +345,3 @@ class UserNoProjectException(UserException):
         **kwargs,
     ):
         super().__init__(msg, *args, **kwargs)
-
