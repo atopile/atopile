@@ -1109,7 +1109,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
             if has_instance_settable_attr(target, assigned_name):
-                setattr(target, assigned_name, value)
+                try:
+                    setattr(target, assigned_name, value)
+                except errors.UserException as e:
+                    e.attach_origin_from_ctx(assignable_ctx)
+                    raise
             elif (
                 # If ModuleShims has a settable property, use it
                 hasattr(GlobalAttributes, assigned_name)
