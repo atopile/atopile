@@ -25,11 +25,14 @@ import faebryk.libs.logging
 from atopile.config import config
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
+from faebryk.libs.util import ConfigFlag
 
 from . import console
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+COLOR_LOGS = ConfigFlag("COLOR_LOGS", default=False)
 
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -62,6 +65,7 @@ class LogHandler(RichHandler):
             UserPythonModuleError,
         ),
         traceback_level: int = logging.ERROR,
+        force_terminal: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -78,6 +82,7 @@ class LogHandler(RichHandler):
         self.always_show_traceback_types = always_show_traceback_types
         self.traceback_level = traceback_level
         self._logged_exceptions = set()
+        self._is_terminal = force_terminal or console.is_terminal
 
         self.addFilter(
             lambda record: record.name.startswith("atopile")
@@ -167,6 +172,9 @@ class LogHandler(RichHandler):
         Returns:
             ConsoleRenderable: Renderable to display log message.
         """
+        if not self._is_terminal:
+            return Text(message)
+
         use_markdown = getattr(record, "markdown", False)
         use_markup = getattr(record, "markup", self.markup)
         highlighter = getattr(record, "highlighter", self.highlighter)
@@ -240,7 +248,7 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                self.console.print(log_renderable, highlight=True)
+                self.console.print(log_renderable)
             except Exception:
                 self.handleError(record)
             finally:
@@ -399,8 +407,16 @@ class LoggingStage:
             log_file = log_dir / f"{self._sanitized_name}.{level_name}.log"
 
             self._file_handles[level_name] = log_file.open("w")
-            file_console = Console(file=self._file_handles[level_name], width=500)
-            file_handler = LogHandler(console=file_console)
+            file_console = Console(
+                file=self._file_handles[level_name],
+                width=500,
+                force_terminal=COLOR_LOGS.get(),
+            )
+            file_handler = LogHandler(
+                console=file_console,
+                force_terminal=COLOR_LOGS.get(),
+                markup=False,
+            )
             file_handler.setFormatter(_DEFAULT_FORMATTER)
             file_handler.setLevel(level)
             self._file_handlers.append(file_handler)
