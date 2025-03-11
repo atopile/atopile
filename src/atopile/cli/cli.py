@@ -20,6 +20,7 @@ from faebryk.libs.logging import FLOG_FMT
 app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
+    rich_markup_mode="rich",
 )
 
 
