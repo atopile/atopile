@@ -220,9 +220,11 @@ class GlobalAttributes(L.Module):
         try:
             self.add(F.has_package(value))
         except ValueError:
+            valid_packages = ", ".join(
+                f"`{k}`" for k in F.has_package.Package.__members__.keys()
+            )
             raise UserBadParameterError(
-                f"Invalid package: `{value}`. Valid packages are: "
-                + ", ".join(f"`{k}`" for k in F.has_package.Package.__members__.keys()),
+                f"Invalid package: `{value}`. Valid packages are: {valid_packages}"
             )
 
     @property
@@ -288,18 +290,22 @@ class GlobalAttributes(L.Module):
 
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
+    if (prefixed_value := f"{starts_with}{value}") in F.has_package.Package.__members__:
+        value = prefixed_value
+
     try:
-        pkg = F.has_package.Package(starts_with + value)
+        pkg = F.has_package.Package(value)
     except ValueError:
-        raise UserBadParameterError(
-            f"Invalid package for {module.__class__.__name__}: "
-            + value
-            + ". Valid packages are: "
-            + ", ".join(
+        valid_packages = ", ".join(
+            [
                 f"`{k}`"
                 for k in F.has_package.Package.__members__.keys()
                 if k.startswith(starts_with)
-            ),
+            ]
+        )
+        raise UserBadParameterError(
+            f"Invalid package for {module.__class__.__name__}: `{value}`. "
+            f"Valid packages are: {valid_packages}"
         )
     else:
         module.add(F.has_package(pkg))
