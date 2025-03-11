@@ -136,8 +136,12 @@ class DefaultSolver(Solver):
                 iteration=iterno,
             )
 
-            timings.add(f"setup {algo.name}")
-            algo_result = mutator.run()
+            timings.add("setup")
+            now = time.perf_counter()
+            mutator._run()
+            run_time = time.perf_counter() - now
+            timings.add("_")
+            algo_result = mutator.close()
 
             if algo_result.dirty and logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
@@ -152,11 +156,14 @@ class DefaultSolver(Solver):
             iteration_state.dirty |= algo_result.dirty
             data.mutation_map = data.mutation_map.extend(algo_result.mutation_stage)
 
-            timings.add(
+            timings.add(f"close {'dirty' if algo_result.dirty else 'clean'}")
+
+            new_name = (
                 f"{algo.name}"
                 f" {'terminal' if terminal else 'non-terminal'}"
                 f" {'dirty' if algo_result.dirty else 'clean'}"
             )
+            timings._add(new_name, run_time)
 
         return iteration_state
 
