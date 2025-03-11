@@ -513,6 +513,6 @@ def test_contradiction_message_superset():
     solver = DefaultSolver()
 
     with pytest.raises(
-        ContradictionByLiteral, match="Tried alias to different literal"
+        ContradictionByLiteral, match="Contradiction: Incompatible literal subsets"
     ):
         solver.simplify_symbolically(A, print_context=context, terminal=True)

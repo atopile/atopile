@@ -372,13 +372,41 @@ class MutatorUtils:
         check_existing: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
     ):
+        from faebryk.core.solver.symbolic.pure_literal import (
+            _exec_pure_literal_expressions,
+        )
+
         from_ops = from_ops or []
         from_ops = [
             x for x in [po, to] + list(from_ops) if isinstance(x, ParameterOperatable)
         ]
-        if self.is_literal(to) and isinstance(po, ParameterOperatable):
+
+        if isinstance(to, CanonicalExpression):
+            res = _exec_pure_literal_expressions(to)
+            if res is not None:
+                to = res
+
+        to_is_lit = self.is_literal(to)
+        po_is_lit = self.is_literal(po)
+
+        if to_is_lit and po_is_lit:
+            if not po.is_subset_of(to):  # type: ignore
+                raise ContradictionByLiteral(
+                    "Incompatible literal subsets",
+                    involved=from_ops,
+                    literals=[to, po],
+                    mutator=self.mutator,
+                )
+            return
+
+        if to_is_lit:
             assert check_existing
+            assert isinstance(po, ParameterOperatable)
             return self.subset_literal(po, to, from_ops=from_ops)
+
+        if po_is_lit and check_existing:
+            # TODO implement
+            pass
 
         # check if alias exists
         if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
@@ -386,10 +414,6 @@ class MutatorUtils:
                 Is, constrained_only=True
             ):
                 return
-
-        if self.is_literal(po) and check_existing:
-            # TODO implement
-            pass
 
         return self.mutator.create_expression(
             IsSubset,
