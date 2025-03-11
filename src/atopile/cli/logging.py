@@ -360,13 +360,13 @@ class LoggingStage:
         self._console.print(self._render_status(indicator))
 
     def _create_log_dir(self) -> Path:
-        log_dir = Path(config.project.paths.logs) / _NOW
+        base_log_dir = Path(config.project.paths.logs) / _NOW
 
         try:
             build_cfg = config.build
-            log_dir = log_dir / pathvalidate.sanitize_filename(build_cfg.name)
+            log_dir = base_log_dir / pathvalidate.sanitize_filename(build_cfg.name)
         except RuntimeError:
-            pass
+            log_dir = base_log_dir
 
         log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -376,7 +376,7 @@ class LoggingStage:
                 latest_link.unlink()
             else:
                 shutil.rmtree(latest_link)
-        latest_link.symlink_to(log_dir, target_is_directory=True)
+        latest_link.symlink_to(base_log_dir, target_is_directory=True)
 
         return log_dir
 
