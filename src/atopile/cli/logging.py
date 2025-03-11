@@ -22,7 +22,6 @@ import atopile
 import faebryk
 import faebryk.libs
 import faebryk.libs.logging
-from atopile.config import config
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
 
@@ -31,11 +30,9 @@ from . import console
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
-_NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _SHOW_LOG_FILE_PATH_THRESHOLD = 120
-
-LOGS_DIR = (config.project.paths.logs / _NOW).absolute()
 
 
 class LogHandler(RichHandler):
@@ -352,7 +349,9 @@ class LoggingStage:
         self._console.print(self._render_status(indicator))
 
     def _create_log_dir(self) -> Path:
-        log_dir = Path(config.project.paths.logs) / _NOW
+        from atopile.config import config
+
+        log_dir = Path(config.project.paths.logs) / NOW
 
         try:
             build_cfg = config.build
