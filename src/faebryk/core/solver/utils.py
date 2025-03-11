@@ -8,7 +8,16 @@ from dataclasses import dataclass
 from itertools import combinations
 from statistics import median
 from types import NoneType
-from typing import TYPE_CHECKING, Callable, Counter, Iterable, Sequence, TypeGuard, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Counter,
+    Iterable,
+    Mapping,
+    Sequence,
+    TypeGuard,
+    cast,
+)
 
 from faebryk.core.graph import Graph
 from faebryk.core.node import Node
@@ -40,6 +49,7 @@ from faebryk.libs.util import (
     ConfigFlagFloat,
     ConfigFlagInt,
     KeyErrorAmbiguous,
+    groupby,
     partition,
     unique_ref,
 )
@@ -220,11 +230,15 @@ class MutatorUtils:
         aliases = self.get_aliases(po)
         alias_lits = [(k, v) for k, v in aliases.items() if self.is_literal(k)]
         if alias_lits:
+            assert len(alias_lits) == 1
             return alias_lits[0]
         subsets = self.get_supersets(po)
-        subset_lits = [(k, v) for k, v in subsets.items() if self.is_literal(k)]
+        subset_lits = [(k, vs) for k, vs in subsets.items() if self.is_literal(k)]
+        # TODO this is weird
         if subset_lits:
-            return subset_lits[0]
+            for k, vs in subset_lits:
+                if all(k.is_subset_of(other_k) for other_k, _ in subset_lits):  # type: ignore
+                    return k, vs[0]
         return None
 
     def map_extract_literals(
@@ -937,12 +951,13 @@ class MutatorUtils:
     @staticmethod
     def get_supersets(
         op: ParameterOperatable,
-    ) -> dict[ParameterOperatable | SolverLiteral, IsSubset]:
-        return {
-            e.operands[1]: e
+    ) -> Mapping[ParameterOperatable | SolverLiteral, list[IsSubset]]:
+        ss = [
+            e
             for e in op.get_operations(IsSubset, constrained_only=True)
             if e.operands[0] is op
-        }
+        ]
+        return groupby(ss, key=lambda e: e.operands[1])
 
     @staticmethod
     def get_aliases(
