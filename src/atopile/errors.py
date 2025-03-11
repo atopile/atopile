@@ -308,6 +308,7 @@ class UserAlreadyExistsError(UserException):
     """
 
 
+
 class UserNodeException(UserException):
     """
     Raised when there's an error with a node operation.
@@ -329,3 +330,19 @@ class UserNodeException(UserException):
             traceback=traceback,
             **kwargs,
         )
+
+class UserNoProjectException(UserException):
+    """
+    Raised when the project directory is not found.
+    """
+
+    def __init__(
+        self,
+        msg: str = (
+            "Could not find the project directory, are you within an ato project?"
+        ),
+        *args,
+        **kwargs,
+    ):
+        super().__init__(msg, *args, **kwargs)
+
