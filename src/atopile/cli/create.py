@@ -43,7 +43,7 @@ logger.setLevel(logging.INFO)
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
-create_app = typer.Typer()
+create_app = typer.Typer(rich_markup_mode="rich")
 
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
@@ -320,9 +320,7 @@ def build_target(
         src_path = config.project.paths.src
         config.project_dir  # touch property to ensure config's loaded from a project
     except ValueError:
-        raise errors.UserException(
-            "Could not find the project directory, are you within an ato project?"
-        )
+        raise errors.UserNoProjectException()
 
     if backup_name is None:
         if build_target:
@@ -474,10 +472,7 @@ def component(
     from faebryk.libs.picker.api.picker_lib import client
     from faebryk.libs.pycodegen import sanitize_name
 
-    try:
-        config.apply_options(None)
-    except errors.UserBadParameterError:
-        config.apply_options(None, standalone=True)
+    config.apply_options(None)
 
     # Find a component --------------------------------------------------------
 
@@ -587,7 +582,7 @@ def component(
         assert filename is not None
 
         filepath = Path(filename)
-        if filepath.absolute():
+        if filepath.is_absolute():
             out_path = filepath.resolve()
         else:
             out_path = (config.project.paths.src / filename).resolve()
