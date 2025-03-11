@@ -270,7 +270,8 @@ class BuildTargetPaths(BaseConfigModel):
         if output_base_data := data.get("output_base"):
             data["output_base"] = Path(output_base_data)
         else:
-            data["output_base"] = project_paths.build / name
+            data["output_base"] = project_paths.build / "builds" / name / name
+            data["output_base"].parent.mkdir(parents=True, exist_ok=True)
 
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
