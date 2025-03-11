@@ -15,7 +15,7 @@ import git
 import questionary
 import rich
 import typer
-import urllib3
+from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from natsort import natsorted
 from rich.table import Table
@@ -95,10 +95,10 @@ def query_helper[T: str | Path | bool](
         if not isinstance(default, type_):
             raise ValueError(f"Default value {default} is not of type {type_}")
 
-    # Make a queryier
+    # Make a querier
     if type_ is str:
 
-        def queryier() -> str:
+        def querier() -> str:
             return questionary.text(
                 "",
                 default=str(default or ""),
@@ -106,7 +106,7 @@ def query_helper[T: str | Path | bool](
 
     elif type_ is Path:
 
-        def queryier() -> Path:
+        def querier() -> Path:
             return Path(
                 questionary.path(
                     "",
@@ -117,7 +117,7 @@ def query_helper[T: str | Path | bool](
     elif type_ is bool:
         assert default is None or isinstance(default, bool)
 
-        def queryier() -> bool:
+        def querier() -> bool:
             return questionary.confirm(
                 "",
                 default=default or True,
@@ -174,7 +174,7 @@ def query_helper[T: str | Path | bool](
 
     for _ in stuck_user_helper_generator:
         if value is None:
-            value = clarifier(queryier())  # type: ignore
+            value = clarifier(querier())  # type: ignore
         assert isinstance(value, type_)
 
         if (proposed_value := upgrader(value)) != value:
@@ -198,7 +198,7 @@ def query_helper[T: str | Path | bool](
 
 PROJECT_NAME_REQUIREMENTS = (
     "Project name must start with a letter and contain only letters, numbers, dashes"
-    " and underscores. It will be used for the project directory and name on Github"
+    " and underscores. It will be used for the project directory and name on GitHub"
 )
 
 
@@ -219,13 +219,9 @@ def project(
     else:
         template_branch = None
 
-    # Default to creating a Github repo if running interactively
-    if create_github_repo is None:
-        create_github_repo = config.interactive
-
     if create_github_repo is True and not config.interactive:
         raise errors.UserException(
-            "Cannot create a Github repo when running non-interactively."
+            "Cannot create a GitHub repo when running non-interactively."
         )
 
     extra_context = {
@@ -234,16 +230,32 @@ def project(
     }
 
     logging.info("Running cookie-cutter on the template")
-    project_path = Path(
-        cookiecutter(
-            template_ref,
-            checkout=template_branch,
-            no_input=not config.interactive,
-            extra_context=dict(
-                filter(lambda x: x[1] is not None, extra_context.items())
-            ),
+    try:
+        project_path = Path(
+            cookiecutter(
+                template_ref,
+                checkout=template_branch,
+                no_input=not config.interactive,
+                extra_context=dict(
+                    filter(lambda x: x[1] is not None, extra_context.items())
+                ),
+            )
         )
-    )
+    except OutputDirExistsException as e:
+        raise errors.UserException(
+            "Directory already exists. Please choose a different name."
+        ) from e
+
+    if create_github_repo is None:
+        create_github_repo = (
+            query_helper(
+                "Create a GitHub repo for this project?",
+                bool,
+                default=True,
+            )
+            if config.interactive
+            else False
+        )
 
     # Get a repo
     if create_github_repo:
@@ -253,7 +265,7 @@ def project(
         repo.git.commit(m="Initial commit")
 
         github_username = query_helper(
-            "What's your Github username?",
+            "What's your GitHub username?",
             str,
             validator=r"^[a-zA-Z0-9_-]+$",
         )
@@ -264,7 +276,7 @@ def project(
 
         help(
             f"""
-            We recommend you create a Github repo for your project.
+            We recommend you create a GitHub repo for your project.
 
             If you already have a repo, you can respond [yellow]n[/]
             to the next question and provide the URL to your repo.
@@ -282,19 +294,19 @@ def project(
 
         def _repo_validator(url: str) -> bool:
             try:
-                urllib3.request("GET", url)
+                repo.create_remote("origin", url).push()
                 return True
             except Exception:
                 return False
 
-        if url := query_helper(
+        query_helper(
             ":rocket: What's the [cyan]repo's URL?[/]",
             str,
             default=f"https://github.com/{github_username}/{project_path.name}",
             validator=_repo_validator,
+            validation_failure_msg="Remote could not be added: {value}",
             validate_default=False,
-        ):
-            repo.create_remote("origin", url).push()
+        )
 
     # Wew! New repo created!
     rich.print(

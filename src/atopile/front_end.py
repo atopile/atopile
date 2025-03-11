@@ -34,7 +34,7 @@ from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
 from atopile.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.node import NodeException
+from faebryk.core.node import FieldExistsError, NodeException
 from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
@@ -1071,7 +1071,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with self._init_node(
                         self._get_referenced_class(ctx, ref)
                     ) as new_node:
-                        self._current_node.add(new_node, name=assigned_name)
+                        try:
+                            self._current_node.add(new_node, name=assigned_name)
+                        except FieldExistsError as e:
+                            raise errors.UserAlreadyExistsError.from_ctx(
+                                ctx,
+                                f"Field `{assigned_name}` already exists",
+                                traceback=self.get_traceback(),
+                            ) from e
                         new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
@@ -1109,7 +1116,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         elif assignable_ctx.string() or assignable_ctx.boolean_():
             # Check if it's a property or attribute that can be set
             if has_instance_settable_attr(target, assigned_name):
-                setattr(target, assigned_name, value)
+                try:
+                    setattr(target, assigned_name, value)
+                except errors.UserException as e:
+                    e.attach_origin_from_ctx(assignable_ctx)
+                    raise
             elif (
                 # If ModuleShims has a settable property, use it
                 hasattr(GlobalAttributes, assigned_name)
