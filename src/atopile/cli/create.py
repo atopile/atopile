@@ -219,9 +219,14 @@ def project(
     else:
         template_branch = None
 
-    # Default to creating a Github repo if running interactively
+    # Ask if user wants to create a Github repo when running interactively
     if create_github_repo is None:
-        create_github_repo = config.interactive
+        if config.interactive:
+            create_github_repo = questionary.confirm(
+                "Do you want to create a GitHub repository for this project?"
+            ).unsafe_ask()
+        else:
+            create_github_repo = False
 
     if create_github_repo is True and not config.interactive:
         raise errors.UserException(
@@ -245,13 +250,13 @@ def project(
         )
     )
 
-    # Get a repo
-    if create_github_repo:
-        logging.info("Initializing git repo")
-        repo = git.Repo.init(project_path)
-        repo.git.add(A=True, f=True)
-        repo.git.commit(m="Initial commit")
+    # Initialize git repo regardless (best practice)
+    logging.info("Initializing git repo")
+    repo = git.Repo.init(project_path)
+    repo.git.add(A=True, f=True)
+    repo.git.commit(m="Initial commit")
 
+    if create_github_repo:
         github_username = query_helper(
             "What's your Github username?",
             str,
