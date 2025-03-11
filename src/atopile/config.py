@@ -629,10 +629,6 @@ class ProjectConfig(BaseConfigModel):
             },
         )
 
-    def model_post_init(self, __context: Any) -> None:
-        if self.paths is not None:
-            self.paths.ensure()
-
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     """
@@ -939,6 +935,9 @@ class Config:
         entry_addr_override = self._check_entry_arg_file_path(
             entry, entry_arg_file_path
         )
+
+        if self.project.paths is not None:
+            self.project.paths.ensure()
 
         if selected_builds:
             self.selected_builds = list(selected_builds)
