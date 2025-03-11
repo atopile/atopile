@@ -198,7 +198,7 @@ def query_helper[T: str | Path | bool](
 
 PROJECT_NAME_REQUIREMENTS = (
     "Project name must start with a letter and contain only letters, numbers, dashes"
-    " and underscores. It will be used for the project directory and name on Github"
+    " and underscores. It will be used for the project directory and name on GitHub"
 )
 
 
@@ -232,7 +232,7 @@ def project(
 
     if create_github_repo is True and not config.interactive:
         raise errors.UserException(
-            "Cannot create a Github repo when running non-interactively."
+            "Cannot create a GitHub repo when running non-interactively."
         )
 
     extra_context = {
@@ -260,7 +260,7 @@ def project(
         repo.git.commit(m="Initial commit")
 
         github_username = query_helper(
-            "What's your Github username?",
+            "What's your GitHub username?",
             str,
             validator=r"^[a-zA-Z0-9_-]+$",
         )
@@ -271,7 +271,7 @@ def project(
 
         help(
             f"""
-            We recommend you create a Github repo for your project.
+            We recommend you create a GitHub repo for your project.
 
             If you already have a repo, you can respond [yellow]n[/]
             to the next question and provide the URL to your repo.
