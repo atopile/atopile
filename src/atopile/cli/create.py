@@ -16,6 +16,7 @@ import questionary
 import rich
 import typer
 import urllib3
+from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from natsort import natsorted
 from rich.table import Table
@@ -241,16 +242,21 @@ def project(
     }
 
     logging.info("Running cookie-cutter on the template")
-    project_path = Path(
-        cookiecutter(
-            template_ref,
-            checkout=template_branch,
-            no_input=not config.interactive,
-            extra_context=dict(
-                filter(lambda x: x[1] is not None, extra_context.items())
-            ),
+    try:
+        project_path = Path(
+            cookiecutter(
+                template_ref,
+                checkout=template_branch,
+                no_input=not config.interactive,
+                extra_context=dict(
+                    filter(lambda x: x[1] is not None, extra_context.items())
+                ),
+            )
         )
-    )
+    except OutputDirExistsException as e:
+        raise errors.UserException(
+            "Directory already exists. Please choose a different name."
+        ) from e
 
     # Get a repo
     if create_github_repo:
