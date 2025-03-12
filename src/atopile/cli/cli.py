@@ -144,13 +144,10 @@ def export_config_schema(pretty: bool = False):
 
 
 @app.command(hidden=True)
-def dump_config(pretty: bool = False):
+def dump_config(json: bool = False):
     from rich import print
 
-    if pretty:
-        print(json.dumps(config.project, indent=4))
-    else:
-        print(json.dumps(config.project))
+    print(config.project.model_dump(mode="json" if json else "python"))
 
 
 def main():
