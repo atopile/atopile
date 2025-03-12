@@ -228,17 +228,19 @@ class Component:
         module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
 
         missing_attrs = []
-        for name, literal in self.attribute_literals.items():
-            if not hasattr(module, name):
-                missing_attrs.append(name)
-                continue
+        # only for type picks
+        if module.has_trait(F.is_pickable_by_type):
+            for name, literal in self.attribute_literals.items():
+                if not hasattr(module, name):
+                    missing_attrs.append(name)
+                    continue
 
-            p = getattr(module, name)
-            assert isinstance(p, Parameter)
-            if literal is None:
-                literal = p.domain.unbounded(p)
+                p = getattr(module, name)
+                assert isinstance(p, Parameter)
+                if literal is None:
+                    literal = p.domain.unbounded(p)
 
-            p.alias_is(literal)
+                p.alias_is(literal)
 
         if missing_attrs:
             with downgrade(UserException):

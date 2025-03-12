@@ -152,3 +152,28 @@ class App(Module):
         nand_ic.power.connect(power_source.power)
 
         self.add(nand_ic)
+
+        # TODO: remove when we have a LED picker
+        led.led.led.add(F.has_explicit_part.by_supplier("C965802"))
+        led.led.led.forward_voltage.alias_is(2.4 * P.V)
+        led.led.led.max_brightness.alias_is(435 * P.millicandela)
+        led.led.led.max_current.alias_is(20 * P.mA)
+        led.led.led.color.alias_is(F.LED.Color.YELLOW)
+
+        # TODO remove when we have a battery picker
+        battery.add(
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={
+                    "1": battery.power.lv,
+                    "2": battery.power.hv,
+                },
+            )
+        )
+        battery.voltage.alias_is(3 * P.V)
+
+        # TODO remove when we have a MOSFET picker
+        mosfet = led.get_children_modules(types=F.MOSFET).pop()
+        mosfet.add(F.has_explicit_part.by_supplier("C5364305"))
+        mosfet.channel_type.alias_is(F.MOSFET.ChannelType.N_CHANNEL)
+        mosfet.saturation_type.alias_is(F.MOSFET.SaturationType.ENHANCEMENT)
