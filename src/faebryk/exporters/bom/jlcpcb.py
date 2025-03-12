@@ -112,6 +112,8 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
 def _get_bomline(cmp: Module) -> BOMLine | None:
     if not cmp.has_trait(F.has_footprint):
         return
+    if cmp.has_trait(F.has_part_removed):
+        return
 
     if not all(
         cmp.has_trait(t)
