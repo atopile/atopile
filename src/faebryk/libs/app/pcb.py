@@ -27,6 +27,7 @@ from faebryk.libs.util import (
     duplicates,
     groupby,
     hash_string,
+    md_list,
     not_none,
     once,
     remove_venv_from_env,
@@ -191,15 +192,20 @@ def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
     Load nets from attached footprints and attach them to the nodes.
     """
 
-    gf = GraphFunctions(graph)
     net_names: dict[F.Net, str] = {
         cast_assert(F.Net, net): pcb_net_t.get_net().name
-        for net, pcb_net_t in gf.nodes_with_trait(PCB_Transformer.has_linked_kicad_net)
+        for net, pcb_net_t in GraphFunctions(graph).nodes_with_trait(
+            PCB_Transformer.has_linked_kicad_net
+        )
     }
 
     if dups := duplicates(net_names.values(), lambda x: x):
+        counts_by_net = [f"{k} (x{len(v)})" for k, v in dups.items()]
         with downgrade(UserResourceException, raise_anyway=raise_duplicates):
-            raise UserResourceException(f"Multiple nets are named the same: {dups}")
+            # TODO: origin information
+            raise UserResourceException(
+                f"Multiple nets are named the same:\n{md_list(counts_by_net)}"
+            )
 
     for net, name in net_names.items():
         net.add(F.has_overriden_name_defined(name))

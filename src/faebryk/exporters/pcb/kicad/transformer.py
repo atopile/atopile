@@ -345,11 +345,12 @@ class PCB_Transformer:
 
         known_nets: dict[F.Net, Net] = {}
         pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
+        mapped_net_names = set()
 
         for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
             total_pads = 0
             # map from net name to the number of pads we've
-            # linked corroborating it's accuracy
+            # linked corroborating its accuracy
             net_candidates: Mapping[str, int] = defaultdict(int)
 
             for ato_pad, ato_fp in net.get_connected_pads().items():
@@ -371,11 +372,19 @@ class PCB_Transformer:
                         pcb_pad.net.name if pcb_pad.net is not None else None
                         for pcb_pad in pcb_pads
                     )
+                    conflicting = net_names & mapped_net_names
+                    net_names -= mapped_net_names
+
                     if (
                         len(net_names) == 1
                         and (net_name := first(net_names)) is not None
                     ):
                         net_candidates[net_name] += 1
+                    elif len(net_names) == 0 and conflicting:
+                        logger.warning(
+                            "Net name has already been used: %s",
+                            ", ".join(f"`{n}`" for n in conflicting),
+                        )
 
                 total_pads += 1
 
@@ -386,6 +395,7 @@ class PCB_Transformer:
                     and net_candidates[best_net_name] > total_pads * match_threshold
                 ):
                     known_nets[net] = pcb_nets_by_name[best_net_name]
+                    mapped_net_names.add(best_net_name)
 
         return known_nets
 
