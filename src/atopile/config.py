@@ -293,30 +293,31 @@ class BuildTargetPaths(BaseConfigModel):
                 )
             )
 
-            if len(layout_candidates) == 1:
+            if len(layout_candidates) == 0:
+                # this is fine, we'll just create a layout later
+                pass
+            elif len(layout_candidates) == 1:
                 return layout_candidates[0].resolve().absolute()
-
             else:
                 raise UserException(
                     "Layout directories must contain only 1 layout,"
                     f" but {len(layout_candidates)} found in {layout_base}"
                 )
 
-        else:
-            layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
+        layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
 
-            logger.warning("Creating new layout at %s", layout_path)
-            layout_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Creating new layout at %s", layout_path)
+        layout_path.parent.mkdir(parents=True, exist_ok=True)
 
-            # delayed import to improve startup time
-            from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+        # delayed import to improve startup time
+        from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 
-            C_kicad_pcb_file.skeleton(
-                generator=DISTRIBUTION_NAME,
-                generator_version=str(get_installed_atopile_version()),
-            ).dumps(layout_path)
+        C_kicad_pcb_file.skeleton(
+            generator=DISTRIBUTION_NAME,
+            generator_version=str(get_installed_atopile_version()),
+        ).dumps(layout_path)
 
-            return layout_path
+        return layout_path
 
     @classmethod
     def match_user_layout(cls, path: Path) -> bool:
@@ -629,10 +630,6 @@ class ProjectConfig(BaseConfigModel):
             },
         )
 
-    def model_post_init(self, __context: Any) -> None:
-        if self.paths is not None:
-            self.paths.ensure()
-
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     """
@@ -939,6 +936,9 @@ class Config:
         entry_addr_override = self._check_entry_arg_file_path(
             entry, entry_arg_file_path
         )
+
+        if self.project.paths is not None:
+            self.project.paths.ensure()
 
         if selected_builds:
             self.selected_builds = list(selected_builds)
