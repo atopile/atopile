@@ -6,7 +6,7 @@ import logging
 import sys
 from importlib.metadata import version as get_package_version
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -144,10 +144,10 @@ def export_config_schema(pretty: bool = False):
 
 
 @app.command(hidden=True)
-def dump_config(json: bool = False):
+def dump_config(format: Literal["json", "python"] = "python"):
     from rich import print
 
-    print(config.project.model_dump(mode="json" if json else "python"))
+    print(config.project.model_dump(mode=format))
 
 
 def main():
