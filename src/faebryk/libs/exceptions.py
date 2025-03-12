@@ -56,12 +56,20 @@ class UserException(Exception):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
+        def _markdown(message: str) -> ConsoleRenderable:
+            if console.is_terminal:
+                return Markdown(message)
+            else:
+                return Text(message)
+
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
 
         renderables += [
-            Markdown(self.message) if self.markdown else ReprHighlighter()(self.message)
+            _markdown(self.message)
+            if self.markdown
+            else ReprHighlighter()(self.message)
         ]
 
         return renderables

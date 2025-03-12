@@ -10,6 +10,7 @@ from pathlib import Path
 import psutil
 
 import faebryk.library._F as F
+from atopile.cli.logging import ALERT
 from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
@@ -126,7 +127,7 @@ def ensure_footprint_lib(
             lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
         ] + [lib]
 
-        logger.warning("pcbnew restart required (updated fp-lib-table)")
+        logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
 
     fptable.dumps(config.build.paths.fp_lib_table)
 

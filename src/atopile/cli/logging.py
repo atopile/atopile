@@ -24,15 +24,22 @@ import faebryk.libs
 import faebryk.libs.logging
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
+from faebryk.libs.util import ConfigFlag
 
 from . import console
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+COLOR_LOGS = ConfigFlag("COLOR_LOGS", default=False)
 NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _SHOW_LOG_FILE_PATH_THRESHOLD = 120
+
+
+# displayed during LoggingStage
+ALERT = logging.INFO + 5
+logging.addLevelName(ALERT, "ALERT")
 
 
 class LogHandler(RichHandler):
@@ -59,6 +66,7 @@ class LogHandler(RichHandler):
             UserPythonModuleError,
         ),
         traceback_level: int = logging.ERROR,
+        force_terminal: bool = False,
         **kwargs,
     ):
         super().__init__(
@@ -75,6 +83,7 @@ class LogHandler(RichHandler):
         self.always_show_traceback_types = always_show_traceback_types
         self.traceback_level = traceback_level
         self._logged_exceptions = set()
+        self._is_terminal = force_terminal or console.is_terminal
 
         self.addFilter(
             lambda record: record.name.startswith("atopile")
@@ -164,6 +173,9 @@ class LogHandler(RichHandler):
         Returns:
             ConsoleRenderable: Renderable to display log message.
         """
+        if not self._is_terminal:
+            return Text(message)
+
         use_markdown = getattr(record, "markdown", False)
         use_markup = getattr(record, "markup", self.markup)
         highlighter = getattr(record, "highlighter", self.highlighter)
@@ -237,7 +249,7 @@ class LogHandler(RichHandler):
             self.handleError(record)
         else:
             try:
-                self.console.print(log_renderable, highlight=True)
+                self.console.print(log_renderable)
             except Exception:
                 self.handleError(record)
             finally:
@@ -262,6 +274,10 @@ class LiveLogHandler(LogHandler):
                 self.status._warning_count += 1
 
             self.status._live.update(self.status._render_status(), refresh=True)
+
+            if record.levelno == ALERT:
+                self.status.alert(record.getMessage())
+
         except Exception:
             self.handleError(record)
         finally:
@@ -303,6 +319,14 @@ class LoggingStage:
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
 
+    def alert(self, message: str) -> None:
+        message = f"[bold][yellow]![/yellow] {message}[/bold]"
+
+        self._console.print(
+            Padding(Text.from_markup(message), pad=(0, 0, 0, self.indent)),
+            highlight=True,
+        )
+
     def _render_status(self, indicator: str | None = None) -> RenderableType:
         problems = []
         if self._error_count > 0:
@@ -317,7 +341,15 @@ class LoggingStage:
         text = Text.from_markup(f"{self.description}{problems_text}")
 
         spinner_with_text = Padding(
-            Columns([indicator or self._spinner, text], padding=(0, 1)),
+            Columns(
+                [
+                    Text.from_markup(indicator)
+                    if indicator is not None
+                    else self._spinner,
+                    text,
+                ],
+                padding=(0, 1),
+            ),
             pad=(0, 0, 0, self.indent),  # (top, right, bottom, left)
         )
 
@@ -351,13 +383,13 @@ class LoggingStage:
     def _create_log_dir(self) -> Path:
         from atopile.config import config
 
-        log_dir = Path(config.project.paths.logs) / NOW
+        base_log_dir = Path(config.project.paths.logs) / NOW
 
         try:
             build_cfg = config.build
-            log_dir = log_dir / pathvalidate.sanitize_filename(build_cfg.name)
+            log_dir = base_log_dir / pathvalidate.sanitize_filename(build_cfg.name)
         except RuntimeError:
-            pass
+            log_dir = base_log_dir
 
         log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -367,7 +399,7 @@ class LoggingStage:
                 latest_link.unlink()
             else:
                 shutil.rmtree(latest_link)
-        latest_link.symlink_to(log_dir, target_is_directory=True)
+        latest_link.symlink_to(base_log_dir, target_is_directory=True)
 
         return log_dir
 
@@ -398,8 +430,16 @@ class LoggingStage:
             log_file = log_dir / f"{self._sanitized_name}.{level_name}.log"
 
             self._file_handles[level_name] = log_file.open("w")
-            file_console = Console(file=self._file_handles[level_name], width=500)
-            file_handler = LogHandler(console=file_console)
+            file_console = Console(
+                file=self._file_handles[level_name],
+                width=500,
+                force_terminal=COLOR_LOGS.get(),
+            )
+            file_handler = LogHandler(
+                console=file_console,
+                force_terminal=COLOR_LOGS.get(),
+                markup=False,
+            )
             file_handler.setFormatter(_DEFAULT_FORMATTER)
             file_handler.setLevel(level)
             self._file_handlers.append(file_handler)
