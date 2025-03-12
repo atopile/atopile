@@ -4,15 +4,16 @@ import atopile.cli.excepthook  # noqa: F401, I001
 import json
 import logging
 import sys
+from enum import Enum
 from importlib.metadata import version as get_package_version
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 
 import typer
 
 from atopile import telemetry, version
 from atopile.cli import build, configure, create, inspect, install, view
-from atopile.cli.logging import logger, handler
+from atopile.cli.logging import handler, logger
 from atopile.config import config
 from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
@@ -143,8 +144,13 @@ def export_config_schema(pretty: bool = False):
         print(json.dumps(config_schema))
 
 
+class ConfigFormat(str, Enum):
+    python = "python"
+    json = "json"
+
+
 @app.command(hidden=True)
-def dump_config(format: Literal["json", "python"] = "python"):
+def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
     print(config.project.model_dump(mode=format))
