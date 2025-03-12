@@ -43,6 +43,7 @@ class App(Module):
             )
         )
 
+        self.led.add(F.has_designator_prefix("LED"))
         self.led.add(
             F.has_explicit_part.by_supplier(
                 "C72038",
