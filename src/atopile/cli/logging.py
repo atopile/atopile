@@ -35,6 +35,11 @@ _DEFAULT_FORMATTER = logging.Formatter("%(message)s", datefmt="[%X]")
 _SHOW_LOG_FILE_PATH_THRESHOLD = 120
 
 
+# displayed during LoggingStage
+ALERT = logging.INFO + 5
+logging.addLevelName(ALERT, "ALERT")
+
+
 class LogHandler(RichHandler):
     """
     A logging handler that renders output with Rich.
@@ -262,6 +267,10 @@ class LiveLogHandler(LogHandler):
                 self.status._warning_count += 1
 
             self.status._live.update(self.status._render_status(), refresh=True)
+
+            if record.levelno == ALERT:
+                self.status.alert(record.getMessage())
+
         except Exception:
             self.handleError(record)
         finally:
@@ -303,6 +312,14 @@ class LoggingStage:
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
 
+    def alert(self, message: str) -> None:
+        message = f"[bold][yellow]![/yellow] {message}[/bold]"
+
+        self._console.print(
+            Padding(Text.from_markup(message), pad=(0, 0, 0, self.indent)),
+            highlight=True,
+        )
+
     def _render_status(self, indicator: str | None = None) -> RenderableType:
         problems = []
         if self._error_count > 0:
@@ -317,7 +334,15 @@ class LoggingStage:
         text = Text.from_markup(f"{self.description}{problems_text}")
 
         spinner_with_text = Padding(
-            Columns([indicator or self._spinner, text], padding=(0, 1)),
+            Columns(
+                [
+                    Text.from_markup(indicator)
+                    if indicator is not None
+                    else self._spinner,
+                    text,
+                ],
+                padding=(0, 1),
+            ),
             pad=(0, 0, 0, self.indent),  # (top, right, bottom, left)
         )
 
