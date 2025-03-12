@@ -801,7 +801,7 @@ class MutationMap:
         if lit is None:
             return _default()
         lit = as_lit(lit)
-        param_units = HasUnit.get_units(param)
+        param_units = HasUnit.get_units_or_dimensionless(param)
         if isinstance(lit, Quantity_Set) and not lit.units.is_compatible_with(
             param_units
         ):
