@@ -48,10 +48,10 @@ class ResistorVoltageDivider(Module):
 
         # Short variables
         ratio = self.ratio
-        r_total = self.total_resistance
         r_top = self.r_top.resistance
         r_bottom = self.r_bottom.resistance
-        v_out = self.v_out
+        r_total = self.total_resistance
+        v_out = self.v_out / L.Range(0.99, 1.01)
         v_in = self.v_in
         max_current = self.max_current
 
@@ -66,6 +66,8 @@ class ResistorVoltageDivider(Module):
         r_bottom.alias_is(v_out / max_current)
         r_bottom.alias_is(r_total * ratio)
         r_top.alias_is(r_total * (1 - ratio))
+        r_bottom.alias_is(v_out * r_top / (v_in - v_out))
+        r_top.alias_is(r_bottom * (v_in / v_out - 1))
 
         # Calculate outputs
         r_total.alias_is(r_top + r_bottom)

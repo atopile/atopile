@@ -1739,6 +1739,9 @@ def test_solve_voltage_divider_complex():
     r_top = solver.inspect_get_known_supersets(rdiv.r_top.resistance)
     assert isinstance(r_top, Quantity_Interval_Disjoint)
     print(f"r_top: {r_top}")
+    expected_r_top = (v_in - v_out) / total_current
+    print(f"Expected r_top: {expected_r_top}")
+    assert r_top == expected_r_top
 
     # Pick a random valid resistor for r_top
     rand_ = Decimal(random())
@@ -1753,10 +1756,19 @@ def test_solve_voltage_divider_complex():
     r_bottom = solver.inspect_get_known_supersets(rdiv.r_bottom.resistance)
     assert isinstance(r_bottom, Quantity_Interval_Disjoint)
     print(f"r_bottom: {r_bottom}")
-
+    expected_r_bottom_1 = (v_in / total_current) - r_any
+    expected_r_bottom_2 = v_out / total_current
+    expected_r_bottom_3 = v_out * r_any / (v_in - v_out)
+    print(f"Expected r_bottom subset by voltage: {expected_r_bottom_1}")
+    print(f"Expected r_bottom subset by current: {expected_r_bottom_2}")
+    print(f"Expected r_bottom subset by voltage and current: {expected_r_bottom_3}")
+    assert r_bottom.is_subset_of(expected_r_bottom_1)
+    assert r_bottom.is_subset_of(expected_r_bottom_2)
+    assert r_bottom.is_subset_of(expected_r_bottom_3)
     # print results
     res_total_current = v_in / (r_any + r_bottom)
-    res_v_out = v_in * r_bottom / (r_any + r_bottom)
+    # res_v_out = v_in * r_bottom / (r_any + r_bottom)
+    res_v_out = v_in / (1 + r_any / r_bottom)
     solver_total_current = solver.inspect_get_known_supersets(rdiv.max_current)
     solver_v_out = solver.inspect_get_known_supersets(rdiv.v_out)
     print(f"Resulting current {res_total_current} ss! {total_current}")
