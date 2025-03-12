@@ -1983,3 +1983,43 @@ def is_numeric_str(s: str) -> bool:
     Check if a string is a numeric string.
     """
     return s.replace(".", "").strip().isnumeric()
+
+
+def remove_venv_from_env(base_env: dict[str, str] | None = None):
+    """
+    Clean and return environment from venv, so subprocess can launch with system env.
+    """
+
+    env = base_env.copy() if base_env is not None else os.environ.copy()
+
+    # Does not work, shell variables (not exported)
+    # # Restore original PATH if saved
+    # if "_OLD_VIRTUAL_PATH" in env:
+    #     env["PATH"] = env.pop("_OLD_VIRTUAL_PATH")
+
+    # # Restore original PYTHONHOME if saved
+    # if "_OLD_VIRTUAL_PYTHONHOME" in env:
+    #     env["PYTHONHOME"] = env.pop("_OLD_VIRTUAL_PYTHONHOME")
+
+    # # Restore original shell prompt if saved (if applicable)
+    # if "_OLD_VIRTUAL_PS1" in env:
+    #     env["PS1"] = env.pop("_OLD_VIRTUAL_PS1")
+
+    # Remove virtual environment specific variables
+    venv = env.pop("VIRTUAL_ENV", None)
+    if venv is not None:
+        # Remove venv from PATH
+        path = env["PATH"].split(":")
+        path = [p for p in path if not p.startswith(venv)]
+        env["PATH"] = ":".join(path)
+
+    venv_prompt = env.pop("VIRTUAL_ENV_PROMPT", None)
+    if venv_prompt is not None:
+        # Remove venv from prompt
+        prompt = env["PS1"]
+        prompt = prompt.replace(venv_prompt, "")
+        env["PS1"] = prompt
+
+    env.pop("PYTHONHOME", None)
+
+    return env
