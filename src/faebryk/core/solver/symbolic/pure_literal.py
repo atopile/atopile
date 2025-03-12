@@ -30,6 +30,7 @@ from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalExpression,
     MutatorUtils,
+    SolverAll,
     SolverLiteral,
     make_lit,
 )
@@ -76,9 +77,20 @@ _CanonicalExpressions = {
 # Pure literal folding -----------------------------------------------------------------
 
 
-def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral:
-    assert MutatorUtils.is_pure_literal_expression(expr)
-    return _CanonicalExpressions[type(expr)](*expr.operands)
+def _exec_pure_literal_operands(
+    expr_type: type[CanonicalExpression], operands: Iterable[SolverAll]
+) -> SolverLiteral | None:
+    operands = list(operands)
+    if not all(MutatorUtils.is_literal(o) for o in operands):
+        return None
+    try:
+        return _CanonicalExpressions[expr_type](*operands)
+    except (ValueError, NotImplementedError, ZeroDivisionError):
+        return None
+
+
+def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral | None:
+    return _exec_pure_literal_operands(type(expr), expr.operands)
 
 
 @algorithm("Fold pure literal expressions", terminal=False)
@@ -93,14 +105,10 @@ def fold_pure_literal_expressions(mutator: Mutator):
         if mutator.has_been_mutated(expr) or mutator.is_removed(expr):
             continue
 
-        if not mutator.utils.is_pure_literal_expression(expr):
-            continue
-
         # if expression is not evaluatable that's fine
         # just means we can't say anything about the result
-        try:
-            result = _exec_pure_literal_expressions(expr)
-        except (ValueError, NotImplementedError, ZeroDivisionError):
+        result = _exec_pure_literal_expressions(expr)
+        if result is None:
             continue
         # type ignore because function sig is not 100% correct
         mutator.utils.alias_is_literal_and_check_predicate_eval(expr, result)  # type: ignore

@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import Sequence
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -12,10 +12,8 @@ from atopile.parse_utils import (
     PygmentsLexerReconstructor,
     get_src_info_from_token,
 )
+from faebryk.core.node import NodeException
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
-
-if TYPE_CHECKING:
-    from faebryk.libs.picker.picker import PickError
 
 
 def _render_tokens(
@@ -297,19 +295,6 @@ class UserPickError(UserException):
     Raised when there's an error in the picker.
     """
 
-    @classmethod
-    def from_pick_error(cls, ex: "PickError") -> "UserPickError":
-        from atopile.front_end import from_dsl
-
-        modules = ex.modules
-        # TODO not just first module
-        if modules and (origin_t := modules[0].try_get_trait(from_dsl)):
-            origin = origin_t.src_ctx
-        else:
-            origin = None
-
-        return cls.from_ctx(origin, str(ex))
-
 
 class UserActionWithoutEffectError(UserException):
     """
@@ -321,3 +306,42 @@ class UserAlreadyExistsError(UserException):
     """
     Raised when something already exists.
     """
+
+
+class UserNodeException(UserException):
+    """
+    Raised when there's an error with a node operation.
+    """
+
+    @classmethod
+    def from_node_exception(
+        cls,
+        node_ex: NodeException,
+        origin: ParserRuleContext,
+        traceback: Sequence[ParserRuleContext | None] | None,
+        *args,
+        **kwargs,
+    ) -> "UserNodeException":
+        return cls.from_ctx(
+            origin,
+            node_ex.message,
+            *args,
+            traceback=traceback,
+            **kwargs,
+        )
+
+
+class UserNoProjectException(UserException):
+    """
+    Raised when the project directory is not found.
+    """
+
+    def __init__(
+        self,
+        msg: str = (
+            "Could not find the project directory, are you within an ato project?"
+        ),
+        *args,
+        **kwargs,
+    ):
+        super().__init__(msg, *args, **kwargs)

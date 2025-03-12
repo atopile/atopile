@@ -123,7 +123,7 @@ def remove_unconstrained(mutator: Mutator):
     """
     objs = mutator.nodes_of_type(Expression)
     for obj in objs:
-        if isinstance(obj, ConstrainableExpression) and obj.constrained:
+        if obj.constrained:
             continue
         if mutator.utils.get_constrained_expressions_involved_in(obj):
             continue
@@ -149,7 +149,11 @@ def remove_congruent_expressions(mutator: Mutator):
     # TODO is this fully correct?
     # optimization: Is, IsSubset already handled
     all_exprs = [
-        e for e in all_exprs if not (isinstance(e, (Is, IsSubset)) and e.constrained)
+        e
+        for e in all_exprs
+        if not (
+            isinstance(e, (Is, IsSubset)) and e.constrained and e.get_operand_literals()
+        )
     ]
     exprs_by_type = groupby(
         all_exprs,
@@ -331,18 +335,14 @@ def merge_intersect_subsets(mutator: Mutator):
 
     for param in params:
         ss_lits = {
-            v: e
-            for v, e in mutator.utils.get_supersets(param).items()
-            if mutator.utils.is_literal(v)
+            k: vs
+            for k, vs in mutator.utils.get_supersets(param).items()
+            if mutator.utils.is_literal(k)
         }
         if len(ss_lits) <= 1:
             continue
 
         intersected = P_Set.intersect_all(*ss_lits.keys())
-
-        # already exists
-        if intersected in ss_lits:
-            continue
 
         # short-cut, would be detected by subset_to
         if intersected.is_empty():
@@ -353,7 +353,18 @@ def merge_intersect_subsets(mutator: Mutator):
                 mutator=mutator,
             )
 
-        mutator.utils.subset_to(param, intersected, from_ops=list(ss_lits.values()))
+        old_ss = [old_ss for old_sss in ss_lits.values() for old_ss in old_sss]
+
+        # already exists
+        if intersected in ss_lits:
+            target = ss_lits[intersected][0]
+        else:
+            target = mutator.utils.subset_to(param, intersected, from_ops=old_ss)
+            assert isinstance(target, (IsSubset, Is))
+
+        # Merge
+        for old_ss in old_ss:
+            mutator._mutate(old_ss, mutator.get_copy(target))
 
 
 @algorithm("Empty set", terminal=False)
@@ -390,11 +401,11 @@ def transitive_subset(mutator: Mutator):
             continue
 
         # all B ss! C | C not A
-        for C, e in mutator.utils.get_supersets(B).items():
+        for C, es in mutator.utils.get_supersets(B).items():
             if C is A:
                 continue
             # create A ss! C/X
-            mutator.utils.subset_to(A, C, from_ops=[ss_op, e])
+            mutator.utils.subset_to(A, C, from_ops=[ss_op, *es])
 
         # all B is! X, X lit
         # for non-lits done by eq classes
@@ -444,11 +455,7 @@ def predicate_terminated_is_true(mutator: Mutator):
         if not p.operatable_operands:
             continue
         op = next(iter(p.operatable_operands))
-        if (
-            not isinstance(op, ConstrainableExpression)
-            or not op.constrained
-            or not mutator.is_predicate_terminated(op)
-        ):
+        if not op.constrained or not mutator.is_predicate_terminated(op):
             continue
 
         mutator.predicate_terminate(p)
@@ -662,9 +669,11 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
             continue
 
         non_lit_aliases = {
-            e: cast_assert(ParameterOperatable, e.get_other_operand(p))
+            e: other_p
             for e in p.get_operations(Is, constrained_only=True)
             if not e.get_operand_literals()
+            and (other_p := cast_assert(ParameterOperatable, e.get_other_operand(p)))
+            is not p
         }
         for alias_expr, alias in non_lit_aliases.items():
             if is_alias:
@@ -833,7 +842,7 @@ def uncorrelated_alias_fold(mutator: Mutator):
         }
 
         # no point in op! is op! (always true)
-        if isinstance(expr, ConstrainableExpression) and expr.constrained:
+        if expr.constrained:
             mutator.create_expression(
                 type(expr),
                 *operands,

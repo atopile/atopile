@@ -8,7 +8,16 @@ from dataclasses import dataclass
 from itertools import combinations
 from statistics import median
 from types import NoneType
-from typing import TYPE_CHECKING, Callable, Counter, Iterable, Sequence, TypeGuard, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Counter,
+    Iterable,
+    Mapping,
+    Sequence,
+    TypeGuard,
+    cast,
+)
 
 from faebryk.core.graph import Graph
 from faebryk.core.node import Node
@@ -40,6 +49,7 @@ from faebryk.libs.util import (
     ConfigFlagFloat,
     ConfigFlagInt,
     KeyErrorAmbiguous,
+    groupby,
     partition,
     unique_ref,
 )
@@ -214,6 +224,23 @@ class MutatorUtils:
         lit = self.try_extract_literal(po, allow_subset=True)
         return lit, False
 
+    def try_extract_lit_op(
+        self, po: ParameterOperatable
+    ) -> tuple[SolverLiteral, Is | IsSubset] | None:
+        aliases = self.get_aliases(po)
+        alias_lits = [(k, v) for k, v in aliases.items() if self.is_literal(k)]
+        if alias_lits:
+            assert len(alias_lits) == 1
+            return alias_lits[0]
+        subsets = self.get_supersets(po)
+        subset_lits = [(k, vs) for k, vs in subsets.items() if self.is_literal(k)]
+        # TODO this is weird
+        if subset_lits:
+            for k, vs in subset_lits:
+                if all(k.is_subset_of(other_k) for other_k, _ in subset_lits):  # type: ignore
+                    return k, vs[0]
+        return None
+
     def map_extract_literals(
         self,
         expr: Expression,
@@ -239,7 +266,7 @@ class MutatorUtils:
         literal: ParameterOperatable.Literal | SolverLiteral,
         from_ops: Sequence[ParameterOperatable] | None = None,
         terminate: bool = False,
-    ):
+    ) -> Is | BoolSet:
         literal = make_lit(literal)
         existing = self.try_extract_literal(po, check_pre_transform=True)
         if existing is not None:
@@ -248,8 +275,8 @@ class MutatorUtils:
                     for op in po.get_operations(Is, constrained_only=True):
                         if existing in op.operands:
                             self.mutator.predicate_terminate(op)
-                    return
-                return
+                    return make_lit(True)
+                return make_lit(True)
             raise ContradictionByLiteral(
                 "Tried alias to different literal",
                 involved=[po],
@@ -259,7 +286,7 @@ class MutatorUtils:
         # prevent (A is X) is X
         if isinstance(po, Is):
             if literal in po.get_operand_literals().values():
-                return
+                return make_lit(True)
         if (ss_lit := self.try_extract_literal(po, allow_subset=True)) is not None:
             if not ss_lit.is_superset_of(literal):  # type: ignore
                 raise ContradictionByLiteral(
@@ -276,6 +303,8 @@ class MutatorUtils:
             constrain=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
+            check_exists=False,
+            _relay=False,
         )
         if terminate:
             self.mutator.predicate_terminate(out)
@@ -286,7 +315,7 @@ class MutatorUtils:
         po: ParameterOperatable,
         literal: ParameterOperatable.Literal | SolverLiteral,
         from_ops: Sequence[ParameterOperatable] | None = None,
-    ):
+    ) -> IsSubset | Is | BoolSet:
         literal = make_lit(literal)
 
         if literal.is_empty():
@@ -297,24 +326,23 @@ class MutatorUtils:
                 mutator=self.mutator,
             )
 
-        existing_alias = self.try_extract_literal(po, check_pre_transform=True)
-        if existing_alias is not None:
-            if not existing_alias.is_subset_of(literal):  # type: ignore #TODO
-                raise ContradictionByLiteral(
-                    "Tried subset to different literal",
-                    involved=[po],
-                    literals=[existing_alias, literal],
-                    mutator=self.mutator,
-                )
-            return
-
-        existing = self.try_extract_literal(
-            po, allow_subset=True, check_pre_transform=True
-        )
+        # TODO do we need to add check_pre_transform to this function?
+        existing = self.try_extract_lit_op(po)
         if existing is not None:
+            ex_lit, ex_op = existing
+            if isinstance(ex_op, Is):
+                if not ex_lit.is_subset_of(literal):  # type: ignore #TODO
+                    raise ContradictionByLiteral(
+                        "Tried subset to different literal",
+                        involved=[po],
+                        literals=[ex_lit, literal],
+                        mutator=self.mutator,
+                    )
+                return ex_op
+
             # no point in adding more general subset
-            if existing.is_subset_of(literal):  # type: ignore #TODO
-                return
+            if ex_lit.is_subset_of(literal):  # type: ignore #TODO
+                return ex_op
             # other cases handled by intersect subsets algo
 
         return self.mutator.create_expression(
@@ -325,21 +353,48 @@ class MutatorUtils:
             constrain=True,
             # already checked for uncorrelated lit, op needs to be correlated
             allow_uncorrelated=False,
-        )
+            check_exists=False,
+            _relay=False,
+        )  # type: ignore
 
     def alias_to(
         self,
-        po: ParameterOperatable,
+        po: ParameterOperatable | SolverLiteral,
         to: ParameterOperatable | SolverLiteral,
         check_existing: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
         terminate: bool = False,
-    ):
-        assert isinstance(po, ParameterOperatable)
+    ) -> Is | BoolSet:
+        from faebryk.core.solver.symbolic.pure_literal import (
+            _exec_pure_literal_expressions,
+        )
+
         from_ops = from_ops or []
+        if isinstance(to, CanonicalExpression):
+            res = _exec_pure_literal_expressions(to)
+            if res is not None:
+                to = res
+
+        to_is_lit = self.is_literal(to)
+        po_is_lit = self.is_literal(po)
+        if po_is_lit:
+            if not to_is_lit:
+                to, po = po, to
+                to_is_lit, po_is_lit = po_is_lit, to_is_lit
+            else:
+                if po != to:  # type: ignore
+                    raise ContradictionByLiteral(
+                        "Incompatible literal aliases",
+                        involved=list(from_ops),
+                        literals=[po, to],  # type: ignore
+                        mutator=self.mutator,
+                    )
+                return make_lit(True)
+        assert isinstance(po, ParameterOperatable)
         from_ops = [po] + list(from_ops)
-        if self.is_literal(to):
+        if to_is_lit:
             assert check_existing
+            to = cast(SolverLiteral, to)
             return self.alias_is_literal(po, to, from_ops=from_ops, terminate=terminate)
 
         # not sure why this would be needed anyway
@@ -348,10 +403,11 @@ class MutatorUtils:
 
         # check if alias exists
         if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
-            if po.get_operations(Is, constrained_only=True) & to.get_operations(
-                Is, constrained_only=True
+            if overlap := (
+                po.get_operations(Is, constrained_only=True)
+                & to.get_operations(Is, constrained_only=True)
             ):
-                return
+                return next(iter(overlap))
 
         return self.mutator.create_expression(
             Is,
@@ -361,7 +417,8 @@ class MutatorUtils:
             constrain=True,
             check_exists=check_existing,
             allow_uncorrelated=True,
-        )
+            _relay=False,
+        )  # type: ignore
 
     def subset_to(
         self,
@@ -369,25 +426,50 @@ class MutatorUtils:
         to: ParameterOperatable | SolverLiteral,
         check_existing: bool = True,
         from_ops: Sequence[ParameterOperatable] | None = None,
-    ):
+    ) -> IsSubset | Is | BoolSet:
+        from faebryk.core.solver.symbolic.pure_literal import (
+            _exec_pure_literal_expressions,
+        )
+
         from_ops = from_ops or []
         from_ops = [
             x for x in [po, to] + list(from_ops) if isinstance(x, ParameterOperatable)
         ]
-        if self.is_literal(to) and isinstance(po, ParameterOperatable):
+
+        if isinstance(to, CanonicalExpression):
+            res = _exec_pure_literal_expressions(to)
+            if res is not None:
+                to = res
+
+        to_is_lit = self.is_literal(to)
+        po_is_lit = self.is_literal(po)
+
+        if to_is_lit and po_is_lit:
+            if not po.is_subset_of(to):  # type: ignore
+                raise ContradictionByLiteral(
+                    "Incompatible literal subsets",
+                    involved=from_ops,
+                    literals=[to, po],
+                    mutator=self.mutator,
+                )
+            return make_lit(True)
+
+        if to_is_lit:
             assert check_existing
+            assert isinstance(po, ParameterOperatable)
             return self.subset_literal(po, to, from_ops=from_ops)
+
+        if po_is_lit and check_existing:
+            # TODO implement
+            pass
 
         # check if alias exists
         if isinstance(po, Expression) and isinstance(to, Expression) and check_existing:
-            if po.get_operations(Is, constrained_only=True) & to.get_operations(
-                Is, constrained_only=True
+            if overlap := (
+                po.get_operations(Is, constrained_only=True)
+                & to.get_operations(Is, constrained_only=True)
             ):
-                return
-
-        if self.is_literal(po) and check_existing:
-            # TODO implement
-            pass
+                return next(iter(overlap))
 
         return self.mutator.create_expression(
             IsSubset,
@@ -397,7 +479,8 @@ class MutatorUtils:
             constrain=True,
             check_exists=check_existing,
             allow_uncorrelated=True,
-        )
+            _relay=False,
+        )  # type: ignore
 
     def alias_is_literal_and_check_predicate_eval(
         self,
@@ -868,12 +951,13 @@ class MutatorUtils:
     @staticmethod
     def get_supersets(
         op: ParameterOperatable,
-    ) -> dict[ParameterOperatable | SolverLiteral, IsSubset]:
-        return {
-            e.operands[1]: e
+    ) -> Mapping[ParameterOperatable | SolverLiteral, list[IsSubset]]:
+        ss = [
+            e
             for e in op.get_operations(IsSubset, constrained_only=True)
             if e.operands[0] is op
-        }
+        ]
+        return groupby(ss, key=lambda e: e.operands[1])
 
     @staticmethod
     def get_aliases(

@@ -81,6 +81,7 @@ def test_performance_pick_rc_formulas():
     TOLERANCE = 20 * P.percent
 
     class App(Module):
+        alias_res = L.list_field(_GROUPS, F.Resistor)
         res = L.list_field(_GROUPS * _GROUP_SIZE, F.Resistor)
 
         def __preinit__(self):
@@ -93,6 +94,7 @@ def test_performance_pick_rc_formulas():
                     m2.resistance.constrain_subset(m1.resistance * increase)
                     # solver doesn't do equation reordering, so we need to reverse
                     m1.resistance.constrain_subset(m2.resistance / increase)
+                self.alias_res[i].resistance.alias_is(self.res[i].resistance)
 
     timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
 
@@ -130,6 +132,10 @@ def test_performance_pick_rc_formulas():
         ) -> bool:
             if "run_iteration:" not in k:
                 return False
+            if ":setup" in k or ":close" in k:
+                return False
+            if "clean" not in k and "dirty" not in k:
+                return False
             if dirty is not None:
                 if dirty and "dirty" not in k:
                     return False
@@ -159,6 +165,13 @@ def test_performance_pick_rc_formulas():
         for i in [None, True, False]:
             for j in [None, True, False]:
                 _make_algo_group(dirty=i, terminal=j)
+        timings.add_seperator()
+        timings.make_group(
+            "mutator setup",
+            lambda k: "run_iteration:setup" in k or "run_iteration:close" in k,
+        )
+        timings.make_group("backend wait", lambda k: "fetch parts" in k)
+        timings.make_group("solver", lambda k: "algos" == k)
         logger.info(f"\n{timings.to_str(force_unit='ms')}")
 
     picked_values = {

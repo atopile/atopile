@@ -14,10 +14,7 @@ EXAMPLES_DIR = _repo_root() / "examples"
 FABLL_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.py") if p.is_file()]
 ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 
-XFAILURES = {
-    "ch2_5_signal_processing": "Need more powerful expression reordering",  # TODO
-    "ch1_2_good_voltage_divider": "Need more powerful expression reordering",  # TODO
-}
+XFAILURES = {}
 
 
 @pytest.mark.slow

@@ -14,11 +14,13 @@ from faebryk.libs.picker.api.models import (
     LCSCParams,
     ManufacturerPartParams,
 )
-from faebryk.libs.util import once
+from faebryk.libs.util import ConfigFlag, once
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_API_TIMEOUT_SECONDS = 30
+
+API_LOG = ConfigFlag("API_LOG", descr="Log API calls (very verbose)", default=False)
 
 
 class ApiError(Exception): ...
@@ -69,10 +71,15 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if API_LOG:
             logger.debug(
-                f"GET {self._cfg.api_url}{url}\n->\n{json.dumps(response.json(), indent=2)}"  # noqa: E501  # pre-existing
+                "GET %s%s\n->\n%s",
+                self._cfg.api_url,
+                url,
+                json.dumps(response.json(), indent=2),
             )
+        else:
+            logger.debug("GET %s%s", self._cfg.api_url, url)
 
         return response
 
@@ -90,10 +97,17 @@ class ApiClient:
         except requests.exceptions.HTTPError as e:
             raise ApiHTTPError(e) from e
 
-        if logger.isEnabledFor(logging.DEBUG):
+        if API_LOG:
             logger.debug(
-                f"POST {self._cfg.api_url}{url}\n{json.dumps(data, indent=2)}\n->\n"
-                f"{json.dumps(response.json(), indent=2)}"
+                "POST %s%s\n%s\n->\n%s",
+                self._cfg.api_url,
+                url,
+                json.dumps(data, indent=2),
+                json.dumps(response.json(), indent=2),
+            )
+        else:
+            logger.debug(
+                "POST %s%s\n%s", self._cfg.api_url, url, json.dumps(data, indent=2)
             )
 
         return response

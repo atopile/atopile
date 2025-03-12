@@ -87,6 +87,11 @@ class ParameterOperatable(Node):
 
     operated_on: GraphInterface
 
+    constrained: bool = False
+    """
+    Shortcut for `isinstance(self, ConstrainableExpression) and self.constrained`
+    """
+
     @property
     def domain(self) -> "Domain": ...
 

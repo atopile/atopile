@@ -1877,18 +1877,18 @@ class PCB_Transformer:
         # TODO: figure out how this should work with some
         # concept of a --tidy flag or the likes
         # Should this remove unmarked footprints?
-        for pcb_fp in self.pcb.footprints:
-            if pcb_fp not in processed_fps:
-                if ref_prop := pcb_fp.propertys.get("Reference"):
-                    removed_fp_ref = ref_prop.value
-                else:
-                    # This should practically never occur
-                    removed_fp_ref = "<no reference>"
-                logger.info(
-                    f"Removing outdated component with Reference `{removed_fp_ref}`",
-                    extra={"markdown": True},
-                )
-                self.remove_footprint(pcb_fp)
+
+        for pcb_fp in FuncSet[Footprint](self.pcb.footprints) - processed_fps:
+            if ref_prop := pcb_fp.propertys.get("Reference"):
+                removed_fp_ref = ref_prop.value
+            else:
+                # This should practically never occur
+                removed_fp_ref = "<no reference>"
+            logger.info(
+                f"Removing outdated component with Reference `{removed_fp_ref}`",
+                extra={"markdown": True},
+            )
+            self.remove_footprint(pcb_fp)
 
         # Update nets
         # All nets MUST have a name by this point
@@ -1938,16 +1938,15 @@ class PCB_Transformer:
             processed_nets.add(pcb_net)
 
         ## Remove nets that aren't present in the design
-        for pcb_net in self.pcb.nets:
+        for pcb_net in FuncSet[Net](self.pcb.nets) - processed_nets:
             # Net number == 0 and name == "" are the default values
             # They represent unconnected to nets, so skip them
             if pcb_net.number == 0:
                 assert pcb_net.name == ""
                 continue
 
-            if pcb_net not in processed_nets:
-                logger.info(
-                    f"Removing net `{pcb_net.name}`",
-                    extra={"markdown": True},
-                )
-                self.remove_net(pcb_net)
+            logger.info(
+                f"Removing net `{pcb_net.name}`",
+                extra={"markdown": True},
+            )
+            self.remove_net(pcb_net)
