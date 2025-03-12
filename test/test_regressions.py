@@ -71,8 +71,8 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
     [
         ("https://github.com/atopile/spin-servo-drive"),
         ("https://github.com/atopile/esp32-s3"),
-        ("https://github.com/atopile/cell-sim",),
-        ("https://github.com/atopile/hil",),
+        ("https://github.com/atopile/cell-sim"),
+        ("https://github.com/atopile/hil"),
         ("https://github.com/atopile/rp2040"),
         ("https://github.com/atopile/tca9548apwr"),
         ("https://github.com/atopile/nau7802"),
