@@ -51,7 +51,7 @@ class ResistorVoltageDivider(Module):
         r_top = self.r_top.resistance
         r_bottom = self.r_bottom.resistance
         r_total = self.total_resistance
-        v_out = self.v_out / L.Range(0.99, 1.01)
+        v_out = self.v_out
         v_in = self.v_in
         max_current = self.max_current
 
