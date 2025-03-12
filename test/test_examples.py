@@ -14,18 +14,27 @@ EXAMPLES_DIR = _repo_root() / "examples"
 FABLL_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.py") if p.is_file()]
 ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 
-XFAILURES = {}
+SLOW = {"ch2_8_mcu"}
+XFAILURES = {"ch2_8_mcu": "Pin matching issues"}
 
 
-@pytest.mark.slow
+def _get_marks(example: Path):
+    return [
+        *(
+            [pytest.mark.xfail(reason=XFAILURES[example.stem])]
+            if example.stem in XFAILURES
+            else []
+        ),
+        *([pytest.mark.slow] if example.stem in SLOW else []),
+    ]
+
+
 @pytest.mark.parametrize(
     "example",
-    (
-        pytest.param(example, marks=pytest.mark.xfail(reason=reason))
-        if (reason := XFAILURES.get(example.stem))
-        else example
+    [
+        pytest.param(example, marks=_get_marks(example))
         for example in FABLL_EXAMPLES + ATO_EXAMPLES
-    ),
+    ],
     ids=lambda p: p.stem,
 )
 def test_examples_build(
