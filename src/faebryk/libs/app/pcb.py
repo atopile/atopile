@@ -28,6 +28,7 @@ from faebryk.libs.util import (
     hash_string,
     not_none,
     once,
+    remove_venv_from_env,
 )
 
 logger = logging.getLogger(__name__)
@@ -165,11 +166,7 @@ def open_pcb(pcb_path: os.PathLike):
 
     subprocess.Popen(
         [str(pcbnew), str(pcb_path)],
-        env={
-            k: v
-            for k, v in os.environ.items()
-            if k not in {"VIRTUAL_ENV", "PYTHONPATH"}
-        },
+        env=remove_venv_from_env(),
         stderr=subprocess.DEVNULL,
     )
 
