@@ -201,6 +201,11 @@ def fold_add(expr: Add, mutator: Mutator):
 
 @expression_wise_algorithm(Multiply)
 def fold_multiply(expr: Multiply, mutator: Mutator):
+    """
+    TODO doc other simplifications
+    A * (A + B)^-1 -> 1 + (B * A^-1)^-1
+    """
+
     literal_operands = list(expr.get_operand_literals().values())
     p_operands = expr.get_operand_operatables()
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
@@ -215,7 +220,7 @@ def fold_multiply(expr: Multiply, mutator: Mutator):
     )
 
     # if non-lit powers all 1 and no literal folding, nothing to do
-    if (
+    if not (
         not new_powers
         and len(literal_prod) == len(literal_operands)
         and not (
@@ -226,39 +231,73 @@ def fold_multiply(expr: Multiply, mutator: Mutator):
             > 0
         )
     ):
-        return
+        # Careful, modifying old graph, but should be ok
+        powered_operands = [
+            mutator.create_expression(Power, n, m, from_ops=[expr])
+            for n, m in new_powers.items()
+        ]
 
-    # Careful, modifying old graph, but should be ok
-    powered_operands = [
-        mutator.create_expression(Power, n, m, from_ops=[expr])
-        for n, m in new_powers.items()
-    ]
+        new_operands = [
+            *powered_operands,
+            *old_powers,
+            *literal_prod,
+            *non_replacable_nonliteral_operands,
+        ]
 
-    new_operands = [
-        *powered_operands,
-        *old_powers,
-        *literal_prod,
-        *non_replacable_nonliteral_operands,
-    ]
+        # 0 * A -> 0
+        if 0 in new_operands:
+            new_operands = [make_lit(0)]
+            # convert_operable_aliased_to_single_into_literal takes care of rest
 
-    # 0 * A -> 0
-    if 0 in new_operands:
-        new_operands = [make_lit(0)]
-        # convert_operable_aliased_to_single_into_literal takes care of rest
+        # unpack if single operand (operatable)
+        if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
+            new_operands = cast(list[ParameterOperatable], new_operands)
+            mutator.mutate_unpack_expression(expr, new_operands)
+            return
 
-    # unpack if single operand (operatable)
-    if len(new_operands) == 1 and isinstance(new_operands[0], ParameterOperatable):
-        new_operands = cast(list[ParameterOperatable], new_operands)
-        mutator.mutate_unpack_expression(expr, new_operands)
-        return
+        if new_operands != expr.operands:
+            new_expr = mutator.mutate_expression(
+                expr, operands=new_operands, expression_factory=Multiply
+            )
 
-    new_expr = mutator.mutate_expression(
-        expr, operands=new_operands, expression_factory=Multiply
-    )
+            # if only one literal operand, equal to it
+            if len(new_operands) == 1:
+                mutator.utils.alias_to(new_expr, new_operands[0], terminate=True)
+            return
 
-    # if only one literal operand, equal to it
-    if len(new_operands) == 1:
-        mutator.utils.alias_to(new_expr, new_operands[0], terminate=True)
+    # if len(expr.operands) == 2:
+    #     # TODO pos independend
+    #     A, right = expr.operands
+    #     # A * (A + B)^-1 -> (1 + B * A^-1)^-1
+    #     if (
+    #         isinstance(A, ParameterOperatable)
+    #         and isinstance(right, Power)
+    #         and right.get_operand_literals().get(1) == -1
+    #         and isinstance(inner := right.operands[0], Add)
+    #         and len(inner.operands) == 2
+    #         and not inner.get_operand_literals()
+    #         and A in inner.operands
+    #     ):
+    #         B = inner.get_other_operand(A)
+    #         A_inv = mutator.create_expression(
+    #             Power,
+    #             A,
+    #             make_lit(-1),
+    #             from_ops=[expr],
+    #         )
+    #         mutator.mutate_expression(
+    #             expr,
+    #             expression_factory=Power,
+    #             operands=[
+    #                 mutator.create_expression(
+    #                     Add,
+    #                     make_lit(1),
+    #                     mutator.create_expression(Multiply, B, A_inv,
+    #                       from_ops=[expr]),
+    #                 ),
+    #                 make_lit(-1),
+    #             ],
+    #         )
 
 
 @expression_wise_algorithm(Power)
