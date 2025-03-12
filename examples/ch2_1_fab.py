@@ -30,23 +30,23 @@ class App(Module):
         )
 
         self.battery.add(F.has_designator_prefix("B"))
-        self.battery.power.voltage.constrain_superset(
-            L.Range(2.5 * P.volt, 4.2 * P.volt)
-        )
-        self.battery.add(F.has_descriptive_properties_defined({"LCSC": "C5239862"}))
+        self.battery.power.voltage.constrain_superset(L.Range(2.5 * P.V, 4.2 * P.V))
         self.battery.add(
-            F.can_attach_to_footprint_via_pinmap(
-                {
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={
                     "1": self.battery.power.lv,
                     "2": self.battery.power.hv,
-                }
+                },
             )
         )
 
-        self.led.add(F.has_designator_prefix("D"))
-        self.led.add(F.has_descriptive_properties_defined({"LCSC": "C72038"}))
         self.led.add(
-            F.can_attach_to_footprint_via_pinmap(
-                {"1": self.led.led.cathode, "2": self.led.led.anode},
+            F.has_explicit_part.by_supplier(
+                "C72038",
+                pinmap={
+                    "1": self.led.led.cathode,
+                    "2": self.led.led.anode,
+                },
             )
         )
