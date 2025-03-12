@@ -45,7 +45,7 @@ def test_examples_build(
         else:
             shutil.copy(item, tmp_path / item.name)
 
-    run_live(
+    _, stderr, _ = run_live(
         [
             sys.executable,
             "-m",
@@ -59,3 +59,8 @@ def test_examples_build(
         stdout=print,
         stderr=print,
     )
+
+    assert "Build successful! 🚀" in stderr
+    assert stderr.count("✓") >= 1
+    assert stderr.count("✗") == 0
+    assert stderr.count("⚠") == 0
