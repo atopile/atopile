@@ -23,12 +23,14 @@ class App(Module):
     def __preinit__(self) -> None:
         self.led.power.connect(self.battery.power)
 
+        # TODO: remove when we have a LED picker
         self.led.led.add(F.has_explicit_part.by_supplier("C965802"))
         self.led.led.forward_voltage.alias_is(2.4 * P.V)
         self.led.led.max_brightness.alias_is(435 * P.microcandela)
+        self.led.led.max_current.alias_is(20 * P.mA)
 
         # Parametrize
-        self.led.led.color.constrain_subset(F.LED.Color.RED)
+        # self.led.led.color.constrain_subset(F.LED.Color.RED)
         self.led.led.brightness.constrain_subset(
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )

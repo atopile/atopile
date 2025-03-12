@@ -23,6 +23,7 @@ class App(Module):
 
         self.led.led.add(F.has_explicit_part.by_supplier("C965802"))
         self.led.led.forward_voltage.alias_is(2.4 * P.V)
+        self.led.led.max_brightness.alias_is(435 * P.microcandela)
 
         self.led.current_limiting_resistor.add(
             F.has_explicit_part.by_supplier("C159037")
@@ -36,6 +37,3 @@ class App(Module):
             )
         )
         buttoncell.voltage.alias_is(3 * P.V)
-
-
-# FIXME: delete this file
