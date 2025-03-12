@@ -51,6 +51,7 @@ from faebryk.libs.util import (
     KeyErrorAmbiguous,
     groupby,
     partition,
+    unique,
     unique_ref,
 )
 
@@ -230,7 +231,14 @@ class MutatorUtils:
         aliases = self.get_aliases(po)
         alias_lits = [(k, v) for k, v in aliases.items() if self.is_literal(k)]
         if alias_lits:
-            assert len(alias_lits) == 1
+            unique_lits = unique(alias_lits, lambda x: x[0])
+            if len(unique_lits) > 1:
+                raise ContradictionByLiteral(
+                    "Multiple alias literals found",
+                    involved=[po] + [x[1] for x in unique_lits],
+                    literals=[x[0] for x in unique_lits],
+                    mutator=self.mutator,
+                )
             return alias_lits[0]
         subsets = self.get_supersets(po)
         subset_lits = [(k, vs) for k, vs in subsets.items() if self.is_literal(k)]

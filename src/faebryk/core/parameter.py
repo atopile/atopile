@@ -740,6 +740,14 @@ class Expression(ParameterOperatable):
                 return True
         return False
 
+    def get_other_operand(
+        self, operand: ParameterOperatable.All
+    ) -> ParameterOperatable.All:
+        assert len(self.operands) == 2
+        if self.operands[0] is operand:
+            return self.operands[1]
+        return self.operands[0]
+
     def __repr__(self) -> str:
         return f"{super().__repr__()}({self.operands})"
 
@@ -1515,13 +1523,6 @@ class Predicate(ConstrainableExpression):
 
     def __bool__(self):
         raise ValueError("Predicate cannot be converted to bool")
-
-    def get_other_operand(
-        self, operand: ParameterOperatable.All
-    ) -> ParameterOperatable.All:
-        if self.operands[0] is operand:
-            return self.operands[1]
-        return self.operands[0]
 
 
 class NumericPredicate(Predicate):
