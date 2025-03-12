@@ -38,7 +38,7 @@ def test_app(config):
     min_rounds=10,
     max_time=0.3,
 )
-def test_snapiness(benchmark):
+def test_snappiness(benchmark):
     def run_cli():
         return run(
             [sys.executable, "-m", "atopile", "--help"],
