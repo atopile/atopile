@@ -65,3 +65,21 @@ def test_examples_build(
     assert stderr.count("✓") >= 1
     assert stderr.count("✗") == 0
     assert stderr.count("⚠") == 0
+
+
+def test_example_project_builds(tmp_path: Path):
+    example_proj = Path("examples")
+    example_copy = tmp_path / "example_project"
+    shutil.copytree(example_proj, example_copy)
+
+    _, stderr, _ = run_live(
+        [sys.executable, "-m", "atopile", "build"],
+        cwd=example_copy,
+        stdout=print,
+        stderr=print,
+    )
+
+    assert "Build successful! 🚀" in stderr
+    assert stderr.count("✓") >= 1
+    assert stderr.count("✗") == 0
+    assert stderr.count("⚠") == 0
