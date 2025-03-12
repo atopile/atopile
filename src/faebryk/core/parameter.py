@@ -513,16 +513,17 @@ class ParameterOperatable(Node):
     def _get_lit_suffix(self) -> str:
         out = ""
         try:
-            if (lit := self.try_get_literal()) is not None:
-                out = f"{{I|{lit}}}"
-            elif (lit := self.try_get_literal_subset()) is not None:
-                out = f"{{S|{lit}}}"
-            if lit == BoolSet(True):
-                out = "✓"
-            elif lit == BoolSet(False) and isinstance(lit, (BoolSet, bool)):
-                out = "✗"
+            lit = self.try_get_literal()
         except KeyErrorAmbiguous as e:
-            out = f"{{AMBIGUOUS: {e.duplicates}}}"
+            return f"{{AMBIGUOUS_I: {e.duplicates}}}"
+        if lit is not None:
+            out = f"{{I|{lit}}}"
+        elif (lit := self.try_get_literal_subset()) is not None:
+            out = f"{{S|{lit}}}"
+        if lit == BoolSet(True):
+            out = "✓"
+        elif lit == BoolSet(False) and isinstance(lit, (BoolSet, bool)):
+            out = "✗"
         return out
 
 
