@@ -47,6 +47,8 @@ class RP2040_ReferenceDesign(Module):
                 )
             )
             self.switch.attach_to_footprint.attach(fp)
+            # TODO make other trait for manual footprint, no pick
+            self.switch.add(F.has_part_removed())
 
         @L.rt_field
         def single_reference(self):

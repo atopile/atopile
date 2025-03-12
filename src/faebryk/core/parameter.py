@@ -29,7 +29,7 @@ from faebryk.libs.sets.quantity_sets import (
     Quantity_Set_Discrete,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
+from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set, as_lit
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -413,7 +413,7 @@ class ParameterOperatable(Node):
         except KeyErrorAmbiguous as e:
             duplicates = e.duplicates
             if issubclass(op, Is):
-                if len(unique(duplicates, key=lambda x: x)) != 1:
+                if len(unique(duplicates, key=lambda x: as_lit(x))) != 1:
                     raise
                 return duplicates[0]
             elif issubclass(op, IsSubset):
