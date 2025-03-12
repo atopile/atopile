@@ -60,6 +60,7 @@ def test_examples_build(
         stderr=print,
     )
 
+    # TODO: add a strict mode to the CLI
     assert "Build successful! 🚀" in stderr
     assert stderr.count("✓") >= 1
     assert stderr.count("✗") == 0
