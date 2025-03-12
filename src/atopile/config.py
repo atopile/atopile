@@ -292,12 +292,7 @@ class BuildTargetPaths(BaseConfigModel):
                 )
             )
 
-            if len(layout_candidates) == 0:
-                # preferred location
-                return (
-                    layout_base.resolve().absolute() / f"{layout_base.name}.kicad_pcb"
-                )
-            elif len(layout_candidates) == 1:
+            if len(layout_candidates) == 1:
                 return layout_candidates[0].resolve().absolute()
             else:
                 raise UserException(
@@ -305,7 +300,8 @@ class BuildTargetPaths(BaseConfigModel):
                     f" but {len(layout_candidates)} found in {layout_base}"
                 )
 
-        raise UserFileNotFoundError(f"Unable to find layout file at {layout_base}")
+        # default location, to create later
+        return layout_base.resolve().absolute() / f"{layout_base.name}.kicad_pcb"
 
     def ensure_layout(self):
         """Return the layout associated with a build."""
