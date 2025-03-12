@@ -82,3 +82,22 @@ class App(Module):
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self
         )
+
+        # TODO: remove when we have a LED picker
+        self.leds.led.add(F.has_explicit_part.by_supplier("C965802"))
+        self.leds.led.forward_voltage.alias_is(2.4 * P.V)
+        self.leds.led.max_brightness.alias_is(435 * P.millicandela)
+        self.leds.led.max_current.alias_is(20 * P.mA)
+        self.leds.led.color.alias_is(F.LED.Color.YELLOW)
+
+        # TODO remove when we have a battery picker
+        self.battery.add(
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={
+                    "1": self.battery.power.lv,
+                    "2": self.battery.power.hv,
+                },
+            )
+        )
+        self.battery.voltage.alias_is(3 * P.V)

@@ -65,6 +65,23 @@ class App(Module):
             TypicalLuminousIntensity.APPLICATION_LED_INDICATOR_INSIDE.value
         )
 
+        # TODO: remove when we have a LED picker
+        self.led.led.add(F.has_explicit_part.by_supplier("C965802"))
+        self.led.led.forward_voltage.alias_is(2.4 * P.V)
+        self.led.led.max_brightness.alias_is(435 * P.millicandela)
+        self.led.led.max_current.alias_is(20 * P.mA)
+        self.led.led.color.alias_is(F.LED.Color.YELLOW)
+
+        # TODO remove when we have a battery picker
+        self.battery.add(
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={
+                    "1": self.battery.power.lv,
+                    "2": self.battery.power.hv,
+                },
+            )
+        )
         self.battery.power.voltage.alias_is(3 * P.V)
 
 
