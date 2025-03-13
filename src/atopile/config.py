@@ -261,9 +261,9 @@ class BuildTargetPaths(BaseConfigModel):
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         if layout_data := data.get("layout"):
-            data["layout"] = BuildTargetPaths.find_layout(Path(layout_data))
+            data["layout"] = BuildTargetPaths.ensure_layout(Path(layout_data))
         else:
-            data["layout"] = BuildTargetPaths.find_layout(
+            data["layout"] = BuildTargetPaths.ensure_layout(
                 project_paths.root / project_paths.layout / name
             )
 
@@ -280,11 +280,12 @@ class BuildTargetPaths(BaseConfigModel):
         super().__init__(**data)
 
     @classmethod
-    def find_layout(cls, layout_base: Path) -> Path:
-        """Find the layout associated with a build."""
+    def ensure_layout(cls, layout_base: Path) -> Path:
+        """Return the layout associated with a build."""
 
         if layout_base.with_suffix(".kicad_pcb").exists():
             return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
+
         elif layout_base.is_dir():
             layout_candidates = list(
                 filter(
@@ -292,7 +293,10 @@ class BuildTargetPaths(BaseConfigModel):
                 )
             )
 
-            if len(layout_candidates) == 1:
+            if len(layout_candidates) == 0:
+                # this is fine, we'll just create a layout later
+                pass
+            elif len(layout_candidates) == 1:
                 return layout_candidates[0].resolve().absolute()
             else:
                 raise UserException(
@@ -300,13 +304,10 @@ class BuildTargetPaths(BaseConfigModel):
                     f" but {len(layout_candidates)} found in {layout_base}"
                 )
 
-        # default location, to create later
-        return layout_base.resolve().absolute() / f"{layout_base.name}.kicad_pcb"
+        layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
 
-    def ensure_layout(self):
-        """Return the layout associated with a build."""
-        logger.info("Creating new layout at %s", self.layout)
-        self.layout.parent.mkdir(parents=True, exist_ok=True)
+        logger.info("Creating new layout at %s", layout_path)
+        layout_path.parent.mkdir(parents=True, exist_ok=True)
 
         # delayed import to improve startup time
         from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
@@ -314,7 +315,9 @@ class BuildTargetPaths(BaseConfigModel):
         C_kicad_pcb_file.skeleton(
             generator=DISTRIBUTION_NAME,
             generator_version=str(get_installed_atopile_version()),
-        ).dumps(self.layout)
+        ).dumps(layout_path)
+
+        return layout_path
 
     @classmethod
     def match_user_layout(cls, path: Path) -> bool:
@@ -437,10 +440,6 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
         """The path to the entry module."""
         address = AddrStr(self.address)
         return address.entry_section
-
-    def ensure(self):
-        """Ensure this build config is ready to be used"""
-        self.paths.ensure_layout()
 
 
 class Source(BaseConfigModel):
@@ -674,7 +673,6 @@ _current_build_cfg: ContextVar[BuildTargetConfig | None] = ContextVar(
 @contextmanager
 def _build_context(config: "Config", build_name: str):
     cfg = config.project.builds[build_name]
-    cfg.ensure()
     token = _current_build_cfg.set(cfg)
     try:
         yield
