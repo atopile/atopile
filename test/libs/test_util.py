@@ -9,9 +9,11 @@ import pytest
 
 from faebryk.libs.util import (
     SharedReference,
+    TotalOrder,
     assert_once,
     invert_dict,
     once,
+    times,
     times_out,
     zip_non_locked,
 )
@@ -179,3 +181,120 @@ class _DictTestObjBrokenHash:
 def test_invert_dict(to_test: dict, expected: dict):
     out = invert_dict(to_test)
     assert out == expected
+
+
+def test_total_order_basic_int():
+    order = TotalOrder[int]()
+    order.add_rel(1, 2)
+    order.add_rel(1, 3)
+    order.add_rel(3, 4)
+    expected = {
+        1: [[1, 2], [1, 3, 4]],
+        2: [[1, 2]],
+        3: [[1, 3, 4]],
+        4: [[1, 3, 4]],
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+
+
+def test_total_order_basic_str():
+    A, B, C, D = "A", "B", "C", "D"
+    order = TotalOrder[str]()
+    order.add_rel(A, B)
+    order.add_rel(B, D)
+    order.add_rel(C, D)
+    expected = {
+        A: [[A, B, D]],
+        B: [[A, B, D]],
+        C: [[C, D]],
+        D: [[A, B, D], [C, D]],
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+
+
+def test_total_order_full_str():
+    A, B, C, D = "A", "B", "C", "D"
+    order = TotalOrder[str]()
+    order.add_rel(A, B)
+    order.add_rel(B, D)
+    order.add_rel(D, C)
+    expected = {
+        A: [[A, B, D, C]],
+        B: [[A, B, D, C]],
+        D: [[A, B, D, C]],
+        C: [[A, B, D, C]],
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+
+
+def test_total_order_isolated():
+    A, B, C, D = "A", "B", "C", "D"
+    order = TotalOrder[str]([A, B, C, D])
+    order.add_rel(A, B)
+    order.add_rel(B, D)
+    expected = {
+        A: [[A, B, D]],
+        B: [[A, B, D]],
+        C: [[C]],
+        D: [[A, B, D]],
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+
+
+def test_total_order_basic_named_obj():
+    class obj:
+        def __init__(self, name: str):
+            self.name = name
+
+        def __str__(self):
+            return self.name
+
+        def __repr__(self):
+            return self.name
+
+    A, B, C, D = obj("A"), obj("B"), obj("C"), obj("D")
+    order = TotalOrder[obj]()
+    order.add_rel(A, B)
+    order.add_rel(B, D)
+    order.add_rel(C, D)
+    expected = {
+        D: [[C, D], [A, B, D]],
+        B: [[A, B, D]],
+        C: [[C, D]],
+        A: [[A, B, D]],
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+
+
+def test_total_order_basic_anon_obj():
+    A, B, C, D = times(4, object)
+    order = TotalOrder[object]()
+    order.add_rel(A, B)
+    order.add_rel(B, D)
+    order.add_rel(C, D)
+    expected = {
+        A: [[A, B, D]],
+        B: [[A, B, D]],
+        D: [[A, B, D], [C, D]],
+        C: [[C, D]],
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+
+
+def test_total_order_contradiction():
+    A, B = "A", "B"
+    order = TotalOrder[str]()
+    order.add_rel(A, B)
+    order.add_rel(B, A)
+    expected = {
+        A: [[A]],
+        B: [[B]],
+    }
+    expected_cycles = {
+        A: {A, B},
+        B: {A, B},
+    }
+    assert order.get() == expected, f"Expected {expected}, got {order.get()}"
+    assert (
+        order.get_cycles() == expected_cycles
+    ), f"Expected {expected_cycles}, got {order.get_cycles()}"
