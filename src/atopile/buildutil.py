@@ -35,6 +35,7 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
 from faebryk.libs.app.checks import run_checks
 from faebryk.libs.app.designators import (
@@ -281,7 +282,15 @@ def generate_bom(app: Module, solver: Solver) -> None:
 
 @muster.register("mfg-data", default=False)
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
-    """Generate a designator map for the project."""
+    """
+    Generate manufacturing artifacts for the project.
+    - STEP
+    - GLB
+    - DXF
+    - Gerber zip
+    - Pick and place (default and JLCPCB)
+    - Testpoint-location
+    """
     export_step(
         config.build.paths.layout,
         step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
@@ -305,6 +314,11 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     convert_kicad_pick_and_place_to_jlcpcb(
         pnp_file,
         config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
+    )
+
+    export_testpoints(
+        app,
+        testpoints_file=config.build.paths.output_base.with_suffix(".testpoints.json"),
     )
 
 
