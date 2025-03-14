@@ -4,10 +4,13 @@
 import logging
 import re
 from dataclasses import fields
+from socket import gaierror
 
 import more_itertools
+from requests.exceptions import ConnectionError, ReadTimeout
 
 import faebryk.library._F as F
+from atopile.errors import UserInfraError
 from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
@@ -170,6 +173,23 @@ def _find_modules(
     try:
         results = client.fetch_parts_multiple(queries)
         timings.add("fetch parts")
+    except ConnectionError as e:
+        cause = e.args[0]
+        while not isinstance(cause, gaierror):
+            cause = cause.__cause__
+            if cause is None:
+                break
+        else:
+            raise UserInfraError(
+                f"Fetching component data failed: connection error: {cause.strerror}"
+            ) from e
+
+        raise UserInfraError("Fetching component data failed: connection error") from e
+    except ReadTimeout as e:
+        raise UserInfraError(
+            "Fetching component data failed to complete in time. "
+            "Please try again later."
+        ) from e
     except ApiHTTPError as e:
         if e.response.status_code == 400:
             response = cast_assert(dict, e.response.json())
