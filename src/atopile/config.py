@@ -39,7 +39,7 @@ from atopile.errors import (
     UserNotImplementedError,
 )
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
-from faebryk.libs.exceptions import iter_through_errors
+from faebryk.libs.exceptions import UserResourceException, iter_through_errors
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -305,16 +305,19 @@ class BuildTargetPaths(BaseConfigModel):
 
     def ensure_layout(self):
         """Return the layout associated with a build."""
-        logger.info("Creating new layout at %s", self.layout)
-        self.layout.parent.mkdir(parents=True, exist_ok=True)
+        if not self.layout.exists():
+            logger.info("Creating new layout at %s", self.layout)
+            self.layout.parent.mkdir(parents=True, exist_ok=True)
 
-        # delayed import to improve startup time
-        from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+            # delayed import to improve startup time
+            from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
 
-        C_kicad_pcb_file.skeleton(
-            generator=DISTRIBUTION_NAME,
-            generator_version=str(get_installed_atopile_version()),
-        ).dumps(self.layout)
+            C_kicad_pcb_file.skeleton(
+                generator=DISTRIBUTION_NAME,
+                generator_version=str(get_installed_atopile_version()),
+            ).dumps(self.layout)
+        elif not self.layout.is_file():
+            raise UserResourceException(f"Layout is not a file: {self.layout}")
 
     @classmethod
     def match_user_layout(cls, path: Path) -> bool:
