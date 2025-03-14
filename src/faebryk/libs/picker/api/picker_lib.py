@@ -123,6 +123,10 @@ def _prepare_query(
             p.get_name(): p.get_last_known_deduced_superset(solver)
             for p in known_params
         }
+
+        if all(superset is None for superset in cmp_params.values()):
+            logger.warning(f"Module `{module}` has no constrained parameters")
+
         return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
 
     raise NotImplementedError(
