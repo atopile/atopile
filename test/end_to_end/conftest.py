@@ -3,6 +3,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
@@ -28,15 +29,16 @@ def exec_build(args: list[str], cwd: Path) -> tuple[str, str, subprocess.Popen]:
 EXEC_T = Callable[[str, list[str]], tuple[str, str, subprocess.Popen]]
 
 
+def dump_and_run(src: str, args: list[str], working_dir: Path):
+    # Copy the default_ato.yaml to the tmpdir
+    shutil.copy2(DEFAULT_CONFIG, working_dir / "ato.yaml")
+
+    with open(working_dir / "app.ato", "w") as f:
+        f.write(textwrap.dedent(src))
+
+    return exec_build(args, working_dir)
+
+
 @pytest.fixture
 def build_app(tmpdir: Path):
-    # Copy the default_ato.yaml to the tmpdir
-    shutil.copy2(DEFAULT_CONFIG, tmpdir / "ato.yaml")
-
-    def dump_and_run(src: str, args: list[str]):
-        with open(tmpdir / "app.ato", "w") as f:
-            f.write(textwrap.dedent(src))
-
-        return exec_build(args, tmpdir)
-
-    yield dump_and_run
+    yield partial(dump_and_run, working_dir=tmpdir)

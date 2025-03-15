@@ -31,8 +31,8 @@ class I2C(ModuleInterface):
     def terminate(self, owner: Module):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
-        self.sda.pulled.pull(up=True, owner=owner)
-        self.scl.pulled.pull(up=True, owner=owner)
+        self.pull_up_sda = self.sda.pulled.pull(up=True, owner=owner)
+        self.pull_up_scl = self.scl.pulled.pull(up=True, owner=owner)
 
     class SpeedMode(Enum):
         low_speed = 10 * P.khertz

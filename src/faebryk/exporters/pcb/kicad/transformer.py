@@ -9,6 +9,7 @@ from collections import defaultdict
 from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
+from math import floor
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
 
@@ -52,9 +53,11 @@ from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
+    Tree,
     cast_assert,
     dataclass_as_kwargs,
     find,
+    groupby,
     hash_string,
     yield_missing,
 )
@@ -1846,42 +1849,63 @@ class PCB_Transformer:
         # Each new component in the cluster is inserted with one vertical spacing
         # Each new cluster is inserted with one horizontal spacing
 
-        HORIZONTAL_SPACING = 10
-        VERTICAL_SPACING = -5
+        DEFAULT_HORIZONTAL_SPACING = 10
+        DEFAULT_VERTICAL_SPACING = 10
+        CANVAS_EXTENT = 2147  # KiCad canvas goes to +/- approx. 2147mm in X and Y
+
+        def _incremented_point(point: C_xyr, dx: int = 0, dy: int = 0) -> C_xyr:
+            return C_xyr(x=point.x + dx, y=point.y + dy, r=point.r)
+
+        def _iter_modules(tree: Tree[Module]):
+            # yields nodes with footprints in a sensible order
+            grouped = groupby(tree, lambda c: c.has_trait(F.has_footprint))
+            yield from grouped[True]
+            for child in grouped[False]:
+                yield from _iter_modules(tree[child])
+
+        def _get_cluster(component: Module) -> Node | None:
+            if (parent := component.get_parent()) is not None:
+                return cast_assert(Node, parent[0])
+            return None
+
+        components = _iter_modules(self.app.get_tree(types=Module))
+        clusters = groupby(components, _get_cluster)
+
+        # scaled to fit all clusters inside the canvas boundary
+        horizontal_spacing = min(
+            floor(CANVAS_EXTENT / len(clusters)), DEFAULT_HORIZONTAL_SPACING
+        )
+        max_cluster_size = max(len(clusters[c]) for c in clusters)
+        vertical_spacing = min(
+            floor(CANVAS_EXTENT / max_cluster_size), DEFAULT_VERTICAL_SPACING
+        )
 
         cluster_point = copy.deepcopy(self.default_component_insert_point)
+        insert_point = copy.deepcopy(self.default_component_insert_point)
+        for cluster in clusters:
+            insert_point = copy.deepcopy(cluster_point)
+            cluster_has_footprints = False
 
-        def _new_cluster() -> C_xyr:
-            next_point = copy.deepcopy(cluster_point)
-            cluster_point.x += HORIZONTAL_SPACING
-            return next_point
+            for component in clusters[cluster]:
+                # If this component isn't the most special in it's chain of
+                # specialization then skip it. We should only pick components that are
+                # the most special.
+                if component is not component.get_most_special():
+                    continue
 
-        cluster_points = defaultdict(_new_cluster)
-        cluster_points[None]  # Trigger top-level components, so they're at the top
+                pcb_fp, new_fp = self._update_footprint_from_node(
+                    component, fp_lib_path, logger, insert_point
+                )
+                if new_fp:
+                    insert_point = _incremented_point(
+                        insert_point, dy=-vertical_spacing
+                    )
+                    cluster_has_footprints = True
 
-        def _increment_cluster_point(key):
-            cluster_points[key].y += VERTICAL_SPACING
+                processed_fps.add(pcb_fp)
 
-        for component, _ in gf.nodes_with_trait(F.has_footprint):
-            # FIXME: it'd be nice to allow query composition so
-            # we could ask for all the modules with footprints
-            assert isinstance(component, Module)
-
-            # If this component isn't the most special in it's chain of specialization
-            # then skip it. We should only pick components that are the most special.
-            if component is not component.get_most_special():
-                continue
-
-            cluster_key = component.get_parent()
-            insert_point = cluster_points[cluster_key]
-            pcb_fp, new_fp = self._update_footprint_from_node(
-                component, fp_lib_path, logger, insert_point
-            )
-            # If we used that point, increment the cluster point
-            if new_fp:
-                _increment_cluster_point(cluster_key)
-
-            processed_fps.add(pcb_fp)
+            if cluster_has_footprints:
+                cluster_point = _incremented_point(cluster_point, dx=horizontal_spacing)
 
         ## Remove footprints that aren't present in the design
         # TODO: figure out how this should work with some
