@@ -44,6 +44,12 @@ class App(Module):
             L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
         self.eeprom.ic.set_address(0x0)
+        self.eeprom.ic.data.pull_up_sda.resistance.constrain_subset(
+            L.Range.from_center_rel(2 * P.kohm, 0.1)
+        )
+        self.eeprom.ic.data.pull_up_scl.resistance.constrain_subset(
+            L.Range.from_center_rel(2 * P.kohm, 0.1)
+        )
 
         # Layout
         Point = F.has_pcb_position.Point
