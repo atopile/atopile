@@ -70,6 +70,7 @@ def build(
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout
 
+    logger.info("Saving logs to %s", config.project.paths.logs / NOW)
     with accumulate() as accumulator:
         for build in config.builds:
             with accumulator.collect(), log_user_errors(logger), build:
@@ -93,7 +94,6 @@ def build(
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
-    logger.info("Logs saved to %s", config.project.paths.logs / NOW)
 
     if config.should_open_layout_on_build():
         selected_build_names = list(config.selected_builds)
