@@ -52,9 +52,11 @@ from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
+    Tree,
     cast_assert,
     dataclass_as_kwargs,
     find,
+    groupby,
     hash_string,
     yield_missing,
 )
@@ -1847,39 +1849,58 @@ class PCB_Transformer:
         # Each new cluster is inserted with one horizontal spacing
 
         HORIZONTAL_SPACING = 10
-        VERTICAL_SPACING = -5
+        VERTICAL_SPACING = -10
 
+        previous_cluster: Node | None = None
         cluster_point = copy.deepcopy(self.default_component_insert_point)
+        footprint_point = copy.deepcopy(self.default_component_insert_point)
 
         def _new_cluster() -> C_xyr:
-            next_point = copy.deepcopy(cluster_point)
-            cluster_point.x += HORIZONTAL_SPACING
-            return next_point
+            return C_xyr(
+                x=cluster_point.x + HORIZONTAL_SPACING,
+                y=cluster_point.y,
+                r=cluster_point.r,
+            )
 
-        cluster_points = defaultdict(_new_cluster)
-        cluster_points[None]  # Trigger top-level components, so they're at the top
+        def _new_footprint():
+            return C_xyr(
+                x=footprint_point.x,
+                y=footprint_point.y + VERTICAL_SPACING,
+                r=footprint_point.r,
+            )
 
-        def _increment_cluster_point(key):
-            cluster_points[key].y += VERTICAL_SPACING
+        def _iter_modules(tree: Tree[Module]):
+            # yields nodes with footprints in a sensible order
+            grouped = groupby(tree, lambda c: c.has_trait(F.has_footprint))
+            yield from grouped[True]
+            for child in grouped[False]:
+                yield from _iter_modules(tree[child])
 
-        for component, _ in gf.nodes_with_trait(F.has_footprint):
-            # FIXME: it'd be nice to allow query composition so
-            # we could ask for all the modules with footprints
-            assert isinstance(component, Module)
+        components = _iter_modules(self.app.get_tree(types=Module))
 
+        for component in components:
             # If this component isn't the most special in it's chain of specialization
             # then skip it. We should only pick components that are the most special.
             if component is not component.get_most_special():
                 continue
 
-            cluster_key = component.get_parent()
-            insert_point = cluster_points[cluster_key]
+            parent = component.get_parent()
+            cluster = parent[0] if parent else None
+            assert cluster is None or isinstance(cluster, Node)
+
+            if cluster != previous_cluster:
+                previous_cluster = cluster
+                cluster_point = _new_cluster()
+                footprint_point = copy.deepcopy(cluster_point)
+
+            insert_point = footprint_point
+
             pcb_fp, new_fp = self._update_footprint_from_node(
                 component, fp_lib_path, logger, insert_point
             )
             # If we used that point, increment the cluster point
             if new_fp:
-                _increment_cluster_point(cluster_key)
+                footprint_point = _new_footprint()
 
             processed_fps.add(pcb_fp)
 
