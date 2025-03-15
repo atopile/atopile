@@ -18,12 +18,6 @@ from faebryk.libs.util import KeyErrorNotFound, find
 
 logger = logging.getLogger(__name__)
 
-# TODO: dynamic spacing based on footprint dimensions?
-HORIZONTAL_SPACING = 10
-VERTICAL_SPACING = -5  # negative is upwards
-
-NO_LCSC_DISPLAY = "No LCSC number"
-
 
 class LibNotInTable(Exception):
     def __init__(self, *args: object, lib_id: str, lib_table_path: Path) -> None:
