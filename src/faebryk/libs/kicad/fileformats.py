@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # KiCad 5.1.0 - May 22, 2019
 # KiCad 5.0.0 - July 21, 2018
 
-KICAD_PCB_VERSION = 20250219  # TODO: check if this is also what KiCad is saying
+KICAD_PCB_VERSION = 20241229
 
 
 @dataclass_json(undefined=Undefined.INCLUDE)
