@@ -503,6 +503,8 @@ class C_text_layer:
 
 
 class E_fill(SymEnum):
+    yes = auto()
+    no = auto()
     none = auto()
     solid = auto()
 
@@ -551,8 +553,8 @@ class C_arc:
     mid: C_xy
     end: C_xy
     stroke: C_stroke
-    layer: str
-    layers: Optional[list[str]] = None
+    layer: str | None = None
+    layers: list[str] | None = None
     solder_mask_margin: float | None = None
     uuid: UUID = field(default_factory=gen_uuid)
 
