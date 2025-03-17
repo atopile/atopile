@@ -58,10 +58,8 @@ from faebryk.libs.exceptions import (
     iter_leaf_exceptions,
     iter_through_errors,
 )
-from faebryk.libs.kicad.fileformats import (
-    C_kicad_fp_lib_table_file,
-    C_kicad_pcb_file,
-)
+from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file
+from faebryk.libs.kicad.fileformats_version import try_load_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
@@ -115,7 +113,7 @@ def build(app: Module) -> None:
         consolidate_footprints(app)
 
     with LoggingStage("load-pcb", "Loading PCB"):
-        pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
+        pcb = try_load_kicad_pcb_file(config.build.paths.layout)
         transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
         if config.build.keep_designators:
             load_designators(G, attach=True)

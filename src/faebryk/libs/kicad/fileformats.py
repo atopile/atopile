@@ -1578,6 +1578,16 @@ class C_kicad_pcb_file(SEXP_File):
 
 
 @dataclass
+class C_kicad_pcb_file_version(SEXP_File):
+    @dataclass
+    class C_kicad_pcb:
+        version: int = field(**sexp_field())
+        unknown: CatchAll = None
+
+    kicad_pcb: C_kicad_pcb
+
+
+@dataclass
 class C_kicad_footprint_file(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
