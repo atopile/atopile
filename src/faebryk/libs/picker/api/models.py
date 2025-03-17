@@ -96,12 +96,12 @@ def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
 
 ResistorParams = _make_params_for_type(F.Resistor, "resistors")
 CapacitorParams = _make_params_for_type(F.Capacitor, "capacitors")
-InductorParams = _make_params_for_type(F.Inductor, "inductors")
-DiodeParams = _make_params_for_type(F.Diode, "diodes")
-TVSParams = _make_params_for_type(F.TVS, "tvs")
-LEDParams = _make_params_for_type(F.LED, "leds")
-LDOParams = _make_params_for_type(F.LDO, "ldos")
-MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
+# InductorParams = _make_params_for_type(F.Inductor, "inductors")
+# DiodeParams = _make_params_for_type(F.Diode, "diodes")
+# TVSParams = _make_params_for_type(F.TVS, "tvs")
+# LEDParams = _make_params_for_type(F.LED, "leds")
+# LDOParams = _make_params_for_type(F.LDO, "ldos")
+# MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
 
 
 @dataclass_json
@@ -228,17 +228,19 @@ class Component:
         module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
 
         missing_attrs = []
-        for name, literal in self.attribute_literals.items():
-            if not hasattr(module, name):
-                missing_attrs.append(name)
-                continue
+        # only for type picks
+        if module.has_trait(F.is_pickable_by_type):
+            for name, literal in self.attribute_literals.items():
+                if not hasattr(module, name):
+                    missing_attrs.append(name)
+                    continue
 
-            p = getattr(module, name)
-            assert isinstance(p, Parameter)
-            if literal is None:
-                literal = p.domain.unbounded(p)
+                p = getattr(module, name)
+                assert isinstance(p, Parameter)
+                if literal is None:
+                    literal = p.domain.unbounded(p)
 
-            p.alias_is(literal)
+                p.alias_is(literal)
 
         if missing_attrs:
             with downgrade(UserException):
@@ -257,6 +259,9 @@ class Component:
                 f"{indent(str(self.attributes), ' '*4)}\n--->\n"
                 f"{indent(module.pretty_params(), ' '*4)}"
             )
+
+    def __rich_repr__(self):
+        yield f"{type(self).__name__}({self.lcsc_display})"
 
     class ParseError(Exception):
         pass

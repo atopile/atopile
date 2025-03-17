@@ -8,9 +8,11 @@ from pathlib import Path
 
 import typer
 
-from faebryk.libs.logging import setup_basic_logging
+from faebryk.libs.logging import FLOG_FMT, setup_basic_logging
 
 logger = logging.getLogger(__name__)
+
+FLOG_FMT.set(True)
 
 
 def main(
@@ -33,7 +35,10 @@ def main(
         module = importlib.util.module_from_spec(spec)
         if spec.loader is None:
             continue
-        spec.loader.exec_module(module)
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            continue
         for v in vars(module).values():
             if not hasattr(v, "__name__"):
                 continue
@@ -44,7 +49,8 @@ def main(
     if not matches:
         raise ValueError(f"Test function '{test_name}' not found in {filepaths}")
 
-    setup_basic_logging(force_fmt=True)
+    setup_basic_logging()
+
     for test_func in matches:
         if len(matches) > 1:
             logger.info(f"Running {test_func.__name__}")

@@ -28,3 +28,5 @@ class Battery(Module):
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.power)
+
+    designator = L.f_field(F.has_designator_prefix)("BAT")

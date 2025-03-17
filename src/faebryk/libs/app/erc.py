@@ -15,7 +15,6 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
-from faebryk.libs.util import groupby
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +140,13 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
         logger.info(f"Checking {len(electricpower)} Power")
 
+        buses_grouped = ModuleInterface._group_into_buses(electricpower)
+        buses = list(buses_grouped.values())
+
         # We do collection both inside and outside the loop because we don't
         # want to continue the loop if we've already raised a short exception
         with accumulator.collect():
-            accounted_for_power_sources = set()
+            logger.info("Checking for hv/lv shorts")
             for ep in electricpower:
                 if mif_path := ModuleInterfacePath.from_connection(ep.lv, ep.hv):
 
@@ -168,27 +170,19 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                         mif_path.snip_head(_keep_head).snip_tail(_keep_tail)
                     )
 
+            logger.info("Checking for power source shorts")
+            for bus in buses:
                 with accumulator.collect():
-                    if ep.has_trait(F.Power.is_power_source):
-                        if ep in accounted_for_power_sources:
-                            continue
+                    sources = {
+                        ep for ep in bus if ep.has_trait(F.Power.is_power_source)
+                    }
+                    if len(sources) <= 1:
+                        continue
 
-                        other_sources = [
-                            other
-                            for other in ep.get_connected()
-                            if isinstance(other, F.ElectricPower)
-                            and other.has_trait(F.Power.is_power_source)
-                        ]
-
-                        if other_sources:
-                            all_sources = [ep] + other_sources
-                            accounted_for_power_sources.update(all_sources)
-                            friendly_sources = ", ".join(
-                                n.get_full_name() for n in all_sources
-                            )
-                            raise ERCPowerSourcesShortedError(
-                                f"Power sources shorted: {friendly_sources}"
-                            )
+                    friendly_sources = ", ".join(n.get_full_name() for n in sources)
+                    raise ERCPowerSourcesShortedError(
+                        f"Power sources shorted: {friendly_sources}"
+                    )
 
         # shorted nets
         nets = GraphFunctions(G).nodes_of_type(F.Net)
@@ -206,17 +200,6 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     raise ERCFaultShort(
                         f"Shorted nets: {friendly_shorted}",
                     )
-
-        # net name collisions
-        net_name_collisions = {
-            k: v
-            for k, v in groupby(
-                nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
-            ).items()
-            if len(v) > 1
-        }
-        if net_name_collisions:
-            raise ERCFault(f"Net name collision: {net_name_collisions}")
 
         # shorted components
         # parts = [n for n in nodes if n.has_trait(has_footprint)]

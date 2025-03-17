@@ -4,12 +4,14 @@ import sys
 import rich
 
 from atopile import telemetry
-from atopile.cli.logging import logger
-from atopile.errors import _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
+    # avoid exceptions raised during import
+    from atopile.cli.logging import logger
+    from atopile.errors import _BaseBaseUserException
+
     # delayed import to improve startup time
     from faebryk.libs.util import in_debug_session
 
@@ -42,6 +44,8 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
+    from atopile import telemetry
+
     try:
         _handle_exception(exc_type, exc_value, exc_traceback)
     except Exception as e:

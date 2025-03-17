@@ -2,13 +2,11 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from subprocess import CalledProcessError
 
-import pathvalidate
 import pytest
 
 from faebryk.libs.util import repo_root as _repo_root
-from faebryk.libs.util import robustly_rm_dir, run_live
+from faebryk.libs.util import run_live
 
 # Get the examples directory relative to this test file
 EXAMPLES_DIR = _repo_root() / "examples"
@@ -16,24 +14,31 @@ EXAMPLES_DIR = _repo_root() / "examples"
 FABLL_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.py") if p.is_file()]
 ATO_EXAMPLES = [p for p in EXAMPLES_DIR.glob("*.ato") if p.is_file()]
 
-XFAILURES = {
-    "ch2_5_signal_processing": "Need more powerful expression reordering",  # TODO
-    "ch1_2_good_voltage_divider": "Need more powerful expression reordering",  # TODO
-}
+SLOW = {"ch2_8_mcu"}
+XFAILURES = {"ch2_8_mcu": "Pin matching issues"}
+
+
+def _get_marks(example: Path):
+    return [
+        *(
+            [pytest.mark.xfail(reason=XFAILURES[example.stem])]
+            if example.stem in XFAILURES
+            else []
+        ),
+        *([pytest.mark.slow] if example.stem in SLOW else []),
+    ]
 
 
 @pytest.mark.parametrize(
     "example",
-    (
-        pytest.param(example, marks=pytest.mark.xfail(reason=reason))
-        if (reason := XFAILURES.get(example.stem))
-        else example
+    [
+        pytest.param(example, marks=_get_marks(example))
         for example in FABLL_EXAMPLES + ATO_EXAMPLES
-    ),
+    ],
     ids=lambda p: p.stem,
 )
 def test_examples_build(
-    example: Path, tmp_path: Path, repo_root: Path, request: pytest.FixtureRequest
+    example: Path, tmp_path: Path, repo_root: Path, save_tmp_path_on_failure: None
 ):
     assert example.exists()
 
@@ -49,33 +54,23 @@ def test_examples_build(
         else:
             shutil.copy(item, tmp_path / item.name)
 
-    # Make the noise
-    try:
-        run_live(
-            [
-                sys.executable,
-                "-m",
-                "atopile",
-                "build",
-                "--standalone",
-                f"{example}:App",
-            ],
-            env={**os.environ, "NONINTERACTIVE": "1"},
-            cwd=tmp_path,
-            stdout=print,
-            stderr=print,
-        )
+    _, stderr, _ = run_live(
+        [
+            sys.executable,
+            "-m",
+            "atopile",
+            "build",
+            "--standalone",
+            f"{example}:App",
+        ],
+        env={**os.environ, "NONINTERACTIVE": "1"},
+        cwd=tmp_path,
+        stdout=print,
+        stderr=print,
+    )
 
-    # If the build fails, save the artifacts and raise
-    except CalledProcessError:
-        artifact_path = (
-            _repo_root()
-            / "artifacts"
-            / pathvalidate.sanitize_filename(str(request.node.name))
-        )
-        if artifact_path.exists():
-            robustly_rm_dir(artifact_path)
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(tmp_path, artifact_path, ignore=shutil.ignore_patterns(".git"))
-
-        raise
+    # TODO: add a strict mode to the CLI
+    assert "Build successful! 🚀" in stderr
+    assert stderr.count("✓") >= 1
+    assert stderr.count("✗") == 0
+    assert stderr.count("⚠") == 0

@@ -30,6 +30,13 @@ class PoweredLED(Module):
             (self.power.voltage - self.led.forward_voltage) / self.led.current
         )
 
+        # help solver
+        self.led.forward_voltage.constrain_le(self.power.voltage)
+        self.led.forward_voltage.alias_is(
+            self.power.voltage
+            - self.led.current * self.current_limiting_resistor.resistance
+        )
+
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.power.hv, self.power.lv)

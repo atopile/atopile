@@ -5,8 +5,9 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
-from faebryk.exporters.pcb.kicad.pcb import NO_LCSC_DISPLAY
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+
+NO_LCSC_DISPLAY = "No LCSC number"
 
 logger = logging.getLogger(__name__)
 

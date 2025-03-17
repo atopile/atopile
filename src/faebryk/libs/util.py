@@ -17,7 +17,7 @@ import sys
 import time
 import uuid
 from abc import abstractmethod
-from collections import defaultdict
+from collections import defaultdict, deque
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import Enum, StrEnum
@@ -116,8 +116,17 @@ def unique_ref[T](it: Iterable[T]) -> list[T]:
     return unique(it, id)
 
 
-def duplicates(it, key):
-    return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
+def duplicates[T, U](
+    it: Iterable[T], key: Callable[[T], U], by_eq: bool = False
+) -> dict[U, list[T]]:
+    if by_eq:
+        return {
+            k: uv
+            for k, v in groupby(it, key).items()
+            if len(uv := unique(v, key=lambda x: x)) > 1
+        }
+    else:
+        return {k: v for k, v in groupby(it, key).items() if len(v) > 1}
 
 
 def get_dict(obj, key, default):
@@ -1354,6 +1363,10 @@ def dict_value_visitor(d: dict, visitor: Callable[[Any, Any], Any]):
             d[k] = visitor(k, v)
 
 
+def invert_dict[T, U](d: dict[T, U]) -> dict[U, list[T]]:
+    return groupby(d.keys(), key=lambda k: d[k])
+
+
 class DefaultFactoryDict[T, U](dict[T, U]):
     def __init__(self, factory: Callable[[T], U], *args, **kwargs):
         self.factory = factory
@@ -1383,8 +1396,10 @@ class EquivalenceClasses[T: Hashable]:
     def is_eq(self, a: T, b: T) -> bool:
         return self.classes[a] is self.classes[b]
 
-    def get(self) -> list[set[T]]:
+    def get(self, only_multi: bool = False) -> list[set[T]]:
         sets = {id(s): s for s in self.classes.values()}
+        if only_multi:
+            sets = {k: v for k, v in sets.items() if len(v) > 1}
         return list(sets.values())
 
 
@@ -1427,6 +1442,7 @@ def run_live(
     *args,
     stdout: Callable[[str], Any] = logger.debug,
     stderr: Callable[[str], Any] = logger.error,
+    check: bool = True,
     **kwargs,
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
@@ -1467,7 +1483,7 @@ def run_live(
     process.wait()
 
     # Get return code and check for errors
-    if process.returncode != 0:
+    if process.returncode != 0 and check:
         raise subprocess.CalledProcessError(
             process.returncode, args[0], "".join(stdout_lines), "".join(stderr_lines)
         )
@@ -1865,7 +1881,8 @@ def indented_container(
     use_repr: bool = True,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
-    _indent = "  " * indent_level
+    _indent_prefix = "  "
+    _indent = _indent_prefix * indent_level
     ind = "\n" + _indent
 
     def format_v(v: Any) -> str:
@@ -1879,7 +1896,44 @@ def indented_container(
     if len(kvs):
         inside = f"{ind}{inside}\n"
 
-    return f"{{{inside}}}"
+    return f"{{{inside}{_indent_prefix * (indent_level - 1)}}}"
+
+
+def md_list(
+    obj: Iterable | dict, indent_level: int = 0, recursive: bool = False
+) -> str:
+    """
+    Convert an iterable or dictionary into a nested markdown list.
+    """
+    indent = f"{'  ' * indent_level}"
+
+    if isinstance(obj, dict):
+        kvs = obj.items()
+    elif isinstance(obj, str):
+        return f"{indent}- {obj}"
+    else:
+        try:
+            kvs = list(enumerate(obj))
+        except TypeError:
+            return f"{indent}- {str(obj)}"
+
+    if not kvs:
+        return f"{indent}- *(empty)*"
+
+    lines = deque()
+    for k, v in kvs:
+        key_str = f" **{k}**:" if isinstance(obj, dict) else ""
+
+        if recursive and isinstance(v, Iterable) and not isinstance(v, str):
+            if isinstance(obj, dict):
+                lines.append(f"{indent}-{key_str}")
+            nested = md_list(v, indent_level + 1, recursive)
+            lines.append(nested)
+        else:
+            value_str = str(v)
+            lines.append(f"{indent}-{key_str} {value_str}")
+
+    return "\n".join(lines)
 
 
 def robustly_rm_dir(path: os.PathLike) -> None:
@@ -1922,3 +1976,50 @@ def repo_root() -> Path:
             raise FileNotFoundError("Could not find repo root")
     else:
         return repo_root
+
+
+def is_numeric_str(s: str) -> bool:
+    """
+    Check if a string is a numeric string.
+    """
+    return s.replace(".", "").strip().isnumeric()
+
+
+def remove_venv_from_env(base_env: dict[str, str] | None = None):
+    """
+    Clean and return environment from venv, so subprocess can launch with system env.
+    """
+
+    env = base_env.copy() if base_env is not None else os.environ.copy()
+
+    # Does not work, shell variables (not exported)
+    # # Restore original PATH if saved
+    # if "_OLD_VIRTUAL_PATH" in env:
+    #     env["PATH"] = env.pop("_OLD_VIRTUAL_PATH")
+
+    # # Restore original PYTHONHOME if saved
+    # if "_OLD_VIRTUAL_PYTHONHOME" in env:
+    #     env["PYTHONHOME"] = env.pop("_OLD_VIRTUAL_PYTHONHOME")
+
+    # # Restore original shell prompt if saved (if applicable)
+    # if "_OLD_VIRTUAL_PS1" in env:
+    #     env["PS1"] = env.pop("_OLD_VIRTUAL_PS1")
+
+    # Remove virtual environment specific variables
+    venv = env.pop("VIRTUAL_ENV", None)
+    if venv is not None:
+        # Remove venv from PATH
+        path = env["PATH"].split(":")
+        path = [p for p in path if not p.startswith(venv)]
+        env["PATH"] = ":".join(path)
+
+    venv_prompt = env.pop("VIRTUAL_ENV_PROMPT", None)
+    if venv_prompt is not None:
+        # Remove venv from prompt
+        prompt = env["PS1"]
+        prompt = prompt.replace(venv_prompt, "")
+        env["PS1"] = prompt
+
+    env.pop("PYTHONHOME", None)
+
+    return env

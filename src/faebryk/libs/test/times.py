@@ -1,16 +1,18 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import io
+import random
 import time
 from collections import defaultdict
 from contextlib import contextmanager
 from enum import Enum, auto
+from typing import Callable
 
-from rich.console import Console
 from rich.table import Table
 
+from faebryk.libs.logging import rich_to_string
 from faebryk.libs.units import P, Quantity, to_si
+from faebryk.libs.util import is_numeric_str
 
 
 class Times:
@@ -69,10 +71,12 @@ class Times:
             self_name = self.name or hex(id(self))[:4]
             Times._in_measurement[index]._add(f"{self_name}:{name}", val)
 
-    def _format_val(self, val: float):
+    def _format_val(self, val: float, force_unit: str | None = None):
         _val = (val / self.cnt) * P.s
         assert isinstance(_val, Quantity)
-        return to_si(_val, "s", num_decimals=2)
+        if not force_unit:
+            return to_si(_val, "s", num_decimals=2)
+        return [f"{_val.m_as(force_unit):.3f}"]
 
     def get(self, name: str, strat: MultiSampleStrategy | None = None):
         if strat is None:
@@ -105,7 +109,7 @@ class Times:
     def __getitem__(self, name: str):
         return self.get(name)
 
-    def __repr__(self):
+    def to_str(self, force_unit: str | None = None):
         has_multisamples = any(len(vs) > 1 for vs in self.times.values())
 
         strats = self.strat.strats
@@ -117,30 +121,82 @@ class Times:
         if has_multisamples:
             table.add_column("Samples", justify="right")
         for strat in strats:
+            c_name = strat.name if has_multisamples else "Value"
+            if force_unit:
+                c_name = f"{c_name} ({force_unit})"
             table.add_column(
-                strat.name if has_multisamples else "Value",
+                c_name,
                 justify="right",
                 style="green",
             )
-            table.add_column("Unit", style="yellow")
+            if not force_unit:
+                table.add_column("Unit", style="yellow")
 
+        rows = []
+        seps = []
         for k, vs in self.times.items():
-            if k.startswith("_"):
+            if k.startswith("_separator"):
+                seps.append(len(rows))
+                continue
+            if any(_k.startswith("_") for _k in k.split(":")):
                 continue
 
             values = []
             for strat in strats:
                 v = self.get(k, strat)
-                value, unit = self._format_val(v)
-                values.extend([value, unit])
+                values.extend(self._format_val(v, force_unit=force_unit))
 
             categories = [k]
             samples = [str(len(vs))] if has_multisamples else []
-            table.add_row(*categories, *samples, *values)
+            rows.append(categories + samples + values)
 
-        console = Console(record=True, file=io.StringIO())
-        console.print(table)
-        return console.export_text(styles=True)
+        # color gradient
+        if force_unit:
+            for col_i in range(len(rows[0])):
+                col = [row[col_i] for row in rows]
+                if not all(is_numeric_str(c) for c in col):
+                    continue
+
+                # Convert to float for comparison
+                values = [float(c) for c in col]
+                min_val = min(values)
+                max_val = max(values)
+
+                # Skip if all values are the same
+                if min_val == max_val:
+                    continue
+
+                # Apply color gradient based on percentiles
+                # Calculate quartiles
+                values_sorted = sorted(values)
+                q1_idx = int(len(values_sorted) * 0.25)
+                q3_idx = int(len(values_sorted) * 0.75)
+
+                q1 = values_sorted[q1_idx]
+                q3 = values_sorted[q3_idx]
+
+                for row_i, val in enumerate(values):
+                    # Color based on quartiles: green for below Q1, yellow for Q1-Q3,
+                    # red for above Q3
+                    if val <= q1:
+                        color = "green"
+                    elif val <= q3:
+                        color = "yellow"
+                    else:
+                        color = "red"
+
+                    # Apply rich formatting
+                    rows[row_i][col_i] = f"[{color}]{rows[row_i][col_i]}[/{color}]"
+
+        for i, row in enumerate(rows):
+            if i in seps:
+                table.add_section()
+            table.add_row(*row)
+
+        return rich_to_string(table)
+
+    def __repr__(self):
+        return self.to_str()
 
     @contextmanager
     def context(self, name: str):
@@ -164,4 +220,14 @@ class Times:
             if name is not None:
                 if context:
                     self._add(name, time.perf_counter() - start)
-                self.add(name)
+                else:
+                    self.add(name)
+
+    def make_group(self, group_name: str, include_filter: Callable[[str], bool]):
+        group = [v for k, vs in self.times.items() if include_filter(k) for v in vs]
+        if not group:
+            return
+        self.times[group_name] = group
+
+    def add_seperator(self):
+        self.times["_separator" + hex(random.randint(0, 100000))] = []

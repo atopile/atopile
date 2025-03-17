@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from more_itertools import first
 
-from atopile import errors
+from atopile.cli.logging import NOW, LoggingStage
 from atopile.config import config
 from faebryk.libs.app.pcb import open_pcb
 
@@ -36,6 +36,7 @@ def build(
     ] = None,
     keep_picked_parts: bool | None = None,
     keep_net_names: bool | None = None,
+    keep_designators: bool | None = None,
     standalone: bool = False,
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
@@ -58,6 +59,10 @@ def build(
         target=target,
         option=option,
         standalone=standalone,
+        frozen=frozen,
+        keep_picked_parts=keep_picked_parts,
+        keep_net_names=keep_net_names,
+        keep_designators=keep_designators,
     )
 
     check_missing_deps_or_offer_to_install()
@@ -65,44 +70,25 @@ def build(
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout
 
-    for build_cfg in config.project.builds.values():
-        if keep_picked_parts is not None:
-            build_cfg.keep_picked_parts = keep_picked_parts
-
-        if keep_net_names is not None:
-            build_cfg.keep_net_names = keep_net_names
-
-        if frozen is not None:
-            build_cfg.frozen = frozen
-            if frozen:
-                if keep_picked_parts is False:  # is, ignores None
-                    raise errors.UserBadParameterError(
-                        "`--keep-picked-parts` conflict with `--frozen`"
-                    )
-
-                build_cfg.keep_picked_parts = True
-
-                if keep_net_names is False:  # is, ignores None
-                    raise errors.UserBadParameterError(
-                        "`--keep-net-names` conflict with `--frozen`"
-                    )
-
-                build_cfg.keep_net_names = True
-
+    logger.info("Saving logs to %s", config.project.paths.logs / NOW)
     with accumulate() as accumulator:
         for build in config.builds:
             with accumulator.collect(), log_user_errors(logger), build:
                 logger.info("Building '%s'", config.build.name)
-                match config.build.build_type:
-                    case BuildType.ATO:
-                        app = _init_ato_app()
-                    case BuildType.PYTHON:
-                        app = _init_python_app()
-                        app.add(F.is_app_root())
-                    case _:
-                        raise ValueError(
-                            f"Unknown build type: {config.build.build_type}"
-                        )
+                with LoggingStage(
+                    name=f"init-{config.build.name}",
+                    description="Initializing app",
+                ):
+                    match config.build.build_type:
+                        case BuildType.ATO:
+                            app = _init_ato_app()
+                        case BuildType.PYTHON:
+                            app = _init_python_app()
+                            app.add(F.is_app_root())
+                        case _:
+                            raise ValueError(
+                                f"Unknown build type: {config.build.build_type}"
+                            )
 
                 # TODO: add a way to override the following with custom build machinery
                 buildutil.build(app)

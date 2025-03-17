@@ -47,6 +47,8 @@ class RP2040_ReferenceDesign(Module):
                 )
             )
             self.switch.attach_to_footprint.attach(fp)
+            # TODO make other trait for manual footprint, no pick
+            self.switch.add(F.has_part_removed())
 
         @L.rt_field
         def single_reference(self):
@@ -90,6 +92,9 @@ class RP2040_ReferenceDesign(Module):
         self.ldo.power_in.decoupled.decouple(owner=self).explicit(10 * P.uF)
         self.ldo.power_out.decoupled.decouple(owner=self).explicit(10 * P.uF)
 
+        self.ldo.add(F.has_explicit_part.by_supplier("C5250992"))
+        self.ldo.output_current.alias_is(1 * P.A)
+
         # XTAL
         xtal = self.clock_source.crystal
         xtal.load_capacitance.constrain_subset(L.Range.from_center_rel(10 * P.pF, 0.2))
@@ -99,7 +104,9 @@ class RP2040_ReferenceDesign(Module):
             L.Range.from_center_rel(1 * P.kohm, 0.05)
         )
 
-        xtal.add(F.has_descriptive_properties_defined({"LCSC": "C9002"}))
+        xtal.add(F.has_descriptive_properties_defined({"LCSC": "C20625731"}))
+        xtal.frequency.alias_is(12 * P.MHz)
+        xtal.load_capacitance.alias_is(10 * P.pF)
 
         # USB
         terminated_usb_data = self.add(

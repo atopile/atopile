@@ -111,6 +111,13 @@ def test_downgrade_decorator_with_default():
     logger.log.assert_called_once()
 
 
+def test_downgrade_raise_anyway():
+    logger = MagicMock()
+    with pytest.raises(ValueError):
+        with downgrade(ValueError, raise_anyway=True, logger=logger):
+            raise ValueError()
+
+
 def test_suppress_after_count():
     logger = MagicMock()
     suppressor = suppress_after_count(

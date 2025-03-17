@@ -543,6 +543,7 @@ def test_discover_literal_folding(expr: Arithmetic):
             return
         raise
 
+    solver.update_superset_cache(root)
     solver_result = solver.inspect_get_known_supersets(root)
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -605,6 +606,7 @@ def debug_fix_literal_folding(expr: Arithmetic):
     evaluated_expr = evaluate_expr(expr)
     logger.info(f"evaluated_expr: {evaluated_expr}")
 
+    solver.update_superset_cache(root)
     solver_result = solver.inspect_get_known_supersets(root)
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -787,6 +789,7 @@ def test_regression_literal_folding(expr: Arithmetic):
 
     evaluated_expr = evaluate_expr(expr)
 
+    solver.update_superset_cache(root)
     solver_result = solver.inspect_get_known_supersets(root)
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -916,6 +919,7 @@ def test_folding_statistics(expr: Arithmetic):
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
 
     try:
+        solver.update_superset_cache(root)
         solver_result = solver.inspect_get_known_supersets(root)
         assert isinstance(solver_result, Quantity_Interval_Disjoint)
     except Contradiction:
