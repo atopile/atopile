@@ -19,7 +19,7 @@ jobs:
       - name: Check Links
         uses: lycheeverse/lychee-action@v2
         with:
-          args: docs/
+          args: -c docs/lychee.toml docs/
 
       - name: Spellcheck
         uses: streetsidesoftware/cspell-action@v6

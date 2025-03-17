@@ -1,7 +1,7 @@
 # Alternative Installation
 
 !!! warning
-    Check out the [quickstart guide](quickstart.md) for a step-by-step guide for the recommended way to install atopile.
+    Check out the [quickstart guide](../quickstart.md) for a step-by-step guide for the recommended way to install atopile.
     This page provides alternative installation methods.
 
 Ultimately `atopile` is a python package, so you can install it where and however you want - but some python package managers are better than others. Here's how we recommend you install atopile.
