@@ -10,7 +10,7 @@ We recommend VSCode for development. If nothing else, it has heaps of high quali
 
 You should have at minimum:
 - [Cursor](https://www.cursor.com/) or [VSCode](https://code.visualstudio.com)
-- [VSCode atopile extension](https://marketplace.visualstudio.com/items?itemName=atopile.atopile) (also works for Cursor)
+- [Cursor / VSCode atopile extension](https://marketplace.visualstudio.com/items?itemName=atopile.atopile) (also works for Cursor)
 
 ### Verbosity
 
