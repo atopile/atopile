@@ -4,6 +4,10 @@ on:
     branches:
       - main
   pull_request:
+    paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - '.github/workflows/docs.yml'
   release:
     types: [published]
 
@@ -26,19 +30,29 @@ jobs:
         with:
           files: docs/**/*.md
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: 'pyproject.toml'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: '0.6.4'
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - run: uv run mkdocs build --strict
+
   deploy:
+    if: github.event_name == 'push' && github.event.ref == 'main' || github.event_name == 'release' && !github.event.release.draft
+    environment: github-pages
     runs-on: ubuntu-latest
     needs: tests
-    environment: github-pages
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Required for mike to work with git history
-
-      - name: Configure Git Credentials
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
 
       - name: Set up Python
         uses: actions/setup-python@v5
