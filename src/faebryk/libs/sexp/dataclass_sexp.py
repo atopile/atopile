@@ -87,6 +87,10 @@ class DecodeError(UserResourceException):
     """Error during decoding"""
 
 
+class ParseError(UserResourceException):
+    """Error during parsing"""
+
+
 def _prettify_stack(stack: list[tuple[str, type]] | None) -> str:
     if stack is None:
         return "<top-level>"
@@ -175,12 +179,12 @@ def _convert(
             return t(str(val))
 
         return t(val)
-    except DecodeError:
+    except Exception:
+        logger.error(
+            f"Failed to decode `{_prettify_stack(substack)}` "
+            f"({t.__qualname__}) with {val}"
+        )
         raise
-    except Exception as e:
-        raise DecodeError(
-            f"Failed to decode {_prettify_stack(substack)} ({t}) with {val} "
-        ) from e
 
 
 netlist_obj = str | Symbol | int | float | bool | list
@@ -397,7 +401,7 @@ def _decode[T: DataclassInstance](
     try:
         out = t(**value_dict)
     except TypeError as e:
-        raise TypeError(f"Failed to create {t} with {value_dict}") from e
+        raise TypeError(f"Failed to create {t.__qualname__} with {value_dict}") from e
 
     # set parent pointers for all dataclasses in the tree
     for v in value_dict.values():
@@ -526,9 +530,15 @@ def loads[T: DataclassInstance](
         try:
             sexp = sexpdata.loads(text)
         except Exception as e:
-            raise DecodeError(f"Failed to parse sexp: {text}") from e
+            raise ParseError(f"Failed to parse sexp: {text}") from e
 
-    return _decode([sexp], t, ignore_assertions=ignore_assertions)
+    try:
+        return _decode([sexp], t, ignore_assertions=ignore_assertions)
+    except Exception as e:
+        if isinstance(s, Path):
+            raise DecodeError(f"Failed to decode file {s}\n\n{e}") from e
+        else:
+            raise DecodeError(f"Failed to decode sexp\n\n{e}") from e
 
 
 def dumps(obj, path: PathLike | None = None) -> str:
