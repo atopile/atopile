@@ -1,6 +1,9 @@
+~narayan
+~netlist
 AECQ
 ato
 atopile
+autoplay
 BLDC
 Blockdef
 Bobsville
@@ -26,8 +29,6 @@ Lilium
 Mohm
 mosfet
 mosfets
-~netlist
-~narayan
 NFET
 Opamp
 partno
@@ -43,4 +44,5 @@ subclassing
 substack
 tstamp
 UNITLESS
+upvote
 visualiser
