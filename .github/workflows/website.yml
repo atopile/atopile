@@ -1,8 +1,9 @@
-name: website-deploy
+name: website
 on:
   push:
     branches:
       - main
+  pull_request:
   release:
     types: [published]
 
@@ -10,8 +11,24 @@ permissions:
   contents: write
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: docs/
+
+      - name: Spellcheck
+        uses: streetsidesoftware/cspell-action@v6
+        with:
+          files: docs/**/*.md
+
   deploy:
     runs-on: ubuntu-latest
+    needs: tests
     environment: github-pages
     steps:
       - uses: actions/checkout@v4
@@ -43,8 +60,6 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
 
-      # TODO: enable deployment access restrictions
-      # - enforce https://github.com/atopile/atopile/settings/rules/3213715
       - uses: actions/create-github-app-token@v1
         id: app-token
         with:
