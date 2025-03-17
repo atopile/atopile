@@ -17,6 +17,7 @@ nav:
     - tutorial/3-ato-create-component.md
     - tutorial/4-packages.md
     - tutorial/5-layout.md
+    - tutorial/6-saving-your-work.md
   - Guides:
     - guides/installation.md
     - guides/git.md
@@ -27,9 +28,6 @@ nav:
 - Development:
   - development.md
 - Packages: https://packages.atopile.io
-- Example Projects:
-  - spin.md
-  - swoop.md
 plugins:
 - search
 - mkdocstrings:
