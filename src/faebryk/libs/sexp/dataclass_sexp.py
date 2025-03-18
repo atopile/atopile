@@ -181,7 +181,7 @@ def _convert(
 
         return t(val)
     except Exception:
-        logger.error(
+        logger.debug(
             f"Failed to decode `{_prettify_stack(substack)}` "
             f"({t.__qualname__}) with \n{indented_container(val)}"
         )

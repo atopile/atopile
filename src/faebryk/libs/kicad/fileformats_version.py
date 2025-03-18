@@ -4,7 +4,7 @@
 import logging
 from pathlib import Path
 
-from faebryk.libs.exceptions import UserResourceException, accumulate
+from faebryk.libs.exceptions import UserResourceException, accumulate, downgrade
 from faebryk.libs.kicad.fileformats import (
     KICAD_PCB_VERSION,
     C_kicad_footprint_file,
@@ -58,6 +58,11 @@ def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
     try:
         return loads(path, C_kicad_pcb_file)
     except DecodeError as e:
+        logger.warning(str(e), exc_info=e)
+
+        with downgrade(DecodeError):
+            return loads(path, C_kicad_pcb_file, ignore_assertions=True)
+
         try:
             pcb = loads(path, C_kicad_pcb_file_header)
         except Exception:
@@ -72,5 +77,4 @@ def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
                 markdown=False,
             )
 
-        else:
-            raise e
+        raise e
