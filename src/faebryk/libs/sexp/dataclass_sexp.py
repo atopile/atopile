@@ -13,7 +13,7 @@ from dataclasses_json import CatchAll
 from dataclasses_json.utils import CatchAllVar
 from sexpdata import Symbol
 
-from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.sexp.util import prettify_sexp_string
 from faebryk.libs.util import (
     ConfigFlag,
@@ -386,10 +386,15 @@ def _decode[T: DataclassInstance](
     for f in fs:
         sp = sexp_field.from_field(f)
         if sp.assert_value is not None:
-            assert value_dict[f.name] == sp.assert_value, (
-                f"Fileformat assertion! {f.name} has to be"
-                f" {sp.assert_value} but is {value_dict[f.name]}"
-            )
+            with downgrade(
+                AssertionError,
+                to_level=logging.DEBUG,
+                raise_anyway=not ignore_assertions,
+            ):
+                assert value_dict[f.name] == sp.assert_value, (
+                    f"Fileformat assertion! {f.name} has to be"
+                    f" {sp.assert_value} but is {value_dict[f.name]}"
+                )
 
     # Unprocessed values should be None if there aren't any,
     # so they don't get reproduced etc...
