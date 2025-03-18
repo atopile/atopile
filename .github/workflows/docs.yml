@@ -1,4 +1,4 @@
-name: website
+name: docs
 on:
   push:
     branches:
@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for mike to work with git history
 
       - name: Check Links
         uses: lycheeverse/lychee-action@v2

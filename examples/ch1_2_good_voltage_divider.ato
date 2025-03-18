@@ -3,7 +3,7 @@ import Resistor, ElectricPower, ElectricSignal
 module VoltageDivider:
     """
     A voltage divider using two resistors.
-    
+
     Connect to the `power` and `output` interfaces
     Configure via:
     - `power.voltage`
