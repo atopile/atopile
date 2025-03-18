@@ -897,6 +897,10 @@ class C_footprint:
         uuid: UUID = field(default_factory=gen_uuid)
         unknown: CatchAll = None
 
+    class E_embedded_fonts(SymEnum):
+        yes = auto()
+        no = auto()
+
     @dataclass
     class C_model:
         path: Path = field(**sexp_field(positional=True))
@@ -937,6 +941,7 @@ class C_footprint:
         **sexp_field(multidict=True), default_factory=list
     )
     pads: list[C_pad] = field(**sexp_field(multidict=True), default_factory=list)
+    embedded_fonts: E_embedded_fonts | None = None
     model: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
 
 
