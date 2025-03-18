@@ -45,7 +45,7 @@ jobs:
       - run: uv run mkdocs build --strict
 
   deploy:
-    if: github.event_name == 'push' && github.event.ref == 'main' || github.event_name == 'release' && !github.event.release.draft
+    if: (github.event_name == 'push' && github.event.ref == 'main') || (github.event_name == 'release' && !github.event.release.draft)
     environment: github-pages
     runs-on: ubuntu-latest
     needs: tests
