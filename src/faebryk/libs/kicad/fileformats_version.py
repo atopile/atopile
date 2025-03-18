@@ -63,10 +63,15 @@ def try_load_kicad_pcb_file(
     try:
         return loads(path, C_kicad_pcb_file)
     except DecodeError as e:
-        logger.warning(str(e), exc_info=e)
-
+        # TODO: drop v8 support
         with downgrade(DecodeError):
-            return loads(path, fileformats_v8.C_kicad_pcb_file)
+            pcb = loads(path, fileformats_v8.C_kicad_pcb_file)
+            with downgrade(UserResourceException):
+                raise UserResourceException(
+                    "Support for KiCad 8 PCB files is deprecated. "
+                    "Please upgrade to KiCad 9."
+                ) from e
+            return pcb
 
         try:
             pcb = loads(path, C_kicad_pcb_file_header)
