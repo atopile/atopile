@@ -1,4 +1,4 @@
-name: website
+name: docs
 on:
   push:
     branches:
