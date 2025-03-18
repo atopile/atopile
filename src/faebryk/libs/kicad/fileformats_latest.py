@@ -554,7 +554,7 @@ class C_arc:
     end: C_xy
     stroke: C_stroke
     layers: list[str]
-    solder_mask_margin: float
+    solder_mask_margin: float | None = None
     uuid: UUID = field(default_factory=gen_uuid)
 
 
