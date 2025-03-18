@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 # KiCad 5.1.0 - May 22, 2019
 # KiCad 5.0.0 - July 21, 2018
 
+# @kicad10
 KICAD_PCB_VERSION = 20241229
 
 
@@ -1600,7 +1601,7 @@ class C_kicad_footprint_file(SEXP_File):
     class C_footprint_in_file(C_footprint):
         descr: Optional[str] = None
         tags: Optional[list[str]] = None
-        version: int = field(**sexp_field(assert_value=20240108), default=20240108)
+        version: int = field(**sexp_field(), default=KICAD_PCB_VERSION)
         generator: str
         generator_version: str = ""
         tedit: Optional[str] = None

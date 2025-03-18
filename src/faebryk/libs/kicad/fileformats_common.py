@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
 
+# @kicad10
+KICAD_FP_VERSION = 20241229
+
+
 class UUID(str):
     pass
 
@@ -161,7 +165,7 @@ class C_kicad_footprint_file_header(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_file_header:
         name: str = field(**sexp_field(positional=True))
-        version: int = field(default=20240108)
+        version: int = field(default=KICAD_FP_VERSION)
         generator: str = ""
         generator_version: str = ""
         unknown: CatchAll = None
