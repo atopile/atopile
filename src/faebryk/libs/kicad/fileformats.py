@@ -1172,8 +1172,8 @@ class C_kicad_pcb_file(SEXP_File):
             # remove_unused_layers
             # keep_end_layers
             # zone_layer_connections
-            padstack: C_padstack
-            teardrops: C_teardrop
+            padstack: C_padstack | None = None
+            teardrops: C_teardrop | None = None
             # tenting
             # free
             uuid: UUID
