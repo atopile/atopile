@@ -20,6 +20,7 @@ from faebryk.libs.util import (
     cast_assert,
     duplicates,
     groupby,
+    indented_container,
     zip_non_locked,
 )
 
@@ -182,7 +183,7 @@ def _convert(
     except Exception:
         logger.error(
             f"Failed to decode `{_prettify_stack(substack)}` "
-            f"({t.__qualname__}) with {val}"
+            f"({t.__qualname__}) with \n{indented_container(val)}"
         )
         raise
 
