@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad.fileformats_latest import (
     C_effects,
     C_footprint,
     C_kicad_footprint_file,

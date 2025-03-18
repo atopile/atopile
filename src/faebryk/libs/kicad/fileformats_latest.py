@@ -31,8 +31,8 @@ logger = logging.getLogger(__name__)
 # KiCad 5.1.0 - May 22, 2019
 # KiCad 5.0.0 - July 21, 2018
 
-# @kicad10
 KICAD_PCB_VERSION = 20241229
+KICAD_PCB_VERSION_NAME = "v9"
 
 
 @dataclass_json(undefined=Undefined.INCLUDE)
@@ -512,8 +512,7 @@ class E_fill(SymEnum):
 
 @dataclass(kw_only=True)
 class C_shape:  # TODO: Should be used for all shapes
-    layer: str
-    layers: Optional[list[str]] = None
+    layers: list[str]
     solder_mask_margin: float
     stroke: C_stroke
     fill: E_fill
@@ -554,9 +553,8 @@ class C_arc:
     mid: C_xy
     end: C_xy
     stroke: C_stroke
-    layer: str | None = None
-    layers: list[str] | None = None
-    solder_mask_margin: float | None = None
+    layers: list[str]
+    solder_mask_margin: float
     uuid: UUID = field(default_factory=gen_uuid)
 
 
@@ -1272,8 +1270,7 @@ class C_kicad_pcb_file(SEXP_File):
 
             net: int
             net_name: str
-            layer: Optional[str] = None
-            layers: Optional[list[str]] = None
+            layers: list[str]
             # NOTE: if zones is both front and back Cu layer then layer="F&B.Cu"
             # else layer="F.Cu" "B.Cu" "In1.Cu" ...
             uuid: UUID
@@ -1583,18 +1580,6 @@ class C_kicad_pcb_file(SEXP_File):
                 generator_version=generator_version,
             )
         )
-
-
-@dataclass
-class C_kicad_pcb_file_header(SEXP_File):
-    @dataclass
-    class C_kicad_pcb_header:
-        version: int = field(**sexp_field())
-        generator: str
-        generator_version: str
-        unknown: CatchAll = None
-
-    kicad_pcb: C_kicad_pcb_header
 
 
 @dataclass

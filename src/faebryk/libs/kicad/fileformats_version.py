@@ -5,13 +5,16 @@ import logging
 from pathlib import Path
 
 from faebryk.libs.exceptions import UserResourceException, accumulate, downgrade
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad import fileformats_v8
+from faebryk.libs.kicad.fileformats_common import (
+    C_kicad_footprint_file_header,
+    C_kicad_pcb_file_header,
+)
+from faebryk.libs.kicad.fileformats_latest import (
     KICAD_PCB_VERSION,
     C_kicad_footprint_file,
     C_kicad_pcb_file,
-    C_kicad_pcb_file_header,
 )
-from faebryk.libs.kicad.fileformats_common import C_kicad_footprint_file_header
 from faebryk.libs.kicad.fileformats_v5 import C_kicad_footprint_file_v5
 from faebryk.libs.kicad.fileformats_v6 import C_kicad_footprint_file_v6
 from faebryk.libs.sexp.dataclass_sexp import DecodeError, loads
@@ -46,7 +49,9 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
     ) from acc.get_exception()
 
 
-def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
+def try_load_kicad_pcb_file(
+    path: Path,
+) -> C_kicad_pcb_file | fileformats_v8.C_kicad_pcb_file:
     """
     Attempt to load a KiCad PCB file.
 
@@ -61,7 +66,7 @@ def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
         logger.warning(str(e), exc_info=e)
 
         with downgrade(DecodeError):
-            return loads(path, C_kicad_pcb_file, ignore_assertions=True)
+            return loads(path, fileformats_v8.C_kicad_pcb_file)
 
         try:
             pcb = loads(path, C_kicad_pcb_file_header)

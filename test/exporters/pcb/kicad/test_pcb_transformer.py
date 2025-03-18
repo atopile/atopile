@@ -5,7 +5,7 @@ import unittest
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.test.fileformats import PCBFILE
 from faebryk.libs.util import find
 

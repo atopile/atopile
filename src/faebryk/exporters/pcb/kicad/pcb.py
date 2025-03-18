@@ -11,7 +11,10 @@ from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
 )
-from faebryk.libs.kicad.fileformats import C_footprint, C_kicad_fp_lib_table_file
+from faebryk.libs.kicad.fileformats_latest import (
+    C_footprint,
+    C_kicad_fp_lib_table_file,
+)
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.util import KeyErrorNotFound, find

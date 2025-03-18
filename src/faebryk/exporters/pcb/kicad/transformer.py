@@ -25,7 +25,11 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import DeprecatedException, UserException, downgrade
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad.fileformats_common import C_pts
+from faebryk.libs.kicad.fileformats_common import (
+    gen_uuid as _gen_uuid,
+)
+from faebryk.libs.kicad.fileformats_latest import (
     UUID,
     C_arc,
     C_circle,
@@ -45,10 +49,6 @@ from faebryk.libs.kicad.fileformats import (
     C_xyz,
     E_fill,
 )
-from faebryk.libs.kicad.fileformats import (
-    gen_uuid as _gen_uuid,
-)
-from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncSet,

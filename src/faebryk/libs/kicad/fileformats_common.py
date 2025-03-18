@@ -173,6 +173,18 @@ class C_kicad_footprint_file_header(SEXP_File):
     footprint: C_footprint_file_header
 
 
+@dataclass
+class C_kicad_pcb_file_header(SEXP_File):
+    @dataclass
+    class C_kicad_pcb_header:
+        version: int = field(**sexp_field())
+        generator: str
+        generator_version: str
+        unknown: CatchAll = None
+
+    kicad_pcb: C_kicad_pcb_header
+
+
 def gen_uuid(mark: str = ""):
     # format: d864cebe-263c-4d3f-bbd6-bb51c6d2a608
     value = uuid.uuid4().hex

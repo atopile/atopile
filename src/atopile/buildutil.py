@@ -58,7 +58,7 @@ from faebryk.libs.exceptions import (
     iter_leaf_exceptions,
     iter_through_errors,
 )
-from faebryk.libs.kicad.fileformats import C_kicad_fp_lib_table_file
+from faebryk.libs.kicad.fileformats_latest import C_kicad_fp_lib_table_file
 from faebryk.libs.kicad.fileformats_version import try_load_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous

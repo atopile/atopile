@@ -16,7 +16,10 @@ from faebryk.exporters.netlist.netlist import FBRKNetlist, make_fbrk_netlist_fro
 from faebryk.libs.app.designators import (
     attach_random_designators,
 )
-from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
+from faebryk.libs.kicad.fileformats_latest import (
+    C_fields,
+    C_kicad_netlist_file,
+)
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
