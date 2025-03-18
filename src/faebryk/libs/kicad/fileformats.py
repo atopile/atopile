@@ -1586,13 +1586,15 @@ class C_kicad_pcb_file(SEXP_File):
 
 
 @dataclass
-class C_kicad_pcb_file_version(SEXP_File):
+class C_kicad_pcb_file_header(SEXP_File):
     @dataclass
-    class C_kicad_pcb:
+    class C_kicad_pcb_header:
         version: int = field(**sexp_field())
+        generator: str
+        generator_version: str
         unknown: CatchAll = None
 
-    kicad_pcb: C_kicad_pcb
+    kicad_pcb: C_kicad_pcb_header
 
 
 @dataclass

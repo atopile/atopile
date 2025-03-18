@@ -9,7 +9,7 @@ from faebryk.libs.kicad.fileformats import (
     KICAD_PCB_VERSION,
     C_kicad_footprint_file,
     C_kicad_pcb_file,
-    C_kicad_pcb_file_version,
+    C_kicad_pcb_file_header,
 )
 from faebryk.libs.kicad.fileformats_common import C_kicad_footprint_file_header
 from faebryk.libs.kicad.fileformats_v5 import C_kicad_footprint_file_v5
@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 
 def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
-    # TODO: reject old formats
     acc = accumulate(DecodeError, group_message="No decoders succeeded")
     if path.read_text().startswith("(module"):
         with acc.collect():
@@ -48,13 +47,19 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
 
 
 def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
+    """
+    Attempt to load a KiCad PCB file.
+
+    Raises an exception if the file is invalid, or not the current supported version.
+    """
+
     logger.info("Loading KiCad PCB file: %s", path)
 
     try:
         return loads(path, C_kicad_pcb_file)
     except DecodeError as e:
         try:
-            pcb = loads(path, C_kicad_pcb_file_version)
+            pcb = loads(path, C_kicad_pcb_file_header)
         except Exception:
             raise e
 
