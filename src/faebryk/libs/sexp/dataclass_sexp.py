@@ -21,6 +21,7 @@ from faebryk.libs.util import (
     duplicates,
     groupby,
     indented_container,
+    md_list,
     pretty_type,
     zip_non_locked,
 )
@@ -410,7 +411,9 @@ def _decode[T: DataclassInstance](
     try:
         out = t(**value_dict)
     except TypeError as e:
-        raise TypeError(f"Failed to create {pretty_type(t)} with {value_dict}") from e
+        raise TypeError(
+            f"Failed to create {pretty_type(t)} with \n{md_list(value_dict)}"
+        ) from e
 
     # set parent pointers for all dataclasses in the tree
     for v in value_dict.values():

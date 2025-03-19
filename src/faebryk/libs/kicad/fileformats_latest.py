@@ -615,9 +615,9 @@ class C_rect(C_shape):
 
 # gr_poly
 # fp_poly
-@dataclass(kw_only=True)
-class C_polygon(C_shape):
-    pts: C_pts = field(**sexp_field(order=-1))
+@dataclass
+class C_polygon:
+    pts: C_pts
 
 
 @dataclass(kw_only=True)
