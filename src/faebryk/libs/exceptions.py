@@ -4,14 +4,13 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Callable, Iterable, Self, Type, cast
 
+from caseconverter import titlecase
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
 from rich.markdown import Markdown
 from rich.text import Text
 from rich.traceback import Traceback
 
 from faebryk.libs.logging import ReprHighlighter
-
-from .titlecase import titlecase
 
 logger = logging.getLogger(__name__)
 
