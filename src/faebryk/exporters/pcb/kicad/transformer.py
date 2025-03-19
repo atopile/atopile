@@ -36,6 +36,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_effects,
     C_footprint,
     C_fp_text,
+    C_group,
     C_kicad_pcb_file,
     C_line,
     C_polygon,
@@ -48,6 +49,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_xyr,
     C_xyz,
     E_fill,
+    _SingleOrMultiLayer,
 )
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
@@ -454,7 +456,11 @@ class PCB_Transformer:
         if layers != {"F.SilkS", "B.SilkS"}:
             raise NotImplementedError(f"Unsupported layers: {layers}")
 
-        content = [geo for geo in get_all_geos(fp) if geo.layer in layers]
+        content = [
+            geo
+            for geo in get_all_geos(fp)
+            if any(layer in layers for layer in geo.get_layers())
+        ]
 
         if not content:
             logger.warning(
@@ -577,13 +583,13 @@ class PCB_Transformer:
             for sub_lines in [
                 geo_to_lines(pcb_geo)
                 for pcb_geo in get_all_geos(self.pcb)
-                if pcb_geo.layer == "Edge.Cuts"
+                if "Edge.Cuts" in pcb_geo.get_layers()
             ]
             + [
                 geo_to_lines(fp_geo, fp)
                 for fp in self.pcb.footprints
                 for fp_geo in get_all_geos(fp)
-                if fp_geo.layer == "Edge.Cuts"
+                if "Edge.Cuts" in fp_geo.get_layers()
             ]
             for line in sub_lines
         ]
@@ -895,7 +901,9 @@ class PCB_Transformer:
             layers = [layers]
 
         for layer in layers:
-            if any([zone.layer == layer for zone in zones]):
+            if any(
+                [zone.layers is not None and layer in zone.layers for zone in zones]
+            ):
                 logger.warning(f"Zone already exists in {layer=}")
                 return
 
@@ -903,11 +911,10 @@ class PCB_Transformer:
             Zone(
                 net=net.number,
                 net_name=net.name,
-                layer=layers[0] if len(layers) == 1 else None,
                 layers=layers if len(layers) > 1 else None,
                 uuid=self.gen_uuid(mark=True),
                 name=f"layer_fill_{net.name}",
-                polygon=C_polygon(C_pts([point2d_to_coord(p) for p in polygon])),
+                polygon=C_polygon(pts=C_pts([point2d_to_coord(p) for p in polygon])),
                 min_thickness=0.2,
                 filled_areas_thickness=False,
                 fill=Zone.C_fill(
@@ -927,7 +934,6 @@ class PCB_Transformer:
                     # island_removal_mode=Zone.C_fill.E_island_removal_mode.do_not_remove, # noqa E501
                     island_area_min=10.0,
                 ),
-                locked=False,
                 hatch=Zone.C_hatch(mode=Zone.C_hatch.E_mode.edge, pitch=0.5),
                 priority=0,
                 keepout=Zone.C_keepout(
@@ -949,7 +955,7 @@ class PCB_Transformer:
     def _add_group(
         self, members: list[UUID], name: Optional[str] = None, locked: bool = False
     ) -> UUID:
-        group = C_kicad_pcb_file.C_kicad_pcb.C_group(
+        group = C_group(
             name=name, members=members, uuid=self.gen_uuid(mark=True), locked=locked
         )
         self.pcb.groups.append(group)
@@ -986,7 +992,7 @@ class PCB_Transformer:
                     center_at.x + size.value.x / 2, center_at.y + size.value.y / 2
                 ),
                 stroke=C_stroke(width=0.15, type=C_stroke.E_type.solid),
-                fill=E_fill.solid,
+                fill=E_fill.yes,
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
             )
@@ -1079,7 +1085,12 @@ class PCB_Transformer:
                     obj = obj.layer
                 if isinstance(obj, C_fp_text):
                     obj = obj.layer
-                obj.layer = _flip(obj.layer)
+
+                match obj:
+                    case _SingleOrMultiLayer():
+                        obj.apply_to_layers(_flip)
+                    case _:
+                        obj.layer = _flip(obj.layer)
 
         # Label
         if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
@@ -1155,7 +1166,7 @@ class PCB_Transformer:
             mid=arc_center,
             end=arc_end,
             stroke=C_stroke(0.05, C_stroke.E_type.solid),
-            layer="Edge.Cuts",
+            layers=["Edge.Cuts"],
             uuid=self.gen_uuid(mark=True),
         )
 
@@ -1293,7 +1304,7 @@ class PCB_Transformer:
             for geo in get_all_geos(self.pcb):
                 if not isinstance(geo, (Line, Arc)):
                     continue
-                if geo.layer != "Edge.Cuts":
+                if "Edge.Cuts" not in geo.get_layers():
                     continue
                 self.delete_geo(geo)
 
@@ -1303,7 +1314,9 @@ class PCB_Transformer:
 
         # create Edge.Cuts geometries
         for geo in geometry:
-            assert geo.layer == "Edge.Cuts", f"Geometry {geo} is not on Edge.Cuts layer"
+            assert (
+                "Edge.Cuts" in geo.get_layers()
+            ), f"Geometry {geo} is not on Edge.Cuts layer"
 
             self.insert_geo(geo)
 
@@ -1572,22 +1585,22 @@ class PCB_Transformer:
 
         # Flip primitives
         for line in footprint.fp_lines:
-            line.layer = _flip(line.layer)
+            line.apply_to_layers(_flip)
 
         for arc in footprint.fp_arcs:
-            arc.layer = _flip(arc.layer)
+            arc.apply_to_layers(_flip)
 
         for circle in footprint.fp_circles:
-            circle.layer = _flip(circle.layer)
+            circle.apply_to_layers(_flip)
 
         for rect in footprint.fp_rects:
-            rect.layer = _flip(rect.layer)
+            rect.apply_to_layers(_flip)
 
         for text in footprint.fp_texts:
             text.layer.layer = _flip(text.layer.layer)
 
         for polygon in footprint.fp_poly:
-            polygon.layer = _flip(polygon.layer)
+            polygon.apply_to_layers(_flip)
 
         # Flip anything unknown
         _backup_flip(footprint.unknown)

@@ -49,7 +49,7 @@ class C_circle_v5:
     center: C_xy
     end: C_xy
     width: float
-    fill: E_fill = field(default=E_fill.none)
+    fill: E_fill = field(default=E_fill.no)
     layer: str
 
     def convert_to_new(self) -> C_circle:

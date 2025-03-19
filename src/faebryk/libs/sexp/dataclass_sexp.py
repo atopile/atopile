@@ -233,7 +233,7 @@ def _decode[T: DataclassInstance](
         if isinstance(val, list):
             if len(val):
                 if isinstance(key := val[0], Symbol):
-                    if str(key) in key_fields or str(key) + "s" in key_fields:
+                    if (str(key) in key_fields) or str(key) + "s" in key_fields:
                         ungrouped_key_values.append(val)
                         continue
 
@@ -242,7 +242,9 @@ def _decode[T: DataclassInstance](
     key_values = groupby(
         ungrouped_key_values,
         lambda val: (
-            str(val[0]) + "s" if str(val[0]) + "s" in key_fields else str(val[0])
+            str(val[0]) + "s"
+            if str(val[0]) + "s" in key_fields and str(val[0]) not in key_fields
+            else str(val[0])
         ),
     )
     pos_values = {

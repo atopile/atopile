@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
@@ -33,6 +34,57 @@ logger = logging.getLogger(__name__)
 
 KICAD_PCB_VERSION = 20241229
 KICAD_PCB_VERSION_NAME = "v9"
+
+
+@dataclass
+class _SingleOrMultiLayer:
+    layer: str | None = field(**sexp_field(order=50), default=None)
+    layers: list[str] | None = field(**sexp_field(order=51), default=None)
+
+    def get_layers(self) -> list[str]:
+        if self.layer is not None:
+            return [self.layer]
+        if self.layers is not None:
+            return self.layers
+        return []
+
+    def apply_to_layers(self, func: Callable[[str], str]):
+        if self.layer is not None:
+            self.layer = func(self.layer)
+        if self.layers is not None:
+            self.layers = [func(layer) for layer in self.layers]
+
+    def __post_init__(self):
+        if self.layer is not None and self.layers is not None:
+            raise ValueError("layer and layers cannot both be provided")
+
+
+@dataclass
+class _CuItemWithSoldermaskLayers(_SingleOrMultiLayer):
+    def __post_init__(self):
+        super().__post_init__()
+
+        if not self.layers:
+            return
+
+        # only copper and mask layers
+        assert all(
+            layer.endswith(".Cu") or layer.endswith(".Mask") for layer in self.layers
+        )
+
+        # single copper layer
+        assert len([layer for layer in self.layers if layer.endswith(".Cu")]) == 1
+
+        # max one soldermask layer
+        assert len([layer for layer in self.layers if layer.endswith(".Mask")]) <= 1
+
+        # copper and mask on the same side
+        assert not ("F.Cu" in self.layers and "B.Mask" in self.layers)
+        assert not ("B.Cu" in self.layers and "F.Mask" in self.layers)
+
+        # no mask layer when track is on internal layer
+        if any(layer.startswith("In") for layer in self.layers):
+            assert not any(layer.endswith(".Mask") for layer in self.layers)
 
 
 @dataclass_json(undefined=Undefined.INCLUDE)
@@ -506,68 +558,64 @@ class C_text_layer:
 class E_fill(SymEnum):
     yes = auto()
     no = auto()
-    none = auto()
-    solid = auto()
 
 
 @dataclass(kw_only=True)
-class C_shape:  # TODO: Should be used for all shapes
-    layers: list[str]
+class C_shape(_SingleOrMultiLayer):
     solder_mask_margin: float | None = None
-    stroke: C_stroke
-    fill: E_fill
+    stroke: C_stroke | None = None
+    fill: E_fill | None = None
     locked: Optional[bool] = None
-    # net: Optional[str] = None #TODO: is this supposed to be here?
-    uuid: UUID = field(default_factory=gen_uuid)
+    uuid: UUID = field(**sexp_field(order=100), default_factory=gen_uuid)
 
 
 # gr_vector
 # gr_line
 # fp_line
 @dataclass(kw_only=True)
-class C_line:
-    start: C_xy
-    end: C_xy
-    stroke: C_stroke
-    layer: str
-    layers: list[str] | None = None
-    solder_mask_margin: float | None = None
-    uuid: UUID = field(default_factory=gen_uuid)
+class C_line(C_shape):
+    start: C_xy = field(**sexp_field(order=-2))
+    end: C_xy = field(**sexp_field(order=-1))
 
 
 # gr_circle
 # fp_circle
 @dataclass(kw_only=True)
-class C_circle:
-    center: C_xy
-    end: C_xy
-    stroke: C_stroke
-    fill: E_fill
-    layer: str
-    layers: list[str] | None = None
-    solder_mask_margin: float | None = None
-    uuid: UUID = field(default_factory=gen_uuid)
+class C_circle(C_shape):
+    center: C_xy = field(**sexp_field(order=-2))
+    end: C_xy = field(**sexp_field(order=-1))
 
 
 # gr_arc
 # fp_arc
 @dataclass(kw_only=True)
-class C_arc:
-    start: C_xy
-    mid: C_xy
-    end: C_xy
-    stroke: C_stroke
-    layer: str
-    layers: list[str] | None = None
-    solder_mask_margin: float | None = None
-    uuid: UUID = field(default_factory=gen_uuid)
+class C_arc(C_shape):
+    start: C_xy = field(**sexp_field(order=-3))
+    mid: C_xy = field(**sexp_field(order=-2))
+    end: C_xy = field(**sexp_field(order=-1))
 
 
 # gr_curve
 # fp_curve
 @dataclass(kw_only=True)
 class C_curve(C_shape):
-    pts: list[C_xy]
+    pts: list[C_xy] = field(**sexp_field(order=-1))
+
+
+# gr_bbox
+# gr_rect
+# fp_rect
+@dataclass(kw_only=True)
+class C_rect(C_shape):
+    start: C_xy = field(**sexp_field(order=-2))
+    end: C_xy = field(**sexp_field(order=-1))
+
+
+# gr_poly
+# fp_poly
+@dataclass(kw_only=True)
+class C_polygon(C_shape):
+    pts: list[C_xy] = field(**sexp_field(order=-1))
 
 
 @dataclass(kw_only=True)
@@ -599,26 +647,6 @@ class C_fp_text:  # TODO: Inherit from C_text maybe ?
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_fp_text_effects
     unlocked: bool = False
-
-
-# gr_bbox
-# gr_rect
-# fp_rect
-@dataclass(kw_only=True)
-class C_rect:
-    start: C_xy
-    end: C_xy
-    stroke: C_stroke
-    fill: E_fill
-    layer: str
-    uuid: UUID = field(default_factory=gen_uuid)
-
-
-# gr_poly
-# fp_poly
-@dataclass
-class C_polygon:
-    pts: C_pts
 
 
 @dataclass(kw_only=True)
@@ -810,9 +838,6 @@ class C_footprint:
 
     @dataclass
     class C_footprint_polygon(C_polygon):
-        stroke: C_stroke
-        fill: E_fill
-        layer: str
         uuid: UUID = field(default_factory=gen_uuid)
 
     @dataclass(kw_only=True)
@@ -1361,7 +1386,7 @@ class C_kicad_pcb_file(SEXP_File):
 
             net: int
             net_name: str
-            layers: list[str]
+            layers: list[str] | None = None
             # NOTE: if zones is both front and back Cu layer then layer="F&B.Cu"
             # else layer="F.Cu" "B.Cu" "In1.Cu" ...
             uuid: UUID
@@ -1382,28 +1407,24 @@ class C_kicad_pcb_file(SEXP_File):
             placement: C_placement | None = None
             unknown: CatchAll = None
 
-        @dataclass
-        class C_segment:
+        @dataclass(kw_only=True)
+        class C_segment(_CuItemWithSoldermaskLayers):
             start: C_xy
             end: C_xy
             width: float
-            layer: str
             net: int
             uuid: UUID
-            layers: list[str] | None = None
             solder_mask_margin: float | None = None
             locked: bool | None = None
 
-        @dataclass
-        class C_arc_segment:
+        @dataclass(kw_only=True)
+        class C_arc_segment(_CuItemWithSoldermaskLayers):
             start: C_xy
             mid: C_xy
             end: C_xy
             width: float
-            layer: str
             net: int
             uuid: UUID
-            layers: list[str] | None = None
             solder_mask_margin: float | None = None
             locked: bool | None = None
 
