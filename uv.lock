@@ -184,7 +184,7 @@ requires-dist = [
     { name = "atopile-easyeda2kicad", specifier = ">=0.9.0" },
     { name = "attrs", specifier = ">=23.2.0" },
     { name = "black", specifier = ">=24.4.2,<24.11.0" },
-    { name = "case-converter", specifier = ">=1.1.0" },
+    { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
     { name = "dataclasses-json", specifier = ">=0.6.7,<0.7.0" },
     { name = "deprecated", specifier = "~=1.2.14" },
