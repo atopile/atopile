@@ -558,6 +558,8 @@ class C_text_layer:
 class E_fill(SymEnum):
     yes = auto()
     no = auto()
+    none = auto()
+    solid = auto()
 
 
 @dataclass(kw_only=True)
@@ -599,7 +601,7 @@ class C_arc(C_shape):
 # fp_curve
 @dataclass(kw_only=True)
 class C_curve(C_shape):
-    pts: list[C_xy] = field(**sexp_field(order=-1))
+    pts: C_pts = field(**sexp_field(order=-1))
 
 
 # gr_bbox
@@ -615,7 +617,7 @@ class C_rect(C_shape):
 # fp_poly
 @dataclass(kw_only=True)
 class C_polygon(C_shape):
-    pts: list[C_xy] = field(**sexp_field(order=-1))
+    pts: C_pts = field(**sexp_field(order=-1))
 
 
 @dataclass(kw_only=True)
@@ -1372,8 +1374,8 @@ class C_kicad_pcb_file(SEXP_File):
                     sheetname = auto()
                     component_class = auto()
 
-                source_type: E_rule_area_placement_source_type
-                source: str
+                source_type: E_rule_area_placement_source_type | None = None
+                source: str | None = None
                 enabled: bool = True
 
             @dataclass(kw_only=True)
