@@ -1892,7 +1892,8 @@ def indented_container(
             return repr(v) if use_repr else str(v)
         return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
 
-    inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
+    k_max = max(len(str(k)) for k, _ in kvs)
+    inside = ind.join(f"{k:{k_max}}: {format_v(v)}" for k, v in kvs)
     if len(kvs):
         inside = f"{ind}{inside}\n"
 

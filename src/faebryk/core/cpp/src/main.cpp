@@ -77,6 +77,7 @@ PYMOD(m) {
     FACTORY(
         nb::class_<GI>(m, "GraphInterface")
             .def("__repr__", &GI::repr)
+            .def("get_full_name", &GI::get_full_name)
             .def("get_graph", &GI::get_graph)
             .def_prop_ro("G", &GI::get_graph)
             .def("get_gif_edges", &GI::get_gif_edges, nb::rv_policy::reference)
@@ -149,7 +150,8 @@ PYMOD(m) {
         .def("is_cloneable", &Link::is_cloneable);
     nb::class_<LinkParent, Link>(m, "LinkParent").def(nb::init<>());
     nb::class_<LinkNamedParent, LinkParent>(m, "LinkNamedParent")
-        .def(nb::init<std::string>());
+        .def(nb::init<std::string>())
+        .def("get_name", &LinkNamedParent::get_name);
     nb::class_<LinkDirect, Link>(m, "LinkDirect").def(nb::init<>());
     nb::class_<LinkPointer, Link>(m, "LinkPointer").def(nb::init<>());
     nb::class_<LinkSibling, LinkPointer>(m, "LinkSibling").def(nb::init<>());

@@ -63,7 +63,7 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_pcb_file,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
+from faebryk.libs.util import ConfigFlag
 
 logger = logging.getLogger(__name__)
 
@@ -95,15 +95,15 @@ def build(app: Module) -> None:
     with LoggingStage("prebuild", "Running pre-build checks"):
         if not SKIP_SOLVING:
             logger.info("Resolving bus parameters")
-            try:
-                F.is_bus_parameter.resolve_bus_parameters(G)
+            # try:
+            F.is_bus_parameter.resolve_bus_parameters(G)
             # FIXME: this is a hack around a compiler bug
-            except KeyErrorAmbiguous as ex:
-                raise UserException(
-                    "Unfortunately, there's a compiler bug at the moment that means "
-                    "that this sometimes fails. Try again, and it'll probably work. "
-                    "See https://github.com/atopile/atopile/issues/807"
-                ) from ex
+            # except KeyErrorAmbiguous as ex:
+            #    raise UserException(
+            #        "Unfortunately, there's a compiler bug at the moment that means "
+            #        "that this sometimes fails. Try again, and it'll probably work. "
+            #        "See https://github.com/atopile/atopile/issues/807"
+            #    ) from ex
         else:
             logger.warning("Skipping bus parameter resolution")
 
