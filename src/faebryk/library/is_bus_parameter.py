@@ -167,8 +167,8 @@ class is_bus_parameter(Parameter.TraitT.decless()):
             # param_bus = find(busses, lambda bus: bus_representative_mif in bus)
             # FIXME: dirty workaround for mif bug
             param_busses = [bus for bus in busses if bus_representative_mif in bus]
-            merged_bus = {m for bus in param_busses for m in bus}
-            trait.resolve(merged_bus)
+            param_bus = {m for bus in param_busses for m in bus}
+            trait.resolve(param_bus)
 
         times.add("merge parameters")
         if logger.isEnabledFor(logging.DEBUG):
