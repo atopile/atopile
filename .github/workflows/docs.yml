@@ -81,18 +81,12 @@ jobs:
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "MAJOR_MINOR=$MAJOR_MINOR" >> $GITHUB_ENV
 
-      - uses: actions/create-github-app-token@v1
-        id: app-token
-        with:
-          app-id: ${{ vars.WEBSITE_DEPLOYER_APP_ID }}
-          private-key: ${{ secrets.WEBSITE_DEPLOYER_KEY }}
-
       - name: Deploy development docs
         if: github.event_name == 'push' && github.event.ref == 'refs/heads/main'
         # TODO: it'd be nice to have the upcoming version number here as well
         # but it clobbers the latest release in case they're the same
-        run: uv run mike deploy --push --remote "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}" --update-aliases dev
+        run: uv run mike deploy --push --update-aliases dev
 
       - name: Deploy release docs
         if: github.event_name == 'release' && !github.event.release.prerelease && !github.event.release.draft
-        run: uv run mike deploy --push --remote "https://x-access-token:${{ steps.app-token.outputs.token }}@github.com/${{ github.repository }}" --update-aliases $MAJOR_MINOR latest
+        run: uv run mike deploy --push --update-aliases $MAJOR_MINOR latest
