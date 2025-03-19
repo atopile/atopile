@@ -21,6 +21,19 @@ from faebryk.libs.util import try_relative_to
 
 logger = logging.getLogger(__name__)
 
+# Release dates for reference:
+# KiCad 9.0.0 - February 19, 2025
+# KiCad 8.0.0 - January 31, 2024
+# KiCad 7.0.0 - March 1, 2023
+# KiCad 6.0.0 - December 15, 2021
+# KiCad 5.1.0 - May 22, 2019
+# KiCad 5.0.0 - July 21, 2018
+
+KICAD_VERSION_NAMES = {
+    20241229: "KiCad 9.0",
+    20240108: "KiCad 8.0",
+}
+
 
 def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
     acc = accumulate(DecodeError, group_message="No decoders succeeded")
@@ -72,8 +85,10 @@ def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
             # TODO: link to kicad docs for file migration
             raise UserResourceException(
                 f"Error loading KiCad PCB file {path}\n"
-                f"Unsupported version: {pcb.kicad_pcb.version} "
-                f"(expected {KICAD_PCB_VERSION})",
+                f"Unsupported version: {KICAD_VERSION_NAMES[pcb.kicad_pcb.version]} "
+                f"({pcb.kicad_pcb.version})\n"
+                f"Expected: {KICAD_VERSION_NAMES[KICAD_PCB_VERSION]} "
+                f"({KICAD_PCB_VERSION})",
                 markdown=False,
             )
 

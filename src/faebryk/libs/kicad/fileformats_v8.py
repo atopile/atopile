@@ -23,12 +23,6 @@ logger = logging.getLogger(__name__)
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
-# Release dates for reference:
-# KiCad 8.0.0 - January 31, 2024
-# KiCad 7.0.0 - March 1, 2023
-# KiCad 6.0.0 - December 15, 2021
-# KiCad 5.1.0 - May 22, 2019
-# KiCad 5.0.0 - July 21, 2018
 
 KICAD_PCB_VERSION = 20240108
 
