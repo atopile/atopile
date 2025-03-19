@@ -128,7 +128,7 @@ class C_effects:
             c_effects[-1] = [Symbol("hide"), Symbol("yes")]
         return c_effects
 
-    hide: bool = False
+    hide: bool | None = False
 
     # Legal:
     # (justify mirror right)
