@@ -1621,7 +1621,6 @@ class PCB_Transformer:
         updates = self._fp_common_fields_dict(lib_footprint)
         updates["pads"] = [
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
-                net=None,
                 **{
                     # Cannot use asdict because it converts children dataclasses too
                     **dataclass_as_kwargs(p),
