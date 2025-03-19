@@ -1405,7 +1405,6 @@ class C_kicad_pcb_file(SEXP_File):
             filled_polygon: list[C_filled_polygon] = field(
                 **sexp_field(multidict=True), default_factory=list
             )
-            is_rule_area: bool = False
             placement: C_placement | None = None
             unknown: CatchAll = None
 
