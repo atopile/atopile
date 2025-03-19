@@ -1386,6 +1386,16 @@ class C_kicad_pcb_file(SEXP_File):
                 pts: C_pts
                 unknown: CatchAll = None
 
+            @dataclass
+            class C_attr:
+                @dataclass
+                class C_teardrop:
+                    class E_type(SymEnum):
+                        padvia = auto()
+                        track_end = auto()
+
+                    type: E_type
+
             net: int
             net_name: str
             layers: list[str] | None = None
@@ -1396,6 +1406,7 @@ class C_kicad_pcb_file(SEXP_File):
             # locked: Optional[bool] = None #TODO: legacy -> delete?
             hatch: C_hatch
             priority: Optional[int] = None
+            attr: C_attr | None = None
             connect_pads: C_connect_pads
             min_thickness: float
             filled_areas_thickness: bool
