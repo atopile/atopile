@@ -4,16 +4,12 @@
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
 from textwrap import indent
-from typing import TYPE_CHECKING, Any, Iterable
-
-from rich.progress import Progress
+from typing import TYPE_CHECKING, Iterable
 
 import faebryk.library._F as F
-from atopile.cli.console import error_console
 from faebryk.core.cpp import Graph
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
@@ -29,6 +25,7 @@ from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
+    Advancable,
     ConfigFlag,
     EquivalenceClasses,
     KeyErrorAmbiguous,
@@ -141,35 +138,6 @@ class does_not_require_picker_check(Parameter.TraitT.decless()):
     pass
 
 
-# FIXME: remove? uses wrong console
-class PickerProgress:
-    def __init__(self, tree: Tree[Module]):
-        self.tree = tree
-        self.progress = Progress(
-            disable=bool(NO_PROGRESS_BAR),
-            transient=True,
-            # This uses the error console to properly interleave with logging
-            console=error_console,
-        )
-        leaves = list(tree.leaves())
-        count = len(leaves)
-
-        logger.info(f"Picking parts for {count} leaf modules")
-        self.task = self.progress.add_task("Picking", total=count)
-
-    def advance(self, module: Module):
-        leaf_count = len(list(self.tree.get_subtree(module).leaves()))
-        # module is leaf
-        if not leaf_count:
-            leaf_count = 1
-        self.progress.advance(self.task, leaf_count)
-
-    @contextmanager
-    def context(self):
-        with self.progress:
-            yield self
-
-
 def get_pick_tree(module: Module | ModuleInterface) -> Tree[Module]:
     if isinstance(module, Module):
         module = module.get_most_special()
@@ -208,7 +176,7 @@ def update_pick_tree(tree: Tree[Module]) -> tuple[Tree[Module], bool]:
     return filtered_tree, False
 
 
-def check_missing_picks(module: Module):
+def check_missing_picks(module: Module, progress: Advancable):
     # - not skip self pick
     # - no parent with part picked
     # - not specialized
@@ -338,11 +306,7 @@ def _list_to_hack_tree(modules: Iterable[Module]) -> Tree[Module]:
     return Tree({m: Tree() for m in modules})
 
 
-def pick_topologically(
-    tree: Tree[Module],
-    solver: Solver,
-    progress: PickerProgress | None = None,
-):
+def pick_topologically(tree: Tree[Module], solver: Solver, progress: Advancable):
     # TODO implement backtracking
 
     import faebryk.libs.picker.api.picker_lib as picker_lib
@@ -363,6 +327,7 @@ def pick_topologically(
     for m, parts in explicit_parts.items():
         part = parts[0]
         picker_lib.attach_single_no_check(m, part, solver)
+        progress.advance(1)
     if explicit_parts:
         tree, _ = update_pick_tree(tree)
 
@@ -386,18 +351,6 @@ def pick_topologically(
                 f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
             )
         return candidates
-
-    def _update_progress(done: Iterable[tuple[Module, Any]] | Module):
-        if not progress:
-            return
-
-        if isinstance(done, Module):
-            modules = [done]
-        else:
-            modules = [m for m, _ in done]
-
-        for m in modules:
-            progress.advance(m)
 
     timings.add("setup")
 
@@ -432,8 +385,8 @@ def pick_topologically(
             )
             for m, part in picked:
                 picker_lib.attach_single_no_check(m, part, solver)
+                progress.advance(1)
 
-            _update_progress(picked)
             tree, _ = update_pick_tree(tree)
 
     if _pick_count:
@@ -450,12 +403,13 @@ def pick_topologically(
 
 
 # TODO should be a Picker
-def pick_part_recursively(module: Module, solver: Solver):
+def pick_part_recursively(module: Module, solver: Solver, progress: Advancable):
     pick_tree = get_pick_tree(module)
-    check_missing_picks(module)
+    progress.set_total(len(pick_tree))
+    check_missing_picks(module, progress)
 
     try:
-        pick_topologically(pick_tree, solver)
+        pick_topologically(pick_tree, solver, progress)
     # FIXME: This does not get called anymore
     except PickErrorChildren as e:
         failed_parts = e.get_all_children()

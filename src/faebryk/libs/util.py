@@ -71,6 +71,12 @@ class SerializableJSONEncoder(JSONEncoder):
         return None if o is None else o.serialize()
 
 
+class Advancable(Protocol):
+    def set_total(self, total: int | None) -> None: ...
+
+    def advance(self, advance: int = 1) -> None: ...
+
+
 class lazy:
     def __init__(self, expr):
         self.expr = expr

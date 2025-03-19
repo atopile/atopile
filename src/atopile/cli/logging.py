@@ -2,17 +2,20 @@ import logging
 import shutil
 from collections.abc import Iterable
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from types import ModuleType, TracebackType
 
 import pathvalidate
 from rich._null_file import NullFile
-from rich.console import Console, ConsoleRenderable
+from rich.console import Console, ConsoleRenderable, RenderableType
 from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.progress import (
+    MofNCompleteColumn,
     Progress,
+    ProgressColumn,
     RenderableColumn,
     SpinnerColumn,
     Task,
@@ -29,7 +32,7 @@ import faebryk.libs
 import faebryk.libs.logging
 from atopile.errors import UserPythonModuleError, _BaseBaseUserException
 from faebryk.libs.logging import FLOG_FMT
-from faebryk.libs.util import ConfigFlag
+from faebryk.libs.util import Advancable, ConfigFlag
 
 from . import console
 
@@ -305,7 +308,14 @@ class ShortTimeElapsedColumn(TimeElapsedColumn):
     def render(self, task: "Task") -> Text:
         """Show time elapsed."""
         elapsed = (task.finished_time if task.finished else task.elapsed) or 0
-        return Text.from_markup(f"[{elapsed:.1f}s]")
+        return Text.from_markup(f"[blue][{elapsed:.1f}s][/blue]")
+
+
+class StyledMofNCompleteColumn(MofNCompleteColumn):
+    def render(self, task: "Task") -> Text:
+        return Text.from_markup(
+            f"[dim]{task.completed}[/dim]{self.separator}[dim]{task.total}[/dim]"
+        )
 
 
 class SpacerColumn(RenderableColumn):
@@ -315,11 +325,29 @@ class SpacerColumn(RenderableColumn):
         )
 
 
-class LoggingStage:
-    _INDICATOR_SUCCESS = "[green]✓[/green]"
-    _INDICATOR_FAILURE = "[red]✗[/red]"
-    _INDICATOR_WARNING = "[yellow]⚠[/yellow]"
+class CompletableSpinnerColumn(SpinnerColumn):
+    class Status(StrEnum):
+        SUCCESS = "[green]✓[/green]"
+        FAILURE = "[red]✗[/red]"
+        WARNING = "[yellow]⚠[/yellow]"
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.status = None
+
+    def complete(self, status: Status) -> None:
+        self.status = status
+
+    def render(self, task: "Task") -> RenderableType:
+        text = (
+            Text.from_markup(self.status)
+            if self.status is not None
+            else self.spinner.render(task.get_time())
+        )
+        return text
+
+
+class LoggingStage(Advancable):
     _LOG_LEVELS = {
         logging.DEBUG: "debug",
         logging.INFO: "info",
@@ -327,10 +355,13 @@ class LoggingStage:
         logging.ERROR: "error",
     }
 
-    def __init__(self, name: str, description: str, indent: int = 20):
+    def __init__(
+        self, name: str, description: str, steps: int | None = None, indent: int = 20
+    ):
         self.name = name
         self.description = description
         self.indent = indent
+        self.steps = steps
         self._console = console.error_console
         self._warning_count = 0
         self._error_count = 0
@@ -341,27 +372,36 @@ class LoggingStage:
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
 
-        show_log_file_path = (
-            self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
-        )
-
         self._progress = IndentedProgress(
-            SpinnerColumn(),
-            TextColumn("{task.description}"),
-            # MofNCompleteColumn(), # TODO
-            ShortTimeElapsedColumn(),
-            SpacerColumn(),
-            TextColumn(
-                f"[dim]{self._info_log_path}[/dim]" if show_log_file_path else "",
-                justify="right",
-                table_column=Column(justify="right", overflow="ellipsis"),
-            ),
+            *self._get_columns(),
             console=self._console,
             transient=False,
             auto_refresh=True,
             refresh_per_second=10,
             indent=self.indent,
             expand=True,
+        )
+
+    def _get_columns(self) -> tuple[ProgressColumn, ...]:
+        show_log_file_path = (
+            self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
+        )
+
+        return tuple(
+            col
+            for col in (
+                CompletableSpinnerColumn(),
+                TextColumn("{task.description}"),
+                StyledMofNCompleteColumn() if self.steps is not None else None,
+                ShortTimeElapsedColumn(),
+                SpacerColumn(),
+                TextColumn(
+                    f"[dim]{self._info_log_path}[/dim]" if show_log_file_path else "",
+                    justify="right",
+                    table_column=Column(justify="right", overflow="ellipsis"),
+                ),
+            )
+            if col is not None
         )
 
     def alert(self, message: str) -> None:
@@ -385,32 +425,42 @@ class LoggingStage:
         problems_text = f" ({', '.join(problems)})" if problems else ""
         return f"{self.description}{problems_text}"
 
-    def refresh(self, indicator: str | None = None) -> None:
-        if indicator is not None:
-            for column in self._progress.columns:
-                if isinstance(column, SpinnerColumn):
-                    column.finished_text = Text.from_markup(indicator)
-
+    def refresh(self) -> None:
         self._progress.update(self._task_id, description=self._generate_description())
 
-    def __enter__(self) -> Console:
+    def set_total(self, total: int | None) -> None:
+        self.steps = total
+        self._progress.columns = self._get_columns()
+        self._progress.update(self._task_id, total=total)
+        self.refresh()
+
+    def advance(self, advance: int = 1) -> None:
+        assert self.steps is not None
+        self._progress.advance(self._task_id, advance)
+
+    def __enter__(self) -> "LoggingStage":
         self._setup_logging()
         self._progress.start()
-        self._task_id = self._progress.add_task(self.description, total=1)
-        return self._console
+        self._task_id = self._progress.add_task(
+            self.description, total=self.steps if self.steps is not None else 1
+        )
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self._restore_logging()
 
         if exc_type is not None or self._error_count > 0:
-            indicator = self._INDICATOR_FAILURE
+            status = CompletableSpinnerColumn.Status.FAILURE
         elif self._warning_count > 0:
-            indicator = self._INDICATOR_WARNING
+            status = CompletableSpinnerColumn.Status.WARNING
         else:
-            indicator = self._INDICATOR_SUCCESS
+            status = CompletableSpinnerColumn.Status.SUCCESS
 
-        self._progress.advance(self._task_id)
-        self.refresh(indicator)
+        for column in self._progress.columns:
+            if isinstance(column, CompletableSpinnerColumn):
+                column.complete(status)
+
+        self.refresh()
         self._progress.stop()
 
     def _create_log_dir(self) -> Path:
