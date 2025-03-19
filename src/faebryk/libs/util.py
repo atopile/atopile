@@ -2023,3 +2023,10 @@ def remove_venv_from_env(base_env: dict[str, str] | None = None):
     env.pop("PYTHONHOME", None)
 
     return env
+
+
+def pretty_type(t: object | type) -> str:
+    try:
+        return t.__qualname__
+    except Exception:
+        return str(t)

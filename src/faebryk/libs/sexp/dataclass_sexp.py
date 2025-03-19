@@ -21,6 +21,7 @@ from faebryk.libs.util import (
     duplicates,
     groupby,
     indented_container,
+    pretty_type,
     zip_non_locked,
 )
 
@@ -183,7 +184,7 @@ def _convert(
     except Exception:
         logger.debug(
             f"Failed to decode `{_prettify_stack(substack)}` "
-            f"({t.__qualname__}) with \n{indented_container(val)}"
+            f"({pretty_type(t)}) with \n{indented_container(val)}"
         )
         raise
 
@@ -409,7 +410,7 @@ def _decode[T: DataclassInstance](
     try:
         out = t(**value_dict)
     except TypeError as e:
-        raise TypeError(f"Failed to create {t.__qualname__} with {value_dict}") from e
+        raise TypeError(f"Failed to create {pretty_type(t)} with {value_dict}") from e
 
     # set parent pointers for all dataclasses in the tree
     for v in value_dict.values():
