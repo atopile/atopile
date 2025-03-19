@@ -1,29 +1,22 @@
 # Quickstart
 
-## Install `ato` — with `uv` <small>(recommended)</small>
+## Install `ato` CLI
+
+!!! warning
+    Windows isn't yet natively supported. Install via WSL or Docker using ubuntu 24.
+
+=== "macOS"
+
+    --8<-- "docs/guides/installation.md:brew"
+
+=== "Other Platforms"
+
+    --8<-- "docs/guides/installation.md:uv"
 
 
-1. Install `uv`. See: https://docs.astral.sh/uv/getting-started/installation/
-
-2. Install atopile with `uv`
-
-    ``` sh
-    uv tool install atopile
-    ```
-
-    !!! important
-        `uv` if this is the first time you've used `uv` for a tool install, it might give you another command to run to finish setup.
-        Do it.
-
-4. Check `ato` is installed
-
-    ``` sh
-    ato --version
-    ```
 
 !!! info
-    While we strongly recommend using `uv` to install atopile, it's ultimately a python package, so you can install it a few other ways.
-    See the [installation guide](guides/installation.md) for more details.
+    See the [installation guide](guides/installation.md) for more installation options.
 
 
 ## Editor recommendations
