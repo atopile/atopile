@@ -4,8 +4,7 @@
 import logging
 from pathlib import Path
 
-from faebryk.libs.exceptions import UserResourceException, accumulate, downgrade
-from faebryk.libs.kicad import fileformats_v8
+from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats_common import (
     C_kicad_footprint_file_header,
     C_kicad_pcb_file_header,
@@ -49,9 +48,7 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
     ) from acc.get_exception()
 
 
-def try_load_kicad_pcb_file(
-    path: Path,
-) -> C_kicad_pcb_file | fileformats_v8.C_kicad_pcb_file:
+def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
     """
     Attempt to load a KiCad PCB file.
 
@@ -64,16 +61,6 @@ def try_load_kicad_pcb_file(
         return loads(path, C_kicad_pcb_file)
     except DecodeError as e:
         logger.info(str(e), exc_info=e)
-        # TODO: drop v8 support
-        with downgrade(DecodeError):
-            logger.info("Loading KiCad PCB file (v8): %s", path)
-            pcb = loads(path, fileformats_v8.C_kicad_pcb_file)
-            with downgrade(UserResourceException):
-                raise UserResourceException(
-                    "Support for KiCad 8 PCB files is deprecated. "
-                    "Please upgrade to KiCad 9."
-                ) from e
-            return pcb
 
         try:
             logger.info("Loading KiCad PCB file (header): %s", path)
