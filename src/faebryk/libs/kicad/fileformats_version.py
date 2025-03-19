@@ -65,6 +65,7 @@ def try_load_kicad_pcb_file(
     except DecodeError as e:
         # TODO: drop v8 support
         with downgrade(DecodeError):
+            logger.info("Loading KiCad PCB file (v8): %s", path)
             pcb = loads(path, fileformats_v8.C_kicad_pcb_file)
             with downgrade(UserResourceException):
                 raise UserResourceException(
@@ -74,6 +75,7 @@ def try_load_kicad_pcb_file(
             return pcb
 
         try:
+            logger.info("Loading KiCad PCB file (header): %s", path)
             pcb = loads(path, C_kicad_pcb_file_header)
         except Exception:
             raise e
