@@ -168,6 +168,11 @@ def _name_shittiness(name: str | None) -> float:
     if name == "hv":
         return 0.3
 
+    # "line" is common from signal interfaces, but
+    # if there's something else available, prefer that
+    if name == "line":
+        return 0.3
+
     # Anything with a trailing number is
     # generally less interesting
     if re.match(r".*\d+$", name):
