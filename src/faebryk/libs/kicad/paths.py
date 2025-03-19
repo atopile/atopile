@@ -5,7 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-KICAD_VERSION = "8.0"
+# @kicad10
+KICAD_VERSION = "9.0"
 
 # footprint library paths
 # ref: https://docs.kicad.org/8.0/en/kicad/kicad.html#config-file-location
