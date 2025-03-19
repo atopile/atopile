@@ -3,7 +3,7 @@
 ## Install `ato` — with `uv` <small>(recommended)</small>
 
 
-1. Install `uv`. See: https://docs.astral.sh/uv/installation/
+1. Install `uv`. See: https://docs.astral.sh/uv/getting-started/installation/
 
 2. Install atopile with `uv`
 
@@ -23,7 +23,7 @@
 
 !!! info
     While we strongly recommend using `uv` to install atopile, it's ultimately a python package, so you can install it a few other ways.
-    See the [installation guide](installation.md) for more details.
+    See the [installation guide](guides/installation.md) for more details.
 
 
 ## Editor recommendations
@@ -147,4 +147,4 @@ This isn't even a circuit yet, merely a single component however you now:
 - Know how to add components to your design
 - Have KiCAD installed and working
 
-In the [tutorial](tutorial.md) we continue with a real circuit, installing and using packages, maths and version control.
+In the [tutorial](tutorial/1-the-ato-language.md) we continue with a real circuit, installing and using packages, maths and version control.
