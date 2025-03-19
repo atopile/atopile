@@ -7,14 +7,19 @@ from types import ModuleType, TracebackType
 
 import pathvalidate
 from rich._null_file import NullFile
-from rich.columns import Columns
-from rich.console import Console, ConsoleRenderable, RenderableType
-from rich.live import Live
+from rich.console import Console, ConsoleRenderable
 from rich.logging import RichHandler
 from rich.markdown import Markdown
 from rich.padding import Padding
-from rich.spinner import Spinner
-from rich.table import Table
+from rich.progress import (
+    Progress,
+    RenderableColumn,
+    SpinnerColumn,
+    Task,
+    TextColumn,
+    TimeElapsedColumn,
+)
+from rich.table import Column
 from rich.text import Text
 from rich.traceback import Traceback
 
@@ -273,7 +278,7 @@ class LiveLogHandler(LogHandler):
             elif record.levelno >= logging.WARNING:
                 self.status._warning_count += 1
 
-            self.status._live.update(self.status._render_status(), refresh=True)
+            self.status.refresh()
 
             if record.levelno == ALERT:
                 self.status.alert(record.getMessage())
@@ -283,6 +288,31 @@ class LiveLogHandler(LogHandler):
         finally:
             if hashable:
                 self._logged_exceptions.add(hashable)
+
+
+class IndentedProgress(Progress):
+    def __init__(self, *args, indent: int = 20, **kwargs):
+        self.indent = indent
+        super().__init__(*args, **kwargs)
+
+    def get_renderable(self):
+        return Padding(super().get_renderable(), pad=(0, 0, 0, self.indent))
+
+
+class ShortTimeElapsedColumn(TimeElapsedColumn):
+    """Renders time elapsed."""
+
+    def render(self, task: "Task") -> Text:
+        """Show time elapsed."""
+        elapsed = (task.finished_time if task.finished else task.elapsed) or 0
+        return Text.from_markup(f"[{elapsed:.1f}s]")
+
+
+class SpacerColumn(RenderableColumn):
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            *args, renderable=Text(), table_column=Column(ratio=1), **kwargs
+        )
 
 
 class LoggingStage:
@@ -302,22 +332,37 @@ class LoggingStage:
         self.description = description
         self.indent = indent
         self._console = console.error_console
-        self._spinner = Spinner("dots")
         self._warning_count = 0
         self._error_count = 0
         self._info_log_path = None
         self._log_handler = None
         self._file_handlers = []
         self._original_handlers = {}
-        self._live = Live(
-            self._render_status(),
-            console=self._console,
-            transient=True,
-            auto_refresh=True,
-            refresh_per_second=10,
-        )
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
         self._result = None
+
+        show_log_file_path = (
+            self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD
+        )
+
+        self._progress = IndentedProgress(
+            SpinnerColumn(),
+            TextColumn("{task.description}"),
+            # MofNCompleteColumn(), # TODO
+            ShortTimeElapsedColumn(),
+            SpacerColumn(),
+            TextColumn(
+                f"[dim]{self._info_log_path}[/dim]" if show_log_file_path else "",
+                justify="right",
+                table_column=Column(justify="right", overflow="ellipsis"),
+            ),
+            console=self._console,
+            transient=False,
+            auto_refresh=True,
+            refresh_per_second=10,
+            indent=self.indent,
+            expand=True,
+        )
 
     def alert(self, message: str) -> None:
         message = f"[bold][yellow]![/yellow] {message}[/bold]"
@@ -327,7 +372,7 @@ class LoggingStage:
             highlight=True,
         )
 
-    def _render_status(self, indicator: str | None = None) -> RenderableType:
+    def _generate_description(self) -> str:
         problems = []
         if self._error_count > 0:
             plural_e = "s" if self._error_count > 1 else ""
@@ -338,33 +383,20 @@ class LoggingStage:
             problems.append(f"[yellow]{self._warning_count} warning{plural_w}[/yellow]")
 
         problems_text = f" ({', '.join(problems)})" if problems else ""
-        text = Text.from_markup(f"{self.description}{problems_text}")
+        return f"{self.description}{problems_text}"
 
-        spinner_with_text = Padding(
-            Columns(
-                [
-                    Text.from_markup(indicator)
-                    if indicator is not None
-                    else self._spinner,
-                    text,
-                ],
-                padding=(0, 1),
-            ),
-            pad=(0, 0, 0, self.indent),  # (top, right, bottom, left)
-        )
+    def refresh(self, indicator: str | None = None) -> None:
+        if indicator is not None:
+            for column in self._progress.columns:
+                if isinstance(column, SpinnerColumn):
+                    column.finished_text = Text.from_markup(indicator)
 
-        if self._info_log_path and self._console.width >= _SHOW_LOG_FILE_PATH_THRESHOLD:
-            table = Table.grid(padding=0, expand=True)
-            table.add_column(max_width=self.indent + 32)
-            table.add_column(justify="right", overflow="ellipsis")
-            table.add_row(spinner_with_text, f"[dim]{self._info_log_path}[/dim]")
-            return table
-        else:
-            return spinner_with_text
+        self._progress.update(self._task_id, description=self._generate_description())
 
     def __enter__(self) -> Console:
         self._setup_logging()
-        self._live.start()
+        self._progress.start()
+        self._task_id = self._progress.add_task(self.description, total=1)
         return self._console
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
@@ -377,8 +409,9 @@ class LoggingStage:
         else:
             indicator = self._INDICATOR_SUCCESS
 
-        self._live.stop()
-        self._console.print(self._render_status(indicator))
+        self._progress.advance(self._task_id)
+        self.refresh(indicator)
+        self._progress.stop()
 
     def _create_log_dir(self) -> Path:
         from atopile.config import config
