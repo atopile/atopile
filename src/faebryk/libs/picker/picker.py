@@ -176,7 +176,7 @@ def update_pick_tree(tree: Tree[Module]) -> tuple[Tree[Module], bool]:
     return filtered_tree, False
 
 
-def check_missing_picks(module: Module, progress: Advancable):
+def check_missing_picks(module: Module):
     # - not skip self pick
     # - no parent with part picked
     # - not specialized
@@ -306,7 +306,9 @@ def _list_to_hack_tree(modules: Iterable[Module]) -> Tree[Module]:
     return Tree({m: Tree() for m in modules})
 
 
-def pick_topologically(tree: Tree[Module], solver: Solver, progress: Advancable):
+def pick_topologically(
+    tree: Tree[Module], solver: Solver, progress: Advancable | None = None
+):
     # TODO implement backtracking
 
     import faebryk.libs.picker.api.picker_lib as picker_lib
@@ -327,7 +329,8 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: Advancable)
     for m, parts in explicit_parts.items():
         part = parts[0]
         picker_lib.attach_single_no_check(m, part, solver)
-        progress.advance(1)
+        if progress:
+            progress.advance()
     if explicit_parts:
         tree, _ = update_pick_tree(tree)
 
@@ -385,7 +388,8 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: Advancable)
             )
             for m, part in picked:
                 picker_lib.attach_single_no_check(m, part, solver)
-                progress.advance(1)
+                if progress:
+                    progress.advance()
 
             tree, _ = update_pick_tree(tree)
 
@@ -403,10 +407,13 @@ def pick_topologically(tree: Tree[Module], solver: Solver, progress: Advancable)
 
 
 # TODO should be a Picker
-def pick_part_recursively(module: Module, solver: Solver, progress: Advancable):
+def pick_part_recursively(
+    module: Module, solver: Solver, progress: Advancable | None = None
+):
     pick_tree = get_pick_tree(module)
-    progress.set_total(len(pick_tree))
-    check_missing_picks(module, progress)
+    if progress:
+        progress.set_total(len(pick_tree))
+    check_missing_picks(module)
 
     try:
         pick_topologically(pick_tree, solver, progress)
