@@ -307,7 +307,7 @@ class ShortTimeElapsedColumn(TimeElapsedColumn):
 
     def render(self, task: "Task") -> Text:
         """Show time elapsed."""
-        elapsed = (task.finished_time if task.finished else task.elapsed) or 0
+        elapsed = task.elapsed or 0
         return Text.from_markup(f"[blue][{elapsed:.1f}s][/blue]")
 
 
