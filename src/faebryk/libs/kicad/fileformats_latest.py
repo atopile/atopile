@@ -560,7 +560,7 @@ class C_shape(_SingleOrMultiLayer):
     stroke: C_stroke | None = None
     fill: E_fill | None = None
     locked: Optional[bool] = None
-    uuid: UUID = field(**sexp_field(order=100), default_factory=gen_uuid)
+    uuid: UUID | None = field(**sexp_field(order=100), default_factory=gen_uuid)
 
 
 # gr_vector
@@ -610,6 +610,7 @@ class C_rect(C_shape):
 @dataclass(kw_only=True)
 class C_polygon(C_shape):
     pts: C_pts = field(**sexp_field(order=-1))
+    uuid: UUID | None = None
 
 
 @dataclass(kw_only=True)
