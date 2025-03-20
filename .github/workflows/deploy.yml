@@ -144,13 +144,16 @@ jobs:
     strategy:
       matrix:
         include:
+          # @kicad10
           - dockerfile: "Dockerfile.kicad"
             image: "atopile-kicad"
             kicad_version: "9.0"
             tag_suffix: "-kicad9"
+
+          # default
           - dockerfile: "Dockerfile.kicad"
             image: "atopile-kicad"
-            kicad_version: "8.0"
+            kicad_version: "9.0"
             tag_suffix: ""
 
     # Sets the permissions granted to the `GITHUB_TOKEN`
