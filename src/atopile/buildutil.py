@@ -1,6 +1,7 @@
 import json
 import logging
 import shutil
+import tempfile
 import time
 from copy import deepcopy
 from pathlib import Path
@@ -29,6 +30,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_glb,
     export_pick_and_place,
     export_step,
+    githash_layout,
 )
 from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
@@ -289,35 +291,44 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     - Pick and place (default and JLCPCB)
     - Testpoint-location
     """
-    export_step(
-        config.build.paths.layout,
-        step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
-    )
-    export_glb(
-        config.build.paths.layout,
-        glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
-    )
-    export_dxf(
-        config.build.paths.layout,
-        dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
-    )
+    # Create temp copy of layout file with git hash substituted
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_layout = githash_layout(
+            config.build.paths.layout,
+            Path(tmpdir) / config.build.paths.layout.name,
+        )
 
-    export_gerber(
-        config.build.paths.layout,
-        gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
-    )
+        export_step(
+            tmp_layout,
+            step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+        )
+        export_glb(
+            tmp_layout,
+            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+        )
+        export_dxf(
+            tmp_layout,
+            dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
+        )
 
-    pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
-    export_pick_and_place(config.build.paths.layout, pick_and_place_file=pnp_file)
-    convert_kicad_pick_and_place_to_jlcpcb(
-        pnp_file,
-        config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
-    )
+        export_gerber(
+            tmp_layout,
+            gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
+        )
 
-    export_testpoints(
-        app,
-        testpoints_file=config.build.paths.output_base.with_suffix(".testpoints.json"),
-    )
+        pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
+        export_pick_and_place(tmp_layout, pick_and_place_file=pnp_file)
+        convert_kicad_pick_and_place_to_jlcpcb(
+            pnp_file,
+            config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
+        )
+
+        export_testpoints(
+            app,
+            testpoints_file=config.build.paths.output_base.with_suffix(
+                ".testpoints.json"
+            ),
+        )
 
 
 @muster.register("manifest")
