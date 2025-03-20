@@ -94,7 +94,8 @@ def build(app: Module) -> None:
         if not SKIP_SOLVING:
             logger.info("Resolving bus parameters")
             try:
-                F.is_bus_parameter.resolve_bus_parameters(G)
+                # F.is_bus_parameter.resolve_bus_parameters(G)
+                pass # bypass until Janni fixes MIF bug
             # FIXME: this is a hack around a compiler bug
             except KeyErrorAmbiguous as ex:
                 raise UserException(
