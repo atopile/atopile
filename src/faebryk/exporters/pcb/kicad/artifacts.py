@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import subprocess
 import subprocess as sp
 import tempfile
 from pathlib import Path
@@ -14,6 +15,30 @@ logger = logging.getLogger(__name__)
 
 def _export(cmd):
     return k(k.pcb(k.pcb.export(cmd))).exec()
+
+
+def githash_layout(layout: Path, out: Path) -> Path:
+    # Get current git hash
+    try:
+        git_hash = (
+            subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"], cwd=layout.parent
+            )
+            .decode("ascii")
+            .strip()
+        )
+    except subprocess.CalledProcessError:
+        logger.warning("Could not get git hash, using 'unknown'")
+        git_hash = "unknown"
+
+    # Read and substitute git hash
+    layout_text = layout.read_text()
+    layout_text = layout_text.replace("{{GITHASH}}", git_hash)
+
+    # Write modified layout to temp file
+    out.write_text(layout_text)
+
+    return out
 
 
 def export_step(pcb_file: Path, step_file: Path) -> None:
