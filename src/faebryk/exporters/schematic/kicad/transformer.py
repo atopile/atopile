@@ -212,7 +212,7 @@ class SchTransformer:
                 resolved_lib_dir = Path(
                     (lib.uri)
                     .replace("${KIPRJMOD}", str(lib_path.parent))
-                    .replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
+                    .replace("${KICAD9_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
                 )
                 for path in resolved_lib_dir.glob("*.kicad_sym"):
                     if path.stem not in self._symbol_files_index:
