@@ -1802,7 +1802,6 @@ class PCB_Transformer:
             property_values["Datasheet"] = c_props_t.get_datasheet()
 
         property_values["Reference"] = ref
-        property_values["Footprint"] = pcb_fp.name
 
         if value_t := component.try_get_trait(F.has_simple_value_representation):
             property_values["Value"] = value_t.get_value()
