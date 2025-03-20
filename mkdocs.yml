@@ -28,9 +28,6 @@ nav:
 - Development:
   - development.md
 - Packages: https://packages.atopile.io
-- Example Projects:
-  - spin.md
-  - swoop.md
 plugins:
 - search
 - mkdocstrings:

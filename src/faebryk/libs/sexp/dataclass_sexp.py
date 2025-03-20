@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import logging
 from dataclasses import Field, dataclass, fields, is_dataclass
 from enum import Enum, IntEnum, StrEnum
 from os import PathLike
 from pathlib import Path
 from types import UnionType
-from typing import Any, Callable, Iterator, Union, get_args, get_origin
+from typing import TYPE_CHECKING, Any, Callable, Iterator, Union, get_args, get_origin
 
 import sexpdata
 from dataclasses_json import CatchAll
@@ -13,7 +15,21 @@ from sexpdata import Symbol
 
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.sexp.util import prettify_sexp_string
-from faebryk.libs.util import cast_assert, duplicates, groupby, zip_non_locked
+from faebryk.libs.util import (
+    ConfigFlag,
+    cast_assert,
+    duplicates,
+    groupby,
+    zip_non_locked,
+)
+
+if TYPE_CHECKING:
+    from _typeshed import DataclassInstance
+
+SEXP_LOG = ConfigFlag(
+    "SEXP_LOG", default=False, descr="Enable sexp decode logging (very verbose)"
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -171,13 +187,13 @@ netlist_obj = str | Symbol | int | float | bool | list
 netlist_type = list[netlist_obj]
 
 
-def _decode[T](
+def _decode[T: DataclassInstance](
     sexp: netlist_type,
     t: type[T],
     stack: list[tuple[str, type]] | None = None,
     ignore_assertions: bool = False,
 ) -> T:
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"parse into: {t.__name__} {'-'*40}")
         logger.debug(f"sexp: {sexp}")
 
@@ -233,7 +249,7 @@ def _decode[T](
         # and positional_fields[i].name not in value_dict
     }
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"processing: {_prettify_stack(stack)}")
         logger.debug(f"key_fields: {list(key_fields.keys())}")
         logger.debug(
@@ -370,28 +386,30 @@ def _decode[T](
                 f" {sp.assert_value} but is {value_dict[f.name]}"
             )
 
-    # Unprocessed values should be None is there aren't any,
+    # Unprocessed values should be None if there aren't any,
     # so they don't get reproduced etc...
     if catch_all_fields and not unprocessed:
         value_dict[catch_all_fields[0].name] = None
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"value_dict: {value_dict}")
 
     try:
         out = t(**value_dict)
-        # set parent pointers for all dataclasses in the tree
-        for v in value_dict.values():
-            if isinstance(v, list):
-                vs = v
-            else:
-                vs = [v]
-            for v_ in vs:
-                if is_dataclass(v_):
-                    setattr(v_, "_parent", out)
-        return out
     except TypeError as e:
         raise TypeError(f"Failed to create {t} with {value_dict}") from e
+
+    # set parent pointers for all dataclasses in the tree
+    for v in value_dict.values():
+        if isinstance(v, list):
+            vs = v
+        else:
+            vs = [v]
+        for v_ in vs:
+            if is_dataclass(v_):
+                setattr(v_, "_parent", out)
+
+    return out
 
 
 def _convert2(val: Any) -> netlist_obj | None:
@@ -486,10 +504,10 @@ def _encode(t) -> netlist_type:
 
     if catch_all_field is not None:
         catch_all: dict[int, Any] = getattr(t, catch_all_field.name, {}) or {}
-        for i, v in catch_all.items():
-            sexp.insert(i + 1, v)
+        for i, v in sorted(catch_all.items(), key=lambda x: x[0]):
+            sexp.insert(i, v)
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"Dumping {type(t).__name__} {'-'*40}")
         logger.debug(f"Obj: {t}")
         logger.debug(f"Sexp: {sexp}")
@@ -497,7 +515,9 @@ def _encode(t) -> netlist_type:
     return sexp
 
 
-def loads[T](s: str | Path | list, t: type[T], ignore_assertions: bool = False) -> T:
+def loads[T: DataclassInstance](
+    s: str | Path | list, t: type[T], ignore_assertions: bool = False
+) -> T:
     text = s
     sexp = s
     if isinstance(s, Path):

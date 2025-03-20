@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import TYPE_CHECKING, Sequence
+from typing import Sequence
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -12,10 +12,8 @@ from atopile.parse_utils import (
     PygmentsLexerReconstructor,
     get_src_info_from_token,
 )
+from faebryk.core.node import NodeException
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
-
-if TYPE_CHECKING:
-    from faebryk.libs.picker.picker import PickError
 
 
 def _render_tokens(
@@ -142,13 +140,19 @@ class _BaseUserException(_BaseBaseUserException):
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
+        def _markdown(message: str) -> ConsoleRenderable:
+            if console.is_terminal:
+                return Markdown(message)
+            else:
+                return Text(message)
+
         renderables: list[ConsoleRenderable] = []
 
         if self.title:
             renderables += [Text(self.title, style="bold")]
 
         renderables += [
-            Markdown(self.message)
+            _markdown(self.message)
             if self.markdown
             else ReprHighlighter()(Text(self.message))
         ]
@@ -286,21 +290,16 @@ class UserAssertionError(UserException):
     """
 
 
+class UserContradictionException(UserException):
+    """
+    Raised when user-provided constraints contradict.
+    """
+
+
 class UserPickError(UserException):
     """
     Raised when there's an error in the picker.
     """
-
-    @classmethod
-    def from_pick_error(cls, ex: "PickError") -> "UserPickError":
-        from atopile.front_end import from_dsl
-
-        if origin_t := ex.module.try_get_trait(from_dsl):
-            origin = origin_t.src_ctx
-        else:
-            origin = None
-
-        return cls.from_ctx(origin, ex.message)
 
 
 class UserActionWithoutEffectError(UserException):
@@ -313,3 +312,42 @@ class UserAlreadyExistsError(UserException):
     """
     Raised when something already exists.
     """
+
+
+class UserNodeException(UserException):
+    """
+    Raised when there's an error with a node operation.
+    """
+
+    @classmethod
+    def from_node_exception(
+        cls,
+        node_ex: NodeException,
+        origin: ParserRuleContext,
+        traceback: Sequence[ParserRuleContext | None] | None,
+        *args,
+        **kwargs,
+    ) -> "UserNodeException":
+        return cls.from_ctx(
+            origin,
+            node_ex.message,
+            *args,
+            traceback=traceback,
+            **kwargs,
+        )
+
+
+class UserNoProjectException(UserException):
+    """
+    Raised when the project directory is not found.
+    """
+
+    def __init__(
+        self,
+        msg: str = (
+            "Could not find the project directory, are you within an ato project?"
+        ),
+        *args,
+        **kwargs,
+    ):
+        super().__init__(msg, *args, **kwargs)

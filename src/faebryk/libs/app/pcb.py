@@ -10,6 +10,7 @@ from pathlib import Path
 import psutil
 
 import faebryk.library._F as F
+from atopile.cli.logging import ALERT
 from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
@@ -21,7 +22,16 @@ from faebryk.libs.kicad.fileformats import (
     C_kicad_fp_lib_table_file,
     C_kicad_project_file,
 )
-from faebryk.libs.util import hash_string, not_none, once
+from faebryk.libs.util import (
+    cast_assert,
+    duplicates,
+    groupby,
+    hash_string,
+    md_list,
+    not_none,
+    once,
+    remove_venv_from_env,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +128,7 @@ def ensure_footprint_lib(
             lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
         ] + [lib]
 
-        logger.warning("pcbnew restart required (updated fp-lib-table)")
+        logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
 
     fptable.dumps(config.build.paths.fp_lib_table)
 
@@ -156,7 +166,11 @@ def open_pcb(pcb_path: os.PathLike):
             if process.info["cmdline"] and str(pcb_path) in process.info["cmdline"]:
                 raise RuntimeError(f"PCBnew is already running with {pcb_path}")
 
-    subprocess.Popen([str(pcbnew), str(pcb_path)], stderr=subprocess.DEVNULL)
+    subprocess.Popen(
+        [str(pcbnew), str(pcb_path)],
+        env=remove_venv_from_env(),
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
@@ -173,18 +187,47 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def load_net_names(graph: Graph) -> None:
+def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
 
+    net_names: dict[F.Net, str] = {
+        cast_assert(F.Net, net): pcb_net_t.get_net().name
+        for net, pcb_net_t in GraphFunctions(graph).nodes_with_trait(
+            PCB_Transformer.has_linked_kicad_net
+        )
+    }
+
+    if dups := duplicates(net_names.values(), lambda x: x):
+        counts_by_net = [f"{k} (x{len(v)})" for k, v in dups.items()]
+        with downgrade(UserResourceException, raise_anyway=raise_duplicates):
+            # TODO: origin information
+            raise UserResourceException(
+                f"Multiple nets are named the same:\n{md_list(counts_by_net)}"
+            )
+
+    for net, name in net_names.items():
+        net.add(F.has_overriden_name_defined(name))
+
+
+def check_net_names(graph: Graph):
+    """Raise an error if any nets have the same name."""
     gf = GraphFunctions(graph)
-    for net, pcb_net_t in gf.nodes_with_trait(PCB_Transformer.has_linked_kicad_net):
-        pcb_net = pcb_net_t.get_net()
-        net.add(F.has_overriden_name_defined(pcb_net.name))
+    nets = gf.nodes_of_type(F.Net)
+
+    net_name_collisions = {
+        k: v
+        for k, v in groupby(
+            nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
+        ).items()
+        if len(v) > 1
+    }
+    if net_name_collisions:
+        raise UserResourceException(f"Net name collision: {net_name_collisions}")
 
 
-def create_footprint_library(app: Module) -> None:
+def create_footprint_library(app: Module, no_fp_lib: bool = False) -> None:
     """
     Ensure all KicadFootprints have a kicad identifier (via the F.has_kicad_footprint
     trait).
@@ -194,6 +237,9 @@ def create_footprint_library(app: Module) -> None:
 
     Check all of the KicadFootprints have a manual identifier. Raise an error if they
     don't.
+
+    Args:
+        no_fp_lib: If True, don't create a footprint library (only useful for testing)
     """
     from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
 
@@ -204,7 +250,8 @@ def create_footprint_library(app: Module) -> None:
     # Create the library it doesn't exist
     atopile_fp_dir = config.project.paths.get_footprint_lib("atopile")
     atopile_fp_dir.mkdir(parents=True, exist_ok=True)
-    ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
+    if not no_fp_lib:
+        ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
 
     # Cache the mapping from path to identifier and the path to the new file
     path_map: dict[Path, tuple[str, Path]] = {}
@@ -231,7 +278,7 @@ def create_footprint_library(app: Module) -> None:
 
                 else:
                     try:
-                        path = path.relative_to(config.project.paths.root)
+                        prj_rel_path = path.relative_to(config.project.paths.root)
 
                     # Raised when the file isn't relative to the project directory
                     except ValueError as ex:
@@ -244,16 +291,17 @@ def create_footprint_library(app: Module) -> None:
 
                     # Copy the footprint to the new library with a
                     # pseudo-guaranteed unique name
-                    if path in path_map:
-                        id_, new_path = path_map[path]
+                    if prj_rel_path in path_map:
+                        id_, new_path = path_map[prj_rel_path]
                     else:
-                        mini_hash = hash_string(str(path))[:6]
-                        id_ = f"{LIB_NAME}:{path.stem}-{mini_hash}"
+                        mini_hash = hash_string(str(prj_rel_path))[:6]
+                        id_ = f"{LIB_NAME}:{prj_rel_path.stem}-{mini_hash}"
                         new_path = (
-                            atopile_fp_dir / f"{path.stem}-{mini_hash}{path.suffix}"
+                            atopile_fp_dir
+                            / f"{prj_rel_path.stem}-{mini_hash}{prj_rel_path.suffix}"
                         )
                         shutil.copy(path, new_path)
-                        path_map[path] = (id_, new_path)
+                        path_map[prj_rel_path] = (id_, new_path)
 
                 fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
                 # Attach the newly minted identifier

@@ -16,8 +16,7 @@ if TYPE_CHECKING:
 class KicadFootprint(F.Footprint):
     class has_file(F.Footprint.TraitT.decless()):
         """
-        Direct reference to a KiCAD footprint file, which will
-        later
+        Direct reference to a KiCAD footprint file
         """
 
         def __init__(self, file: PathLike):
@@ -27,6 +26,11 @@ class KicadFootprint(F.Footprint):
     class has_kicad_identifier(F.Footprint.TraitT.decless()):
         def __init__(self, kicad_identifier: str):
             super().__init__()
+            if ":" not in kicad_identifier:
+                raise ValueError(
+                    'kicad_identifier must be in the format "library:footprint".'
+                    " If not, it'll cause downstream problems"
+                )
             self.kicad_identifier = kicad_identifier
 
         def on_obj_set(self):

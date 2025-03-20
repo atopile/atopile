@@ -551,12 +551,16 @@ class C_fp_text:
         reference = auto()
         value = auto()
 
+    class C_fp_text_effects(C_effects):
+        hide: Optional[bool] = None
+
     type: E_type = field(**sexp_field(positional=True))
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
     layer: C_text_layer
+    hide: Optional[bool] = None
     uuid: UUID = field(default_factory=gen_uuid)
-    effects: C_effects
+    effects: C_fp_text_effects
     unlocked: bool = False
 
 
@@ -933,9 +937,8 @@ class C_kicad_pcb_file(SEXP_File):
             @dataclass(kw_only=True)
             class C_filled_polygon:
                 layer: str
-                island: Optional[bool] = field(
-                    **sexp_field(positional=True), default=None
-                )
+                # FIXME: decode (island), a bracketed positional
+                # We're currently relying on the CatchAll to re-serialise it
                 pts: C_pts
                 unknown: CatchAll = None
 

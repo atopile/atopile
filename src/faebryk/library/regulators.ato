@@ -1,0 +1,33 @@
+import Regulator, ResistorVoltageDivider
+
+module AdjustableRegulator from Regulator:
+    # using vanilla voltage divider without equations
+    feedback_div = new ResistorVoltageDivider
+    v_ref: voltage
+    i_q: current
+    r_total: resistance
+    v_in: voltage
+    v_out: voltage
+
+    assert feedback_div.v_in is v_out
+    assert feedback_div.v_out is v_ref
+    assert feedback_div.max_current is i_q
+
+module Buck from AdjustableRegulator:
+    pass
+
+
+module Boost from AdjustableRegulator:
+    pass
+
+
+module FixedLDO from Regulator:
+    pass
+
+
+module AdjustableLDO from AdjustableRegulator:
+    pass
+
+
+module Flyback from AdjustableRegulator:
+    pass

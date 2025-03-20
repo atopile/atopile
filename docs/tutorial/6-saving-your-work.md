@@ -46,8 +46,23 @@ If you're right at the start of your project, you might want to push straight to
 They'll be up on `main`
 
 
-### Create a branch and PR
+### Create a Branch and Pull Request
 
-As described in the typical workflow, you create a branch and PR for each change you're making.
+For a more controlled development process, especially as your project grows, it's best practice to work on feature branches and create pull requests. Here are some recommendations:
 
-Once you've pushed your changes to Github, create a PR with the link
+- Use descriptive branch names, like `feature/add-bluetooth-support` or `bugfix/fix-routing-error`.
+- Keep your commits focused and well-documented. Write clear commit messages that explain the "why" behind a change, not just the "what".
+- When you open a pull request, include a detailed description of the change, the rationale behind it, and steps for testing.
+- If your repository is configured with [`Continuous Integration`](#continuous-integration), ensure that all tests pass before merging your PR.
+- Request code reviews from your team. Peer reviews help catch potential issues early and improve code quality.
+
+### Continuous Integration (CI)
+
+atopile's project template include basic CI workflows to validate your design, build manufacturing data you can order with and run testing.
+
+It builds in CI as a `frozen` project, meaning it'll try its hardest to rebuild your design exactly as it stands, with the exact same parts and layout. When it can't - whether because your source code has changes and the components no longer satisfy the design, or because the layout is out of date - it'll fail the build.
+
+Additionally, CI is run to build all targets, which means it will also produce the gerber files to order your PCBs.
+
+!!! tip "Git and CI Best Practice"
+    Consistent use of pull requests and CI pipelines not only improves code quality but also fosters better team collaboration. Keep your `main` branch in a deployable state by merging only after successful CI runs.

@@ -35,10 +35,11 @@ from atopile.errors import (
     UserBadParameterError,
     UserException,
     UserFileNotFoundError,
+    UserNoProjectException,
     UserNotImplementedError,
 )
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
-from faebryk.libs.exceptions import iter_through_errors
+from faebryk.libs.exceptions import UserResourceException, iter_through_errors
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -145,6 +146,17 @@ class GlobalConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data if self.yaml_data else {}
 
 
+def _find_project_config_file(start: Path) -> Path | None:
+    """Search parent directories, up to the root, for a project config file."""
+    path = start
+    while not (path / PROJECT_CONFIG_FILENAME).exists():
+        path = path.parent
+        if path == path.parent:
+            return None
+
+    return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+
+
 class ProjectConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
@@ -154,13 +166,7 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
         if _project_dir:
             return _project_dir / PROJECT_CONFIG_FILENAME
 
-        path = Path.cwd()
-        while not (path / PROJECT_CONFIG_FILENAME).exists():
-            path = path.parent
-            if path == Path("/"):
-                return None
-
-        return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+        return _find_project_config_file(Path.cwd())
 
     def get_data(self) -> dict[str, Any]:
         return self.yaml_data or {}
@@ -186,6 +192,9 @@ class ProjectPaths(BaseConfigModel):
     build: Path
     """Build artifact output directory"""
 
+    logs: Path
+    """Build logs directory"""
+
     manifest: Path
     """Build manifest file"""
 
@@ -201,6 +210,7 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("layout", data["root"] / "elec" / "layout")
         data.setdefault("footprints", data["root"] / "elec" / "footprints")
         data["build"] = Path(data.get("build", data["root"] / "build"))
+        data.setdefault("logs", data["build"] / "logs")
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("component_lib", data["build"] / "kicad" / "libs")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
@@ -251,16 +261,17 @@ class BuildTargetPaths(BaseConfigModel):
 
     def __init__(self, name: str, project_paths: ProjectPaths, **data: Any):
         if layout_data := data.get("layout"):
-            data["layout"] = BuildTargetPaths.ensure_layout(Path(layout_data))
+            data["layout"] = BuildTargetPaths.find_layout(Path(layout_data))
         else:
-            data["layout"] = BuildTargetPaths.ensure_layout(
+            data["layout"] = BuildTargetPaths.find_layout(
                 project_paths.root / project_paths.layout / name
             )
 
         if output_base_data := data.get("output_base"):
             data["output_base"] = Path(output_base_data)
         else:
-            data["output_base"] = project_paths.build / name
+            data["output_base"] = project_paths.build / "builds" / name / name
+            data["output_base"].parent.mkdir(parents=True, exist_ok=True)
 
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
@@ -269,12 +280,11 @@ class BuildTargetPaths(BaseConfigModel):
         super().__init__(**data)
 
     @classmethod
-    def ensure_layout(cls, layout_base: Path) -> Path:
-        """Return the layout associated with a build."""
+    def find_layout(cls, layout_base: Path) -> Path:
+        """Find the layout associated with a build."""
 
         if layout_base.with_suffix(".kicad_pcb").exists():
             return layout_base.with_suffix(".kicad_pcb").resolve().absolute()
-
         elif layout_base.is_dir():
             layout_candidates = list(
                 filter(
@@ -284,18 +294,20 @@ class BuildTargetPaths(BaseConfigModel):
 
             if len(layout_candidates) == 1:
                 return layout_candidates[0].resolve().absolute()
-
             else:
                 raise UserException(
                     "Layout directories must contain only 1 layout,"
                     f" but {len(layout_candidates)} found in {layout_base}"
                 )
 
-        else:
-            layout_path = layout_base / f"{layout_base.name}.kicad_pcb"
+        # default location, to create later
+        return layout_base.resolve().absolute() / f"{layout_base.name}.kicad_pcb"
 
-            logger.warning("Creating new layout at %s", layout_path)
-            layout_path.parent.mkdir(parents=True, exist_ok=True)
+    def ensure_layout(self):
+        """Return the layout associated with a build."""
+        if not self.layout.exists():
+            logger.info("Creating new layout at %s", self.layout)
+            self.layout.parent.mkdir(parents=True, exist_ok=True)
 
             # delayed import to improve startup time
             from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
@@ -303,9 +315,9 @@ class BuildTargetPaths(BaseConfigModel):
             C_kicad_pcb_file.skeleton(
                 generator=DISTRIBUTION_NAME,
                 generator_version=str(get_installed_atopile_version()),
-            ).dumps(layout_path)
-
-            return layout_path
+            ).dumps(self.layout)
+        elif not self.layout.is_file():
+            raise UserResourceException(f"Layout is not a file: {self.layout}")
 
     @classmethod
     def match_user_layout(cls, path: Path) -> bool:
@@ -323,7 +335,7 @@ class BuildTargetPaths(BaseConfigModel):
         return True
 
 
-class BuildTargetConfig(BaseConfigModel):
+class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     _project_paths: ProjectPaths
 
     name: str
@@ -347,8 +359,9 @@ class BuildTargetConfig(BaseConfigModel):
 
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
-    keep_picked_parts: bool = Field(default=False)
-    keep_net_names: bool = Field(default=False)
+    keep_designators: bool | None = Field(default=True)
+    keep_picked_parts: bool | None = Field(default=None)
+    keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
     paths: BuildTargetPaths
 
@@ -370,6 +383,31 @@ class BuildTargetConfig(BaseConfigModel):
             case _:
                 raise ValueError(f"Invalid build paths: {data.get('paths')}")
         return data
+
+    def _set_frozen(self, frozen: bool):
+        if self.keep_designators is None:
+            self.keep_designators = frozen
+        if self.keep_picked_parts is None:
+            self.keep_picked_parts = frozen
+        if self.keep_net_names is None:
+            self.keep_net_names = frozen
+        self.frozen = frozen
+
+    @model_validator(mode="after")
+    def validate_frozen_after(self) -> Self:
+        if self.frozen:
+            if not self.keep_designators:
+                raise ValueError(
+                    "`keep_designators` must be true when `frozen` is true"
+                )
+            if not self.keep_picked_parts:
+                raise ValueError(
+                    "`keep_picked_parts` must be true when `frozen` is true"
+                )
+            if not self.keep_net_names:
+                raise ValueError("`keep_net_names` must be true when `frozen` is true")
+
+        return self
 
     @property
     def build_type(self) -> BuildType:
@@ -403,12 +441,25 @@ class BuildTargetConfig(BaseConfigModel):
         address = AddrStr(self.address)
         return address.entry_section
 
+    def ensure(self):
+        """Ensure this build config is ready to be used"""
+        self.paths.ensure_layout()
+
+
+class Source(BaseConfigModel):
+    local: Path | None = None
+
+    @field_serializer("local")
+    def serialize_local(self, path: Path | None, _info: Any) -> str | None:
+        return str(path) if path else None
+
 
 class Dependency(BaseConfigModel):
     name: str
     version_spec: str | None = None
     link_broken: bool = False
     path: Path | None = None
+    source: Source | None = None
 
     project_config: "ProjectConfig | None" = Field(
         default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
@@ -440,7 +491,7 @@ class ServicesConfig(BaseConfigModel):
         """Components URL"""
 
     class Packages(BaseConfigModel):
-        url: str = Field(default="https://get-package-atsuhzfd5a-uc.a.run.app")
+        url: str = Field(default="https://packages.atopileapi.com")
         """Packages URL"""
 
     @field_validator("components", mode="before")
@@ -484,7 +535,7 @@ class ProjectConfig(BaseConfigModel):
     """A map of all the build targets (/ "builds") in this project."""
 
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    pcbnew_auto: bool = Field(default=False)
+    open_layout_on_build: bool | None = None
     """Automatically open pcbnew when applying netlist"""
 
     @classmethod
@@ -583,10 +634,6 @@ class ProjectConfig(BaseConfigModel):
             },
         )
 
-    def model_post_init(self, __context: Any) -> None:
-        if self.paths is not None:
-            self.paths.ensure()
-
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     """
@@ -630,6 +677,7 @@ _current_build_cfg: ContextVar[BuildTargetConfig | None] = ContextVar(
 @contextmanager
 def _build_context(config: "Config", build_name: str):
     cfg = config.project.builds[build_name]
+    cfg.ensure()
     token = _current_build_cfg.set(cfg)
     try:
         yield
@@ -642,12 +690,14 @@ class Config:
     _entry: str | None
     _selected_builds: list[str] | None
     _project_dir: Path | None
+    interactive: bool
 
     def __init__(self) -> None:
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
         self._entry = None
         self._selected_builds = None
+        self.interactive = True
 
     def __repr__(self) -> str:
         return self._project.__repr__()
@@ -854,16 +904,19 @@ class Config:
         option: Iterable[str] = (),
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
+        frozen: bool | None = None,
+        **kwargs: Any,
     ) -> None:
         entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
 
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)
         else:
-            if entry_arg_file_path.is_dir():
-                self.project_dir = entry_arg_file_path
-            elif entry_arg_file_path.is_file():
-                self.project_dir = entry_arg_file_path.parent
+            if config_file_path := _find_project_config_file(entry_arg_file_path):
+                self.project_dir = config_file_path.parent
+            elif entry is None:
+                raise UserNoProjectException()
+
             else:
                 raise UserBadParameterError(
                     f"Specified entry path is not a file or directory: "
@@ -889,19 +942,53 @@ class Config:
             entry, entry_arg_file_path
         )
 
+        if self.project.paths is not None:
+            self.project.paths.ensure()
+
         if selected_builds:
             self.selected_builds = list(selected_builds)
 
         for build_name in self.selected_builds:
+            build_cfg = self.project.builds[build_name]
+
             if build_name not in self.project.builds:
                 raise UserBadParameterError(
                     f"Build `{build_name}` not found in project config"
                 )
 
             if entry_addr_override is not None:
-                self.project.builds[build_name].address = entry_addr_override
+                build_cfg.address = entry_addr_override
             if target:
-                self.project.builds[build_name].targets = list(target)
+                build_cfg.targets = list(target)
+
+            # Attach CLI options passed via kwargs
+            for key, value in kwargs.items():
+                if value is not None:
+                    setattr(build_cfg, key, value)
+
+            if frozen is not None:
+                try:
+                    build_cfg._set_frozen(frozen)
+                except ValidationError as e:
+                    # TODO: better error message
+                    raise UserBadParameterError(
+                        f"Invalid value for `frozen`: {e}",
+                        title="Bad 'frozen' parameter",
+                    )
+
+    def should_open_layout_on_build(self) -> bool:
+        """Returns whether atopile should open the layout after building"""
+        # If the project config has an explicit setting, use that
+        if self.project is not None and self.project.open_layout_on_build is not None:
+            return self.project.open_layout_on_build
+
+        # Otherwise, default to opening the layout if we're only building a
+        # single target and we're running interactively
+        return (
+            (self.project is None or self.project.open_layout_on_build is None)
+            and len(list(self.selected_builds)) == 1
+            and self.interactive
+        )
 
 
 _project_dir: Path | None = None

@@ -19,7 +19,16 @@ class Resistor(Module):
         F.has_designator_prefix.Prefix.R
     )
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Resistor)
+    @L.rt_field
+    def pickable(self) -> F.is_pickable_by_type:
+        return F.is_pickable_by_type(
+            F.is_pickable_by_type.Type.Resistor,
+            {
+                "resistance": self.resistance,
+                "max_power": self.max_power,
+                "max_voltage": self.max_voltage,
+            },
+        )
 
     @L.rt_field
     def can_bridge(self):
@@ -60,3 +69,14 @@ class Resistor(Module):
         # self.add(
         #    F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))
         # )
+
+    # TODO: remove @https://github.com/atopile/atopile/issues/727
+    @property
+    def p1(self) -> F.Electrical:
+        """One side of the resistor."""
+        return self.unnamed[0]
+
+    @property
+    def p2(self) -> F.Electrical:
+        """The other side of the resistor."""
+        return self.unnamed[1]

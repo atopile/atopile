@@ -9,6 +9,7 @@ from collections import defaultdict
 from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
+from math import floor
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
 
@@ -52,9 +53,11 @@ from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
+    Tree,
     cast_assert,
     dataclass_as_kwargs,
     find,
+    groupby,
     hash_string,
     yield_missing,
 )
@@ -345,11 +348,12 @@ class PCB_Transformer:
 
         known_nets: dict[F.Net, Net] = {}
         pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
+        mapped_net_names = set()
 
         for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
             total_pads = 0
             # map from net name to the number of pads we've
-            # linked corroborating it's accuracy
+            # linked corroborating its accuracy
             net_candidates: Mapping[str, int] = defaultdict(int)
 
             for ato_pad, ato_fp in net.get_connected_pads().items():
@@ -371,11 +375,19 @@ class PCB_Transformer:
                         pcb_pad.net.name if pcb_pad.net is not None else None
                         for pcb_pad in pcb_pads
                     )
+                    conflicting = net_names & mapped_net_names
+                    net_names -= mapped_net_names
+
                     if (
                         len(net_names) == 1
                         and (net_name := first(net_names)) is not None
                     ):
                         net_candidates[net_name] += 1
+                    elif len(net_names) == 0 and conflicting:
+                        logger.warning(
+                            "Net name has already been used: %s",
+                            ", ".join(f"`{n}`" for n in conflicting),
+                        )
 
                 total_pads += 1
 
@@ -386,6 +398,7 @@ class PCB_Transformer:
                     and net_candidates[best_net_name] > total_pads * match_threshold
                 ):
                     known_nets[net] = pcb_nets_by_name[best_net_name]
+                    mapped_net_names.add(best_net_name)
 
         return known_nets
 
@@ -1303,6 +1316,15 @@ class PCB_Transformer:
         LEFT = auto()
         RIGHT = auto()
 
+    def hide_all_designators(
+        self,
+    ) -> None:
+        for _, fp in self.get_all_footprints():
+            fp.propertys["Reference"].hide = True
+
+            for txt in [txt for txt in fp.fp_texts if txt.text == "${REFERENCE}"]:
+                txt.effects.hide = True
+
     def set_designator_position(
         self,
         offset: float,
@@ -1827,59 +1849,84 @@ class PCB_Transformer:
         # Each new component in the cluster is inserted with one vertical spacing
         # Each new cluster is inserted with one horizontal spacing
 
-        HORIZONTAL_SPACING = 10
-        VERTICAL_SPACING = -5
+        DEFAULT_HORIZONTAL_SPACING = 10
+        DEFAULT_VERTICAL_SPACING = 10
+        CANVAS_EXTENT = 2147  # KiCad canvas goes to +/- approx. 2147mm in X and Y
+
+        def _incremented_point(point: C_xyr, dx: int = 0, dy: int = 0) -> C_xyr:
+            return C_xyr(x=point.x + dx, y=point.y + dy, r=point.r)
+
+        def _iter_modules(tree: Tree[Module]):
+            # yields nodes with footprints in a sensible order
+            grouped = groupby(tree, lambda c: c.has_trait(F.has_footprint))
+            yield from grouped[True]
+            for child in grouped[False]:
+                yield from _iter_modules(tree[child])
+
+        def _get_cluster(component: Module) -> Node | None:
+            if (parent := component.get_parent()) is not None:
+                return cast_assert(Node, parent[0])
+            return None
+
+        components = _iter_modules(self.app.get_tree(types=Module))
+        clusters = groupby(components, _get_cluster)
+
+        if clusters:
+            # scaled to fit all clusters inside the canvas boundary
+            horizontal_spacing = min(
+                floor(CANVAS_EXTENT / len(clusters)), DEFAULT_HORIZONTAL_SPACING
+            )
+            vertical_spacing = min(
+                floor(CANVAS_EXTENT / max(len(clusters[c]) for c in clusters)),
+                DEFAULT_VERTICAL_SPACING,
+            )
+        else:
+            horizontal_spacing = DEFAULT_HORIZONTAL_SPACING
+            vertical_spacing = DEFAULT_VERTICAL_SPACING
 
         cluster_point = copy.deepcopy(self.default_component_insert_point)
+        insert_point = copy.deepcopy(self.default_component_insert_point)
+        for cluster in clusters:
+            insert_point = copy.deepcopy(cluster_point)
+            cluster_has_footprints = False
 
-        def _new_cluster() -> C_xyr:
-            next_point = copy.deepcopy(cluster_point)
-            cluster_point.x += HORIZONTAL_SPACING
-            return next_point
+            for component in clusters[cluster]:
+                # If this component isn't the most special in it's chain of
+                # specialization then skip it. We should only pick components that are
+                # the most special.
+                if component is not component.get_most_special():
+                    continue
 
-        cluster_points = defaultdict(_new_cluster)
-        cluster_points[None]  # Trigger top-level components, so they're at the top
+                pcb_fp, new_fp = self._update_footprint_from_node(
+                    component, fp_lib_path, logger, insert_point
+                )
+                if new_fp:
+                    insert_point = _incremented_point(
+                        insert_point, dy=-vertical_spacing
+                    )
+                    cluster_has_footprints = True
 
-        def _increment_cluster_point(key):
-            cluster_points[key].y += VERTICAL_SPACING
+                processed_fps.add(pcb_fp)
 
-        for component, _ in gf.nodes_with_trait(F.has_footprint):
-            # FIXME: it'd be nice to allow query composition so
-            # we could ask for all the modules with footprints
-            assert isinstance(component, Module)
-
-            # If this component isn't the most special in it's chain of specialization
-            # then skip it. We should only pick components that are the most special.
-            if component is not component.get_most_special():
-                continue
-
-            cluster_key = component.get_parent()
-            insert_point = cluster_points[cluster_key]
-            pcb_fp, new_fp = self._update_footprint_from_node(
-                component, fp_lib_path, logger, insert_point
-            )
-            # If we used that point, increment the cluster point
-            if new_fp:
-                _increment_cluster_point(cluster_key)
-
-            processed_fps.add(pcb_fp)
+            if cluster_has_footprints:
+                cluster_point = _incremented_point(cluster_point, dx=horizontal_spacing)
 
         ## Remove footprints that aren't present in the design
         # TODO: figure out how this should work with some
         # concept of a --tidy flag or the likes
         # Should this remove unmarked footprints?
-        for pcb_fp in self.pcb.footprints:
-            if pcb_fp not in processed_fps:
-                if ref_prop := pcb_fp.propertys.get("Reference"):
-                    removed_fp_ref = ref_prop.value
-                else:
-                    # This should practically never occur
-                    removed_fp_ref = "<no reference>"
-                logger.info(
-                    f"Removing outdated component with Reference `{removed_fp_ref}`",
-                    extra={"markdown": True},
-                )
-                self.remove_footprint(pcb_fp)
+
+        for pcb_fp in FuncSet[Footprint](self.pcb.footprints) - processed_fps:
+            if ref_prop := pcb_fp.propertys.get("Reference"):
+                removed_fp_ref = ref_prop.value
+            else:
+                # This should practically never occur
+                removed_fp_ref = "<no reference>"
+            logger.info(
+                f"Removing outdated component with Reference `{removed_fp_ref}`",
+                extra={"markdown": True},
+            )
+            self.remove_footprint(pcb_fp)
 
         # Update nets
         # All nets MUST have a name by this point
@@ -1929,16 +1976,15 @@ class PCB_Transformer:
             processed_nets.add(pcb_net)
 
         ## Remove nets that aren't present in the design
-        for pcb_net in self.pcb.nets:
+        for pcb_net in FuncSet[Net](self.pcb.nets) - processed_nets:
             # Net number == 0 and name == "" are the default values
             # They represent unconnected to nets, so skip them
             if pcb_net.number == 0:
                 assert pcb_net.name == ""
                 continue
 
-            if pcb_net not in processed_nets:
-                logger.info(
-                    f"Removing net `{pcb_net.name}`",
-                    extra={"markdown": True},
-                )
-                self.remove_net(pcb_net)
+            logger.info(
+                f"Removing net `{pcb_net.name}`",
+                extra={"markdown": True},
+            )
+            self.remove_net(pcb_net)

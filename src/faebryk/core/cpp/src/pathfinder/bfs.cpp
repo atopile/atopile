@@ -53,25 +53,17 @@ BFSPath::BFSPath(const BFSPath &other)
 }
 
 BFSPath::BFSPath(const BFSPath &other, /*const*/ GI_ref_weak new_head)
-  : Path(other)
+  : Path(other.get_path(), new_head)
   , path_data(other.path_data)
   , confidence(other.confidence)
   , filtered(other.filtered)
   , stop(other.stop) {
-    path.push_back(new_head);
     assert(!other.filtered);
 }
 
-BFSPath::BFSPath(BFSPath &&other)
-  : Path(std::move(other))
-  , path_data(std::move(other.path_data))
-  , confidence(other.confidence)
-  , filtered(other.filtered)
-  , stop(other.stop) {
-}
+std::shared_ptr<BFSPath> BFSPath::operator+(/*const*/ GI_ref_weak gif) {
 
-BFSPath BFSPath::operator+(/*const*/ GI_ref_weak gif) {
-    return BFSPath(*this, gif);
+    return std::make_shared<BFSPath>(*this, gif);
 }
 
 PathData &BFSPath::get_path_data_mut() {
@@ -109,47 +101,69 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
     auto node_count = root->get_graph()->node_count();
     std::vector<bool> visited(node_count, false);
     std::vector<bool> visited_weak(node_count, false);
-    std::deque<BFSPath> open_path_queue;
+    std::deque<std::shared_ptr<BFSPath>> open_path_queue;
+    std::deque<std::shared_ptr<BFSPath>> hibernated_paths;
 
-    auto handle_path = [&](BFSPath path) {
+    auto handle_path = [&](std::shared_ptr<BFSPath> path) {
         pc.pause();
         pc_filter.resume();
-        visitor(path);
+        visitor(*path);
         pc_filter.pause();
         pc.resume();
 
-        if (path.stop) {
+        if (path->stop) {
             open_path_queue.clear();
             return;
         }
 
-        if (path.filtered) {
+        if (path->wake_signal) {
+            for (auto it = hibernated_paths.begin(); it != hibernated_paths.end();) {
+                if (it->get()->filtered) {
+                    hibernated_paths.erase(it);
+                } else if (!it->get()->hibernated) {
+                    open_path_queue.push_back(*it);
+                    it = hibernated_paths.erase(it);
+                } else {
+                    ++it;
+                }
+            }
+        }
+
+        if (path->filtered) {
             return;
         }
 
         pc_set_insert.resume();
-        visited_weak[path.last()->v_i] = true;
+        visited_weak[path->last()->v_i] = true;
 
-        if (path.strong()) {
-            visited[path.last()->v_i] = true;
+        if (path->strong_signal) {
+            for (auto &v : path->get_path()) {
+                visited[v->v_i] = true;
+            }
+        } else if (path->strong()) {
+            visited[path->last()->v_i] = true;
         }
         pc_set_insert.pause();
 
         pc_deque_insert.resume();
-        open_path_queue.push_back(std::move(path));
+        if (path->hibernated) {
+            hibernated_paths.push_back(path);
+        } else {
+            open_path_queue.push_back(path);
+        }
         pc_deque_insert.pause();
     };
 
     pc_setup.pause();
-    handle_path(std::move(BFSPath(root)));
+    handle_path(std::make_shared<BFSPath>(root));
 
     pc_search.resume();
     while (!open_path_queue.empty()) {
-        auto path = std::move(open_path_queue.front());
+        auto path = open_path_queue.front();
         open_path_queue.pop_front();
 
         pc_edges.resume();
-        auto edges = path.last()->get_gif_edges();
+        auto edges = path->last()->get_gif_edges();
         pc_edges.pause();
         for (auto &neighbour : edges) {
             pc_check_visited.resume();
@@ -157,17 +171,17 @@ void bfs_visit(/*const*/ GI_ref_weak root, std::function<void(BFSPath &)> visito
                 pc_check_visited.pause();
                 continue;
             }
-            if (visited_weak[neighbour->v_i] && path.contains(neighbour)) {
+            if (visited_weak[neighbour->v_i] && path->contains(neighbour)) {
                 pc_check_visited.pause();
                 continue;
             }
             pc_check_visited.pause();
 
             pc_new_path.resume();
-            auto new_path = path + neighbour;
+            auto new_path = *path + neighbour;
             pc_new_path.pause();
             pc_search.pause();
-            handle_path(std::move(new_path));
+            handle_path(new_path);
             pc_search.resume();
         }
     }

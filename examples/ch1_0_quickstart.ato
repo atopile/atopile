@@ -1,5 +1,5 @@
-from "generics/resistors.ato" import Resistor
+import Resistor
 
 module App:
-    r1 = new Resistor           # Create a new resistor
-    r1.value = 100ohm +/- 10%   # Set the resistor value
+    r1 = new Resistor                # Create a new resistor
+    r1.resistance = 100ohm +/- 10%   # Set the resistor value

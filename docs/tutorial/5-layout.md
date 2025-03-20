@@ -45,8 +45,8 @@ To reuse a layout from a module:
 - select the group you want to sync, and hit the "Pull" (Down arrow) button to pull the layout from the module's KiCAD layout file
 
 <video autoplay loop muted playsinline>
-    <source src="../assets/5-pcb-layout-sync.mp4" type="video/mp4">
-    <img src="../assets/5-pcb-layout-sync.gif" alt="Animated fallback">
+    <source src="/tutorial/assets/5-pcb-layout-sync.mp4" type="video/mp4">
+    <img src="/tutorial/assets/5-pcb-layout-sync.gif" alt="Animated fallback">
 </video>
 
 !!! info "Under the hood :wrench:"

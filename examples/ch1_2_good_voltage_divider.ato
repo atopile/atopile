@@ -1,33 +1,57 @@
-from "generics/interfaces.ato" import Power
-from "generics/resistors.ato" import Resistor
+import Resistor, ElectricPower, ElectricSignal
 
 module VoltageDivider:
     """
-    A simple voltage divider
+    A voltage divider using two resistors.
 
-    Connect to the in and out interfaces
+    Connect to the `power` and `output` interfaces
     Configure via:
-    - r_top.voltage
-    - r_bottom.voltage
-    - max_i_q
+    - `power.voltage`
+    - `output.reference.voltage`
+    - `max_current`
     """
 
-    in = new Power
-    out = new Power
-    max_i_q: current
+    # External interfaces
+    power = new ElectricPower
+    output = new ElectricSignal
 
-    r_top = new Resistor
+    # Components
     r_bottom = new Resistor
+    r_top = new Resistor
 
-    in.vcc ~ r_top.p1; r_top.p2 ~ out.vcc; out.vcc ~ r_bottom.p1; r_bottom.p2 ~ in.gnd
-    in.gnd ~ out.gnd
+    # Variables
+    v_in: voltage
+    v_out: voltage
+    max_current: current
+    total_resistance: resistance
+    ratio: dimensionless
+    r_total: resistance
 
-    assert out.voltage within in.voltage * r_bottom.value / (r_top.value + r_bottom.value)
-    assert in.voltage > out.voltage
-    assert in.current * r_bottom.value / (r_top.value + r_bottom.value) within max_i_q
+    # Connections
+    power.hv ~ r_top.p1; r_top.p2 ~ output.line
+    output.line ~ r_bottom.p1; r_bottom.p2 ~ power.lv
+
+    # Link interface voltages
+    assert v_out is output.reference.voltage
+    assert v_in is power.voltage
+
+    # Equations - rearranged a few ways to simplify for the solver
+    assert r_top.resistance is (v_in / max_current) - r_bottom.resistance
+    assert r_bottom.resistance is (v_in / max_current) - r_top.resistance
+    assert r_top.resistance is (v_in - v_out) / max_current
+    assert r_bottom.resistance is v_out / max_current
+    assert r_bottom.resistance is r_total * ratio
+    assert r_top.resistance is r_total * (1 - ratio)
+
+    # Calculate outputs
+    assert r_total is r_top.resistance + r_bottom.resistance
+    assert v_out is v_in * r_bottom.resistance / r_total
+    assert v_out is v_in * ratio
+    assert max_current is v_in / r_total
+    assert ratio is r_bottom.resistance / r_total
 
 module App:
     my_vdiv = new VoltageDivider
-    my_vdiv.in.voltage = 10V +/- 10%
-    my_vdiv.out.voltage = 3.3V +/- 10%
-    my_vdiv.max_i_q = 10uA to 100uA
+    assert my_vdiv.power.voltage is 10V +/- 1%
+    assert my_vdiv.output.reference.voltage within 3.3V +/- 10%
+    assert my_vdiv.max_current within 10uA to 100uA

@@ -5,9 +5,12 @@
 #pragma once
 
 #include <cxxabi.h>
+#include <functional>
 #include <memory>
 #include <sstream>
 #include <string>
+#include <unordered_map>
+#include <vector>
 
 #if GLOBAL_PRINTF_DEBUG
 #else
@@ -53,4 +56,13 @@ inline std::string formatted_ptr(void *ptr) {
 //    return ss.str();
 //}
 
+template <typename T, typename U>
+inline std::unordered_map<U, std::vector<T>> groupby(const std::vector<T> &vec,
+                                                     std::function<U(T)> f) {
+    std::unordered_map<U, std::vector<T>> out;
+    for (auto &t : vec) {
+        out[f(t)].push_back(t);
+    }
+    return out;
+}
 } // namespace util

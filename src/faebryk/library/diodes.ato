@@ -1,0 +1,30 @@
+import Diode, ElectricPower
+
+from "interfaces.ato" import PowerAC
+
+
+module PowerDiodeOr:
+    """
+    A diode or gate that combines two power rails, only dropping the voltage drop of the diode
+    """
+    diode = new Diode
+    power_in1 = new ElectricPower
+    power_in2 = new ElectricPower
+    power_out = new ElectricPower
+
+    power_in2 ~ power_out
+    power_in1.vcc ~ diode.anode; diode.cathode ~ power_out.vcc
+    power_in1.gnd ~ power_out.gnd
+
+
+module FULLBRIDGERECTIFIER:
+    power_in = new PowerAC
+    power_out = new ElectricPower
+
+    d1 = new Diode
+    d2 = new Diode
+    d3 = new Diode
+    d4 = new Diode
+
+    power_in.line1 ~ d1.anode; d1.cathode ~ power_out.vcc; power_out.vcc ~ d2.cathode; d2.anode ~ power_in.neutral
+    power_in.line1 ~ d4.cathode; d4.anode ~ power_out.gnd; power_out.gnd ~ d3.anode; d3.cathode ~ power_in.neutral

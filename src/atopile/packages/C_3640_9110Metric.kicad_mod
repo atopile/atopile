@@ -1,0 +1,203 @@
+(footprint "C_3640_9110Metric"
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(layer "F.Cu")
+	(descr "Capacitor SMD 3640 (9110 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size from: http://datasheets.avx.com/AVX-HV_MLCC.pdf), generated with kicad-footprint-generator")
+	(tags "capacitor")
+	(property "Reference" "REF**"
+		(at 0 -6.18 0)
+		(layer "F.SilkS")
+		(uuid "a107b690-1844-45e7-91f7-47e7a5cc00f3")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "C_3640_9110Metric"
+		(at 0 6.18 0)
+		(layer "F.Fab")
+		(uuid "dcbcb775-6298-4c46-a7b6-1545fcd001c9")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Footprint" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "8e60f9c6-de0b-40bc-bc54-ffb79b30fe78")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "d62d8be6-c4ca-489a-8fdd-4ddad9004461")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "7a1e8712-3c2c-4451-abbc-b4be5e9979cd")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -2.922369 -5.21)
+		(end 2.922369 -5.21)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "c2a5445c-0bc4-41cd-b599-38d88b389684")
+	)
+	(fp_line
+		(start -2.922369 5.21)
+		(end 2.922369 5.21)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "9d6d4e21-ba87-44b4-b544-97748a69ea72")
+	)
+	(fp_line
+		(start -5.3 -5.48)
+		(end 5.3 -5.48)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "0bf6c0f0-d8bf-400d-b3a1-4246dbcfc59e")
+	)
+	(fp_line
+		(start -5.3 5.48)
+		(end -5.3 -5.48)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "716ad3d9-4f69-40cd-964d-fee056c1e21e")
+	)
+	(fp_line
+		(start 5.3 -5.48)
+		(end 5.3 5.48)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "c62d19b4-9c53-445f-94ac-d3557a22062e")
+	)
+	(fp_line
+		(start 5.3 5.48)
+		(end -5.3 5.48)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "cfae67c2-d812-4356-a380-283c4e453249")
+	)
+	(fp_line
+		(start -4.57 -5.1)
+		(end 4.57 -5.1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "e1a4c705-11ad-4f9a-82dd-dfd86c766cdc")
+	)
+	(fp_line
+		(start -4.57 5.1)
+		(end -4.57 -5.1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "90e9b865-a9f9-4656-9a15-f9fc5b97dead")
+	)
+	(fp_line
+		(start 4.57 -5.1)
+		(end 4.57 5.1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "522246cd-4725-4bb2-9623-b2f378cb9e35")
+	)
+	(fp_line
+		(start 4.57 5.1)
+		(end -4.57 5.1)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "90692218-8676-402d-8d08-b0c976320342")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "dcf22f9d-f8ee-471f-b218-3761daea52f9")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at -4.0875 0)
+		(size 1.925 10.45)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(roundrect_rratio 0.12987)
+		(uuid "c7d624ab-cef2-464a-a739-4155c9dc1f66")
+	)
+	(pad "2" smd roundrect
+		(at 4.0875 0)
+		(size 1.925 10.45)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(roundrect_rratio 0.12987)
+		(uuid "a39a4f2e-2d51-4f8d-aad6-d6426d8f93ce")
+	)
+	(model "${KICAD8_3DMODEL_DIR}/Capacitor_SMD.3dshapes/C_3640_9110Metric.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)

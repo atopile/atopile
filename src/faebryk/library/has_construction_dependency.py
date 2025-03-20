@@ -23,12 +23,12 @@ class has_construction_dependency(Trait):
         if self.executed:
             return
         self._construct()
-        self._fullfill()
+        self._fulfill()
 
     @abstractmethod
     def _construct(self): ...
 
-    def _fullfill(self):
+    def _fulfill(self):
         self.executed = True
 
     def is_implemented(self):

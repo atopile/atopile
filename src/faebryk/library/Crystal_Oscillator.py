@@ -31,7 +31,7 @@ class Crystal_Oscillator(Module):
 
     def __preinit__(self):
         for cap in self.capacitors:
-            cap.capacitance.alias_is(self.capacitance)
+            cap.capacitance.constrain_subset(self.capacitance)
 
         self.current_limiting_resistor.allow_removal_if_zero()
 

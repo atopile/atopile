@@ -1,0 +1,70 @@
+interface PowerAC:
+    signal line1
+    signal neutral
+    signal gnd
+
+
+interface SWD:
+    signal swclk
+    signal swdio
+    signal swo
+    signal gnd
+
+
+interface CAN_TTL:
+    signal tx
+    signal rx
+
+
+interface CAN:
+    signal CANH
+    signal CANL
+
+
+interface USB_PD:
+    signal dp
+    signal dm
+    signal cc1
+    signal cc2
+    signal vbusADC
+    signal gnd
+    signal vbus
+
+
+interface QSPI:
+    signal cs
+    signal sck
+    signal io0
+    signal io1
+    signal io2
+    signal io3
+
+
+interface SDIO:
+    signal cmd
+    signal clk
+    signal dat0
+    signal dat1
+    signal dat2
+    signal dat3
+
+
+interface I2S:
+    signal ws
+    signal sck
+    signal sd
+    signal gnd
+
+
+interface SSI:
+    signal do
+    signal clk
+    signal csn
+    signal gnd
+
+
+interface QEP:
+    signal a
+    signal b
+    signal z
+    signal gnd

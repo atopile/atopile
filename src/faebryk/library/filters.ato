@@ -1,0 +1,15 @@
+import Capacitor, ElectricSignal, ElectricPower, Inductor
+
+
+module LowPassPiFilter:
+    C1 = new Capacitor
+    L1 = new Inductor
+    C2 = new Capacitor
+
+    power_in = new ElectricPower
+    power_out = new ElectricPower
+
+    power_in.hv ~ L1.p1; L1.p2 ~ power_out.hv
+    power_in ~ C1.power
+    power_out ~ C2.power
+    power_in.lv ~ power_out.lv

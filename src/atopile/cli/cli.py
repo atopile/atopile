@@ -4,15 +4,16 @@ import atopile.cli.excepthook  # noqa: F401, I001
 import json
 import logging
 import sys
-from importlib.metadata import version
+from enum import Enum
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from atopile import telemetry
+from atopile import telemetry, version
 from atopile.cli import build, configure, create, inspect, install, view
-from atopile.cli.logging import logger, handler
+from atopile.cli.logging import handler, logger
 from atopile.config import config
 from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
@@ -20,6 +21,7 @@ from faebryk.libs.logging import FLOG_FMT
 app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
+    rich_markup_mode="rich",
 )
 
 
@@ -40,9 +42,19 @@ def atopile_src_path(ctx: typer.Context, value: bool):
 
 
 def version_callback(ctx: typer.Context, value: bool):
+    """Output a version string meeting the pypa version spec."""
     if not value or ctx.resilient_parsing:
         return
-    typer.echo(version("atopile"))
+    typer.echo(get_package_version("atopile"))
+    raise typer.Exit()
+
+
+def semver_callback(ctx: typer.Context, value: bool):
+    """Output a version string meeting the semver.org spec."""
+    if not value or ctx.resilient_parsing:
+        return
+    version_string = get_package_version("atopile")
+    typer.echo(version.parse(version_string))
     raise typer.Exit()
 
 
@@ -50,8 +62,11 @@ def version_callback(ctx: typer.Context, value: bool):
 def cli(
     ctx: typer.Context,
     non_interactive: Annotated[
-        bool, typer.Option("--non-interactive", envvar="ATO_NON_INTERACTIVE")
-    ] = False,
+        bool | None,
+        typer.Option(
+            "--non-interactive", envvar=["ATO_NON_INTERACTIVE", "NONINTERACTIVE"]
+        ),
+    ] = None,
     debug: Annotated[
         bool,
         typer.Option("--debug", help="Wait to attach debugger on start"),
@@ -69,6 +84,10 @@ def cli(
     version: Annotated[
         bool | None,
         typer.Option("--version", callback=version_callback, is_eager=True),
+    ] = None,
+    semver: Annotated[
+        bool | None,
+        typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
 ):
     if debug:
@@ -89,13 +108,19 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    # FIXME: this won't work properly when configs
+    # are reloaded from a pointed-to file (eg in `ato build path/to/file`)
+    # from outside a project directory
+    if non_interactive is not None:
+        config.interactive = not non_interactive
+
     if ctx.invoked_subcommand:
         check_for_update()
 
         # Initialize telemetry
         telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
-    if not non_interactive and ctx.invoked_subcommand != "configure":
+    if config.interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()
 
 
@@ -119,14 +144,16 @@ def export_config_schema(pretty: bool = False):
         print(json.dumps(config_schema))
 
 
+class ConfigFormat(str, Enum):
+    python = "python"
+    json = "json"
+
+
 @app.command(hidden=True)
-def dump_config(pretty: bool = False):
+def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
-    if pretty:
-        print(json.dumps(config.project, indent=4))
-    else:
-        print(json.dumps(config.project))
+    print(config.project.model_dump(mode=format))
 
 
 def main():

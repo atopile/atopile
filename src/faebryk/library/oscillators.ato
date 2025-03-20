@@ -1,0 +1,27 @@
+import Capacitor, ElectricSignal
+
+
+component Crystal:
+    signal xin
+    signal xout
+    signal gnd
+
+
+module Oscillator:
+    signal xin
+    signal xout
+    signal gnd
+
+    crystal = new Crystal
+    load_cap_1 = new Capacitor
+    load_cap_2 = new Capacitor
+
+    load_cap_1.package = "C0402"
+    load_cap_2.package = "C0402"
+
+    xin ~ crystal.xin
+    xout ~ crystal.xout
+    gnd ~ crystal.gnd
+
+    crystal.xin ~ load_cap_1.p1; load_cap_1.p2 ~ gnd
+    crystal.xout ~ load_cap_2.p1; load_cap_2.p2 ~ gnd

@@ -1,0 +1,13 @@
+import ElectricSignal, ElectricPower
+
+
+# TODO: this warrants re-writing in fabll
+# Ideally, we should be able to connect directly to this test point
+component TestPoint:
+    point = new ElectricSignal
+    point.line ~ pin 1
+
+    footprint = "TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm"
+
+    power = new ElectricPower
+    power.vcc ~ point.line

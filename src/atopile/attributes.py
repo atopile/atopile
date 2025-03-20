@@ -183,6 +183,17 @@ class GlobalAttributes(L.Module):
             )
 
     @property
+    def datasheet_url(self) -> str:
+        """
+        The URL of the datasheet for this component.
+        """
+        raise AttributeError("write-only")
+
+    @datasheet_url.setter
+    def datasheet_url(self, value: str):
+        self.add(F.has_datasheet_defined(value))
+
+    @property
     def designator_prefix(self):
         """
         The prefix used for automatically-generated designators on this module.
@@ -209,10 +220,11 @@ class GlobalAttributes(L.Module):
         try:
             self.add(F.has_package(value))
         except ValueError:
+            valid_packages = ", ".join(
+                f"`{k}`" for k in F.has_package.Package.__members__.keys()
+            )
             raise UserBadParameterError(
-                f"Invalid package: '{value}'",
-                " Valid packages are: "
-                + ", ".join(k for k in F.has_package.Package.__members__.keys()),
+                f"Invalid package: `{value}`. Valid packages are: {valid_packages}"
             )
 
     @property
@@ -262,19 +274,38 @@ class GlobalAttributes(L.Module):
     def override_net_name(self, name: str):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
+    @property
+    def suggest_net_name(self):
+        """
+        Suggested net name which will have a higher priority than generated net names.
+        """
+        raise AttributeError("write-only")
+
+    @suggest_net_name.setter
+    def suggest_net_name(self, name: str):
+        """
+        Suggested net name which will have a higher priority than generated net names.
+        """
+        self.add(F.has_net_name(name, level=F.has_net_name.Level.SUGGESTED))
+
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
+    if (prefixed_value := f"{starts_with}{value}") in F.has_package.Package.__members__:
+        value = prefixed_value
+
     try:
-        pkg = F.has_package.Package(starts_with + value)
+        pkg = F.has_package.Package(value)
     except ValueError:
-        raise UserBadParameterError(
-            f"Invalid package for {module.__class__.__name__}: " + value,
-            "Valid packages are: "
-            + ", ".join(
-                k
+        valid_packages = ", ".join(
+            [
+                f"`{k}`"
                 for k in F.has_package.Package.__members__.keys()
                 if k.startswith(starts_with)
-            ),
+            ]
+        )
+        raise UserBadParameterError(
+            f"Invalid package for {module.__class__.__name__}: `{value}`. "
+            f"Valid packages are: {valid_packages}"
         )
     else:
         module.add(F.has_package(pkg))
@@ -331,16 +362,6 @@ class Resistor(F.Resistor):
         _handle_package_shim(self, value, "R")
 
     @property
-    def p1(self) -> F.Electrical:
-        """One side of the resistor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """The other side of the resistor."""
-        return self.unnamed[1]
-
-    @property
     def _1(self) -> F.Electrical:
         return self.unnamed[0]
 
@@ -361,19 +382,6 @@ class CommonCapacitor(F.Capacitor):
     """
     These attributes are common to both electrolytic and non-electrolytic capacitors.
     """
-
-    class _has_power(L.Trait.decless()):
-        """
-        This trait is used to add power interfaces to
-        capacitors who use them, keeping the interfaces
-        off caps which don't use it.
-
-        Caps have power-interfaces when used with them.
-        """
-
-        def __init__(self, power: F.ElectricPower) -> None:
-            super().__init__()
-            self.power = power
 
     @property
     def value(self):
@@ -419,16 +427,6 @@ class CommonCapacitor(F.Capacitor):
         GlobalAttributes.footprint.fset(self, value)
 
     @property
-    def p1(self) -> F.Electrical:
-        """One side of the capacitor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """The other side of the capacitor."""
-        return self.unnamed[1]
-
-    @property
     def _1(self) -> F.Electrical:
         return self.unnamed[0]
 
@@ -452,18 +450,6 @@ class Capacitor(CommonCapacitor):
         trait.pinmap["2"] = self.p2
         return trait
 
-    @property
-    def power(self) -> F.ElectricPower:
-        """A `Power` interface, which is connected to the capacitor."""
-        if self.has_trait(self._has_power):
-            power = self.get_trait(self._has_power).power
-        else:
-            power = F.ElectricPower()
-            power.hv.connect_via(self, power.lv)
-            self.add(self._has_power(power))
-
-        return power
-
 
 @_register_shim(
     "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
@@ -476,6 +462,7 @@ class CapacitorElectrolytic(CommonCapacitor):
 
     pickable = None
 
+    # Overrides the default implementation in F.Capacitor
     @property
     def power(self) -> F.ElectricPower:
         if self.has_trait(self._has_power):
@@ -495,16 +482,6 @@ class Inductor(F.Inductor):
     This inductor is replaces `generics/inductors.ato:Inductor`
     every times it's referenced.
     """
-
-    @property
-    def p1(self) -> F.Electrical:
-        """Signal to one side of the inductor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """Signal to the other side of the inductor."""
-        return self.unnamed[1]
 
     @property
     def _1(self) -> F.Electrical:
@@ -550,16 +527,6 @@ class Power(F.ElectricPower):
     """Temporary shim to translate `value` to `power`."""
 
     @property
-    def vcc(self) -> F.Electrical:
-        """Higher-voltage side of the power interface."""
-        return self.hv
-
-    @property
-    def gnd(self) -> F.Electrical:
-        """Lower-voltage side of the power interface."""
-        return self.lv
-
-    @property
     def current(self):
         """
         Maximum current the power interface can provide.
@@ -569,4 +536,10 @@ class Power(F.ElectricPower):
         return self.max_current
 
 
-_register_shim("generics/interfaces.ato:I2C", "import I2C")(F.I2C)
+@_register_shim("generics/interfaces.ato:I2C", "import I2C")
+class I2C(F.I2C):
+    """Temporary shim to translate I2C interfaces."""
+
+    @property
+    def gnd(self):
+        return self.single_electric_reference.get_reference().gnd

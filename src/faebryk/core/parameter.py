@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum, auto
+from itertools import chain
 from types import NotImplementedType
 from typing import (
     TYPE_CHECKING,
@@ -25,9 +25,11 @@ from faebryk.core.trait import Trait
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
+    Quantity_Set,
+    Quantity_Set_Discrete,
     QuantityLikeR,
 )
-from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set
+from faebryk.libs.sets.sets import BoolSet, EnumSet, P_Set, as_lit
 from faebryk.libs.units import (
     HasUnit,
     Quantity,
@@ -71,7 +73,7 @@ class ParameterOperatable(Node):
     type QuantityLike = Quantity | Unit | NotImplementedType
     type Number = int | float | QuantityLike
 
-    type NumberLiteral = Number | P_Set[Number]
+    type NumberLiteral = Number | P_Set[Number] | Quantity_Set
     type NumberLike = ParameterOperatable | NumberLiteral
     type BooleanLiteral = bool | BoolSet
     type BooleanLike = ParameterOperatable | BooleanLiteral
@@ -84,6 +86,11 @@ class ParameterOperatable(Node):
     type Sets = All
 
     operated_on: GraphInterface
+
+    constrained: bool = False
+    """
+    Shortcut for `isinstance(self, ConstrainableExpression) and self.constrained`
+    """
 
     @property
     def domain(self) -> "Domain": ...
@@ -155,8 +162,8 @@ class ParameterOperatable(Node):
     def operation_intersection(self, other: Sets):
         return Intersection(self, other)
 
-    def operation_difference(self, other: Sets):
-        return Difference(minuend=self, subtrahend=other)
+    def operation_difference(self, *subtrahends: Sets):
+        return Difference(minuend=self, *subtrahends)
 
     def operation_symmetric_difference(self, other: Sets):
         return SymmetricDifference(self, other)
@@ -330,15 +337,35 @@ class ParameterOperatable(Node):
 
     # ----------------------------------------------------------------------------------
 
-    # TODO
-    # def switch_case(
-    #    self,
-    #    cases: list[tuple[?, Callable[[], Any]]],
-    # ) -> None: ...
+    def operation_switch_case_subset(
+        self,
+        cases: Iterable[tuple[Literal, "ConstrainableExpression"]],
+    ) -> "ConstrainableExpression":
+        exprs = [(IsSubset(self, lit), case) for lit, case in cases]
+        return ConstrainableExpression.operation_switch_case_implications(exprs)
+
+    def operation_mapping(
+        self,
+        other: "ParameterOperatable",
+        mapping: dict[Literal, Literal],
+    ) -> "ConstrainableExpression":
+        exprs = [
+            (lit_self, IsSubset(other, lit_other))
+            for lit_self, lit_other in mapping.items()
+        ]
+        return self.operation_switch_case_subset(exprs)
+
+    def constrain_mapping(
+        self, other: "ParameterOperatable", mapping: dict[Literal, Literal]
+    ):
+        return self.operation_mapping(other, mapping).constrain()
 
     # ----------------------------------------------------------------------------------
     def get_operations[T: "Expression"](
-        self, types: type[T] | None = None, constrained_only: bool = False
+        self,
+        types: type[T] | None = None,
+        constrained_only: bool = False,
+        recursive: bool = False,
     ) -> set[T]:
         if types is None:
             types = Expression  # type: ignore
@@ -346,6 +373,9 @@ class ParameterOperatable(Node):
         assert issubclass(types, Expression)
 
         out = cast(set[T], self.operated_on.get_connected_nodes(types=[types]))
+        if recursive:
+            for o in list(out):
+                out.update(o.get_operations(recursive=True))
         if constrained_only:
             assert issubclass(types, ConstrainableExpression)
             out = {i for i in out if cast(ConstrainableExpression, i).constrained}
@@ -369,12 +399,12 @@ class ParameterOperatable(Node):
                 literals = find(
                     lit
                     for op in ops
-                    for (i, lit) in op.get_literal_operands().items()
+                    for (i, lit) in op.get_operand_literals().items()
                     if i > 0
                 )
             else:
                 literals = find(
-                    lit for op in ops for (_, lit) in op.get_literal_operands().items()
+                    lit for op in ops for (_, lit) in op.get_operand_literals().items()
                 )
         except KeyErrorNotFound as e:
             raise ParameterOperableHasNoLiteral(
@@ -383,7 +413,7 @@ class ParameterOperatable(Node):
         except KeyErrorAmbiguous as e:
             duplicates = e.duplicates
             if issubclass(op, Is):
-                if len(unique(duplicates, key=lambda x: x)) != 1:
+                if len(unique(duplicates, key=lambda x: as_lit(x))) != 1:
                     raise
                 return duplicates[0]
             elif issubclass(op, IsSubset):
@@ -450,7 +480,13 @@ class ParameterOperatable(Node):
 
         variable_mapping: VariableMapping = field(default_factory=VariableMapping)
 
-    def compact_repr(self, context: ReprContext | None = None) -> str:
+        def __hash__(self) -> int:
+            return hash(id(self))
+
+    @once
+    def compact_repr(
+        self, context: ReprContext | None = None, use_name: bool = False
+    ) -> str:
         raise NotImplementedError()
 
     # TODO move to Expression
@@ -473,19 +509,21 @@ class ParameterOperatable(Node):
             return po.depth()
         return 0
 
+    @once
     def _get_lit_suffix(self) -> str:
         out = ""
         try:
-            if (lit := self.try_get_literal()) is not None:
-                out = f"{{I|{lit}}}"
-            elif (lit := self.try_get_literal_subset()) is not None:
-                out = f"{{S|{lit}}}"
-            if lit == BoolSet(True):
-                out = "✓"
-            elif lit == BoolSet(False):
-                out = "✗"
+            lit = self.try_get_literal()
         except KeyErrorAmbiguous as e:
-            out = f"{{AMBIGUOUS: {e.duplicates}}}"
+            return f"{{AMBIGUOUS_I: {e.duplicates}}}"
+        if lit is not None:
+            out = f"{{I|{lit}}}"
+        elif (lit := self.try_get_literal_subset()) is not None:
+            out = f"{{S|{lit}}}"
+        if lit == BoolSet(True):
+            out = "✓"
+        elif lit == BoolSet(False) and isinstance(lit, (BoolSet, bool)):
+            out = "✗"
         return out
 
 
@@ -501,6 +539,7 @@ class Expression(ParameterOperatable):
 
     def __init__(self, domain, *operands: ParameterOperatable.All):
         super().__init__()
+        assert not any(o is None for o in operands)
         self._domain = domain
         self.operands = tuple(operands)
         self.operatable_operands: set[ParameterOperatable] = {
@@ -516,18 +555,19 @@ class Expression(ParameterOperatable):
                 continue
             self.operates_on.connect(op.operated_on)
 
+    @staticmethod
+    def is_uncorrelatable_literal(lit) -> bool:
+        return not isinstance(lit, ParameterOperatable) and (
+            not isinstance(lit, P_Set)
+            or not (lit.is_single_element() or lit.is_empty())
+        )
+
     @once
     def get_uncorrelatable_literals(self) -> list[ParameterOperatable.Literal]:
+        # TODO we should just use the canonical lits, for now just no support
+        # for non-canonical lits
         return [
-            lit
-            for lit in self.operands
-            # TODO we should just use the canonical lits, for now just no support
-            # for non-canonical lits
-            if not isinstance(lit, ParameterOperatable)
-            and (
-                not isinstance(lit, P_Set)
-                or not (lit.is_single_element() or lit.is_empty())
-            )
+            lit for lit in self.operands if Expression.is_uncorrelatable_literal(lit)
         ]
 
     @once
@@ -535,17 +575,32 @@ class Expression(ParameterOperatable):
         return sorted(self.operands, key=hash)
 
     @once
-    def is_congruent_to(self, other: "Expression") -> bool:
-        if self == other:
+    def is_congruent_to(
+        self,
+        other: "Expression",
+        recursive: bool = False,
+        allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
+    ) -> bool:
+        if self is other:
             return True
         if type(self) is not type(other):
             return False
         if len(self.operands) != len(other.operands):
             return False
-
-        if self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals():
+        # if lit is non-single/empty set we can't correlate thus can't be congruent
+        #  in general
+        if not allow_uncorrelated and (
+            self.get_uncorrelatable_literals() or other.get_uncorrelatable_literals()
+        ):
             return False
-
+        if (
+            check_constrained
+            and isinstance(self, ConstrainableExpression)
+            and self.constrained
+            != cast_assert(ConstrainableExpression, other).constrained
+        ):
+            return False
         if self.operands == other.operands:
             return True
         if isinstance(self, Commutative):
@@ -557,41 +612,101 @@ class Expression(ParameterOperatable):
             if left == right:
                 return True
 
+        if recursive and Expression.are_pos_congruent(
+            self.operands,
+            other.operands,
+            commutative=isinstance(self, Commutative),
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
+        ):
+            return True
+
         return False
+
+    def is_congruent_to_factory(
+        self,
+        other_factory: type["Expression"],
+        other_operands: Sequence[ParameterOperatable.All],
+        allow_uncorrelated: bool = False,
+        # TODO
+        check_constrained: bool = True,
+    ) -> bool:
+        if type(self) is not other_factory:
+            return False
+        return Expression.are_pos_congruent(
+            self.operands,
+            other_operands,
+            allow_uncorrelated=allow_uncorrelated,
+            check_constrained=check_constrained,
+        )
+
+    @staticmethod
+    def are_pos_congruent(
+        left: Sequence[ParameterOperatable.All],
+        right: Sequence[ParameterOperatable.All],
+        commutative: bool = False,
+        allow_uncorrelated: bool = False,
+        check_constrained: bool = True,
+    ) -> bool:
+        if len(left) != len(right):
+            return False
+
+        if not allow_uncorrelated and any(
+            Expression.is_uncorrelatable_literal(lit) for lit in chain(left, right)
+        ):
+            return False
+
+        # FIXME handle commutative
+        return all(
+            lhs.is_congruent_to(
+                rhs,
+                recursive=True,
+                allow_uncorrelated=allow_uncorrelated,
+                check_constrained=check_constrained,
+            )
+            if isinstance(lhs, Expression) and isinstance(rhs, Expression)
+            else lhs == rhs
+            for lhs, rhs in zip(left, right)
+        )
 
     @property
     def domain(self) -> "Domain":
         return self._domain
 
-    def get_operatable_operands[T: ParameterOperatable](
-        self, types: type[T] = ParameterOperatable
+    def get_operand_operatables[T: ParameterOperatable](
+        self, types: type[T] = ParameterOperatable, recursive: bool = False
     ) -> set[T]:
-        return cast(
-            set[T],
-            self.operates_on.get_connected_nodes(types=[types]),
-        )
+        out = set(self.operatable_operands)
+        if recursive:
+            for o in list(out):
+                if not isinstance(o, Expression):
+                    continue
+                out.update(o.get_operand_operatables(recursive=True))
+        if types is not ParameterOperatable:
+            out = {o for o in out if isinstance(o, types)}
+        return cast(set[T], out)
 
-    def get_literal_operands(self) -> dict[int, ParameterOperatable.Literal]:
-        if isinstance(self, (Is, IsSubset)):
-            return {
-                i: o
-                for i, o in enumerate(self.operands)
-                if ParameterOperatable.is_literal(o)
-            }
-        # TODO not sure its a good idea to do this that recursive
+    def get_operand_expressions(self, recursive: bool = False) -> set["Expression"]:
+        return self.get_operand_operatables(Expression, recursive=recursive)
+
+    def get_operand_parameters(self, recursive: bool = False) -> set["Parameter"]:
+        return self.get_operand_operatables(Parameter, recursive=recursive)
+
+    def get_operand_literals(self) -> dict[int, ParameterOperatable.Literal]:
         return {
-            i: ParameterOperatable.try_extract_literal(o)
+            i: o
             for i, o in enumerate(self.operands)
+            if ParameterOperatable.is_literal(o)
         }
 
-    def get_involved_parameters(self) -> Counter["Parameter"]:
-        params = [p for p in self.operands if isinstance(p, Parameter)] + [
-            p
-            for expr in self.operands
-            if isinstance(expr, Expression)
-            for p in expr.get_involved_parameters()
-        ]
-        return Counter(params)
+    def get_operand_leaves_operatable(self) -> set[ParameterOperatable]:
+        ops = self.get_operand_operatables(recursive=True)
+        return {
+            o
+            for o in ops
+            if not isinstance(o, Expression)
+            or not o.get_operand_operatables(recursive=False)
+        }
 
     def depth(self) -> int:
         """
@@ -625,6 +740,14 @@ class Expression(ParameterOperatable):
             if isinstance(op, Expression) and op.has_implicit_constraints_recursive():
                 return True
         return False
+
+    def get_other_operand(
+        self, operand: ParameterOperatable.All
+    ) -> ParameterOperatable.All:
+        assert len(self.operands) == 2
+        if self.operands[0] is operand:
+            return self.operands[1]
+        return self.operands[0]
 
     def __repr__(self) -> str:
         return f"{super().__repr__()}({self.operands})"
@@ -660,7 +783,9 @@ class Expression(ParameterOperatable):
     REPR_STYLE: ReprStyle = ReprStyle()
 
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        use_name: bool = False,
     ) -> str:
         if context is None:
             context = ParameterOperatable.ReprContext()
@@ -674,15 +799,16 @@ class Expression(ParameterOperatable):
         if isinstance(self, ConstrainableExpression) and self.constrained:
             # symbol = f"\033[4m{symbol}!\033[0m"
             symbol_suffix += "!"
-            if self._solver_evaluates_to_true:
+            if self._solver_terminated:
                 symbol_suffix += "!"
         symbol += symbol_suffix
-        symbol += self._get_lit_suffix()
+        lit_suffix = self._get_lit_suffix()
+        symbol += lit_suffix
 
         def format_operand(op):
             if not isinstance(op, ParameterOperatable):
                 return str(op)
-            op_out = op.compact_repr(context)
+            op_out = op.compact_repr(context, use_name=use_name)
             if isinstance(op, Expression) and len(op.operands) > 1:
                 op_out = f"({op_out})"
             return op_out
@@ -695,7 +821,7 @@ class Expression(ParameterOperatable):
             else:
                 out = f"{symbol}({', '.join(formatted_operands)})"
         elif style.placement == Expression.ReprStyle.Placement.EMBRACE:
-            out = f"{symbol}{', '.join(formatted_operands)}{symbol}"
+            out = f"{symbol}{', '.join(formatted_operands)}{style.symbol}"
         elif len(formatted_operands) == 0:
             out = f"{type(self).__name__}{symbol_suffix}()"
         elif style.placement == Expression.ReprStyle.Placement.POSTFIX:
@@ -705,6 +831,11 @@ class Expression(ParameterOperatable):
                 out = f"({', '.join(formatted_operands)}){symbol}"
         elif len(formatted_operands) == 1:
             out = f"{type(self).__name__}{symbol_suffix}({formatted_operands[0]})"
+        elif lit_suffix and len(formatted_operands) > 2:
+            out = (
+                f"{type(self).__name__}{symbol_suffix}{lit_suffix}"
+                f"({', '.join(formatted_operands)})"
+            )
         elif style.placement == Expression.ReprStyle.Placement.INFIX:
             symbol = f" {symbol} "
             out = f"{symbol.join(formatted_operands)}"
@@ -724,6 +855,12 @@ class Expression(ParameterOperatable):
 
         return out
 
+    def __rich_repr__(self):
+        if not self._is_setup:
+            yield f"{type(self)}(not init)"
+        else:
+            yield self.compact_repr()
+
 
 @abstract
 class ConstrainableExpression(Expression):
@@ -732,7 +869,7 @@ class ConstrainableExpression(Expression):
         self.constrained: bool = False
 
         # TODO this should be done in solver, not here
-        self._solver_evaluates_to_true: bool = False
+        self._solver_terminated: bool = False
         """
         Flag marking to the solver that this predicate has been deduced to True.
         Differs from alias in the sense that we can guarantee that the predicate is
@@ -758,6 +895,12 @@ class ConstrainableExpression(Expression):
     ):
         return IfThenElse(self, if_true, if_false, preference)
 
+    @staticmethod
+    def operation_switch_case_implications(
+        cases: Iterable[tuple["ConstrainableExpression", "ConstrainableExpression"]],
+    ) -> "ConstrainableExpression":
+        return And(*(case.operation_implies(impl) for case, impl in cases))
+
 
 @abstract
 class Arithmetic(Expression):
@@ -776,11 +919,13 @@ class Arithmetic(Expression):
             Quantity_Interval,
             Quantity_Interval_Disjoint,
         )
-        if any(not isinstance(op, types) for op in operands):
+        invalid_operands = [op for op in operands if not isinstance(op, types)]
+        if invalid_operands:
             raise ValueError(
                 "operands must be int, float, Quantity, Unit, Parameter, Arithmetic"
                 ", Quantity_Interval, or Quantity_Interval_Disjoint"
-                f", got {[op for op in operands if not isinstance(op, types)]}"
+                f", got {invalid_operands} with types"
+                f" ([{', '.join(type(op).__name__ for op in invalid_operands)}])"
             )
         if any(
             not isinstance(param.domain, (Numbers, ESeries))
@@ -802,7 +947,10 @@ class Arithmetic(Expression):
 class Additive(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.units = assert_compatible_units(operands)
+        if not operands:
+            self.units = dimensionless
+        else:
+            self.units = assert_compatible_units(operands)
 
     @staticmethod
     def sum(operands: Sequence[ParameterOperatable.NumberLike]) -> "Additive":
@@ -820,7 +968,6 @@ class Add(Additive):
 
     def __init__(self, *operands):
         super().__init__(*operands)
-        self.bla = 5
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -848,8 +995,8 @@ class Multiply(Arithmetic):
     def __init__(self, *operands):
         super().__init__(*operands)
         units = [HasUnit.get_units_or_dimensionless(op) for op in operands]
-        self.units = units[0]
-        for u in units[1:]:
+        self.units = dimensionless
+        for u in units:
             self.units = cast_assert(Unit, self.units * u)
 
     def has_implicit_constraint(self) -> bool:
@@ -933,9 +1080,17 @@ class Log(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
+
+        # TODO, be careful makes solver run forever like this
+        # implicit constraint
+        # if isinstance(operand, ParameterOperatable):
+        #    operand.constrain_ge(lit(0))
+        # elif Quantity_Interval_Disjoint.from_value(operand).min_elem < 0:
+        #    raise ValueError("operand must be non-negative")
 
     def has_implicit_constraint(self) -> bool:
         return True  # non-negative
@@ -949,9 +1104,10 @@ class Sin(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -965,9 +1121,10 @@ class Cos(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        if not operand.unit.is_compatible_with(dimensionless):
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
             raise ValueError("operand must have dimensionless unit")
-        self.units = dimensionless
+        self.units = unit
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -981,7 +1138,7 @@ class Abs(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -995,7 +1152,7 @@ class Round(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1009,7 +1166,7 @@ class Floor(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1023,7 +1180,7 @@ class Ceil(Arithmetic):
 
     def __init__(self, operand):
         super().__init__(operand)
-        self.units = operand.units
+        self.units = HasUnit.get_units_or_dimensionless(operand)
 
     def has_implicit_constraint(self) -> bool:
         return False
@@ -1057,7 +1214,13 @@ class Max(Arithmetic):
         return False
 
 
-class Integrate(Arithmetic):
+@abstract
+class Functional(Arithmetic):
+    def __init__(self, function: "ParameterOperatable", variable: "Parameter"):
+        super().__init__(function, variable)
+
+
+class Integrate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="∫",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
@@ -1071,7 +1234,7 @@ class Integrate(Arithmetic):
         return False
 
 
-class Differentiate(Arithmetic):
+class Differentiate(Functional):
     REPR_STYLE = Arithmetic.ReprStyle(
         symbol="d",
         placement=Arithmetic.ReprStyle.Placement.PREFIX,
@@ -1190,6 +1353,9 @@ class Setic(Expression):
     def __init__(self, *operands):
         # FIXME domain
         super().__init__(None, *operands)
+
+        if len(operands) == 0:
+            raise ValueError("Setic must have at least one operand")
         # types = (Parameter, ParameterOperatable.Sets)
         # if any(not isinstance(op, types) for op in operands):
         #    raise ValueError("operands must be Parameter or Set")
@@ -1221,8 +1387,8 @@ class Difference(Setic):
         placement=Setic.ReprStyle.Placement.INFIX,
     )
 
-    def __init__(self, minuend, subtrahend):
-        super().__init__(minuend, subtrahend)
+    def __init__(self, minuend, *subtrahends):
+        super().__init__(minuend, *subtrahends)
 
 
 class SymmetricDifference(Setic):
@@ -1230,6 +1396,9 @@ class SymmetricDifference(Setic):
         symbol="△",
         placement=Setic.ReprStyle.Placement.INFIX,
     )
+
+    def __init__(self, left, right):
+        super().__init__(left, right)
 
 
 class Domain:
@@ -1297,7 +1466,16 @@ class Numbers(Domain):
     @override
     def unbounded(self, param: "Parameter") -> Quantity_Interval_Disjoint:
         if self.integer:
-            raise NotImplementedError("Integer unbounded not implemented")
+            # TODO
+            _max = int(1e15)
+            _min = -_max if self.negative else 0
+            return Quantity_Interval_Disjoint.from_value(
+                Quantity_Interval(
+                    min=quantity(_min, param.units),
+                    max=quantity(_max, param.units),
+                    units=param.units,
+                )
+            )
         if not self.zero_allowed:
             raise NotImplementedError("Non-zero unbounded not implemented")
         if not self.negative:
@@ -1347,13 +1525,6 @@ class Predicate(ConstrainableExpression):
     def __bool__(self):
         raise ValueError("Predicate cannot be converted to bool")
 
-    def get_other_operand(
-        self, operand: ParameterOperatable.All
-    ) -> ParameterOperatable.All:
-        if self.operands[0] is operand:
-            return self.operands[1]
-        return self.operands[0]
-
 
 class NumericPredicate(Predicate):
     def __init__(self, left, right):
@@ -1388,13 +1559,6 @@ class GreaterThan(NumericPredicate):
         symbol=">",
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
-
-    def __init__(self, left, right):
-        # TODO we might allow it for integer domains at some point
-        raise NotImplementedError(
-            "'>' not supported, you very likely want to use '>=' anyway"
-        )
-        super().__init__(left, right)
 
 
 class LessOrEqual(NumericPredicate):
@@ -1592,8 +1756,11 @@ class Parameter(ParameterOperatable):
     def has_implicit_constraints_recursive(self) -> bool:
         return False
 
+    @once
     def compact_repr(
-        self, context: ParameterOperatable.ReprContext | None = None
+        self,
+        context: ParameterOperatable.ReprContext | None = None,
+        use_name: bool = False,
     ) -> str:
         """
         Unit only printed if not dimensionless.
@@ -1626,16 +1793,18 @@ class Parameter(ParameterOperatable):
                 param_id // len(alphabet)
             )
 
-        if context is None:
-            context = ParameterOperatable.ReprContext()
-
-        if self not in context.variable_mapping.mapping:
-            next_id = context.variable_mapping.next_id
-            context.variable_mapping.mapping[self] = next_id
-            context.variable_mapping.next_id += 1
+        if use_name and self.get_parent() is not None:
+            letter = self.get_full_name()
+        else:
+            if context is None:
+                context = ParameterOperatable.ReprContext()
+            if self not in context.variable_mapping.mapping:
+                next_id = context.variable_mapping.next_id
+                context.variable_mapping.mapping[self] = next_id
+                context.variable_mapping.next_id += 1
+            letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         unitstr = f" {self.units}" if self.units != dimensionless else ""
-        letter = param_id_to_human_str(context.variable_mapping.mapping[self])
 
         out = f"{letter}{unitstr}"
         out += self._get_lit_suffix()
@@ -1646,15 +1815,63 @@ class Parameter(ParameterOperatable):
         return self.domain.unbounded(self)
 
     def get_last_known_deduced_superset(self, solver: "Solver") -> P_Set | None:
-        as_literal = solver.inspect_get_known_supersets(self, force_update=False)
+        as_literal = solver.inspect_get_known_supersets(self)
         return None if as_literal == self.domain_set() else as_literal
 
 
 p_field = f_field(Parameter)
 
-Commutative = (
-    Add | Multiply | And | Or | Xor | Union | Intersection | SymmetricDifference | Is
+# Canonical ----------------------------------------------------------------------------
+CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
+CanonicalLogicExpression = Or | Not
+CanonicalSeticExpression = Intersection | Union | SymmetricDifference
+CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+
+CanonicalConstrainableExpression = CanonicalLogicExpression | CanonicalPredicate
+
+CanonicalExpression = (
+    CanonicalNumericExpression
+    | CanonicalLogicExpression
+    | CanonicalSeticExpression
+    | CanonicalPredicate
 )
-FullyAssociative = Add | Multiply | And | Or | Xor | Union | Intersection
-LeftAssociative = Subtract | Divide | Difference
-Associative = FullyAssociative | LeftAssociative
+CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
+CanonicalBoolean = BoolSet
+CanonicalEnum = P_Set[Enum]
+# TODO Canonical set?
+
+CanonicalLiteral = CanonicalNumber | CanonicalBoolean | CanonicalEnum
+CanonicalOperable = CanonicalExpression | Parameter
+CanonicalAll = CanonicalOperable | CanonicalLiteral
+
+# --------------------------------------------------------------------------------------
+
+Reflexive = Is | IsSubset | GreaterOrEqual
+IdempotentExpression = Abs | Round
+IdempotentOperands = Or | Union | Intersection
+Commutative = Add | Multiply | Or | Union | Intersection | SymmetricDifference | Is
+UnaryIdentity = Add | Multiply | Or | Union | Intersection
+FullyAssociative = Add | Multiply | Or | Union | Intersection
+Associative = FullyAssociative
+Involutory = Not
+
+
+# python help --------------------------------------------------------------------------
+CanonicalExpressionR = (
+    Add,
+    Multiply,
+    Power,
+    Round,
+    Abs,
+    Sin,
+    Log,
+    Or,
+    Not,
+    Intersection,
+    Union,
+    SymmetricDifference,
+    Is,
+    GreaterOrEqual,
+    GreaterThan,
+    IsSubset,
+)

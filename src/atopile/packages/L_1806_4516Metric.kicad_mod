@@ -1,0 +1,203 @@
+(footprint "L_1806_4516Metric"
+	(version 20240108)
+	(generator "pcbnew")
+	(generator_version "8.0")
+	(layer "F.Cu")
+	(descr "Inductor SMD 1806 (4516 Metric), square (rectangular) end terminal, IPC_7351 nominal, (Body size source: IPC-SM-782 page 80, https://www.pcb-3d.com/wordpress/wp-content/uploads/ipc-sm-782a_amendment_1_and_2.pdf), generated with kicad-footprint-generator")
+	(tags "inductor")
+	(property "Reference" "REF**"
+		(at 0 -1.9 0)
+		(layer "F.SilkS")
+		(uuid "8f9679f7-9dbe-49cf-959d-2274d4206c55")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "L_1806_4516Metric"
+		(at 0 1.9 0)
+		(layer "F.Fab")
+		(uuid "239658b4-cbd1-48d4-a3bf-3ffb2502430f")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Footprint" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "13cdb6eb-037f-4539-a855-8488377cba79")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "8bab4f7b-854b-4f77-8c97-c931f95280c3")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "b386261b-7e7d-498f-8208-4de5842598b4")
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+		)
+	)
+	(attr smd)
+	(fp_line
+		(start -1.260242 -0.91)
+		(end 1.260242 -0.91)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "61749536-db8a-45c3-bdfc-ff61b1a2cc3e")
+	)
+	(fp_line
+		(start -1.260242 0.91)
+		(end 1.260242 0.91)
+		(stroke
+			(width 0.12)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "e26d20d6-7a9f-4d9c-b2c9-ae5e22f0319c")
+	)
+	(fp_line
+		(start -3 -1.2)
+		(end 3 -1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "9f0f3df5-bdeb-4bb1-979f-2c3fefc29481")
+	)
+	(fp_line
+		(start -3 1.2)
+		(end -3 -1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "da2690b1-f6b1-4c65-9309-41f2d0e22f8d")
+	)
+	(fp_line
+		(start 3 -1.2)
+		(end 3 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "926b07ef-5681-4d39-9155-e18bfafb29e7")
+	)
+	(fp_line
+		(start 3 1.2)
+		(end -3 1.2)
+		(stroke
+			(width 0.05)
+			(type solid)
+		)
+		(layer "F.CrtYd")
+		(uuid "bb799aff-c080-4ea6-a63c-6a6ee1014e68")
+	)
+	(fp_line
+		(start -2.25 -0.8)
+		(end 2.25 -0.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "e96ab4a0-c557-4404-8bf2-16ac261bf0b3")
+	)
+	(fp_line
+		(start -2.25 0.8)
+		(end -2.25 -0.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "065aa546-b145-4abb-b9cc-8008d60852b3")
+	)
+	(fp_line
+		(start 2.25 -0.8)
+		(end 2.25 0.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "d57c361f-4138-4011-8eee-6b0bb3a08387")
+	)
+	(fp_line
+		(start 2.25 0.8)
+		(end -2.25 0.8)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+		(layer "F.Fab")
+		(uuid "f51d3073-de91-49c7-b914-0b8800501dfb")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 0 0)
+		(layer "F.Fab")
+		(uuid "9c9a2519-dd97-468b-a1d6-0a79933b9ac3")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at -2.1125 0)
+		(size 1.275 1.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(roundrect_rratio 0.196078)
+		(uuid "cdf18d6c-0d38-49b7-bc56-c3c845caa276")
+	)
+	(pad "2" smd roundrect
+		(at 2.1125 0)
+		(size 1.275 1.9)
+		(layers "F.Cu" "F.Paste" "F.Mask")
+		(roundrect_rratio 0.196078)
+		(uuid "8e0f5a71-a5b5-47bb-bceb-3e741da7422e")
+	)
+	(model "${KICAD8_3DMODEL_DIR}/Inductor_SMD.3dshapes/L_1806_4516Metric.wrl"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz 0 0 0)
+		)
+	)
+)
