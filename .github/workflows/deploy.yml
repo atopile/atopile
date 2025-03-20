@@ -151,6 +151,12 @@ jobs:
           - dockerfile: "Dockerfile.kicad"
             image: "atopile-kicad"
             kicad_version: "8.0"
+            tag_suffix: "-kicad8"
+
+          # default
+          - dockerfile: "Dockerfile.kicad"
+            image: "atopile-kicad"
+            kicad_version: "8.0"
             tag_suffix: ""
 
     # Sets the permissions granted to the `GITHUB_TOKEN`
