@@ -1871,14 +1871,18 @@ class PCB_Transformer:
         components = _iter_modules(self.app.get_tree(types=Module))
         clusters = groupby(components, _get_cluster)
 
-        # scaled to fit all clusters inside the canvas boundary
-        horizontal_spacing = min(
-            floor(CANVAS_EXTENT / len(clusters)), DEFAULT_HORIZONTAL_SPACING
-        )
-        max_cluster_size = max(len(clusters[c]) for c in clusters)
-        vertical_spacing = min(
-            floor(CANVAS_EXTENT / max_cluster_size), DEFAULT_VERTICAL_SPACING
-        )
+        if clusters:
+            # scaled to fit all clusters inside the canvas boundary
+            horizontal_spacing = min(
+                floor(CANVAS_EXTENT / len(clusters)), DEFAULT_HORIZONTAL_SPACING
+            )
+            vertical_spacing = min(
+                floor(CANVAS_EXTENT / max(len(clusters[c]) for c in clusters)),
+                DEFAULT_VERTICAL_SPACING,
+            )
+        else:
+            horizontal_spacing = DEFAULT_HORIZONTAL_SPACING
+            vertical_spacing = DEFAULT_VERTICAL_SPACING
 
         cluster_point = copy.deepcopy(self.default_component_insert_point)
         insert_point = copy.deepcopy(self.default_component_insert_point)
