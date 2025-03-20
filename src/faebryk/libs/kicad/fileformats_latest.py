@@ -946,11 +946,12 @@ class C_footprint:
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
-        size: C_wh
         at: C_xyr
+        size: C_wh
         rect_delta: Optional[C_rect_delta] = None
         drill: Optional[C_drill] = None
         layers: list[str]
+        net: C_net | None = None
         die_length: Optional[float] = None
         solder_mask_margin: Optional[float] = None
         solder_paste_margin: Optional[float] = None
@@ -975,7 +976,6 @@ class C_footprint:
         zone_layer_connections: Optional[list[str]] = None
         uuid: UUID = field(default_factory=gen_uuid)
         unknown: CatchAll = None
-        net: C_net | None = None
 
     class E_embedded_fonts(SymEnum):
         yes = auto()
@@ -1415,9 +1415,9 @@ class C_kicad_pcb_file(SEXP_File):
 
         @dataclass(kw_only=True)
         class C_segment(_CuItemWithSoldermaskLayers):
-            start: C_xy
-            end: C_xy
-            width: float
+            start: C_xy = field(**sexp_field(order=-3))
+            end: C_xy = field(**sexp_field(order=-2))
+            width: float = field(**sexp_field(order=-1))
             net: int
             uuid: UUID
             solder_mask_margin: float | None = None
