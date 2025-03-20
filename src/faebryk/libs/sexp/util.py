@@ -23,9 +23,13 @@ def prettify_sexp_string(raw: str) -> str:
         elif c == "(":
             in_leaf_expr = True
             if level != 0:
+                if out[-1] == " ":
+                    out = out[:-1]
                 out += "\n" + " " * 4 * level
             level += 1
         elif c == ")":
+            if out[-1] == " ":
+                out = out[:-1]
             level -= 1
             if not in_leaf_expr:
                 out += "\n" + " " * 4 * level
