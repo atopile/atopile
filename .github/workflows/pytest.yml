@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  KICAD_VERSION: 9.0
+  KICAD_VERSION: '9.0'
 
 jobs:
   pytest:
