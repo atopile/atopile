@@ -57,6 +57,26 @@ SIMPLE_APP_PCB_SUMMARY = PcbSummary(
 )
 
 
+def test_empty_design(tmpdir: Path):
+    pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
+    assert not pcb_file.exists()
+
+    app = """
+    module App:
+        signal a
+    """
+
+    _, stderr, p = dump_and_run(app, [], working_dir=tmpdir)
+
+    assert p.returncode == 0
+    assert pcb_file.exists()
+    assert "Creating new layout" in stderr
+
+    assert summarize_pcb_file(pcb_file) == PcbSummary(
+        num_layers=29, nets=[""], footprints=[]
+    )
+
+
 def test_pcb_file_created(tmpdir: Path):
     pcb_file = tmpdir / Path("layout/app/app.kicad_pcb")
     assert not pcb_file.exists()

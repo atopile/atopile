@@ -119,11 +119,11 @@ def build(app: Module) -> None:
         if config.build.keep_designators:
             load_designators(G, attach=True)
 
-    with LoggingStage("picker", "Picking components"):
+    with LoggingStage("picker", "Picking components") as stage:
         if config.build.keep_picked_parts:
             load_descriptive_properties(G)
         try:
-            pick_part_recursively(app, solver)
+            pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
             raise ExceptionGroup(
                 "Failed to pick parts for some modules",
