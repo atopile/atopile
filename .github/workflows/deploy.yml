@@ -146,6 +146,14 @@ jobs:
         include:
           - dockerfile: "Dockerfile.kicad"
             image: "atopile-kicad"
+            kicad_version: "8.0"
+            tag_suffix: "-kicad8"
+
+          # default
+          - dockerfile: "Dockerfile.kicad"
+            image: "atopile-kicad"
+            kicad_version: "8.0"
+            tag_suffix: ""
 
     # Sets the permissions granted to the `GITHUB_TOKEN`
     # for the actions in this job.
@@ -170,13 +178,13 @@ jobs:
           images: |
             ghcr.io/atopile/${{ matrix.image }}
           flavor: |
-            latest=${{github.event_name == 'release' && github.event.action == 'published' && !github.event.release.prerelease && !github.event.release.draft}}
+            latest=${{github.event_name == 'release' && github.event.action == 'published' && !github.event.release.prerelease && !github.event.release.draft && matrix.tag_suffix == ''}}
           tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=sha
+            type=ref,event=branch,suffix=${{ matrix.tag_suffix }}
+            type=ref,event=pr,suffix=${{ matrix.tag_suffix }}
+            type=semver,pattern={{version}},suffix=${{ matrix.tag_suffix }}
+            type=semver,pattern={{major}}.{{minor}},suffix=${{ matrix.tag_suffix }}
+            type=sha,suffix=${{ matrix.tag_suffix }}
 
       - name: Log in to the Container registry
         uses: docker/login-action@0d4c9c5ea7693da7b068278f7b52bda2a190a446
@@ -193,3 +201,5 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            KICAD_VERSION=${{ matrix.kicad_version }}
