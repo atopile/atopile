@@ -85,10 +85,10 @@ def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
             # TODO: link to kicad docs for file migration
             raise UserResourceException(
                 f"Error loading KiCad PCB file {path}\n"
-                f"Unsupported version: {KICAD_VERSION_NAMES[pcb.kicad_pcb.version]} "
-                f"({pcb.kicad_pcb.version})\n"
-                f"Expected: {KICAD_VERSION_NAMES[KICAD_PCB_VERSION]} "
-                f"({KICAD_PCB_VERSION})",
+                f"Unsupported version: {pcb.kicad_pcb.version} "
+                f"({KICAD_VERSION_NAMES[pcb.kicad_pcb.version]})\n"
+                f"Expected: {KICAD_PCB_VERSION} "
+                f"({KICAD_VERSION_NAMES[KICAD_PCB_VERSION]})",
                 markdown=False,
             )
 
