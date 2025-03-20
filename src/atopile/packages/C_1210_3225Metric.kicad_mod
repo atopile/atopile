@@ -189,7 +189,7 @@
 		(roundrect_rratio 0.217391)
 		(uuid "584ba531-83e4-40ff-a284-a4520b8b7d41")
 	)
-	(model "${KICAD8_3DMODEL_DIR}/Capacitor_SMD.3dshapes/C_1210_3225Metric.wrl"
+	(model "${KICAD9_3DMODEL_DIR}/Capacitor_SMD.3dshapes/C_1210_3225Metric.wrl"
 		(offset
 			(xyz 0 0 0)
 		)

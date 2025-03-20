@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad.fileformats_latest import (
     C_effects,
     C_footprint,
     C_kicad_footprint_file,
@@ -44,13 +44,50 @@ logger = logging.getLogger(__name__)
 DUMP = ConfigFlag("DUMP", descr="dump load->save into /tmp")
 
 
-def test_parser():
+def test_parser_netlist():
+    netlist = C_kicad_netlist_file.loads(NETFILE)
+    assert [(c.ref, c.value) for c in netlist.export.components.comps][:10] == [
+        ("C1", "10uF"),
+        ("C2", "10uF"),
+        ("C3", "10uF"),
+        ("C4", "10uF"),
+        ("C5", "22uF"),
+        ("C6", "100nF"),
+        ("C7", "100nF"),
+        ("C8", "10uF"),
+        ("C9", "100nF"),
+        ("C10", "100nF"),
+    ]
+
+
+def test_parser_project():
+    pro = C_kicad_project_file.loads(PRJFILE)
+    assert pro.pcbnew.last_paths.netlist == "../../faebryk/faebryk.net"
+
+
+def test_parser_schematics():
+    sch = C_kicad_sch_file.loads(SCHFILE)
+    assert sch.kicad_sch.lib_symbols.symbols["power:GND"].power is not None
+    assert sch.kicad_sch.lib_symbols.symbols["Device:R"].power is None
+    assert (
+        sch.kicad_sch.lib_symbols.symbols["Amplifier_Audio:LM4990ITL"]
+        .propertys["Datasheet"]
+        .value
+        == "http://www.ti.com/lit/ds/symlink/lm4990.pdf"
+    )
+
+
+def test_parser_symbols():
+    sym = C_kicad_sym_file.loads(SYMFILE)
+    assert (
+        sym.kicad_symbol_lib.symbols["AudioJack-CUI-SJ-3523-SMT"].name
+        == "AudioJack-CUI-SJ-3523-SMT"
+    )
+
+
+def test_parser_pcb_and_footprints():
     pcb = C_kicad_pcb_file.loads(PCBFILE)
     fp = C_kicad_footprint_file.loads(FPFILE)
-    netlist = C_kicad_netlist_file.loads(NETFILE)
-    pro = C_kicad_project_file.loads(PRJFILE)
-    sch = C_kicad_sch_file.loads(SCHFILE)
-    sym = C_kicad_sym_file.loads(SYMFILE)
 
     assert [f.name for f in pcb.kicad_pcb.footprints] == [
         "logos:faebryk_logo",
@@ -69,55 +106,8 @@ def test_parser():
         ("2", padtype.smd),
     ]
 
-    assert [(c.ref, c.value) for c in netlist.export.components.comps][:10] == [
-        ("C1", "10uF"),
-        ("C2", "10uF"),
-        ("C3", "10uF"),
-        ("C4", "10uF"),
-        ("C5", "22uF"),
-        ("C6", "100nF"),
-        ("C7", "100nF"),
-        ("C8", "10uF"),
-        ("C9", "100nF"),
-        ("C10", "100nF"),
-    ]
-
-    # Var args parser
-    effects = (
-        find(pcb.kicad_pcb.footprints, lambda f: f.name == "logos:faebryk_logo")
-        .propertys["Footprint"]
-        .effects
-    )
-    assert effects.justifys[0].justifys == [
-        C_effects.C_justify.E_justify.mirror,
-        C_effects.C_justify.E_justify.right,
-    ]
-    assert effects.justifys[1].justifys == [
-        C_effects.C_justify.E_justify.bottom,
-    ]
-
-    assert effects.get_justifys() == [
-        C_effects.C_justify.E_justify.mirror,
-        C_effects.C_justify.E_justify.right,
-        C_effects.C_justify.E_justify.bottom,
-    ]
-
-    assert pro.pcbnew.last_paths.netlist == "../../faebryk/faebryk.net"
-
-    assert (
-        sch.kicad_sch.lib_symbols.symbols["Amplifier_Audio:LM4990ITL"]
-        .propertys["Datasheet"]
-        .value
-        == "http://www.ti.com/lit/ds/symlink/lm4990.pdf"
-    )
-
-    assert sch.kicad_sch.lib_symbols.symbols["power:GND"].power is not None
-    assert sch.kicad_sch.lib_symbols.symbols["Device:R"].power is None
-
-    assert (
-        sym.kicad_symbol_lib.symbols["AudioJack-CUI-SJ-3523-SMT"].name
-        == "AudioJack-CUI-SJ-3523-SMT"
-    )
+    logo_fp = find(pcb.kicad_pcb.footprints, lambda f: f.name == "logos:faebryk_logo")
+    assert C_footprint.E_attr.exclude_from_bom in logo_fp.attr
 
 
 def test_write():

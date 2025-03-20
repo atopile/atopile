@@ -189,7 +189,7 @@
 		(roundrect_rratio 0.2)
 		(uuid "2ed6e4a6-e1ba-445a-9bbe-1cf3ea918791")
 	)
-	(model "${KICAD8_3DMODEL_DIR}/Inductor_SMD.3dshapes/L_1008_2520Metric.wrl"
+	(model "${KICAD9_3DMODEL_DIR}/Inductor_SMD.3dshapes/L_1008_2520Metric.wrl"
 		(offset
 			(xyz 0 0 0)
 		)

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
-from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from test.end_to_end.conftest import dump_and_run
 
 

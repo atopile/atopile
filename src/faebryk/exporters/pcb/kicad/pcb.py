@@ -11,7 +11,10 @@ from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
 )
-from faebryk.libs.kicad.fileformats import C_footprint, C_kicad_fp_lib_table_file
+from faebryk.libs.kicad.fileformats_latest import (
+    C_footprint,
+    C_kicad_fp_lib_table_file,
+)
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.util import KeyErrorNotFound, find
@@ -55,7 +58,7 @@ def get_footprint(identifier: str, fp_lib_path: Path) -> C_footprint:
     dir_path = Path(
         (lib.uri)
         .replace("${KIPRJMOD}", str(config.build.paths.fp_lib_table.parent))
-        .replace("${KICAD8_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
+        .replace("${KICAD9_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
     )
 
     path = dir_path / f"{fp_name}.kicad_mod"

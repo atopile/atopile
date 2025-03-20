@@ -9,7 +9,7 @@ from dataclasses_json import CatchAll
 from dataclasses_json.utils import CatchAllVar
 
 from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
-from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
+from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 
 

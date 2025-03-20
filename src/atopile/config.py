@@ -310,7 +310,7 @@ class BuildTargetPaths(BaseConfigModel):
             self.layout.parent.mkdir(parents=True, exist_ok=True)
 
             # delayed import to improve startup time
-            from faebryk.libs.kicad.fileformats import C_kicad_pcb_file
+            from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 
             C_kicad_pcb_file.skeleton(
                 generator=DISTRIBUTION_NAME,

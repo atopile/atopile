@@ -112,7 +112,7 @@ class has_package(Module.TraitT.decless()):
         """
         import faebryk.library._F as F
         from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
-        from faebryk.libs.kicad.fileformats import C_kicad_footprint_file
+        from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
 
         gf = GraphFunctions(app.get_graph())
 
