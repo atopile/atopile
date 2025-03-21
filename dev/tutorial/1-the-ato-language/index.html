@@ -1297,9 +1297,9 @@ Like classes in most modern languages, we can subclass and inherit from blocks.<
 </span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="k">module</span><span class="w"> </span><span class="n">Test</span>:
 </span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="k">signal</span><span class="w"> </span><span class="n">gnd</span>
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="c"># creates an instance of the SubclassedModule</span>
-</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="n">subclased_module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">SubclassedModule</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="n">subclassed_module</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="k">new</span><span class="w"> </span><span class="n">SubclassedModule</span>
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">    </span><span class="c"># connects the some_signal of the SubclassedModule to the gnd of Test</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="n">subclased_module</span>.<span class="n">gnd</span><span class="w"> </span>~<span class="w"> </span><span class="n">gnd</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">    </span><span class="n">subclassed_module</span>.<span class="n">gnd</span><span class="w"> </span>~<span class="w"> </span><span class="n">gnd</span>
 </span></code></pre></div>
 <div class="admonition info">
 <p class="admonition-title">Info</p>
@@ -1310,7 +1310,7 @@ Like classes in most modern languages, we can subclass and inherit from blocks.<
 <div class="language-ato highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">some_instance</span>.<span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="m">100</span><span class="n">ohm</span><span class="w"> </span><span class="o">+/-</span><span class="w"> </span><span class="m">10</span><span class="o">%</span>
 </span></code></pre></div>
 <p>Unlike Python, you don't need to state <code>self.</code> and instead any assignments you make within the scope of a block, are automatically assigned to the block.</p>
-<p>There are a number of built-in attributes that influence the behaviour of the compiler with respect to the block.</p>
+<p>There are a number of built-in attributes that influence the behavior of the compiler with respect to the block.</p>
 <p>Setting the <code>package</code> attribute, for example, will make the compiler select only components with the specified package to be used in that component's slot.</p>
 <h2 id="connecting-it-up">Connecting it up<a class="headerlink" href="#connecting-it-up" title="Permanent link">&para;</a></h2>
 <p>Any <code>interface</code> can be connected to any other interface of the same type using the <code>~</code> operator.</p>
@@ -1374,7 +1374,7 @@ Perhaps you've got a better method, but generally when I'm trying to find resist
 <p><code>from "where.ato" import What, Why, Wow</code></p>
 <p>Notes on that statement:
 - add quotes on the "where.ato" - it's a string
-- <code>What</code>, <code>Why</code> and <code>Wow</code> are capitalised because they are in the source file. It has to match precisely - it's a type and types should be capitalised, though this isn't enforced and you can import things other than types from other files</p>
+- <code>What</code>, <code>Why</code> and <code>Wow</code> are capitalized because they are in the source file. It has to match precisely - it's a type and types should be capitalized, though this isn't enforced and you can import things other than types from other files</p>
 <p>The import statements are with respect to the current project (the root of which is where your <code>ato.yaml</code> is placed), or within the standard library (<code>.ato/modules/</code>)</p>
 <div class="admonition warning">
 <p class="admonition-title">Warning</p>
