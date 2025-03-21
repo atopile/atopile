@@ -11,4 +11,4 @@ Install pre-commit into your repository:
 pre-commit install
 ```
 
-From now on when commiting, `pre-commit` will run our formatting & linting tools.
+From now on when committing, `pre-commit` will run our formatting & linting tools.

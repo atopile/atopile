@@ -1,3 +1,6 @@
+~ergh
+~faebryk
+~lcsc
 ~narayan
 ~netlist
 AECQ
@@ -12,8 +15,10 @@ CANL
 datasheet
 debugpy
 decless
+diffable
 ECAD
 elec
+fabll
 filenode
 Fixham
 FLRC
@@ -46,3 +51,5 @@ tstamp
 UNITLESS
 upvote
 visualiser
+
+Cplus
