@@ -307,7 +307,7 @@ class ShortTimeElapsedColumn(TimeElapsedColumn):
 
     def render(self, task: "Task") -> Text:
         """Show time elapsed."""
-        elapsed = (task.finished_time if task.finished else task.elapsed) or 0
+        elapsed = task.elapsed or 0
         return Text.from_markup(f"[blue][{elapsed:.1f}s][/blue]")
 
 
@@ -404,6 +404,9 @@ class LoggingStage(Advancable):
             if col is not None
         )
 
+    def _update_columns(self) -> None:
+        self._progress.columns = self._get_columns()
+
     def alert(self, message: str) -> None:
         message = f"[bold][yellow]![/yellow] {message}[/bold]"
 
@@ -430,7 +433,7 @@ class LoggingStage(Advancable):
 
     def set_total(self, total: int | None) -> None:
         self.steps = total
-        self._progress.columns = self._get_columns()
+        self._update_columns()
         self._progress.update(self._task_id, total=total)
         self.refresh()
 
@@ -440,6 +443,7 @@ class LoggingStage(Advancable):
 
     def __enter__(self) -> "LoggingStage":
         self._setup_logging()
+        self._update_columns()
         self._progress.start()
         self._task_id = self._progress.add_task(
             self.description, total=self.steps if self.steps is not None else 1
