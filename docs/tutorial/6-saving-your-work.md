@@ -33,7 +33,7 @@ There are a few paths to contribute back to a repository.
 
 If you have permissions to push directly to the repo, by far the easiest way to update it is to contribute directly.
 
-As your project progresses and stabalises, you typically want to create a new branch and pull-request (PR) for each change you're making, even if you're working alone.
+As your project progresses and stabilizes, you typically want to create a new branch and pull-request (PR) for each change you're making, even if you're working alone.
 
 
 ### Directly to `main`

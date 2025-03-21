@@ -30,9 +30,9 @@ module SubclassedModule from SomeModule:
 module Test:
     signal gnd
     # creates an instance of the SubclassedModule
-    subclased_module = new SubclassedModule
+    subclassed_module = new SubclassedModule
     # connects the some_signal of the SubclassedModule to the gnd of Test
-    subclased_module.gnd ~ gnd
+    subclassed_module.gnd ~ gnd
 ```
 
 !!! info
@@ -48,7 +48,7 @@ some_instance.value = 100ohm +/- 10%
 
 Unlike Python, you don't need to state `self.` and instead any assignments you make within the scope of a block, are automatically assigned to the block.
 
-There are a number of built-in attributes that influence the behaviour of the compiler with respect to the block.
+There are a number of built-in attributes that influence the behavior of the compiler with respect to the block.
 
 Setting the `package` attribute, for example, will make the compiler select only components with the specified package to be used in that component's slot.
 
@@ -155,7 +155,7 @@ You can import assets by specifying what you want to import and where you want t
 
 Notes on that statement:
 - add quotes on the "where.ato" - it's a string
-- `What`, `Why` and `Wow` are capitalised because they are in the source file. It has to match precisely - it's a type and types should be capitalised, though this isn't enforced and you can import things other than types from other files
+- `What`, `Why` and `Wow` are capitalized because they are in the source file. It has to match precisely - it's a type and types should be capitalized, though this isn't enforced and you can import things other than types from other files
 
 The import statements are with respect to the current project (the root of which is where your `ato.yaml` is placed), or within the standard library (`.ato/modules/`)
 
