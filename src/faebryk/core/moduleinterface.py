@@ -11,6 +11,7 @@ from typing import (
 
 from faebryk.core.cpp import (
     GraphInterfaceModuleConnection,
+    LinkSibling,
     Path,
 )
 from faebryk.core.graphinterface import GraphInterface
@@ -278,3 +279,23 @@ class ModuleInterface(Node):
             to_check.difference_update(ifs.keys())
 
         return buses
+
+    @staticmethod
+    def pretty_mif_path(path: Path) -> str:
+        path_gifs = [path[i] for i in range(len(path))]
+
+        out = f"{path[0].node.get_full_name(False)}"
+        # mif_stack = [path[0].node]
+        for g1, g2 in pairwise(path_gifs):
+            link = g1.is_connected_to(g2)
+            assert link
+            # skip intra mif links
+            if isinstance(link, LinkSibling) and g2.node is g1.node:
+                continue
+            if isinstance(link, LinkDirect):
+                if type(link).__name__ == "LinkDirect":
+                    out += "\n ~"
+                else:
+                    out += f"\n ~ {type(link).__name__}"
+            out += f"\n{g2.node.get_full_name(False)}"
+        return out

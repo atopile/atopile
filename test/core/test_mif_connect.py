@@ -7,6 +7,7 @@ from itertools import chain, pairwise
 import pytest
 
 import faebryk.library._F as F
+from faebryk.core.cpp import set_max_paths
 from faebryk.core.link import (
     LinkDirect,
     LinkDirectConditional,
@@ -16,6 +17,7 @@ from faebryk.core.link import (
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import IMPLIED_PATHS, ModuleInterface
 from faebryk.core.node import NodeException
+from faebryk.core.pathfinder import MAX_PATHS
 from faebryk.libs.app.erc import (
     ERCFaultShortedModuleInterfaces,
     ERCPowerSourcesShortedError,
@@ -1246,3 +1248,56 @@ def test_connect_incompatible_hierarchical_regression():
 
     with pytest.raises(NodeException):
         x.connect(y)  # type: ignore
+
+
+def test_regression_param_mif():
+    # FIXME: doesn't reproduce problem yet
+    # comes from hil: 4802f1df7b5a4daddb578ef53c15fd9b36a200cc
+    # branch cellsim-16ch
+    # ato build -b hil-core
+
+    set_max_paths(int(MAX_PATHS), 0, 0)
+
+    class CP2102(Module):
+        uart: F.UART
+
+    class USB_UART(Module):
+        cp2102: CP2102
+        uart: F.UART
+
+        def __preinit__(self) -> None:
+            self.cp2102.uart.connect(self.uart)
+
+    class CM5(Module):
+        gpios = L.list_field(4, F.ElectricLogic)
+        uart: F.UART
+
+        def __preinit__(self) -> None:
+            self.uart.cts.connect(self.gpios[0])
+            self.gpios[0].reference.connect(self.gpios[1].reference)
+            self.gpios[1].reference.connect(self.gpios[2].reference)
+            self.gpios[2].reference.connect(self.gpios[3].reference)
+
+    class Controller(Module):
+        cm5: CM5
+        uart: F.UART
+
+        def __preinit__(self) -> None:
+            self.cm5.uart.connect(self.uart)
+
+    class App(Module):
+        usb_uart: USB_UART
+        controller: Controller
+
+        def __preinit__(self) -> None:
+            self.usb_uart.uart.connect(self.controller.uart)
+
+    app = App()
+
+    A = app.usb_uart.cp2102.uart.cts.reference
+    B = app.controller.cm5.gpios[3].reference
+
+    assert A.is_connected_to(B)
+    assert B.is_connected_to(A)
+
+    print(ModuleInterface.pretty_mif_path(A.is_connected_to(B)[0]))

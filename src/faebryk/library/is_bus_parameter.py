@@ -148,18 +148,41 @@ class is_bus_parameter(Parameter.TraitT.decless()):
             paths = bus_representative_mif.get_connected(include_self=True)
             connections = set(paths.keys())
 
-            busses.append(connections)
             if len(set(map(type, connections))) > 1:
                 raise NotImplementedError(
                     "No support for specialized bus with dynamic params"
                 )
+
+            # TODO: remove debug
+            # for m in connections:
+            #    no_back_connection = not m.is_connected_to(bus_representative_mif)
+            #    double_bus = any(m in bus for bus in busses)
+            #    A = "N" if no_back_connection else ""
+            #    B = "D" if double_bus else ""
+
+            #     if no_back_connection or double_bus:
+            #         fails.append(
+            #             Exception(
+            #                 f"MIF bug {A:1}{B:1}: {bus_representative_mif} -> {m}"
+            #                 f"\n{ModuleInterface.pretty_mif_path(paths[m])}"
+            #             )
+            #         )
 
             for m in connections:
                 if m in params_grouped_by_mif:
                     del params_grouped_by_mif[m]
             param_bus_representatives |= set(bus_representative_params)
 
+            busses.append(connections)
+
         times.add("get parameter connections")
+
+        # if fails:
+        #     formatted = indented_container(
+        #         (msg.args[0] for msg in fails), use_repr=False
+        #     )
+        #     logger.error(formatted)
+        #     raise NotImplementedError("Failed to resolve busses: " + formatted)
 
         # exec resolution
         for _, trait in param_bus_representatives:
