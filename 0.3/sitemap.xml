@@ -2,90 +2,82 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://docs.atopile.io/0.3/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/CHANGELOG/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/CODE_OF_CONDUCT/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/CODING_GUIDELINES/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/CONTRIBUTING/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/development/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/quickstart/</loc>
-         <lastmod>2025-03-15</lastmod>
-    </url>
-    <url>
-         <loc>https://docs.atopile.io/0.3/spin/</loc>
-         <lastmod>2025-03-15</lastmod>
-    </url>
-    <url>
-         <loc>https://docs.atopile.io/0.3/swoop/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/api/cli/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/guides/best-practices/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/guides/faebryk/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/guides/git/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/guides/installation/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/reference/attributes/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/reference/config/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/tutorial/1-the-ato-language/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/tutorial/2-the-ato-compiler/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/tutorial/3-ato-create-component/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/tutorial/4-packages/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/tutorial/5-layout/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
     <url>
          <loc>https://docs.atopile.io/0.3/tutorial/6-saving-your-work/</loc>
-         <lastmod>2025-03-15</lastmod>
+         <lastmod>2025-03-22</lastmod>
     </url>
 </urlset>
