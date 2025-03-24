@@ -618,6 +618,11 @@ class C_polygon(C_shape):
     pts: C_pts = field(**sexp_field(order=-1))
     uuid: UUID | None = None
 
+    def __post_init__(self):
+        assert (
+            len(self.pts.xys) > 0 or len(self.pts.arcs) > 0
+        ), "Polygon must have at least one point or arc"
+
 
 @dataclass(kw_only=True)
 class C_text:
