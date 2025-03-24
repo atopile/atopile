@@ -39,6 +39,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_group,
     C_kicad_pcb_file,
     C_line,
+    C_net,
     C_polygon,
     C_rect,
     C_stroke,
@@ -70,7 +71,7 @@ logger = logging.getLogger(__name__)
 PCB = C_kicad_pcb_file.C_kicad_pcb
 Footprint = PCB.C_pcb_footprint
 Pad = Footprint.C_pad
-Net = PCB.C_net
+Net = C_net
 
 # TODO remove
 GR_Line = C_line
@@ -1972,10 +1973,7 @@ class PCB_Transformer:
                 # We needn't check again here for a lack of pcb pads on the atopile pad
                 # because we've already raised a warning on binding of the trait
                 for pcb_pad in pcb_pads_connected_to_pad:
-                    pcb_pad.net = Footprint.C_pad.C_net(
-                        name=pcb_net.name,
-                        number=pcb_net.number,
-                    )
+                    pcb_pad.net = C_net(name=pcb_net.name, number=pcb_net.number)
 
             processed_nets.add(pcb_net)
 
