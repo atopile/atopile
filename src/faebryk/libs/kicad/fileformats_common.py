@@ -157,7 +157,14 @@ class C_effects:
 
 @dataclass
 class C_pts:
+    @dataclass
+    class C_arc:
+        start: C_xy
+        mid: C_xy
+        end: C_xy
+
     xys: list[C_xy] = field(**sexp_field(multidict=True), default_factory=list)
+    arcs: list[C_arc] = field(**sexp_field(multidict=True), default_factory=list)
 
 
 @dataclass(kw_only=True)

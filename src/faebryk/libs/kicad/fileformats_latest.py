@@ -18,7 +18,13 @@ from faebryk.libs.kicad.fileformats_common import (
     C_xyz,
     gen_uuid,
 )
-from faebryk.libs.sexp.dataclass_sexp import JSON_File, SEXP_File, SymEnum, sexp_field
+from faebryk.libs.sexp.dataclass_sexp import (
+    JSON_File,
+    SEXP_File,
+    Symbol,
+    SymEnum,
+    sexp_field,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -612,6 +618,11 @@ class C_polygon(C_shape):
     pts: C_pts = field(**sexp_field(order=-1))
     uuid: UUID | None = None
 
+    def __post_init__(self):
+        assert (
+            len(self.pts.xys) > 0 or len(self.pts.arcs) > 0
+        ), "Polygon must have at least one point or arc"
+
 
 @dataclass(kw_only=True)
 class C_text:
@@ -641,7 +652,7 @@ class C_fp_text:  # TODO: Inherit from C_text maybe ?
     hide: bool | None = None
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_fp_text_effects
-    unlocked: bool = False
+    unlocked: bool | None = field(default=False)
 
 
 @dataclass(kw_only=True)
@@ -806,6 +817,12 @@ class C_group:
     members: list[UUID] = field(default_factory=list)
 
 
+@dataclass
+class C_net:
+    number: int = field(**sexp_field(positional=True))
+    name: str | None = field(**sexp_field(positional=True))
+
+
 @dataclass(kw_only=True)
 class C_footprint:
     class E_attr(SymEnum):
@@ -834,7 +851,7 @@ class C_footprint:
 
     @dataclass
     class C_footprint_polygon(C_polygon):
-        uuid: UUID = field(default_factory=gen_uuid)
+        uuid: UUID | None = field(default_factory=gen_uuid)
 
     @dataclass(kw_only=True)
     class C_rect_delta:
@@ -939,10 +956,6 @@ class C_footprint:
             width: float = field(**sexp_field(positional=True))
             height: float = field(**sexp_field(positional=True))
 
-        class C_net:
-            number: int = field(**sexp_field(positional=True))
-            name: str = field(**sexp_field(positional=True))
-
         name: str = field(**sexp_field(positional=True))
         type: E_type = field(**sexp_field(positional=True))
         shape: E_shape = field(**sexp_field(positional=True))
@@ -951,7 +964,6 @@ class C_footprint:
         rect_delta: Optional[C_rect_delta] = None
         drill: Optional[C_drill] = None
         layers: list[str]
-        net: C_net | None = None
         die_length: Optional[float] = None
         solder_mask_margin: Optional[float] = None
         solder_paste_margin: Optional[float] = None
@@ -966,12 +978,13 @@ class C_footprint:
         chamfer_ratio: Optional[float] = None
         chamfer: Optional[E_chamfer] = None
         properties: Optional[E_property] = None
+        net: C_net | None = None
         options: Optional[C_options] = None
         padstack: Optional[C_padstack] = None  # see parsePadstack
         # TODO: primitives: gr_line, gr_arc, gr_circle, gr_curve, gr_rect, gr_bbox or
         # gr_poly
-        remove_unused_layers: Optional[bool] = True
-        keep_end_layers: Optional[bool] = True
+        remove_unused_layers: bool | None = None
+        keep_end_layers: bool | None = None
         tenting: Optional[C_tenting] = None
         zone_layer_connections: Optional[list[str]] = None
         uuid: UUID = field(default_factory=gen_uuid)
@@ -1038,7 +1051,7 @@ class C_kicad_pcb_file(SEXP_File):
 
         @dataclass
         class C_paper:
-            class E_type(SymEnum):
+            class E_type(StrEnum):
                 A5 = "A5"
                 A4 = "A4"
                 A3 = "A3"
@@ -1114,8 +1127,8 @@ class C_kicad_pcb_file(SEXP_File):
         class C_setup:
             @dataclass
             class C_pcbplotparams:
-                layerselection: str = "0x00010fc_ffffffff"
-                plot_on_all_layers_selection: str = "0x0000000_00000000"
+                layerselection: Symbol = Symbol("0x00010fc_ffffffff")
+                plot_on_all_layers_selection: Symbol = Symbol("0x0000000_00000000")
                 disableapertmacros: bool = False
                 usegerberextensions: bool = False
                 usegerberattributes: bool = True
@@ -1125,7 +1138,7 @@ class C_kicad_pcb_file(SEXP_File):
                 dashed_line_gap_ratio: float = 3.0
                 svgprecision: int = 4
                 plotframeref: bool = False
-                viasonmask: bool = False
+                viasonmask: bool | None = None
                 mode: int = 1
                 useauxorigin: bool = False
                 hpglpennumber: int = 1
@@ -1138,11 +1151,16 @@ class C_kicad_pcb_file(SEXP_File):
                 dxfusepcbnewfont: bool = True
                 psnegative: bool = False
                 psa4output: bool = False
-                plotreference: bool = True
-                plotvalue: bool = True
-                plotfptext: bool = True
-                plotinvisibletext: bool = False
-                sketchpadsonfab: bool = False
+                plot_black_and_white: bool = field(default=True)
+                plotinvisibletext: bool = field(default=False)
+                sketchpadsonfab: bool = field(default=False)
+                plotreference: bool = field(default=True)
+                plotvalue: bool = field(default=True)
+                plotpadnumbers: bool = field(default=False)
+                hidednponfab: bool = field(default=False)
+                sketchdnponfab: bool = field(default=True)
+                crossoutdnponfab: bool = field(default=True)
+                plotfptext: bool = field(default=True)
                 subtractmaskfromsilk: bool = False
                 outputformat: int = 1
                 mirror: bool = False
@@ -1204,25 +1222,15 @@ class C_kicad_pcb_file(SEXP_File):
             name: str = field(**sexp_field(positional=True))
             value: str = field(**sexp_field(positional=True))
 
-        @dataclass
-        class C_net:
-            number: int = field(**sexp_field(positional=True))
-            name: str = field(**sexp_field(positional=True))
-
         @dataclass(kw_only=True)
         class C_pcb_footprint(C_footprint):
             @dataclass(kw_only=True)
-            class C_pad(C_footprint.C_pad):
-                @dataclass
-                class C_net:
-                    number: int = field(**sexp_field(positional=True))
-                    name: str = field(**sexp_field(positional=True))
-
-                net: Optional[C_net] = None
+            class C_pad_no_net(C_footprint.C_pad):
+                net: C_net | None = None
 
             uuid: UUID = field(**sexp_field(order=-15))
             at: C_xyr = field(**sexp_field(order=-10))
-            pads: list[C_pad] = field(
+            pads: list[C_pad_no_net] = field(
                 **sexp_field(multidict=True), default_factory=list
             )
             path: Optional[str] = None
@@ -1252,11 +1260,6 @@ class C_kicad_pcb_file(SEXP_File):
             class C_tenting:
                 front: bool = False
                 back: bool = False
-
-            @dataclass
-            class C_net:
-                number: int
-                name: str | None = None
 
             # blind: bool = False
             # micro: bool = False
@@ -1624,9 +1627,7 @@ class C_kicad_pcb_file(SEXP_File):
         properties: Optional[list[C_properties]] = None
         nets: list[C_net] = field(
             **sexp_field(multidict=True),
-            default_factory=lambda: [
-                C_kicad_pcb_file.C_kicad_pcb.C_net(number=0, name="")
-            ],
+            default_factory=lambda: [C_net(number=0, name="")],
         )
         footprints: list[C_pcb_footprint] = field(
             **sexp_field(multidict=True), default_factory=list
