@@ -1,0 +1,33 @@
+{
+    "name": "Atopile Development Environment",
+    "image": "ubuntu:24.04",
+    "features": {
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest",
+            "ppa": true
+        },
+        "ghcr.io/devcontainers/features/python:1": {
+            "version": "3.13",
+            "installTools": true,
+            "pip": true
+        }
+    },
+    "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && uv tool install atopile",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "charliermarsh.ruff"
+            ],
+            "settings": {
+                "python.formatting.provider": "ruff",
+                "python.linting.enabled": true,
+                "editor.formatOnSave": true
+            }
+        }
+    },
+    "runArgs": [
+        "--platform=linux/amd64"
+    ]
+}
