@@ -1442,9 +1442,9 @@ class C_kicad_pcb_file(SEXP_File):
             uuid: UUID
             type: str
             name: str
-            locked: bool
             layer: str
             members: list[UUID]
+            locked: bool | None = None
             unknown: CatchAll = None
 
         @dataclass
@@ -1677,7 +1677,9 @@ class C_kicad_pcb_file(SEXP_File):
         groups: list[C_group] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        generated: Optional[C_generated] = None
+        generateds: list[C_generated] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
         targets: list[C_target] = field(
             **sexp_field(multidict=True), default_factory=list
         )
