@@ -80,7 +80,10 @@ def _get_solver() -> Solver:
 
 def build(app: Module) -> None:
     """Build the project."""
-    G = app.get_graph()
+
+    def G():
+        return app.get_graph()
+
     solver = _get_solver()
 
     # TODO remove hack
@@ -96,7 +99,7 @@ def build(app: Module) -> None:
         if not SKIP_SOLVING:
             logger.info("Resolving bus parameters")
             try:
-                F.is_bus_parameter.resolve_bus_parameters(G)
+                F.is_bus_parameter.resolve_bus_parameters(G())
             # FIXME: this is a hack around a compiler bug
             except KeyErrorAmbiguous as ex:
                 raise UserException(
@@ -108,7 +111,7 @@ def build(app: Module) -> None:
             logger.warning("Skipping bus parameter resolution")
 
         logger.info("Running checks")
-        run_checks(app, G)
+        run_checks(app, G())
 
         # Pre-pick project checks - things to look at before time is spend ---------
         # Make sure the footprint libraries we're looking for exist
@@ -116,13 +119,13 @@ def build(app: Module) -> None:
 
     with LoggingStage("load-pcb", "Loading PCB"):
         pcb = try_load_kicad_pcb_file(config.build.paths.layout)
-        transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
+        transformer = PCB_Transformer(pcb.kicad_pcb, G(), app)
         if config.build.keep_designators:
-            load_designators(G, attach=True)
+            load_designators(G(), attach=True)
 
     with LoggingStage("picker", "Picking components") as stage:
         if config.build.keep_picked_parts:
-            load_descriptive_properties(G)
+            load_descriptive_properties(G())
         try:
             pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
@@ -139,17 +142,17 @@ def build(app: Module) -> None:
         create_footprint_library(app)
 
     with LoggingStage("nets", "Preparing nets"):
-        attach_random_designators(G)
-        nets = attach_nets(G)
+        attach_random_designators(G())
+        nets = attach_nets(G())
         # We have to re-attach the footprints, and subsequently nets, because the first
         # attachment is typically done before the footprints have been created
         # and therefore many nets won't be re-attached properly. Also, we just created
         # and attached them to the design above, so they weren't even there to attach
         transformer.attach()
         if config.build.keep_net_names:
-            load_net_names(G)
+            load_net_names(G())
         attach_net_names(nets)
-        check_net_names(G)
+        check_net_names(G())
 
     with LoggingStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb)
