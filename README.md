@@ -35,60 +35,62 @@ What's your story in electronics? What would you like us to build? Come talk on 
 
 ### A simple voltage divider
 ```python
-from "generics/resistors.ato" import Resistor
-from "generics/interfaces.ato" import Power, Pair
+import Resistor, ElectricPower, ElectricSignal
 
-module VDiv: #this name needs to match the name in the ato.yaml config file
-    power = new Power
-    output = new Pair
+module VoltageDivider:
+    """
+    A voltage divider using two resistors.
 
-    r_top = new Resistor
-    r_top.package = "0402"
+    Connect to the `power` and `output` interfaces
+    Configure via:
+    - `power.voltage`
+    - `output.reference.voltage`
+    - `max_current`
+    """
 
+    # External interfaces
+    power = new ElectricPower
+    output = new ElectricSignal
+
+    # Components
     r_bottom = new Resistor
-    r_bottom.package = "0402"
+    r_top = new Resistor
 
-    power.vcc ~ r_top.p1; r_top.p2 ~ output.io
-    output.io ~ r_bottom.p1; r_bottom.p2 ~ power.gnd; power.gnd ~ output.gnd
-
+    # Variables
     v_in: voltage
     v_out: voltage
-    i_q: current
+    max_current: current
+    total_resistance: resistance
+    ratio: dimensionless
+    r_total: resistance
 
-    assert v_in * r_bottom.value / (r_top.value + r_bottom.value) within v_out
-    assert v_in / (r_bottom.value + r_top.value) within i_q
+    # Connections
+    power.hv ~ r_top.p1; r_top.p2 ~ output.line
+    output.line ~ r_bottom.p1; r_bottom.p2 ~ power.lv
 
-    v_in = 3.3V +/- 2%
-    v_out = 1.8V +/- 5%
-    i_q = 1mA +/- 10%
-```
+    # Link interface voltages
+    assert v_out is output.reference.voltage
+    assert v_in is power.voltage
 
-### The classic "Blinky" circuit
+    # Equations - rearranged a few ways to simplify for the solver
+    assert r_top.resistance is (v_in / max_current) - r_bottom.resistance
+    assert r_bottom.resistance is (v_in / max_current) - r_top.resistance
+    assert r_top.resistance is (v_in - v_out) / max_current
+    assert r_bottom.resistance is v_out / max_current
+    assert r_bottom.resistance is r_total * ratio
+    assert r_top.resistance is r_total * (1 - ratio)
 
-Define your design with **ato code**
-```python
-import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
-import LEDIndicatorRed from "generics/leds.ato"
-import LV2842Kit from "lv2842xlvddcr/lv2842kit.ato" # run `ato install lv2842xlvddcr` to install
-import USBCConn from "usb-connectors/usb-connectors.ato" # run `ato install usb-connectors` to install
-
-module Blinky:
-    micro_controller = new RP2040Kit
-    led_indicator = new LEDIndicatorRed
-    voltage_regulator = new LV2842Kit
-    usb_c_connector = new USBCConn
-
-    usb_c_connector.power ~ voltage_regulator.power_in
-    voltage_regulator.power_out ~ micro_controller.power
-    micro_controller.gpio13 ~ led_indicator.input
-    micro_controller.power.gnd ~ led_indicator.gnd
-
-    led_indicator.v_in = 3.3volt +/-10%
+    # Calculate outputs
+    assert r_total is r_top.resistance + r_bottom.resistance
+    assert v_out is v_in * r_bottom.resistance / r_total
+    assert v_out is v_in * ratio
+    assert max_current is v_in / r_total
+    assert ratio is r_bottom.resistance / r_total
 ```
 
 ### Discover Full Projects
 
-Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [swoop motion controller](https://github.com/atopile/swoop).
+Checkout out the [hil test equipment](https://github.com/atopile/hil) or [servo drive project](https://github.com/atopile/spin-servo-drive).
 
 ## 🔨 Getting Started
 
