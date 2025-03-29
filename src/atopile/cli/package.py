@@ -42,7 +42,7 @@ def build(
     )
 
 
-def _get_actions_token() -> str:
+def _get_actions_token(audience: str) -> str:
     # Get a JWT from the Github API
     # https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#updating-your-actions-for-oidc
     actions_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
@@ -52,7 +52,9 @@ def _get_actions_token() -> str:
             "No actions token found in environment. Check permissions: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#adding-permissions-settings"
         )
 
-    r = requests.get(actions_token_url, auth=("bearer", actions_token))
+    r = requests.get(
+        actions_token_url + f"&audience={audience}", auth=("bearer", actions_token)
+    )
     r.raise_for_status()
     return r.json()["value"]
 
@@ -71,7 +73,9 @@ def publish(
     """
 
     # Stage 1. Obtain authorization
-    jwt = _get_actions_token()
+    jwt = _get_actions_token(
+        "packages.atopileapi.com"
+    )  # FIXME: pull from registry domain
 
     # Stage 2. Request upload - this confirms things like package metadata
     upload_endpoint = "/v0/package-upload-request"
