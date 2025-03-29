@@ -23,26 +23,20 @@ jobs:
       # https://github.com/actions/checkout/issues/1471
       - run: git fetch --prune --unshallow --tags
 
-      - name: Install uv
-        uses: useblacksmith/setup-uv@v4
+      - uses: astral-sh/setup-uv@v5
         with:
           version: 0.6.4
           enable-cache: true
           cache-dependency-glob: "uv.lock"
 
-      - name: "Set up Python"
-        uses: useblacksmith/setup-python@v6
+      - uses: actions/setup-python@v5
         with:
           python-version-file: "pyproject.toml"
 
-      - name: Setup cmake
-        uses: jwlawson/actions-setup-cmake@v2
+      - uses: jwlawson/actions-setup-cmake@v2
 
-      - name: Run pytest
-        id: pytest
-        continue-on-error: true
-        run: >
+      - run: >
           uv run --dev --no-editable --frozen
-          ato package publish
+          ato --non-interactive package publish
           --package ./
           --registry http://100.75.32.89:8000/
