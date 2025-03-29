@@ -53,7 +53,8 @@ def _get_actions_token(audience: str) -> str:
         )
 
     r = requests.get(
-        actions_token_url + f"&audience={audience}", auth=("bearer", actions_token)
+        actions_token_url + f"&audience={audience}",
+        headers={"Authorization": f"bearer {actions_token}"},
     )
     r.raise_for_status()
     return r.json()["value"]
