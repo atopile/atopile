@@ -147,10 +147,12 @@ def query_helper[T: str | Path | bool](
     # Ensure the default provided is valid
     if default is not None and validate_default:
         if not validator_func(clarifier(default)):
-            raise ValueError(f"Default value {default} is invalid")
+            logger.debug(f"Default value {default} is invalid")
 
         if clarifier(default) != upgrader(clarifier(default)):
-            raise ValueError(f"Default value {default} doesn't meet best-practice")
+            logger.debug(f"Default value {default} doesn't meet best-practice")
+
+        default = upgrader(clarifier(default))
 
     # When running non-interactively, we expect the value to be provided
     # at the command level, so we don't need to query the user for it
