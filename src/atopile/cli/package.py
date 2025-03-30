@@ -1,6 +1,5 @@
 import logging
 import os
-from pathlib import Path
 from typing import Annotated
 
 import requests
@@ -11,35 +10,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 package_app = typer.Typer(rich_markup_mode="rich")
-
-
-@package_app.command()
-def build(
-    include_paths: Annotated[
-        list[Path],
-        typer.Option(
-            "--include", "-i", help="Paths to files to include in the package"
-        ),
-    ],
-    exclude_paths: Annotated[
-        list[Path],
-        typer.Option(
-            "--exclude", "-e", help="Paths to files to exclude from the package"
-        ),
-    ],
-    include_targets: Annotated[
-        list[str],
-        typer.Option(
-            "--include-targets", "-t", help="Targets to include in the package"
-        ),
-    ],
-):
-    """
-    Package an atopile project for publishing to the package registry.
-    """
-    raise NotImplementedError(
-        "Not implemented - currently only manually packed projects are supported"
-    )
 
 
 def _get_actions_token(audience: str) -> str:
@@ -62,15 +32,68 @@ def _get_actions_token(audience: str) -> str:
 
 @package_app.command()
 def publish(
-    package: Annotated[Path, typer.Option("--package", "-p")],
+    include_paths: Annotated[
+        str,
+        typer.Option(
+            "--include",
+            "-i",
+            envvar="ATO_PACKAGE_INCLUDE",
+            help="Comma separated globs to files to include in the package",
+        ),
+    ],
+    exclude_paths: Annotated[
+        str,
+        typer.Option(
+            "--exclude",
+            "-e",
+            envvar="ATO_PACKAGE_EXCLUDE",
+            help=(
+                "Comma separated globs to files to exclude from the package. "
+                "An empty string implies no exclusions."
+            ),
+        ),
+    ],
+    include_targets: Annotated[
+        str,
+        typer.Option(
+            "--include-build-targets",
+            "-b",
+            envvar="ATO_PACKAGE_INCLUDE_BUILD_TARGETS",
+            help=(
+                "Comma separated build-targets to include in the package. "
+                "An empty string implies all build-targets."
+            ),
+        ),
+    ] = "",
+    version: Annotated[
+        str,
+        typer.Option(
+            "--version",
+            "-v",
+            envvar="ATO_PACKAGE_VERSION",
+            help="The version of the package to publish.",
+        ),
+    ] = "from-git",
     registry: Annotated[
-        str, typer.Option("--registry", "-r")
+        str,
+        typer.Option(
+            "--registry",
+            "-r",
+            envvar="ATO_PACKAGE_REGISTRY",
+            help="The registry to publish the package to.",
+        ),
     ] = "https://packages.atopileapi.com",
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", "-n", help="Dry run the package publication."),
+    ] = False,
 ):
     """
     Publish a package to the package registry.
 
     Currently, the only supported authentication method is Github Actions OIDC.
+
+    For the options which allow multiple inputs, use comma separated values.
     """
 
     # Stage 1. Obtain authorization

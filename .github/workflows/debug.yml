@@ -38,5 +38,4 @@ jobs:
       - run: >
           uv run --dev --no-editable --frozen
           ato --non-interactive package publish
-          --package ./
           --registry http://100.75.32.89:8000/
