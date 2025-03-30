@@ -80,6 +80,7 @@ def get_installed_atopile_version() -> Version:
         ap_version_str = flag_version
     else:
         ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
+        print(f"Using version from metadata {ap_version_str}")
 
     semver = parse(ap_version_str)
 
