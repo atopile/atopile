@@ -9,21 +9,11 @@ import requests
 from semver import Version
 
 from atopile import errors
-from faebryk.libs.util import ConfigFlagString
 
 log = logging.getLogger(__name__)
 
 DISTRIBUTION_NAME = "atopile"
 UPGRADE_DOCS_URL = "https://atopile.io/#installation"
-
-
-override_compiler_version = ConfigFlagString(
-    "OVERRIDE_COMPILER_VERSION",
-    descr=(
-        "Override the compiler version. Useful for testing or development "
-        "environments which don't have all git history."
-    ),
-)
 
 
 class VersionMismatchError(errors.UserException):
@@ -76,21 +66,8 @@ def get_installed_atopile_version() -> Version:
     """
     Get the installed atopile version
     """
-    print("Getting installed atopile version")
-    if flag_version := override_compiler_version.get():
-        print(f"Using version from flag {flag_version}")
-        ap_version_str = flag_version
-    else:
-        ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
-        print(f"Using version from metadata {ap_version_str}")
-
-    try:
-        semver = parse(ap_version_str)
-    except ValueError as ex:
-        print(f"Error parsing version: {ex}")
-        print(f"Version string: {ap_version_str}")
-        raise
-
+    ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
+    semver = parse(ap_version_str)
     return semver
 
 
