@@ -82,6 +82,7 @@ def _try_construct_config[T](
     try:
         return model(**kwargs)
     except ValidationError as ex:
+        print(f"Validation error: {ex}")
         excs = ExceptionGroup(
             "Configuration is invalid",
             [
