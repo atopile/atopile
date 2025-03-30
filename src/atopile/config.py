@@ -83,16 +83,17 @@ def _try_construct_config[T](
         return model(**kwargs)
     except ValidationError as ex:
         print(f"Validation error: {ex}")
-        excs = ExceptionGroup(
-            "Configuration is invalid",
-            [
-                UserConfigurationError(
-                    f"{message_prefix}{error['msg']}: `{error['loc']}`"
-                )
-                for error in _convert_errors(ex)
-            ],
-        )
-        raise excs from ex
+        # excs = ExceptionGroup(
+        #     "Configuration is invalid",
+        #     [
+        #         UserConfigurationError(
+        #             f"{message_prefix}{error['msg']}: `{error['loc']}`"
+        #         )
+        #         for error in _convert_errors(ex)
+        #     ],
+        # )
+        # raise excs from ex
+        raise
     except SettingsError as ex:
         raise UserConfigurationError(f"Invalid config: {ex}") from ex
 
