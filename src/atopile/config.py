@@ -77,6 +77,7 @@ def _try_construct_config[T](
     model: type[T], identifier: str | Path | None = None, **kwargs: Any
 ) -> T:
     message_prefix = f"`{identifier}`: " if identifier else ""
+    print(f"Trying to construct config {model} with {kwargs}")
 
     try:
         return model(**kwargs)

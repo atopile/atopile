@@ -76,6 +76,7 @@ def get_installed_atopile_version() -> Version:
     """
     Get the installed atopile version
     """
+    print("Getting installed atopile version")
     if flag_version := override_compiler_version.get():
         ap_version_str = flag_version
     else:
