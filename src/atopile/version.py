@@ -78,12 +78,18 @@ def get_installed_atopile_version() -> Version:
     """
     print("Getting installed atopile version")
     if flag_version := override_compiler_version.get():
+        print(f"Using version from flag {flag_version}")
         ap_version_str = flag_version
     else:
         ap_version_str = importlib.metadata.version(DISTRIBUTION_NAME)
         print(f"Using version from metadata {ap_version_str}")
 
-    semver = parse(ap_version_str)
+    try:
+        semver = parse(ap_version_str)
+    except ValueError as ex:
+        print(f"Error parsing version: {ex}")
+        print(f"Version string: {ap_version_str}")
+        raise
 
     return semver
 
