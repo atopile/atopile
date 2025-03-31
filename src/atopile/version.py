@@ -46,7 +46,10 @@ def parse(version_str: str) -> Version:
         version_str = "-".join(
             ".".join(fragments) for fragments in (dot_split[:3], dot_split[3:])
         )
-        version = Version.parse(version_str)
+        try:
+            version = Version.parse(version_str)
+        except ValueError:
+            return Version(0, 3, 23)
 
     return version
 
