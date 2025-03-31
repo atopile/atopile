@@ -214,43 +214,43 @@ def publish(
     For the options which allow multiple inputs, use comma separated values.
     """
 
-    include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
+    # include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
 
-    if include_builds:
-        include_builds_set = set([t.strip() for t in include_builds.split(",")])
-    else:
-        include_builds_set = set(config.project.builds)
+    # if include_builds:
+    #     include_builds_set = set([t.strip() for t in include_builds.split(",")])
+    # else:
+    #     include_builds_set = set(config.project.builds)
 
-    # Apply the entry-point early
-    # This will configure the project root properly, meaning you can practically spec
-    # the working directory of the publish and expands for future use publishing
-    # packagelets from specific module entrypoints
-    config.apply_options(entry=package_address)
-    logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
+    # # Apply the entry-point early
+    # # This will configure the project root properly, meaning you can practically spec
+    # # the working directory of the publish and expands for future use publishing
+    # # packagelets from specific module entrypoints
+    # config.apply_options(entry=package_address)
+    # logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
 
-    if version:  # NOT `is not None` to allow for empty strings
-        _apply_version(version)
-    logger.info("Package version: %s", config.project.version)
+    # if version:  # NOT `is not None` to allow for empty strings
+    #     _apply_version(version)
+    # logger.info("Package version: %s", config.project.version)
 
-    if not config.project.name:
-        raise UserBadParameterError(
-            "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
-        )
+    # if not config.project.name:
+    #     raise UserBadParameterError(
+    #         "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
+    #     )
 
-    if not config.project.repository:
-        raise UserBadParameterError(
-            "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
-        )
+    # if not config.project.repository:
+    #     raise UserBadParameterError(
+    #         "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
+    #     )
 
-    missing_builds = include_builds_set - set(config.project.builds)
-    if missing_builds:
-        raise UserBadParameterError("Builds not found: %s" % ", ".join(missing_builds))
+    # missing_builds = include_builds_set - set(config.project.builds)
+    # if missing_builds:
+    #     raise UserBadParameterError("Builds not found: %s" % ", ".join(missing_builds))
 
-    # Build the package
-    package_path = _build_package(
-        include_pathspec_list, include_builds_set, config.project.paths.build
-    )
-    logger.info("Package built: %s", package_path)
+    # # Build the package
+    # package_path = _build_package(
+    #     include_pathspec_list, include_builds_set, config.project.paths.build
+    # )
+    # logger.info("Package built: %s", package_path)
 
     # Upload sequence
     if dry_run:
@@ -264,7 +264,7 @@ def publish(
         r = requests.post(
             f"{config.project.services.packages.url}{upload_endpoint}",
             headers={"Authorization": f"bearer {jwt}"},
-            json={"package_version": str(config.project.version), "manifest": {}},
+            json={"package_version": "1.2.3", "manifest": {}},
         )
         r.raise_for_status()
 
