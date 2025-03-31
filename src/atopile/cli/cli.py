@@ -1,7 +1,4 @@
 # excepthook must be installed before typer is imported
-import importlib
-import importlib.metadata
-import importlib.util
 import atopile.cli.excepthook  # noqa: F401, I001
 
 import json
@@ -93,7 +90,6 @@ def cli(
         typer.Option("--semver", callback=semver_callback, is_eager=True),
     ] = None,
 ):
-    print(f"compiler version {importlib.metadata.version("atopile")}")
     if debug:
         import debugpy  # pylint: disable=import-outside-toplevel
 

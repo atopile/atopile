@@ -48,6 +48,7 @@ def parse(version_str: str) -> Version:
         )
         try:
             version = Version.parse(version_str)
+        # FIXME: remove this
         except ValueError:
             return Version(0, 3, 23)
 
