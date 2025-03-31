@@ -12,7 +12,7 @@ name = "atopile"
 description = "A toolchain bringing the best of software development to the real-world!"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
-# dynamic = ["version"]
+dynamic = ["version"]
 license = { file = "LICENSE" }
 authors = [
     { name = "Matthew Wildoer", email = "matt@atopile.io" },
@@ -57,7 +57,6 @@ dependencies = [
     "typing-extensions>=4.6.3,<5.0.0",
     "urllib3>=2.2.1",
 ]
-version = "0.3.50"
 
 [project.urls]
 Homepage = "https://github.com/atopile/atopile"
