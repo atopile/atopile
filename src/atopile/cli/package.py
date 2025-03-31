@@ -1,9 +1,14 @@
 import logging
 import os
 from typing import Annotated
+from urllib.parse import urlparse
 
 import requests
 import typer
+from semver import Version
+
+from atopile.config import config
+from atopile.errors import UserBadParameterError
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -13,6 +18,7 @@ package_app = typer.Typer(rich_markup_mode="rich")
 
 
 def _get_actions_token(audience: str) -> str:
+    logger.debug(f"GH OIDC audience: {audience}")
     # Get a JWT from the Github API
     # https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#updating-your-actions-for-oidc
     actions_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
@@ -74,15 +80,6 @@ def publish(
             help="The version of the package to publish.",
         ),
     ] = "from-git",
-    registry: Annotated[
-        str,
-        typer.Option(
-            "--registry",
-            "-r",
-            envvar="ATO_PACKAGE_REGISTRY",
-            help="The registry to publish the package to.",
-        ),
-    ] = "https://packages.atopileapi.com",
     dry_run: Annotated[
         bool,
         typer.Option("--dry-run", "-n", help="Dry run the package publication."),
@@ -96,22 +93,33 @@ def publish(
     For the options which allow multiple inputs, use comma separated values.
     """
 
+    # Stage 0. Validate and parse inputs
+    include_paths_list = [p.strip() for p in include_paths.split(",")]
+    exclude_paths_list = [p.strip() for p in exclude_paths.split(",")]
+    include_targets_list = [t.strip() for t in include_targets.split(",")]
+
+    bad_semver_ex = UserBadParameterError(
+        "Version must be a semantic version, without prerelease or build"
+    )
+    try:
+        package_version_semver = Version.parse(version)
+    except ValueError as ex:
+        raise bad_semver_ex from ex
+
+    if package_version_semver.prerelease or package_version_semver.build:
+        raise bad_semver_ex
+
     # Stage 1. Obtain authorization
-    jwt = _get_actions_token(
-        "packages.atopileapi.com"
-    )  # FIXME: pull from registry domain
+    jwt = _get_actions_token(urlparse(config.project.services.packages.url).netloc)
 
     # Stage 2. Request upload - this confirms things like package metadata
-    upload_endpoint = "/v0/package-upload-request"
+    upload_endpoint = "/v1/upload/request"
     r = requests.post(
-        f"{registry}{upload_endpoint}",
+        f"{config.project.services.packages.url}{upload_endpoint}",
         headers={"Authorization": f"bearer {jwt}"},
-        json={"version": "1.2.3", "manifest": {}},
+        json={"package_version": package_version_semver, "manifest": {}},
     )
     r.raise_for_status()
-
-    # print for debugging
-    print(r.json())
 
     # Stage 3. Upload the package to the presigned upload URL
     # TODO: Implement this
