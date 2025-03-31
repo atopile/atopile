@@ -52,7 +52,7 @@ def publish(
                 "An empty string implies no exclusions."
             ),
         ),
-    ],
+    ] = "",
     include_targets: Annotated[
         str,
         typer.Option(
