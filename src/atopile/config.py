@@ -27,6 +27,7 @@ from pydantic_settings import (
     SettingsError,
     YamlConfigSettingsSource,
 )
+import rich
 from ruamel.yaml import YAML
 
 from atopile import address, version
@@ -93,6 +94,15 @@ def _try_construct_config[T](
         raise excs from ex
     except SettingsError as ex:
         raise UserConfigurationError(f"Invalid config: {ex}") from ex
+
+
+@contextmanager
+def traceback_on_ex():
+    try:
+        yield
+    except Exception:
+        rich.get_console().print_exception()
+        raise
 
 
 class BaseConfigModel(BaseModel):
@@ -583,6 +593,7 @@ class ProjectConfig(BaseConfigModel):
         ]
 
     @model_validator(mode="after")
+    @traceback_on_ex()
     def validate_compiler_versions(self) -> Self:
         """
         Check that the compiler version is compatible with the version
