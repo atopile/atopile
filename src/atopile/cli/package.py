@@ -1,5 +1,4 @@
 import logging
-import os
 import shutil
 import tempfile
 import zipfile
@@ -13,6 +12,7 @@ import requests
 import rich.progress
 import typer
 from git import Repo
+from github_oidc.client import get_actions_token
 from ruamel.yaml import YAML
 from semver import Version
 
@@ -28,25 +28,6 @@ package_app = typer.Typer(rich_markup_mode="rich")
 
 
 FROM_GIT = "from-git"
-
-
-def _get_actions_token(audience: str) -> str:
-    logger.debug(f"GH OIDC audience: {audience}")
-    # Get a JWT from the Github API
-    # https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#updating-your-actions-for-oidc
-    actions_token = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_TOKEN")
-    actions_token_url = os.environ.get("ACTIONS_ID_TOKEN_REQUEST_URL")
-    if not actions_token or not actions_token_url:
-        raise RuntimeError(
-            "No actions token found in environment. Check permissions: https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/about-security-hardening-with-openid-connect#adding-permissions-settings"
-        )
-
-    r = requests.get(
-        actions_token_url + f"&audience={audience}",
-        headers={"Authorization": f"bearer {actions_token}"},
-    )
-    r.raise_for_status()
-    return r.json()["value"]
 
 
 def _yield_semver_tags() -> Iterator[Version]:
@@ -214,50 +195,50 @@ def publish(
     For the options which allow multiple inputs, use comma separated values.
     """
 
-    # include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
+    include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
 
-    # if include_builds:
-    #     include_builds_set = set([t.strip() for t in include_builds.split(",")])
-    # else:
-    #     include_builds_set = set(config.project.builds)
+    if include_builds:
+        include_builds_set = set([t.strip() for t in include_builds.split(",")])
+    else:
+        include_builds_set = set(config.project.builds)
 
-    # # Apply the entry-point early
-    # # This will configure the project root properly, meaning you can practically spec
-    # # the working directory of the publish and expands for future use publishing
-    # # packagelets from specific module entrypoints
-    # config.apply_options(entry=package_address)
-    # logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
+    # Apply the entry-point early
+    # This will configure the project root properly, meaning you can practically spec
+    # the working directory of the publish and expands for future use publishing
+    # packagelets from specific module entrypoints
+    config.apply_options(entry=package_address)
+    logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
 
-    # if version:  # NOT `is not None` to allow for empty strings
-    #     _apply_version(version)
-    # logger.info("Package version: %s", config.project.version)
+    if version:  # NOT `is not None` to allow for empty strings
+        _apply_version(version)
+    logger.info("Package version: %s", config.project.version)
 
-    # if not config.project.name:
-    #     raise UserBadParameterError(
-    #         "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
-    #     )
+    if not config.project.name:
+        raise UserBadParameterError(
+            "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
+        )
 
-    # if not config.project.repository:
-    #     raise UserBadParameterError(
-    #         "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
-    #     )
+    if not config.project.repository:
+        raise UserBadParameterError(
+            "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
+        )
 
-    # missing_builds = include_builds_set - set(config.project.builds)
-    # if missing_builds:
-    #     raise UserBadParameterError("Builds not found: %s" % ", ".join(missing_builds))
+    missing_builds = include_builds_set - set(config.project.builds)
+    if missing_builds:
+        raise UserBadParameterError("Builds not found: %s" % ", ".join(missing_builds))
 
-    # # Build the package
-    # package_path = _build_package(
-    #     include_pathspec_list, include_builds_set, config.project.paths.build
-    # )
-    # logger.info("Package built: %s", package_path)
+    # Build the package
+    package_path = _build_package(
+        include_pathspec_list, include_builds_set, config.project.paths.build
+    )
+    logger.info("Package built: %s", package_path)
 
     # Upload sequence
     if dry_run:
         logger.info("Dry run, skipping upload")
     else:
         ## Get authorization
-        jwt = _get_actions_token(urlparse(config.project.services.packages.url).netloc)
+        jwt = get_actions_token(urlparse(config.project.services.packages.url).netloc)
 
         ## Request upload
         upload_endpoint = "/v1/upload/request"

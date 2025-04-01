@@ -25,7 +25,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "antlr4-python3-runtime==4.13.2",  # Strict version because the generated (but versioned) files must match
+    "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
     "atopile-easyeda2kicad>=0.9.0",
     "attrs>=23.2.0",
     "black>=24.4.2,<24.11.0",
@@ -33,6 +33,7 @@ dependencies = [
     "cookiecutter>=2.6.0",
     "dataclasses-json>=0.6.7,<0.7.0",
     "deprecated~=1.2.14",
+    "fastapi-github-oidc>=0.1.0",
     "freetype-py>=2.4,<2.6",
     "gitpython>=3.1.41",
     "kicadcliwrapper>=1.0.0,<2.0.0",
