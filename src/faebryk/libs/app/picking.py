@@ -26,6 +26,8 @@ def load_descriptive_properties(G: Graph):
 
     for node, trait in nodes:
         assert isinstance(node, Module)
+        if isinstance(node, F.Footprint):
+            continue
         if node.has_trait(F.has_part_picked):
             continue
 
