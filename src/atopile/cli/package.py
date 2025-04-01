@@ -12,7 +12,7 @@ import requests
 import rich.progress
 import typer
 from git import Repo
-from github_oidc.client import get_actions_token
+from github_oidc.client import get_actions_header
 from ruamel.yaml import YAML
 from semver import Version
 
@@ -238,21 +238,35 @@ def publish(
         logger.info("Dry run, skipping upload")
     else:
         ## Get authorization
-        jwt = get_actions_token(urlparse(config.project.services.packages.url).netloc)
+        auth_header = get_actions_header(
+            urlparse(config.project.services.packages.url).netloc
+        )
 
         ## Request upload
-        upload_endpoint = "/v1/upload/request"
         r = requests.post(
-            f"{config.project.services.packages.url}{upload_endpoint}",
-            headers={"Authorization": f"bearer {jwt}"},
-            json={"package_version": "1.2.3", "manifest": {}},
+            f"{config.project.services.packages.url}/v1/upload/request",
+            headers=auth_header,
+            json={
+                "name": config.project.name,
+                "package_version": str(config.project.version),
+            },
         )
         r.raise_for_status()
+        upload_url = r.json()["upload_url"]
+        s3_key = r.json()["s3_key"]
 
         ## Upload the package
-        # TODO:
+        with package_path.open("rb") as object_file:
+            requests.put(upload_url, data=object_file.read()).raise_for_status()
 
         ## Confirm upload
-        # TODO:
+        r = requests.post(
+            f"{config.project.services.packages.url}/v1/upload/confirm",
+            headers=auth_header,
+            json={"s3_key": s3_key},
+        )
+        r.raise_for_status()
+        package_url = r.json()["package_url"]
+        logger.info("Package URL: %s", package_url)
 
     logger.info("Done! 📦🛳️")
