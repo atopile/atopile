@@ -6,6 +6,7 @@ from enum import Enum
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.parameter import Union
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -15,6 +16,9 @@ logger = logging.getLogger(__name__)
 class I2C(ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
+
+    address = L.p_field()
+    addresses = L.p_field()
 
     frequency = L.p_field(
         units=P.Hz,
@@ -46,3 +50,4 @@ class I2C(ModuleInterface):
 
     def __preinit__(self) -> None:
         self.frequency.add(F.is_bus_parameter())
+        self.addresses.add(F.is_bus_parameter(reduce=(self.address, Union)))
