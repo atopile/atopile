@@ -12,6 +12,7 @@ What we collect:
 """
 
 import hashlib
+import importlib.metadata
 import logging
 import subprocess
 import time
@@ -202,6 +203,7 @@ def log_to_posthog(event: str, properties: dict | None = None):
             "duration": time.time() - start_time,
             "project_id": get_project_id(),
             "project_git_hash": get_current_git_hash(),
+            "atopile_version": importlib.metadata.version("atopile"),
             **(properties or {}),
         }
 
