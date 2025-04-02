@@ -9,6 +9,7 @@ import itertools
 import json
 import logging
 import os
+import re
 import select
 import shutil
 import stat
@@ -2036,3 +2037,7 @@ def pretty_type(t: object | type) -> str:
         return t.__qualname__
     except Exception:
         return str(t)
+
+
+def re_in(value: str, patterns: Iterable[str]) -> bool:
+    return any(re.match(pattern, value) for pattern in patterns)

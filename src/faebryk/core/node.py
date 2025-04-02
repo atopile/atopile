@@ -162,8 +162,7 @@ class NodeAlreadyBound(NodeException):
         super().__init__(
             node,
             *args,
-            f"Node {other} already bound to"
-            f" {other.get_parent()}, can't bind to {node}",
+            f"Node {other} already bound to {other.get_parent()}, can't bind to {node}",
         )
 
 
@@ -578,8 +577,7 @@ class Node(CNode):
             for p in self.get_children(direct_only=True, types=Parameter)
         }
         params_str = "\n".join(
-            f"{k}: {solver.inspect_get_known_supersets(v)
-                    if solver else v}"
+            f"{k}: {solver.inspect_get_known_supersets(v) if solver else v}"
             for k, v in params.items()
         )
 
@@ -716,6 +714,17 @@ class Node(CNode):
         return {gif.node for gif in gifs}
         # TODO what is faster
         # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
+
+    def get_child_by_name(self, name: str) -> "Node":
+        if hasattr(self, name):
+            return cast(Node, getattr(self, name))
+        for p in self.get_children(direct_only=True, types=Node):
+            if p.get_name() == name:
+                return p
+        raise KeyErrorNotFound(f"No child with name {name} found")
+
+    def __getitem__(self, name: str) -> "Node":
+        return self.get_child_by_name(name)
 
     # Hierarchy queries ----------------------------------------------------------------
 

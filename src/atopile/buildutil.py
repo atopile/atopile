@@ -52,7 +52,7 @@ from faebryk.libs.app.pcb import (
     ensure_footprint_lib,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_descriptive_properties
+from faebryk.libs.app.picking import load_descriptive_properties, save_parameters
 from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
@@ -133,6 +133,7 @@ def build(app: Module) -> None:
                 "Failed to pick parts for some modules",
                 [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
             ) from ex
+        save_parameters(G())
 
     with LoggingStage("footprints", "Handling footprints"):
         # Use standard footprints for known packages regardless of

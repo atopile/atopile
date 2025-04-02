@@ -62,6 +62,7 @@ from faebryk.libs.util import (
     find,
     groupby,
     hash_string,
+    re_in,
     yield_missing,
 )
 
@@ -1721,6 +1722,7 @@ class PCB_Transformer:
         "Partnumber",
         "Manufacturer",
         "JLCPCB description",
+        "PARAM_.*",
     }
 
     def _update_footprint_from_node(
@@ -1796,7 +1798,7 @@ class PCB_Transformer:
         # Take any descriptive properties defined on the component
         if c_props_t := component.try_get_trait(F.has_descriptive_properties):
             for prop_name, prop_value in c_props_t.get_properties().items():
-                if prop_name in self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB:
+                if re_in(prop_name, self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB):
                     property_values[prop_name] = prop_value
 
         if c_props_t := component.try_get_trait(F.has_datasheet):
