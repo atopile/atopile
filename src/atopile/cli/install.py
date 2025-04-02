@@ -21,6 +21,7 @@ from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Rep
 import faebryk.libs.exceptions
 from atopile import errors, version
 from atopile.config import Dependency, ProjectConfig, Source, config
+from atopile.telemetry import log_to_posthog
 from faebryk.libs.util import robustly_rm_dir
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ logger.setLevel(logging.INFO)
 yaml = ruamel.yaml.YAML()
 
 
+@log_to_posthog("cli:install_end")
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[

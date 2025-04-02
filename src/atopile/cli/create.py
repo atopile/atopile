@@ -23,6 +23,7 @@ from rich.table import Table
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
+from atopile.telemetry import log_to_posthog
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
@@ -205,6 +206,7 @@ PROJECT_NAME_REQUIREMENTS = (
 
 
 @create_app.command()
+@log_to_posthog("cli:create_project_end")
 def project(
     template: str = "https://github.com/atopile/project-template @ compiler-v0.3",
     create_github_repo: bool | None = None,
@@ -317,6 +319,7 @@ def project(
 
 
 @create_app.command("build-target")
+@log_to_posthog("cli:create_build_target_end")
 def build_target(
     build_target: Annotated[str | None, typer.Option()] = None,
     file: Annotated[Path | None, typer.Option()] = None,
@@ -475,6 +478,7 @@ class ComponentType(StrEnum):
 
 
 @create_app.command()
+@log_to_posthog("cli:create_component_end")
 def component(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
     name: Annotated[str | None, typer.Option("--name", "-n")] = None,
@@ -827,7 +831,7 @@ class FabllTemplate(Template):
             interface_names_by_pin_num.items(), lambda x: x[1]
         ).items():
             pin_nums = [x[0] for x in _items]
-            line = f"{interface_name}: F.Electrical  # {"pin" if len(pin_nums) == 1 else "pins"}: {", ".join(pin_nums)}"  # noqa: E501  # pre-existing
+            line = f"{interface_name}: F.Electrical  # {'pin' if len(pin_nums) == 1 else 'pins'}: {', '.join(pin_nums)}"  # noqa: E501
             _interface_lines_by_min_pin_num[min(pin_nums)] = line
         self.nodes.extend(
             line
