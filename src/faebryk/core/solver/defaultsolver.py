@@ -173,10 +173,20 @@ class DefaultSolver(Solver):
         # TODO consider not getting full graph of node gs, but scope to only relevant
         _gs = get_graphs(gs)
 
+        # Bootstrap state, create filtered & copied version of input graphs
         if self.reusable_state is None:
+            bootstrap_map = MutationMap.identity(*_gs, print_context=print_context)
+            copy_mutator = Mutator(
+                bootstrap_map,
+                algo=canonical.filter_non_parameter,
+                terminal=False,
+                iteration=0,
+            )
+            res = copy_mutator.run()
+
             return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
-                    mutation_map=MutationMap.identity(*_gs, print_context=print_context)
+                    mutation_map=MutationMap(res.mutation_stage)
                 ),
             )
 
@@ -379,8 +389,11 @@ class DefaultSolver(Solver):
                         )
                     )
                     logger.warning(
-                        f"NOT DEDUCED: \n    {'\n    '.join([
-                            p.compact_repr(print_context_new) for p in not_deduced])}"
+                        f"NOT DEDUCED: \n    {
+                            '\n    '.join(
+                                [p.compact_repr(print_context_new) for p in not_deduced]
+                            )
+                        }"
                     )
 
                     repr_map.print_name_mappings(log=logger.warning)

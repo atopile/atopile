@@ -62,6 +62,13 @@ if S_LOG:
     logger.setLevel(logging.DEBUG)
 
 
+def _get_pos(*gs: Graph) -> Iterable[ParameterOperatable]:
+    # This assumes that only parameter operatables are in the graphs
+    # which is valid if canonical:filter_non_parameter is run
+    # might need to revert in future if using param traits in solver
+    return cast(list[ParameterOperatable], GraphFunctions(*gs).node_projection)
+
+
 @dataclass
 class Transformations:
     input_print_context: ParameterOperatable.ReprContext
@@ -114,9 +121,7 @@ class Transformations:
         *gs: Graph, input_print_context: ParameterOperatable.ReprContext
     ) -> "Transformations":
         return Transformations(
-            mutated={
-                po: po for po in GraphFunctions(*gs).nodes_of_type(ParameterOperatable)
-            },
+            mutated={po: po for po in _get_pos(*gs)},
             input_print_context=input_print_context,
         )
 
@@ -399,7 +404,7 @@ class MutationStage:
     @property
     @once
     def output_operables(self) -> set[ParameterOperatable]:
-        return GraphFunctions(*self.output_graphs).nodes_of_type(ParameterOperatable)
+        return set(_get_pos(*self.output_graphs))
 
     @staticmethod
     def identity(
@@ -1387,7 +1392,10 @@ class Mutator:
         elif created_only:
             out = {n for n in self.transformations.created if isinstance(n, t)}
         else:
-            out = GraphFunctions(*self.G).nodes_of_type(t)
+            if t is ParameterOperatable:
+                out = cast(set[T], _get_pos(*self.G))
+            else:
+                out = GraphFunctions(*self.G).nodes_of_type(t)
 
         if not include_terminated:
             out = {
@@ -1414,7 +1422,10 @@ class Mutator:
         if new_only:
             out = {n for n in self._new_operables if isinstance(n, t)}
         else:
-            out = GraphFunctions(*self.G).nodes_of_types(t)
+            if isinstance(t, tuple) and len(t) == 1 and t[0] is ParameterOperatable:
+                out = cast(set[ParameterOperatable], _get_pos(*self.G))
+            else:
+                out = GraphFunctions(*self.G).nodes_of_types(t)
         out = cast(set[ParameterOperatable], out)
         if not include_terminated:
             out = {
@@ -1592,10 +1603,7 @@ class Mutator:
 
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
-            (
-                GraphFunctions(*_touched_graphs).nodes_of_type(ParameterOperatable)
-                - touched
-            ),
+            set(_get_pos(*_touched_graphs)) - touched,
             ascending=True,
         )
         for p in other_param_op:
@@ -1604,7 +1612,7 @@ class Mutator:
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
         untouched_graphs = self.G - _touched_graphs
-        for p in GraphFunctions(*untouched_graphs).nodes_of_type(ParameterOperatable):
+        for p in _get_pos(*untouched_graphs):
             self.transformations.mutated[p] = p
 
     def check_no_illegal_mutations(self):
@@ -1631,11 +1639,7 @@ class Mutator:
 
         # don't need to check original graph, done above seperately
         all_new_graphs = get_graphs(self.transformations.mutated.values())
-        all_new_params = {
-            op
-            for g in all_new_graphs
-            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
-        }
+        all_new_params = set(_get_pos(*all_new_graphs))
         non_registered = all_new_params.difference(
             self.transformations.created, self.transformations.mutated.values()
         )
