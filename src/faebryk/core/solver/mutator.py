@@ -35,7 +35,7 @@ from faebryk.core.solver.utils import (
     SolverAll,
     SolverAllExtended,
     SolverLiteral,
-    get_graphs,
+    get_graphs_from_nodes,
 )
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.logging import rich_to_string
@@ -114,7 +114,7 @@ class Transformations:
          the old node with the new one
         - if a node was removed, we need to copy the graph to remove it
         """
-        return set(get_graphs(self.removed | self.mutated.keys()))
+        return set(get_graphs_from_nodes(self.removed | self.mutated.keys()))
 
     @staticmethod
     def identity(
@@ -390,7 +390,7 @@ class MutationStage:
         # It's enough to check for mutation graphs and not created ones
         # because the created ones always connect to graphs of the mutated ones
         # else they will be lost anyway
-        return get_graphs(
+        return get_graphs_from_nodes(
             chain(
                 self.transformations.mutated.values(),
                 self.transformations.created,
@@ -399,7 +399,7 @@ class MutationStage:
 
     @property
     def input_graphs(self) -> list[Graph]:
-        return get_graphs(self.transformations.mutated.keys())
+        return get_graphs_from_nodes(self.transformations.mutated.keys())
 
     @property
     @once
@@ -1588,7 +1588,7 @@ class Mutator:
         if all(g.node_count > 0 for g in gs):
             return gs
         # Handle graph merge
-        gs = get_graphs(self._starting_operables)
+        gs = get_graphs_from_nodes(self._starting_operables)
         self._G = set(gs)
         return self._G
 
@@ -1638,14 +1638,14 @@ class Mutator:
         )
 
         # don't need to check original graph, done above seperately
-        all_new_graphs = get_graphs(self.transformations.mutated.values())
+        all_new_graphs = get_graphs_from_nodes(self.transformations.mutated.values())
         all_new_params = set(_get_pos(*all_new_graphs))
         non_registered = all_new_params.difference(
             self.transformations.created, self.transformations.mutated.values()
         )
         if non_registered:
             compact = (op.compact_repr(self.print_context) for op in non_registered)
-            graphs = get_graphs(non_registered)
+            graphs = get_graphs_from_nodes(non_registered)
             # FIXME: this is currently hit during legitimate build
             with downgrade(AssertionError, logger=logger, to_level=logging.DEBUG):
                 assert False, (

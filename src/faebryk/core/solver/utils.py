@@ -161,6 +161,10 @@ def get_graphs(values: Iterable) -> list[Graph]:
     )
 
 
+def get_graphs_from_nodes(nodes: Iterable[Node | None]) -> list[Graph]:
+    return unique_ref(p.get_graph() for p in nodes if p is not None)
+
+
 # alias
 make_lit = as_lit
 
