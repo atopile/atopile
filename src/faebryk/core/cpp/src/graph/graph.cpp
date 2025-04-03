@@ -169,6 +169,18 @@ Graph::nodes_by_names(std::unordered_set<std::string> names) {
     return nodes;
 }
 
+std::vector<Node_ref> Graph::nodes_by_type(nb::type_object type) {
+    std::vector<Node_ref> result;
+    auto nodes = node_projection(); // Get all nodes
+    for (const auto &node : nodes) {
+        if (node->isinstance(type)) {
+            result.push_back(node);
+        }
+    }
+    // TODO: Consider sorting like get_children does?
+    return result;
+}
+
 std::unordered_set<GI_ref_weak>
 Graph::bfs_visit(std::function<bool(std::vector<GI_ref_weak> &, Link_ref)> filter,
                  std::vector<GI_ref_weak> start) {

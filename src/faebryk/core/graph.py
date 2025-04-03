@@ -27,7 +27,8 @@ class GraphFunctions:
     @property
     def node_projection(self) -> list["Node"]:
         # TODO node_projection should not return cNode
-        return union_list(*(g.node_projection() for g in self.graph))  # type: ignore
+        nodes_nested = [g.node_projection() for g in self.graph]
+        return union_list(*nodes_nested)  # type: ignore
 
     def nodes_with_trait[T: "Trait"](self, trait: type[T]) -> list[tuple["Node", T]]:
         return [
@@ -47,7 +48,7 @@ class GraphFunctions:
     def nodes_of_type[T: "Node"](self, t: type[T]) -> set[T]:
         if t is Node:
             return cast(set[T], set(self.node_projection))
-        return {n for n in self.node_projection if isinstance(n, t)}
+        return set(union_list(*(g.nodes_by_type(t) for g in self.graph)))  # type: ignore
 
     @overload
     def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]: ...

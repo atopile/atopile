@@ -278,6 +278,8 @@ class Graph {
     std::unordered_set<GI_ref_weak>
     bfs_visit(std::function<bool(std::vector<GI_ref_weak> &, Link_ref)> filter,
               std::vector<GI_ref_weak> start);
+
+    std::vector<Node_ref> nodes_by_type(nb::type_object type);
 };
 
 template <typename T> inline std::shared_ptr<T> GraphInterface::factory() {
