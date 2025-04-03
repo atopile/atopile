@@ -3,6 +3,7 @@
 import logging
 from abc import abstractmethod
 from dataclasses import InitVar as dataclass_InitVar
+from dataclasses import dataclass
 from itertools import chain
 from typing import (
     TYPE_CHECKING,
@@ -35,6 +36,7 @@ from faebryk.libs.util import (
     in_debug_session,
     not_none,
     once,
+    partition_as_list,
     post_init_decorator,
     times,
     zip_dicts_by_key,
@@ -146,13 +148,13 @@ def list_f_field[T, **P](n: int, con: Callable[P, T]) -> Callable[P, list[T]]:
 
 class NodeException(UserException):
     def __init__(self, node: "Node", *args: object) -> None:
-        super().__init__(*args)
+        super().__init__(*args)  # type: ignore
         self.node = node
 
 
 class FieldConstructionError(UserException):
     def __init__(self, node: "Node", field: str, *args: object) -> None:
-        super().__init__(*args)
+        super().__init__(*args)  # type: ignore
         self.node = node
         self.field = field
 
@@ -180,6 +182,23 @@ class InitVar(dataclass_InitVar):
 # -----------------------------------------------------------------------------
 
 
+@dataclass
+class FieldDescriptor:
+    name: str
+    factory: Callable[["Node"], Any] | Callable[[], Any]
+    is_runtime: bool
+    needs_instance: bool
+
+    def construct(self, node: "Node") -> Any:
+        if self.needs_instance:
+            # casting is expensive
+            # return cast(Callable[["Node"], Any], self.factory)(node)
+            return self.factory(node)  # type: ignore
+        else:
+            # return cast(Callable[[], Any], self.factory)()
+            return self.factory()  # type: ignore
+
+
 @post_init_decorator
 class Node(CNode):
     runtime_anon: list["Node"]
@@ -189,7 +208,6 @@ class Node(CNode):
     _init: bool = False
     _mro: list[type] = []
     _mro_ids: set[int] = set()
-    __two_stage_constructor_chain__: list[Callable[["Node"], None]] = []
 
     class _Skipped(Exception):
         pass
@@ -259,7 +277,7 @@ class Node(CNode):
 
     @classmethod
     @once
-    def __faebryk_fields__(cls) -> tuple[dict[str, Any], dict[str, Any]]:
+    def __faebryk_fields__(cls) -> tuple[list[FieldDescriptor], list[FieldDescriptor]]:
         def all_vars(cls):
             return {k: v for c in reversed(cls.__mro__) for k, v in vars(c).items()}
 
@@ -364,14 +382,57 @@ class Node(CNode):
 
             return False
 
-        nonfabfields, fabfields = partition(
-            lambda x: is_node_field(x[1]), clsfields_unf.items()
-        )
+        _, fabfields = partition(lambda x: is_node_field(x[1]), clsfields_unf.items())
 
-        return dict(fabfields), dict(nonfabfields)
+        descriptors: list[FieldDescriptor] = []
+        for name, obj in fabfields:
+            if isinstance(obj, str):
+                raise NotImplementedError()
+
+            factory = None
+            needs_instance = False
+
+            if (origin := get_origin(obj)) is not None:
+                if isinstance(origin, type):
+                    factory = origin
+                else:
+                    raise NotImplementedError(origin)
+
+            elif isinstance(obj, _d_field):
+                factory = obj.default_factory
+            elif isinstance(obj, type):
+                factory = obj
+            elif isinstance(obj, constructed_field):
+                factory = obj.__construct__
+                needs_instance = True
+            else:
+                raise NotImplementedError()
+
+            assert factory
+            descriptors.append(
+                FieldDescriptor(
+                    name=name,
+                    factory=factory,
+                    is_runtime=isinstance(obj, constructed_field),
+                    needs_instance=needs_instance,
+                )
+            )
+
+        nonrt, rt = partition_as_list(lambda x: x.is_runtime, descriptors)
+        return nonrt, rt
+
+    @classmethod
+    @once
+    def __two_stage_constructor_chain__(cls) -> list[Callable[["Node"], None]]:
+        return [
+            getattr(base, f_name)
+            for f_name in ("__preinit__", "__postinit__")
+            for base in reversed(cls.mro()[: -len(Node.mro())])
+            if f_name in base.__dict__
+        ]
 
     def _setup_fields(self):
-        clsfields, _ = self.__faebryk_fields__()
+        nonrt, rt = self.__faebryk_fields__()
         LL_Types = (Node, GraphInterface)
 
         # for name, obj in clsfields_unf.items():
@@ -384,7 +445,6 @@ class Node(CNode):
         # "| {type(obj)}"
         #    )
 
-        added_objects: dict[str, Node | GraphInterface] = {}
         objects: dict[str, Node | GraphInterface] = {}
 
         def handle_add(name, obj):
@@ -400,49 +460,27 @@ class Node(CNode):
                     )
             except Node._Skipped:
                 return
-            added_objects[name] = obj
 
-        def append(name, inst):
+        def append(descriptor: FieldDescriptor, inst):
             if isinstance(inst, LL_Types):
-                objects[name] = inst
+                objects[descriptor.name] = inst
             elif isinstance(inst, list):
                 for i, obj in enumerate(inst):
                     assert obj is not None
-                    objects[f"{name}[{i}]"] = obj
+                    objects[f"{descriptor.name}[{i}]"] = obj
             elif isinstance(inst, dict):
                 for k, obj in inst.items():
-                    objects[f"{name}[{k}]"] = obj
+                    objects[f"{descriptor.name}[{k}]"] = obj
 
-            return inst
+            if not descriptor.is_runtime:
+                setattr(self, descriptor.name, inst)
 
-        def _setup_field(name, obj):
-            if isinstance(obj, str):
-                raise NotImplementedError()
-
-            if (origin := get_origin(obj)) is not None:
-                if isinstance(origin, type):
-                    setattr(self, name, append(name, origin()))
-                    return
-                raise NotImplementedError(origin)
-
-            if isinstance(obj, _d_field):
-                setattr(self, name, append(name, obj.default_factory()))
-                return
-
-            if isinstance(obj, type):
-                setattr(self, name, append(name, obj()))
-                return
-
-            if isinstance(obj, constructed_field):
-                if (constructed := obj.__construct__(self)) is not None:
-                    append(name, constructed)
-                return
-
-            raise NotImplementedError()
-
-        def setup_field(name, obj):
+        def setup_field(descriptor: FieldDescriptor):
             try:
-                _setup_field(name, obj)
+                obj = descriptor.construct(self)
+                if obj is None:
+                    return
+                append(descriptor, obj)
             except Exception as e:
                 # this is a bit of a hack to provide complete context to debuggers
                 # for underlying field construction errors
@@ -450,41 +488,34 @@ class Node(CNode):
                     raise
                 raise FieldConstructionError(
                     self,
-                    name,
-                    f'An exception occurred while constructing field "{name}"',
+                    descriptor.name,
+                    "An exception occurred while constructing field"
+                    f' "{descriptor.name}"',
                 ) from e
 
-        nonrt, rt = partition(
-            lambda x: isinstance(x[1], constructed_field), clsfields.items()
-        )
-        for name, obj in nonrt:
-            setup_field(name, obj)
+        for descriptor in nonrt:
+            setup_field(descriptor)
 
         for name, obj in list(objects.items()):
             handle_add(name, obj)
 
         # rt fields depend on full self
-        for name, obj in rt:
-            setup_field(name, obj)
+        for descriptor in rt:
+            setup_field(descriptor)
 
             for name, obj in list(objects.items()):
                 handle_add(name, obj)
 
-        return added_objects, clsfields
-
-    def __new__(cls, *args, **kwargs):
-        out = super().__new__(cls)
-        return out
-
     def _setup(self, *args, **kwargs) -> None:
         assert not hasattr(self, "_setup_done")
         self._setup_done = False
+
         # Construct Fields
-        _, _ = self._setup_fields()
+        self._setup_fields()
 
         # Call 2-stage constructors
         if self._init:
-            for f in self.__two_stage_constructor_chain__:
+            for f in self.__two_stage_constructor_chain__():
                 f(self)
 
         self._setup_done = True
@@ -515,7 +546,6 @@ class Node(CNode):
         cls._init = init
         post_init_decorator(cls)
         CNode_mro = CNode.mro()
-        Node_mro = Node.mro()
         cls_mro = cls.mro()
         cls._mro = cls_mro[: -len(CNode_mro)]
         cls._mro_ids = {id(c) for c in cls._mro}
@@ -528,14 +558,6 @@ class Node(CNode):
         ]
         if node_instances:
             raise FieldError(f"Node instances not allowed: {node_instances}")
-
-        # setup 2-stage constructor chains
-        cls.__two_stage_constructor_chain__ = [
-            getattr(base, f_name)
-            for f_name in ("__preinit__", "__postinit__")
-            for base in reversed(cls_mro[: -len(Node_mro)])
-            if f_name in base.__dict__
-        ]
 
     def _handle_add_gif(self, name: str, gif: GraphInterface):
         gif.node = self
