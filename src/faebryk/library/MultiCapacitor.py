@@ -4,10 +4,10 @@
 import logging
 
 import faebryk.library._F as F  # noqa: F401
-from faebryk.core.parameter import Add, ParameterOperatable
+from faebryk.core.parameter import Add, Parameter, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.units import Quantity
-from faebryk.libs.util import times  # noqa: F401
+from faebryk.libs.units import P, Quantity
+from faebryk.libs.util import once, times  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +36,37 @@ class MultiCapacitor(F.Capacitor):
     def capacitors(self) -> list[F.Capacitor]:
         return times(self._count, F.Capacitor)
 
+    # hack to make faster
+    @property
+    @once
+    def capacitance(self) -> Parameter:
+        raise Exception("not implemented")
+        c = self.add(Parameter(units=P.F), "capacitance")
+        c.alias_is(Add(*(c_inner.capacitance for c_inner in self.capacitors)))
+        return c
+
+    @property
+    @once
+    def max_voltage(self) -> Parameter:
+        max_voltage = self.add(Parameter(units=P.V), "max_voltage")
+        for c_inner in self.capacitors:
+            max_voltage.constrain_le(c_inner.max_voltage)
+        return max_voltage
+
+    @property
+    @once
+    def temperature_coefficient(self) -> Parameter:
+        raise Exception("not implemented")
+        temperature_coefficient = self.add(
+            Parameter(domain=L.Domains.ENUM(F.Capacitor.TemperatureCoefficient)),
+            "temperature_coefficient",
+        )
+        for c_inner in self.capacitors:
+            temperature_coefficient.constrain_superset(c_inner.temperature_coefficient)
+        return temperature_coefficient
+
+    simple_value_representation = None
+
     def __preinit__(self):
         # ------------------------------------
         #           connections
@@ -47,11 +78,11 @@ class MultiCapacitor(F.Capacitor):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        self.capacitance.alias_is(Add(*(c.capacitance for c in self.capacitors)))
-        for c in self.capacitors:
-            # TODO use min once available
-            self.max_voltage.constrain_le(c.max_voltage)
-            self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
+        # self.capacitance.alias_is(Add(*(c.capacitance for c in self.capacitors)))
+        # for c in self.capacitors:
+        #    # TODO use min once available
+        #    self.max_voltage.constrain_le(c.max_voltage)
+        #    self.temperature_coefficient.constrain_superset(c.temperature_coefficient)
 
     def set_equal_capacitance(self, capacitance: ParameterOperatable):
         op = capacitance / self._count
