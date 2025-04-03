@@ -1499,6 +1499,7 @@ class Mutator:
 
         if new_only and self._mutations_since_last_iteration is not None:
             # Taking into account if op with no literal merged into a op with literal
+            # expensive
             mapping = self._mutations_since_last_iteration.has_merged
             for new, olds in mapping.items():
                 new_lit = self.utils.try_extract_literal(new)
@@ -1508,6 +1509,7 @@ class Mutator:
                 if old_lits == {new_lit}:
                     continue
                 aliases.update(new.get_operations(Is, constrained_only=True))
+            # expensive
             aliases.update(
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
@@ -1522,6 +1524,7 @@ class Mutator:
 
         if new_only and self._mutations_since_last_iteration is not None:
             # Taking into account if op with no literal merged into a op with literal
+            # expensive
             mapping = self._mutations_since_last_iteration.has_merged
             for new, olds in mapping.items():
                 new_lit = self.utils.try_extract_literal(new, allow_subset=True)
@@ -1533,6 +1536,7 @@ class Mutator:
                 if old_lits == {new_lit}:
                     continue
                 subsets.update(new.get_operations(IsSubset, constrained_only=True))
+            # expensive
             subsets.update(
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )

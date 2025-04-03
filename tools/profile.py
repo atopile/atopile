@@ -46,7 +46,9 @@ def get_code_binary() -> Path | None:
     context_settings={"allow_extra_args": True, "ignore_unknown_options": True}
 )
 def cprofile(
-    ctx: typer.Context, snakeviz: bool = typer.Option(False, help="Use snakeviz")
+    ctx: typer.Context,
+    snakeviz: bool = typer.Option(False, help="Use snakeviz"),
+    open_in_code: bool = typer.Option(False, help="Open graph in code"),
 ):
     """Profile a Python program using cProfile."""
     if not ctx.args:
@@ -72,16 +74,20 @@ def cprofile(
         # Determine how to display the output
         code_bin = get_code_binary()
 
-        if is_running_in_vscode_terminal():
-            subprocess.run(["code", str(dot_file)], check=True)
-        elif code_bin and get_vscode_instances_count(code_bin.name) > 0:
-            subprocess.run([str(code_bin), "-r", str(dot_file)], check=True)
+        if open_in_code:
+            if is_running_in_vscode_terminal():
+                subprocess.run(["code", str(dot_file)], check=True)
+            elif code_bin and get_vscode_instances_count(code_bin.name) > 0:
+                subprocess.run([str(code_bin), "-r", str(dot_file)], check=True)
         else:
-            png_file = temp_dir_path / "output.png"
-            subprocess.run(
-                ["dot", "-Tpng", "-o", str(png_file), str(dot_file)], check=True
-            )
-            subprocess.Popen(["xdg-open", str(png_file)])
+            if subprocess.run(["which", "dot"]).returncode == 0:
+                subprocess.run(["xdot", str(dot_file)], check=True)
+            else:
+                png_file = temp_dir_path / "output.png"
+                subprocess.run(
+                    ["dot", "-Tpng", "-o", str(png_file), str(dot_file)], check=True
+                )
+                subprocess.Popen(["xdg-open", str(png_file)])
 
         if snakeviz:
             subprocess.run(["snakeviz", str(pstats_file)], check=True)
