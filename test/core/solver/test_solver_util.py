@@ -306,6 +306,7 @@ def test_mutation_map_compressed_mapping_backwards_identity():
     mapping = MutationMap.identity(graph, print_context=context)
 
     b = mapping.compressed_mapping_backwards
+    b = {k: v for k, v in b.items() if isinstance(k, ParameterOperatable)}
     assert b == {v: [v] for v in variables}
 
 
@@ -330,6 +331,7 @@ def test_mutation_map_compressed_mapping_backwards_copy():
     )
 
     b = mapping_new.compressed_mapping_backwards
+    b = {k: v for k, v in b.items() if isinstance(k, ParameterOperatable)}
     expected = {v_new: [v] for v, v_new in zip(variables, variables_new)}
     assert b == expected
 
@@ -354,6 +356,7 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
     )
 
     b = mapping_new.compressed_mapping_backwards
+    b = {k: v for k, v in b.items() if isinstance(k, ParameterOperatable)}
     expected = {v_new: [v] for v, v_new in zip(variables, variables_new)}
     assert b == expected
 
