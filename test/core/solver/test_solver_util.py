@@ -124,7 +124,7 @@ def test_mutator_no_graph_merge():
         pass
 
     mutator = Mutator(
-        MutationMap.identity(p0.get_graph(), print_context=context),
+        MutationMap.bootstrap(p0.get_graph(), print_context=context),
         algo=algo,
         iteration=0,
         terminal=True,
@@ -294,7 +294,7 @@ def test_get_correlations_correlated_regression():
 def test_mutation_map_compressed_mapping_forwards_identity():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     f = mapping.compressed_mapping_forwards
     assert {k: v.maps_to for k, v in f.items()} == {v: v for v in variables}
@@ -303,7 +303,7 @@ def test_mutation_map_compressed_mapping_forwards_identity():
 def test_mutation_map_compressed_mapping_backwards_identity():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     b = mapping.compressed_mapping_backwards
     b = {k: v for k, v in b.items() if isinstance(k, ParameterOperatable)}
@@ -313,7 +313,7 @@ def test_mutation_map_compressed_mapping_backwards_identity():
 def test_mutation_map_compressed_mapping_backwards_copy():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(3)
 
@@ -339,7 +339,7 @@ def test_mutation_map_compressed_mapping_backwards_copy():
 def test_mutation_map_compressed_mapping_backwards_mutate():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(3)
 
@@ -364,7 +364,7 @@ def test_mutation_map_compressed_mapping_backwards_mutate():
 def test_mutation_map_non_copy_mutated_identity():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     res = mapping.non_trivial_mutated_expressions
     assert res == set()
@@ -373,7 +373,7 @@ def test_mutation_map_non_copy_mutated_identity():
 def test_mutation_map_non_copy_mutated_mutate():
     context, variables, graph = _create_letters(3)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(3)
 
@@ -397,7 +397,7 @@ def test_mutation_map_non_copy_mutated_mutate_expression():
     context, variables, graph = _create_letters(2)
     op = Add(*variables)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(2)
     op_new = Multiply(*variables_new)
@@ -422,7 +422,7 @@ def test_mutation_map_submap():
     context, variables, graph = _create_letters(2)
     op = Add(*variables)
 
-    mapping = MutationMap.identity(graph, print_context=context)
+    mapping = MutationMap.bootstrap(graph, print_context=context)
 
     _, variables_new, graph_new = _create_letters(2)
     op_new = Multiply(*variables_new)

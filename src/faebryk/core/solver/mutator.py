@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from itertools import chain
 from types import UnionType
-from typing import Any, Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Iterable, Sequence, cast, override
 
 from more_itertools import first
 from rich.table import Table
@@ -408,34 +408,23 @@ class MutationStage:
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        graphs: list[Graph],
+        nodes: set[ParameterOperatable],
+        print_context: ParameterOperatable.ReprContext,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
-        print_context: ParameterOperatable.ReprContext,
     ) -> "MutationStage":
-        return MutationStage(
+        return MutationStageIdentity(
+            graphs=graphs,
+            nodes=nodes,
             algorithm=algorithm,
             iteration=iteration,
             print_context=print_context,
-            transformations=Transformations.identity(
-                *graphs, input_print_context=print_context
-            ),
         )
 
     @property
-    @once
     def is_identity(self) -> bool:
-        return self.transformations.is_identity
-
-    def as_identity(self, iteration: int = 0) -> "MutationStage":
-        return MutationStage(
-            algorithm="identity",
-            iteration=iteration,
-            print_context=self.input_print_context,
-            transformations=Transformations.identity(
-                *self.output_graphs, input_print_context=self.output_print_context
-            ),
-        )
+        return False
 
     def print_graph_contents(
         self,
@@ -467,8 +456,6 @@ class MutationStage:
             log(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     def map_forward(self, param: ParameterOperatable) -> ParameterOperatable | None:
-        if self.is_identity:
-            return param
         return self.transformations.mutated.get(param)
 
     @property
@@ -478,19 +465,13 @@ class MutationStage:
         return invert_dict(self.transformations.mutated)
 
     def map_backward(self, param: ParameterOperatable) -> list[ParameterOperatable]:
-        if self.is_identity:
-            return [param]
         return self.backwards_mapping.get(param, [])
 
     @property
     def output_print_context(self) -> ParameterOperatable.ReprContext:
-        if not self.transformations:
-            return self.input_print_context
         return self.transformations.output_print_context
 
     def print_mutation_table(self):
-        if not self.transformations:
-            return
         if not self.transformations.mutated:
             return
 
@@ -668,6 +649,62 @@ class MutationStage:
         )
 
 
+class MutationStageIdentity(MutationStage):
+    def __init__(
+        self,
+        graphs: list[Graph],
+        nodes: set[ParameterOperatable],
+        algorithm: SolverAlgorithm | str,
+        iteration: int,
+        print_context: ParameterOperatable.ReprContext,
+    ):
+        self.algorithm = algorithm
+        self.iteration = iteration
+
+        self.graphs = graphs
+        self.print_context = print_context
+        self.transformations = None
+        self.input_print_context = None
+        self.input_operables = nodes
+
+    @property
+    @override
+    def is_identity(self) -> bool:
+        return True
+
+    @override
+    def map_forward(self, param: ParameterOperatable) -> ParameterOperatable:
+        return param
+
+    @override
+    def map_backward(self, param: ParameterOperatable) -> list[ParameterOperatable]:
+        return [param]
+
+    @property
+    @override
+    def output_graphs(self) -> list[Graph]:
+        return self.graphs
+
+    @property
+    @override
+    def output_operables(self) -> set[ParameterOperatable]:
+        return self.input_operables
+
+    @property
+    @override
+    def input_graphs(self) -> list[Graph]:
+        return self.graphs
+
+    @property
+    @override
+    def output_print_context(self) -> ParameterOperatable.ReprContext:
+        return self.print_context
+
+    @override
+    def print_mutation_table(self):
+        return
+
+
 class MutationMap:
     @dataclass
     class LookupResult:
@@ -825,18 +862,21 @@ class MutationMap:
         )
 
     @staticmethod
-    def identity(
+    def bootstrap(
         *graphs: Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext | None = None,
     ) -> "MutationMap":
+        print_context = print_context or ParameterOperatable.ReprContext()
         return MutationMap(
-            MutationStage.identity(
-                *graphs,
+            MutationStage(
                 algorithm=algorithm,
                 iteration=iteration,
-                print_context=print_context or ParameterOperatable.ReprContext(),
+                print_context=print_context,
+                transformations=Transformations.identity(
+                    *graphs, input_print_context=print_context
+                ),
             )
         )
 
@@ -1658,7 +1698,8 @@ class Mutator:
         if not self.transformations.dirty:
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
-                    *self.mutation_map.output_graphs,
+                    graphs=list(self.G),
+                    nodes=self._starting_operables,
                     algorithm=self.algo,
                     iteration=self.iteration,
                     print_context=self.print_context,

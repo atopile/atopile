@@ -175,7 +175,7 @@ class DefaultSolver(Solver):
 
         # Bootstrap state, create filtered & copied version of input graphs
         if self.reusable_state is None:
-            bootstrap_map = MutationMap.identity(*_gs, print_context=print_context)
+            bootstrap_map = MutationMap.bootstrap(*_gs, print_context=print_context)
             copy_mutator = Mutator(
                 bootstrap_map,
                 algo=canonical.filter_non_parameter,
