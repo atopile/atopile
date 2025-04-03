@@ -189,6 +189,7 @@ class Node(CNode):
     _init: bool = False
     _mro: list[type] = []
     _mro_ids: set[int] = set()
+    __two_stage_constructor_chain__: list[Callable[["Node"], None]] = []
 
     class _Skipped(Exception):
         pass
@@ -482,13 +483,10 @@ class Node(CNode):
         _, _ = self._setup_fields()
 
         # Call 2-stage constructors
-
         if self._init:
-            for f_name in ("__preinit__", "__postinit__"):
-                for base in reversed(type(self).mro()):
-                    if f_name in base.__dict__:
-                        f = getattr(base, f_name)
-                        f(self)
+            for f in self.__two_stage_constructor_chain__:
+                f(self)
+
         self._setup_done = True
 
     def __hash__(self):
@@ -516,9 +514,10 @@ class Node(CNode):
     def __init_subclass__(cls, *, init: bool = True) -> None:
         cls._init = init
         post_init_decorator(cls)
-        Node_mro = CNode.mro()
+        CNode_mro = CNode.mro()
+        Node_mro = Node.mro()
         cls_mro = cls.mro()
-        cls._mro = cls_mro[: -len(Node_mro)]
+        cls._mro = cls_mro[: -len(CNode_mro)]
         cls._mro_ids = {id(c) for c in cls._mro}
 
         # check if accidentally added a node instance instead of field
@@ -529,6 +528,14 @@ class Node(CNode):
         ]
         if node_instances:
             raise FieldError(f"Node instances not allowed: {node_instances}")
+
+        # setup 2-stage constructor chains
+        cls.__two_stage_constructor_chain__ = [
+            getattr(base, f_name)
+            for f_name in ("__preinit__", "__postinit__")
+            for base in reversed(cls_mro[: -len(Node_mro)])
+            if f_name in base.__dict__
+        ]
 
     def _handle_add_gif(self, name: str, gif: GraphInterface):
         gif.node = self
