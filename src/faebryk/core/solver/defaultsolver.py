@@ -103,51 +103,50 @@ class DefaultSolver(Solver):
     class SolverState:
         data: "DefaultSolver.IterationData"
 
+    @dataclass
+    class ReusableStates:
+        no_invariants: "DefaultSolver.SolverState | None" = None
+        no_new_correlating_predicates: "DefaultSolver.SolverState | None" = None
+        all_invariants: "DefaultSolver.SolverState | None" = None
+
+        _NO_NEW_CORRELATING_PREDICATES = SolverAlgorithm.Invariants(
+            no_new_correlating_predicates=True,
+            no_new_predicates=False,
+        )
+
+        def find_first_matching(
+            self, invariants: SolverAlgorithm.Invariants
+        ) -> "DefaultSolver.SolverState | None":
+            if ALL_INVARIANTS <= invariants and self.all_invariants is not None:
+                return self.all_invariants
+            elif (
+                self._NO_NEW_CORRELATING_PREDICATES <= invariants
+                and self.no_new_correlating_predicates is not None
+            ):
+                return self.no_new_correlating_predicates
+            elif NO_INVARIANTS <= invariants and self.no_invariants is not None:
+                return self.no_invariants
+
+            return None
+
+        def save(
+            self,
+            state: "DefaultSolver.SolverState",
+            invariants: SolverAlgorithm.Invariants,
+        ):
+            if invariants == NO_INVARIANTS:
+                self.no_invariants = state
+            elif invariants == self._NO_NEW_CORRELATING_PREDICATES:
+                self.no_new_correlating_predicates = state
+            else:
+                assert invariants == ALL_INVARIANTS
+                self.all_invariants = state
+
     def __init__(self) -> None:
         super().__init__()
 
         self.state: DefaultSolver.SolverState | None = None
-
-        @dataclass
-        class ReusableStates:
-            no_invariants: DefaultSolver.SolverState | None = None
-            no_new_correlating_predicates: DefaultSolver.SolverState | None = None
-            all_invariants: DefaultSolver.SolverState | None = None
-
-            def find_first_matching(
-                self, invariants: SolverAlgorithm.Invariants
-            ) -> DefaultSolver.SolverState | None:
-                if ALL_INVARIANTS <= invariants and self.all_invariants is not None:
-                    return self.all_invariants
-                elif (
-                    SolverAlgorithm.Invariants(
-                        no_new_correlating_predicates=True,
-                        no_new_predicates=False,
-                    )
-                ) <= invariants and self.no_new_correlating_predicates is not None:
-                    return self.no_new_correlating_predicates
-                elif NO_INVARIANTS <= invariants and self.no_invariants is not None:
-                    return self.no_invariants
-
-                return None
-
-            def save(
-                self,
-                state: DefaultSolver.SolverState,
-                invariants: SolverAlgorithm.Invariants,
-            ):
-                if invariants == NO_INVARIANTS:
-                    self.no_invariants = state
-                elif invariants == SolverAlgorithm.Invariants(
-                    no_new_correlating_predicates=True,
-                    no_new_predicates=False,
-                ):
-                    self.no_new_correlating_predicates = state
-                else:
-                    assert invariants == ALL_INVARIANTS
-                    self.all_invariants = state
-
-        self.reusable_state = ReusableStates()
+        self.reusable_state = DefaultSolver.ReusableStates()
 
     @classmethod
     def _run_iteration(
