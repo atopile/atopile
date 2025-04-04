@@ -14,7 +14,7 @@ class JTAG(ModuleInterface):
     tck: F.ElectricLogic
     n_trst: F.ElectricLogic
     n_reset: F.ElectricLogic
-    vtref: F.Electrical
+    vtref: F.ElectricPower
 
     @L.rt_field
     def single_electric_reference(self):
