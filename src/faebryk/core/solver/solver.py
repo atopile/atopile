@@ -84,8 +84,9 @@ class Solver(Protocol):
 
     def inspect_get_known_supersets(self, value: Parameter) -> P_Set: ...
 
-    def update_superset_cache(self, *nodes: Node): ...
-
     def simplify(
-        self, *gs: Graph | Node, invariants: SolverAlgorithm.Invariants = NO_INVARIANTS
+        self,
+        *gs: Graph | Node,
+        input_invariants: SolverAlgorithm.Invariants = NO_INVARIANTS,
+        output_invariants: SolverAlgorithm.Invariants = NO_INVARIANTS,
     ): ...

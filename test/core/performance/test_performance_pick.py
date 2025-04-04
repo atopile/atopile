@@ -190,7 +190,7 @@ def test_performance_pick_rc_formulas():
         # S_LOG.set(True, force=True)
         # LOG_PICK_SOLVE.set(True, force=True)
         # set_log_level(logging.DEBUG)
-        # solver.update_superset_cache(app)
+        # solver.simplify(app, output_invariants=ALL_INVARIANTS)
         # assert False
         return
     finally:

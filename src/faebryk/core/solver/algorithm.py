@@ -23,10 +23,24 @@ class SolverAlgorithm:
         def invariants(self) -> dict[str, bool]:
             return {field.name: getattr(self, field.name) for field in fields(self)}
 
-        def __le__(self, set_invariants: "SolverAlgorithm.Invariants") -> bool:
+        @staticmethod
+        def algo_allowed(
+            algo_invariants: "SolverAlgorithm.Invariants",
+            allowed_invariants: "SolverAlgorithm.Invariants",
+        ) -> bool:
             return all(
-                self.invariants[name] <= value
-                for name, value in set_invariants.invariants.items()
+                algo_invariants.invariants[name] <= value
+                for name, value in allowed_invariants.invariants.items()
+            )
+
+        @staticmethod
+        def fullfills_contract(
+            condition: "SolverAlgorithm.Invariants",
+            request: "SolverAlgorithm.Invariants",
+        ) -> bool:
+            return all(
+                condition.invariants[name] <= value
+                for name, value in request.invariants.items()
             )
 
         def __str__(self) -> str:

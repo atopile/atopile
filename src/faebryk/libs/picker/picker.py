@@ -20,7 +20,7 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
-from faebryk.core.solver.algorithm import SolverAlgorithm
+from faebryk.core.solver.algorithm import ALL_INVARIANTS, SolverAlgorithm
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -352,12 +352,23 @@ def pick_topologically(
     _pick_count = len(tree)
 
     def _get_candidates(_tree: Tree[Module]):
+        # TODO enable
+        # pre-solve
         # with timings.as_global("pre-solve"):
-        #    solver.simplify(*get_graphs(tree.keys()))
+        #     solver.simplify(
+        #         *tree,
+        #         input_invariants=NO_INVARIANTS,
+        #         output_invariants=NO_POST_PICK_INVARIANTS,
+        #     )
         try:
             with timings.as_global("new estimates"):
                 # Rerun solver for new system
-                solver.update_superset_cache(*_tree)
+                solver.simplify(
+                    *_tree,
+                    # TODO enable
+                    # input_invariants=NO_POST_PICK_INVARIANTS,
+                    output_invariants=ALL_INVARIANTS,
+                )
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
         with timings.as_global("get candidates"):
@@ -415,7 +426,12 @@ def pick_topologically(
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
     try:
-        solver.update_superset_cache(*tree_backup)
+        solver.simplify(
+            *tree_backup,
+            # TODO enable
+            # input_invariants=NO_POST_PICK_INVARIANTS,
+            output_invariants=ALL_INVARIANTS,
+        )
     except Contradiction as e:
         raise PickVerificationError(str(e), *tree_backup) from e
 

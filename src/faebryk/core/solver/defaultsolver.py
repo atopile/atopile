@@ -33,7 +33,6 @@ from faebryk.core.solver.symbolic import (
     structural,
 )
 from faebryk.core.solver.utils import (
-    ALLOW_PARTIAL_STATE,
     MAX_ITERATIONS_HEURISTIC,
     PRINT_START,
     S_LOG,
@@ -117,14 +116,24 @@ class DefaultSolver(Solver):
         def find_first_matching(
             self, invariants: SolverAlgorithm.Invariants
         ) -> "DefaultSolver.SolverState | None":
-            if ALL_INVARIANTS <= invariants and self.all_invariants is not None:
+            if (
+                SolverAlgorithm.Invariants.fullfills_contract(
+                    ALL_INVARIANTS, invariants
+                )
+                and self.all_invariants is not None
+            ):
                 return self.all_invariants
             elif (
-                self._NO_NEW_CORRELATING_PREDICATES <= invariants
+                SolverAlgorithm.Invariants.fullfills_contract(
+                    self._NO_NEW_CORRELATING_PREDICATES, invariants
+                )
                 and self.no_new_correlating_predicates is not None
             ):
                 return self.no_new_correlating_predicates
-            elif NO_INVARIANTS <= invariants and self.no_invariants is not None:
+            elif (
+                SolverAlgorithm.Invariants.fullfills_contract(NO_INVARIANTS, invariants)
+                and self.no_invariants is not None
+            ):
                 return self.no_invariants
 
             return None
@@ -208,12 +217,12 @@ class DefaultSolver(Solver):
         self,
         print_context: ParameterOperatable.ReprContext | None,
         *gs: Graph | Node,
-        invariants: SolverAlgorithm.Invariants,
+        input_invariants: SolverAlgorithm.Invariants,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
         _gs = get_graphs(gs)
 
-        reusable_state = self.reusable_state.find_first_matching(invariants)
+        reusable_state = self.reusable_state.find_first_matching(input_invariants)
 
         # Bootstrap state, create filtered & copied version of input graphs
         if reusable_state is None:
@@ -231,6 +240,8 @@ class DefaultSolver(Solver):
                     mutation_map=MutationMap(res.mutation_stage)
                 ),
             )
+
+        assert False, f"{reusable_state}, {input_invariants}"
 
         if print_context is not None:
             raise ValueError("print_context not allowed when using reusable state")
@@ -306,11 +317,12 @@ class DefaultSolver(Solver):
         )
 
     @times_out(TIMEOUT)
-    def simplify_symbolically(
+    def simplify(
         self,
         *gs: Graph | Node,
+        input_invariants: SolverAlgorithm.Invariants = NO_INVARIANTS,
+        output_invariants: SolverAlgorithm.Invariants = NO_INVARIANTS,
         print_context: ParameterOperatable.ReprContext | None = None,
-        invariants: SolverAlgorithm.Invariants = ALL_INVARIANTS,
     ) -> SolverState:
         """
         Args:
@@ -324,15 +336,23 @@ class DefaultSolver(Solver):
             logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
 
         self.state = self._create_or_resume_state(
-            print_context, *gs, invariants=invariants
+            print_context, *gs, input_invariants=input_invariants
         )
 
         if S_LOG:
             self.state.data.mutation_map.print_name_mappings()
             self.state.data.mutation_map.last_stage.print_graph_contents(Expression)
 
-        pre_algos = [a for a in self.algorithms.pre if a.invariants <= invariants]
-        it_algos = [a for a in self.algorithms.iterative if a.invariants <= invariants]
+        pre_algos = [
+            a
+            for a in self.algorithms.pre
+            if SolverAlgorithm.Invariants.algo_allowed(a.invariants, output_invariants)
+        ]
+        it_algos = [
+            a
+            for a in self.algorithms.iterative
+            if SolverAlgorithm.Invariants.algo_allowed(a.invariants, output_invariants)
+        ]
 
         for iterno in count():
             first_iter = iterno == 0
@@ -351,7 +371,7 @@ class DefaultSolver(Solver):
                 iteration_state = DefaultSolver._run_iteration(
                     iterno=iterno,
                     data=self.state.data,
-                    invariants=invariants,
+                    invariants=output_invariants,
                     algos=pre_algos if first_iter else it_algos,
                 )
             except:
@@ -374,10 +394,10 @@ class DefaultSolver(Solver):
                 f" and {time.time() - now:.3f} seconds".ljust(NET_LINE_WIDTH, "=")
             )
 
-        timings.add(str(invariants))
+        timings.add(str(output_invariants))
 
         # save state for later continuation
-        self.reusable_state.save(self.state, invariants)
+        self.reusable_state.save(self.state, output_invariants)
 
         return self.state
 
@@ -393,9 +413,9 @@ class DefaultSolver(Solver):
         pred.constrained = True
 
         try:
-            solver_result = self.simplify_symbolically(
+            solver_result = self.simplify(
                 pred.get_graph(),
-                invariants=ALL_INVARIANTS,
+                output_invariants=ALL_INVARIANTS,
             )
         except TimeoutError:
             if not allow_unknown:
@@ -449,21 +469,6 @@ class DefaultSolver(Solver):
         if lock:
             pred.constrain()
         return True
-
-    @override
-    def simplify(
-        self, *gs: Graph | Node, invariants: SolverAlgorithm.Invariants = NO_INVARIANTS
-    ):
-        self.simplify_symbolically(*gs, invariants=invariants)
-
-    def update_superset_cache(self, *nodes: Node):
-        try:
-            self.simplify_symbolically(*nodes, invariants=ALL_INVARIANTS)
-        except TimeoutError:
-            if not ALLOW_PARTIAL_STATE:
-                raise
-            if self.state is None:
-                raise
 
     def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
         """
