@@ -20,7 +20,8 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
-from faebryk.core.solver.algorithm import ALL_INVARIANTS, SolverAlgorithm
+from faebryk.core.solver.algorithm import ALL_INVARIANTS, NO_INVARIANTS, SolverAlgorithm
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -47,7 +48,7 @@ if TYPE_CHECKING:
     from faebryk.libs.picker.localpick import PickerOption
 
 
-NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
+NO_REUSE_STATE = ConfigFlag("PICKER_NO_REUSE_STATE", default=True)
 
 logger = logging.getLogger(__name__)
 
@@ -355,22 +356,28 @@ def pick_topologically(
         # TODO enable
         # pre-solve
         # with timings.as_global("pre-solve"):
-        #     solver.simplify(
-        #         *tree,
-        #         input_invariants=NO_INVARIANTS,
-        #         output_invariants=NO_POST_PICK_INVARIANTS,
-        #     )
+        #    solver.simplify(
+        #        *tree,
+        #        input_invariants=NO_POST_PICK_INVARIANTS,
+        #        output_invariants=NO_POST_PICK_INVARIANTS,
+        #    )
         try:
             with timings.as_global("new estimates"):
                 # Rerun solver for new system
                 solver.simplify(
                     *_tree,
-                    # TODO enable
-                    # input_invariants=NO_POST_PICK_INVARIANTS,
-                    output_invariants=ALL_INVARIANTS,
+                    input_invariants=NO_POST_PICK_INVARIANTS
+                    if not NO_REUSE_STATE
+                    else NO_INVARIANTS,
+                    output_invariants=NO_POST_PICK_INVARIANTS,
                 )
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
+        # TODO get rid of this
+        # for some reason, solver times out for voltage dividers (example)...
+        except TimeoutError:
+            if not isinstance(solver, DefaultSolver) or solver.state is None:
+                raise
         with timings.as_global("get candidates"):
             candidates = picker_lib.get_candidates(_tree, solver)
         if LOG_PICK_SOLVE:

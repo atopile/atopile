@@ -41,5 +41,5 @@ class NullSolver(Solver):
         return as_lit(lit)
 
     @override
-    def simplify(self, **kwargs: Any):
+    def simplify(self, *args: Any, **kwargs: Any):
         pass

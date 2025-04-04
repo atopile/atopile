@@ -19,7 +19,6 @@ from faebryk.core.solver.algorithm import (
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
-    NO_PROGRESS_BAR,
     PickError,
     get_pick_tree,
     pick_topologically,
@@ -36,7 +35,7 @@ GROUP_SIZE = ConfigFlagInt("GROUP_SIZE", 4)
 
 @pytest.fixture(autouse=True)
 def _setup():
-    NO_PROGRESS_BAR.set(True)
+    pass
 
 
 class _RP2040_Basic(Module):

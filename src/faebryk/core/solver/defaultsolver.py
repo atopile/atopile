@@ -241,8 +241,6 @@ class DefaultSolver(Solver):
                 ),
             )
 
-        assert False, f"{reusable_state}, {input_invariants}"
-
         if print_context is not None:
             raise ValueError("print_context not allowed when using reusable state")
 
