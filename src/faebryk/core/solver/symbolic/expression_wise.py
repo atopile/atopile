@@ -145,7 +145,7 @@ def fold_add(expr: Add, mutator: Mutator):
     # 6*A
     # (A * 2) + (A * 5)
     literal_operands = list(expr.get_operand_literals().values())
-    p_operands = expr.get_operand_operatables()
+    p_operands = [o for o in expr.operands if not mutator.utils.is_literal(o)]
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
         partition_as_list(lambda o: not mutator.has_been_mutated(o), p_operands)
     )
@@ -198,7 +198,7 @@ def fold_multiply(expr: Multiply, mutator: Mutator):
     """
 
     literal_operands = list(expr.get_operand_literals().values())
-    p_operands = expr.get_operand_operatables()
+    p_operands = [o for o in expr.operands if not mutator.utils.is_literal(o)]
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
         partition_as_list(lambda o: not mutator.has_been_mutated(o), p_operands)
     )
