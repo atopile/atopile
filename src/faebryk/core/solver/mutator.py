@@ -1597,10 +1597,10 @@ class Mutator:
         mutation_map: MutationMap,
         algo: SolverAlgorithm,
         iteration: int,
-        terminal: bool,
+        invariants: SolverAlgorithm.Invariants,
     ) -> None:
         self.algo = algo
-        self.terminal = terminal
+        self.invariants = invariants
         self.mutation_map = mutation_map
         self.iteration = iteration
 

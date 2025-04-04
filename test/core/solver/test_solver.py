@@ -43,6 +43,7 @@ from faebryk.core.parameter import (
     SymmetricDifference,
     Union,
 )
+from faebryk.core.solver.algorithm import NO_INVARIANTS
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import (
     CanonicalExpression,
@@ -1427,7 +1428,7 @@ def test_simplify_non_terminal_manual_test_1():
 
     solver.simplify(E2)
 
-    solver.simplify_symbolically(E2, terminal=True)
+    solver.simplify_symbolically(E2)
 
     solver.simplify(E2)
 
@@ -1452,7 +1453,7 @@ def test_simplify_non_terminal_manual_test_2():
         p1.constrain_subset(p2 / increase)
 
     solver = DefaultSolver()
-    solver.simplify_symbolically(A, terminal=False, print_context=context)
+    solver.simplify_symbolically(A, invariants=NO_INVARIANTS, print_context=context)
 
     origin = 1, as_lit(Range(9 * P.V, 11 * P.V))
     ps[origin[0]].alias_is(origin[1])

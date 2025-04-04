@@ -10,7 +10,12 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.solver.algorithm import get_algorithms
+from faebryk.core.solver.algorithm import (
+    ALL_INVARIANTS,
+    NO_INVARIANTS,
+    SolverAlgorithm,
+    get_algorithms,
+)
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import (
@@ -74,7 +79,9 @@ def test_performance_pick_real_module(
 
 def _pretty_timings(timings: Times):
     def _is_algo(
-        k: str, dirty: bool | None = None, terminal: bool | None = None
+        k: str,
+        dirty: bool | None = None,
+        invariants: SolverAlgorithm.Invariants | None = None,
     ) -> bool:
         if "run_iteration:" not in k:
             return False
@@ -87,21 +94,24 @@ def _pretty_timings(timings: Times):
                 return False
             if not dirty and "clean" not in k:
                 return False
-        if terminal is not None:
-            if terminal and " terminal" not in k:
+        if invariants is not None:
+            if (
+                invariants.no_new_correlating_predicates
+                and " no_new_correlating_predicates" not in k
+            ):
                 return False
-            if not terminal and "non-terminal" not in k:
+            if invariants.no_new_predicates and " no_new_predicates" not in k:
                 return False
         return True
 
-    def _make_algo_group(dirty: bool | None = None, terminal: bool | None = None):
+    def _make_algo_group(
+        dirty: bool | None = None, invariants: SolverAlgorithm.Invariants | None = None
+    ):
         dirty_str = "" if dirty is None else "dirty " if dirty else "clean "
-        terminal_str = (
-            "" if terminal is None else "terminal " if terminal else "non-terminal "
-        )
+        invariants_str = "" if invariants is None else str(invariants)
         timings.make_group(
-            f"{dirty_str}{terminal_str}algos",
-            lambda k: _is_algo(k, dirty=dirty, terminal=terminal),
+            f"{dirty_str}{invariants_str}algos",
+            lambda k: _is_algo(k, dirty=dirty, invariants=invariants),
         )
 
     timings.add_seperator()
@@ -109,8 +119,16 @@ def _pretty_timings(timings: Times):
         timings.make_group("Total " + algo.name, lambda k: algo.name + " " in k)
     timings.add_seperator()
     for i in [None, True, False]:
-        for j in [None, True, False]:
-            _make_algo_group(dirty=i, terminal=j)
+        for j in [
+            None,
+            NO_INVARIANTS,
+            SolverAlgorithm.Invariants(
+                no_new_correlating_predicates=True,
+                no_new_predicates=False,
+            ),
+            ALL_INVARIANTS,
+        ]:
+            _make_algo_group(dirty=i, invariants=j)
     timings.add_seperator()
     timings.make_group(
         "mutator setup",

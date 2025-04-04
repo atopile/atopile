@@ -24,7 +24,7 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
-from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.algorithm import ALL_INVARIANTS, NO_INVARIANTS, algorithm
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.mutator import (
     MutationMap,
@@ -127,7 +127,7 @@ def test_mutator_no_graph_merge():
         MutationMap.bootstrap(p0.get_graph(), print_context=context),
         algo=algo,
         iteration=0,
-        terminal=True,
+        invariants=ALL_INVARIANTS,
     )
     p0_new = cast_assert(Parameter, mutator.get_copy(p0))
     p3_new = cast_assert(Parameter, mutator.get_copy(p3))
@@ -461,7 +461,9 @@ def test_traceback_filtering_chain():
     E2 = E + A
 
     solver = DefaultSolver()
-    out = solver.simplify_symbolically(E2, print_context=context, terminal=False)
+    out = solver.simplify_symbolically(
+        E2, print_context=context, invariants=NO_INVARIANTS
+    )
 
     E2_new = out.data.mutation_map.map_forward(E2).maps_to
     assert E2_new
@@ -480,7 +482,7 @@ def test_traceback_filtering_tree():
     A.constrain_subset(C)
 
     solver = DefaultSolver()
-    out = solver.simplify_symbolically(A, print_context=context, terminal=True)
+    out = solver.simplify_symbolically(A, print_context=context)
 
     A_new = out.data.mutation_map.map_forward(A).maps_to
     assert A_new
@@ -503,7 +505,7 @@ def test_contradiction_message_subset():
     solver = DefaultSolver()
 
     with pytest.raises(ContradictionByLiteral, match="is lit not subset of ss lits"):
-        solver.simplify_symbolically(A, print_context=context, terminal=True)
+        solver.simplify_symbolically(A, print_context=context)
 
 
 def test_contradiction_message_superset():
@@ -518,4 +520,4 @@ def test_contradiction_message_superset():
     with pytest.raises(
         ContradictionByLiteral, match="Contradiction: Incompatible literal subsets"
     ):
-        solver.simplify_symbolically(A, print_context=context, terminal=True)
+        solver.simplify_symbolically(A, print_context=context)

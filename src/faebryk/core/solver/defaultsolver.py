@@ -17,7 +17,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Predicate,
 )
-from faebryk.core.solver.algorithm import SolverAlgorithm
+from faebryk.core.solver.algorithm import ALL_INVARIANTS, NO_INVARIANTS, SolverAlgorithm
 from faebryk.core.solver.mutator import (
     MutationMap,
     MutationStage,
@@ -107,7 +107,47 @@ class DefaultSolver(Solver):
         super().__init__()
 
         self.state: DefaultSolver.SolverState | None = None
-        self.reusable_state: DefaultSolver.SolverState | None = None
+
+        @dataclass
+        class ReusableStates:
+            no_invariants: DefaultSolver.SolverState | None = None
+            no_new_correlating_predicates: DefaultSolver.SolverState | None = None
+            all_invariants: DefaultSolver.SolverState | None = None
+
+            def find_first_matching(
+                self, invariants: SolverAlgorithm.Invariants
+            ) -> DefaultSolver.SolverState | None:
+                if ALL_INVARIANTS <= invariants and self.all_invariants is not None:
+                    return self.all_invariants
+                elif (
+                    SolverAlgorithm.Invariants(
+                        no_new_correlating_predicates=True,
+                        no_new_predicates=False,
+                    )
+                ) <= invariants and self.no_new_correlating_predicates is not None:
+                    return self.no_new_correlating_predicates
+                elif NO_INVARIANTS <= invariants and self.no_invariants is not None:
+                    return self.no_invariants
+
+                return None
+
+            def save(
+                self,
+                state: DefaultSolver.SolverState,
+                invariants: SolverAlgorithm.Invariants,
+            ):
+                if invariants == NO_INVARIANTS:
+                    self.no_invariants = state
+                elif invariants == SolverAlgorithm.Invariants(
+                    no_new_correlating_predicates=True,
+                    no_new_predicates=False,
+                ):
+                    self.no_new_correlating_predicates = state
+                else:
+                    assert invariants == ALL_INVARIANTS
+                    self.all_invariants = state
+
+        self.reusable_state = ReusableStates()
 
     @classmethod
     def _run_iteration(
@@ -115,7 +155,7 @@ class DefaultSolver(Solver):
         iterno: int,
         data: IterationData,
         algos: list[SolverAlgorithm],
-        terminal: bool,
+        invariants: SolverAlgorithm.Invariants,
     ) -> "DefaultSolver.IterationState":
         iteration_state = DefaultSolver.IterationState(dirty=False)
         timings = Times(name="run_iteration")
@@ -132,7 +172,7 @@ class DefaultSolver(Solver):
             mutator = Mutator(
                 data.mutation_map,
                 algo=algo,
-                terminal=terminal,
+                invariants=invariants,
                 iteration=iterno,
             )
 
@@ -159,27 +199,30 @@ class DefaultSolver(Solver):
             timings.add(f"close {'dirty' if algo_result.dirty else 'clean'}")
 
             new_name = (
-                f"{algo.name}"
-                f" {'terminal' if terminal else 'non-terminal'}"
-                f" {'dirty' if algo_result.dirty else 'clean'}"
+                f"{algo.name} {invariants} {'dirty' if algo_result.dirty else 'clean'}"
             )
             timings._add(new_name, run_time)
 
         return iteration_state
 
     def _create_or_resume_state(
-        self, print_context: ParameterOperatable.ReprContext | None, *gs: Graph | Node
+        self,
+        print_context: ParameterOperatable.ReprContext | None,
+        *gs: Graph | Node,
+        invariants: SolverAlgorithm.Invariants,
     ):
         # TODO consider not getting full graph of node gs, but scope to only relevant
         _gs = get_graphs(gs)
 
+        reusable_state = self.reusable_state.find_first_matching(invariants)
+
         # Bootstrap state, create filtered & copied version of input graphs
-        if self.reusable_state is None:
+        if reusable_state is None:
             bootstrap_map = MutationMap.bootstrap(*_gs, print_context=print_context)
             copy_mutator = Mutator(
                 bootstrap_map,
                 algo=canonical.filter_non_parameter,
-                terminal=False,
+                invariants=NO_INVARIANTS,
                 iteration=0,
             )
             res = copy_mutator.run()
@@ -193,7 +236,7 @@ class DefaultSolver(Solver):
         if print_context is not None:
             raise ValueError("print_context not allowed when using reusable state")
 
-        mutation_map = self.reusable_state.data.mutation_map
+        mutation_map = reusable_state.data.mutation_map
         p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
         new_p_ops = p_ops - mutation_map.first_stage.input_operables
 
@@ -268,7 +311,7 @@ class DefaultSolver(Solver):
         self,
         *gs: Graph | Node,
         print_context: ParameterOperatable.ReprContext | None = None,
-        terminal: bool = True,
+        invariants: SolverAlgorithm.Invariants = ALL_INVARIANTS,
     ) -> SolverState:
         """
         Args:
@@ -281,17 +324,16 @@ class DefaultSolver(Solver):
         if LOG_PICK_SOLVE:
             logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
 
-        self.state = self._create_or_resume_state(print_context, *gs)
+        self.state = self._create_or_resume_state(
+            print_context, *gs, invariants=invariants
+        )
 
         if S_LOG:
             self.state.data.mutation_map.print_name_mappings()
             self.state.data.mutation_map.last_stage.print_graph_contents(Expression)
 
-        pre_algos = self.algorithms.pre
-        it_algos = self.algorithms.iterative
-        if not terminal:
-            pre_algos = [a for a in pre_algos if not a.terminal]
-            it_algos = [a for a in it_algos if not a.terminal]
+        pre_algos = [a for a in self.algorithms.pre if a.invariants <= invariants]
+        it_algos = [a for a in self.algorithms.iterative if a.invariants <= invariants]
 
         for iterno in count():
             first_iter = iterno == 0
@@ -310,7 +352,7 @@ class DefaultSolver(Solver):
                 iteration_state = DefaultSolver._run_iteration(
                     iterno=iterno,
                     data=self.state.data,
-                    terminal=terminal,
+                    invariants=invariants,
                     algos=pre_algos if first_iter else it_algos,
                 )
             except:
@@ -333,10 +375,10 @@ class DefaultSolver(Solver):
                 f" and {time.time() - now:.3f} seconds".ljust(NET_LINE_WIDTH, "=")
             )
 
-        timings.add("terminal" if terminal else "non-terminal")
+        timings.add(str(invariants))
 
-        if not terminal:
-            self.reusable_state = self.state
+        # save state for later continuation
+        self.reusable_state.save(self.state, invariants)
 
         return self.state
 
@@ -352,7 +394,10 @@ class DefaultSolver(Solver):
         pred.constrained = True
 
         try:
-            solver_result = self.simplify_symbolically(pred.get_graph(), terminal=True)
+            solver_result = self.simplify_symbolically(
+                pred.get_graph(),
+                invariants=ALL_INVARIANTS,
+            )
         except TimeoutError:
             if not allow_unknown:
                 raise
@@ -407,12 +452,14 @@ class DefaultSolver(Solver):
         return True
 
     @override
-    def simplify(self, *gs: Graph | Node):
-        self.simplify_symbolically(*gs, terminal=False)
+    def simplify(
+        self, *gs: Graph | Node, invariants: SolverAlgorithm.Invariants = NO_INVARIANTS
+    ):
+        self.simplify_symbolically(*gs, invariants=invariants)
 
     def update_superset_cache(self, *nodes: Node):
         try:
-            self.simplify_symbolically(*nodes, terminal=True)
+            self.simplify_symbolically(*nodes, invariants=ALL_INVARIANTS)
         except TimeoutError:
             if not ALLOW_PARTIAL_STATE:
                 raise

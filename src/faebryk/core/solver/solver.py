@@ -12,6 +12,7 @@ from faebryk.core.parameter import (
     Parameter,
     Predicate,
 )
+from faebryk.core.solver.algorithm import NO_INVARIANTS, SolverAlgorithm
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import ConfigFlag
 
@@ -85,4 +86,6 @@ class Solver(Protocol):
 
     def update_superset_cache(self, *nodes: Node): ...
 
-    def simplify(self, *gs: Graph | Node): ...
+    def simplify(
+        self, *gs: Graph | Node, invariants: SolverAlgorithm.Invariants = NO_INVARIANTS
+    ): ...

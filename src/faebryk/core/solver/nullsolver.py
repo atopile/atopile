@@ -8,6 +8,7 @@ from faebryk.core.parameter import (
     Parameter,
     Predicate,
 )
+from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.solver import Solver
 from faebryk.libs.sets.sets import P_Set, as_lit
 
@@ -46,5 +47,5 @@ class NullSolver(Solver):
         return as_lit(lit)
 
     @override
-    def simplify(self, *gs: Graph | Node):
+    def simplify(self, *gs: Graph | Node, invariants: SolverAlgorithm.Invariants):
         pass

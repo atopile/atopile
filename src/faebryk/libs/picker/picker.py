@@ -20,6 +20,7 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
+from faebryk.core.solver.algorithm import SolverAlgorithm
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -230,6 +231,12 @@ def check_missing_picks(module: Module):
             )
 
 
+NO_POST_PICK_INVARIANTS = SolverAlgorithm.Invariants(
+    no_new_correlating_predicates=True,
+    no_new_predicates=False,
+)
+
+
 def find_independent_groups(
     modules: Iterable[Module], solver: Solver
 ) -> list[set[Module]]:
@@ -240,9 +247,12 @@ def find_independent_groups(
 
     modules = set(modules)
 
-    if (
+    # TODO I set it to True, because this works even better than the other method
+    # consider improving the other method, then remove the True
+    if True or (
         not isinstance(solver, DefaultSolver)
-        or (state := solver.reusable_state) is None
+        or (state := solver.reusable_state.find_first_matching(NO_POST_PICK_INVARIANTS))
+        is None
     ):
         # Find params aliased to lits
         aliased = EquivalenceClasses[ParameterOperatable]()
