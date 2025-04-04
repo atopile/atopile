@@ -1,11 +1,17 @@
 from pathlib import Path
 from textwrap import dedent
 
+import semver
+
 from atopile.config import PROJECT_CONFIG_FILENAME, Dependency, config
 
 TEST_CONFIG_TEXT = dedent(
     """
     ato-version: ^0.2.0
+    requires-atopile-version: ^0.2.0
+    repository: https://github.com/pepper-labs/my-project
+    name: my-project
+    version: 1.2.3
     builds:
       debug:
         entry: elec/src/debug.ato:Debug
@@ -28,6 +34,10 @@ def test_roundtrip(tmp_path: Path):
     config.project_dir = tmp_path
 
     assert config.project.ato_version == "^0.2.0"
+    assert config.project.requires_atopile_version == "^0.2.0"
+    assert config.project.version == semver.Version.parse("1.2.3")
+    assert config.project.repository == "https://github.com/pepper-labs/my-project"
+    assert config.project.name == "my-project"
     assert config.project.dependencies is not None
     assert config.project.dependencies[0].name == "tps63020dsjr"
     assert config.project.dependencies[1].name == "usb-connectors"

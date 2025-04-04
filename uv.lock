@@ -124,6 +124,7 @@ dependencies = [
     { name = "cookiecutter" },
     { name = "dataclasses-json" },
     { name = "deprecated" },
+    { name = "fastapi-github-oidc" },
     { name = "freetype-py" },
     { name = "gitpython" },
     { name = "kicadcliwrapper" },
@@ -189,6 +190,7 @@ requires-dist = [
     { name = "cookiecutter", specifier = ">=2.6.0" },
     { name = "dataclasses-json", specifier = ">=0.6.7,<0.7.0" },
     { name = "deprecated", specifier = "~=1.2.14" },
+    { name = "fastapi-github-oidc", specifier = ">=0.2.1" },
     { name = "freetype-py", specifier = ">=2.4,<2.6" },
     { name = "gitpython", specifier = ">=3.1.41" },
     { name = "kicadcliwrapper", specifier = ">=1.0.0,<2.0.0" },
@@ -707,6 +709,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bb/ff/b4c0dc78fbe20c3e59c0c7334de0c27eb4001a2b2017999af398bf730817/execnet-2.1.1.tar.gz", hash = "sha256:5189b52c6121c24feae288166ab41b32549c7e2348652736540b9e6e7d4e72e3", size = 166524 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/09/2aea36ff60d16dd8879bdb2f5b3ee0ba8d08cbbdcdfe870e695ce3784385/execnet-2.1.1-py3-none-any.whl", hash = "sha256:26dee51f1b80cebd6d0ca8e74dd8745419761d3bef34163928cbebbdc4749fdc", size = 40612 },
+]
+
+[[package]]
+name = "fastapi-github-oidc"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/ab/a6909604af8c231cfd19531a3e78500cd1d7baac6524f109d0b609096e20/fastapi_github_oidc-0.2.1.tar.gz", hash = "sha256:64892ae2c031cc04d1bd353a5b3d477433197a9a6b4e1dee04e0b798b7005a8f", size = 20642 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/55/682fdbb38620861a3e9d6bead034ef02a0b70eb45d70e480e5e0bc3deb66/fastapi_github_oidc-0.2.1-py3-none-any.whl", hash = "sha256:3e24102c920aaf4d7349e302db9241b6136d6648b13a52de109cb10e17b779fc", size = 4964 },
 ]
 
 [[package]]

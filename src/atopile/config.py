@@ -9,6 +9,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Generator, Iterable, Self
 
+import semver
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -514,10 +515,37 @@ class ProjectConfig(BaseConfigModel):
         default=f"{version.get_installed_atopile_version()}",
     )
     """
+    [Deprecated] - Use `requires-atopile-version` instead.
+
     The compiler version with which the project was developed.
 
     This is used by the compiler to ensure the code in this project is
     compatible with the compiler version.
+    """
+
+    requires_atopile_version: str = Field(
+        alias="requires-atopile-version",
+        default=f">={version.get_installed_atopile_version()}",
+    )
+    """
+    The requirements for the compiler version to build this project.
+    """
+
+    # FIXME: can this be a semver.Version?
+    version: str | None = Field(default=None)
+    """
+    The version of the project as a semver. See https://semver.org/.
+    """
+
+    repository: str | None = Field(default=None)
+    """
+    The repository URL of the project.
+    """
+
+    name: str | None = Field(default=None)
+    """
+    The qualified name of the project, as it'd be installed from a package manager.
+    eg. `pepper/my-project` or `pepper/my-project/sub-package`
     """
 
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
@@ -559,6 +587,20 @@ class ProjectConfig(BaseConfigModel):
         return _try_construct_config(
             ProjectConfig, identifier=config_file, **file_contents
         )
+
+    @field_validator("version", mode="before")
+    def init_version(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        try:
+            semver.Version.parse(value)
+        except ValueError as e:
+            raise UserConfigurationError(
+                f"Version must be a valid semver. Got: {value}"
+            ) from e
+
+        return value
 
     @field_validator("builds", mode="before")
     def init_builds(
@@ -621,7 +663,6 @@ class ProjectConfig(BaseConfigModel):
         project_paths = paths or ProjectPaths()
         return _try_construct_config(
             ProjectConfig,
-            ato_version=f"^{version.get_installed_atopile_version()}",
             paths=project_paths,
             entry=entry,
             builds={
