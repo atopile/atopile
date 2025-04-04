@@ -2036,3 +2036,14 @@ def pretty_type(t: object | type) -> str:
         return t.__qualname__
     except Exception:
         return str(t)
+
+
+class SyncedFlag:
+    def __init__(self, value: bool = False):
+        self.value = value
+
+    def __bool__(self) -> bool:
+        return bool(self.value)
+
+    def set(self, value: bool):
+        self.value = value
