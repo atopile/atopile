@@ -122,6 +122,7 @@ class DefaultSolver(Solver):
                 )
                 and self.all_invariants is not None
             ):
+                logger.debug("Reusing all_invariants %s", id(self.all_invariants))
                 return self.all_invariants
             elif (
                 SolverAlgorithm.Invariants.fullfills_contract(
@@ -129,11 +130,16 @@ class DefaultSolver(Solver):
                 )
                 and self.no_new_correlating_predicates is not None
             ):
+                logger.debug(
+                    "Reusing no_new_correlating_predicates %s",
+                    id(self.no_new_correlating_predicates),
+                )
                 return self.no_new_correlating_predicates
             elif (
                 SolverAlgorithm.Invariants.fullfills_contract(NO_INVARIANTS, invariants)
                 and self.no_invariants is not None
             ):
+                logger.debug("Reusing no_invariants %s", id(self.no_invariants))
                 return self.no_invariants
 
             return None
@@ -144,11 +150,14 @@ class DefaultSolver(Solver):
             invariants: SolverAlgorithm.Invariants,
         ):
             if invariants == NO_INVARIANTS:
+                logger.debug("Saving no_invariants %s", id(state))
                 self.no_invariants = state
             elif invariants == self._NO_NEW_CORRELATING_PREDICATES:
+                logger.debug("Saving no_new_correlating_predicates %s", id(state))
                 self.no_new_correlating_predicates = state
             else:
                 assert invariants == ALL_INVARIANTS
+                logger.debug("Saving all_invariants %s", id(state))
                 self.all_invariants = state
 
     def __init__(self) -> None:
@@ -237,7 +246,7 @@ class DefaultSolver(Solver):
 
             return DefaultSolver.SolverState(
                 data=DefaultSolver.IterationData(
-                    mutation_map=MutationMap(res.mutation_stage)
+                    mutation_map=bootstrap_map.extend(res.mutation_stage)
                 ),
             )
 
@@ -246,7 +255,11 @@ class DefaultSolver(Solver):
 
         mutation_map = reusable_state.data.mutation_map
         p_ops = GraphFunctions(*_gs).nodes_of_type(ParameterOperatable)
-        new_p_ops = p_ops - mutation_map.first_stage.input_operables
+        # have to map backwards to get ingested parameters from earlier continuations
+        existing_p_ops = {
+            p for pl in mutation_map.compressed_mapping_backwards.values() for p in pl
+        }
+        new_p_ops = p_ops - existing_p_ops
 
         # TODO consider using mutator
         transforms = Transformations.identity(
@@ -299,7 +312,7 @@ class DefaultSolver(Solver):
             transforms.mutated[e] = e_mapped
             if isinstance(e, ConstrainableExpression) and e.constrained:
                 assert isinstance(e_mapped, ConstrainableExpression)
-                e_mapped.constrained = True
+                e_mapped.constrain()
 
         return DefaultSolver.SolverState(
             data=DefaultSolver.IterationData(
@@ -331,7 +344,9 @@ class DefaultSolver(Solver):
 
         now = time.time()
         if LOG_PICK_SOLVE:
-            logger.info("Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH, "="))
+            logger.info(
+                "Phase 1 Solving: Symbolic Solving ".ljust(NET_LINE_WIDTH - 5, "=")
+            )
 
         self.state = self._create_or_resume_state(
             print_context, *gs, input_invariants=input_invariants
@@ -361,7 +376,7 @@ class DefaultSolver(Solver):
                 )
             logger.debug(
                 (f"Iteration {iterno} {self.state.data.mutation_map}").ljust(
-                    NET_LINE_WIDTH, "-"
+                    NET_LINE_WIDTH - 5, "-"
                 )
             )
 

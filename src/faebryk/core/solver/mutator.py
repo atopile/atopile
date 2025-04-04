@@ -381,8 +381,10 @@ class MutationStage:
         self.iteration = iteration
         self.transformations = transformations
         self.input_print_context = print_context
-        self.input_operables = GraphFunctions(*self.input_graphs).nodes_of_type(
-            ParameterOperatable
+        # Can cast, because identity always bootstraps
+        self.input_operables = cast(
+            set[ParameterOperatable],
+            set(GraphFunctions(*self.input_graphs).node_projection),
         )
 
     @property
@@ -812,7 +814,8 @@ class MutationMap:
         self,
     ) -> dict[ParameterOperatable, list[ParameterOperatable]]:
         return {
-            end: self.map_backward(end, only_full=True) for end in self.output_operables
+            end: self.map_backward(end, only_full=False)
+            for end in self.output_operables
         }
 
     def is_removed(self, param: ParameterOperatable) -> bool:
@@ -856,7 +859,9 @@ class MutationMap:
 
     def __str__(self) -> str:
         return (
-            f"|stages|={len(self.mutation_stages)}"
+            f"|stages|="
+            f"{len([s for s in self.mutation_stages if not s.is_identity])}"
+            f"/{len(self.mutation_stages)}"
             f", |graphs|={len(self.output_graphs)}"
             f", |V|={len(self.last_stage.output_operables)}"
         )
@@ -936,11 +941,20 @@ class MutationMap:
         table.add_column("Variable name")
         table.add_column("Node name")
 
-        for p in sorted(
-            GraphFunctions(*self.input_graphs).nodes_of_type(Parameter),
-            key=Parameter.get_full_name,
+        source_params = [
+            (p, pout)
+            for p in self.input_operables
+            if isinstance(p, Parameter)
+            and (pout := self.map_forward(p, seek_start=False).maps_to) is not None
+        ]
+        for p, pout in sorted(
+            source_params,
+            key=lambda x: x[0].get_full_name(),
         ):
-            table.add_row(p.compact_repr(self.input_print_context), p.get_full_name())
+            table.add_row(
+                pout.compact_repr(self.output_print_context),
+                p.get_full_name(),
+            )
 
         if table.rows:
             log(rich_to_string(table))
