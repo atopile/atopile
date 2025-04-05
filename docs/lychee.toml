@@ -1,5 +1,0 @@
-exclude_path = [
-    "docs/overrides/main.html",
-    "docs/overrides/hooks/translations.html",
-    "docs/overrides/home.html",
-]
