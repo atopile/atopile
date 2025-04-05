@@ -509,7 +509,8 @@ class ParameterOperatable(Node):
             return po.depth()
         return 0
 
-    @once
+    # Not legal, might attach is/ss lit to param
+    # @once
     def _get_lit_suffix(self) -> str:
         out = ""
         try:
@@ -1754,7 +1755,8 @@ class Parameter(ParameterOperatable):
     def has_implicit_constraints_recursive(self) -> bool:
         return False
 
-    @once
+    # Not legal, might attach is/ss lit to param
+    # @once
     def compact_repr(
         self,
         context: ParameterOperatable.ReprContext | None = None,

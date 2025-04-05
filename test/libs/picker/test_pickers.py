@@ -12,6 +12,7 @@ import pytest
 import faebryk.library._F as F
 import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
+from faebryk.core.solver.algorithm import ALL_INVARIANTS
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.libs.library import L
@@ -171,7 +172,7 @@ def test_pick_led_by_colour():
     pick_part_recursively(led, solver)
 
     assert led.has_trait(F.has_part_picked)
-    solver.update_superset_cache(led)
+    solver.simplify(led, output_invariants=ALL_INVARIANTS)
     assert solver.inspect_get_known_supersets(led.color).is_subset_of(
         EnumSet.from_value(color)
     )
@@ -303,7 +304,7 @@ def test_pick_voltage_divider_complex():
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
     solver = DefaultSolver()
 
-    solver.simplify_symbolically(app)
+    solver.simplify(app, output_invariants=ALL_INVARIANTS)
 
     # pick_part_recursively(app, solver)
 

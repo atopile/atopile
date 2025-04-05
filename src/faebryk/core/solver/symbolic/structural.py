@@ -21,7 +21,7 @@ from faebryk.core.parameter import (
     ParameterOperatable,
     Power,
 )
-from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.algorithm import NO_INVARIANTS, SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -43,10 +43,10 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-# TODO: mark terminal=False where applicable
+# TODO: mark invariants where applicable
 
 
-@algorithm("Check literal contradiction", terminal=False)
+@algorithm("Check literal contradiction", invariants=NO_INVARIANTS)
 def check_literal_contradiction(mutator: Mutator):
     """
     Check if a literal is contradictory
@@ -55,7 +55,7 @@ def check_literal_contradiction(mutator: Mutator):
     mutator.get_literal_mappings(new_only=False, allow_subset=True)
 
 
-@algorithm("Convert inequality with literal to subset", terminal=False)
+@algorithm("Convert inequality with literal to subset", invariants=NO_INVARIANTS)
 def convert_inequality_with_literal_to_subset(mutator: Mutator):
     # TODO if not! A <= x it can be replaced by A intersect [-inf, a] is {}
     """
@@ -115,7 +115,13 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
         )
 
 
-@algorithm("Remove unconstrained", terminal=True)
+@algorithm(
+    "Remove unconstrained",
+    invariants=SolverAlgorithm.Invariants(
+        no_new_predicates=True,
+        no_new_correlating_predicates=True,
+    ),
+)
 def remove_unconstrained(mutator: Mutator):
     """
     Remove all expressions that are not involved in any constrained predicates
@@ -130,7 +136,7 @@ def remove_unconstrained(mutator: Mutator):
         mutator.remove(obj)
 
 
-@algorithm("Remove congruent expressions", terminal=False)
+@algorithm("Remove congruent expressions", invariants=NO_INVARIANTS)
 def remove_congruent_expressions(mutator: Mutator):
     """
     Remove expressions that are congruent to other expressions
@@ -195,7 +201,7 @@ def remove_congruent_expressions(mutator: Mutator):
         mutator._mutate(expr, repres[eq_id])
 
 
-@algorithm("Alias classes", terminal=False)
+@algorithm("Alias classes", invariants=NO_INVARIANTS)
 def resolve_alias_classes(mutator: Mutator):
     """
     Resolve alias classes
@@ -308,7 +314,7 @@ def resolve_alias_classes(mutator: Mutator):
             mutator.utils.alias_to(e, representative, from_ops=list(eq_class))
 
 
-@algorithm("Merge intersecting subsets", terminal=False)
+@algorithm("Merge intersecting subsets", invariants=NO_INVARIANTS)
 def merge_intersect_subsets(mutator: Mutator):
     """
     A subset L1
@@ -367,7 +373,7 @@ def merge_intersect_subsets(mutator: Mutator):
             mutator._mutate(old_ss, mutator.get_copy(target))
 
 
-@algorithm("Empty set", terminal=False)
+@algorithm("Empty set", invariants=NO_INVARIANTS)
 def empty_set(mutator: Mutator):
     """
     A is {} -> False
@@ -386,7 +392,7 @@ def empty_set(mutator: Mutator):
     # Converted by literal_folding
 
 
-@algorithm("Transitive subset", terminal=False)
+@algorithm("Transitive subset", invariants=NO_INVARIANTS)
 def transitive_subset(mutator: Mutator):
     """
     ```
@@ -414,7 +420,7 @@ def transitive_subset(mutator: Mutator):
             mutator.utils.subset_to(A, X, from_ops=[ss_op, B])
 
 
-@algorithm("Predicate flat terminate", terminal=False)
+@algorithm("Predicate flat terminate", invariants=NO_INVARIANTS)
 def predicate_flat_terminate(mutator: Mutator):
     """
     ```
@@ -439,7 +445,7 @@ def predicate_flat_terminate(mutator: Mutator):
         mutator.predicate_terminate(p)
 
 
-@algorithm("Predicate is!! True", terminal=False)
+@algorithm("Predicate is!! True", invariants=NO_INVARIANTS)
 def predicate_terminated_is_true(mutator: Mutator):
     """
     P!! is! True -> P!! is!! True
@@ -461,7 +467,7 @@ def predicate_terminated_is_true(mutator: Mutator):
         mutator.predicate_terminate(p)
 
 
-@algorithm("Convert aliased singletons into literals", terminal=False)
+@algorithm("Convert aliased singletons into literals", invariants=NO_INVARIANTS)
 def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
     """
     A is ([5]), A + B -> ([5]) + B
@@ -501,7 +507,7 @@ def convert_operable_aliased_to_single_into_literal(mutator: Mutator):
         mutator.mutate_expression(e, operands=ops)
 
 
-@algorithm("Isolate lone parameters", terminal=False)
+@algorithm("Isolate lone parameters", invariants=NO_INVARIANTS)
 def isolate_lone_params(mutator: Mutator):
     """
     If an expression is aliased to a literal, and only one parameter in the expression
@@ -654,7 +660,7 @@ def isolate_lone_params(mutator: Mutator):
         mutator.mutate_expression(expr, operands=result)
 
 
-@algorithm("Distribute literals across alias classes", terminal=False)
+@algorithm("Distribute literals across alias classes", invariants=NO_INVARIANTS)
 def distribute_literals_across_alias_classes(mutator: Mutator):
     """
     Distribute literals across alias classes
@@ -685,7 +691,13 @@ def distribute_literals_across_alias_classes(mutator: Mutator):
 # Terminal -----------------------------------------------------------------------------
 
 
-@algorithm("Predicate unconstrained operands deduce", terminal=True)
+@algorithm(
+    "Predicate unconstrained operands deduce",
+    invariants=SolverAlgorithm.Invariants(
+        no_new_predicates=True,
+        no_new_correlating_predicates=True,
+    ),
+)
 def predicate_unconstrained_operands_deduce(mutator: Mutator):
     """
     A op! B | A or B unconstrained -> A op!! B
@@ -707,7 +719,7 @@ def predicate_unconstrained_operands_deduce(mutator: Mutator):
 
 
 # Estimation algorithms ----------------------------------------------------------------
-@algorithm("Upper estimation", terminal=False)
+@algorithm("Upper estimation", invariants=NO_INVARIANTS)
 def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
     """
     If any operand in an expression has a subset literal,
@@ -751,7 +763,7 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
             continue
         # optimization: don't take away from uncorrelated_alias_fold
         if (
-            mutator.terminal
+            mutator.invariants.no_new_correlating_predicates
             # not (expr in new_subsets and expr not in new_aliases)
             and not any(mutator.utils.get_correlations(expr))
             and mutator.utils.map_extract_literals(expr)[1]
@@ -783,7 +795,13 @@ def upper_estimation_of_expressions_with_subsets(mutator: Mutator):
         )
 
 
-@algorithm("Uncorrelated alias fold", terminal=True)
+@algorithm(
+    "Uncorrelated alias fold",
+    invariants=SolverAlgorithm.Invariants(
+        no_new_predicates=False,
+        no_new_correlating_predicates=True,
+    ),
+)
 def uncorrelated_alias_fold(mutator: Mutator):
     """
     If an operation contains only operands that are not correlated with each other,

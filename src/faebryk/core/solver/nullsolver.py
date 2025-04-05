@@ -1,7 +1,5 @@
 from typing import Any, override
 
-from faebryk.core.cpp import Graph
-from faebryk.core.node import Node
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
@@ -35,9 +33,6 @@ class NullSolver(Solver):
         return True
 
     @override
-    def update_superset_cache(self, *nodes: Node):
-        pass
-
     @override
     def inspect_get_known_supersets(self, value: Parameter) -> P_Set:
         lit = value.try_get_literal_subset()
@@ -46,5 +41,5 @@ class NullSolver(Solver):
         return as_lit(lit)
 
     @override
-    def simplify(self, *gs: Graph | Node):
+    def simplify(self, *args: Any, **kwargs: Any):
         pass

@@ -25,7 +25,7 @@ from faebryk.core.parameter import (
     SymmetricDifference,
     Union,
 )
-from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.algorithm import NO_INVARIANTS, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalExpression,
@@ -93,7 +93,7 @@ def _exec_pure_literal_expressions(expr: CanonicalExpression) -> SolverLiteral |
     return _exec_pure_literal_operands(type(expr), expr.operands)
 
 
-@algorithm("Fold pure literal expressions", terminal=False)
+@algorithm("Fold pure literal expressions", invariants=NO_INVARIANTS)
 def fold_pure_literal_expressions(mutator: Mutator):
     exprs = mutator.nodes_of_types(
         tuple(_CanonicalExpressions.keys()), sort_by_depth=True

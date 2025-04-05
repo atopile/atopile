@@ -40,7 +40,7 @@ from faebryk.core.parameter import (
     Union,
     Xor,
 )
-from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.algorithm import NO_INVARIANTS, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     SolverAllExtended,
@@ -60,7 +60,7 @@ logger = logging.getLogger(__name__)
 NumericLiteralR = (*QuantityLikeR, Quantity_Interval_Disjoint, Quantity_Interval)
 
 
-@algorithm("Constrain within and domain", single=True, terminal=False)
+@algorithm("Constrain within and domain", single=True, invariants=NO_INVARIANTS)
 def constrain_within_domain(mutator: Mutator):
     """
     Translate domain and within constraints to parameter constraints.
@@ -77,7 +77,7 @@ def constrain_within_domain(mutator: Mutator):
         )
 
 
-@algorithm("Alias predicates to true", single=True, terminal=False)
+@algorithm("Alias predicates to true", single=True, invariants=NO_INVARIANTS)
 def alias_predicates_to_true(mutator: Mutator):
     """
     Alias predicates to True since we need to assume they are true.
@@ -93,7 +93,7 @@ def alias_predicates_to_true(mutator: Mutator):
             mutator.predicate_reset_termination(new_predicate)
 
 
-@algorithm("Canonical literal form", single=True, terminal=False)
+@algorithm("Canonical literal form", single=True, invariants=NO_INVARIANTS)
 def convert_to_canonical_literals(mutator: Mutator):
     """
     - remove units for NumberLike
@@ -138,7 +138,7 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_expression_with_op_map(po, mutate, ignore_existing=True)
 
 
-@algorithm("Canonical expression form", single=True, terminal=False)
+@algorithm("Canonical expression form", single=True, invariants=NO_INVARIANTS)
 def convert_to_canonical_operations(mutator: Mutator):
     """
     Transforms Sub-Add to Add-Add
@@ -329,7 +329,7 @@ def convert_to_canonical_operations(mutator: Mutator):
         )
 
 
-@algorithm("filter_non_parameter", single=True, terminal=False)
+@algorithm("filter_non_parameter", single=True, invariants=NO_INVARIANTS)
 def filter_non_parameter(
     mutator: Mutator,
 ) -> None:

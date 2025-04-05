@@ -6,6 +6,7 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.solver.algorithm import ALL_INVARIANTS
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
 from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
@@ -89,14 +90,14 @@ def test_voltage_propagation():
 
     # Test 1, propagate X from p[0] to p[-1]
     solver = DefaultSolver()
-    solver.update_superset_cache(*powers)
+    solver.simplify(*powers, output_invariants=ALL_INVARIANTS)
     assert solver.inspect_get_known_supersets(powers[-1].voltage).is_subset_of(X)
 
     # Test 2, back propagate Y from p[-1] to p[0]
     Y = L.Single(10 * P.V)
     powers[-1].voltage.constrain_subset(Y)
 
-    solver.update_superset_cache(*powers)
+    solver.simplify(*powers, output_invariants=ALL_INVARIANTS)
     y_back = solver.inspect_get_known_supersets(powers[0].voltage)
     assert y_back.is_subset_of(Y)
 
@@ -123,7 +124,7 @@ def test_current_consumption_sum_zero():
 
     F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
-    solver.update_superset_cache(test)
+    solver.simplify(test, output_invariants=ALL_INVARIANTS)
     out = solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
     assert out.is_subset_of(L.Single(0 * P.mA))
 
@@ -151,5 +152,5 @@ def test_current_consumption_sum_negative():
     F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
     with pytest.raises(Contradiction):
-        solver.update_superset_cache(test)
+        solver.simplify(test, output_invariants=ALL_INVARIANTS)
         solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
