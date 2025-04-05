@@ -3,10 +3,11 @@
 
 import logging
 from types import UnionType
-from typing import TYPE_CHECKING, overload
+from typing import TYPE_CHECKING, cast, overload
 
 from faebryk.core.cpp import Graph
 from faebryk.core.node import Node
+from faebryk.libs.util import union_list
 
 if TYPE_CHECKING:
     from faebryk.core.trait import Trait
@@ -23,14 +24,15 @@ class GraphFunctions:
     def __init__(self, *graph: Graph):
         self.graph = graph
 
+    @property
     def node_projection(self) -> list["Node"]:
-        return list(self.nodes_of_type(Node))
+        # TODO node_projection should not return cNode
+        nodes_nested = [g.node_projection() for g in self.graph]
+        return union_list(*nodes_nested)  # type: ignore
 
     def nodes_with_trait[T: "Trait"](self, trait: type[T]) -> list[tuple["Node", T]]:
         return [
-            (n, n.get_trait(trait))
-            for n in self.node_projection()
-            if n.has_trait(trait)
+            (n, n.get_trait(trait)) for n in self.node_projection if n.has_trait(trait)
         ]
 
     # TODO: Waiting for python to add support for type mapping
@@ -39,12 +41,14 @@ class GraphFunctions:
     ):  # -> list[tuple[Node, tuple[*Ts]]]:
         return [
             (n, tuple(n.get_trait(trait) for trait in traits))  # type: ignore
-            for n in self.node_projection()
+            for n in self.node_projection
             if all(n.has_trait(trait) for trait in traits)  # type: ignore
         ]
 
     def nodes_of_type[T: "Node"](self, t: type[T]) -> set[T]:
-        return {n for g in self.graph for n in g.node_projection() if isinstance(n, t)}
+        if t is Node:
+            return cast(set[T], set(self.node_projection))
+        return set(union_list(*(g.nodes_by_type(t) for g in self.graph)))  # type: ignore
 
     @overload
     def nodes_of_types(self, t: tuple[type["Node"], ...]) -> set["Node"]: ...
