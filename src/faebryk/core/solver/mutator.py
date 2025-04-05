@@ -200,6 +200,9 @@ class Transformations:
                 out.append(e)
         return out
 
+    def map_backward(self, po: ParameterOperatable) -> set[ParameterOperatable]:
+        return {k for k, v in self.mutated.items() if v is po and k not in self.removed}
+
 
 @dataclass
 class Traceback:

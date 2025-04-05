@@ -183,11 +183,7 @@ class MutatorUtils:
 
         # TODO should be mutator api
         if check_pre_transform and po in self.mutator.transformations.mutated.values():
-            pos |= {
-                k
-                for k, v in self.mutator.transformations.mutated.items()
-                if v is po and k not in self.mutator.transformations.removed
-            }
+            pos |= self.mutator.transformations.map_backward(po)
 
         lits = set()
         try:
@@ -229,21 +225,29 @@ class MutatorUtils:
         return lit, False
 
     def try_extract_lit_op(
-        self, po: ParameterOperatable
+        self, po: ParameterOperatable, check_pre_transform: bool = False
     ) -> tuple[SolverLiteral, Is | IsSubset] | None:
-        aliases = self.get_aliases(po)
+        """
+        check_pre_transform: check if backwards mapping pOp has lit
+            useful for e.g constrain_within_domain
+        """
+        pos = {po}
+        if check_pre_transform and po in self.mutator.transformations.mutated.values():
+            pos |= self.mutator.transformations.map_backward(po)
+
+        aliases = self.get_aliases(*pos)
         alias_lits = [(k, v) for k, v in aliases.items() if self.is_literal(k)]
         if alias_lits:
             unique_lits = unique(alias_lits, lambda x: x[0])
             if len(unique_lits) > 1:
                 raise ContradictionByLiteral(
                     "Multiple alias literals found",
-                    involved=[po] + [x[1] for x in unique_lits],
+                    involved=list(pos) + [x[1] for x in unique_lits],
                     literals=[x[0] for x in unique_lits],
                     mutator=self.mutator,
                 )
             return alias_lits[0]
-        subsets = self.get_supersets(po)
+        subsets = self.get_supersets(*pos)
         subset_lits = [(k, vs) for k, vs in subsets.items() if self.is_literal(k)]
         # TODO this is weird
         if subset_lits:
@@ -337,8 +341,7 @@ class MutatorUtils:
                 mutator=self.mutator,
             )
 
-        # TODO do we need to add check_pre_transform to this function?
-        existing = self.try_extract_lit_op(po)
+        existing = self.try_extract_lit_op(po, check_pre_transform=True)
         if existing is not None:
             ex_lit, ex_op = existing
             if isinstance(ex_op, Is):
@@ -961,22 +964,24 @@ class MutatorUtils:
 
     @staticmethod
     def get_supersets(
-        op: ParameterOperatable,
+        *op: ParameterOperatable,
     ) -> Mapping[ParameterOperatable | SolverLiteral, list[IsSubset]]:
         ss = [
             e
-            for e in op.get_operations(IsSubset, constrained_only=True)
-            if e.operands[0] is op
+            for o in op
+            for e in o.get_operations(IsSubset, constrained_only=True)
+            if e.operands[0] is o
         ]
         return groupby(ss, key=lambda e: e.operands[1])
 
     @staticmethod
     def get_aliases(
-        op: ParameterOperatable,
+        *op: ParameterOperatable,
     ) -> dict[ParameterOperatable | SolverLiteral, Is]:
         return {
-            e.get_other_operand(op): e
-            for e in op.get_operations(Is, constrained_only=True)
+            e.get_other_operand(o): e
+            for o in op
+            for e in o.get_operations(Is, constrained_only=True)
         }
 
     @staticmethod
