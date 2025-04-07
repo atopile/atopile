@@ -25,6 +25,15 @@ changelog:
     - title: Component Picker 🏗️
       labels:
         - picker
+    - title: Importers 📥
+      labels:
+        - importers
+    - title: Exporters 📤
+      labels:
+        - exporters
+    - title: KiCad 🟩
+      labels:
+        - kicad
     - title: Exciting New Features 🎉
       labels:
         - enhancement
