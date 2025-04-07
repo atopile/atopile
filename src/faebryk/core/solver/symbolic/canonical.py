@@ -327,3 +327,11 @@ def convert_to_canonical_operations(mutator: Mutator):
             Converter(e.operands),
             expression_factory=Target,
         )
+
+
+@algorithm("filter_non_parameter", single=True, terminal=False)
+def filter_non_parameter(
+    mutator: Mutator,
+) -> None:
+    for p in mutator.nodes_of_type(ParameterOperatable):
+        mutator.get_copy(p)

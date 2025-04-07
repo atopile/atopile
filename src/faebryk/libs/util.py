@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import collections.abc
+import functools
 import hashlib
 import importlib.util
 import inspect
@@ -119,8 +120,12 @@ def unique[T, U](it: Iterable[T], key: Callable[[T], U]) -> list[T]:
     return out
 
 
+def unique_hashable[T, U: Hashable](it: Iterable[T], key: Callable[[T], U]) -> list[T]:
+    return list({key(x): x for x in it}.values())
+
+
 def unique_ref[T](it: Iterable[T]) -> list[T]:
-    return unique(it, id)
+    return unique_hashable(it, id)
 
 
 def duplicates[T, U](
@@ -814,6 +819,7 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
         # optimization: if takes only self, no need for dict
         if len(param_list) == 1:
 
+            @functools.wraps(f)
             def wrapper_single(self) -> Any:
                 if not hasattr(self, attr_name):
                     setattr(self, attr_name, f(self))
@@ -2041,3 +2047,23 @@ def pretty_type(t: object | type) -> str:
 
 def re_in(value: str, patterns: Iterable[str]) -> bool:
     return any(re.match(pattern, value) for pattern in patterns)
+
+
+def union_set[T: Hashable](*sets: Iterable[T]) -> set[T]:
+    """
+    Compute the union of multiple sets.
+
+    This implementation uses set.union() which is optimized for merging multiple sets
+    and is faster than iteratively calling update() for each set.
+    """
+    return set().union(*sets)
+
+
+def union_list[T](*lists: Iterable[T]) -> list[T]:
+    """
+    Compute the union of multiple lists.
+    """
+    unioned: list[T] = []
+    for li in lists:
+        unioned.extend(li)
+    return unioned

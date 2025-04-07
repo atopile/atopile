@@ -551,8 +551,6 @@ class Expression(ParameterOperatable):
         for op in self.operatable_operands:
             # TODO: careful here, we should make it more clear that operates_on just
             # expresses a relation but is not a replacement of self.operands
-            if self.operates_on.is_connected_to(op.operated_on):
-                continue
             self.operates_on.connect(op.operated_on)
 
     @staticmethod

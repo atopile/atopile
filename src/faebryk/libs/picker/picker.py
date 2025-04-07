@@ -21,7 +21,11 @@ from faebryk.core.parameter import (
     ParameterOperatable,
 )
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
-from faebryk.core.solver.utils import Contradiction, ContradictionByLiteral, get_graphs
+from faebryk.core.solver.utils import (
+    Contradiction,
+    ContradictionByLiteral,
+    get_graphs_from_nodes,
+)
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
@@ -243,7 +247,7 @@ def find_independent_groups(
         # Find params aliased to lits
         aliased = EquivalenceClasses[ParameterOperatable]()
         lits = dict[ParameterOperatable, ParameterOperatable.Literal]()
-        for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(Is):
+        for e in GraphFunctions(*get_graphs_from_nodes(modules)).nodes_of_type(Is):
             if not e.constrained:
                 continue
             aliased.add_eq(*e.operatable_operands)
@@ -263,7 +267,7 @@ def find_independent_groups(
 
         # find params related to each other
         param_eqs = EquivalenceClasses[Parameter]()
-        for e in GraphFunctions(*get_graphs(modules)).nodes_of_type(
+        for e in GraphFunctions(*get_graphs_from_nodes(modules)).nodes_of_type(
             ConstrainableExpression
         ):
             if not e.constrained:
@@ -292,7 +296,7 @@ def find_independent_groups(
     for m in modules:
         params = m.get_trait(F.is_pickable_by_type).get_parameters().values()
         new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
-        m_graphs = get_graphs(new_params)
+        m_graphs = get_graphs_from_nodes(new_params)
         graphs.add_eq(*m_graphs)
         for g in m_graphs:
             graph_to_m[g].add(m)
@@ -423,6 +427,6 @@ def pick_part_recursively(
         for m, sube in failed_parts.items():
             logger.error(
                 f"Could not find pick for {m}:\n {sube.message}\n"
-                f"Params:\n{indent(m.pretty_params(solver), prefix=' '*4)}"
+                f"Params:\n{indent(m.pretty_params(solver), prefix=' ' * 4)}"
             )
         raise
