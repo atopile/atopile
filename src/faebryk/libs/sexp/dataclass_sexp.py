@@ -322,14 +322,18 @@ def _decode[T: DataclassInstance](
                         f" {key_t=} types={[v[0] for v in values_with_key]}"
                     )
                 if d := duplicates(values_with_key, key=lambda v: v[0]):
-                    raise ValueError(f"Duplicate keys: {d}")
+                    raise ValueError(
+                        f"Duplicate keys at `{_prettify_stack(stack)}`: {d}"
+                    )
                 value_dict[name] = dict(values_with_key)
             else:
                 raise NotImplementedError(
                     f"Multidict not supported for {origin} in field {f}"
                 )
         else:
-            assert len(values) == 1, f"Duplicate key: {name}"
+            if len(values) != 1:
+                raise ValueError(f"Duplicate key at `{_prettify_stack(stack)}`: {name}")
+
             out = _convert(
                 values[0][1:],
                 f.type,

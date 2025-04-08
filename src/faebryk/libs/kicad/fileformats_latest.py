@@ -928,19 +928,43 @@ class C_footprint:
                 class E_shape(SymEnum):
                     circle = auto()
                     rectangle = auto()
+                    rect = auto()
                     roundrect = auto()
                     oval = auto()
                     trapezoid = auto()
                     custom = auto()
 
-                name: str
+                class E_zone_connection(IntEnum):
+                    INHERITED = -1
+                    NONE = 0
+                    THERMAL = 1
+                    FULL = 2
+                    THT_THERMAL = 3
+
+                class E_chamfer(SymEnum):
+                    top_left = "chamfer_top_left"
+                    top_right = "chamfer_top_right"
+                    bottom_left = "chamfer_bottom_left"
+                    bottom_right = "chamfer_bottom_right"
+
                 shape: E_shape
-                size: C_wh
-                offset: C_xy
-                ...  # TODO add till line 5935 pcb_io_kicad_sexpr_parser.cpp (v9)
+                size: C_wh | None = None
+                offset: C_xy | None = None
+                rect_delta: C_wh | None = None
+                roundrect_rratio: float | None = None
+                chamfer_ratio: float | None = None
+                chamfer: list[E_chamfer] | None = None
+                thermal_bridge_width: float | None = None
+                thermal_gap: float | None = None
+                thermal_bridge_angle: float | None = None
+                zone_connect: E_zone_connection | None = None
+                clearance: float | None = None
+                tenting: "C_footprint.C_pad.C_tenting | None" = None
+                options: "C_footprint.C_pad.C_options | None" = None
+                primitives: list[C_shape] | None = None
 
             mode: E_mode
-            layer: C_layer
+            layers: list[C_layer] = field(**sexp_field(multidict=True))
 
         @dataclass
         class C_tenting:

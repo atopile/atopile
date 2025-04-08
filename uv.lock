@@ -134,6 +134,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pathvalidate" },
     { name = "pint" },
+    { name = "posthog" },
     { name = "psutil" },
     { name = "pydantic-settings" },
     { name = "pygls" },
@@ -199,6 +200,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.2.0,<3.0.0" },
     { name = "pathvalidate", specifier = ">=3.2.1" },
     { name = "pint", specifier = ">=0.24.4,<1.0.0" },
+    { name = "posthog", specifier = ">=3.23.0" },
     { name = "psutil", specifier = ">=6.0.0,<7.0.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "pygls", specifier = ">=1.3.0" },
@@ -278,6 +280,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/6b/d52e42361e1aa00709585ecc30b3f9684b3ab62530771402248b1b1d6240/babel-2.17.0.tar.gz", hash = "sha256:0c54cffb19f690cdcc52a3b50bcbf71e07a808d1c80d549f2459b9d2cf0afb9d", size = 9951852 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/b8/3fe70c75fe32afc4bb507f75563d39bc5642255d1d94f1f23604725780bf/babel-2.17.0-py3-none-any.whl", hash = "sha256:4d0b53093fdfb4b21c92b5213dba5a1b23885afa8383709427046b21c366e5f2", size = 10182537 },
+]
+
+[[package]]
+name = "backoff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148 },
 ]
 
 [[package]]
@@ -680,6 +691,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/0d/dd/1bec4c5ddb504ca60fc29472f3d27e8d4da1257a854e1d96742f15c1d02d/distlib-0.3.9.tar.gz", hash = "sha256:a60f20dea646b8a33f3e7772f74dc0b2d0772d2837ee1342a00645c81edf9403", size = 613923 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/a1/cf2472db20f7ce4a6be1253a81cfdf85ad9c7885ffbed7047fb72c24cf87/distlib-0.3.9-py2.py3-none-any.whl", hash = "sha256:47f8c22fd27c27e25a65601af709b38e4f0a45ea4fc2e710f65755fa8caaaf87", size = 468973 },
+]
+
+[[package]]
+name = "distro"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277 },
 ]
 
 [[package]]
@@ -1476,6 +1496,15 @@ wheels = [
 ]
 
 [[package]]
+name = "monotonic"
+version = "1.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/ca/8e91948b782ddfbd194f323e7e7d9ba12e5877addf04fb2bf8fca38e86ac/monotonic-1.6.tar.gz", hash = "sha256:3a55207bcfed53ddd5c5bae174524062935efed17792e9de2ad0205ce9ad63f7", size = 7615 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/67/7e8406a29b6c45be7af7740456f7f37025f0506ae2e05fb9009a53946860/monotonic-1.6-py2.py3-none-any.whl", hash = "sha256:68687e19a14f11f26d140dd5c86f3dba4bf5df58003000ed467e0e2a69bca96c", size = 8154 },
+]
+
+[[package]]
 name = "more-itertools"
 version = "10.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1732,6 +1761,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/63/80/b0306469da7ad89db165ce4c76de2f12eccc7fadb900cab9cbaff760a587/postgrest-0.19.3.tar.gz", hash = "sha256:28a70f03bf3a975aa865a10487b1ce09b7195f56453f7c318a70d3117a3d323c", size = 15095 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/82/f1825a85745912cdd8956aad8ebc4b797d2f891c380c2b8825b35914dbd1/postgrest-0.19.3-py3-none-any.whl", hash = "sha256:03a7e638962454d10bb712c35e63a8a4bc452917917a4e9eb7427bd5b3c6c485", size = 22198 },
+]
+
+[[package]]
+name = "posthog"
+version = "3.23.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "backoff" },
+    { name = "distro" },
+    { name = "monotonic" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5a/dd/30f7d2e992f80fcaedc5b99761e006bbb0b954813243542c480b9576b4be/posthog-3.23.0.tar.gz", hash = "sha256:1ac0305ab6c54a80c4a82c137231f17616bef007bbf474d1a529cda032d808eb", size = 72077 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/1e/aa457f5b15c9a018434dd71567c4a8f09c1701607a1d4daf5f01d6eccb7a/posthog-3.23.0-py2.py3-none-any.whl", hash = "sha256:2b07d06670170ac2e21465dffa8d356722834cc877ab34e583da6e525c1037df", size = 84976 },
 ]
 
 [[package]]
