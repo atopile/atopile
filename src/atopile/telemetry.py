@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 # Public API key, as it'd be embedded in a frontend
 posthog.api_key = "phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt"
-posthog.host = "us.i.posthog.com"
+posthog.host = "https://us.i.posthog.com"
 
 
 @define
@@ -214,9 +214,12 @@ def log_to_posthog(event: str, properties: dict | None = None):
         posthog.shutdown()
         raise
 
-    posthog.capture(
-        distinct_id=get_user_id(),
-        event=event,
-        properties=_make_properties(),
-    )
-    posthog.shutdown()
+    try:
+        posthog.capture(
+            distinct_id=get_user_id(),
+            event=event,
+            properties=_make_properties(),
+        )
+        posthog.shutdown()
+    except Exception as e:
+        log.debug("Failed to log telemetry data: %s", e, exc_info=e)
