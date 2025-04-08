@@ -39,7 +39,7 @@ If you're serious about automating the validation of your production hardware, y
 
 [Cell-sim](https://github.com/atopile/cell-sim/) is a 16ch, 16-bit, isolated, 0-5V, 0-500mA battery-cell simulator designed from scratch in atopile, from concept to 2-revisions in under 5 days work. Oh, and that time includes the firmware. It is a relatively complex HiL design, and required many new modules that didn't yet exist on our package manager. Simpler HiL designs are frequently just a day's work.
 
-![cell-sim](assets/images/cell-sim.png)
+![cell-sim](assets/cell-sim.png)
 
 
 ### Young companies who need to iterate on hardware
@@ -57,7 +57,7 @@ Welcome the club!
 
 If you like making dope stuff, like these [servo drives](https://github.com/atopile/spin-servo-drive) you're in the right place. Welcome!
 
-![spin-showing-off-the-very-goods](assets/images/spin-showing-off-the-very-goods.jpg)
+![spin-showing-off-the-very-goods](assets/spin-showing-off-the-very-goods.jpg)
 
 
 ## ❓ Why Atopile?
