@@ -16,7 +16,7 @@ class LEDIndicator(Module):
 
     led: F.PoweredLED
 
-    def __init__(self, use_mosfet: bool = True, active_low: bool = False):
+    def __init__(self, use_mosfet: bool = False, active_low: bool = False):
         super().__init__()
         self._use_mosfet = use_mosfet
         self._active_low = active_low
