@@ -649,7 +649,7 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
         env_nested_delimiter="_",
         enable_decoding=False,
         use_attribute_docstrings=True,
-        extra="forbid",
+        extra="allow",  # FIXME: revert
     )
 
     @classmethod
