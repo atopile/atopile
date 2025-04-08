@@ -560,7 +560,7 @@ class PackageConfig(BaseConfigModel):
         name: str
         email: str
 
-    name: str = Field(
+    identifier: str = Field(
         pattern=r"^(?P<owner>[a-zA-Z0-9](?:[a-zA-Z0-9]|(-[a-zA-Z0-9])){0,38})/(?P<name>[a-z][a-z0-9\-]+)(/(?P<subpackage>[a-z][a-z0-9\-]+))?$"
     )
     """
@@ -623,11 +623,11 @@ class ProjectConfig(BaseConfigModel):
     ato_version: RequirementSpec | None = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
-        default=f"{version.get_installed_atopile_version()}",
-        deprecated="Use `requires-atopile-version` instead.",
+        default=None,
+        deprecated="Use `requires-atopile` instead.",
     )
     """
-    [Deprecated] - Use `requires-atopile-version` instead.
+    [Deprecated] - Use `requires-atopile` instead.
 
     The compiler version with which the project was developed.
 
