@@ -2023,9 +2023,9 @@ def remove_venv_from_env(base_env: dict[str, str] | None = None):
     venv_prompt = env.pop("VIRTUAL_ENV_PROMPT", None)
     if venv_prompt is not None:
         # Remove venv from prompt
-        prompt = env["PS1"]
-        prompt = prompt.replace(venv_prompt, "")
-        env["PS1"] = prompt
+        if prompt := env.get("PS1"):
+            prompt = prompt.replace(venv_prompt, "")
+            env["PS1"] = prompt
 
     env.pop("PYTHONHOME", None)
 
