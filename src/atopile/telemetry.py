@@ -12,17 +12,24 @@ What we collect:
 """
 
 import hashlib
+import importlib.metadata
 import logging
 import subprocess
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
+import posthog
 import requests
 from attrs import asdict, define, field
 from ruamel.yaml import YAML
 
 log = logging.getLogger(__name__)
+
+# Public API key, as it'd be embedded in a frontend
+posthog.api_key = "phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt"
+posthog.host = "https://us.i.posthog.com"
 
 
 @define
@@ -59,7 +66,9 @@ def log_telemetry():
         # Check if telemetry is enabled
         if not load_telemetry_setting():
             log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
+            posthog.disabled = True
             return
+
         telemetry_data.time = _end_timer()
         telemetry_dict = asdict(telemetry_data)
         log.log(0, "Logging telemetry data %s", telemetry_dict)
@@ -183,3 +192,34 @@ def get_project_id() -> Optional[str]:
 
     except subprocess.CalledProcessError:
         return None
+
+
+@contextmanager
+def log_to_posthog(event: str, properties: dict | None = None):
+    start_time = time.time()
+
+    def _make_properties():
+        return {
+            "duration": time.time() - start_time,
+            "project_id": get_project_id(),
+            "project_git_hash": get_current_git_hash(),
+            "atopile_version": importlib.metadata.version("atopile"),
+            **(properties or {}),
+        }
+
+    try:
+        yield
+    except Exception as e:
+        posthog.capture_exception(e, get_user_id(), _make_properties())
+        posthog.shutdown()
+        raise
+
+    try:
+        posthog.capture(
+            distinct_id=get_user_id(),
+            event=event,
+            properties=_make_properties(),
+        )
+        posthog.shutdown()
+    except Exception as e:
+        log.debug("Failed to log telemetry data: %s", e, exc_info=e)

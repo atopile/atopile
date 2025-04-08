@@ -30,6 +30,7 @@ import typer
 
 from atopile import errors
 from atopile.config import config
+from atopile.telemetry import log_to_posthog
 from faebryk.libs.project.dependencies import ProjectDependency
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ logger.setLevel(logging.INFO)
 yaml = ruamel.yaml.YAML()
 
 
+@log_to_posthog("cli:install_end")
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[

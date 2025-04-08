@@ -140,8 +140,12 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
 
     def __str__(self) -> str:
         # TODO move enum stuff to EnumSet
-        return f"[{', '.join(str(e) if not isinstance(e, Enum) else f'{e.name}'
-                             for e in self.elements)}]"
+        return f"[{
+            ', '.join(
+                str(e) if not isinstance(e, Enum) else f'{e.name}'
+                for e in self.elements
+            )
+        }]"
 
     def __iter__(self) -> Iterator[U]:
         return iter(self.elements)
@@ -282,7 +286,9 @@ class EnumSet[E: Enum](PlainSet[SerializableEnum.Value[E]]):
     @override
     def serialize_pset(self) -> dict:
         return {
-            "elements": [e.serialize() for e in self.elements],
+            "elements": [
+                e.serialize() for e in sorted(self.elements, key=lambda e: e.name)
+            ],
             "enum": self.enum.serialize(),
         }
 

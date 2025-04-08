@@ -6,124 +6,70 @@
     </picture>
 </h1>
 
-<div align="center">
-    <a href="#">
-        <img src="https://img.shields.io/pypi/v/atopile.svg" alt="Version" style="vertical-align:top; margin:6px 4px">
-    </a>
-    <a href="#">
-        <img src="https://img.shields.io/github/license/atopile/atopile.svg" alt="License" style="vertical-align:top; margin:6px 4px">
-    </a>
-    <a href="#">
-        <img src="https://github.com/atopile/atopile/actions/workflows/ci.yml/badge.svg" alt="Build status" style="vertical-align:top; margin:6px 4px">
-    </a>
-</div>
-<h1 align="center">
-    <br>
-        <img src="docs/assets/images/code-layout-pcb.png" alt="Logo atopile" title="Logo atopile" />
-    <br>
-</h1>
 
-## 📖 What Is `atopile`?
-`atopile` is a tool to build electronic circuit boards with code.
+# Welcome
 
-## 🗣️ Join Us On Discord
-What's your story in electronics? What would you like us to build? Come talk on discord.
+`atopile` is a language, compiler and toolchain to design electronics with code.
 
-[![Discord Banner 3](https://discordapp.com/api/guilds/1022538123915300865/widget.png?style=banner2)](https://discord.gg/nr5V3QRUd3)
+Design circuit boards with the same powerful workflows that software developers use - version control, modularity, and automated validation. Instead of point-and-click schematics, use human-readable `.ato` files that can be version controlled and shared. Capture design intelligence and validation rules in code to ensure your hardware works as intended.
 
-## ⚡️`ato` Code Examples
 
-### A simple voltage divider
-```python
-from "generics/resistors.ato" import Resistor
-from "generics/interfaces.ato" import Power, Pair
+## Features
 
-module VDiv: #this name needs to match the name in the ato.yaml config file
-    power = new Power
-    output = new Pair
+- 🚀 Auto-select components like resistors and capacitors, based on their attribute's values
+- 🤖 Embed calculations in your code, which are checked on every build
+- 🧱 Build you circuit from reliable configurable modules so you can focus on high level design
+- 💥 Build, release and test your circuit board from the `CLI`
+- 📦 Embedded package manager to install and manage modules from https://packages.atopile.io, or Github
+- 🔍 Version control line-by-line diffable code w/ git
 
-    r_top = new Resistor
-    r_top.package = "0402"
+Jump right in with the [quickstart guide](quickstart.md)
 
-    r_bottom = new Resistor
-    r_bottom.package = "0402"
 
-    power.vcc ~ r_top.p1; r_top.p2 ~ output.io
-    output.io ~ r_bottom.p1; r_bottom.p2 ~ power.gnd; power.gnd ~ output.gnd
+## Who's atopile for?
 
-    v_in: voltage
-    v_out: voltage
-    i_q: current
+Currently atopile is young - which means we can't do everything yet and we're focussed on being incredible at a few things:
 
-    assert v_in * r_bottom.value / (r_top.value + r_bottom.value) within v_out
-    assert v_in / (r_bottom.value + r_top.value) within i_q
 
-    v_in = 3.3V +/- 2%
-    v_out = 1.8V +/- 5%
-    i_q = 1mA +/- 10%
-```
+### Custom Validation Equipment
 
-### The classic "Blinky" circuit
+> "Rome wasn't built in a day, but your HiL should be"
 
-Define your design with **ato code**
-```python
-import RP2040Kit from "rp2040/RP2040Kit.ato" # run `ato install rp2040` to install
-import LEDIndicatorRed from "generics/leds.ato"
-import LV2842Kit from "lv2842xlvddcr/lv2842kit.ato" # run `ato install lv2842xlvddcr` to install
-import USBCConn from "usb-connectors/usb-connectors.ato" # run `ato install usb-connectors` to install
+If you're serious about automating the validation of your production hardware, you're in the right place.
 
-module Blinky:
-    micro_controller = new RP2040Kit
-    led_indicator = new LEDIndicatorRed
-    voltage_regulator = new LV2842Kit
-    usb_c_connector = new USBCConn
+[Cell-sim](https://github.com/atopile/cell-sim/) is a 16ch, 16-bit, isolated, 0-5V, 0-500mA battery-cell simulator designed from scratch in atopile, from concept to 2-revisions in under 5 days work. Oh, and that time includes the firmware. It is a relatively complex HiL design, and required many new modules that didn't yet exist on our package manager. Simpler HiL designs are frequently just a day's work.
 
-    usb_c_connector.power ~ voltage_regulator.power_in
-    voltage_regulator.power_out ~ micro_controller.power
-    micro_controller.gpio13 ~ led_indicator.input
-    micro_controller.power.gnd ~ led_indicator.gnd
+![cell-sim](assets/cell-sim.png)
 
-    led_indicator.v_in = 3.3volt +/-10%
-```
 
-### Discover Full Projects
+### Young companies who need to iterate on hardware
 
-Checkout out the [servo drive project](https://github.com/atopile/spin-servo-drive) or the [swoop motion controller](https://github.com/atopile/swoop).
+`atopile` designed hardware is in satellites, humanoid robots and VTOL drones - all from startups within the last year.
 
-## 🔨 Getting Started
+Not every young company NEEDs to iterate on it's hardware, but many more should than do.
 
-Find our [documentation](https://atopile.io/), [installation video](https://www.youtube.com/watch?v=XqFhFs-FhQ0) and getting started [video](https://www.youtube.com/watch?v=7aeZLlA_VYA).
+We're used to this in the software world, but getting the same engine running at even remotely similar speeds for hardware is a huge challenge. `atopile` let's multiple people work on different features or concepts on the same project in parallel via branches in `git`. With calculations checked and tests run automatically on every change, you can iterate as an individual - quickly trying out new ideas before committing to a design as a team and only after validating it in the real-world.
 
-`atopile` is on pypi.org: https://pypi.org/project/atopile/
 
-### Installation
+### Huge nerds 🤓
 
-`atopile` is published to [pypi.org](https://pypi.org/project/atopile/). We recommend installing into an isolated environment, e.g. with `uv`:
+Welcome the club!
 
-```sh
-uv tool install atopile
-```
+If you like making dope stuff, like these [servo drives](https://github.com/atopile/spin-servo-drive) you're in the right place. Welcome!
 
-Or with `pipx` (requires Python 3.13):
-```sh
-pipx install atopile
-```
+![spin-showing-off-the-very-goods](assets/spin-showing-off-the-very-goods.jpg)
+
 
 ## ❓ Why Atopile?
 
-The objective of atopile is to help push forward these paradigms from the software world to hardware, mainly these points:
+The objective of atopile is to help push forward paradigms from the software world to hardware design. Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains, you'll be hooked, just like we've become.
 
-* **Intelligent Design Capture**: Define hardware specifications like ratios and tolerances in code, enabling precise control and easy reuse of designs.
-* **Version Control Integration**: Use git to manage design changes, facilitating collaboration and ensuring each iteration is thoroughly reviewed and validated.
-* **Continuous Integration (CI)**: Implement CI to guarantee high-quality, compliant designs with every commit, represented by a green checkmark for assurance.
+**Intelligent Design Capture**: Code can capture the intelligence you put into your work. Define hardware specifications like ratios and tolerances in code, enabling precise control and easy reuse of designs. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using physical units and tolerances. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from reusing a buck design you can merely configure the target voltage and ripple of. Now imagine installing a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
 
-Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains to hardware design, you'll be hooked, just like we've become.
+**Version Control Integration**: Use git to manage design changes, facilitating collaboration and ensuring each iteration is thoroughly reviewed and validated. Version controlling your designs using git means you can deeply validate and review changes a feature at a time, isolated from impacting others' work. It means you can detangle your organisation and collaborate on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a simple git-hash on our prototypes, providing an anchor off which to associate test data and expectations.
 
-Code can **capture the intelligence** you put into your work. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using **physical units** and **tolerances**. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from **reusing** a buck design you can merely **configure** the target voltage and ripple of. Now imagine **installing** a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
+**Continuous Integration (CI)**: Implement CI to guarantee high-quality, compliant designs with every commit, represented by a green checkmark for assurance. Implementing CI to test our work ensures both high-quality and compliance, all summarised in a green check mark, emboldening teams to target excellence.
 
-Version controlling your designs using **git** means you can deeply **validate** and **review** changes a feature at a time, **isolated** from impacting others' work. It means you can detangle your organisation and **collaborate** on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a simple git-hash on our prototypes, providing an anchor off which to **associate test data** and expectations.
-
-Implementing CI to **test** our work ensures both **high-quality** and **compliance**, all summarised in a green check mark, emboldening teams to target excellence.
 
 ## 🔍 Discover what people build
 
