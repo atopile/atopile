@@ -25,18 +25,22 @@ class _Models:
         class Request:
             name: str
             package_version: str
+            manifest: dict[str, Any]
+            """
+            contents of the `ato.yaml` file
+            """
 
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
-            s3_key: str
             upload_url: str
+            release_id: str
 
     class PublishUploadComplete:
         @dataclass_json
         @dataclass(frozen=True)
         class Request:
-            s3_key: str
+            release_id: str
 
         @dataclass_json
         @dataclass(frozen=True)
@@ -73,14 +77,14 @@ class _Errors:
     class PackagesApiError(Exception): ...
 
     class PackagesApiHTTPError(Exception):
-        def __init__(self, error: requests.exceptions.HTTPError):
+        def __init__(self, error: requests.exceptions.HTTPError, detail: str):
             super().__init__()
             self.error = error
             self.response = error.response
 
         @classmethod
-        def from_http(cls, error: "_Errors.PackagesApiHTTPError"):
-            return cls(error.error)
+        def from_http(cls, error: "_Errors.PackagesApiHTTPError", detail: str):
+            return cls(error.error, detail)
 
         @property
         def code(self) -> int:
@@ -115,7 +119,11 @@ class PackagesAPIClient:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            raise _Errors.PackagesApiHTTPError(e) from e
+            try:
+                detail = response.json()["detail"]
+            except (requests.JSONDecodeError, KeyError):
+                detail = response.text
+            raise _Errors.PackagesApiHTTPError(e, detail) from e
         return response
 
     def _post(
@@ -137,8 +145,13 @@ class PackagesAPIClient:
         )
         try:
             response.raise_for_status()
+            assert response.json()["status"] == "ok"
         except requests.exceptions.HTTPError as e:
-            raise _Errors.PackagesApiHTTPError(e) from e
+            try:
+                detail = response.json()["detail"]
+            except (requests.JSONDecodeError, KeyError):
+                detail = response.text
+            raise _Errors.PackagesApiHTTPError(e, detail) from e
         return response
 
     @staticmethod
@@ -146,9 +159,18 @@ class PackagesAPIClient:
         url: str,
         file_path: Path,
         timeout: float = 10,
+        skip_verify: bool = False,
     ) -> requests.Response:
-        response = requests.put(url, data=file_path.read_bytes(), timeout=timeout)
-        response.raise_for_status()
+        response = requests.put(
+            url,
+            files={"file": file_path.read_bytes(), "Content-Type": "application/zip"},
+            timeout=timeout,
+            verify=not skip_verify,
+        )
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as e:
+            raise _Errors.PackagesApiHTTPError(e, detail="") from e
         return response
 
     def _authenticate(self) -> dict[str, str]:
@@ -161,7 +183,7 @@ class PackagesAPIClient:
             raise _Errors.AuthenticationError(e) from e
 
     def publish(
-        self, name: str, version: str, dist: Dist
+        self, name: str, version: str, dist: Dist, skip_auth: bool = False
     ) -> _Models.PublishUploadComplete.Response:
         """
         Publish a package to the package registry.
@@ -174,21 +196,22 @@ class PackagesAPIClient:
             data=_Models.Publish.Request(
                 name=name,
                 package_version=version,
+                manifest=dist.manifest,
             ).to_dict(),  # type: ignore
-            authenticate=True,
+            authenticate=not skip_auth,
         )
         response = _Models.Publish.Response.from_dict(r.json())  # type: ignore
 
         ## Upload the package
-        self._upload(response.upload_url, dist.path)
+        self._upload(response.upload_url, dist.path, skip_verify=skip_auth)
 
         ## Confirm upload
         r = self._post(
             "/v1/publish/upload-complete",
             data=_Models.PublishUploadComplete.Request(
-                s3_key=response.s3_key,
+                release_id=response.release_id,
             ).to_dict(),  # type: ignore
-            authenticate=True,
+            authenticate=not skip_auth,
         )
         response = _Models.PublishUploadComplete.Response.from_dict(r.json())  # type: ignore
         return response
@@ -204,7 +227,7 @@ class PackagesAPIClient:
                 r = self._get(f"/v1/package/{identifier}")
             except _Errors.PackagesApiHTTPError as e:
                 if e.code == 404:
-                    raise _Errors.PackageNotFoundError.from_http(e) from e
+                    raise _Errors.PackageNotFoundError.from_http(e, detail="") from e
                 raise
             response = _Models.Package.Response.from_dict(r.json())  # type: ignore
             version = response.version
@@ -213,7 +236,7 @@ class PackagesAPIClient:
             r = self._get(f"/v1/package/{identifier}/releases/{version}")
         except _Errors.PackagesApiHTTPError as e:
             if e.code == 404:
-                raise _Errors.ReleaseNotFoundError.from_http(e) from e
+                raise _Errors.ReleaseNotFoundError.from_http(e, detail="") from e
             raise
         response = _Models.Release.Response.from_dict(r.json())  # type: ignore
 

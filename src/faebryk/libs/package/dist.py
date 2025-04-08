@@ -6,6 +6,7 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Any
 
 import pathspec
 import pathvalidate
@@ -13,7 +14,6 @@ import rich.progress
 from ruamel.yaml import YAML
 
 import atopile.config
-from atopile.config import config
 from atopile.errors import UserBadParameterError
 from faebryk.libs.util import not_none
 
@@ -61,6 +61,12 @@ class Dist:
     def __init__(self, path: Path):
         self.path = path
 
+    @property
+    def manifest(self) -> dict[str, Any]:
+        with zipfile.ZipFile(self.path, "r") as zip_file:
+            manifest_file = zip_file.read(str(atopile.config.PROJECT_CONFIG_FILENAME))
+            return YAML().load(manifest_file)
+
     @staticmethod
     def build_dist(
         cfg: atopile.config.ProjectConfig | Path,
@@ -74,12 +80,19 @@ class Dist:
             # TODO better error handling
             cfg = not_none(atopile.config.ProjectConfig.from_path(cfg))
 
+        if cfg.package is None:
+            # TODO say which project
+            raise ValueError(
+                "Project has no package configuration. "
+                "Please add a `package` section to your `ato.yaml` file."
+            )
+
         if include_builds_set is None:
             include_builds_set = set(cfg.builds)
 
         package_filename = (
             pathvalidate.sanitize_filename(
-                f"{config.project.name}-{config.project.version}".replace("/", "-")
+                f"{cfg.package.name}-{cfg.package.version}".replace("/", "-")
             )
             + ".zip"
         )
@@ -94,14 +107,14 @@ class Dist:
             package_config_path = temp_path / atopile.config.PROJECT_CONFIG_FILENAME
 
             yaml = YAML(typ="rt")  # round-trip
-            with (config.project_dir / atopile.config.PROJECT_CONFIG_FILENAME).open(
+            with (cfg.paths.root / atopile.config.PROJECT_CONFIG_FILENAME).open(
                 "r", encoding="utf-8"
             ) as file:
                 config_data: dict = yaml.load(file) or {}
 
-            config_data["name"] = config.project.name
-            config_data["repository"] = config.project.repository
-            config_data["version"] = str(config.project.version)
+            config_data["package"]["name"] = cfg.package.name
+            config_data["package"]["repository"] = cfg.package.repository
+            config_data["package"]["version"] = str(cfg.package.version)
 
             config_data["builds"] = {
                 k: v
@@ -132,7 +145,7 @@ class Dist:
                 for file in rich.progress.track(
                     matched_files, description="Building package..."
                 ):
-                    src_path = config.project.paths.root / file
+                    src_path = cfg.paths.root / file
                     if not src_path.is_file():
                         continue
 

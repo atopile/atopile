@@ -61,20 +61,12 @@ def _apply_version(specd_version: str) -> None:
             f" Got {str(version)}"
         )
 
-    config.project.version = str(version)
+    assert config.project.package is not None
+    config.project.package.version = str(version)
 
 
 @package_app.command()
 def publish(
-    include_pathspec: Annotated[
-        str,
-        typer.Option(
-            "--include",
-            "-i",
-            envvar="ATO_PACKAGE_INCLUDE_PATCHSPEC",
-            help="Comma separated globs to files to include in the package",
-        ),
-    ],
     include_builds: Annotated[
         str,
         typer.Option(
@@ -101,6 +93,10 @@ def publish(
         str | None,
         typer.Argument(help="The address of the package to publish."),
     ] = None,
+    skip_auth: Annotated[
+        bool,
+        typer.Option("--skip-auth", "-s", help="Skip authentication."),
+    ] = False,
 ):
     """
     Publish a package to the package registry.
@@ -109,8 +105,6 @@ def publish(
 
     For the options which allow multiple inputs, use comma separated values.
     """
-
-    include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
 
     include_builds_set = None
     if include_builds:
@@ -130,14 +124,20 @@ def publish(
 
     if version:  # NOT `is not None` to allow for empty strings
         _apply_version(version)
-    logger.info("Package version: %s", config.project.version)
 
-    if not config.project.name:
+    if config.project.package is None:
+        raise ValueError(
+            "Project has no package configuration. "
+            "Please add a `package` section to your `ato.yaml` file."
+        )
+    logger.info("Package version: %s", config.project.package.version)
+
+    if not config.project.package.name:
         raise UserBadParameterError(
             "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
         )
 
-    if not config.project.repository:
+    if not config.project.package.repository:
         raise UserBadParameterError(
             "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
         )
@@ -145,7 +145,6 @@ def publish(
     # Build the package
     dist = Dist.build_dist(
         cfg=config.project,
-        include_pathspec_list=include_pathspec_list,
         include_builds_set=include_builds_set,
         output_path=config.project.paths.build,
     )
@@ -157,9 +156,10 @@ def publish(
     else:
         api = PackagesAPIClient()
         package_url = api.publish(
-            name=config.project.name,
-            version=str(config.project.version),
+            name=config.project.package.name,
+            version=str(config.project.package.version),
             dist=dist,
+            skip_auth=skip_auth,
         ).package_url
         logger.info("Package URL: %s", package_url)
 
