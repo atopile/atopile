@@ -12,6 +12,7 @@ import rich
 from attrs import asdict, define
 from ruamel.yaml import YAML, YAMLError
 
+import atopile.config
 import atopile.version
 
 yaml = YAML()
@@ -63,7 +64,12 @@ def configure() -> None:
 
 
 def do_configure_if_needed() -> None:
-    """Configure the user's system for atopile development if it's not already configured."""  # noqa: E501  # pre-existing
+    """
+    Configure the user's system for atopile development if it's not already configured.
+    """
+    if not atopile.config.config.interactive:
+        return
+
     if not CONFIGURED_FOR_PATH.exists():
         rich.print(
             dedent(

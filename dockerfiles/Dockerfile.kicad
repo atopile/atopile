@@ -40,4 +40,4 @@ COPY --chown=kicad:kicad dist/atopile-*-cp313-cp313-manylinux*.whl /tmp/
 
 RUN uv tool install /tmp/atopile-*-cp313-cp313-manylinux*.whl
 
-ENTRYPOINT [ "bash", "-c", "ato install && ato build" ]
+ENTRYPOINT [ "ato" ]
