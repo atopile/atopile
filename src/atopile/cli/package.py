@@ -3,7 +3,7 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Annotated, Iterator
+from typing import Annotated, Any, Iterator
 from urllib.parse import urlparse
 
 import pathspec
@@ -18,7 +18,7 @@ from semver import Version
 
 import atopile.config
 from atopile.config import config
-from atopile.errors import UserBadParameterError
+from atopile.errors import UserBadParameterError, UserException
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -71,20 +71,25 @@ def _apply_version(specd_version: str) -> None:
             f" Got {str(version)}"
         )
 
-    config.project.version = str(version)
+    assert config.project.package is not None
+    config.project.package.version = str(version)
 
 
 def _build_package(
     include_pathspec_list: list[str],
     include_builds_set: set[str],
     output_path: Path,
-) -> Path:
+) -> tuple[Path, dict]:
+    assert config.project.package is not None
+
     spec = pathspec.PathSpec.from_lines("gitwildmatch", include_pathspec_list)
     matched_files = list(spec.match_tree_files(config.project.paths.root))
 
     package_filename = (
         pathvalidate.sanitize_filename(
-            f"{config.project.name}-{config.project.version}".replace("/", "-")
+            f"{config.project.package.name}-{config.project.package.version}".replace(
+                "/", "-"
+            )
         )
         + ".zip"
     )
@@ -103,9 +108,9 @@ def _build_package(
         ) as file:
             config_data: dict = yaml.load(file) or {}
 
-        config_data["name"] = config.project.name
-        config_data["repository"] = config.project.repository
-        config_data["version"] = str(config.project.version)
+        config_data["package"]["name"] = str(config.project.package.name)
+        config_data["package"]["repository"] = str(config.project.package.repository)
+        config_data["package"]["version"] = str(config.project.package.version)
 
         config_data["builds"] = {
             k: v for k, v in config_data["builds"].items() if k in include_builds_set
@@ -143,7 +148,35 @@ def _build_package(
 
         shutil.copy(zip_path, output_path)
 
-        return output_path
+        return output_path / package_filename, config_data
+
+
+class ApiError(ValueError): ...
+
+
+def _api_post(
+    endpoint: str,
+    data: dict[str, Any],
+    headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    response = requests.post(
+        f"{config.project.services.packages.url}{endpoint}",
+        headers=headers,
+        json=data,
+    )
+
+    try:
+        response.raise_for_status()
+        assert response.json()["status"] == "ok"
+    except Exception as e:
+        try:
+            detail = response.json()["detail"]
+        except (requests.JSONDecodeError, KeyError):
+            detail = response.text
+
+        raise ApiError(detail) from e
+
+    return response.json()
 
 
 @package_app.command()
@@ -186,6 +219,10 @@ def publish(
         str | None,
         typer.Argument(help="The address of the package to publish."),
     ] = None,
+    skip_auth: Annotated[
+        bool,
+        typer.Option("--skip-auth", "-s", help="Skip authentication."),
+    ] = False,
 ):
     """
     Publish a package to the package registry.
@@ -209,16 +246,22 @@ def publish(
     config.apply_options(entry=package_address)
     logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
 
+    if config.project.package is None:
+        raise UserBadParameterError(
+            "Project has no package configuration. "
+            "Please add a `package` section to your `ato.yaml` file."
+        )
+
     if version:  # NOT `is not None` to allow for empty strings
         _apply_version(version)
-    logger.info("Package version: %s", config.project.version)
+    logger.info("Package version: %s", config.project.package.version)
 
-    if not config.project.name:
+    if not config.project.package.name:
         raise UserBadParameterError(
             "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
         )
 
-    if not config.project.repository:
+    if not config.project.package.repository:
         raise UserBadParameterError(
             "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
         )
@@ -228,7 +271,7 @@ def publish(
         raise UserBadParameterError("Builds not found: %s" % ", ".join(missing_builds))
 
     # Build the package
-    package_path = _build_package(
+    package_path, manifest = _build_package(
         include_pathspec_list, include_builds_set, config.project.paths.build
     )
     logger.info("Package built: %s", package_path)
@@ -237,36 +280,51 @@ def publish(
     if dry_run:
         logger.info("Dry run, skipping upload")
     else:
-        ## Get authorization
-        auth_header = get_actions_header(
-            urlparse(config.project.services.packages.url).netloc
+        auth_header = (
+            get_actions_header(urlparse(config.project.services.packages.url).netloc)
+            if not skip_auth
+            else None
         )
 
         ## Request upload
-        r = requests.post(
-            f"{config.project.services.packages.url}/v1/upload/request",
-            headers=auth_header,
-            json={
-                "name": config.project.name,
-                "package_version": str(config.project.version),
-            },
-        )
-        r.raise_for_status()
-        upload_url = r.json()["upload_url"]
-        s3_key = r.json()["s3_key"]
+        try:
+            data = _api_post(
+                "/v1/publish",
+                {
+                    "name": config.project.package.name,
+                    "package_version": str(config.project.package.version),
+                    "manifest": manifest,
+                },
+                auth_header,
+            )
+        except ApiError as e:
+            raise UserException(f"Error publishing package: {e}") from e
 
-        ## Upload the package
+        upload_url = data["upload_url"]
+        release_id = data["release_id"]
+
+        # Upload the package
         with package_path.open("rb") as object_file:
-            requests.put(upload_url, data=object_file.read()).raise_for_status()
+            responese = requests.put(
+                upload_url,
+                files={"file": object_file, "Content-Type": "application/zip"},
+                verify=not skip_auth,
+            )
+            try:
+                responese.raise_for_status()
+            except Exception as e:
+                raise UserException(f"Error uploading package: {responese.text}") from e
 
         ## Confirm upload
-        r = requests.post(
-            f"{config.project.services.packages.url}/v1/upload/confirm",
-            headers=auth_header,
-            json={"s3_key": s3_key},
-        )
-        r.raise_for_status()
-        package_url = r.json()["package_url"]
-        logger.info("Package URL: %s", package_url)
+        try:
+            data = _api_post(
+                "/v1/publish/upload-complete",
+                {"release_id": release_id},
+                auth_header,
+            )
+        except ApiError as e:
+            raise UserException(f"Error confirming upload: {e}") from e
+
+        logger.info("Package URL: %s", data["url"])
 
     logger.info("Done! 📦🛳️")
