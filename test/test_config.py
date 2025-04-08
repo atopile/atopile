@@ -3,7 +3,7 @@ from textwrap import dedent
 
 import semver
 
-from atopile.config import PROJECT_CONFIG_FILENAME, Dependency, config
+from atopile.config import PROJECT_CONFIG_FILENAME, DependencySpec, config
 
 TEST_CONFIG_TEXT = dedent(
     """
@@ -48,7 +48,7 @@ def test_roundtrip(tmp_path: Path):
     assert config.project.dependencies[3].version_spec == "^v0.0.1"
     assert config.project.dependencies[3].link_broken is True
 
-    config.update_project_config(lambda data, new_data: data, {})
+    config.update_project_settings(lambda data, new_data: data, {})
 
     assert config_path.read_text() == TEST_CONFIG_TEXT
 
@@ -59,15 +59,19 @@ def test_update_project_config(tmp_path: Path):
     config.project_dir = tmp_path
 
     # Make some changes and check that they are reflected in the config
-    dep1 = Dependency(name="usb-connectors", version_spec="^v0.0.1", path=Path("test"))
-    dep2 = Dependency(name="esp32-s3", version_spec="^v0.0.1", path=Path("../esp32-s3"))
+    dep1 = DependencySpec(
+        name="usb-connectors", version_spec="^v0.0.1", path=Path("test")
+    )
+    dep2 = DependencySpec(
+        name="esp32-s3", version_spec="^v0.0.1", path=Path("../esp32-s3")
+    )
 
     def add_dependency(config_data, new_data):
         config_data["dependencies"] = config_data["dependencies"] + [new_data]
         return config_data
 
-    config.update_project_config(add_dependency, dep1.model_dump())
-    config.update_project_config(add_dependency, dep2.model_dump())
+    config.update_project_settings(add_dependency, dep1.model_dump())
+    config.update_project_settings(add_dependency, dep2.model_dump())
 
     assert config.project.dependencies is not None
 

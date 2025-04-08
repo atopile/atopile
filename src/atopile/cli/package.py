@@ -1,24 +1,14 @@
 import logging
-import shutil
-import tempfile
-import zipfile
-from pathlib import Path
 from typing import Annotated, Iterator
-from urllib.parse import urlparse
 
-import pathspec
-import pathvalidate
-import requests
-import rich.progress
 import typer
 from git import Repo
-from github_oidc.client import get_actions_header
-from ruamel.yaml import YAML
 from semver import Version
 
-import atopile.config
 from atopile.config import config
 from atopile.errors import UserBadParameterError
+from faebryk.libs.backend.packages.api import PackagesAPIClient
+from faebryk.libs.package.dist import Dist
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -74,78 +64,6 @@ def _apply_version(specd_version: str) -> None:
     config.project.version = str(version)
 
 
-def _build_package(
-    include_pathspec_list: list[str],
-    include_builds_set: set[str],
-    output_path: Path,
-) -> Path:
-    spec = pathspec.PathSpec.from_lines("gitwildmatch", include_pathspec_list)
-    matched_files = list(spec.match_tree_files(config.project.paths.root))
-
-    package_filename = (
-        pathvalidate.sanitize_filename(
-            f"{config.project.name}-{config.project.version}".replace("/", "-")
-        )
-        + ".zip"
-    )
-
-    # TODO: make this ./dist or the likes?
-    with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        zip_path = temp_path / package_filename
-
-        # Create the package config
-        package_config_path = temp_path / atopile.config.PROJECT_CONFIG_FILENAME
-
-        yaml = YAML(typ="rt")  # round-trip
-        with (config.project_dir / atopile.config.PROJECT_CONFIG_FILENAME).open(
-            "r", encoding="utf-8"
-        ) as file:
-            config_data: dict = yaml.load(file) or {}
-
-        config_data["name"] = config.project.name
-        config_data["repository"] = config.project.repository
-        config_data["version"] = str(config.project.version)
-
-        config_data["builds"] = {
-            k: v for k, v in config_data["builds"].items() if k in include_builds_set
-        }
-
-        with package_config_path.open("w", encoding="utf-8") as file:
-            yaml.dump(config_data, file)
-
-        ## Validate the package config is a valid config at all
-        try:
-            atopile.config.ProjectConfig.from_path(package_config_path)
-        except Exception as e:
-            raise UserBadParameterError(
-                "Something went wrong while validating the package config. "
-                "Please check the config file."
-            ) from e
-
-        # Bundle up the package
-        with zipfile.ZipFile(zip_path, "x") as zip_file:
-            ## Copy in the freshly minted package config
-            zip_file.write(package_config_path, atopile.config.PROJECT_CONFIG_FILENAME)
-
-            ## Copy in the files to package
-            for file in rich.progress.track(
-                matched_files, description="Building package..."
-            ):
-                src_path = config.project.paths.root / file
-                if not src_path.is_file():
-                    continue
-
-                if file == "ato.yaml":
-                    continue
-
-                zip_file.write(src_path, file)
-
-        shutil.copy(zip_path, output_path)
-
-        return output_path
-
-
 @package_app.command()
 def publish(
     include_pathspec: Annotated[
@@ -163,10 +81,7 @@ def publish(
             "--include-build",
             "-b",
             envvar="ATO_PACKAGE_INCLUDE_BUILD",
-            help=(
-                "Comma separated build-targets to include in the package. "
-                "An empty string implies all build-targets."
-            ),
+            help=("Comma separated build-targets to include in the package."),
         ),
     ] = "",
     version: Annotated[
@@ -197,10 +112,14 @@ def publish(
 
     include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
 
+    include_builds_set = None
     if include_builds:
         include_builds_set = set([t.strip() for t in include_builds.split(",")])
-    else:
-        include_builds_set = set(config.project.builds)
+        missing_builds = include_builds_set - set(config.project.builds)
+        if missing_builds:
+            raise UserBadParameterError(
+                "Builds not found: %s" % ", ".join(missing_builds)
+            )
 
     # Apply the entry-point early
     # This will configure the project root properly, meaning you can practically spec
@@ -223,50 +142,25 @@ def publish(
             "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
         )
 
-    missing_builds = include_builds_set - set(config.project.builds)
-    if missing_builds:
-        raise UserBadParameterError("Builds not found: %s" % ", ".join(missing_builds))
-
     # Build the package
-    package_path = _build_package(
-        include_pathspec_list, include_builds_set, config.project.paths.build
+    dist = Dist.build_dist(
+        cfg=config.project,
+        include_pathspec_list=include_pathspec_list,
+        include_builds_set=include_builds_set,
+        output_path=config.project.paths.build,
     )
-    logger.info("Package built: %s", package_path)
+    logger.info("Package distribution built: %s", dist.path)
 
     # Upload sequence
     if dry_run:
         logger.info("Dry run, skipping upload")
     else:
-        ## Get authorization
-        auth_header = get_actions_header(
-            urlparse(config.project.services.packages.url).netloc
-        )
-
-        ## Request upload
-        r = requests.post(
-            f"{config.project.services.packages.url}/v1/upload/request",
-            headers=auth_header,
-            json={
-                "name": config.project.name,
-                "package_version": str(config.project.version),
-            },
-        )
-        r.raise_for_status()
-        upload_url = r.json()["upload_url"]
-        s3_key = r.json()["s3_key"]
-
-        ## Upload the package
-        with package_path.open("rb") as object_file:
-            requests.put(upload_url, data=object_file.read()).raise_for_status()
-
-        ## Confirm upload
-        r = requests.post(
-            f"{config.project.services.packages.url}/v1/upload/confirm",
-            headers=auth_header,
-            json={"s3_key": s3_key},
-        )
-        r.raise_for_status()
-        package_url = r.json()["package_url"]
+        api = PackagesAPIClient()
+        package_url = api.publish(
+            name=config.project.name,
+            version=str(config.project.version),
+            dist=dist,
+        ).package_url
         logger.info("Package URL: %s", package_url)
 
     logger.info("Done! 📦🛳️")

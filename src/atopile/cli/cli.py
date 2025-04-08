@@ -126,7 +126,10 @@ def cli(
 
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
-app.command()(install.install)
+app.command(deprecated=True)(install.install)
+app.command()(install.sync)
+app.command()(install.add)
+app.command()(install.remove)
 app.command()(configure.configure)
 app.command()(inspect.inspect)
 app.command()(view.view)
