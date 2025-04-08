@@ -7,13 +7,25 @@ from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generator, Iterable, Self
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    Self,
+    Union,
+    override,
+)
 
+import semver
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     ValidationError,
     ValidationInfo,
     field_serializer,
@@ -446,43 +458,70 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
         self.paths.ensure_layout()
 
 
-class Source(BaseConfigModel):
-    local: Path | None = None
+class DependencySpec(BaseConfigModel):
+    type: str
 
-    @field_serializer("local")
-    def serialize_local(self, path: Path | None, _info: Any) -> str | None:
-        return str(path) if path else None
+    @staticmethod
+    def from_str(spec_str: str) -> "DependencySpec":
+        if "://" not in spec_str:
+            spec_str = "registry://" + spec_str
+            # TODO default registry
+
+        type_specifier, _ = spec_str.split("://", 1)
+
+        # TODO dont use hardcoded strings
+        if type_specifier.startswith("file"):
+            return LocalDependencySpec.from_str(spec_str)
+        elif type_specifier.startswith("git"):
+            return GitDependencySpec.from_str(spec_str)
+        elif type_specifier.startswith("registry"):
+            return RegistryDependencySpec.from_str(spec_str)
+        else:
+            raise UserConfigurationError(
+                f"Invalid type specifier: {type_specifier} in {spec_str}"
+            )
+
+    @property
+    def name(self) -> str: ...
+
+    def matches(self, other: "DependencySpec") -> bool:
+        return self.name == other.name
 
 
-class Dependency(BaseConfigModel):
-    name: str
-    version_spec: str | None = None
-    link_broken: bool = False
-    path: Path | None = None
-    source: Source | None = None
-
-    project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
-    )
-
-    @classmethod
-    def from_str(cls, spec_str: str) -> "Dependency":
-        for splitter in version.OPERATORS + ("@",):
-            if splitter in spec_str:
-                try:
-                    name, version_spec = spec_str.rsplit(splitter, 1)
-                    name = name.strip()
-                    version_spec = splitter + version_spec
-                except TypeError as ex:
-                    raise UserConfigurationError(
-                        f"Invalid dependency spec: {spec_str}"
-                    ) from ex
-                return cls(name=name, version_spec=version_spec)
-        return cls(name=spec_str)
+class LocalDependencySpec(DependencySpec):
+    type: Literal["file"] = "file"
+    path: Path
 
     @field_serializer("path")
-    def serialize_path(self, path: Path | None, _info: Any) -> str | None:
-        return str(path) if path else None
+    def serialize_path(self, path: Path, _info: Any) -> str:
+        return str(path)
+
+    @property
+    @override
+    def name(self) -> str:
+        return self.path.absolute().name
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "LocalDependencySpec":
+        _, path = spec_str.split("://", 1)
+        return LocalDependencySpec(path=Path(path))
+
+
+class GitDependencySpec(DependencySpec):
+    type: Literal["git"] = "git"
+
+
+class RegistryDependencySpec(DependencySpec):
+    type: Literal["registry"] = "registry"
+    identifier: str
+    version_spec: str | None = None
+
+
+_DependencySpec = Annotated[
+    Union[LocalDependencySpec, GitDependencySpec, RegistryDependencySpec],
+    Field(discriminator="type"),
+]
 
 
 class ServicesConfig(BaseConfigModel):
@@ -514,14 +553,41 @@ class ProjectConfig(BaseConfigModel):
         default=f"{version.get_installed_atopile_version()}",
     )
     """
+    [Deprecated] - Use `requires-atopile-version` instead.
+
     The compiler version with which the project was developed.
 
     This is used by the compiler to ensure the code in this project is
     compatible with the compiler version.
     """
 
+    requires_atopile_version: str = Field(
+        alias="requires-atopile-version",
+        default=f">={version.get_installed_atopile_version()}",
+    )
+    """
+    The requirements for the compiler version to build this project.
+    """
+
+    # FIXME: can this be a semver.Version?
+    version: str | None = Field(default=None)
+    """
+    The version of the project as a semver. See https://semver.org/.
+    """
+
+    repository: str | None = Field(default=None)
+    """
+    The repository URL of the project.
+    """
+
+    name: str | None = Field(default=None)
+    """
+    The qualified name of the project, as it'd be installed from a package manager.
+    eg. `pepper/my-project` or `pepper/my-project/sub-package`
+    """
+
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
-    dependencies: list[Dependency] | None = Field(default=None)
+    dependencies: list[_DependencySpec] | None = Field(default=None)
     """
     Represents requirements on other projects.
 
@@ -560,6 +626,20 @@ class ProjectConfig(BaseConfigModel):
             ProjectConfig, identifier=config_file, **file_contents
         )
 
+    @field_validator("version", mode="before")
+    def init_version(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        try:
+            semver.Version.parse(value)
+        except ValueError as e:
+            raise UserConfigurationError(
+                f"Version must be a valid semver. Got: {value}"
+            ) from e
+
+        return value
+
     @field_validator("builds", mode="before")
     def init_builds(
         cls, value: dict[str, dict[str, Any] | BuildTargetConfig], info: ValidationInfo
@@ -576,9 +656,13 @@ class ProjectConfig(BaseConfigModel):
         return value
 
     @field_validator("dependencies", mode="before")
-    def add_dependencies(cls, value: list[dict[str, Any]] | None) -> list[Dependency]:
+    def validate_dependencies(
+        cls, value: list[dict[str, Any]] | None
+    ) -> list[DependencySpec]:
         return [
-            Dependency.from_str(dep) if isinstance(dep, str) else Dependency(**dep)
+            DependencySpec.from_str(dep)
+            if isinstance(dep, str)
+            else TypeAdapter(_DependencySpec).validate_python(dep)
             for dep in (value or [])
         ]
 
@@ -588,6 +672,8 @@ class ProjectConfig(BaseConfigModel):
         Check that the compiler version is compatible with the version
         used to build the project.
         """
+        # FIXME implement with ProjectDependencies
+        return self
         dependency_cfgs = (
             (dep.project_config for dep in self.dependencies)
             if self.dependencies is not None
@@ -621,7 +707,6 @@ class ProjectConfig(BaseConfigModel):
         project_paths = paths or ProjectPaths()
         return _try_construct_config(
             ProjectConfig,
-            ato_version=f"^{version.get_installed_atopile_version()}",
             paths=project_paths,
             entry=entry,
             builds={
@@ -633,6 +718,31 @@ class ProjectConfig(BaseConfigModel):
                 )
             },
         )
+
+    @staticmethod
+    def set_or_add_dependency(config: "Config", dependency: DependencySpec):
+        def _add_dependency(config_data, new_data):
+            # validate_dependencies is the validator that loads the dependencies
+            # from the config file. It ensures the format of the ato.yaml
+            deps = ProjectConfig.validate_dependencies(
+                config_data.get("dependencies", [])
+            )  # type: ignore (class method)
+
+            for i, dep in enumerate(deps):
+                if dep.matches(dependency):
+                    deps[i] = dependency
+                    break
+            else:
+                deps.append(dependency)
+
+            config_data["dependencies"] = [dep.model_dump() for dep in deps]
+            return config_data
+
+        config.update_project_settings(_add_dependency, {})
+
+    @staticmethod
+    def remove_dependency(config: "Config", dependency: DependencySpec):
+        raise NotImplementedError("Remove not implemented")
 
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
@@ -739,7 +849,7 @@ class Config:
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
 
-    def update_project_config(
+    def update_project_settings(
         self, transformer: Callable[[dict, dict], dict], new_data: dict
     ) -> None:
         """Apply an update to the project config file."""

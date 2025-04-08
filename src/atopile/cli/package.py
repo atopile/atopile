@@ -1,0 +1,166 @@
+import logging
+from typing import Annotated, Iterator
+
+import typer
+from git import Repo
+from semver import Version
+
+from atopile.config import config
+from atopile.errors import UserBadParameterError
+from faebryk.libs.backend.packages.api import PackagesAPIClient
+from faebryk.libs.package.dist import Dist
+
+# Set up logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+package_app = typer.Typer(rich_markup_mode="rich")
+
+
+FROM_GIT = "from-git"
+
+
+def _yield_semver_tags() -> Iterator[Version]:
+    repo = Repo(config.project.paths.root)
+    for tag in repo.tags:
+        if not tag.commit == repo.head.commit:
+            continue
+
+        try:
+            yield Version.parse(tag.name)
+        except ValueError:
+            continue
+
+
+def _apply_version(specd_version: str) -> None:
+    if specd_version == FROM_GIT:
+        semver_tags = list(_yield_semver_tags())
+
+        if len(semver_tags) == 0:
+            raise UserBadParameterError("No semver tags found for the current commit")
+
+        elif len(semver_tags) > 1:
+            raise UserBadParameterError(
+                "Multiple semver tags found for the current commit: %s."
+                " No guessing which to use."
+            )
+
+        version = semver_tags[0]
+
+    else:
+        try:
+            version = Version.parse(specd_version)
+        except ValueError as ex:
+            raise UserBadParameterError(
+                f"{specd_version} is not a valid semantic version"
+            ) from ex
+
+    if version.prerelease or version.build:
+        raise UserBadParameterError(
+            "Version must be a semantic version, without prerelease or build."
+            f" Got {str(version)}"
+        )
+
+    config.project.version = str(version)
+
+
+@package_app.command()
+def publish(
+    include_pathspec: Annotated[
+        str,
+        typer.Option(
+            "--include",
+            "-i",
+            envvar="ATO_PACKAGE_INCLUDE_PATCHSPEC",
+            help="Comma separated globs to files to include in the package",
+        ),
+    ],
+    include_builds: Annotated[
+        str,
+        typer.Option(
+            "--include-build",
+            "-b",
+            envvar="ATO_PACKAGE_INCLUDE_BUILD",
+            help=("Comma separated build-targets to include in the package."),
+        ),
+    ] = "",
+    version: Annotated[
+        str,
+        typer.Option(
+            "--version",
+            "-v",
+            envvar="ATO_PACKAGE_VERSION",
+            help="The version of the package to publish.",
+        ),
+    ] = "",
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", "-n", help="Dry run the package publication."),
+    ] = False,
+    package_address: Annotated[
+        str | None,
+        typer.Argument(help="The address of the package to publish."),
+    ] = None,
+):
+    """
+    Publish a package to the package registry.
+
+    Currently, the only supported authentication method is Github Actions OIDC.
+
+    For the options which allow multiple inputs, use comma separated values.
+    """
+
+    include_pathspec_list = [p.strip() for p in include_pathspec.split(",")]
+
+    include_builds_set = None
+    if include_builds:
+        include_builds_set = set([t.strip() for t in include_builds.split(",")])
+        missing_builds = include_builds_set - set(config.project.builds)
+        if missing_builds:
+            raise UserBadParameterError(
+                "Builds not found: %s" % ", ".join(missing_builds)
+            )
+
+    # Apply the entry-point early
+    # This will configure the project root properly, meaning you can practically spec
+    # the working directory of the publish and expands for future use publishing
+    # packagelets from specific module entrypoints
+    config.apply_options(entry=package_address)
+    logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
+
+    if version:  # NOT `is not None` to allow for empty strings
+        _apply_version(version)
+    logger.info("Package version: %s", config.project.version)
+
+    if not config.project.name:
+        raise UserBadParameterError(
+            "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
+        )
+
+    if not config.project.repository:
+        raise UserBadParameterError(
+            "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
+        )
+
+    # Build the package
+    dist = Dist.build_dist(
+        cfg=config.project,
+        include_pathspec_list=include_pathspec_list,
+        include_builds_set=include_builds_set,
+        output_path=config.project.paths.build,
+    )
+    logger.info("Package distribution built: %s", dist.path)
+
+    # Upload sequence
+    if dry_run:
+        logger.info("Dry run, skipping upload")
+    else:
+        api = PackagesAPIClient()
+        package_url = api.publish(
+            name=config.project.name,
+            version=str(config.project.version),
+            dist=dist,
+        ).package_url
+        logger.info("Package URL: %s", package_url)
+
+    logger.info("Done! 📦🛳️")

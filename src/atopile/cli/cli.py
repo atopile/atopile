@@ -12,7 +12,7 @@ from typing import Annotated
 import typer
 
 from atopile import telemetry, version
-from atopile.cli import build, configure, create, inspect, install, view
+from atopile.cli import build, configure, create, inspect, install, package, view
 from atopile.cli.logging import handler, logger
 from atopile.config import config
 from atopile.version import check_for_update
@@ -126,10 +126,14 @@ def cli(
 
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
-app.command()(install.install)
+app.command(deprecated=True)(install.install)
+app.command()(install.sync)
+app.command()(install.add)
+app.command()(install.remove)
 app.command()(configure.configure)
 app.command()(inspect.inspect)
 app.command()(view.view)
+app.add_typer(package.package_app, name="package", hidden=True)
 
 
 @app.command(hidden=True)
