@@ -7,14 +7,14 @@ from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generator, Iterable, Self
+from typing import Annotated, Any, Callable, Generator, Iterable, Self
 
-import semver
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    HttpUrl,
     ValidationError,
     ValidationInfo,
     field_serializer,
@@ -506,13 +506,94 @@ class ServicesConfig(BaseConfigModel):
     packages: Packages = Field(default_factory=Packages)
 
 
+# TODO: expand
+RequirementSpec = Annotated[
+    str,
+    Field(
+        pattern=r"^((>|>=|<|<=|\^)?[0-9]+\.[0-9]+\.[0-9]+|(>|>=)[0-9]+\.[0-9]+\.[0-9]+,(<|<=)[0-9]+\.[0-9]+\.[0-9]+)$"
+    ),
+]
+
+
+class PackageConfig(BaseConfigModel):
+    """Defines a package"""
+
+    class Author(BaseConfigModel):
+        name: str
+        email: str
+
+    name: str = Field(
+        pattern=r"^(?P<owner>[a-zA-Z0-9](?:[a-zA-Z0-9]|(-[a-zA-Z0-9])){0,38})/(?P<name>[a-z][a-z0-9\-]+)(/(?P<subpackage>[a-z][a-z0-9\-]+))?$"
+    )
+    """
+    The qualified name of the project, as it'd be installed from a package manager.
+    eg. `pepper/my-project` or `pepper/my-project/sub-package`
+
+    May contain numbers and lowercase ASCII letters only. Must match the GitHub
+    repository from which the project is published.
+
+    Required for publishing.
+    """
+
+    version: str = Field(
+        # semver subset only
+        pattern=r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)$",
+        default="0.0.0",
+    )
+    """
+    Project version, formatted according to the SemVer specification. See https://semver.org/.
+    Contains MAJOR.MINOR.PATCH only, e.g. 1.0.1
+
+    Required for publishing.
+    """
+
+    repository: HttpUrl | None = Field(default=None)
+    """
+    The repository URL of the project.
+
+    Required for publishing.
+    """
+
+    authors: list[Author] | None = Field(default=None)
+    """
+    List of project authors.
+
+    Required for publishing.
+    """
+
+    license: str | None = Field(default=None)
+    """
+    The project's license, as an SPDX 2.3 license expression.
+
+    Required for publishing.
+    """
+
+    summary: str | None = Field(default=None)
+    """
+    A short blurb about the project.
+
+    Required for publishing.
+    """
+
+    homepage: str | None = Field(default=None)
+    """
+    The project's homepage, if separate from the repository.
+    """
+
+    readme: str | None = Field(default="README.md")
+    """
+    Path to the project's README file, relative to this `ato.yaml`
+    """
+
+
 class ProjectConfig(BaseConfigModel):
     """Project-level config"""
 
-    ato_version: str = Field(
+    ato_version: RequirementSpec | None = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
         default=f"{version.get_installed_atopile_version()}",
+        deprecated="Use `requires-atopile-version` instead.",
     )
     """
     [Deprecated] - Use `requires-atopile-version` instead.
@@ -523,42 +604,33 @@ class ProjectConfig(BaseConfigModel):
     compatible with the compiler version.
     """
 
-    requires_atopile_version: str = Field(
-        alias="requires-atopile-version",
-        default=f">={version.get_installed_atopile_version()}",
+    requires_atopile: RequirementSpec = Field(
+        validation_alias=AliasChoices("requires-atopile", "requires_atopile"),
+        serialization_alias="requires-atopile",
+        default=f"^{version.get_installed_atopile_version()}",
     )
     """
-    The requirements for the compiler version to build this project.
+    Version required to build this project.
     """
 
-    # FIXME: can this be a semver.Version?
-    version: str | None = Field(default=None)
+    package: PackageConfig | None = Field(default=None)
     """
-    The version of the project as a semver. See https://semver.org/.
-    """
-
-    repository: str | None = Field(default=None)
-    """
-    The repository URL of the project.
-    """
-
-    name: str | None = Field(default=None)
-    """
-    The qualified name of the project, as it'd be installed from a package manager.
-    eg. `pepper/my-project` or `pepper/my-project/sub-package`
+    Defines a package
     """
 
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
+
     dependencies: list[Dependency] | None = Field(default=None)
     """
     Represents requirements on other projects.
 
     Typically, you shouldn't modify this directly.
 
-    Instead, use the `ato install` command to install dependencies.
+    Instead, use the `ato add/remove <package>` commands.
     """
 
     entry: str | None = Field(default=None)
+
     builds: dict[str, BuildTargetConfig] = Field(default_factory=dict)
     """A map of all the build targets (/ "builds") in this project."""
 
@@ -588,19 +660,15 @@ class ProjectConfig(BaseConfigModel):
             ProjectConfig, identifier=config_file, **file_contents
         )
 
-    @field_validator("version", mode="before")
-    def init_version(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
+    @model_validator(mode="after")
+    def validate_version(self) -> Self:
+        if self.ato_version and self.requires_atopile:
+            if self.ato_version != self.requires_atopile:
+                raise UserConfigurationError(
+                    "`ato-version` and `requires-atopile-version` must match"
+                )
 
-        try:
-            semver.Version.parse(value)
-        except ValueError as e:
-            raise UserConfigurationError(
-                f"Version must be a valid semver. Got: {value}"
-            ) from e
-
-        return value
+        return self
 
     @field_validator("builds", mode="before")
     def init_builds(
@@ -641,7 +709,7 @@ class ProjectConfig(BaseConfigModel):
                 continue
 
             with cltr():
-                semver_str = cfg.ato_version
+                semver_str = cfg.requires_atopile
                 # FIXME: this is a hack to the moment to get around us breaking
                 # the versioning scheme in the ato.yaml files
                 for operator in version.OPERATORS:
