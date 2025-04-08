@@ -189,7 +189,7 @@ def publish(
             envvar="ATO_PACKAGE_INCLUDE_PATCHSPEC",
             help="Comma separated globs to files to include in the package",
         ),
-    ],
+    ] = "**",
     include_builds: Annotated[
         str,
         typer.Option(
