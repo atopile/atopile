@@ -51,7 +51,12 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
-            version: str
+            @dataclass_json
+            @dataclass(frozen=True)
+            class Info:
+                version: str
+
+            info: Info
 
     class Release:
         @dataclass_json
@@ -71,9 +76,10 @@ class _Models:
             dependencies: Dependencies
             download_url: str
             requires_atopile: str
+            filename: str
 
 
-class _Errors:
+class Errors:
     class PackagesApiError(Exception): ...
 
     class PackagesApiHTTPError(Exception):
@@ -81,10 +87,11 @@ class _Errors:
             super().__init__()
             self.error = error
             self.response = error.response
+            self.detail = detail
 
         @classmethod
-        def from_http(cls, error: "_Errors.PackagesApiHTTPError", detail: str):
-            return cls(error.error, detail)
+        def from_http(cls, error: "Errors.PackagesApiHTTPError"):
+            return cls(error.error, error.detail)
 
         @property
         def code(self) -> int:
@@ -95,6 +102,8 @@ class _Errors:
     class PackageNotFoundError(PackagesApiHTTPError): ...
 
     class ReleaseNotFoundError(PackagesApiHTTPError): ...
+
+    class ReleaseAlreadyExistsError(PackagesApiHTTPError): ...
 
 
 class PackagesAPIClient:
@@ -123,7 +132,7 @@ class PackagesAPIClient:
                 detail = response.json()["detail"]
             except (requests.JSONDecodeError, KeyError):
                 detail = response.text
-            raise _Errors.PackagesApiHTTPError(e, detail) from e
+            raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
 
     def _post(
@@ -151,7 +160,7 @@ class PackagesAPIClient:
                 detail = response.json()["detail"]
             except (requests.JSONDecodeError, KeyError):
                 detail = response.text
-            raise _Errors.PackagesApiHTTPError(e, detail) from e
+            raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
 
     @staticmethod
@@ -170,7 +179,7 @@ class PackagesAPIClient:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            raise _Errors.PackagesApiHTTPError(e, detail="") from e
+            raise Errors.PackagesApiHTTPError(e, detail="") from e
         return response
 
     def _authenticate(self) -> dict[str, str]:
@@ -180,7 +189,7 @@ class PackagesAPIClient:
         try:
             return get_actions_header(urlparse(self._cfg.api_url).netloc)
         except Exception as e:
-            raise _Errors.AuthenticationError(e) from e
+            raise Errors.AuthenticationError(e) from e
 
     def publish(
         self, identifier: str, version: str, dist: Dist, skip_auth: bool = False
@@ -191,15 +200,21 @@ class PackagesAPIClient:
         Only works in Github Actions.
         """
         ## Request upload
-        r = self._post(
-            "/v1/publish",
-            data=_Models.Publish.Request(
-                identifier=identifier,
-                package_version=version,
-                manifest=dist.manifest,
-            ).to_dict(),  # type: ignore
-            authenticate=not skip_auth,
-        )
+        try:
+            r = self._post(
+                "/v1/publish",
+                data=_Models.Publish.Request(
+                    identifier=identifier,
+                    package_version=version,
+                    manifest=dist.manifest,
+                ).to_dict(),  # type: ignore
+                authenticate=not skip_auth,
+            )
+        except Errors.PackagesApiHTTPError as e:
+            if e.code == 409:
+                raise Errors.ReleaseAlreadyExistsError.from_http(e) from e
+            raise
+
         response = _Models.Publish.Response.from_dict(r.json())  # type: ignore
 
         ## Upload the package
@@ -216,28 +231,43 @@ class PackagesAPIClient:
         response = _Models.PublishUploadComplete.Response.from_dict(r.json())  # type: ignore
         return response
 
-    def package(self, identifier: str) -> _Models.Package.Response:
+    def package(
+        self, identifier: str, version: str | None = None
+    ) -> _Models.Release.Response:
         """
         Get a package from the package registry.
         """
-        if "@" in identifier:
-            identifier, version = identifier.split("@", 1)
-        else:
+        if version is None:
             try:
                 r = self._get(f"/v1/package/{identifier}")
-            except _Errors.PackagesApiHTTPError as e:
+            except Errors.PackagesApiHTTPError as e:
                 if e.code == 404:
-                    raise _Errors.PackageNotFoundError.from_http(e, detail="") from e
+                    raise Errors.PackageNotFoundError.from_http(e) from e
                 raise
             response = _Models.Package.Response.from_dict(r.json())  # type: ignore
-            version = response.version
+            version = response.info.version
 
         try:
             r = self._get(f"/v1/package/{identifier}/releases/{version}")
-        except _Errors.PackagesApiHTTPError as e:
+        except Errors.PackagesApiHTTPError as e:
             if e.code == 404:
-                raise _Errors.ReleaseNotFoundError.from_http(e, detail="") from e
+                raise Errors.ReleaseNotFoundError.from_http(e) from e
             raise
         response = _Models.Release.Response.from_dict(r.json())  # type: ignore
 
         return response
+
+    def release_dist(
+        self, identifier: str, output_path: Path, version: str | None = None
+    ) -> Dist:
+        release = self.package(identifier, version)
+        url = release.download_url
+        filepath = output_path / release.filename
+        # use requests to download the file to output_path
+        with requests.get(url, stream=True) as r:
+            r.raise_for_status()
+            with filepath.open("wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        return Dist(filepath)

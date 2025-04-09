@@ -7,6 +7,7 @@ from pathlib import Path
 
 import atopile.config as config
 from atopile import errors
+from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist
 from faebryk.libs.util import clone_repo, not_none, robustly_rm_dir
 
@@ -50,10 +51,10 @@ class ProjectDependency:
         if not allow_upgrade:
             raise NotImplementedError("Only upgrade=True is supported at the moment")
 
-        if isinstance(
-            self.spec, (config.LocalDependencySpec, config.GitDependencySpec)
-        ):
-            with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            if isinstance(
+                self.spec, (config.LocalDependencySpec, config.GitDependencySpec)
+            ):
                 if isinstance(self.spec, config.LocalDependencySpec):
                     path = self.spec.path
                     if not path.exists():
@@ -75,22 +76,27 @@ class ProjectDependency:
                     include_builds_set=None,
                     output_path=Path(temp_dir),
                 )
-                self.dist = dist
 
-                # TODO cache dist
+            if isinstance(self.spec, config.RegistryDependencySpec):
+                api = PackagesAPIClient()
+                dist = api.release_dist(
+                    self.spec.identifier,
+                    Path(temp_dir),
+                    version=self.spec.release,
+                )
+            self.dist = dist
 
-                if self.target_path.exists():
-                    if allow_upgrade:
-                        robustly_rm_dir(self.target_path)
-                    else:
-                        raise errors.UserFileExistsError(
-                            f"Dependency {self.spec.name} already exists at"
-                            f" {self.target_path}"
-                        )
-                self._install_from_dist(dist)
+            # TODO cache dist
 
-        if isinstance(self.spec, config.RegistryDependencySpec):
-            pass
+            if self.target_path.exists():
+                if allow_upgrade:
+                    robustly_rm_dir(self.target_path)
+                else:
+                    raise errors.UserFileExistsError(
+                        f"Dependency {self.spec.name} already exists at"
+                        f" {self.target_path}"
+                    )
+            self._install_from_dist(dist)
 
     def remove(self):
         raise NotImplementedError("Removing dependencies is not implemented")

@@ -70,7 +70,6 @@ class Dist:
     @staticmethod
     def build_dist(
         cfg: atopile.config.ProjectConfig | Path,
-        include_builds_set: set[str] | None,
         output_path: Path,
     ) -> "Dist":
         """
@@ -86,9 +85,6 @@ class Dist:
                 "Project has no package configuration. "
                 "Please add a `package` section to your `ato.yaml` file."
             )
-
-        if include_builds_set is None:
-            include_builds_set = set(cfg.builds)
 
         package_filename = (
             pathvalidate.sanitize_filename(
@@ -115,12 +111,6 @@ class Dist:
             config_data["package"]["identifier"] = str(cfg.package.identifier)
             config_data["package"]["repository"] = str(cfg.package.repository)
             config_data["package"]["version"] = str(cfg.package.version)
-
-            config_data["builds"] = {
-                k: v
-                for k, v in config_data["builds"].items()
-                if k in include_builds_set
-            }
 
             with package_config_path.open("w", encoding="utf-8") as file:
                 yaml.dump(config_data, file)

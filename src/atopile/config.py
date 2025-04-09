@@ -557,7 +557,22 @@ class GitDependencySpec(DependencySpec):
 class RegistryDependencySpec(DependencySpec):
     type: Literal["registry"] = "registry"
     identifier: str
-    version_spec: str | None = None
+    release: str | None = None
+
+    @property
+    @override
+    def name(self) -> str:
+        return self.identifier
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "RegistryDependencySpec":
+        _, identifier = spec_str.split("://", 1)
+        if "@" in identifier:
+            identifier, release = identifier.split("@", 1)
+        else:
+            release = None
+        return RegistryDependencySpec(identifier=identifier, release=release)
 
 
 _DependencySpec = Annotated[

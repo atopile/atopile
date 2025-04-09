@@ -5,6 +5,7 @@ import typer
 from git import Repo
 from semver import Version
 
+import faebryk.libs.backend.packages.api as packages_api
 from atopile.config import config
 from atopile.errors import UserBadParameterError
 from faebryk.libs.backend.packages.api import PackagesAPIClient
@@ -67,15 +68,6 @@ def _apply_version(specd_version: str) -> None:
 
 @package_app.command()
 def publish(
-    include_builds: Annotated[
-        str,
-        typer.Option(
-            "--include-build",
-            "-b",
-            envvar="ATO_PACKAGE_INCLUDE_BUILD",
-            help=("Comma separated build-targets to include in the package."),
-        ),
-    ] = "",
     version: Annotated[
         str,
         typer.Option(
@@ -97,6 +89,14 @@ def publish(
         bool,
         typer.Option("--skip-auth", "-s", help="Skip authentication."),
     ] = False,
+    skip_duplicate_versions: Annotated[
+        bool,
+        typer.Option(
+            "--skip-duplicate-versions",
+            envvar="ATO_PACKAGE_SKIP_DUPLICATE_VERSIONS",
+            help="Ignore duplicate version errors.",
+        ),
+    ] = False,
 ):
     """
     Publish a package to the package registry.
@@ -105,15 +105,6 @@ def publish(
 
     For the options which allow multiple inputs, use comma separated values.
     """
-
-    include_builds_set = None
-    if include_builds:
-        include_builds_set = set([t.strip() for t in include_builds.split(",")])
-        missing_builds = include_builds_set - set(config.project.builds)
-        if missing_builds:
-            raise UserBadParameterError(
-                "Builds not found: %s" % ", ".join(missing_builds)
-            )
 
     # Apply the entry-point early
     # This will configure the project root properly, meaning you can practically spec
@@ -145,7 +136,6 @@ def publish(
     # Build the package
     dist = Dist.build_dist(
         cfg=config.project,
-        include_builds_set=include_builds_set,
         output_path=config.project.paths.build,
     )
     logger.info("Package distribution built: %s", dist.path)
@@ -155,12 +145,18 @@ def publish(
         logger.info("Dry run, skipping upload")
     else:
         api = PackagesAPIClient()
-        package_url = api.publish(
-            identifier=config.project.package.identifier,
-            version=str(config.project.package.version),
-            dist=dist,
-            skip_auth=skip_auth,
-        ).url
+        try:
+            package_url = api.publish(
+                identifier=config.project.package.identifier,
+                version=str(config.project.package.version),
+                dist=dist,
+                skip_auth=skip_auth,
+            ).url
+        except packages_api.Errors.ReleaseAlreadyExistsError:
+            if skip_duplicate_versions:
+                logger.info("Release already exists, skipping")
+            else:
+                raise
         logger.info("Package URL: %s", package_url)
 
     logger.info("Done! 📦🛳️")
