@@ -156,6 +156,8 @@ def remove(
     if path:
         config.project_dir = path
 
+    raise NotImplementedError("Remove not implemented")
+
     logger.info(
         "[green]Done removing dependencies![/] :call_me_hand:", extra={"markup": True}
     )
@@ -348,7 +350,10 @@ def remove(
 #     return False
 #
 #
-# def check_missing_deps_or_offer_to_install():
+def check_missing_deps_or_offer_to_install():
+    return
+
+
 #     if check_missing_deps():
 #         logger.warning(
 #             "It appears some dependencies are missing."

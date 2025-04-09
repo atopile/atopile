@@ -112,8 +112,8 @@ class Dist:
             ) as file:
                 config_data: dict = yaml.load(file) or {}
 
-            config_data["package"]["identifier"] = cfg.package.identifier
-            config_data["package"]["repository"] = cfg.package.repository
+            config_data["package"]["identifier"] = str(cfg.package.identifier)
+            config_data["package"]["repository"] = str(cfg.package.repository)
             config_data["package"]["version"] = str(cfg.package.version)
 
             config_data["builds"] = {
@@ -154,9 +154,12 @@ class Dist:
 
                     zip_file.write(src_path, file.relative_to(cfg.paths.root))
 
-            shutil.move(zip_path, output_path)
+            out_file = output_path / package_filename
+            if out_file.exists():
+                out_file.unlink()
+            shutil.move(zip_path, out_file)
 
-            return Dist(output_path)
+            return Dist(out_file)
 
     def install(self, path: Path):
         if path.exists():

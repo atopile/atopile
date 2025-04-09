@@ -2,6 +2,7 @@ import fnmatch
 import itertools
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
@@ -510,6 +511,47 @@ class LocalDependencySpec(DependencySpec):
 
 class GitDependencySpec(DependencySpec):
     type: Literal["git"] = "git"
+    repo_url: str
+    path_within_repo: Path | None = None
+    ref: str | None = None
+
+    @property
+    @override
+    def name(self) -> str:
+        return self.repo_url.split("/")[-1]
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "GitDependencySpec":
+        # Pattern to match git dependency spec format: git://<repo_url>.git[#<ref>][:<path_within_repo>]
+        # - repo_url: everything after git:// until # or :
+        # - ref: optional, everything between # and : (if present)
+        # - path_within_repo: optional, everything after :
+        pattern = (
+            r"^git://"  # Protocol prefix
+            r"(?P<repo_url>.+?\.git)"  # Repository URL (non-greedy match until .git)
+            r"(?:#(?!:|$)"  # Optional ref part: '#' not followed by ':' or end
+            r"(?P<ref>[^:]+)"  # Reference value (anything not a colon)
+            r")?"  # End of optional ref group
+            r"(?::(?P<path_within_repo>.*))?"  # Optional path part: ':' followed by
+            # the path (colon not captured)
+            r"$"  # End of string
+        )
+        match = re.match(pattern, spec_str)
+        if not match:
+            raise ValueError(f"Invalid git dependency spec: {spec_str}")
+
+        repo_url = match.group("repo_url")
+        ref = match.group("ref")
+        path_within_repo = match.group("path_within_repo")
+        if path_within_repo is not None:
+            path_within_repo = Path(path_within_repo)
+
+        return GitDependencySpec(
+            repo_url=repo_url,
+            ref=ref,
+            path_within_repo=path_within_repo,
+        )
 
 
 class RegistryDependencySpec(DependencySpec):
@@ -779,7 +821,7 @@ class ProjectConfig(BaseConfigModel):
 
     @staticmethod
     def set_or_add_dependency(config: "Config", dependency: DependencySpec):
-        def _add_dependency(config_data, new_data):
+        def _add_dependency(config_data, _):
             # validate_dependencies is the validator that loads the dependencies
             # from the config file. It ensures the format of the ato.yaml
             deps = ProjectConfig.validate_dependencies(
@@ -793,7 +835,7 @@ class ProjectConfig(BaseConfigModel):
             else:
                 deps.append(dependency)
 
-            config_data["dependencies"] = [dep.model_dump() for dep in deps]
+            config_data["dependencies"] = [dep.model_dump(mode="json") for dep in deps]
             return config_data
 
         config.update_project_settings(_add_dependency, {})

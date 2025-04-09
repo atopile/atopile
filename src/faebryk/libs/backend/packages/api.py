@@ -23,7 +23,7 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Request:
-            name: str
+            identifier: str
             package_version: str
             manifest: dict[str, Any]
             """
@@ -45,7 +45,7 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
-            package_url: str
+            url: str
 
     class Package:
         @dataclass_json
@@ -183,7 +183,7 @@ class PackagesAPIClient:
             raise _Errors.AuthenticationError(e) from e
 
     def publish(
-        self, name: str, version: str, dist: Dist, skip_auth: bool = False
+        self, identifier: str, version: str, dist: Dist, skip_auth: bool = False
     ) -> _Models.PublishUploadComplete.Response:
         """
         Publish a package to the package registry.
@@ -194,7 +194,7 @@ class PackagesAPIClient:
         r = self._post(
             "/v1/publish",
             data=_Models.Publish.Request(
-                name=name,
+                identifier=identifier,
                 package_version=version,
                 manifest=dist.manifest,
             ).to_dict(),  # type: ignore

@@ -8,7 +8,7 @@ from pathlib import Path
 import atopile.config as config
 from atopile import errors
 from faebryk.libs.package.dist import Dist
-from faebryk.libs.util import robustly_rm_dir
+from faebryk.libs.util import clone_repo, not_none, robustly_rm_dir
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +19,7 @@ class ProjectDependency:
             spec = config.DependencySpec.from_str(spec)
         self.spec = spec
         self.dist: Dist | None = None
+        self.cfg: config.ProjectConfig | None = None
 
     # @property
     # def project_config(self) -> config.ProjectConfig:
@@ -26,11 +27,17 @@ class ProjectDependency:
 
     @property
     def name(self) -> str:
+        assert self.dist is not None or self.cfg is not None
+        if self.cfg:
+            return not_none(self.cfg.package).identifier
         assert self.dist is not None
+        # TODO: I hate strings so goddamn much
         return self.dist.manifest["package"]["identifier"]
 
     @property
     def target_path(self) -> Path:
+        # TODO don't really like using identifier as import path
+        # would be nicer to use source name and indirect imports
         gcfg = config.config
         return gcfg.project.paths.modules / self.name
 
@@ -43,34 +50,47 @@ class ProjectDependency:
         if not allow_upgrade:
             raise NotImplementedError("Only upgrade=True is supported at the moment")
 
-        # TODO remove
-        if not isinstance(self.spec, config.LocalDependencySpec):
-            raise NotImplementedError(
-                "Only local dependencies are supported at the moment"
-            )
-        path = self.spec.path
-        if not path.exists():
-            raise errors.UserFileNotFoundError(
-                f"Local dependency path {path} does not exist for {self.spec.name}"
-            )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-            dist = Dist.build_dist(
-                cfg=path,
-                include_builds_set=None,
-                output_path=Path(temp_dir) / "dist.zip",
-            )
-            self.dist = dist
-
-            if self.target_path.exists():
-                if allow_upgrade:
-                    robustly_rm_dir(self.target_path)
+        if isinstance(
+            self.spec, (config.LocalDependencySpec, config.GitDependencySpec)
+        ):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                if isinstance(self.spec, config.LocalDependencySpec):
+                    path = self.spec.path
+                    if not path.exists():
+                        raise errors.UserFileNotFoundError(
+                            f"Local dependency path {path} does not exist for"
+                            f" {self.spec.name}"
+                        )
                 else:
-                    raise errors.UserFileExistsError(
-                        f"Dependency {self.spec.name} already exists at"
-                        f" {self.target_path}"
+                    path = clone_repo(
+                        self.spec.repo_url,
+                        clone_target=Path(temp_dir) / "repo",
+                        ref=self.spec.ref,
                     )
-            self._install_from_dist(dist)
+                    if self.spec.path_within_repo:
+                        path = path / self.spec.path_within_repo
+
+                dist = Dist.build_dist(
+                    cfg=path,
+                    include_builds_set=None,
+                    output_path=Path(temp_dir),
+                )
+                self.dist = dist
+
+                # TODO cache dist
+
+                if self.target_path.exists():
+                    if allow_upgrade:
+                        robustly_rm_dir(self.target_path)
+                    else:
+                        raise errors.UserFileExistsError(
+                            f"Dependency {self.spec.name} already exists at"
+                            f" {self.target_path}"
+                        )
+                self._install_from_dist(dist)
+
+        if isinstance(self.spec, config.RegistryDependencySpec):
+            pass
 
     def remove(self):
         raise NotImplementedError("Removing dependencies is not implemented")

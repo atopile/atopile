@@ -132,9 +132,9 @@ def publish(
         )
     logger.info("Package version: %s", config.project.package.version)
 
-    if not config.project.package.name:
+    if not config.project.package.identifier:
         raise UserBadParameterError(
-            "Project `name` is not set. Set via ENVVAR or in `ato.yaml`"
+            "Project `identifier` is not set. Set via ENVVAR or in `ato.yaml`"
         )
 
     if not config.project.package.repository:
@@ -156,11 +156,11 @@ def publish(
     else:
         api = PackagesAPIClient()
         package_url = api.publish(
-            name=config.project.package.name,
+            identifier=config.project.package.identifier,
             version=str(config.project.package.version),
             dist=dist,
             skip_auth=skip_auth,
-        ).package_url
+        ).url
         logger.info("Package URL: %s", package_url)
 
     logger.info("Done! 📦🛳️")
