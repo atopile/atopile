@@ -2043,6 +2043,17 @@ def re_in(value: str, patterns: Iterable[str]) -> bool:
     return any(re.match(pattern, value) for pattern in patterns)
 
 
+# def clone_repo(
+#    repo_url: str,
+#    clone_target: Path,
+#    depth: int | None = None,
+#    ref: str | None = None,
+# ):
+#    from git import Repo
+#
+#    repo = Repo.clone_from(repo_url, clone_target, depth=depth, branch=ref)
+
+
 def clone_repo(
     repo_url: str,
     clone_target: Path,

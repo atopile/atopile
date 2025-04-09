@@ -6,7 +6,6 @@ import shutil
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Any
 
 import pathspec
 import pathvalidate
@@ -15,7 +14,7 @@ from ruamel.yaml import YAML
 
 import atopile.config
 from atopile.errors import UserBadParameterError
-from faebryk.libs.util import not_none
+from faebryk.libs.util import not_none, once
 
 logger = logging.getLogger(__name__)
 
@@ -62,10 +61,19 @@ class Dist:
         self.path = path
 
     @property
-    def manifest(self) -> dict[str, Any]:
+    @once
+    def manifest(self) -> atopile.config.ProjectConfig:
         with zipfile.ZipFile(self.path, "r") as zip_file:
             manifest_file = zip_file.read(str(atopile.config.PROJECT_CONFIG_FILENAME))
-            return YAML().load(manifest_file)
+            return atopile.config.ProjectConfig.from_bytes(manifest_file)
+
+    @property
+    def version(self) -> str:
+        return self.manifest.package.version
+
+    @property
+    def identifier(self) -> str:
+        return self.manifest.package.identifier
 
     @staticmethod
     def build_dist(
