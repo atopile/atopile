@@ -623,7 +623,7 @@ class ProjectConfig(BaseConfigModel):
     ato_version: RequirementSpec | None = Field(
         validation_alias=AliasChoices("ato-version", "ato_version"),
         serialization_alias="ato-version",
-        default=f"{version.get_installed_atopile_version()}",
+        default=None,
         deprecated="Use `requires-atopile-version` instead.",
     )
     """
