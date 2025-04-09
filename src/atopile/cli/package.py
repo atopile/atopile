@@ -73,7 +73,7 @@ def publish(
         typer.Option(
             "--version",
             "-v",
-            envvar="ATO_PACKAGE_VERSION",
+            envvar="ATO_CLI_PACKAGE_VERSION",
             help="The version of the package to publish.",
         ),
     ] = "",
@@ -93,7 +93,7 @@ def publish(
         bool,
         typer.Option(
             "--skip-duplicate-versions",
-            envvar="ATO_PACKAGE_SKIP_DUPLICATE_VERSIONS",
+            envvar="ATO_CLI_PACKAGE_SKIP_DUPLICATE_VERSIONS",
             help="Ignore duplicate version errors.",
         ),
     ] = False,
