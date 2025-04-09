@@ -461,6 +461,9 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
 
 class DependencySpec(BaseConfigModel):
     type: str
+    # TODO ugly af, because we are mixing specs and config
+    # should be config only, not in spec
+    identifier: str
 
     @staticmethod
     def from_str(spec_str: str) -> "DependencySpec":
@@ -472,7 +475,7 @@ class DependencySpec(BaseConfigModel):
 
         # TODO dont use hardcoded strings
         if type_specifier.startswith("file"):
-            return LocalDependencySpec.from_str(spec_str)
+            return FileDependencySpec.from_str(spec_str)
         elif type_specifier.startswith("git"):
             return GitDependencySpec.from_str(spec_str)
         elif type_specifier.startswith("registry"):
@@ -482,31 +485,33 @@ class DependencySpec(BaseConfigModel):
                 f"Invalid type specifier: {type_specifier} in {spec_str}"
             )
 
-    @property
-    def name(self) -> str: ...
-
     def matches(self, other: "DependencySpec") -> bool:
-        return self.name == other.name
+        return self.identifier == other.identifier
+
+    def _try_represent_as_string(self) -> str | None:
+        return None
+
+    def serialize(self) -> Any:
+        str = self._try_represent_as_string()
+        if str is not None:
+            return str
+        return self.model_dump(mode="json")
 
 
-class LocalDependencySpec(DependencySpec):
+class FileDependencySpec(DependencySpec):
     type: Literal["file"] = "file"
     path: Path
+    identifier: str | None = None
 
     @field_serializer("path")
     def serialize_path(self, path: Path, _info: Any) -> str:
         return str(path)
 
-    @property
-    @override
-    def name(self) -> str:
-        return self.path.absolute().name
-
     @staticmethod
     @override
-    def from_str(spec_str: str) -> "LocalDependencySpec":
+    def from_str(spec_str: str) -> "FileDependencySpec":
         _, path = spec_str.split("://", 1)
-        return LocalDependencySpec(path=Path(path))
+        return FileDependencySpec(path=Path(path))
 
 
 class GitDependencySpec(DependencySpec):
@@ -514,11 +519,7 @@ class GitDependencySpec(DependencySpec):
     repo_url: str
     path_within_repo: Path | None = None
     ref: str | None = None
-
-    @property
-    @override
-    def name(self) -> str:
-        return self.repo_url.split("/")[-1]
+    identifier: str | None = None
 
     @staticmethod
     @override
@@ -556,12 +557,11 @@ class GitDependencySpec(DependencySpec):
 
 class RegistryDependencySpec(DependencySpec):
     type: Literal["registry"] = "registry"
-    identifier: str
     release: str | None = None
 
     @property
     @override
-    def name(self) -> str:
+    def identifier(self) -> str:
         return self.identifier
 
     @staticmethod
@@ -574,9 +574,14 @@ class RegistryDependencySpec(DependencySpec):
             release = None
         return RegistryDependencySpec(identifier=identifier, release=release)
 
+    @override
+    def _try_represent_as_string(self) -> str | None:
+        release_str = f"@{self.release}" if self.release else ""
+        return f"{self.identifier}{release_str}"
+
 
 _DependencySpec = Annotated[
-    Union[LocalDependencySpec, GitDependencySpec, RegistryDependencySpec],
+    Union[FileDependencySpec, GitDependencySpec, RegistryDependencySpec],
     Field(discriminator="type"),
 ]
 
@@ -746,6 +751,15 @@ class ProjectConfig(BaseConfigModel):
             ProjectConfig, identifier=config_file, **file_contents
         )
 
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "ProjectConfig":
+        try:
+            file_contents = yaml.load(data)
+        except Exception as e:
+            raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        return _try_construct_config(ProjectConfig, identifier="", **file_contents)
+
     @model_validator(mode="after")
     def validate_version(self) -> Self:
         if self.ato_version and self.requires_atopile:
@@ -843,14 +857,15 @@ class ProjectConfig(BaseConfigModel):
                 config_data.get("dependencies", [])
             )  # type: ignore (class method)
 
+            serialized = dependency.serialize()
+
             for i, dep in enumerate(deps):
                 if dep.matches(dependency):
-                    deps[i] = dependency
+                    config_data["dependencies"][i] = serialized
                     break
             else:
-                deps.append(dependency)
+                config_data["dependencies"].append(serialized)
 
-            config_data["dependencies"] = [dep.model_dump(mode="json") for dep in deps]
             return config_data
 
         config.update_project_settings(_add_dependency, {})
