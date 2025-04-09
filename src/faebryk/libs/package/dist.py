@@ -92,7 +92,7 @@ class Dist:
 
         package_filename = (
             pathvalidate.sanitize_filename(
-                f"{cfg.package.name}-{cfg.package.version}".replace("/", "-")
+                f"{cfg.package.identifier}-{cfg.package.version}".replace("/", "-")
             )
             + ".zip"
         )
@@ -112,7 +112,7 @@ class Dist:
             ) as file:
                 config_data: dict = yaml.load(file) or {}
 
-            config_data["package"]["name"] = cfg.package.name
+            config_data["package"]["identifier"] = cfg.package.identifier
             config_data["package"]["repository"] = cfg.package.repository
             config_data["package"]["version"] = str(cfg.package.version)
 

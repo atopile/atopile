@@ -134,8 +134,8 @@ def add(
     if path:
         config.project_dir = path
 
-    for dep in package:
-        ProjectDependency(dep).install(allow_upgrade=upgrade)
+    for spec in package:
+        ProjectDependency(spec).install(allow_upgrade=upgrade)
 
     logger.info(
         "[green]Done adding dependencies![/] :call_me_hand:", extra={"markup": True}

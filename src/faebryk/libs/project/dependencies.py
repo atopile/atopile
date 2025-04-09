@@ -18,6 +18,7 @@ class ProjectDependency:
         if isinstance(spec, str):
             spec = config.DependencySpec.from_str(spec)
         self.spec = spec
+        self.dist: Dist | None = None
 
     # @property
     # def project_config(self) -> config.ProjectConfig:
@@ -25,8 +26,8 @@ class ProjectDependency:
 
     @property
     def name(self) -> str:
-        # TODO don't like this, should be extracted from dist/local dist
-        return self.spec.name
+        assert self.dist is not None
+        return self.dist.manifest["package"]["identifier"]
 
     @property
     def target_path(self) -> Path:
@@ -53,21 +54,22 @@ class ProjectDependency:
                 f"Local dependency path {path} does not exist for {self.spec.name}"
             )
 
-        if self.target_path.exists():
-            if allow_upgrade:
-                robustly_rm_dir(self.target_path)
-            else:
-                raise errors.UserFileExistsError(
-                    f"Local dependency {self.spec.name} already exists at"
-                    f" {self.target_path}"
-                )
-
         with tempfile.TemporaryDirectory() as temp_dir:
             dist = Dist.build_dist(
                 cfg=path,
                 include_builds_set=None,
                 output_path=Path(temp_dir) / "dist.zip",
             )
+            self.dist = dist
+
+            if self.target_path.exists():
+                if allow_upgrade:
+                    robustly_rm_dir(self.target_path)
+                else:
+                    raise errors.UserFileExistsError(
+                        f"Dependency {self.spec.name} already exists at"
+                        f" {self.target_path}"
+                    )
             self._install_from_dist(dist)
 
     def remove(self):
