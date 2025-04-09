@@ -628,8 +628,8 @@ class PackageConfig(BaseConfigModel):
     """
     The qualified name of the project, as it'd be installed from a package manager.
     eg. `pepper/my-project` or `pepper/my-project/sub-package`
-    May contain numbers and lowercase ASCII letters only. Must match the GitHub
-    repository from which the project is published.
+    May contain numbers and lowercase ASCII letters only. The owner must match the
+    GitHub organization from which the project is published (eg. `pepper`).
     Required for publishing.
     """
 
