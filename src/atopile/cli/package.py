@@ -155,8 +155,10 @@ def publish(
         except packages_api.Errors.ReleaseAlreadyExistsError:
             if skip_duplicate_versions:
                 logger.info("Release already exists, skipping")
+                return
             else:
                 raise
+
         logger.info("Package URL: %s", package_url)
 
     logger.info("Done! 📦🛳️")
