@@ -20,16 +20,19 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
-import posthog
 import requests
 from attrs import asdict, define, field
+from posthog import Posthog
 from ruamel.yaml import YAML
 
 log = logging.getLogger(__name__)
 
 # Public API key, as it'd be embedded in a frontend
-posthog.api_key = "phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt"
-posthog.host = "https://us.i.posthog.com"
+posthog = Posthog(
+    api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
+    host="https://us.i.posthog.com",
+    sync_mode=True,
+)
 
 
 @define
@@ -211,7 +214,6 @@ def log_to_posthog(event: str, properties: dict | None = None):
         yield
     except Exception as e:
         posthog.capture_exception(e, get_user_id(), _make_properties())
-        posthog.shutdown()
         raise
 
     try:
@@ -220,6 +222,5 @@ def log_to_posthog(event: str, properties: dict | None = None):
             event=event,
             properties=_make_properties(),
         )
-        posthog.shutdown()
     except Exception as e:
         log.debug("Failed to log telemetry data: %s", e, exc_info=e)
