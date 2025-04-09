@@ -97,6 +97,9 @@ class Errors:
         def code(self) -> int:
             return self.response.status_code
 
+        def __str__(self) -> str:
+            return f"{type(self).__name__}: {self.code} {self.detail}"
+
     class AuthenticationError(PackagesApiError): ...
 
     class PackageNotFoundError(PackagesApiHTTPError): ...
