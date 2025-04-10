@@ -266,6 +266,7 @@ class PackagesAPIClient:
         release = self.package(identifier, version)
         url = release.download_url
         filepath = output_path / release.filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
         # use requests to download the file to output_path
         with requests.get(url, stream=True) as r:
             r.raise_for_status()

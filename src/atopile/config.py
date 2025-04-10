@@ -840,6 +840,8 @@ class ProjectConfig(BaseConfigModel):
                     config_data["dependencies"][i] = serialized
                     break
             else:
+                if "dependencies" not in config_data:
+                    config_data["dependencies"] = []
                 config_data["dependencies"].append(serialized)
 
             return config_data
