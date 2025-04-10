@@ -25,6 +25,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
+import questionary
 import ruamel.yaml
 import typer
 
@@ -197,18 +198,16 @@ dependencies_app.command()(list)
 
 
 def check_missing_deps_or_offer_to_install():
-    ProjectDependencies(install_missing=True)
+    deps = ProjectDependencies()
+    if deps.not_installed_dependencies:
+        logger.warning(
+            "It appears some dependencies are missing. Run `ato sync` to install them.",
+            extra={"markdown": True},
+        )
 
-    # if deps.missing_dependencies:
-    #    logger.warning(
-    #        "It appears some dependencies are missing."
-    #        " Run `ato install` to install them.",
-    #        extra={"markdown": True},
-    #    )
-
-    #    if (
-    #        config.interactive
-    #        and questionary.confirm("Install missing dependencies now?").unsafe_ask()
-    #    ):
-    #        # Install project dependencies, without upgrading
-    #        deps.install_missing_dependencies()
+        if (
+            config.interactive
+            and questionary.confirm("Install missing dependencies now?").unsafe_ask()
+        ):
+            # Install project dependencies, without upgrading
+            deps.install_missing_dependencies()
