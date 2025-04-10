@@ -117,11 +117,7 @@ class Dist:
             cfg = not_none(atopile.config.ProjectConfig.from_path(cfg))
 
         if cfg.package is None:
-            # TODO say which project
-            raise ValueError(
-                "Project has no package configuration. "
-                "Please add a `package` section to your `ato.yaml` file."
-            )
+            raise DistValidationError("Project has no package configuration")
 
         package_filename = Dist.get_package_filename(cfg)
         matched_files = _get_non_excluded_project_files(cfg)

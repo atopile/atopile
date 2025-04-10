@@ -189,7 +189,11 @@ class PackagesAPIClient:
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
-            raise Errors.PackagesApiHTTPError(e, detail="") from e
+            try:
+                detail = response.json()["detail"]
+            except (requests.JSONDecodeError, KeyError):
+                detail = response.text
+            raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
 
     def _authenticate(self) -> dict[str, str]:

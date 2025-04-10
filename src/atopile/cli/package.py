@@ -142,7 +142,10 @@ def publish(
             output_path=config.project.paths.build,
         )
     except DistValidationError as e:
-        raise UserException("Could not build package distribution: %s" % e) from e
+        raise UserException(
+            "Could not build package distribution: %s" % e
+            + "\n Have a look at https://docs.atopile.io/atopile/essentials/4-packages"
+        ) from e
 
     logger.info("Package distribution built: %s", dist.path)
 
