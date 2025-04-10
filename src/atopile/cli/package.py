@@ -7,9 +7,9 @@ from semver import Version
 
 import faebryk.libs.backend.packages.api as packages_api
 from atopile.config import config
-from atopile.errors import UserBadParameterError
+from atopile.errors import UserBadParameterError, UserException
 from faebryk.libs.backend.packages.api import PackagesAPIClient
-from faebryk.libs.package.dist import Dist
+from faebryk.libs.package.dist import Dist, DistValidationError
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -117,7 +117,7 @@ def publish(
         _apply_version(version)
 
     if config.project.package is None:
-        raise ValueError(
+        raise UserException(
             "Project has no package configuration. "
             "Please add a `package` section to your `ato.yaml` file."
         )
@@ -125,19 +125,25 @@ def publish(
 
     if not config.project.package.identifier:
         raise UserBadParameterError(
-            "Project `identifier` is not set. Set via ENVVAR or in `ato.yaml`"
+            "Project `identifier` is not set. Set via ATO_PACKAGE_IDENTIFIER envvar"
+            " or in `ato.yaml`"
         )
 
     if not config.project.package.repository:
         raise UserBadParameterError(
-            "Project `repository` is not set. Set via ENVVAR or in `ato.yaml`"
+            "Project `repository` is not set. Set via ATO_PACKAGE_REPOSITORY envvar"
+            " or in `ato.yaml`"
         )
 
     # Build the package
-    dist = Dist.build_dist(
-        cfg=config.project,
-        output_path=config.project.paths.build,
-    )
+    try:
+        dist = Dist.build_dist(
+            cfg=config.project,
+            output_path=config.project.paths.build,
+        )
+    except DistValidationError as e:
+        raise UserException("Could not build package distribution: %s" % e) from e
+
     logger.info("Package distribution built: %s", dist.path)
 
     # Upload sequence

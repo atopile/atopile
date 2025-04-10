@@ -6,22 +6,8 @@ This CLI command provides the `ato install` command to:
 - download JLCPCB footprints
 """
 
-# import logging
-# from pathlib import Path
-# from typing import Annotated, Optional
-#
-# import questionary
-# import ruamel.yaml
-# import typer
-# from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
-#
-# import faebryk.libs.exceptions
-# from atopile import errors, version
-# from atopile.config import DependencySpec, ProjectConfig, config
-# from faebryk.libs.project.dependencies import ProjectDependency
-# from faebryk.libs.util import robustly_rm_dir
-
 import logging
+import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -33,7 +19,7 @@ from atopile import errors
 from atopile.config import DependencySpec, config
 from atopile.telemetry import log_to_posthog
 from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
-from faebryk.libs.util import indented_container
+from faebryk.libs.util import md_list
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -84,13 +70,15 @@ def install(
         return add([to_install], upgrade=upgrade, path=path)
 
 
+@log_to_posthog("cli:sync_end")
 def sync(
-    upgrade: Annotated[
-        bool,
-        typer.Option(
-            "--upgrade", "-U", help="Allow package upgrades, ignoring pinned versions"
-        ),
-    ] = False,
+    # TODO: only relevant when supporting version specs
+    # upgrade: Annotated[
+    #    bool,
+    #    typer.Option(
+    #        "--upgrade", "-U", help="Allow package upgrades, ignoring pinned versions"
+    #    ),
+    # ] = False,
     path: Annotated[
         Path | None, typer.Option("--project-path", "-C", help="Path to the project")
     ] = None,
@@ -109,6 +97,7 @@ def sync(
     logger.info("[green]Done syncing![/] :call_me_hand:", extra={"markup": True})
 
 
+@log_to_posthog("cli:add_end")
 def add(
     package: Annotated[
         list[str],
@@ -150,6 +139,7 @@ def add(
     )
 
 
+@log_to_posthog("cli:remove_end")
 def remove(
     package: Annotated[list[str], typer.Argument(help="Name of package to remove")],
     path: Annotated[
@@ -163,14 +153,16 @@ def remove(
     config.apply_options(None)
     if path:
         config.project_dir = path
-
-    raise NotImplementedError("Remove not implemented")
+    # TODO: implement removing dependencies
+    logger.error("Remove not implemented yet")
+    sys.exit(1)
 
     logger.info(
         "[green]Done removing dependencies![/] :call_me_hand:", extra={"markup": True}
     )
 
 
+@log_to_posthog("cli:list_end")
 def list():
     """
     List all dependencies in the project
@@ -178,13 +170,17 @@ def list():
     deps = ProjectDependencies()
     # TODO bug, if A -> B, B deps
     # will not see that B is under root, because of the way DAG checks roots
-    print(
-        indented_container(
-            deps.dag.to_tree(),
-            recursive=True,
-            mapper=lambda x: x.spec.identifier
-            if isinstance(x, ProjectDependency)
-            else x,
+    import rich.markdown
+
+    rich.print(
+        rich.markdown.Markdown(
+            md_list(
+                deps.dag.to_tree(),
+                recursive=True,
+                mapper=lambda x: x.spec.identifier
+                if isinstance(x, ProjectDependency)
+                else x,
+            )
         )
     )
 
@@ -200,14 +196,17 @@ dependencies_app.command()(list)
 def check_missing_deps_or_offer_to_install():
     deps = ProjectDependencies()
     if deps.not_installed_dependencies:
-        logger.warning(
-            "It appears some dependencies are missing. Run `ato sync` to install them.",
-            extra={"markdown": True},
-        )
+        interactive = config.interactive
+        logger.warning("It appears some dependencies are missing.")
 
         if (
-            config.interactive
+            interactive
             and questionary.confirm("Install missing dependencies now?").unsafe_ask()
         ):
             # Install project dependencies, without upgrading
             deps.install_missing_dependencies()
+        else:
+            logger.warning(
+                "Run `ato sync` to install them.",
+                extra={"markdown": True},
+            )

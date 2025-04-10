@@ -55,9 +55,28 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
     return [prjroot / f for f in matched_files]
 
 
+class DistValidationError(Exception): ...
+
+
 class Dist:
     def __init__(self, path: Path):
         self.path = path
+        self.validate()
+
+    def validate(self) -> None:
+        # validate
+        try:
+            self.manifest
+        except Exception as e:
+            raise DistValidationError(f"Invalid dist, can't load manifest: {e}") from e
+        if self.manifest.package is None:
+            raise DistValidationError("Invalid dist, manifest has no package")
+        if self.manifest.package.version is None:
+            raise DistValidationError("Invalid dist, manifest has no package version")
+        if self.manifest.package.identifier is None:
+            raise DistValidationError(
+                "Invalid dist, manifest has no package identifier"
+            )
 
     @property
     @once
@@ -68,14 +87,16 @@ class Dist:
 
     @property
     def version(self) -> str:
-        return self.manifest.package.version
+        return not_none(self.manifest.package).version
 
     @property
     def identifier(self) -> str:
-        return self.manifest.package.identifier
+        return not_none(self.manifest.package).identifier
 
     @staticmethod
     def get_package_filename(cfg: atopile.config.ProjectConfig) -> str:
+        if cfg.package is None:
+            raise DistValidationError("Project has no package configuration")
         return (
             pathvalidate.sanitize_filename(
                 f"{cfg.package.identifier}-{cfg.package.version}".replace("/", "-")

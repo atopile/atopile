@@ -4,7 +4,7 @@
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import requests
@@ -33,6 +33,7 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
+            status: Literal["ok"]
             upload_url: str
             release_id: str
 
@@ -45,6 +46,7 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
+            status: Literal["ok"]
             url: str
 
     class Package:
@@ -65,20 +67,20 @@ class _Models:
             @dataclass_json
             @dataclass(frozen=True)
             class Info:
-                @dataclass_json
-                @dataclass(frozen=True)
-                class Dependencies:
-                    @dataclass_json
-                    @dataclass(frozen=True)
-                    class Dependency:
-                        name: str
-                        version: str
+                # @dataclass_json
+                # @dataclass(frozen=True)
+                # class Dependencies:
+                #     @dataclass_json
+                #     @dataclass(frozen=True)
+                #     class Dependency:
+                #         identifier: str
+                #         version: str
 
-                    requires: list[Dependency]
+                #     requires: list[Dependency]
 
-                dependencies: Dependencies
+                # dependencies: Dependencies
                 download_url: str
-                requires_atopile: str
+                # requires_atopile: str
                 filename: str
 
             info: Info

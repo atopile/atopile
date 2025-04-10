@@ -7,7 +7,7 @@ from pathlib import Path
 import atopile.config as config
 from atopile import errors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
-from faebryk.libs.package.dist import Dist
+from faebryk.libs.package.dist import Dist, DistValidationError
 from faebryk.libs.util import (
     DAG,
     clone_repo,
@@ -317,7 +317,12 @@ class ProjectDependencies:
         for spec in specs:
             dep = ProjectDependency(spec)
             if dep.spec.identifier is None:
-                dep.load_dist()
+                try:
+                    dep.load_dist()
+                except DistValidationError as e:
+                    raise errors.UserException(
+                        f"Could not load distribution for {spec}: {e}"
+                    ) from e
             new_deps.append(dep)
 
         # Check for duplicates

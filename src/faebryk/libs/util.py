@@ -2020,8 +2020,11 @@ def indented_container[T](
     return f"{{{inside}{_indent_prefix * (indent_level - 1)}}}"
 
 
-def md_list(
-    obj: Iterable | dict, indent_level: int = 0, recursive: bool = False
+def md_list[T](
+    obj: Iterable[T] | dict[T, Any],
+    indent_level: int = 0,
+    recursive: bool = False,
+    mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
 ) -> str:
     """
     Convert an iterable or dictionary into a nested markdown list.
@@ -2036,23 +2039,28 @@ def md_list(
         try:
             kvs = list(enumerate(obj))
         except TypeError:
-            return f"{indent}- {str(obj)}"
+            return f"{indent}- {str(mapper(obj))}"
 
     if not kvs:
+        if isinstance(obj, Tree):
+            return ""
         return f"{indent}- *(empty)*"
 
     lines = deque()
     for k, v in kvs:
-        key_str = f" **{k}**:" if isinstance(obj, dict) else ""
+        k = mapper(k)
+        v = mapper(v)
+        key_str = f" **{k}**" if isinstance(obj, dict) else ""
 
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
-                lines.append(f"{indent}-{key_str}")
-            nested = md_list(v, indent_level + 1, recursive)
+                sep = ":" if not isinstance(v, Tree) or len(v) else ""
+                lines.append(f"{indent}-{key_str}{sep}")
+            nested = md_list(v, indent_level + 1, recursive, mapper)
             lines.append(nested)
         else:
             value_str = str(v)
-            lines.append(f"{indent}-{key_str} {value_str}")
+            lines.append(f"{indent}-{key_str}: {value_str}")
 
     return "\n".join(lines)
 
