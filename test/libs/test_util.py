@@ -8,6 +8,7 @@ from itertools import combinations
 import pytest
 
 from faebryk.libs.util import (
+    DAG,
     SharedReference,
     assert_once,
     invert_dict,
@@ -179,3 +180,22 @@ class _DictTestObjBrokenHash:
 def test_invert_dict(to_test: dict, expected: dict):
     out = invert_dict(to_test)
     assert out == expected
+
+
+def test_dag():
+    dag = DAG[int]()
+    dag.add_edge(1, 2)
+    dag.add_edge(2, 3)
+
+    assert dag.get(1).children == {2}
+    assert dag.get(3).parents == {2}
+
+    dag.add_edge(1, 3)
+    assert dag.get(3).parents == {1, 2}
+    assert dag.get(2).children == {3}
+    assert dag.get(1).children == {2, 3}
+
+    assert not dag.contains_cycles
+
+    dag.add_edge(3, 1)
+    assert dag.contains_cycles

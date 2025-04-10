@@ -76,6 +76,15 @@ class Dist:
         return self.manifest.package.identifier
 
     @staticmethod
+    def get_package_filename(cfg: atopile.config.ProjectConfig) -> str:
+        return (
+            pathvalidate.sanitize_filename(
+                f"{cfg.package.identifier}-{cfg.package.version}".replace("/", "-")
+            )
+            + ".zip"
+        )
+
+    @staticmethod
     def build_dist(
         cfg: atopile.config.ProjectConfig | Path,
         output_path: Path,
@@ -94,13 +103,7 @@ class Dist:
                 "Please add a `package` section to your `ato.yaml` file."
             )
 
-        package_filename = (
-            pathvalidate.sanitize_filename(
-                f"{cfg.package.identifier}-{cfg.package.version}".replace("/", "-")
-            )
-            + ".zip"
-        )
-
+        package_filename = Dist.get_package_filename(cfg)
         matched_files = _get_non_excluded_project_files(cfg)
         # TODO: make this ./dist or the likes?
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -141,7 +144,7 @@ class Dist:
 
                 ## Copy in the files to package
                 for file in rich.progress.track(
-                    matched_files, description="Building package..."
+                    matched_files, description=f"Building {package_filename}..."
                 ):
                     src_path = cfg.paths.root / file
                     if not src_path.is_file():
@@ -155,6 +158,7 @@ class Dist:
             out_file = output_path / package_filename
             if out_file.exists():
                 out_file.unlink()
+            out_file.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(zip_path, out_file)
 
             return Dist(out_file)

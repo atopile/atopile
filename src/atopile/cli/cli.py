@@ -127,13 +127,14 @@ def cli(
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True)(install.install)
-app.command()(install.sync)
-app.command()(install.add)
-app.command()(install.remove)
+app.command(help="Shortcut for `dependencies sync`")(install.sync)
+app.command(help="Shortcut for `dependencies add`")(install.add)
+app.command(help="Shortcut for `dependencies remove`")(install.remove)
 app.command()(configure.configure)
 app.command()(inspect.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
+app.add_typer(install.dependencies_app, name="dependencies", help="Manage dependencies")
 
 
 @app.command(hidden=True)
