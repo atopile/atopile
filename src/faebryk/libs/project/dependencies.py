@@ -34,12 +34,12 @@ class ProjectDependency:
 
         self.cfg: config.ProjectConfig | None = None
 
-    # TODO
+    # TODO see __eq__
     def __hash__(self) -> int:
         # used for BFS resolution
         return hash(self.spec.identifier)
 
-    # TODO
+    # TODO don't make property of object, but use as comparator where needed
     def __eq__(self, other: object) -> bool:
         # used for BFS resolution
         if not isinstance(other, ProjectDependency):
