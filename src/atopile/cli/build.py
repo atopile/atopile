@@ -50,8 +50,7 @@ def build(
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
     from atopile import buildutil
-
-    # from atopile.cli.install import check_missing_deps_or_offer_to_install
+    from atopile.cli.install import check_missing_deps_or_offer_to_install
     from atopile.config import BuildType
     from faebryk.library import _F as F
     from faebryk.libs.exceptions import accumulate, log_user_errors
@@ -68,7 +67,7 @@ def build(
         keep_designators=keep_designators,
     )
 
-    # check_missing_deps_or_offer_to_install()
+    check_missing_deps_or_offer_to_install()
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout
