@@ -13,7 +13,7 @@ from github_oidc.client import get_actions_header
 
 from atopile.config import config
 from faebryk.libs.package.dist import Dist
-from faebryk.libs.util import once
+from faebryk.libs.util import indented_container, once
 
 logger = logging.getLogger(__name__)
 
@@ -64,19 +64,24 @@ class _Models:
         class Response:
             @dataclass_json
             @dataclass(frozen=True)
-            class Dependencies:
+            class Info:
                 @dataclass_json
                 @dataclass(frozen=True)
-                class Dependency:
-                    name: str
-                    version: str
+                class Dependencies:
+                    @dataclass_json
+                    @dataclass(frozen=True)
+                    class Dependency:
+                        name: str
+                        version: str
 
-                requires: list[Dependency]
+                    requires: list[Dependency]
 
-            dependencies: Dependencies
-            download_url: str
-            requires_atopile: str
-            filename: str
+                dependencies: Dependencies
+                download_url: str
+                requires_atopile: str
+                filename: str
+
+            info: Info
 
 
 class Errors:
@@ -256,16 +261,19 @@ class PackagesAPIClient:
             if e.code == 404:
                 raise Errors.ReleaseNotFoundError.from_http(e) from e
             raise
-        response = _Models.Release.Response.from_dict(r.json())  # type: ignore
-
+        try:
+            response = _Models.Release.Response.from_dict(r.json())  # type: ignore
+        except Exception:
+            logger.error(indented_container(r.json(), recursive=True))
+            raise
         return response
 
     def release_dist(
         self, identifier: str, output_path: Path, version: str | None = None
     ) -> Dist:
         release = self.package(identifier, version)
-        url = release.download_url
-        filepath = output_path / release.filename
+        url = release.info.download_url
+        filepath = output_path / release.info.filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
         # use requests to download the file to output_path
         with requests.get(url, stream=True) as r:
