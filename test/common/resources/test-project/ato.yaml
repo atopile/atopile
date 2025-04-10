@@ -1,4 +1,4 @@
-ato-version: ^0.3.0
+requires-atopile: ^0.3.0
 builds:
   unconstructable:
     entry: unconstructable.py:App

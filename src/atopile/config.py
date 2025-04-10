@@ -682,21 +682,6 @@ class PackageConfig(BaseConfigModel):
 class ProjectConfig(BaseConfigModel):
     """Project-level config"""
 
-    ato_version: RequirementSpec | None = Field(
-        validation_alias=AliasChoices("ato-version", "ato_version"),
-        serialization_alias="ato-version",
-        default=None,
-        deprecated="Use `requires-atopile` instead.",
-    )
-    """
-    [Deprecated] - Use `requires-atopile` instead.
-
-    The compiler version with which the project was developed.
-
-    This is used by the compiler to ensure the code in this project is
-    compatible with the compiler version.
-    """
-
     requires_atopile: RequirementSpec = Field(
         validation_alias=AliasChoices("requires-atopile", "requires_atopile"),
         serialization_alias="requires-atopile",
@@ -759,15 +744,6 @@ class ProjectConfig(BaseConfigModel):
             raise UserConfigurationError(f"Failed to load project config: {e}") from e
 
         return _try_construct_config(ProjectConfig, identifier="", **file_contents)
-
-    @model_validator(mode="after")
-    def validate_version(self) -> Self:
-        if self.ato_version and self.requires_atopile:
-            if self.ato_version != self.requires_atopile:
-                raise UserConfigurationError(
-                    "`ato-version` and `requires-atopile-version` must match"
-                )
-        return self
 
     @field_validator("builds", mode="before")
     def init_builds(
