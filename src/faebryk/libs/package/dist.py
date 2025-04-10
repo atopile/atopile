@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pathspec
 import pathvalidate
-import rich.progress
 from ruamel.yaml import YAML
 
 import atopile.config
@@ -143,9 +142,10 @@ class Dist:
                 )
 
                 ## Copy in the files to package
-                for file in rich.progress.track(
-                    matched_files, description=f"Building {package_filename}..."
-                ):
+                for file in matched_files:
+                    # rich.progress.track(
+                    #    matched_files, description=f"Building {package_filename}..."
+                    # ):
                     src_path = cfg.paths.root / file
                     if not src_path.is_file():
                         continue

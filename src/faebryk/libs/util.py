@@ -2157,75 +2157,50 @@ def re_in(value: str, patterns: Iterable[str]) -> bool:
     return any(re.match(pattern, value) for pattern in patterns)
 
 
-# def clone_repo(
-#    repo_url: str,
-#    clone_target: Path,
-#    depth: int | None = None,
-#    ref: str | None = None,
-# ):
-#    from git import Repo
-#
-#    repo = Repo.clone_from(repo_url, clone_target, depth=depth, branch=ref)
-
-
 def clone_repo(
     repo_url: str,
     clone_target: Path,
     depth: int | None = None,
     ref: str | None = None,
-):
-    # FIXME implement with git python
-
+) -> Path:
     """Clones a git repository and optionally checks out a specific ref.
 
     Args:
         repo_url: The URL of the repository to clone.
         clone_target: The directory path where the repository should be cloned.
-        depth: The depth for shallow cloning (default is 1).
+        depth: If specified, creates a shallow clone with a history truncated
+               to the specified number of commits.
         ref: The branch, tag, or commit hash to checkout after cloning.
 
     Returns:
         The path to the cloned repository (clone_target).
 
     Raises:
-        subprocess.CalledProcessError: If any git command fails.
+        git.GitCommandError: If any git command fails.
     """
-    cmd_clone = ["git", "clone", repo_url, str(clone_target)]
-    # Only add depth if specified, as depth=0 or depth=None means full clone
-    if depth is not None:
-        cmd_clone.extend(["--depth", str(depth)])
+    from git import GitCommandError, Repo
 
-    logger.info(f"Cloning {repo_url} into {clone_target} with depth {depth}...")
-    subprocess.run(cmd_clone, check=True, capture_output=True, text=True)
-    logger.info(f"Successfully cloned {repo_url}")
+    if depth is not None and ref is not None:
+        # GitPython doesn't automatically handle fetching missing refs on checkout
+        # during shallow clones like the command-line git might with fetch hints.
+        raise NotImplementedError("Cannot specify both depth and ref")
+
+    depth_str = f" with depth {depth or 'full'}" if depth is not None else ""
+    logger.debug(f"Cloning {repo_url} into {clone_target}{depth_str}...")
+    try:
+        repo = Repo.clone_from(repo_url, clone_target, depth=depth)
+        logger.debug(f"Successfully cloned {repo_url}")
+    except GitCommandError as e:
+        logger.error(f"Failed to clone {repo_url}: {e}")
+        raise
 
     if ref:
-        logger.info(f"Checking out ref {ref} in {clone_target}...")
-        cmd_checkout = ["git", "-C", str(clone_target), "checkout", ref]
-        # If we did a shallow clone, the ref might not be available locally yet.
-        # We might need to fetch it specifically or deepen the history.
-        # Let's try checking out first, and if it fails, fetch the specific ref.
-        # Note: Fetching a specific commit hash with depth might still not work
-        # if it's too far back in history.
+        logger.debug(f"Checking out ref {ref} in {clone_target}...")
         try:
-            subprocess.run(cmd_checkout, check=True, capture_output=True, text=True)
-            logger.info(f"Successfully checked out ref {ref}")
-        except subprocess.CalledProcessError as e:
-            logger.warning(
-                f"Initial checkout of ref '{ref}' failed. Attempting fetch... Error:"
-                f" {e.stderr.strip()}"
-            )
-            # Try fetching the specific ref (works for branches/tags)
-            # For detached commits after shallow clone, might need
-            # 'git fetch --unshallow' or remove depth initially
-            cmd_fetch = ["git", "-C", str(clone_target), "fetch", "origin", ref]
-            # Only add depth if specified
-            if depth is not None:
-                cmd_fetch.extend(["--depth", str(depth)])
-
-            subprocess.run(cmd_fetch, check=True, capture_output=True, text=True)
-            # Retry checkout
-            subprocess.run(cmd_checkout, check=True, capture_output=True, text=True)
-            logger.info(f"Successfully fetched and checked out ref {ref}")
+            repo.git.checkout(ref)
+            logger.debug(f"Successfully checked out ref {ref}")
+        except GitCommandError as e:
+            logger.error(f"Failed to checkout ref {ref}: {e}")
+            raise
 
     return clone_target
