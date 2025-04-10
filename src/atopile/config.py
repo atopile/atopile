@@ -488,15 +488,6 @@ class DependencySpec(BaseConfigModel):
     def matches(self, other: "DependencySpec") -> bool:
         return self.identifier == other.identifier
 
-    def _try_represent_as_string(self) -> str | None:
-        return None
-
-    def serialize(self) -> Any:
-        str = self._try_represent_as_string()
-        if str is not None:
-            return str
-        return self.model_dump(mode="json")
-
 
 class FileDependencySpec(DependencySpec):
     type: Literal["file"] = "file"
@@ -573,11 +564,6 @@ class RegistryDependencySpec(DependencySpec):
         else:
             release = None
         return RegistryDependencySpec(identifier=identifier, release=release)
-
-    @override
-    def _try_represent_as_string(self) -> str | None:
-        release_str = f"@{self.release}" if self.release else ""
-        return f"{self.identifier}{release_str}"
 
 
 _DependencySpec = Annotated[
@@ -833,7 +819,7 @@ class ProjectConfig(BaseConfigModel):
                 config_data.get("dependencies", [])
             )  # type: ignore (class method)
 
-            serialized = dependency.serialize()
+            serialized = dependency.model_dump(mode="json")
 
             for i, dep in enumerate(deps):
                 if dep.matches(dependency):

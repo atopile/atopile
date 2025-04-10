@@ -209,7 +209,7 @@ class PackagesAPIClient:
                 data=_Models.Publish.Request(
                     identifier=identifier,
                     package_version=version,
-                    manifest=dist.manifest,
+                    manifest=dist.manifest.model_dump(mode="json"),
                 ).to_dict(),  # type: ignore
                 authenticate=not skip_auth,
             )
