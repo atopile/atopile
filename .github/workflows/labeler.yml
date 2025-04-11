@@ -8,11 +8,12 @@ on:
 jobs:
   labeler:
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/labeler@v5
         with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           sync-labels: true
           pr-number: 1159
