@@ -140,9 +140,9 @@ app.command()(inspect.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
 app.add_typer(install.dependencies_app, name="dependencies", help="Manage dependencies")
-app.command(help="Shortcut for `dependencies sync`")(install.sync)
-app.command(help="Shortcut for `dependencies add`")(install.add)
-app.command(help="Shortcut for `dependencies remove`")(install.remove)
+app.command(rich_help_panel="Shortcuts")(install.sync)
+app.command(rich_help_panel="Shortcuts")(install.add)
+app.command(rich_help_panel="Shortcuts")(install.remove)
 
 
 @app.command(hidden=True)
