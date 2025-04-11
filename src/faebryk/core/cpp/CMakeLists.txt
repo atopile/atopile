@@ -46,29 +46,23 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # configure ------------------------------------------------------------
-message(STATUS "CXX Compiler ID: ${CMAKE_CXX_COMPILER_ID}")
 
 # c++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-message(STATUS "Set CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD}")
 
 # Set compiler-specific flags
-message(STATUS "CMAKE_CXX_FLAGS before specific flags: ${CMAKE_CXX_FLAGS}")
 if(MSVC)
     # Flags for Microsoft Visual C++
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20 /Zc:__cplusplus /O2")
-    message(STATUS "CMAKE_CXX_FLAGS after MSVC flags: ${CMAKE_CXX_FLAGS}")
 else()
     # Flags for other compilers (GCC, Clang, etc.)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
-    message(STATUS "CMAKE_CXX_FLAGS after non-MSVC flags: ${CMAKE_CXX_FLAGS}")
 endif()
 
 # if editable and GCC enable colors
 if(${EDITABLE} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
-    message(STATUS "CMAKE_CXX_FLAGS after color: ${CMAKE_CXX_FLAGS}")
 endif()
 
 if(GLOBAL_PRINTF_DEBUG)
@@ -84,11 +78,11 @@ file(GLOB_RECURSE SOURCE_FILES
 
 # build ----------------------------------------------------------------
 nanobind_add_module(${PROJECT_NAME} ${SOURCE_FILES})
-message(STATUS "Added nanobind module: ${PROJECT_NAME}")
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
-message(STATUS "Set target_compile_features cxx_std_20 for ${PROJECT_NAME}")
 
 install(TARGETS ${PROJECT_NAME} DESTINATION .)
+
+message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
 if(${EDITABLE})
 # create pyi stub file with type annotations
