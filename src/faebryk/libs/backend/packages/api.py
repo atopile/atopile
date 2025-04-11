@@ -25,6 +25,7 @@ class _Models:
         class Request:
             identifier: str
             package_version: str
+            package_size: int
             manifest: dict[str, Any]
             """
             contents of the `ato.yaml` file
@@ -110,6 +111,25 @@ class Errors:
     class AuthenticationError(PackagesApiError): ...
 
     class PackageNotFoundError(PackagesApiHTTPError):
+        def __init__(
+            self,
+            error: requests.exceptions.HTTPError,
+            detail: str,
+            package_identifier: str,
+        ):
+            super().__init__(error, detail)
+            self.package_identifier = package_identifier
+
+        def __str__(self) -> str:
+            return f"{type(self).__name__}: {self.package_identifier}: {self.detail}"
+
+        @classmethod
+        def from_http(
+            cls, error: "Errors.PackagesApiHTTPError", package_identifier: str
+        ):
+            return cls(error.error, error.detail, package_identifier)
+
+    class InvalidPackageIdentifierError(PackagesApiHTTPError):
         def __init__(
             self,
             error: requests.exceptions.HTTPError,
@@ -255,6 +275,9 @@ class PackagesAPIClient:
 
         Only works in Github Actions.
         """
+        # Get filesize of dist.path
+        filesize = dist.path.stat().st_size
+
         ## Request upload
         try:
             r = self._post(
@@ -262,6 +285,7 @@ class PackagesAPIClient:
                 data=_Models.Publish.Request(
                     identifier=identifier,
                     package_version=version,
+                    package_size=filesize,
                     manifest=dist.manifest.model_dump(mode="json"),
                 ).to_dict(),  # type: ignore
                 authenticate=not skip_auth,
@@ -299,6 +323,10 @@ class PackagesAPIClient:
             except Errors.PackagesApiHTTPError as e:
                 if e.code == 404:
                     raise Errors.PackageNotFoundError.from_http(e, identifier) from e
+                if e.code == 422:
+                    raise Errors.InvalidPackageIdentifierError.from_http(
+                        e, identifier
+                    ) from e
                 raise
             response = _Models.Package.Response.from_dict(r.json())  # type: ignore
             assert isinstance(response, _Models.Package.Response)
