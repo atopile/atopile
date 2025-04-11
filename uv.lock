@@ -130,6 +130,7 @@ dependencies = [
     { name = "kicadcliwrapper" },
     { name = "matplotlib" },
     { name = "more-itertools" },
+    { name = "nanobind" },
     { name = "natsort" },
     { name = "numpy" },
     { name = "pathvalidate" },
@@ -196,6 +197,7 @@ requires-dist = [
     { name = "kicadcliwrapper", specifier = ">=1.0.0,<2.0.0" },
     { name = "matplotlib", specifier = ">=3.7.1,<4.0.0" },
     { name = "more-itertools", specifier = ">=10.4,<10.7" },
+    { name = "nanobind", specifier = ">=2.6.1" },
     { name = "natsort", specifier = ">=8.4.0" },
     { name = "numpy", specifier = ">=2.2.0,<3.0.0" },
     { name = "pathvalidate", specifier = ">=3.2.1" },
@@ -1548,11 +1550,11 @@ wheels = [
 
 [[package]]
 name = "nanobind"
-version = "2.5.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/20/fa/8e5930837f9b08202c4e566cf529480b0c3266e88f39723388baf8c69700/nanobind-2.5.0.tar.gz", hash = "sha256:cc8412e94acffa20a369191382bcdbb6fbfb302e475e87cacff9516d51023a15", size = 962802 }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/38/c28a15cfc2f311e79ea01a5eba8960eb02f64d58b6f675b8a14ef4680dac/nanobind-2.6.1.tar.gz", hash = "sha256:e05c6816a844aa699e46408add3bff8c743af9fd3d38eafa307a73633fddf94e", size = 968121 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/9e/dadc3831f40e22c1b3925f07894646ada7906ef5b48db5c5eb2b03ca9faa/nanobind-2.5.0-py3-none-any.whl", hash = "sha256:e1e5c816e5d10f0b252d82ba7f769f0f6679f5e043cf406aec3d9e184bf2a60d", size = 236912 },
+    { url = "https://files.pythonhosted.org/packages/26/f9/0b11e9b99a35dbf91972845af6012c562f3f1845a33e5b4ea631568d2740/nanobind-2.6.1-py3-none-any.whl", hash = "sha256:678be25b6ffdb7e3776548c2c9f29072e7eb41219b72c51f8e14ac0fe5c8ae0b", size = 238966 },
 ]
 
 [[package]]
