@@ -28,6 +28,7 @@ chown -R kicad:kicad /opt/atopile
 # We need to set the github workspace as a safe directory according
 # to git so we can get version information like the githash from it
 git config --global --add safe.directory /github/workspace
+git config --global --add safe.directory /workspace
 EORUN
 
 COPY --from=ghcr.io/astral-sh/uv:0.6.8 /uv /bin/uv
