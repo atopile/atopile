@@ -6,6 +6,7 @@
 #include "graph/links.hpp"
 #include "pathfinder/bfs.hpp"
 #include "pathfinder/pathcounter.hpp"
+#include <algorithm>
 #include <ranges>
 #include <unordered_map>
 #include <unordered_set>
