@@ -119,7 +119,16 @@ class Dist:
         """
         if isinstance(cfg, Path):
             # TODO better error handling
-            cfg = not_none(atopile.config.ProjectConfig.from_path(cfg))
+
+            try:
+                _cfg = atopile.config.ProjectConfig.from_path(cfg)
+            except Exception as e:
+                raise DistValidationError(
+                    f"Could not load project config at: {cfg}: {e}"
+                ) from e
+            if _cfg is None:
+                raise DistValidationError(f"Could not load project config at: {cfg}")
+            cfg = _cfg
 
         if cfg.package is None:
             raise DistValidationError("Project has no package configuration")

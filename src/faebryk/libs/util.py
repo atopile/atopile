@@ -1047,22 +1047,22 @@ def post_init_decorator(cls):
 
 
 class DAG[T]:
-    class Node:
-        def __init__(self, value: T):
+    class Node[T2]:
+        def __init__(self, value: T2):
             self.value = value
             self._children = []
             self._parents = []
 
         @property
-        def children(self) -> set[T]:
+        def children(self) -> set[T2]:
             return {child.value for child in self._children}
 
         @property
-        def parents(self) -> set[T]:
+        def parents(self) -> set[T2]:
             return {parent.value for parent in self._parents}
 
     def __init__(self):
-        self.nodes: dict[T, DAG[T].Node] = {}
+        self.nodes: dict[T, DAG[T].Node[T]] = {}
 
     @property
     def values(self) -> set[T]:
@@ -1146,6 +1146,20 @@ class DAG[T]:
         for root in self.roots:
             tree[root] = node_to_tree(self.nodes[root])
         return tree
+
+    def all_parents(self, value: T) -> set[T]:
+        node = self.get(value)
+        parents = set(node.parents)
+
+        while True:
+            new_parents = set()
+            for parent in parents:
+                new_parents.update(self.get(parent).parents)
+            if not new_parents - parents:
+                break
+            parents.update(new_parents)
+
+        return parents
 
 
 class Tree[T](dict[T, "Tree[T]"]):
@@ -2050,17 +2064,20 @@ def md_list[T](
     for k, v in kvs:
         k = mapper(k)
         v = mapper(v)
-        key_str = f" **{k}**" if isinstance(obj, dict) else ""
+        key_str = ""
+
+        if isinstance(obj, dict):
+            sep = ":" if not isinstance(v, Tree) or len(v) else ""
+            key_str = f" **{k}{sep}**"
 
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
-                sep = ":" if not isinstance(v, Tree) or len(v) else ""
                 lines.append(f"{indent}-{key_str}{sep}")
             nested = md_list(v, indent_level + 1, recursive, mapper)
             lines.append(nested)
         else:
             value_str = str(v)
-            lines.append(f"{indent}-{key_str}: {value_str}")
+            lines.append(f"{indent}-{key_str} {value_str}")
 
     return "\n".join(lines)
 

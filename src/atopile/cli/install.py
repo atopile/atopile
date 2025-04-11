@@ -7,7 +7,6 @@ This CLI command provides the `ato install` command to:
 """
 
 import logging
-import sys
 from pathlib import Path
 from typing import Annotated
 
@@ -65,8 +64,18 @@ def install(
             # TODO propose alternative
         )
 
+    if local:
+        raise errors.UserBadParameterError(
+            "--local flag has been removed. Use `ato add file://` instead",
+            extra={"markdown": True},
+        )
+
     if not to_install:
-        return sync(upgrade=upgrade, path=path)
+        if upgrade:
+            raise errors.UserBadParameterError(
+                "Upgrade flag is only supported when adding a package."
+            )
+        return sync(path=path)
     else:
         return add([to_install], upgrade=upgrade, path=path)
 
@@ -95,7 +104,11 @@ def sync(
 
     try:
         ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
-    except (api.Errors.PackageNotFoundError, api.Errors.ReleaseNotFoundError) as e:
+    except (
+        api.Errors.PackageNotFoundError,
+        api.Errors.ReleaseNotFoundError,
+        api.Errors.InvalidPackageIdentifierError,
+    ) as e:
         raise errors.UserException(f"Error syncing dependencies: {e}") from e
 
     logger.info("[green]Done syncing![/] :call_me_hand:", extra={"markup": True})
@@ -138,7 +151,11 @@ def add(
         deps.add_dependencies(
             *[DependencySpec.from_str(p) for p in package], upgrade=upgrade
         )
-    except (api.Errors.PackageNotFoundError, api.Errors.ReleaseNotFoundError) as e:
+    except (
+        api.Errors.PackageNotFoundError,
+        api.Errors.ReleaseNotFoundError,
+        api.Errors.InvalidPackageIdentifierError,
+    ) as e:
         raise errors.UserException(f"Error adding dependencies: {e}") from e
 
     logger.info(
@@ -160,9 +177,11 @@ def remove(
     config.apply_options(None)
     if path:
         config.project_dir = path
-    # TODO: implement removing dependencies
-    logger.error("Remove not implemented yet")
-    sys.exit(1)
+
+    deps = ProjectDependencies()
+    deps.remove_dependencies(*package)
+
+    deps = ProjectDependencies(clean_unmanaged_dirs=True)
 
     logger.info(
         "[green]Done removing dependencies![/] :call_me_hand:", extra={"markup": True}

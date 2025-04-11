@@ -790,7 +790,7 @@ class ProjectConfig(BaseConfigModel):
                     config_data["dependencies"][i] = serialized
                     break
             else:
-                if "dependencies" not in config_data:
+                if config_data.get("dependencies") is None:
                     config_data["dependencies"] = []
                 config_data["dependencies"].append(serialized)
 
@@ -800,7 +800,19 @@ class ProjectConfig(BaseConfigModel):
 
     @staticmethod
     def remove_dependency(config: "Config", dependency: DependencySpec):
-        raise NotImplementedError("Remove not implemented")
+        def _remove_dependency(config_data, _):
+            deps = ProjectConfig.validate_dependencies(
+                config_data.get("dependencies", [])
+            )  # type: ignore (class method)
+
+            for i, dep in enumerate(deps):
+                if dep.matches(dependency):
+                    del config_data["dependencies"][i]
+                    break
+
+            return config_data
+
+        config.update_project_settings(_remove_dependency, {})
 
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
