@@ -42,7 +42,13 @@ def install(
         ),
     ] = False,
     local: Annotated[
-        Path | None, typer.Option("--local", "-l", help="Install from local path")
+        Path | None,
+        typer.Option(
+            "--local",
+            "-l",
+            help="Install from local path",
+            hidden=True,  # deprecated
+        ),
     ] = None,
     upgrade: Annotated[
         bool, typer.Option("--upgrade", "-u", help="Upgrade dependencies")
