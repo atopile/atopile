@@ -208,7 +208,7 @@ PROJECT_NAME_REQUIREMENTS = (
 @create_app.command()
 @log_to_posthog("cli:create_project_end")
 def project(
-    template: str = "https://github.com/atopile/project-template @ compiler-v0.3",
+    template: str = "https://github.com/atopile/project-template @ compiler-v0.4",
     create_github_repo: bool | None = None,
 ):
     """
