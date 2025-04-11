@@ -50,7 +50,11 @@ from atopile.errors import (
     UserNoProjectException,
     UserNotImplementedError,
 )
-from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
+from atopile.version import (
+    DISTRIBUTION_NAME,
+    clean_version,
+    get_installed_atopile_version,
+)
 from faebryk.libs.exceptions import UserResourceException
 
 logger = logging.getLogger(__name__)
@@ -670,7 +674,7 @@ class ProjectConfig(BaseConfigModel):
     requires_atopile: RequirementSpec = Field(
         validation_alias=AliasChoices("requires-atopile", "requires_atopile"),
         serialization_alias="requires-atopile",
-        default=f"^{version.get_installed_atopile_version()}",
+        default=f"^{clean_version(version.get_installed_atopile_version())}",
     )
     """
     Version required to build this project.
