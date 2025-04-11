@@ -12,7 +12,7 @@ from faebryk.libs.util import run_live
 EXAMPLES_DIR = _repo_root() / "examples"
 
 
-@pytest.mark.parametrize("package", ["xt-connectors"])
+@pytest.mark.parametrize("package", ["atopile/addressable-leds"])
 def test_install_package(package: str, tmp_path: Path):
     example_copy = tmp_path / "example"
 
@@ -23,12 +23,12 @@ def test_install_package(package: str, tmp_path: Path):
     )
 
     _, stderr, _ = run_live(
-        [sys.executable, "-m", "atopile", "install", package],
+        [sys.executable, "-m", "atopile", "add", package],
         env={**os.environ, "NONINTERACTIVE": "1"},
         cwd=example_copy,
         stdout=print,
         stderr=print,
     )
 
-    assert f"Installing {package} in" in stderr
-    assert "Done!" in stderr.splitlines()[-1]
+    assert f"Installing {package} to" in stderr
+    assert "Done adding" in stderr.splitlines()[-1]
