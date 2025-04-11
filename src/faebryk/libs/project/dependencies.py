@@ -362,8 +362,9 @@ class ProjectDependencies:
             non_removable = (transitive_removals - to_remove_deps) & self.direct_deps
             if non_removable:
                 raise errors.UserException(
-                    f"Cannot remove {dep.identifier} as following packages depend on it"
-                    f":\n{md_list([dep.identifier for dep in non_removable])}"
+                    f"Cannot remove {dep.identifier} as it is required by the following"
+                    " packages:\n"
+                    f"{md_list([dep.identifier for dep in non_removable])}"
                 )
             all_removals.update(transitive_removals)
 
