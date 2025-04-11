@@ -25,11 +25,11 @@ class _Models:
         class Request:
             identifier: str
             package_version: str
+            package_size: int
             manifest: dict[str, Any]
             """
             contents of the `ato.yaml` file
             """
-            content_length: int
 
         @dataclass_json
         @dataclass(frozen=True)
@@ -285,8 +285,8 @@ class PackagesAPIClient:
                 data=_Models.Publish.Request(
                     identifier=identifier,
                     package_version=version,
+                    package_size=filesize,
                     manifest=dist.manifest.model_dump(mode="json"),
-                    content_length=filesize,
                 ).to_dict(),  # type: ignore
                 authenticate=not skip_auth,
             )
