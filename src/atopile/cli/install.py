@@ -66,7 +66,11 @@ def install(
         )
 
     if not to_install:
-        return sync(upgrade=upgrade, path=path)
+        if upgrade:
+            raise errors.UserNotImplementedError(
+                "Upgrade flag is only supported when adding a package."
+            )
+        return sync(path=path)
     else:
         return add([to_install], upgrade=upgrade, path=path)
 
