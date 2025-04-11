@@ -81,6 +81,10 @@ message(STATUS "Added nanobind module: ${PROJECT_NAME}")
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 message(STATUS "Set target_compile_features cxx_std_20 for ${PROJECT_NAME}")
 
+# Force /std:c++20 for MSVC target
+target_compile_options(${PROJECT_NAME} PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/std:c++20>")
+message(STATUS "Added /std:c++20 compile option for MSVC target ${PROJECT_NAME}")
+
 install(TARGETS ${PROJECT_NAME} DESTINATION .)
 
 if(${EDITABLE})
