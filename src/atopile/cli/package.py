@@ -28,7 +28,7 @@ def _yield_semver_tags() -> Iterator[Version]:
             continue
 
         try:
-            yield Version.parse(tag.name)
+            yield Version.parse(tag.name.removeprefix("v"))
         except ValueError:
             continue
 
@@ -50,7 +50,7 @@ def _apply_version(specd_version: str) -> None:
 
     else:
         try:
-            version = Version.parse(specd_version)
+            version = Version.parse(specd_version.removeprefix("v"))
         except ValueError as ex:
             raise UserBadParameterError(
                 f"{specd_version} is not a valid semantic version"
