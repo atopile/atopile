@@ -85,7 +85,7 @@ class ProjectDependency:
             if isinstance(self.spec, config.FileDependencySpec):
                 path = self.spec.path
                 if not path.exists():
-                    raise errors.UserFileNotFoundError(
+                    raise FileNotFoundError(
                         f"Local dependency path {path} does not exist for"
                         f" {self.spec.identifier}"
                     )
@@ -107,7 +107,7 @@ class ProjectDependency:
             )
             self.spec.identifier = dist.identifier
 
-        if isinstance(self.spec, config.RegistryDependencySpec):
+        elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
             dist = api.release_dist(
                 self.spec.identifier,
@@ -115,6 +115,8 @@ class ProjectDependency:
                 version=self.spec.release,
             )
             self.spec.release = dist.version
+        else:
+            raise NotImplementedError(f"Loading dist for {self.spec} not implemented")
         self.dist = dist
 
     @property
@@ -251,9 +253,6 @@ class ProjectDependencies:
 
     def remove(self, spec: config.DependencySpec):
         raise NotImplementedError("Removing dependencies is not implemented")
-
-    def load_and_check_install(self, dep: ProjectDependency):
-        pass
 
     def install_from_spec_to_manifest(
         self, dep: ProjectDependency, upgrade: bool = False
