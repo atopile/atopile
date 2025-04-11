@@ -3,6 +3,13 @@ changelog:
     - title: Library 📖
       labels:
         - library
+    - title: ato 📜
+      labels:
+        - ato
+    - title: faebryk 🏭
+      labels:
+        - faebryk
+        - fabll
     - title: CI 🤖
       labels:
         - ci
@@ -18,22 +25,6 @@ changelog:
     - title: Component Picker 🏗️
       labels:
         - picker
-    - title: Importers 📥
-      labels:
-        - importers
-    - title: Exporters 📤
-      labels:
-        - exporters
-    - title: KiCad 🟩
-      labels:
-        - kicad
-    - title: ato 📜
-      labels:
-        - ato
-    - title: faebryk 🏭
-      labels:
-        - faebryk
-        - fabll
     - title: Exciting New Features 🎉
       labels:
         - enhancement
