@@ -53,10 +53,17 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 message(STATUS "Set CMAKE_CXX_STANDARD: ${CMAKE_CXX_STANDARD}")
 
-# turn on optimization
-message(STATUS "CMAKE_CXX_FLAGS before O2: ${CMAKE_CXX_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
-message(STATUS "CMAKE_CXX_FLAGS after O2: ${CMAKE_CXX_FLAGS}")
+# Set compiler-specific flags
+message(STATUS "CMAKE_CXX_FLAGS before specific flags: ${CMAKE_CXX_FLAGS}")
+if(MSVC)
+    # Flags for Microsoft Visual C++
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20 /Zc:__cplusplus /O2")
+    message(STATUS "CMAKE_CXX_FLAGS after MSVC flags: ${CMAKE_CXX_FLAGS}")
+else()
+    # Flags for other compilers (GCC, Clang, etc.)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+    message(STATUS "CMAKE_CXX_FLAGS after non-MSVC flags: ${CMAKE_CXX_FLAGS}")
+endif()
 
 # if editable and GCC enable colors
 if(${EDITABLE} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -80,10 +87,6 @@ nanobind_add_module(${PROJECT_NAME} ${SOURCE_FILES})
 message(STATUS "Added nanobind module: ${PROJECT_NAME}")
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 message(STATUS "Set target_compile_features cxx_std_20 for ${PROJECT_NAME}")
-
-# Force /std:c++20 for MSVC target
-target_compile_options(${PROJECT_NAME} PRIVATE "$<$<CXX_COMPILER_ID:MSVC>:/std:c++20>")
-message(STATUS "Added /std:c++20 compile option for MSVC target ${PROJECT_NAME}")
 
 install(TARGETS ${PROJECT_NAME} DESTINATION .)
 
