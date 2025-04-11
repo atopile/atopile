@@ -1,25 +1,37 @@
 import fnmatch
-import itertools
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generator, Iterable, Self
+from typing import (
+    Annotated,
+    Any,
+    Callable,
+    Generator,
+    Iterable,
+    Literal,
+    Self,
+    Union,
+    override,
+)
 
 from pydantic import (
     AliasChoices,
     BaseModel,
     ConfigDict,
     Field,
+    TypeAdapter,
     ValidationError,
     ValidationInfo,
     field_serializer,
     field_validator,
     model_validator,
 )
+from pydantic.networks import HttpUrl
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -39,7 +51,7 @@ from atopile.errors import (
     UserNotImplementedError,
 )
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
-from faebryk.libs.exceptions import UserResourceException, iter_through_errors
+from faebryk.libs.exceptions import UserResourceException
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -446,43 +458,117 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
         self.paths.ensure_layout()
 
 
-class Source(BaseConfigModel):
-    local: Path | None = None
+class DependencySpec(BaseConfigModel):
+    type: str
+    # TODO ugly af, because we are mixing specs and config
+    # should be config only, not in spec
+    identifier: str
 
-    @field_serializer("local")
-    def serialize_local(self, path: Path | None, _info: Any) -> str | None:
-        return str(path) if path else None
+    @staticmethod
+    def from_str(spec_str: str) -> "DependencySpec":
+        if "://" not in spec_str:
+            spec_str = "registry://" + spec_str
+            # TODO default registry
+
+        type_specifier, _ = spec_str.split("://", 1)
+
+        # TODO dont use hardcoded strings
+        if type_specifier.startswith("file"):
+            return FileDependencySpec.from_str(spec_str)
+        elif type_specifier.startswith("git"):
+            return GitDependencySpec.from_str(spec_str)
+        elif type_specifier.startswith("registry"):
+            return RegistryDependencySpec.from_str(spec_str)
+        else:
+            raise UserConfigurationError(
+                f"Invalid type specifier: {type_specifier} in {spec_str}"
+            )
+
+    def matches(self, other: "DependencySpec") -> bool:
+        return self.identifier == other.identifier
 
 
-class Dependency(BaseConfigModel):
-    name: str
-    version_spec: str | None = None
-    link_broken: bool = False
-    path: Path | None = None
-    source: Source | None = None
-
-    project_config: "ProjectConfig | None" = Field(
-        default_factory=lambda data: ProjectConfig.from_path(data["path"]), exclude=True
-    )
-
-    @classmethod
-    def from_str(cls, spec_str: str) -> "Dependency":
-        for splitter in version.OPERATORS + ("@",):
-            if splitter in spec_str:
-                try:
-                    name, version_spec = spec_str.rsplit(splitter, 1)
-                    name = name.strip()
-                    version_spec = splitter + version_spec
-                except TypeError as ex:
-                    raise UserConfigurationError(
-                        f"Invalid dependency spec: {spec_str}"
-                    ) from ex
-                return cls(name=name, version_spec=version_spec)
-        return cls(name=spec_str)
+class FileDependencySpec(DependencySpec):
+    type: Literal["file"] = "file"
+    path: Path
+    identifier: str | None = None
 
     @field_serializer("path")
-    def serialize_path(self, path: Path | None, _info: Any) -> str | None:
-        return str(path) if path else None
+    def serialize_path(self, path: Path, _info: Any) -> str:
+        return str(path)
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "FileDependencySpec":
+        _, path = spec_str.split("://", 1)
+        return FileDependencySpec(path=Path(path))
+
+
+class GitDependencySpec(DependencySpec):
+    type: Literal["git"] = "git"
+    repo_url: str
+    path_within_repo: Path | None = None
+    ref: str | None = None
+    identifier: str | None = None
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "GitDependencySpec":
+        # Pattern to match git dependency spec format: git://<repo_url>.git[#<ref>][:<path_within_repo>]
+        # - repo_url: everything after git:// until # or :
+        # - ref: optional, everything between # and : (if present)
+        # - path_within_repo: optional, everything after :
+        pattern = (
+            r"^git://"  # Protocol prefix
+            r"(?P<repo_url>.+?\.git)"  # Repository URL (non-greedy match until .git)
+            r"(?:#(?!:|$)"  # Optional ref part: '#' not followed by ':' or end
+            r"(?P<ref>[^:]+)"  # Reference value (anything not a colon)
+            r")?"  # End of optional ref group
+            r"(?::(?P<path_within_repo>.*))?"  # Optional path part: ':' followed by
+            # the path (colon not captured)
+            r"$"  # End of string
+        )
+        match = re.match(pattern, spec_str)
+        if not match:
+            raise ValueError(f"Invalid git dependency spec: {spec_str}")
+
+        repo_url = match.group("repo_url")
+        ref = match.group("ref")
+        path_within_repo = match.group("path_within_repo")
+        if path_within_repo is not None:
+            path_within_repo = Path(path_within_repo)
+
+        return GitDependencySpec(
+            repo_url=repo_url,
+            ref=ref,
+            path_within_repo=path_within_repo,
+        )
+
+
+class RegistryDependencySpec(DependencySpec):
+    type: Literal["registry"] = "registry"
+    release: str | None = None
+
+    @property
+    @override
+    def identifier(self) -> str:
+        return self.identifier
+
+    @staticmethod
+    @override
+    def from_str(spec_str: str) -> "RegistryDependencySpec":
+        _, identifier = spec_str.split("://", 1)
+        if "@" in identifier:
+            identifier, release = identifier.split("@", 1)
+        else:
+            release = None
+        return RegistryDependencySpec(identifier=identifier, release=release)
+
+
+_DependencySpec = Annotated[
+    Union[FileDependencySpec, GitDependencySpec, RegistryDependencySpec],
+    Field(discriminator="type"),
+]
 
 
 class ServicesConfig(BaseConfigModel):
@@ -505,29 +591,104 @@ class ServicesConfig(BaseConfigModel):
     packages: Packages = Field(default_factory=Packages)
 
 
+# TODO: expand
+RequirementSpec = Annotated[
+    str,
+    Field(
+        pattern=r"^((>|>=|<|<=|\^)?[0-9]+\.[0-9]+\.[0-9]+|(>|>=)[0-9]+\.[0-9]+\.[0-9]+,(<|<=)[0-9]+\.[0-9]+\.[0-9]+)$"
+    ),
+]
+
+
+class PackageConfig(BaseConfigModel):
+    """Defines a package"""
+
+    class Author(BaseConfigModel):
+        name: str
+        email: str
+
+    identifier: str = Field(
+        pattern=r"^(?P<owner>[a-zA-Z0-9](?:[a-zA-Z0-9]|(-[a-zA-Z0-9])){0,38})/(?P<name>[a-z][a-z0-9\-]+)(/(?P<subpackage>[a-z][a-z0-9\-]+))?$"
+    )
+    """
+    The qualified name of the project, as it'd be installed from a package manager.
+    eg. `pepper/my-project` or `pepper/my-project/sub-package`
+    May contain numbers and lowercase ASCII letters only. The owner must match the
+    GitHub organization from which the project is published (eg. `pepper`).
+    Required for publishing.
+    """
+
+    version: str = Field(
+        # semver subset only
+        pattern=r"^(?P<major>[0-9]+)\.(?P<minor>[0-9]+)\.(?P<patch>[0-9]+)$",
+        default="0.0.0",
+    )
+    """
+    Project version, formatted according to the SemVer specification. See https://semver.org/.
+    Contains MAJOR.MINOR.PATCH only, e.g. 1.0.1
+    Required for publishing.
+    """
+
+    repository: HttpUrl | None = Field(default=None)
+    """
+    The repository URL of the project.
+    Required for publishing.
+    """
+
+    authors: list[Author] | None = Field(default=None)
+    """
+    List of project authors.
+    Required for publishing.
+    """
+
+    license: str | None = Field(default=None)
+    """
+    The project's license, as an SPDX 2.3 license expression.
+    Required for publishing.
+    """
+
+    summary: str | None = Field(default=None)
+    """
+    A short blurb about the project.
+    Required for publishing.
+    """
+
+    homepage: str | None = Field(default=None)
+    """
+    The project's homepage, if separate from the repository.
+    """
+
+    readme: str | None = Field(default="README.md")
+    """
+    Path to the project's README file, relative to this `ato.yaml`
+    """
+
+
 class ProjectConfig(BaseConfigModel):
     """Project-level config"""
 
-    ato_version: str = Field(
-        validation_alias=AliasChoices("ato-version", "ato_version"),
-        serialization_alias="ato-version",
-        default=f"{version.get_installed_atopile_version()}",
+    requires_atopile: RequirementSpec = Field(
+        validation_alias=AliasChoices("requires-atopile", "requires_atopile"),
+        serialization_alias="requires-atopile",
+        default=f"^{version.get_installed_atopile_version()}",
     )
     """
-    The compiler version with which the project was developed.
+    Version required to build this project.
+    """
 
-    This is used by the compiler to ensure the code in this project is
-    compatible with the compiler version.
+    package: PackageConfig | None = Field(default=None)
+    """
+    Defines a package
     """
 
     paths: ProjectPaths = Field(default_factory=ProjectPaths)
-    dependencies: list[Dependency] | None = Field(default=None)
+    dependencies: list[_DependencySpec] | None = Field(default=None)
     """
     Represents requirements on other projects.
 
     Typically, you shouldn't modify this directly.
 
-    Instead, use the `ato install` command to install dependencies.
+    Instead, use the `ato add/remove <package>` commands.
     """
 
     entry: str | None = Field(default=None)
@@ -560,6 +721,15 @@ class ProjectConfig(BaseConfigModel):
             ProjectConfig, identifier=config_file, **file_contents
         )
 
+    @classmethod
+    def from_bytes(cls, data: bytes) -> "ProjectConfig":
+        try:
+            file_contents = yaml.load(data)
+        except Exception as e:
+            raise UserConfigurationError(f"Failed to load project config: {e}") from e
+
+        return _try_construct_config(ProjectConfig, identifier="", **file_contents)
+
     @field_validator("builds", mode="before")
     def init_builds(
         cls, value: dict[str, dict[str, Any] | BuildTargetConfig], info: ValidationInfo
@@ -576,44 +746,15 @@ class ProjectConfig(BaseConfigModel):
         return value
 
     @field_validator("dependencies", mode="before")
-    def add_dependencies(cls, value: list[dict[str, Any]] | None) -> list[Dependency]:
+    def validate_dependencies(
+        cls, value: list[dict[str, Any]] | None
+    ) -> list[DependencySpec]:
         return [
-            Dependency.from_str(dep) if isinstance(dep, str) else Dependency(**dep)
+            DependencySpec.from_str(dep)
+            if isinstance(dep, str)
+            else TypeAdapter(_DependencySpec).validate_python(dep)
             for dep in (value or [])
         ]
-
-    @model_validator(mode="after")
-    def validate_compiler_versions(self) -> Self:
-        """
-        Check that the compiler version is compatible with the version
-        used to build the project.
-        """
-        dependency_cfgs = (
-            (dep.project_config for dep in self.dependencies)
-            if self.dependencies is not None
-            else ()
-        )
-
-        for cltr, cfg in iter_through_errors(itertools.chain([self], dependency_cfgs)):
-            if cfg is None:
-                continue
-
-            with cltr():
-                semver_str = cfg.ato_version
-                # FIXME: this is a hack to the moment to get around us breaking
-                # the versioning scheme in the ato.yaml files
-                for operator in version.OPERATORS:
-                    semver_str = semver_str.replace(operator, "")
-
-                built_with_version = version.parse(semver_str)
-
-                if not version.match_compiler_compatability(built_with_version):
-                    raise version.VersionMismatchError(
-                        f"{cfg.paths.root} ({cfg.ato_version}) can't be"
-                        " built with this version of atopile "
-                        f"({version.get_installed_atopile_version()})."
-                    )
-        return self
 
     @classmethod
     def skeleton(cls, entry: str, paths: ProjectPaths | None):
@@ -621,7 +762,6 @@ class ProjectConfig(BaseConfigModel):
         project_paths = paths or ProjectPaths()
         return _try_construct_config(
             ProjectConfig,
-            ato_version=f"^{version.get_installed_atopile_version()}",
             paths=project_paths,
             entry=entry,
             builds={
@@ -633,6 +773,34 @@ class ProjectConfig(BaseConfigModel):
                 )
             },
         )
+
+    @staticmethod
+    def set_or_add_dependency(config: "Config", dependency: DependencySpec):
+        def _add_dependency(config_data, _):
+            # validate_dependencies is the validator that loads the dependencies
+            # from the config file. It ensures the format of the ato.yaml
+            deps = ProjectConfig.validate_dependencies(
+                config_data.get("dependencies", [])
+            )  # type: ignore (class method)
+
+            serialized = dependency.model_dump(mode="json")
+
+            for i, dep in enumerate(deps):
+                if dep.matches(dependency):
+                    config_data["dependencies"][i] = serialized
+                    break
+            else:
+                if "dependencies" not in config_data:
+                    config_data["dependencies"] = []
+                config_data["dependencies"].append(serialized)
+
+            return config_data
+
+        config.update_project_settings(_add_dependency, {})
+
+    @staticmethod
+    def remove_dependency(config: "Config", dependency: DependencySpec):
+        raise NotImplementedError("Remove not implemented")
 
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
@@ -739,7 +907,7 @@ class Config:
         self._project_dir = _project_dir
         self._project = _try_construct_config(ProjectSettings)
 
-    def update_project_config(
+    def update_project_settings(
         self, transformer: Callable[[dict, dict], dict], new_data: dict
     ) -> None:
         """Apply an update to the project config file."""
