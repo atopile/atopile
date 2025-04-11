@@ -52,6 +52,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # turn on optimization
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
 
+# Force C++20 standard for MSVC
+if(MSVC)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20")
+endif()
+
 # if editable and GCC enable colors
 if(${EDITABLE} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fdiagnostics-color=always")
