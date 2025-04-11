@@ -109,9 +109,51 @@ class Errors:
 
     class AuthenticationError(PackagesApiError): ...
 
-    class PackageNotFoundError(PackagesApiHTTPError): ...
+    class PackageNotFoundError(PackagesApiHTTPError):
+        def __init__(
+            self,
+            error: requests.exceptions.HTTPError,
+            detail: str,
+            package_identifier: str,
+        ):
+            super().__init__(error, detail)
+            self.package_identifier = package_identifier
 
-    class ReleaseNotFoundError(PackagesApiHTTPError): ...
+        def __str__(self) -> str:
+            return f"{type(self).__name__}: {self.package_identifier}: {self.detail}"
+
+        @classmethod
+        def from_http(
+            cls, error: "Errors.PackagesApiHTTPError", package_identifier: str
+        ):
+            return cls(error.error, error.detail, package_identifier)
+
+    class ReleaseNotFoundError(PackagesApiHTTPError):
+        def __init__(
+            self,
+            error: requests.exceptions.HTTPError,
+            detail: str,
+            package_identifier: str,
+            release: str,
+        ):
+            super().__init__(error, detail)
+            self.package_identifier = package_identifier
+            self.release = release
+
+        def __str__(self) -> str:
+            return (
+                f"{type(self).__name__}: {self.package_identifier}@{self.release}:"
+                f" {self.detail}"
+            )
+
+        @classmethod
+        def from_http(
+            cls,
+            error: "Errors.PackagesApiHTTPError",
+            package_identifier: str,
+            release: str,
+        ):
+            return cls(error.error, error.detail, package_identifier, release)
 
     class ReleaseAlreadyExistsError(PackagesApiHTTPError): ...
 
@@ -256,16 +298,19 @@ class PackagesAPIClient:
                 r = self._get(f"/v1/package/{identifier}")
             except Errors.PackagesApiHTTPError as e:
                 if e.code == 404:
-                    raise Errors.PackageNotFoundError.from_http(e) from e
+                    raise Errors.PackageNotFoundError.from_http(e, identifier) from e
                 raise
             response = _Models.Package.Response.from_dict(r.json())  # type: ignore
+            assert isinstance(response, _Models.Package.Response)
             version = response.info.version
 
         try:
             r = self._get(f"/v1/package/{identifier}/releases/{version}")
         except Errors.PackagesApiHTTPError as e:
             if e.code == 404:
-                raise Errors.ReleaseNotFoundError.from_http(e) from e
+                raise Errors.ReleaseNotFoundError.from_http(
+                    e, identifier, version
+                ) from e
             raise
         try:
             response = _Models.Release.Response.from_dict(r.json())  # type: ignore

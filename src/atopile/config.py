@@ -1,5 +1,4 @@
 import fnmatch
-import itertools
 import logging
 import os
 import re
@@ -52,7 +51,7 @@ from atopile.errors import (
     UserNotImplementedError,
 )
 from atopile.version import DISTRIBUTION_NAME, get_installed_atopile_version
-from faebryk.libs.exceptions import UserResourceException, iter_through_errors
+from faebryk.libs.exceptions import UserResourceException
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -756,41 +755,6 @@ class ProjectConfig(BaseConfigModel):
             else TypeAdapter(_DependencySpec).validate_python(dep)
             for dep in (value or [])
         ]
-
-    @model_validator(mode="after")
-    def validate_compiler_versions(self) -> Self:
-        """
-        Check that the compiler version is compatible with the version
-        used to build the project.
-        """
-        # FIXME implement with ProjectDependencies
-        return self
-        dependency_cfgs = (
-            (dep.project_config for dep in self.dependencies)
-            if self.dependencies is not None
-            else ()
-        )
-
-        for cltr, cfg in iter_through_errors(itertools.chain([self], dependency_cfgs)):
-            if cfg is None:
-                continue
-
-            with cltr():
-                semver_str = cfg.requires_atopile
-                # FIXME: this is a hack to the moment to get around us breaking
-                # the versioning scheme in the ato.yaml files
-                for operator in version.OPERATORS:
-                    semver_str = semver_str.replace(operator, "")
-
-                built_with_version = version.parse(semver_str)
-
-                if not version.match_compiler_compatability(built_with_version):
-                    raise version.VersionMismatchError(
-                        f"{cfg.paths.root} ({cfg.requires_atopile}) can't be"
-                        " built with this version of atopile "
-                        f"({version.get_installed_atopile_version()})."
-                    )
-        return self
 
     @classmethod
     def skeleton(cls, entry: str, paths: ProjectPaths | None):

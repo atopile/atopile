@@ -12,6 +12,7 @@ import pathvalidate
 from ruamel.yaml import YAML
 
 import atopile.config
+from atopile import version
 from atopile.errors import UserBadParameterError
 from faebryk.libs.util import not_none, once
 
@@ -92,6 +93,10 @@ class Dist:
     @property
     def identifier(self) -> str:
         return not_none(self.manifest.package).identifier
+
+    @property
+    def compiler_version_spec(self) -> str:
+        return not_none(self.manifest.requires_atopile)
 
     @staticmethod
     def get_package_filename(cfg: atopile.config.ProjectConfig) -> str:
@@ -183,5 +188,16 @@ class Dist:
     def install(self, path: Path):
         if path.exists():
             raise FileExistsError(f"Path {path} already exists")
+
+        if not version.match(
+            self.compiler_version_spec,
+            version.get_installed_atopile_version(),
+        ):
+            raise version.VersionMismatchError(
+                f"Compiler version {version.get_installed_atopile_version()} "
+                f"does not match required version {self.compiler_version_spec}"
+                f"of package {self.identifier}@{self.version}"
+            )
+
         with zipfile.ZipFile(self.path, "r") as zip_file:
             zip_file.extractall(path)

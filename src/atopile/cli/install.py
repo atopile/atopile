@@ -18,6 +18,7 @@ import typer
 from atopile import errors
 from atopile.config import DependencySpec, config
 from atopile.telemetry import log_to_posthog
+from faebryk.libs.backend.packages import api
 from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
 from faebryk.libs.util import md_list
 
@@ -92,7 +93,10 @@ def sync(
     if path:
         config.project_dir = path
 
-    ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
+    try:
+        ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
+    except (api.Errors.PackageNotFoundError, api.Errors.ReleaseNotFoundError) as e:
+        raise errors.UserException(f"Error syncing dependencies: {e}") from e
 
     logger.info("[green]Done syncing![/] :call_me_hand:", extra={"markup": True})
 
@@ -130,9 +134,12 @@ def add(
         config.project_dir = path
 
     deps = ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
-    deps.add_dependencies(
-        *[DependencySpec.from_str(p) for p in package], upgrade=upgrade
-    )
+    try:
+        deps.add_dependencies(
+            *[DependencySpec.from_str(p) for p in package], upgrade=upgrade
+        )
+    except (api.Errors.PackageNotFoundError, api.Errors.ReleaseNotFoundError) as e:
+        raise errors.UserException(f"Error adding dependencies: {e}") from e
 
     logger.info(
         "[green]Done adding dependencies![/] :call_me_hand:", extra={"markup": True}
