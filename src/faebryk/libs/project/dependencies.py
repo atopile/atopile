@@ -3,6 +3,7 @@
 
 import logging
 from pathlib import Path
+from typing import cast
 
 import atopile.config as config
 from atopile import errors
@@ -13,6 +14,7 @@ from faebryk.libs.util import (
     clone_repo,
     duplicates,
     find_or,
+    md_list,
     not_none,
     robustly_rm_dir,
 )
@@ -75,6 +77,9 @@ class ProjectDependency:
 
     def add_to_manifest(self):
         config.ProjectConfig.set_or_add_dependency(self.gcfg, self.spec)
+
+    def remove_from_manifest(self):
+        config.ProjectConfig.remove_dependency(self.gcfg, self.spec)
 
     def load_dist(self):
         if self.dist is not None:
@@ -153,9 +158,9 @@ class ProjectDependencies:
             pcfg = config.config.project
         self.pcfg = pcfg
 
-        self.direct_deps = [
+        self.direct_deps = {
             ProjectDependency(spec, pcfg=pcfg) for spec in pcfg.dependencies or []
-        ]
+        }
         self.dag = self.resolve_dependencies()
 
         if install_missing:
@@ -333,3 +338,44 @@ class ProjectDependencies:
         # install locally and in manifest
         for dep in new_deps:
             self.install_from_spec_to_manifest(dep, upgrade=upgrade)
+
+    def remove_dependencies(self, *identifiers: str):
+        all_deps_by_identifier = {dep.identifier: dep for dep in self.all_deps}
+
+        to_remove = {
+            identifier: all_deps_by_identifier.get(identifier)
+            for identifier in identifiers
+            if identifier in all_deps_by_identifier
+        }
+
+        not_found = [item for item in to_remove.items() if item[1] is None]
+        if not_found:
+            raise errors.UserException(
+                "Could not find dependencies to remove:"
+                f" {md_list(dict(not_found).keys())}"
+            )
+        to_remove_deps = cast(set[ProjectDependency], set(to_remove.values()))
+
+        all_removals = set(to_remove_deps)
+        for dep in to_remove_deps:
+            transitive_removals = self.dag.all_parents(dep)
+            non_removable = (transitive_removals - to_remove_deps) & self.direct_deps
+            if non_removable:
+                raise errors.UserException(
+                    f"Cannot remove {dep.identifier} as it is required by the following"
+                    " packages:\n"
+                    f"{md_list([dep.identifier for dep in non_removable])}"
+                )
+            all_removals.update(transitive_removals)
+
+        if all_removals:
+            logger.info(
+                f"Removing\n{md_list([dep.identifier for dep in all_removals])}",
+                extra={"markdown": True},
+            )
+        else:
+            logger.info("No dependencies to remove")
+        for dep in all_removals:
+            dep.remove_from_manifest()
+            if dep.target_path.exists():
+                robustly_rm_dir(dep.target_path)
