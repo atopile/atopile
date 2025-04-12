@@ -1046,6 +1046,122 @@ def post_init_decorator(cls):
     return cls
 
 
+class DAG[T]:
+    class Node[T2]:
+        def __init__(self, value: T2):
+            self.value = value
+            self._children = []
+            self._parents = []
+
+        @property
+        def children(self) -> set[T2]:
+            return {child.value for child in self._children}
+
+        @property
+        def parents(self) -> set[T2]:
+            return {parent.value for parent in self._parents}
+
+    def __init__(self):
+        self.nodes: dict[T, DAG[T].Node[T]] = {}
+
+    @property
+    def values(self) -> set[T]:
+        return set(self.nodes.keys())
+
+    @property
+    def roots(self) -> set[T]:
+        return {node.value for node in self.nodes.values() if not node.parents}
+
+    @property
+    def leaves(self) -> set[T]:
+        return {node.value for node in self.nodes.values() if not node.children}
+
+    def get(self, value: T) -> Node:
+        return self.add_or_get(value)
+
+    def get_node(self, value: T) -> Node | None:
+        return self.nodes.get(value)
+
+    def add_or_get(self, value: T) -> Node:
+        node = self.get_node(value)
+        if node is not None:
+            return node
+        node = self.Node(value)
+        self.nodes[value] = node
+        return node
+
+    def add_edge(self, parent: T, child: T):
+        parent_node = self.add_or_get(parent)
+        child_node = self.add_or_get(child)
+        parent_node._children.append(child_node)
+        child_node._parents.append(parent_node)
+
+    def _dfs_cycle_check(
+        self, node: Node, visiting: set[Node], visited: set[Node]
+    ) -> bool:
+        """Helper recursive function for cycle detection."""
+        visiting.add(node)
+
+        for child in node._children:
+            if child in visiting:
+                # Cycle detected: trying to visit a node already
+                # in the current recursion stack
+                return True
+            if child not in visited:
+                # Recursively check subtree starting from child
+                if self._dfs_cycle_check(child, visiting, visited):
+                    return True
+
+        # Finished visiting node and all its descendants
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    @property
+    def contains_cycles(self) -> bool:
+        """
+        Checks if the graph contains any cycles using Depth First Search.
+        """
+        visiting = set()  # Nodes currently being visited in the current DFS path
+        visited = set()  # Nodes whose subtrees have been fully explored
+
+        # Iterate through all nodes in the graph
+        # Necessary for graphs that are not fully connected (forests)
+        for node in self.nodes.values():
+            if node not in visited:
+                if self._dfs_cycle_check(node, visiting, visited):
+                    return True  # Cycle found starting from this node
+
+        return False  # No cycles found in any component of the graph
+
+    def to_tree(self) -> "Tree[T]":
+        tree = Tree[T]()
+
+        def node_to_tree(node: DAG[T].Node) -> Tree[T]:
+            tree = Tree[T]()
+            for child in node._children:
+                tree[child.value] = node_to_tree(child)
+            return tree
+
+        for root in self.roots:
+            tree[root] = node_to_tree(self.nodes[root])
+        return tree
+
+    def all_parents(self, value: T) -> set[T]:
+        node = self.get(value)
+        parents = set(node.parents)
+
+        while True:
+            new_parents = set()
+            for parent in parents:
+                new_parents.update(self.get(parent).parents)
+            if not new_parents - parents:
+                break
+            parents.update(new_parents)
+
+        return parents
+
+
 class Tree[T](dict[T, "Tree[T]"]):
     def iter_by_depth(self) -> Iterable[Sequence[T]]:
         yield list(self.keys())
@@ -1103,6 +1219,15 @@ class Tree[T](dict[T, "Tree[T]"]):
             trees = [child for tree in trees for child in tree.values()]
 
         raise KeyErrorNotFound(f"Node {node} not found in tree")
+
+    def to_dag(self, dag: DAG[T] | None = None) -> DAG[T]:
+        if dag is None:
+            dag = DAG()
+        for parent, child_tree in self.items():
+            child_tree.to_dag(dag)
+            for child in child_tree.keys():
+                dag.add_edge(parent, child)
+        return dag
 
 
 # zip iterators, but if one iterators stops producing, the rest continue
@@ -1881,33 +2006,39 @@ class SerializableEnum[E: Enum](Serializable):
         } == {e.name: e.value for e in other.enum}
 
 
-def indented_container(
-    obj: Iterable | dict,
+def indented_container[T](
+    obj: Iterable[T] | dict[T, Any],
     indent_level: int = 1,
     recursive: bool = False,
     use_repr: bool = True,
+    mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
     _indent_prefix = "  "
     _indent = _indent_prefix * indent_level
     ind = "\n" + _indent
 
-    def format_v(v: Any) -> str:
+    def format_v(v: T) -> str:
         if not use_repr and isinstance(v, str):
             return indent(v, prefix=_indent)
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
-            return repr(v) if use_repr else str(v)
-        return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
+            return repr(mapper(v)) if use_repr else str(mapper(v))
+        return indented_container(
+            v, indent_level=indent_level + 1, recursive=recursive, mapper=mapper
+        )
 
-    inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
+    inside = ind.join(f"{mapper(k)}: {format_v(v)}" for k, v in kvs)
     if len(kvs):
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}{_indent_prefix * (indent_level - 1)}}}"
 
 
-def md_list(
-    obj: Iterable | dict, indent_level: int = 0, recursive: bool = False
+def md_list[T](
+    obj: Iterable[T] | dict[T, Any],
+    indent_level: int = 0,
+    recursive: bool = False,
+    mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
 ) -> str:
     """
     Convert an iterable or dictionary into a nested markdown list.
@@ -1922,19 +2053,27 @@ def md_list(
         try:
             kvs = list(enumerate(obj))
         except TypeError:
-            return f"{indent}- {str(obj)}"
+            return f"{indent}- {str(mapper(obj))}"
 
     if not kvs:
+        if isinstance(obj, Tree):
+            return ""
         return f"{indent}- *(empty)*"
 
     lines = deque()
     for k, v in kvs:
-        key_str = f" **{k}**:" if isinstance(obj, dict) else ""
+        k = mapper(k)
+        v = mapper(v)
+        key_str = ""
+
+        if isinstance(obj, dict):
+            sep = ":" if not isinstance(v, Tree) or len(v) else ""
+            key_str = f" **{k}{sep}**"
 
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
                 lines.append(f"{indent}-{key_str}")
-            nested = md_list(v, indent_level + 1, recursive)
+            nested = md_list(v, indent_level + 1, recursive, mapper)
             lines.append(nested)
         else:
             value_str = str(v)
@@ -2023,9 +2162,9 @@ def remove_venv_from_env(base_env: dict[str, str] | None = None):
     venv_prompt = env.pop("VIRTUAL_ENV_PROMPT", None)
     if venv_prompt is not None:
         # Remove venv from prompt
-        prompt = env["PS1"]
-        prompt = prompt.replace(venv_prompt, "")
-        env["PS1"] = prompt
+        if prompt := env.get("PS1"):
+            prompt = prompt.replace(venv_prompt, "")
+            env["PS1"] = prompt
 
     env.pop("PYTHONHOME", None)
 
@@ -2041,3 +2180,52 @@ def pretty_type(t: object | type) -> str:
 
 def re_in(value: str, patterns: Iterable[str]) -> bool:
     return any(re.match(pattern, value) for pattern in patterns)
+
+
+def clone_repo(
+    repo_url: str,
+    clone_target: Path,
+    depth: int | None = None,
+    ref: str | None = None,
+) -> Path:
+    """Clones a git repository and optionally checks out a specific ref.
+
+    Args:
+        repo_url: The URL of the repository to clone.
+        clone_target: The directory path where the repository should be cloned.
+        depth: If specified, creates a shallow clone with a history truncated
+               to the specified number of commits.
+        ref: The branch, tag, or commit hash to checkout after cloning.
+
+    Returns:
+        The path to the cloned repository (clone_target).
+
+    Raises:
+        git.GitCommandError: If any git command fails.
+    """
+    from git import GitCommandError, Repo
+
+    if depth is not None and ref is not None:
+        # GitPython doesn't automatically handle fetching missing refs on checkout
+        # during shallow clones like the command-line git might with fetch hints.
+        raise NotImplementedError("Cannot specify both depth and ref")
+
+    depth_str = f" with depth {depth or 'full'}" if depth is not None else ""
+    logger.debug(f"Cloning {repo_url} into {clone_target}{depth_str}...")
+    try:
+        repo = Repo.clone_from(repo_url, clone_target, depth=depth)
+        logger.debug(f"Successfully cloned {repo_url}")
+    except GitCommandError as e:
+        logger.error(f"Failed to clone {repo_url}: {e}")
+        raise
+
+    if ref:
+        logger.debug(f"Checking out ref {ref} in {clone_target}...")
+        try:
+            repo.git.checkout(ref)
+            logger.debug(f"Successfully checked out ref {ref}")
+        except GitCommandError as e:
+            logger.error(f"Failed to checkout ref {ref}: {e}")
+            raise
+
+    return clone_target

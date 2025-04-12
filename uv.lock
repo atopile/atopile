@@ -124,11 +124,13 @@ dependencies = [
     { name = "cookiecutter" },
     { name = "dataclasses-json" },
     { name = "deprecated" },
+    { name = "fastapi-github-oidc" },
     { name = "freetype-py" },
     { name = "gitpython" },
     { name = "kicadcliwrapper" },
     { name = "matplotlib" },
     { name = "more-itertools" },
+    { name = "nanobind" },
     { name = "natsort" },
     { name = "numpy" },
     { name = "pathvalidate" },
@@ -182,18 +184,20 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
-    { name = "atopile-easyeda2kicad", specifier = ">=0.9.0" },
+    { name = "atopile-easyeda2kicad", specifier = ">=0.9.5" },
     { name = "attrs", specifier = ">=23.2.0" },
     { name = "black", specifier = ">=24.4.2,<24.11.0" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
     { name = "dataclasses-json", specifier = ">=0.6.7,<0.7.0" },
     { name = "deprecated", specifier = "~=1.2.14" },
+    { name = "fastapi-github-oidc", specifier = ">=0.2.1" },
     { name = "freetype-py", specifier = ">=2.4,<2.6" },
     { name = "gitpython", specifier = ">=3.1.41" },
     { name = "kicadcliwrapper", specifier = ">=1.0.0,<2.0.0" },
     { name = "matplotlib", specifier = ">=3.7.1,<4.0.0" },
     { name = "more-itertools", specifier = ">=10.4,<10.7" },
+    { name = "nanobind", specifier = ">=2.6.1" },
     { name = "natsort", specifier = ">=8.4.0" },
     { name = "numpy", specifier = ">=2.2.0,<3.0.0" },
     { name = "pathvalidate", specifier = ">=3.2.1" },
@@ -246,15 +250,15 @@ dev = [
 
 [[package]]
 name = "atopile-easyeda2kicad"
-version = "0.9.4"
+version = "0.9.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/37/6ffd9f76f0452b93eb1e089d0fb9ecf3f3bd50e5dbb6aa03916367ab1cce/atopile_easyeda2kicad-0.9.4.tar.gz", hash = "sha256:c0d54a06964c6027218373a4dc7d33052619138c8f7724a1852be78e3dfd9379", size = 1474164 }
+sdist = { url = "https://files.pythonhosted.org/packages/69/79/f5fb50adb3cc939948fa9dc9a3aa4b9dc4196e181492ccdf0b7054807e89/atopile_easyeda2kicad-0.9.5.tar.gz", hash = "sha256:76e75c55b50d90c2b37f962da78f4c3a1abcadd1486e29816fcf3bcd7fbcd2d9", size = 1474187 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/4b/2236445330b125207ce8451bfc141f82ca7ce0959f24c289e64e3da98261/atopile_easyeda2kicad-0.9.4-py3-none-any.whl", hash = "sha256:a858505ba62b7a06dbee78e1f2b0228c439071fe71ca48584615ad58a23e03ac", size = 54693 },
+    { url = "https://files.pythonhosted.org/packages/af/40/e05bf39e3ed26c947c243119e5c2721b6f7b302b4b9ed5043caddf6328e2/atopile_easyeda2kicad-0.9.5-py3-none-any.whl", hash = "sha256:e4a90d214ef21fe5e5b1f1b68d0575b7bdcdbb718065e7054fb5571744d1556f", size = 54725 },
 ]
 
 [[package]]
@@ -707,6 +711,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bb/ff/b4c0dc78fbe20c3e59c0c7334de0c27eb4001a2b2017999af398bf730817/execnet-2.1.1.tar.gz", hash = "sha256:5189b52c6121c24feae288166ab41b32549c7e2348652736540b9e6e7d4e72e3", size = 166524 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/09/2aea36ff60d16dd8879bdb2f5b3ee0ba8d08cbbdcdfe870e695ce3784385/execnet-2.1.1-py3-none-any.whl", hash = "sha256:26dee51f1b80cebd6d0ca8e74dd8745419761d3bef34163928cbebbdc4749fdc", size = 40612 },
+]
+
+[[package]]
+name = "fastapi-github-oidc"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/ab/a6909604af8c231cfd19531a3e78500cd1d7baac6524f109d0b609096e20/fastapi_github_oidc-0.2.1.tar.gz", hash = "sha256:64892ae2c031cc04d1bd353a5b3d477433197a9a6b4e1dee04e0b798b7005a8f", size = 20642 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/55/682fdbb38620861a3e9d6bead034ef02a0b70eb45d70e480e5e0bc3deb66/fastapi_github_oidc-0.2.1-py3-none-any.whl", hash = "sha256:3e24102c920aaf4d7349e302db9241b6136d6648b13a52de109cb10e17b779fc", size = 4964 },
 ]
 
 [[package]]
@@ -1537,11 +1550,11 @@ wheels = [
 
 [[package]]
 name = "nanobind"
-version = "2.5.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/20/fa/8e5930837f9b08202c4e566cf529480b0c3266e88f39723388baf8c69700/nanobind-2.5.0.tar.gz", hash = "sha256:cc8412e94acffa20a369191382bcdbb6fbfb302e475e87cacff9516d51023a15", size = 962802 }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/38/c28a15cfc2f311e79ea01a5eba8960eb02f64d58b6f675b8a14ef4680dac/nanobind-2.6.1.tar.gz", hash = "sha256:e05c6816a844aa699e46408add3bff8c743af9fd3d38eafa307a73633fddf94e", size = 968121 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/9e/dadc3831f40e22c1b3925f07894646ada7906ef5b48db5c5eb2b03ca9faa/nanobind-2.5.0-py3-none-any.whl", hash = "sha256:e1e5c816e5d10f0b252d82ba7f769f0f6679f5e043cf406aec3d9e184bf2a60d", size = 236912 },
+    { url = "https://files.pythonhosted.org/packages/26/f9/0b11e9b99a35dbf91972845af6012c562f3f1845a33e5b4ea631568d2740/nanobind-2.6.1-py3-none-any.whl", hash = "sha256:678be25b6ffdb7e3776548c2c9f29072e7eb41219b72c51f8e14ac0fe5c8ae0b", size = 238966 },
 ]
 
 [[package]]

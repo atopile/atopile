@@ -75,7 +75,7 @@ class App(Module):
         logic_out.connect(xor.get_trait(F.LogicOps.can_logic_xor).xor(logic_in, on))
 
         # led
-        led = F.LEDIndicator()
+        led = F.LEDIndicator(use_mosfet=True)
         led.power_in.connect(power)
 
         # application

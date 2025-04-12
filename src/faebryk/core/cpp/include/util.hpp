@@ -4,7 +4,10 @@
 
 #pragma once
 
+// Check if compiling with GCC or Clang
+#if defined(__GNUC__) || defined(__clang__)
 #include <cxxabi.h>
+#endif
 #include <functional>
 #include <memory>
 #include <sstream>
@@ -20,10 +23,15 @@
 namespace util {
 
 template <typename T> inline std::string get_type_name(const T *obj) {
+// Demangle type name if possible (GCC/Clang), otherwise return raw name
+#if defined(__GNUC__) || defined(__clang__)
     int status;
     std::unique_ptr<char, void (*)(void *)> demangled_name(
         abi::__cxa_demangle(typeid(*obj).name(), nullptr, nullptr, &status), std::free);
-    return demangled_name ? demangled_name.get() : "unknown type";
+    return demangled_name ? demangled_name.get() : typeid(*obj).name();
+#else
+    return typeid(*obj).name();
+#endif
 }
 
 template <typename T> inline std::string get_type_name(const std::shared_ptr<T> &obj) {

@@ -70,7 +70,7 @@ def test_build_error_logging(build_name: str):
     # exiting cleanly
     expected_ending = (
         "Unfortunately errors ^^^ stopped the build. If you need a"
-        " hand jump on Discord! https://discord.gg/mjtxARsr9V 👋"
+        " hand jump on Discord! https://discord.gg/JY62WubxsP 👋"
     )
     actual_ending = process.stdout.strip().replace("\n", "")
     assert actual_ending.endswith(expected_ending)

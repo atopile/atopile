@@ -450,7 +450,7 @@ def build_target(
         config_data["builds"][build_target] = new_data
         return config_data
 
-    config.update_project_config(
+    config.update_project_settings(
         add_build_target, {"entry": str(AddrStr.from_parts(file, module))}
     )
 
