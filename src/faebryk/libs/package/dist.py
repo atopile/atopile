@@ -158,7 +158,9 @@ class Dist:
                 ) from e
 
             # Bundle up the package
-            with zipfile.ZipFile(zip_path, "x") as zip_file:
+            with zipfile.ZipFile(
+                zip_path, "x", compression=zipfile.ZIP_BZIP2, compresslevel=9
+            ) as zip_file:
                 ## Copy in the freshly minted package config
                 zip_file.write(
                     package_config_path, atopile.config.PROJECT_CONFIG_FILENAME
