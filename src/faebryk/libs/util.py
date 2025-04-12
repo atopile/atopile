@@ -19,6 +19,8 @@ import time
 import uuid
 from abc import abstractmethod
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import Enum, StrEnum
@@ -1755,24 +1757,52 @@ def times_out(seconds: float):
     def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            import signal
+            # Check the platform
+            if sys.platform == "win32":
+                # Windows implementation using concurrent.futures
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(func, *args, **kwargs)
+                try:
+                    # Wait for the function to complete with the specified timeout
+                    result = future.result(timeout=seconds)
+                    # Shutdown the executor without waiting for the worker thread to
+                    # finish
+                    # if the result was obtained successfully.
+                    executor.shutdown(wait=False, cancel_futures=False)
+                    return result
+                except FuturesTimeoutError:
+                    # If a timeout occurs, cancel the future (best effort) and shutdown.
+                    # Raise the standard TimeoutError for consistency.
+                    future.cancel()
+                    # Shutdown the executor without waiting for the worker thread,
+                    # as it's likely stuck or running long.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise TimeoutError(
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                    )
+                except Exception as e:
+                    # If the function itself raised an exception, ensure cleanup and re
+                    # -raise.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise e
+            else:
+                # Non-Windows (Unix-like) implementation using signal
+                import signal  # Import signal only when needed
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError(
-                    f"Function {func.__name__} exceeded time limit of {seconds}s"
-                )
+                def timeout_handler(signum, frame):
+                    raise TimeoutError(
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                    )
 
-            # Set up the signal handler
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            # Set alarm to trigger after specified seconds
-            signal.setitimer(signal.ITIMER_REAL, seconds)
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.setitimer(signal.ITIMER_REAL, seconds)
 
-            try:
-                return func(*args, **kwargs)
-            finally:
-                # Cancel the alarm and restore the old signal handler
-                signal.setitimer(signal.ITIMER_REAL, 0)
-                signal.signal(signal.SIGALRM, old_handler)
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    # Clean up the timer and restore the original signal handler
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, old_handler)
 
         return wrapper
 
