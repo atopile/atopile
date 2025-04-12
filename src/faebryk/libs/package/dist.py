@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import itertools
 import logging
 import shutil
 import tempfile
@@ -30,30 +31,21 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
         A list of Path objects for all non-excluded files
     """
     prjroot = cfg.paths.root
-    gitignore_path = prjroot / ".gitignore"
 
     # For gitignore patterns, we need to get all files and filter out the matched ones,
     # since gitignore patterns specify which files to exclude
-    all_files = []
-    for p in prjroot.glob("**/*"):
-        if p.is_file():
-            all_files.append(str(p.relative_to(prjroot)))
+    ignore_pattern_lines = [".git/"]
+    for ignore_file in itertools.chain(
+        prjroot.glob("*.gitignore"), prjroot.glob("*.atoignore")
+    ):
+        if not ignore_file.is_file():
+            continue
+        with open(ignore_file, "r") as f:
+            ignore_pattern_lines.extend(line.strip() for line in f.readlines())
 
-    # Check if .gitignore exists
-    if gitignore_path.exists():
-        # Read gitignore patterns
-        with open(gitignore_path, "r") as f:
-            gitignore_patterns = f.read().splitlines()
-        # Create a PathSpec from gitignore patterns
-        spec = pathspec.PathSpec.from_lines("gitwildmatch", gitignore_patterns)
+    ignore_spec = pathspec.GitIgnoreSpec.from_lines(ignore_pattern_lines)
 
-        # Filter out files that match the gitignore patterns
-        matched_files = [f for f in all_files if not spec.match_file(f)]
-    else:
-        # If no .gitignore, include all files
-        matched_files = all_files
-
-    return [prjroot / f for f in matched_files]
+    return [prjroot / f for f in ignore_spec.match_tree_files(prjroot, negate=True)]
 
 
 class DistValidationError(Exception): ...
