@@ -680,6 +680,15 @@ class ProjectConfig(BaseConfigModel):
     Version required to build this project.
     """
 
+    @model_validator(mode="before")
+    def check_deprecated_fields(cls, values: dict[str, Any]) -> dict[str, Any]:
+        if "ato-version" in values:
+            raise UserConfigurationError(
+                "The 'ato-version' field in your ato.yaml is deprecated. "
+                "Use 'requires-atopile' instead."
+            )
+        return values
+
     package: PackageConfig | None = Field(default=None)
     """
     Defines a package
