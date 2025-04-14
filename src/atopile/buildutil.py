@@ -39,7 +39,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import run_checks
+from faebryk.libs.app.checks import RequiresExternalUsageNotFulfilled, run_checks
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -111,7 +111,11 @@ def build(app: Module) -> None:
             logger.warning("Skipping bus parameter resolution")
 
         logger.info("Running checks")
-        run_checks(app, G())
+        try:
+            run_checks(app, G())
+        except RequiresExternalUsageNotFulfilled as ex:
+            # TODO ato code
+            raise UserException(str(ex)) from ex
 
         # Pre-pick project checks - things to look at before time is spend ---------
         # Make sure the footprint libraries we're looking for exist
