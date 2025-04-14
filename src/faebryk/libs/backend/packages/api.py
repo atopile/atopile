@@ -255,7 +255,7 @@ class PackagesAPIClient:
             data=data,
             files={
                 "file": (file_path.name, file_path.read_bytes()),
-                "Content-Type": "multipart/form-data",
+                "Content-Type": "application/zip",
             },
             timeout=timeout,
             verify=not skip_verify,
