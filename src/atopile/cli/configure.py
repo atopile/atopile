@@ -7,6 +7,7 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
+import platformdirs
 import questionary
 import rich
 from attrs import asdict, define
@@ -17,7 +18,9 @@ import atopile.version
 
 yaml = YAML()
 
-CONFIGURED_FOR_PATH = Path("~/.atopile/configured_for.yaml").expanduser().absolute()
+CONFIGURED_FOR_PATH = (
+    Path(platformdirs.user_config_dir("atopile")) / "configured_for.yaml"
+)
 
 
 logger = logging.getLogger(__name__)
