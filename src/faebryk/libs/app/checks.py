@@ -34,7 +34,7 @@ class RequiresExternalUsageNotFulfilled(CheckException):
 def check_requires_external_usage(G: Graph):
     unfulfilled = []
     for node, trait in GraphFunctions(G).nodes_with_trait(F.requires_external_usage):
-        if not trait.fullfilled:
+        if not trait.fulfilled:
             unfulfilled.append(node)
     if unfulfilled:
         raise RequiresExternalUsageNotFulfilled(unfulfilled)

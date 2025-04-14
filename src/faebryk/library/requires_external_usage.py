@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 class requires_external_usage(Trait.decless()):
     @property
-    def fullfilled(self) -> bool:
+    def fulfilled(self) -> bool:
         obj = self.get_obj(type=ModuleInterface)
         connected_to = set(obj.connected.get_connected_nodes(types=[type(obj)]))
         # no connections
