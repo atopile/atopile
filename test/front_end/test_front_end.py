@@ -410,3 +410,23 @@ def test_shim_power(bob: Bob):
     assert a.lv.is_connected_to(b.lv)
     assert a.hv.is_connected_to(b.hv)
     assert not a.lv.is_connected_to(b.hv)
+
+
+def test_requires(bob: Bob):
+    text = dedent(
+        """
+        module App:
+            signal a
+            signal b
+
+            a.required = True
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, Ref(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(node, "a")
+    assert a.has_trait(F.requires_external_usage)

@@ -36,6 +36,7 @@ from faebryk.library.is_pickable import is_pickable
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
+from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.can_bridge import can_bridge

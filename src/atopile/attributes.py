@@ -165,8 +165,7 @@ class GlobalAttributes(L.Module):
 
         if value.lower() == "dnp":
             raise DeprecatedException(
-                f"`mpn = {value}` is deprecated. "
-                "Use `exclude_from_bom = True` instead."
+                f"`mpn = {value}` is deprecated. Use `exclude_from_bom = True` instead."
             )
 
         # handles duplicates gracefully
@@ -287,6 +286,22 @@ class GlobalAttributes(L.Module):
         Suggested net name which will have a higher priority than generated net names.
         """
         self.add(F.has_net_name(name, level=F.has_net_name.Level.SUGGESTED))
+
+    @property
+    def required(self):
+        """
+        Only for ModuleInterfaces.
+        If set to `True`, require that interface is connected to something outside
+        of the module it's defined in.
+        """
+        raise AttributeError("write-only")
+
+    @required.setter
+    def required(self, value: bool):
+        if not value:
+            self.del_trait(F.requires_external_usage)
+            return
+        self.add(F.requires_external_usage())
 
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
