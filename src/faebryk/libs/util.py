@@ -1134,7 +1134,7 @@ class DAG[T]:
 
         return False  # No cycles found in any component of the graph
 
-    def to_tree(self) -> "Tree[T]":
+    def to_tree(self, extra_roots: Iterable[T] = tuple()) -> "Tree[T]":
         tree = Tree[T]()
 
         def node_to_tree(node: DAG[T].Node) -> Tree[T]:
@@ -1143,7 +1143,7 @@ class DAG[T]:
                 tree[child.value] = node_to_tree(child)
             return tree
 
-        for root in self.roots:
+        for root in self.roots | set(extra_roots):
             tree[root] = node_to_tree(self.nodes[root])
         return tree
 

@@ -187,8 +187,6 @@ def remove(
     deps = ProjectDependencies()
     deps.remove_dependencies(*package)
 
-    deps = ProjectDependencies(clean_unmanaged_dirs=True)
-
     logger.info(
         "[green]Done removing dependencies![/] :call_me_hand:", extra={"markup": True}
     )
@@ -207,7 +205,7 @@ def list():
     rich.print(
         rich.markdown.Markdown(
             md_list(
-                deps.dag.to_tree(),
+                deps.dag.to_tree(extra_roots=deps.direct_deps),
                 recursive=True,
                 mapper=lambda x: x.spec.identifier
                 if isinstance(x, ProjectDependency)
