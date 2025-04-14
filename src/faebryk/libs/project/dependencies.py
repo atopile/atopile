@@ -172,6 +172,9 @@ class ProjectDependencies:
     def all_deps(self) -> set[ProjectDependency]:
         return self.dag.values
 
+    def reload(self):
+        self.__init__(pcfg=self.pcfg)
+
     @property
     def not_installed_dependencies(self) -> set[ProjectDependency]:
         return {dep for dep in self.all_deps if not dep.cfg}
@@ -339,6 +342,8 @@ class ProjectDependencies:
         for dep in new_deps:
             self.install_from_spec_to_manifest(dep, upgrade=upgrade)
 
+        self.reload()
+
     def remove_dependencies(self, *identifiers: str):
         all_deps_by_identifier = {dep.identifier: dep for dep in self.all_deps}
 
@@ -356,26 +361,47 @@ class ProjectDependencies:
             )
         to_remove_deps = cast(set[ProjectDependency], set(to_remove.values()))
 
-        all_removals = set(to_remove_deps)
+        non_root_deps = to_remove_deps - self.direct_deps
+        if non_root_deps:
+            raise errors.UserException(
+                "Cannot remove dependencies"
+                " that are not direct dependencies of this project:"
+                f"\n{md_list(non_root_deps)}"
+            )
+
+        uninstall = set[ProjectDependency]()
+        no_uninstall = set[ProjectDependency]()
         for dep in to_remove_deps:
             transitive_removals = self.dag.all_parents(dep)
+            # direct project dependencies that depend on a to_be_removed dependency
+            # and are not to_be_removed themselves
             non_removable = (transitive_removals - to_remove_deps) & self.direct_deps
             if non_removable:
-                raise errors.UserException(
-                    f"Cannot remove {dep.identifier} as it is required by the following"
-                    " packages:\n"
-                    f"{md_list([dep.identifier for dep in non_removable])}"
-                )
-            all_removals.update(transitive_removals)
+                no_uninstall.add(dep)
+                continue
+            uninstall.add(dep)
 
-        if all_removals:
+        if no_uninstall:
             logger.info(
-                f"Removing\n{md_list([dep.identifier for dep in all_removals])}",
+                f"Will remove dependencies but not uninstall following packages as they"
+                f" are required by downstream dependencies:"
+                f"\n{md_list([dep.identifier for dep in no_uninstall])}",
                 extra={"markdown": True},
             )
-        else:
-            logger.info("No dependencies to remove")
-        for dep in all_removals:
+
+        if uninstall:
+            logger.info(
+                f"Uninstalling and removing:"
+                f"\n{md_list([dep.identifier for dep in uninstall])}",
+                extra={"markdown": True},
+            )
+        for dep in to_remove_deps:
             dep.remove_from_manifest()
+
+        for dep in uninstall:
             if dep.target_path.exists():
                 robustly_rm_dir(dep.target_path)
+
+        # reload and clean orphaned packages
+        self.reload()
+        self.clean_unmanaged_directories()
