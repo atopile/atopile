@@ -28,6 +28,10 @@ class I2C(ModuleInterface):
             F.ElectricLogic.connect_all_module_references(self)
         )
 
+    @L.rt_field
+    def requires_pulls(self):
+        return F.requires_pulls(self.scl, self.sda)
+
     def terminate(self, owner: Module):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
 
