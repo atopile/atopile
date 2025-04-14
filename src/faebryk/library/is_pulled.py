@@ -9,8 +9,9 @@ class is_pulled(Module.TraitT.decless()):
         super().__init__()
         self.signal = signal
 
+    @property
     @once  # TODO: only cache once True
-    def check(self) -> bool:
+    def fulfilled(self) -> bool:
         # TODO: more efficient method?
         paths = find_paths(self.signal, [self.signal.reference])
         for path in paths:
