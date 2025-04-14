@@ -38,7 +38,7 @@ class _Models:
             @dataclass_json
             @dataclass(frozen=True)
             class Info:
-                upload_url: HttpUrl
+                url: HttpUrl
                 fields: dict[str, str]
 
             status: Literal["ok"]
@@ -312,7 +312,7 @@ class PackagesAPIClient:
         ## Upload the package
         try:
             r = self._upload(
-                url=response.upload_info.upload_url,
+                url=response.upload_info.url,
                 file_path=dist.path,
                 data=response.upload_info.fields,
                 skip_verify=skip_auth,
