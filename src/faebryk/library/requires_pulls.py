@@ -18,19 +18,23 @@ class requires_pulls(Module.TraitT.decless()):
         self.logics = logics
         self.pred = pred
 
+    def _check_is_pulled(self, logic: F.ElectricSignal) -> bool:
+        if (is_pulled := logic.try_get_trait(F.is_pulled)) is None:
+            return False
+
+        return is_pulled.check()
+
     @L.rt_field
     def check(self) -> F.implements_design_check:
         def _check():
+            logics = (
+                self.logics
+                if self.pred is None
+                else [logic for logic in self.logics if self.pred(logic)]
+            )
+
             unfulfilled = [
-                logic
-                for logic in self.logics
-                if (
-                    (self.pred is None or self.pred(logic))
-                    and (
-                        (is_pulled := logic.try_get_trait(F.is_pulled)) is None
-                        or not is_pulled.check()
-                    )
-                )
+                logic for logic in logics if not self._check_is_pulled(logic)
             ]
 
             if unfulfilled:
