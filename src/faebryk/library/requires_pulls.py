@@ -11,7 +11,7 @@ class requires_pulls(Module.TraitT.decless()):
         def __init__(self, nodes: list[F.ElectricSignal]):
             super().__init__("Signals requiring pulls but not pulled", nodes=nodes)
 
-    def __init__(self, *logics: F.ElectricSignal, pred: Callable[[Node], bool]):
+    def __init__(self, *logics: F.ElectricSignal, pred: Callable[[Node], bool] | None):
         super().__init__()
 
         # TODO: direction, magnitude
@@ -24,10 +24,12 @@ class requires_pulls(Module.TraitT.decless()):
             unfulfilled = [
                 logic
                 for logic in self.logics
-                if self.pred(logic)
-                and (
-                    (is_pulled := logic.try_get_trait(F.is_pulled)) is None
-                    or not is_pulled.check()
+                if (
+                    (self.pred is None or self.pred(logic))
+                    and (
+                        (is_pulled := logic.try_get_trait(F.is_pulled)) is None
+                        or not is_pulled.check()
+                    )
                 )
             ]
 
