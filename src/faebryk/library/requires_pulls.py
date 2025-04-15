@@ -6,11 +6,7 @@ from faebryk.libs.library import L
 class requires_pulls(Module.TraitT.decless()):
     class RequiresPullNotFulfilled(F.implements_design_check.CheckException):
         def __init__(self, nodes: list[F.ElectricSignal]):
-            self.nodes = nodes
-            super().__init__(
-                f"Signals requiring pulls but not pulled: "
-                f"{', '.join(mif.get_full_name() for mif in nodes)}"
-            )
+            super().__init__("Signals requiring pulls but not pulled", nodes=nodes)
 
     def __init__(self, *logics: F.ElectricSignal):
         super().__init__()

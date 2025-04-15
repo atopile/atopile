@@ -8,7 +8,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.app.erc import simple_erc
-from faebryk.libs.exceptions import accumulate
+from faebryk.libs.exceptions import UserDesignCheckException, accumulate
 
 logger = logging.getLogger(__name__)
 
@@ -43,9 +43,12 @@ def check_design(G: Graph):
 def run_checks(app: Module, G: Graph):
     # TODO should make a Trait Trait: `implements_design_check`
 
-    with accumulate(F.implements_design_check.CheckException) as accumulator:
+    with accumulate(UserDesignCheckException) as accumulator:
         with accumulator.collect():
-            check_requires_external_usage(G)
-            check_design(G)
+            try:
+                check_requires_external_usage(G)
+                check_design(G)
+            except F.implements_design_check.CheckException as e:
+                raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
 
     simple_erc(G)
