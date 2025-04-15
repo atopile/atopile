@@ -39,7 +39,11 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import RequiresExternalUsageNotFulfilled, run_checks
+from faebryk.libs.app.checks import (
+    RequiresExternalUsageNotFulfilled,
+    run_post_build_checks,
+    run_pre_build_checks,
+)
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -112,7 +116,7 @@ def build(app: Module) -> None:
 
         logger.info("Running checks")
         try:
-            run_checks(app, G())
+            run_pre_build_checks(app, G())
         except RequiresExternalUsageNotFulfilled as ex:
             # TODO ato code
             raise UserException(str(ex)) from ex
@@ -145,6 +149,10 @@ def build(app: Module) -> None:
         # FIXME: this currently includes explicitly set footprints, but shouldn't
         F.has_package.standardize_footprints(app, solver)
         create_footprint_library(app)
+
+    with LoggingStage("postbuild", "Running post-build checks"):
+        logger.info("Running checks")
+        run_post_build_checks(app, G())
 
     with LoggingStage("nets", "Preparing nets"):
         attach_random_designators(G())
