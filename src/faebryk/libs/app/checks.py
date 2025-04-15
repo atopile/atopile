@@ -32,23 +32,18 @@ def check_requires_external_usage(G: Graph):
 
 
 def check_design(G: Graph):
-    with accumulate(F.implements_design_check.CheckException) as accumulator:
-        with accumulator.collect():
-            for _, trait in GraphFunctions(G).nodes_with_trait(
-                F.implements_design_check
-            ):
-                trait.check()
+    with accumulate(UserDesignCheckException) as accumulator:
+        for _, trait in GraphFunctions(G).nodes_with_trait(F.implements_design_check):
+            with accumulator.collect():
+                try:
+                    trait.check()
+                except F.implements_design_check.CheckException as e:
+                    raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
 
 
 def run_checks(app: Module, G: Graph):
     # TODO should make a Trait Trait: `implements_design_check`
 
-    with accumulate(UserDesignCheckException) as accumulator:
-        with accumulator.collect():
-            try:
-                check_requires_external_usage(G)
-                check_design(G)
-            except F.implements_design_check.CheckException as e:
-                raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
-
+    check_requires_external_usage(G)
+    check_design(G)
     simple_erc(G)
