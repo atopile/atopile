@@ -2,7 +2,6 @@ import pytest
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.library.requires_pulls import RequiresPullNotFulfilled
 from faebryk.libs.app.checks import check_design
 
 
@@ -16,7 +15,7 @@ def test_i2c_requires_pulls():
 
     app = App()
 
-    with pytest.raises(RequiresPullNotFulfilled):
+    with pytest.raises(F.requires_pulls.RequiresPullNotFulfilled):
         check_design(app.get_graph())
 
     app.a.terminate(app)

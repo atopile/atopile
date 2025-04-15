@@ -7,14 +7,13 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.library.implements_design_check import CheckException
 from faebryk.libs.app.erc import simple_erc
 from faebryk.libs.exceptions import accumulate
 
 logger = logging.getLogger(__name__)
 
 
-class RequiresExternalUsageNotFulfilled(CheckException):
+class RequiresExternalUsageNotFulfilled(F.implements_design_check.CheckException):
     def __init__(self, nodes: list[Node]):
         self.nodes = nodes
         super().__init__(
@@ -33,7 +32,7 @@ def check_requires_external_usage(G: Graph):
 
 
 def check_design(G: Graph):
-    with accumulate(CheckException) as accumulator:
+    with accumulate(F.implements_design_check.CheckException) as accumulator:
         with accumulator.collect():
             for _, trait in GraphFunctions(G).nodes_with_trait(
                 F.implements_design_check
@@ -44,7 +43,7 @@ def check_design(G: Graph):
 def run_checks(app: Module, G: Graph):
     # TODO should make a Trait Trait: `implements_design_check`
 
-    with accumulate(CheckException) as accumulator:
+    with accumulate(F.implements_design_check.CheckException) as accumulator:
         with accumulator.collect():
             check_requires_external_usage(G)
             check_design(G)
