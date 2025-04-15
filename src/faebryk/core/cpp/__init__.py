@@ -6,6 +6,7 @@ import logging
 from faebryk.libs.util import (
     ConfigFlag,
     at_exit,
+    find_file,
     global_lock,
     is_editable_install,
 )
@@ -62,6 +63,11 @@ def compile_and_load():
         other_flags += ["-DCMAKE_BUILD_TYPE=Debug"]
     other_flags += [f"-DGLOBAL_PRINTF_DEBUG={int(bool(PRINTF_DEBUG))}"]
 
+    run_parallel = ["-j"]
+    if sys.platform == "win32":
+        # Use /m for parallel builds with MSVC
+        run_parallel = ["/m"]
+
     with global_lock(_build_dir / "lock", timeout_s=60):
         run_live(
             [
@@ -83,17 +89,36 @@ def compile_and_load():
                 "--build",
                 str(_build_dir),
                 "--",
-                "-j",
+                *run_parallel,
             ],
             stdout=logger.debug,
             stderr=logger.error,
         )
 
+    # Search the module in the build directory and its subdirectories
     if not _build_dir.exists():
         raise RuntimeError("build directory not found")
 
-    # add build dir to sys path
-    sys.path.append(str(_build_dir))
+    module_dir = _build_dir
+    if sys.platform == "win32":
+        # Find the actual directory containing the compiled module (.pyd on Windows)
+        # Check common locations: build dir itself, Debug, Release subdirs
+        module_name_start = "faebryk_core_cpp_editable"
+        search_paths = [_build_dir, _build_dir / "Debug", _build_dir / "Release"]
+        module_path = None
+        for potential_dir in search_paths:
+            module_path = find_file(potential_dir, f"{module_name_start}*.pyd")
+            if module_path:
+                module_dir = module_path.parent
+                break
+        if not module_path:
+            raise RuntimeError(
+                f"Could not find {module_name_start}*.pyd in "
+                "build directory or subdirectories."
+            )
+
+    # Add the directory containing the .pyd file to sys.path
+    sys.path.append(str(module_dir))
 
     modified = {k for k, v in dates.items() if os.path.getmtime(k) > v}
 

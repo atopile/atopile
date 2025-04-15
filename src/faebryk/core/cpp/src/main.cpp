@@ -16,7 +16,7 @@
 
 #if EDITABLE
 #define PYMOD(m) NB_MODULE(faebryk_core_cpp_editable, m)
-#warning "EDITABLE"
+#pragma message("EDITABLE")
 #else
 #define PYMOD(m) NB_MODULE(faebryk_core_cpp, m)
 #endif

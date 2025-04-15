@@ -1581,6 +1581,10 @@ def run_live(
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
 
+    # on windows just run the command since select does not work
+    if sys.platform == "win32":
+        return subprocess.run(*args, **kwargs)
+
     process = subprocess.Popen(
         *args,
         stdout=subprocess.PIPE,
@@ -2259,3 +2263,15 @@ def clone_repo(
             raise
 
     return clone_target
+
+
+def find_file(base_dir: Path, pattern: str) -> Path | None:
+    """
+    equivalent to `find base_dir -type f -name pattern`
+    """
+    if not base_dir.exists() or not base_dir.is_dir():
+        return None
+    for file in base_dir.rglob(pattern):
+        if file.is_file():
+            return file
+    return None
