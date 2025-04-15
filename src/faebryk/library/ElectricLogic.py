@@ -107,6 +107,10 @@ class ElectricLogic(F.ElectricSignal):
     def is_pulled(self):
         return F.is_pulled(self)
 
+    @L.rt_field
+    def crosses_footprint_boundary(self):
+        return F.crosses_footprint_boundary()
+
     specializable_types = L.f_field(F.can_specialize_defined)([F.Logic])
 
     # ----------------------------------------

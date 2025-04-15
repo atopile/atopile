@@ -69,6 +69,7 @@ from faebryk.library.has_single_electric_reference_defined import has_single_ele
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic
 from faebryk.library.Footprint import Footprint
+from faebryk.library.crosses_footprint_boundary import crosses_footprint_boundary
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id

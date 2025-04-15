@@ -6,6 +6,7 @@ from enum import Enum
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -30,7 +31,11 @@ class I2C(ModuleInterface):
 
     @L.rt_field
     def requires_pulls(self):
-        return F.requires_pulls(self.scl, self.sda)
+        def pred(logic: Node):
+            trait = logic.try_get_trait(F.crosses_footprint_boundary)
+            return True if trait is None else trait.check()
+
+        return F.requires_pulls(self.scl, self.sda, pred=pred)
 
     def terminate(self, owner: Module):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf

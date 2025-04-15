@@ -1,5 +1,8 @@
+from typing import Callable
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.node import Node
 from faebryk.libs.library import L
 
 
@@ -8,11 +11,12 @@ class requires_pulls(Module.TraitT.decless()):
         def __init__(self, nodes: list[F.ElectricSignal]):
             super().__init__("Signals requiring pulls but not pulled", nodes=nodes)
 
-    def __init__(self, *logics: F.ElectricSignal):
+    def __init__(self, *logics: F.ElectricSignal, pred: Callable[[Node], bool]):
         super().__init__()
 
         # TODO: direction, magnitude
         self.logics = logics
+        self.pred = pred
 
     @L.rt_field
     def check(self) -> F.implements_design_check:
@@ -20,8 +24,11 @@ class requires_pulls(Module.TraitT.decless()):
             unfulfilled = [
                 logic
                 for logic in self.logics
-                if (is_pulled := logic.try_get_trait(F.is_pulled)) is None
-                or not is_pulled.check()
+                if self.pred(logic)
+                and (
+                    (is_pulled := logic.try_get_trait(F.is_pulled)) is None
+                    or not is_pulled.check()
+                )
             ]
 
             if unfulfilled:
