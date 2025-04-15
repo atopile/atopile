@@ -37,7 +37,7 @@ KICAD_VERSION_NAMES = {
 
 def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
     acc = accumulate(DecodeError, group_message="No decoders succeeded")
-    if path.read_text().startswith("(module"):
+    if path.read_text(encoding="utf-8").startswith("(module"):
         with acc.collect():
             return loads(path, C_kicad_footprint_file_v5).convert_to_new()
     else:

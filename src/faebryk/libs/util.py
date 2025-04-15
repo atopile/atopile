@@ -1643,7 +1643,7 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
     ):
         # check if pid still alive
         try:
-            pid = int(lock_file_path.read_text())
+            pid = int(lock_file_path.read_text(encoding="utf-8"))
         except ValueError:
             lock_file_path.unlink(missing_ok=True)
             continue
@@ -1656,7 +1656,7 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
         time.sleep(0.1)
 
     # write our pid to the lock file
-    lock_file_path.write_text(str(os.getpid()))
+    lock_file_path.write_text(str(os.getpid()), encoding="utf-8")
     try:
         yield
     finally:

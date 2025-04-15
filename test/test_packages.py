@@ -15,7 +15,7 @@ from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 
 def load_footprint(package_path: Path) -> C_kicad_footprint_file:
     """Load a footprint file and return the parsed dataclass."""
-    return C_kicad_footprint_file.loads(package_path.read_text())
+    return C_kicad_footprint_file.loads(package_path.read_text(encoding="utf-8"))
 
 
 @pytest.mark.parametrize("package_path", KNOWN_PACKAGES_TO_FOOTPRINT.values())

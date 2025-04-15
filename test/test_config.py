@@ -35,7 +35,7 @@ TEST_CONFIG_TEXT = dedent(
 
 def test_roundtrip(tmp_path: Path):
     config_path = tmp_path / PROJECT_CONFIG_FILENAME
-    config_path.write_text(TEST_CONFIG_TEXT)
+    config_path.write_text(TEST_CONFIG_TEXT, encoding="utf-8")
     config.project_dir = tmp_path
 
     assert config.project.requires_atopile == "^0.2.0"
@@ -57,12 +57,12 @@ def test_roundtrip(tmp_path: Path):
 
     config.update_project_settings(lambda data, new_data: data, {})
 
-    assert config_path.read_text() == TEST_CONFIG_TEXT
+    assert config_path.read_text(encoding="utf-8") == TEST_CONFIG_TEXT
 
 
 def test_update_project_config(tmp_path: Path):
     config_path = tmp_path / PROJECT_CONFIG_FILENAME
-    config_path.write_text(TEST_CONFIG_TEXT)
+    config_path.write_text(TEST_CONFIG_TEXT, encoding="utf-8")
     config.project_dir = tmp_path
 
     # Make some changes and check that they are reflected in the config

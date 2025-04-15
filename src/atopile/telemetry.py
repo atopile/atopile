@@ -99,12 +99,12 @@ def load_telemetry_setting() -> bool:
 
     if not atopile_yaml.exists():
         atopile_config_dir.mkdir(parents=True, exist_ok=True)  # Use the new path
-        with atopile_yaml.open("w") as f:
+        with atopile_yaml.open("w", encoding="utf-8") as f:
             yaml = YAML()
             yaml.dump({"telemetry": True}, f)
         return True
 
-    with atopile_yaml.open() as f:
+    with atopile_yaml.open(encoding="utf-8") as f:
         yaml = YAML()
         config = yaml.load(f)
         return config.get("telemetry", True)
