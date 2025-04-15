@@ -1,6 +1,5 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.pathfinder import find_paths
 from faebryk.libs.util import predicated_once
 
 
@@ -11,11 +10,13 @@ class is_pulled(Module.TraitT.decless()):
 
     @predicated_once(lambda result: result is True)
     def check(self) -> bool:
-        # TODO: more efficient method?
-        paths = find_paths(self.signal, [self.signal.reference])
-        for path in paths:
-            for node in path:
-                if isinstance(node, F.Resistor):
+        connected_to = self.signal.line.get_connected()
+        if connected_to is None:
+            return False
+
+        for mif, _ in connected_to.items():
+            if (parent := mif.get_parent()) is not None:
+                if isinstance(parent[0], F.Resistor):
                     return True
 
         return False
