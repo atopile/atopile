@@ -18,7 +18,7 @@ class CheckException(Exception): ...
 
 def run_checks(app: Module, G: Graph):
     # TODO should make a Trait Trait: `implements_design_check`
-    check_requires_external_usage(G)
+    check_requires_external_usage(app, G)
     simple_erc(G)
 
 
@@ -31,10 +31,13 @@ class RequiresExternalUsageNotFulfilled(CheckException):
         )
 
 
-def check_requires_external_usage(G: Graph):
+def check_requires_external_usage(app: Module, G: Graph):
     unfulfilled = []
     for node, trait in GraphFunctions(G).nodes_with_trait(F.requires_external_usage):
         if not trait.fulfilled:
+            # Don't check the app module itself
+            if app is node:
+                continue
             unfulfilled.append(node)
     if unfulfilled:
         raise RequiresExternalUsageNotFulfilled(unfulfilled)
