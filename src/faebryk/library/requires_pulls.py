@@ -2,7 +2,6 @@ from typing import Callable
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 
@@ -23,7 +22,7 @@ class requires_pulls(Module.TraitT.decless()):
     def __init__(
         self,
         *signals: F.ElectricSignal,
-        pred: Callable[[Node], bool] | None,
+        pred: Callable[[F.ElectricSignal], bool] | None,
         required_resistance: Quantity_Interval,
     ):
         super().__init__()
