@@ -35,7 +35,12 @@ class I2C(ModuleInterface):
             trait = logic.try_get_trait(F.crosses_footprint_boundary)
             return True if trait is None else trait.check()
 
-        return F.requires_pulls(self.scl, self.sda, pred=pred)
+        return F.requires_pulls(
+            self.scl,
+            self.sda,
+            pred=pred,
+            required_resistance=L.Range(1 * P.kohm, 10 * P.kohm),
+        )
 
     def terminate(self, owner: Module):
         # TODO: https://www.ti.com/lit/an/slva689/slva689.pdf
