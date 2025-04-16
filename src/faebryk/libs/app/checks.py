@@ -43,8 +43,6 @@ def check_design(G: Graph):
 
 
 def run_pre_build_checks(app: Module, G: Graph):
-    # TODO should make a Trait Trait: `implements_design_check`
-
     check_requires_external_usage(G)
     check_design(G)
     simple_erc(G)
