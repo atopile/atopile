@@ -1,10 +1,10 @@
 from typing import Callable, Sequence
 
-from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.core.trait import Trait
 
 
-class implements_design_check(Module.TraitT.decless()):
+class implements_design_check(Trait.TraitT.decless()):
     class CheckException(Exception):
         nodes: Sequence[Node]
 
