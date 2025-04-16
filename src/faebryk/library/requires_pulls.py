@@ -22,34 +22,30 @@ class requires_pulls(Module.TraitT.decless()):
 
     def __init__(
         self,
-        *logics: F.ElectricSignal,
+        *signals: F.ElectricSignal,
         pred: Callable[[Node], bool] | None,
         required_resistance: Quantity_Interval,
     ):
         super().__init__()
 
         # TODO: direction
-        self.logics = logics
+        self.signals = signals
         self.pred = pred
         self.required_resistance = required_resistance
-
-    def _check_is_pulled(self, logic: F.ElectricSignal) -> bool:
-        if (is_pulled := logic.try_get_trait(F.is_pulled)) is None:
-            return False
-
-        return is_pulled.check(self.required_resistance)
 
     @L.rt_field
     def check(self) -> F.implements_design_check:
         def _check():
-            logics = (
-                self.logics
+            signals = (
+                self.signals
                 if self.pred is None
-                else [logic for logic in self.logics if self.pred(logic)]
+                else [signal for signal in self.signals if self.pred(signal)]
             )
 
             unfulfilled = [
-                logic for logic in logics if not self._check_is_pulled(logic)
+                signal
+                for signal in signals
+                if not signal.is_pulled_at(self.required_resistance)
             ]
 
             if unfulfilled:

@@ -103,7 +103,6 @@ class ElectricLogic(F.ElectricSignal):
     def pulled(self):
         return ElectricLogic.can_be_pulled_defined(self.line, self.reference)
 
-    is_pulled = L.f_field(F.is_pulled)
     crosses_footprint_boundary = L.f_field(F.crosses_footprint_boundary)
 
     specializable_types = L.f_field(F.can_specialize_defined)([F.Logic])

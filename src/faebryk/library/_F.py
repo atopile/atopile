@@ -165,20 +165,17 @@ from faebryk.library.XT30PW2plus2 import XT30PW2plus2
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
 from faebryk.library.ButtonCell import ButtonCell
 from faebryk.library.DifferentialPair import DifferentialPair
+from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
 from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
-from faebryk.library.is_pulled import is_pulled
+from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
-from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
-from faebryk.library.ElectricLogic import ElectricLogic
-from faebryk.library.requires_pulls import requires_pulls
-from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
 from faebryk.library.Diodes_Incorporated_AP255x_x import Diodes_Incorporated_AP255x_x
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.EnablePin import EnablePin
@@ -195,7 +192,6 @@ from faebryk.library.SNx4LVC541A import SNx4LVC541A
 from faebryk.library.SPI import SPI
 from faebryk.library.SWD import SWD
 from faebryk.library.Sercom import Sercom
-from faebryk.library.TPS2116 import TPS2116
 from faebryk.library.TXS0102DCUR import TXS0102DCUR
 from faebryk.library.UART_Base import UART_Base
 from faebryk.library.USB2_0_IF import USB2_0_IF
@@ -203,8 +199,10 @@ from faebryk.library.Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR import Wuxi_I_core_El
 from faebryk.library.XL_3528RGBW_WS2812B import XL_3528RGBW_WS2812B
 from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.pf_74AHCT2G125 import pf_74AHCT2G125
+from faebryk.library.TPS2116 import TPS2116
+from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.I2C import I2C
-from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
+from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
 from faebryk.library.ElectricLogicGates import ElectricLogicGates
@@ -214,7 +212,6 @@ from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.RP2040Pinmux import RP2040Pinmux
 from faebryk.library.DE9RS232Connector import DE9RS232Connector
 from faebryk.library.SWDConnector import SWDConnector
-from faebryk.library.TPS2116_ReferenceDesign import TPS2116_ReferenceDesign
 from faebryk.library.Analog_Devices_ADM2587EBRWZ import Analog_Devices_ADM2587EBRWZ
 from faebryk.library.HLK_LD2410B_P import HLK_LD2410B_P
 from faebryk.library.PM1006 import PM1006
@@ -227,6 +224,7 @@ from faebryk.library.USB3_IF import USB3_IF
 from faebryk.library.USB_Type_C_Receptacle_16_pin import USB_Type_C_Receptacle_16_pin
 from faebryk.library.WCHJiangsu_Qin_Heng_CH224K import WCHJiangsu_Qin_Heng_CH224K
 from faebryk.library.can_switch_power_defined import can_switch_power_defined
+from faebryk.library.TPS2116_ReferenceDesign import TPS2116_ReferenceDesign
 from faebryk.library.BH1750FVI_TR import BH1750FVI_TR
 from faebryk.library.EEPROM import EEPROM
 from faebryk.library.HDMI import HDMI
@@ -237,6 +235,7 @@ from faebryk.library.OLED_Module import OLED_Module
 from faebryk.library.QWIIC_Connector import QWIIC_Connector
 from faebryk.library.SCD40 import SCD40
 from faebryk.library.USB2514B import USB2514B
+from faebryk.library.RS485_Bus_Protection import RS485_Bus_Protection
 from faebryk.library.CD4011 import CD4011
 from faebryk.library.ME6211C33M5G_N import ME6211C33M5G_N
 from faebryk.library.Winbond_Elec_W25Q128JVSIQ import Winbond_Elec_W25Q128JVSIQ

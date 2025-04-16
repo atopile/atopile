@@ -9,6 +9,9 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
+from faebryk.libs.sets.quantity_sets import Quantity_Interval
+from faebryk.libs.units import P
+from faebryk.libs.util import predicated_once
 
 
 class ElectricSignal(F.Signal):
@@ -90,3 +93,30 @@ class ElectricSignal(F.Signal):
                 return out
 
         return _can_be_surge_protected_defined(self.reference.lv, self.line)
+
+    @property
+    def is_pulled(self) -> bool:
+        return self.is_pulled_at(Quantity_Interval(0 * P.ohm))
+
+    @predicated_once(lambda result: result is True)
+    def is_pulled_at(self, required_resistance: Quantity_Interval) -> bool:
+        connected_to = self.line.get_connected()
+        if connected_to is None:
+            return False
+
+        resistors = []
+        for mif, _ in connected_to.items():
+            if (maybe_parent := mif.get_parent()) is not None:
+                parent, _ = maybe_parent
+
+                if isinstance(parent, F.Resistor):
+                    resistors.append(parent)
+
+        if len(resistors) == 0:
+            return False
+        elif len(resistors) == 1:
+            return resistors[0].resistance in required_resistance
+        else:
+            raise ValueError(
+                "Cannot determine effective resistance of multiple resistors"
+            )
