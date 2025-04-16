@@ -39,7 +39,12 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import RequiresExternalUsageNotFulfilled, run_checks
+from faebryk.libs.app.checks import (
+    DrcException,
+    RequiresExternalUsageNotFulfilled,
+    run_checks,
+    run_post_pcb_checks,
+)
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -232,6 +237,13 @@ def build(app: Module) -> None:
     excluded_targets = set(config.build.exclude_targets)
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
+
+    if "mfg-data" in targets:
+        with LoggingStage("drc", "Running pre-manufacturing checks"):
+            try:
+                run_post_pcb_checks(app, G())
+            except DrcException as ex:
+                raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
     # Make the noise
     built_targets = []

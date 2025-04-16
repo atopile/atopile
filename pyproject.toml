@@ -26,7 +26,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
+    "antlr4-python3-runtime==4.13.2",  # Strict version because the generated (but versioned) files must match
     "atopile-easyeda2kicad>=0.9.5",
     "attrs>=23.2.0",
     "black>=24.4.2,<24.11.0",
@@ -37,7 +37,7 @@ dependencies = [
     "fastapi-github-oidc>=0.2.1",
     "freetype-py>=2.4,<2.6",
     "gitpython>=3.1.41",
-    "kicadcliwrapper>=1.0.0,<2.0.0",
+    "kicadcliwrapper>=1.1.0,<2.0.0",
     "matplotlib>=3.7.1,<4.0.0",
     "more-itertools>=10.4,<10.7",
     "nanobind>=2.6.1",

@@ -2107,7 +2107,7 @@ def md_list[T](
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
                 lines.append(f"{indent}-{key_str}")
-            nested = md_list(v, indent_level + 1, recursive, mapper)
+            nested = md_list(v, indent_level + 1, recursive=recursive, mapper=mapper)
             lines.append(nested)
         else:
             value_str = str(v)
