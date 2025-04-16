@@ -150,10 +150,6 @@ def build(app: Module) -> None:
         F.has_package.standardize_footprints(app, solver)
         create_footprint_library(app)
 
-    with LoggingStage("postbuild", "Running post-build checks"):
-        logger.info("Running checks")
-        run_post_build_checks(app, G())
-
     with LoggingStage("nets", "Preparing nets"):
         attach_random_designators(G())
         nets = attach_nets(G())
@@ -166,6 +162,10 @@ def build(app: Module) -> None:
             load_net_names(G())
         attach_net_names(nets)
         check_net_names(G())
+
+    with LoggingStage("postbuild", "Running post-build checks"):
+        logger.info("Running checks")
+        run_post_build_checks(app, G())
 
     with LoggingStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb)

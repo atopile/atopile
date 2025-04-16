@@ -30,15 +30,11 @@ class I2C(ModuleInterface):
 
     @L.rt_field
     def requires_pulls(self):
-        def pred(signal: F.ElectricSignal):
-            trait = signal.try_get_trait(F.crosses_footprint_boundary)
-            return True if trait is None else trait.check()
-
         return F.requires_pulls(
             self.scl,
             self.sda,
-            pred=pred,
-            required_resistance=L.Range(1 * P.kohm, 10 * P.kohm),
+            pred=lambda signal: signal.line.crosses_footprint_boundary(),
+            required_resistance=L.Range(0 * P.ohm, 10 * P.kohm),
         )
 
     def terminate(self, owner: Module):

@@ -21,3 +21,11 @@ class Electrical(ModuleInterface):
 
         assert len(nets) == 1
         return next(iter(nets))
+
+    def crosses_footprint_boundary(self):
+        net = self.get_net()
+
+        if net is None:
+            return False
+
+        return len(net.get_footprints()) > 1
