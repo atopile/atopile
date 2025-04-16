@@ -107,7 +107,9 @@ def compile_and_load():
         search_paths = [_build_dir, _build_dir / "Debug", _build_dir / "Release"]
         module_path = None
         for potential_dir in search_paths:
-            module_path = find_file(potential_dir, f"{module_name_start}*.pyd")
+            module_path = next(
+                find_file(potential_dir, f"{module_name_start}*.pyd"), None
+            )
             if module_path:
                 module_dir = module_path.parent
                 break

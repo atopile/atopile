@@ -7,7 +7,6 @@ from pathlib import Path
 from textwrap import dedent
 from typing import Optional
 
-import platformdirs
 import questionary
 import rich
 from attrs import asdict, define
@@ -15,12 +14,11 @@ from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
 import atopile.version
+from faebryk.libs.paths import get_config_dir
 
 yaml = YAML()
 
-CONFIGURED_FOR_PATH = (
-    Path(platformdirs.user_config_dir("atopile")) / "configured_for.yaml"
-)
+CONFIGURED_FOR_PATH = get_config_dir() / "configured_for.yaml"
 
 
 logger = logging.getLogger(__name__)

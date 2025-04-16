@@ -2265,7 +2265,7 @@ def clone_repo(
     return clone_target
 
 
-def find_file(base_dir: Path, pattern: str) -> Path | None:
+def find_file(base_dir: Path, pattern: str):
     """
     equivalent to `find base_dir -type f -name pattern`
     """
@@ -2273,5 +2273,4 @@ def find_file(base_dir: Path, pattern: str) -> Path | None:
         return None
     for file in base_dir.rglob(pattern):
         if file.is_file():
-            return file
-    return None
+            yield file

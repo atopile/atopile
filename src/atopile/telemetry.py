@@ -17,14 +17,14 @@ import logging
 import subprocess
 import time
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Optional
 
-import platformdirs
 import requests
 from attrs import asdict, define, field
 from posthog import Posthog
 from ruamel.yaml import YAML
+
+from faebryk.libs.paths import get_config_dir
 
 log = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def log_telemetry():
 
 def load_telemetry_setting() -> bool:
     # Use platformdirs to find the appropriate config directory
-    atopile_config_dir = Path(platformdirs.user_config_dir("atopile"))
+    atopile_config_dir = get_config_dir()
     atopile_yaml = atopile_config_dir / "telemetry.yaml"
 
     if not atopile_yaml.exists():
