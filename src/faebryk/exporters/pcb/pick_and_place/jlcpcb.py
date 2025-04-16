@@ -19,8 +19,10 @@ def convert_kicad_pick_and_place_to_jlcpcb(
 
     # Rename the following in the csv header and copy contents:
     # Ref to Designator PosX to Mid X PosY to Mid Y Rot to Rotation Side to Layer
-    with open(kicad_pick_and_place_file, "r") as kicad_pick_and_place:
-        with open(jlcpcb_pick_and_place_file, "w") as jlcpcb_pick_and_place:
+    with open(kicad_pick_and_place_file, "r", encoding="utf-8") as kicad_pick_and_place:
+        with open(
+            jlcpcb_pick_and_place_file, "w", encoding="utf-8"
+        ) as jlcpcb_pick_and_place:
             for line in kicad_pick_and_place:
                 if "Ref,Val,Package,PosX,PosY,Rot,Side" in line:
                     jlcpcb_pick_and_place.write(

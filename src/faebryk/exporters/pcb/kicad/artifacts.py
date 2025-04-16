@@ -32,11 +32,11 @@ def githash_layout(layout: Path, out: Path) -> Path:
         git_hash = "unknown"
 
     # Read and substitute git hash
-    layout_text = layout.read_text()
+    layout_text = layout.read_text(encoding="utf-8")
     layout_text = layout_text.replace("{{GITHASH}}", git_hash)
 
     # Write modified layout to temp file
-    out.write_text(layout_text)
+    out.write_text(layout_text, encoding="utf-8")
 
     return out
 

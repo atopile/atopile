@@ -458,13 +458,13 @@ def build_target(
     module_text = f"module {module}:\n    pass\n"
 
     if file.is_file():  # exists and is a file
-        with file.open("a") as f:
+        with file.open("a", encoding="utf-8") as f:
             f.write("\n")
             f.write(module_text)
 
     else:
         file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_text(module_text)
+        file.write_text(module_text, encoding="utf-8")
 
     rich.print(
         ":sparkles: Successfully created a new build configuration "
@@ -624,7 +624,7 @@ def component(
         template = AtoTemplate(name=sanitized_name, base="Module")
         template.add_part(component)
         out = template.dumps()
-        out_path.write_text(out)
+        out_path.write_text(out, encoding="utf-8")
         rich.print(f":sparkles: Created {out_path} !")
 
     elif type_ == ComponentType.fab:

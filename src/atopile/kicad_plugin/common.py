@@ -33,7 +33,7 @@ def get_board_artifact_manifest(board_path: Path) -> dict:
     """Return a dict of the artifact manifest related to this board."""
     board_path = Path(board_path)
     manifest_path = get_prj_dir(board_path) / "build" / "manifest.json"
-    with manifest_path.open("r") as f:
+    with manifest_path.open("r", encoding="utf-8") as f:
         manifest = json.load(f)
     return manifest.get("by-layout", {}).get(str(board_path), {})
 
@@ -239,8 +239,7 @@ def generate_net_map(
             # Single mapping with count
             target_net, count = next(iter(counts.items()))
             log.debug(
-                f"Net mapping '{source_net}' -> '{target_net}' "
-                f"confirmed {count} times"
+                f"Net mapping '{source_net}' -> '{target_net}' confirmed {count} times"
             )
 
     return net_map

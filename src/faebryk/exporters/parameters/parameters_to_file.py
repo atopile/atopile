@@ -96,7 +96,7 @@ def parameter_report(G: Graph, path: Path):
             ]
             out_str += "\n".join(lines)
 
-        out += f"{header}{'-'*80}\n{ind(out_str)}\n"
+        out += f"{header}{'-' * 80}\n{ind(out_str)}\n"
 
     block(
         "Parameters",
@@ -144,7 +144,7 @@ def parameter_report(G: Graph, path: Path):
     type_group("Expressions", exprs)
     type_group("Predicates", predicates)
 
-    path.write_text(out)
+    path.write_text(out, encoding="utf-8")
 
 
 def _generate_json_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str:
@@ -172,16 +172,16 @@ def _generate_md_parameters(parameters: dict[str, dict[str, P_Set[Any]]]) -> str
             if sorted_params:
                 par_name, par_value = sorted_params[0]
                 out += (
-                    f"| `{module_name.replace('|','\\|')}` | "
-                    f"`{par_name.replace('|','\\|')}` | "
-                    f"`{str(par_value).replace('|','\\|')}` |\n"
+                    f"| `{module_name.replace('|', '\\|')}` | "
+                    f"`{par_name.replace('|', '\\|')}` | "
+                    f"`{str(par_value).replace('|', '\\|')}` |\n"
                 )
                 # Subsequent parameters of the same module have empty module cell
                 for par_name, par_value in sorted_params[1:]:
                     out += (
                         f"|  | "
-                        f"`{par_name.replace('|','\\|')}` | "
-                        f"`{str(par_value).replace('|','\\|')}` |\n"
+                        f"`{par_name.replace('|', '\\|')}` | "
+                        f"`{str(par_value).replace('|', '\\|')}` |\n"
                     )
     out += "\n"
 
@@ -239,7 +239,7 @@ def export_parameters_to_file(module: Module, solver: Solver, path: Path):
     temp_path = path.with_suffix(path.suffix + ".tmp")
 
     try:
-        temp_path.write_text(out)
+        temp_path.write_text(out, encoding="utf-8")
         temp_path.replace(path)
     finally:
         if temp_path.exists():

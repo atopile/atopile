@@ -59,7 +59,7 @@ def make_bom(components: set[Module]):
 def write_bom_jlcpcb(components: set[Module], path: Path) -> None:
     if not path.parent.exists():
         os.makedirs(path.parent)
-    with open(path, "w", newline="") as bom_csv:
+    with open(path, "w", newline="", encoding="utf-8") as bom_csv:
         rows = make_bom(components)
         if rows:
             writer = csv.DictWriter(
@@ -92,7 +92,7 @@ def _compact_bomlines(bomlines: list[BOMLine]) -> list[BOMLine]:
                             f"{bomline.Designator} "
                             f"with {key}: {getattr(bomline, key)} "
                             f"{other_bomline.Designator} "
-                            f"with {key}: {getattr(other_bomline,key)}"
+                            f"with {key}: {getattr(other_bomline, key)}"
                         )
                 # Sort designators in bomline by number
                 compact_bomline.Designator = ", ".join(
