@@ -13,7 +13,7 @@ from faebryk.libs.exceptions import UserDesignCheckException, accumulate
 logger = logging.getLogger(__name__)
 
 
-class RequiresExternalUsageNotFulfilled(F.implements_design_check.CheckException):
+class RequiresExternalUsageNotFulfilled(Exception):
     def __init__(self, nodes: list[Node]):
         self.nodes = nodes
         super().__init__(
