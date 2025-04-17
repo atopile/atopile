@@ -6,21 +6,28 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
+from faebryk.libs.util import md_list
 
 
 class requires_pulls(Module.TraitT.decless()):
     class RequiresPullNotFulfilled(F.implements_design_check.CheckException):
         def __init__(
             self,
-            nodes: Sequence[Node],
+            signals: Sequence[F.ElectricSignal],
             bus: set[Node],
             required_resistance: Quantity_Interval,
         ):
-            signal_names = [f"`{signal.get_name()}`" for signal in nodes]
             message = (
-                f"Signal{'s' if len(signal_names) != 1 else ''} "
-                f"{', '.join(signal_names)} not pulled with "
-                f"appropriate resistance (must be within {required_resistance})\n\nBus"
+                f"Signal{'s' if len(signals) != 1 else ''} not pulled with "
+                f"appropriate resistance (must be within {required_resistance}):\n"
+                f"{
+                    md_list(
+                        {
+                            f'`{signal.get_name()}`': signal.pull_resistance
+                            for signal in signals
+                        }
+                    )
+                }\n\nBus:"
             )
             super().__init__(message, nodes=list(bus))
 
@@ -65,7 +72,7 @@ class requires_pulls(Module.TraitT.decless()):
 
         if unfulfilled:
             raise requires_pulls.RequiresPullNotFulfilled(
-                nodes=unfulfilled,
+                signals=unfulfilled,
                 bus={node for signal in signals for node in self._get_bus(signal)},
                 required_resistance=self.required_resistance,
             )
