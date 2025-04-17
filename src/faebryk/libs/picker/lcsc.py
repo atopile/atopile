@@ -19,9 +19,9 @@ from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVe
 import faebryk.library._F as F
 from atopile.config import config
 from faebryk.core.module import Module
+from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
     Part,
-    PickerOption,
     Supplier,
 )
 from faebryk.libs.util import ConfigFlag
@@ -93,9 +93,9 @@ def get_raw(lcsc_id: str):
         logger.debug(f"Did not find component {lcsc_id} in cache, downloading...")
         cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
         serialized = json.dumps(cad_data)
-        comp_path.write_text(serialized)
+        comp_path.write_text(serialized, encoding="utf-8")
 
-    data = json.loads(comp_path.read_text())
+    data = json.loads(comp_path.read_text(encoding="utf-8"))
 
     # API returned no data
     if not data:

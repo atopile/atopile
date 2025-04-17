@@ -11,8 +11,9 @@ from natsort import natsorted
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.exporters.pcb.kicad.transformer import PCB, PCB_Transformer
+from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.library import L
-from faebryk.libs.util import duplicates, groupby
+from faebryk.libs.util import duplicates, groupby, md_list
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +59,8 @@ def attach_random_designators(graph: Graph):
         if not n.has_trait(F.has_designator_prefix):
             prefix = type(n).__name__
             logger.warning(f"Node {prefix} has no designator prefix")
-
-        prefix = n.get_trait(F.has_designator_prefix).get_prefix()
+        else:
+            prefix = n.get_trait(F.has_designator_prefix).get_prefix()
 
         next_num = _get_first_hole(assigned[prefix])
         designator = f"{prefix}{next_num}"
@@ -71,7 +72,9 @@ def attach_random_designators(graph: Graph):
     assert not no_designator
 
     dupes = duplicates(nodes, lambda n: n.get_trait(F.has_designator).get_designator())
-    assert not dupes, f"Duplcicate designators: {dupes}"
+    assert (
+        not dupes
+    ), f"Duplicate designators found in layout:\n{md_list(dupes, recursive=True)}"
 
 
 def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
@@ -99,9 +102,16 @@ def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:
         node: ref
         for node, trait in nodes
         if (ref := _get_pcb_designator(trait)) is not None
+        and not isinstance(node, F.Footprint)
     }
 
     if attach:
+        if dups := duplicates(known_designators, lambda x: known_designators[x]):
+            dups_fmt = {k: [f"`{m}`" for m in v] for k, v in dups.items()}
+            raise UserResourceException(
+                f"Duplicate designators found in layout:\n"
+                f"{md_list(dups_fmt, recursive=True)}"
+            )
         for node, designator in known_designators.items():
             node.add(F.has_designator(designator))
 

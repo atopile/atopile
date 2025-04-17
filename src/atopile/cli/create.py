@@ -11,20 +11,20 @@ from pathlib import Path
 from typing import Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
-import click
 import git
-import jinja2
 import questionary
 import rich
 import typer
+from cookiecutter.exceptions import OutputDirExistsException
+from cookiecutter.main import cookiecutter
 from natsort import natsorted
 from rich.table import Table
 
-from atopile import errors
+from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
+from atopile.telemetry import log_to_posthog
 from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.libs.exceptions import downgrade
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
@@ -35,10 +35,7 @@ from faebryk.libs.pycodegen import (
     gen_repeated_block,
     sanitize_name,
 )
-from faebryk.libs.util import (
-    groupby,
-    robustly_rm_dir,
-)
+from faebryk.libs.util import groupby
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -47,7 +44,7 @@ logger.setLevel(logging.INFO)
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
-create_app = typer.Typer()
+create_app = typer.Typer(rich_markup_mode="rich")
 
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
@@ -89,6 +86,7 @@ def query_helper[T: str | Path | bool](
     validation_failure_msg: str | None = "Value [cyan]{value}[/] is invalid",
     default: T | None = None,
     pre_entered: T | None = None,
+    validate_default: bool = True,
 ) -> T:
     """Query a user for input."""
     rich.print(prompt)
@@ -98,10 +96,10 @@ def query_helper[T: str | Path | bool](
         if not isinstance(default, type_):
             raise ValueError(f"Default value {default} is not of type {type_}")
 
-    # Make a queryier
+    # Make a querier
     if type_ is str:
 
-        def queryier() -> str:
+        def querier() -> str:
             return questionary.text(
                 "",
                 default=str(default or ""),
@@ -109,7 +107,7 @@ def query_helper[T: str | Path | bool](
 
     elif type_ is Path:
 
-        def queryier() -> Path:
+        def querier() -> Path:
             return Path(
                 questionary.path(
                     "",
@@ -120,7 +118,7 @@ def query_helper[T: str | Path | bool](
     elif type_ is bool:
         assert default is None or isinstance(default, bool)
 
-        def queryier() -> bool:
+        def querier() -> bool:
             return questionary.confirm(
                 "",
                 default=default or True,
@@ -148,12 +146,14 @@ def query_helper[T: str | Path | bool](
         validator_func = validator  # type: ignore
 
     # Ensure the default provided is valid
-    if default is not None:
+    if default is not None and validate_default:
         if not validator_func(clarifier(default)):
-            raise ValueError(f"Default value {default} is invalid")
+            logger.debug(f"Default value {default} is invalid")
 
         if clarifier(default) != upgrader(clarifier(default)):
-            raise ValueError(f"Default value {default} doesn't meet best-practice")
+            logger.debug(f"Default value {default} doesn't meet best-practice")
+
+        default = upgrader(clarifier(default))
 
     # When running non-interactively, we expect the value to be provided
     # at the command level, so we don't need to query the user for it
@@ -177,7 +177,7 @@ def query_helper[T: str | Path | bool](
 
     for _ in stuck_user_helper_generator:
         if value is None:
-            value = clarifier(queryier())  # type: ignore
+            value = clarifier(querier())  # type: ignore
         assert isinstance(value, type_)
 
         if (proposed_value := upgrader(value)) != value:
@@ -201,137 +201,125 @@ def query_helper[T: str | Path | bool](
 
 PROJECT_NAME_REQUIREMENTS = (
     "Project name must start with a letter and contain only letters, numbers, dashes"
-    " and underscores. It will be used for the project directory and name on Github"
+    " and underscores. It will be used for the project directory and name on GitHub"
 )
 
 
 @create_app.command()
+@log_to_posthog("cli:create_project_end")
 def project(
-    name: Annotated[
-        str | None, typer.Option("--name", "-n", help=PROJECT_NAME_REQUIREMENTS)
-    ] = None,
-    repo: Annotated[str | None, typer.Option("--repo", "-r")] = None,
+    template: str = "https://github.com/atopile/project-template @ compiler-v0.3",
+    create_github_repo: bool | None = None,
 ):
     """
     Create a new ato project.
     """
+    # TODO: add template options
 
-    name = query_helper(
-        ":rocket: What's your project [cyan]name?[/]",
-        type_=str,
-        validator=r"^[a-zA-Z][a-zA-Z0-9_-]{,99}$",
-        validation_failure_msg=PROJECT_NAME_REQUIREMENTS,
-        upgrader=caseconverter.kebabcase,
-        upgrader_msg=textwrap.dedent(
-            """
-            We recommend using kebab-case ([cyan]{proposed_value}[/])
-            for your project name. It makes it easier to use your project
-            with other tools (like git) and it embeds nicely into URLs.
-            """
-        ).strip(),
-        pre_entered=name,
-    )
-
-    if (
-        not repo
-        and not questionary.confirm(
-            "Would you like to create a new repo for this project?"
-        ).unsafe_ask()
-    ):
-        repo = PROJECT_TEMPLATE
-
-    # Get a repo
-    repo_obj: git.Repo | None = None
-    for _ in stuck_user_helper_generator:
-        if not repo:
-            make_repo_url = f"https://github.com/new?name={name}&template_owner=atopile&template_name=project-template"
-
-            help(
-                f"""
-                We recommend you create a Github repo for your project.
-
-                If you already have a repo, you can respond [yellow]n[/]
-                to the next question and provide the URL to your repo.
-
-                If you don't have one, you can respond yes to the next question
-                or (Cmd/Ctrl +) click the link below to create one.
-
-                Just select the template you want to use.
-
-                {make_repo_url}
-                """
-            )
-
-            rich.print(":rocket: Open browser to create Github repo?")
-            if questionary.confirm("").unsafe_ask():
-                webbrowser.open(make_repo_url)
-
-            rich.print(":rocket: What's the [cyan]repo's URL?[/]")
-            repo = questionary.text("").unsafe_ask()
-
-        assert repo is not None
-
-        # Try download the repo from the user-provided URL
-        if Path(name).exists():
-            raise click.ClickException(
-                f"Directory {name} already exists. Please put the repo elsewhere or"
-                " choose a different name."
-            )
-
-        try:
-            repo_obj = git.Repo.clone_from(repo, name, depth=1)
-            break
-        except git.GitCommandError as ex:
-            help(
-                f"""
-                [red]Failed to clone repo from {repo}[/]
-
-                {ex.stdout}
-                {ex.stderr}
-                """
-            )
-            repo = None
-
-    assert repo_obj is not None
-    assert repo_obj.working_tree_dir is not None
-
-    # Configure the project
-    do_configure(name, str(repo_obj.working_tree_dir), debug=False)
-
-    # Commit the configured project
-    # force the add, because we're potentially
-    # modifying things in gitignored locations
-    if repo_obj.is_dirty():
-        repo_obj.git.add(A=True, f=True)
-        repo_obj.git.commit(m="Configure project")
+    template_ref, *template_branch = template.split("@")
+    template_ref = template_ref.strip()
+    if template_branch:
+        template_branch = template_branch[0].strip()
     else:
-        rich.print(
-            "[yellow]No changes to commit! Seems like the"
-            " template you used mightn't be configurable?[/]"
+        template_branch = None
+
+    if create_github_repo is True and not config.interactive:
+        raise errors.UserException(
+            "Cannot create a GitHub repo when running non-interactively."
         )
 
-    # If this repo's remote it PROJECT_TEMPLATE, cleanup the git history
-    if repo_obj.remotes.origin.url == PROJECT_TEMPLATE:
-        try:
-            robustly_rm_dir(Path(repo_obj.git_dir))
-        except (PermissionError, OSError) as ex:
-            with downgrade():
-                raise errors.UserException(
-                    f"Failed to remove .git directory: {repr(ex)}"
-                ) from ex
+    extra_context = {
+        "__ato_version": version.get_installed_atopile_version(),
+        "__python_path": sys.executable,
+    }
 
-        if not _in_git_repo(Path(repo_obj.working_dir).parent):
-            # If we've created this project OUTSIDE an existing git repo
-            # then re-init the repo so it has a clean history
-            clean_repo = git.Repo.init(repo_obj.working_tree_dir)
-            clean_repo.git.add(A=True)
-            clean_repo.git.commit(m="Initial commit")
+    logging.info("Running cookie-cutter on the template")
+    try:
+        project_path = Path(
+            cookiecutter(
+                template_ref,
+                checkout=template_branch,
+                no_input=not config.interactive,
+                extra_context=dict(
+                    filter(lambda x: x[1] is not None, extra_context.items())
+                ),
+            )
+        )
+    except OutputDirExistsException as e:
+        raise errors.UserException(
+            "Directory already exists. Please choose a different name."
+        ) from e
+
+    if create_github_repo is None:
+        create_github_repo = (
+            query_helper(
+                "Create a GitHub repo for this project?",
+                bool,
+                default=True,
+            )
+            if config.interactive
+            else False
+        )
+
+    # Get a repo
+    if create_github_repo:
+        logging.info("Initializing git repo")
+        repo = git.Repo.init(project_path)
+        repo.git.add(A=True, f=True)
+        repo.git.commit(m="Initial commit")
+
+        github_username = query_helper(
+            "What's your GitHub username?",
+            str,
+            validator=r"^[a-zA-Z0-9_-]+$",
+        )
+
+        make_repo_url = (
+            f"https://github.com/new?name={project_path.name}&owner={github_username}"
+        )
+
+        help(
+            f"""
+            We recommend you create a GitHub repo for your project.
+
+            If you already have a repo, you can respond [yellow]n[/]
+            to the next question and provide the URL to your repo.
+
+            If you don't have one, you can respond yes to the next question
+            or (Cmd/Ctrl +) click the link below to create one.
+
+            Just select the template you want to use.
+
+            {make_repo_url}
+            """
+        )
+
+        webbrowser.open(make_repo_url)
+
+        def _repo_validator(url: str) -> bool:
+            try:
+                repo.create_remote("origin", url).push()
+                return True
+            except Exception:
+                return False
+
+        query_helper(
+            ":rocket: What's the [cyan]repo's URL?[/]",
+            str,
+            default=f"https://github.com/{github_username}/{project_path.name}",
+            validator=_repo_validator,
+            validation_failure_msg="Remote could not be added: {value}",
+            validate_default=False,
+        )
 
     # Wew! New repo created!
-    rich.print(f':sparkles: [green]Created new project "{name}"![/] :sparkles:')
+    rich.print(
+        f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
+    )
 
 
 @create_app.command("build-target")
+@log_to_posthog("cli:create_build_target_end")
 def build_target(
     build_target: Annotated[str | None, typer.Option()] = None,
     file: Annotated[Path | None, typer.Option()] = None,
@@ -349,9 +337,7 @@ def build_target(
         src_path = config.project.paths.src
         config.project_dir  # touch property to ensure config's loaded from a project
     except ValueError:
-        raise errors.UserException(
-            "Could not find the project directory, are you within an ato project?"
-        )
+        raise errors.UserNoProjectException()
 
     if backup_name is None:
         if build_target:
@@ -464,7 +450,7 @@ def build_target(
         config_data["builds"][build_target] = new_data
         return config_data
 
-    config.update_project_config(
+    config.update_project_settings(
         add_build_target, {"entry": str(AddrStr.from_parts(file, module))}
     )
 
@@ -472,66 +458,18 @@ def build_target(
     module_text = f"module {module}:\n    pass\n"
 
     if file.is_file():  # exists and is a file
-        with file.open("a") as f:
+        with file.open("a", encoding="utf-8") as f:
             f.write("\n")
             f.write(module_text)
 
     else:
         file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_text(module_text)
+        file.write_text(module_text, encoding="utf-8")
 
     rich.print(
         ":sparkles: Successfully created a new build configuration "
         f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
     )
-
-
-@create_app.command(hidden=True)
-def configure(name: str, repo_path: str):
-    """Command useful in developing templates."""
-    do_configure(name, repo_path, debug=True)
-
-
-def do_configure(name: str, _repo_path: str, debug: bool):
-    """Configure the project."""
-    repo_path = Path(_repo_path)
-    try:
-        author = git.Repo(repo_path).git.config("user.name")
-    except (git.GitCommandError, git.InvalidGitRepositoryError):
-        author = "Original Author"
-
-    template_globals = {
-        "name": name,
-        "caseconverter": caseconverter,
-        "repo_root": repo_path,
-        "python_path": sys.executable,
-        "author": author,
-    }
-
-    # Load templates
-    env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(repo_path)))
-
-    for template_path in repo_path.glob("**/*.j2"):
-        # Figure out the target path and variables and what not
-        target_path = template_path.parent / template_path.name.replace(
-            ".j2", ""
-        ).replace("__name__", caseconverter.kebabcase(name))
-
-        template_globals["rel_path"] = target_path
-
-        template = env.get_template(
-            str(template_path.relative_to(repo_path).as_posix()),
-            globals=template_globals,
-        )
-
-        # Make the noise!
-        with target_path.open("w") as f:
-            for chunk in template.generate():
-                f.write(chunk)
-
-        # Remove the template
-        if not debug:
-            template_path.unlink()
 
 
 class ComponentType(StrEnum):
@@ -540,6 +478,7 @@ class ComponentType(StrEnum):
 
 
 @create_app.command()
+@log_to_posthog("cli:create_component_end")
 def component(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
     name: Annotated[str | None, typer.Option("--name", "-n")] = None,
@@ -551,10 +490,7 @@ def component(
     from faebryk.libs.picker.api.picker_lib import client
     from faebryk.libs.pycodegen import sanitize_name
 
-    try:
-        config.apply_options(None)
-    except errors.UserBadParameterError:
-        config.apply_options(None, standalone=True)
+    config.apply_options(None)
 
     # Find a component --------------------------------------------------------
 
@@ -664,7 +600,7 @@ def component(
         assert filename is not None
 
         filepath = Path(filename)
-        if filepath.absolute():
+        if filepath.is_absolute():
             out_path = filepath.resolve()
         else:
             out_path = (config.project.paths.src / filename).resolve()
@@ -688,7 +624,7 @@ def component(
         template = AtoTemplate(name=sanitized_name, base="Module")
         template.add_part(component)
         out = template.dumps()
-        out_path.write_text(out)
+        out_path.write_text(out, encoding="utf-8")
         rich.print(f":sparkles: Created {out_path} !")
 
     elif type_ == ComponentType.fab:
@@ -895,7 +831,7 @@ class FabllTemplate(Template):
             interface_names_by_pin_num.items(), lambda x: x[1]
         ).items():
             pin_nums = [x[0] for x in _items]
-            line = f"{interface_name}: F.Electrical  # {"pin" if len(pin_nums) == 1 else "pins"}: {", ".join(pin_nums)}"  # noqa: E501  # pre-existing
+            line = f"{interface_name}: F.Electrical  # {'pin' if len(pin_nums) == 1 else 'pins'}: {', '.join(pin_nums)}"  # noqa: E501
             _interface_lines_by_min_pin_num[min(pin_nums)] = line
         self.nodes.extend(
             line

@@ -165,8 +165,7 @@ class GlobalAttributes(L.Module):
 
         if value.lower() == "dnp":
             raise DeprecatedException(
-                f"`mpn = {value}` is deprecated. "
-                "Use `exclude_from_bom = True` instead."
+                f"`mpn = {value}` is deprecated. Use `exclude_from_bom = True` instead."
             )
 
         # handles duplicates gracefully
@@ -181,6 +180,17 @@ class GlobalAttributes(L.Module):
             raise DeprecatedException(
                 "`mpn` is deprecated for assignment of LCSC IDs. Use `lcsc_id` instead."
             )
+
+    @property
+    def datasheet_url(self) -> str:
+        """
+        The URL of the datasheet for this component.
+        """
+        raise AttributeError("write-only")
+
+    @datasheet_url.setter
+    def datasheet_url(self, value: str):
+        self.add(F.has_datasheet_defined(value))
 
     @property
     def designator_prefix(self):
@@ -209,10 +219,11 @@ class GlobalAttributes(L.Module):
         try:
             self.add(F.has_package(value))
         except ValueError:
+            valid_packages = ", ".join(
+                f"`{k}`" for k in F.has_package.Package.__members__.keys()
+            )
             raise UserBadParameterError(
-                f"Invalid package: '{value}'",
-                " Valid packages are: "
-                + ", ".join(k for k in F.has_package.Package.__members__.keys()),
+                f"Invalid package: `{value}`. Valid packages are: {valid_packages}"
             )
 
     @property
@@ -262,19 +273,54 @@ class GlobalAttributes(L.Module):
     def override_net_name(self, name: str):
         self.add(F.has_net_name(name, level=F.has_net_name.Level.EXPECTED))
 
+    @property
+    def suggest_net_name(self):
+        """
+        Suggested net name which will have a higher priority than generated net names.
+        """
+        raise AttributeError("write-only")
+
+    @suggest_net_name.setter
+    def suggest_net_name(self, name: str):
+        """
+        Suggested net name which will have a higher priority than generated net names.
+        """
+        self.add(F.has_net_name(name, level=F.has_net_name.Level.SUGGESTED))
+
+    @property
+    def required(self):
+        """
+        Only for ModuleInterfaces.
+        If set to `True`, require that interface is connected to something outside
+        of the module it's defined in.
+        """
+        raise AttributeError("write-only")
+
+    @required.setter
+    def required(self, value: bool):
+        if not value:
+            self.del_trait(F.requires_external_usage)
+            return
+        self.add(F.requires_external_usage())
+
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
+    if (prefixed_value := f"{starts_with}{value}") in F.has_package.Package.__members__:
+        value = prefixed_value
+
     try:
-        pkg = F.has_package.Package(starts_with + value)
+        pkg = F.has_package.Package(value)
     except ValueError:
-        raise UserBadParameterError(
-            f"Invalid package for {module.__class__.__name__}: " + value,
-            "Valid packages are: "
-            + ", ".join(
-                k
+        valid_packages = ", ".join(
+            [
+                f"`{k}`"
                 for k in F.has_package.Package.__members__.keys()
                 if k.startswith(starts_with)
-            ),
+            ]
+        )
+        raise UserBadParameterError(
+            f"Invalid package for {module.__class__.__name__}: `{value}`. "
+            f"Valid packages are: {valid_packages}"
         )
     else:
         module.add(F.has_package(pkg))
@@ -505,4 +551,10 @@ class Power(F.ElectricPower):
         return self.max_current
 
 
-_register_shim("generics/interfaces.ato:I2C", "import I2C")(F.I2C)
+@_register_shim("generics/interfaces.ato:I2C", "import I2C")
+class I2C(F.I2C):
+    """Temporary shim to translate I2C interfaces."""
+
+    @property
+    def gnd(self):
+        return self.single_electric_reference.get_reference().gnd

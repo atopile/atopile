@@ -1,7 +1,5 @@
 import pytest
-from typer.testing import CliRunner
 
-from atopile.cli.cli import app
 from atopile.cli.create import AtoTemplate, FabllTemplate
 from atopile.parse import parse_text_as_file
 from faebryk.libs.picker.api.picker_lib import client
@@ -63,13 +61,3 @@ def test_fabll_create_component(lcsc_id, description):
     assert "lcsc_id = L.f_field" in output
     assert "descriptive_properties = L.f_field" in output
     assert "attach_via_pinmap" in output
-
-
-@pytest.mark.parametrize("bad_name", ["invalid name", "1invalid-name", "i" * 101])
-def test_ato_create_project_bad_names(bad_name):
-    runner = CliRunner()
-    result = runner.invoke(
-        app, ["create", "project", "--name", bad_name], env={"NONINTERACTIVE": "1"}
-    )
-    assert result.exception
-    assert "Project name must start with a letter" in result.exception.args[0]

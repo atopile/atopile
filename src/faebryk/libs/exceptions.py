@@ -4,14 +4,13 @@ from abc import ABC, abstractmethod
 from functools import wraps
 from typing import Callable, Iterable, Self, Type, cast
 
+from caseconverter import titlecase
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
 from rich.markdown import Markdown
 from rich.text import Text
 from rich.traceback import Traceback
 
 from faebryk.libs.logging import ReprHighlighter
-
-from .titlecase import titlecase
 
 logger = logging.getLogger(__name__)
 
@@ -50,20 +49,26 @@ class UserException(Exception):
         return titlecase(error_name.removeprefix("User"))
 
     def get_frozen(self) -> tuple:
-        """
-        Return a frozen version of this error.
-        """
+        """Return a frozen version of this error."""
         return (self.__class__, self.message, self._title)
 
     def __rich_console__(
         self, console: Console, options: ConsoleOptions
     ) -> list[ConsoleRenderable]:
+        def _markdown(message: str) -> ConsoleRenderable:
+            if console.is_terminal:
+                return Markdown(message)
+            else:
+                return Text(message)
+
         renderables: list[ConsoleRenderable] = []
         if self.title:
             renderables += [Text(self.title, style="bold")]
 
         renderables += [
-            Markdown(self.message) if self.markdown else ReprHighlighter()(self.message)
+            _markdown(self.message)
+            if self.markdown
+            else ReprHighlighter()(self.message)
         ]
 
         return renderables
@@ -166,6 +171,15 @@ class Pacman[T: Exception](contextlib.suppress, ABC):
 Pacman.__exit__ = Pacman._will_be__exit__  # type: ignore
 
 
+def iter_leaf_exceptions[T: Exception](ex: T | BaseExceptionGroup[T]) -> Iterable[T]:
+    """Iter through all the non-group exceptions as a dfs pre-order"""
+    if isinstance(ex, ExceptionGroup):
+        for e in ex.exceptions:
+            yield from iter_leaf_exceptions(e)
+    else:
+        yield cast(T, ex)
+
+
 class accumulate:
     """
     Collect a group of errors and only raise
@@ -185,10 +199,7 @@ class accumulate:
         # function below
         class _Collector(Pacman):
             def nom_nom_nom(s, exc: Exception, original_exinfo) -> None:
-                if isinstance(exc, ExceptionGroup):
-                    self.errors.extend(exc.exceptions)
-                else:
-                    self.errors.append(exc)
+                self.errors.extend(iter_leaf_exceptions(exc))
 
         self.collector = _Collector(*(accumulate_types or (UserException,)))
         self.group_message = group_message or ""
@@ -238,6 +249,7 @@ class downgrade[T: Exception](Pacman):
         *exceptions: Type[T],
         default=None,
         to_level: int = logging.WARNING,
+        raise_anyway: bool = False,
         logger: logging.Logger = logger,
     ):
         super().__init__(*exceptions, default=default)
@@ -247,6 +259,7 @@ class downgrade[T: Exception](Pacman):
 
         self.to_level = to_level
         self.logger = logger
+        self.raise_anyway = raise_anyway
 
     def nom_nom_nom(self, exc: T, original_exinfo):
         if isinstance(exc, ExceptionGroup):
@@ -256,6 +269,8 @@ class downgrade[T: Exception](Pacman):
 
         for e in exceptions:
             self.logger.log(self.to_level, str(e), exc_info=e, extra={"markdown": True})
+
+        return self.raise_anyway
 
 
 class suppress_after_count[T: Exception](Pacman):

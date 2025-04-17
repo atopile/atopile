@@ -32,6 +32,7 @@ class App(Module):
 
     def __preinit__(self) -> None:
         self.leds.power.connect(self.battery.power)
+        self.battery.power.voltage.alias_is(3 * P.V)
 
         # Parametrize
         self.leds.led.color.constrain_subset(F.LED.Color.YELLOW)
@@ -43,6 +44,12 @@ class App(Module):
             L.Range.from_center_rel(3.3 * P.V, 0.05)
         )
         self.eeprom.ic.set_address(0x0)
+        self.eeprom.ic.data.pull_up_sda.resistance.constrain_subset(
+            L.Range.from_center_rel(2 * P.kohm, 0.1)
+        )
+        self.eeprom.ic.data.pull_up_scl.resistance.constrain_subset(
+            L.Range.from_center_rel(2 * P.kohm, 0.1)
+        )
 
         # Layout
         Point = F.has_pcb_position.Point
@@ -81,3 +88,22 @@ class App(Module):
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self
         )
+
+        # TODO: remove when we have a LED picker
+        self.leds.led.add(F.has_explicit_part.by_supplier("C965802"))
+        self.leds.led.forward_voltage.alias_is(2.4 * P.V)
+        self.leds.led.max_brightness.alias_is(435 * P.millicandela)
+        self.leds.led.max_current.alias_is(20 * P.mA)
+        self.leds.led.color.alias_is(F.LED.Color.YELLOW)
+
+        # TODO remove when we have a battery picker
+        self.battery.add(
+            F.has_explicit_part.by_supplier(
+                "C5239862",
+                pinmap={
+                    "1": self.battery.power.lv,
+                    "2": self.battery.power.hv,
+                },
+            )
+        )
+        self.battery.voltage.alias_is(3 * P.V)

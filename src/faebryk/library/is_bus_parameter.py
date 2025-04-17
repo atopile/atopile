@@ -10,7 +10,13 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeException
 from faebryk.core.parameter import Expression, Parameter
 from faebryk.libs.test.times import Times
-from faebryk.libs.util import assert_once, cast_assert, find, groupby, not_none, once
+from faebryk.libs.util import (
+    assert_once,
+    cast_assert,
+    groupby,
+    not_none,
+    once,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -158,7 +164,10 @@ class is_bus_parameter(Parameter.TraitT.decless()):
         # exec resolution
         for _, trait in param_bus_representatives:
             bus_representative_mif = trait.mif_parent()
-            param_bus = find(busses, lambda bus: bus_representative_mif in bus)
+            # param_bus = find(busses, lambda bus: bus_representative_mif in bus)
+            # FIXME: dirty workaround for mif bug
+            param_busses = [bus for bus in busses if bus_representative_mif in bus]
+            param_bus = {m for bus in param_busses for m in bus}
             trait.resolve(param_bus)
 
         times.add("merge parameters")

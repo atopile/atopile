@@ -4,20 +4,20 @@
 
 import pytest
 
+import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction
+from faebryk.libs.app.erc import ERCPowerSourcesShortedError, simple_erc
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval_Disjoint
 from faebryk.libs.sets.sets import BoolSet
+from faebryk.libs.units import P
 from faebryk.libs.util import pairwise, times
 
 
 @pytest.mark.xfail(reason="Solver not smart enough")
 def test_fused_power():
-    import faebryk.library._F as F
-    from faebryk.libs.units import P
-
     power_in = F.ElectricPower()
     power_out = F.ElectricPower()
 
@@ -42,37 +42,66 @@ def test_fused_power():
     assert (cur <= L.Single(500 * P.mA)) == BoolSet(True)
 
 
-def test_voltage_propagation():
-    import faebryk.library._F as F
-    from faebryk.libs.units import P
+def test_power_source_short():
+    """
+    Test that a power source is shorted when connected to another power source
+    """
 
+    power_out_1 = F.ElectricPower()
+    power_out_2 = F.ElectricPower()
+
+    power_out_1.connect(power_out_2)
+    power_out_2.connect(power_out_1)
+
+    power_out_1.make_source()
+    power_out_2.make_source()
+
+    with pytest.raises(ERCPowerSourcesShortedError):
+        simple_erc(power_out_1.get_graph())
+
+
+def test_power_source_no_short():
+    """
+    Test that a power source is not shorted when connected to another non-power source
+    """
+
+    power_out_1 = F.ElectricPower()
+    power_out_2 = F.ElectricPower()
+
+    power_out_1.make_source()
+
+    power_out_1.connect(power_out_2)
+
+    simple_erc(power_out_1.get_graph())
+
+
+def test_voltage_propagation():
+    # Setup
     powers = times(4, F.ElectricPower)
 
-    powers[0].voltage.constrain_subset(L.Range(10 * P.V, 15 * P.V))
+    X = L.Range(10 * P.V, 15 * P.V)
+    powers[0].voltage.constrain_subset(X)
 
     for p1, p2 in pairwise(powers):
         p1.connect(p2)
 
     F.is_bus_parameter.resolve_bus_parameters(powers[0].get_graph())
-    assert (
-        DefaultSolver()
-        .inspect_get_known_supersets(powers[-1].voltage)
-        .is_subset_of(L.Range(10 * P.V, 15 * P.V))
-    )
 
-    powers[3].voltage.constrain_subset(10 * P.V)
-    assert (
-        DefaultSolver()
-        .inspect_get_known_supersets(powers[0].voltage)
-        .is_subset_of(L.Single(10 * P.V))
-    )
+    # Test 1, propagate X from p[0] to p[-1]
+    solver = DefaultSolver()
+    solver.update_superset_cache(*powers)
+    assert solver.inspect_get_known_supersets(powers[-1].voltage).is_subset_of(X)
+
+    # Test 2, back propagate Y from p[-1] to p[0]
+    Y = L.Single(10 * P.V)
+    powers[-1].voltage.constrain_subset(Y)
+
+    solver.update_superset_cache(*powers)
+    y_back = solver.inspect_get_known_supersets(powers[0].voltage)
+    assert y_back.is_subset_of(Y)
 
 
-@pytest.mark.xfail(reason="Solver not smart enough")
 def test_current_consumption_sum_zero():
-    import faebryk.library._F as F
-    from faebryk.libs.units import P
-
     class Test(Module):
         p1: F.ElectricPower
         p2: F.ElectricPower
@@ -94,15 +123,12 @@ def test_current_consumption_sum_zero():
 
     F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
+    solver.update_superset_cache(test)
     out = solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)
     assert out.is_subset_of(L.Single(0 * P.mA))
 
 
-@pytest.mark.xfail(reason="Solver not smart enough")
 def test_current_consumption_sum_negative():
-    import faebryk.library._F as F
-    from faebryk.libs.units import P
-
     class Test(Module):
         p1: F.ElectricPower
         p2: F.ElectricPower
@@ -124,6 +150,6 @@ def test_current_consumption_sum_negative():
 
     F.is_bus_parameter.resolve_bus_parameters(p1.get_graph())
     solver = DefaultSolver()
-
     with pytest.raises(Contradiction):
+        solver.update_superset_cache(test)
         solver.inspect_get_known_supersets(p1.bus_max_current_consumption_sum)

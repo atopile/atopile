@@ -29,7 +29,7 @@ def _VERSION_DIR(version: int) -> Path:
     return FILEFORMATS_PATH / f"v{version}"
 
 
-DEFAULT_VERSION = 8
+DEFAULT_VERSION = 9
 
 
 def _FP_DIR(version: int = DEFAULT_VERSION) -> Path:

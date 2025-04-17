@@ -26,6 +26,7 @@ class TestNetlistKicad2FaebrykProject(unittest.TestCase):
                 os.path.dirname(__file__), "../../../common/resources/test.net"
             ),
             "r",
+            encoding="utf-8",
         ) as f:
             test_netlist = f.read()
 
@@ -38,4 +39,4 @@ class TestNetlistKicad2FaebrykProject(unittest.TestCase):
         # from pathlib import Path
         # path = Path("./build/faebryk_prj.py")
         # logger.info("Writing Experiment prj to {}".format(path.absolute()))
-        # path.write_text(prj)
+        # path.write_text(prj, encoding="utf-8")

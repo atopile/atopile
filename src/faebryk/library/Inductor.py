@@ -34,17 +34,17 @@ class Inductor(Module):
         tolerance_guess=10 * P.percent,
     )
 
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Inductor,
-            {
-                "inductance": self.inductance,
-                "self_resonant_frequency": self.self_resonant_frequency,
-                "max_current": self.max_current,
-                "dc_resistance": self.dc_resistance,
-            },
-        )
+    # @L.rt_field
+    # def pickable(self) -> F.is_pickable_by_type:
+    #     return F.is_pickable_by_type(
+    #         F.is_pickable_by_type.Type.Inductor,
+    #         {
+    #             "inductance": self.inductance,
+    #             "self_resonant_frequency": self.self_resonant_frequency,
+    #             "max_current": self.max_current,
+    #             "dc_resistance": self.dc_resistance,
+    #         },
+    #     )
 
     @L.rt_field
     def can_bridge(self):

@@ -1,6 +1,12 @@
+~ergh
+~faebryk
+~lcsc
+~narayan
+~netlist
 AECQ
 ato
 atopile
+autoplay
 BLDC
 Blockdef
 Bobsville
@@ -9,8 +15,10 @@ CANL
 datasheet
 debugpy
 decless
+diffable
 ECAD
 elec
+fabll
 filenode
 Fixham
 FLRC
@@ -26,8 +34,6 @@ Lilium
 Mohm
 mosfet
 mosfets
-~netlist
-~narayan
 NFET
 Opamp
 partno
@@ -43,4 +49,7 @@ subclassing
 substack
 tstamp
 UNITLESS
+upvote
 visualiser
+
+Cplus

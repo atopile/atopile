@@ -162,8 +162,7 @@ class NodeAlreadyBound(NodeException):
         super().__init__(
             node,
             *args,
-            f"Node {other} already bound to"
-            f" {other.get_parent()}, can't bind to {node}",
+            f"Node {other} already bound to {other.get_parent()}, can't bind to {node}",
         )
 
 
@@ -193,10 +192,6 @@ class Node(CNode):
 
     class _Skipped(Exception):
         pass
-
-    def __hash__(self) -> int:
-        # TODO proper hash
-        return hash(id(self))
 
     def add[T: Node | GraphInterface](
         self,
@@ -481,6 +476,8 @@ class Node(CNode):
         return out
 
     def _setup(self, *args, **kwargs) -> None:
+        assert not hasattr(self, "_setup_done")
+        self._setup_done = False
         # Construct Fields
         _, _ = self._setup_fields()
 
@@ -492,19 +489,23 @@ class Node(CNode):
                     if f_name in base.__dict__:
                         f = getattr(base, f_name)
                         f(self)
+        self._setup_done = True
+
+    def __hash__(self):
+        return id(self)
 
     def __init__(self):
         super().__init__()
         CNode.transfer_ownership(self)
-        assert not hasattr(self, "_is_setup")
-        self._is_setup = True
+        assert not hasattr(self, "_called_init")
+        self._called_init = True
 
     def __preinit__(self, *args, **kwargs) -> None: ...
 
     def __postinit__(self, *args, **kwargs) -> None: ...
 
     def __post_init__(self, *args, **kwargs):
-        if not getattr(self, "_is_setup", False):
+        if not getattr(self, "_called_init", False):
             raise Exception(
                 "Node constructor hasn't been called."
                 "Did you forget to call super().__init__()?"
@@ -559,6 +560,10 @@ class Node(CNode):
         op(self)
         return self
 
+    @property
+    def _is_setup(self) -> bool:
+        return getattr(self, "_setup_done", False)
+
     # printing -------------------------------------------------------------------------
 
     def __str__(self) -> str:
@@ -572,8 +577,7 @@ class Node(CNode):
             for p in self.get_children(direct_only=True, types=Parameter)
         }
         params_str = "\n".join(
-            f"{k}: {solver.inspect_get_known_supersets(v, force_update=False)
-                    if solver else v}"
+            f"{k}: {solver.inspect_get_known_supersets(v) if solver else v}"
             for k, v in params.items()
         )
 
@@ -711,6 +715,17 @@ class Node(CNode):
         # TODO what is faster
         # return {n.node for n in gifs if isinstance(n, GraphInterfaceSelf)}
 
+    def get_child_by_name(self, name: str) -> "Node":
+        if hasattr(self, name):
+            return cast(Node, getattr(self, name))
+        for p in self.get_children(direct_only=True, types=Node):
+            if p.get_name() == name:
+                return p
+        raise KeyErrorNotFound(f"No child with name {name} found")
+
+    def __getitem__(self, name: str) -> "Node":
+        return self.get_child_by_name(name)
+
     # Hierarchy queries ----------------------------------------------------------------
 
     def get_hierarchy(self) -> list[tuple["Node", str]]:
@@ -780,7 +795,10 @@ class Node(CNode):
         return {n.get_name(): n for n in nodes}
 
     def __rich_repr__(self):
-        yield self.get_full_name()
+        if not self._is_setup:
+            yield f"{type(self)}(not init)"
+        else:
+            yield self.get_full_name()
 
     __rich_repr__.angular = True
 

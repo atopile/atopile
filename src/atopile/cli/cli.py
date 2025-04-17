@@ -4,6 +4,7 @@ import atopile.cli.excepthook  # noqa: F401, I001
 import json
 import logging
 import sys
+from enum import Enum
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Annotated
@@ -11,8 +12,16 @@ from typing import Annotated
 import typer
 
 from atopile import telemetry, version
-from atopile.cli import build, configure, create, inspect, install, view
-from atopile.cli.logging import logger, handler
+from atopile.cli import (
+    build,
+    configure,
+    create,
+    inspect,
+    install,
+    package,
+    view,
+)
+from atopile.cli.logging import handler, logger
 from atopile.config import config
 from atopile.version import check_for_update
 from faebryk.libs.logging import FLOG_FMT
@@ -20,6 +29,7 @@ from faebryk.libs.logging import FLOG_FMT
 app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=bool(FLOG_FMT),  # required to override the excepthook
+    rich_markup_mode="rich",
 )
 
 
@@ -106,6 +116,9 @@ def cli(
         logger.root.setLevel(logging.DEBUG)
         handler.traceback_level = logging.WARNING
 
+    # FIXME: this won't work properly when configs
+    # are reloaded from a pointed-to file (eg in `ato build path/to/file`)
+    # from outside a project directory
     if non_interactive is not None:
         config.interactive = not non_interactive
 
@@ -121,10 +134,15 @@ def cli(
 
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
-app.command()(install.install)
+app.command(deprecated=True, hidden=True)(install.install)
 app.command()(configure.configure)
 app.command()(inspect.inspect)
 app.command()(view.view)
+app.add_typer(package.package_app, name="package", hidden=True)
+app.add_typer(install.dependencies_app, name="dependencies", help="Manage dependencies")
+app.command(rich_help_panel="Shortcuts")(install.sync)
+app.command(rich_help_panel="Shortcuts")(install.add)
+app.command(rich_help_panel="Shortcuts")(install.remove)
 
 
 @app.command(hidden=True)
@@ -139,14 +157,16 @@ def export_config_schema(pretty: bool = False):
         print(json.dumps(config_schema))
 
 
+class ConfigFormat(str, Enum):
+    python = "python"
+    json = "json"
+
+
 @app.command(hidden=True)
-def dump_config(pretty: bool = False):
+def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
-    if pretty:
-        print(json.dumps(config.project, indent=4))
-    else:
-        print(json.dumps(config.project))
+    print(config.project.model_dump(mode=format))
 
 
 def main():

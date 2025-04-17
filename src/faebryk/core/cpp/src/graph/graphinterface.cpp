@@ -111,7 +111,7 @@ Set<GI_ref_weak> GraphInterface::get_gif_edges() {
     return this->G->get_gif_edges(this);
 }
 
-std::unordered_map<GI_ref_weak, Link_ref> &GraphInterface::get_edges() {
+Map<GI_ref_weak, Link_ref> &GraphInterface::get_edges() {
     return this->G->get_edges(this);
 }
 

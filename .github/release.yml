@@ -1,0 +1,45 @@
+changelog:
+  categories:
+    - title: Library 📖
+      labels:
+        - library
+    - title: CI 🤖
+      labels:
+        - ci
+    - title: Tests 🧪
+      labels:
+        - tests
+    - title: CLI 🖥
+      labels:
+        - cli
+    - title: Documentation 🗎
+      labels:
+        - documentation
+    - title: Component Picker 🏗️
+      labels:
+        - picker
+    - title: Importers 📥
+      labels:
+        - importers
+    - title: Exporters 📤
+      labels:
+        - exporters
+    - title: KiCad 🟩
+      labels:
+        - kicad
+    - title: ato 📜
+      labels:
+        - ato
+    - title: faebryk 🏭
+      labels:
+        - faebryk
+        - fabll
+    - title: Exciting New Features 🎉
+      labels:
+        - enhancement
+    - title: Other Bug fixes 🐛
+      labels:
+        - bug
+    - title: Other Changes ✨
+      labels:
+        - "*"

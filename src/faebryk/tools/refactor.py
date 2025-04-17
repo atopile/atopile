@@ -42,7 +42,10 @@ def libtof(ctx: typer.Context, root: Path):
         path
         for path in file_paths
         if not path.stem.startswith("_")
-        and any(detection_pattern.match(line) for line in path.read_text().splitlines())
+        and any(
+            detection_pattern.match(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+        )
     ]
 
     print(f"Found {len(refactor_files)} files to refactor.")
@@ -63,7 +66,7 @@ def libtof(ctx: typer.Context, root: Path):
     )
 
     def refactor_file(path: Path):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
         import_symbols = [m[0] for m in import_pattern.findall(text)]
         text = import_pattern.subn("import faebryk.library._F as F", text, count=1)[0]
         text = import_pattern.sub("", text)
@@ -80,7 +83,7 @@ def libtof(ctx: typer.Context, root: Path):
             text = re.sub(rf"(?<!F\.)\b{sym}\b", f"F.{sym}", text)
 
         # print(path, import_symbols)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
 
     for path in refactor_files:
         refactor_file(path)
@@ -105,7 +108,8 @@ def fabll(ctx: typer.Context, root: Path):
     # refactor_files = [
     #    path
     #    for path in file_paths
-    #    if not path.stem.startswith("_") and detection_pattern.search(path.read_text())
+    #    if not path.stem.startswith("_") and detection_pattern.search(
+    # path.read_text(encoding="utf-8"))
     # ]
 
     print(f"Found {len(refactor_files)} files to refactor.")
@@ -119,7 +123,7 @@ def fabll(ctx: typer.Context, root: Path):
     holder_attr = re.compile(rf"\.{types}s\.")
 
     def refactor_file(path: Path):
-        text = path.read_text()
+        text = path.read_text(encoding="utf-8")
 
         print(path, "=" * 40)
 
@@ -212,7 +216,7 @@ def fabll(ctx: typer.Context, root: Path):
         # Done ----------------------------------------
         text = "\n".join(line.rstrip() for line in text.splitlines())
         text = text.strip() + "\n"
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
 
     for path in refactor_files:
         refactor_file(path)

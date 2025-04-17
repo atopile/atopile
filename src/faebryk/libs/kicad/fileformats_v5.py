@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Optional
 
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad.fileformats_latest import (
     C_arc,
     C_circle,
     C_footprint,
@@ -49,7 +49,7 @@ class C_circle_v5:
     center: C_xy
     end: C_xy
     width: float
-    fill: E_fill = field(default=E_fill.none)
+    fill: E_fill = field(default=E_fill.no)
     layer: str
 
     def convert_to_new(self) -> C_circle:

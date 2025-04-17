@@ -1,47 +1,10 @@
-import Capacitor, Resistor, ElectricSignal, ElectricPower
+import ResistorVoltageDivider, ElectricPower, ElectricSignal
 
 
-#FIXME: de-duplicate with ResistorVoltageDivider
-module VDiv from _VDiv:
-    v_in: voltage
-    v_out: voltage
-    i_q: current
-
-    i_q = 100uA to 10mA
-
-    assert v_in * r_bottom.resistance / (r_top.resistance + r_bottom.resistance) within v_out
-    assert v_in / (r_bottom.resistance + r_top.resistance) within i_q
-
-
-module _VDiv:
-    signal top
-    signal bottom
-
+module VDiv from ResistorVoltageDivider:
+    # renaming
     out = new ElectricSignal
-    out.line ~ out
+    out ~ output
 
-    power = new ElectricPower
-    power.vcc ~ top
-    bottom ~ power.gnd
-    out.reference ~ power
-
-    r_top = new Resistor
-    r_bottom = new Resistor
-    r_top.package = "R0402"
-    r_bottom.package = "R0402"
-
-    top ~ r_top.p1; r_top.p2 ~ r_bottom.p1; r_bottom.p2 ~ bottom
-    r_top.p2 ~ out.line
-
-
-module VDivLowPassFilter from VDiv:
-    cap = new Capacitor
-    cap.package = "C0402"
-    cutoff_frequency: frequency
-
-    out ~ cap.p1; cap.p2 ~ bottom
-    cap.capacitance = 100nF +/- 10%
-
-    cutoff_frequency: frequency
-
-    assert 1 / (2 * 3.14 * r_top.resistance * cap.capacitance) is cutoff_frequency
+    i_q: current
+    assert i_q is max_current

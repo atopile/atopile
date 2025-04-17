@@ -6,13 +6,13 @@ from dataclasses import dataclass, field
 
 from dataclasses_json.undefined import CatchAll
 
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad.fileformats_common import C_stroke, C_xy, C_xyr
+from faebryk.libs.kicad.fileformats_latest import (
     C_arc,
     C_footprint,
     C_fp_text,
     C_kicad_footprint_file,
 )
-from faebryk.libs.kicad.fileformats_common import C_stroke, C_xy, C_xyr
 from faebryk.libs.kicad.fileformats_v5 import (
     C_circle_v5,
     C_line_v5,

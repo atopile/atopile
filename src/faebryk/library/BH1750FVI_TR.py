@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -106,6 +107,15 @@ class _BH1750FVI_TR(Module):
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://datasheet.lcsc.com/lcsc/1811081611_ROHM-Semicon-BH1750FVI-TR_C78960.pdf"
     )
+
+    mfr = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "ROHM Semicon",
+            DescriptiveProperties.partno: "BH1750FVI-TR",
+        }
+    )
+
+    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C78960"})
 
 
 # TODO should be a reference design

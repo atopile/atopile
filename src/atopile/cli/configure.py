@@ -12,11 +12,13 @@ import rich
 from attrs import asdict, define
 from ruamel.yaml import YAML, YAMLError
 
+import atopile.config
 import atopile.version
+from faebryk.libs.paths import get_config_dir
 
 yaml = YAML()
 
-CONFIGURED_FOR_PATH = Path("~/.atopile/configured_for.yaml").expanduser().absolute()
+CONFIGURED_FOR_PATH = get_config_dir() / "configured_for.yaml"
 
 
 logger = logging.getLogger(__name__)
@@ -63,7 +65,12 @@ def configure() -> None:
 
 
 def do_configure_if_needed() -> None:
-    """Configure the user's system for atopile development if it's not already configured."""  # noqa: E501  # pre-existing
+    """
+    Configure the user's system for atopile development if it's not already configured.
+    """
+    if not atopile.config.config.interactive:
+        return
+
     if not CONFIGURED_FOR_PATH.exists():
         rich.print(
             dedent(

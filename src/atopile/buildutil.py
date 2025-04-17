@@ -1,20 +1,23 @@
 import json
 import logging
 import shutil
+import tempfile
 import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
 
-from more_itertools import first
-
 from atopile import layout
+from atopile.cli.logging import LoggingStage
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
+from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
-from faebryk.core.parameter import Parameter
+from faebryk.core.pathfinder import MAX_PATHS
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.core.solver.nullsolver import NullSolver
+from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
@@ -27,14 +30,16 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_glb,
     export_pick_and_place,
     export_step,
+    githash_layout,
 )
 from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, get_footprint
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import run_checks
+from faebryk.libs.app.checks import RequiresExternalUsageNotFulfilled, run_checks
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -42,150 +47,178 @@ from faebryk.libs.app.designators import (
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
+    check_net_names,
     create_footprint_library,
     ensure_footprint_lib,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_descriptive_properties
+from faebryk.libs.app.picking import load_descriptive_properties, save_parameters
 from faebryk.libs.exceptions import (
     UserResourceException,
     accumulate,
     downgrade,
+    iter_leaf_exceptions,
     iter_through_errors,
 )
-from faebryk.libs.kicad.fileformats import (
-    C_kicad_fp_lib_table_file,
-    C_kicad_pcb_file,
-)
+from faebryk.libs.kicad.fileformats_latest import C_kicad_fp_lib_table_file
+from faebryk.libs.kicad.fileformats_version import try_load_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
 logger = logging.getLogger(__name__)
+
+SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
+
+
+def _get_solver() -> Solver:
+    if SKIP_SOLVING:
+        logger.warning("Assertion checking is disabled")
+        return NullSolver()
+    else:
+        return DefaultSolver()
 
 
 def build(app: Module) -> None:
     """Build the project."""
-    G = app.get_graph()
-    solver = DefaultSolver()
 
-    logger.info("Resolving bus parameters")
-    try:
-        F.is_bus_parameter.resolve_bus_parameters(G)
-    # FIXME: this is a hack around a compiler bug
-    except KeyErrorAmbiguous as ex:
-        raise UserException(
-            "Unfortunately, there's a compiler bug at the moment that means that "
-            "this sometimes fails. Try again, and it'll probably work. "
-            "See https://github.com/atopile/atopile/issues/807"
-        ) from ex
+    def G():
+        return app.get_graph()
 
-    logger.info("Running checks")
-    run_checks(app, G)
+    solver = _get_solver()
 
-    # Pre-pick project checks - things to look at before time is spend ---------
-    # Make sure the footprint libraries we're looking for exist
-    consolidate_footprints(app)
+    # TODO remove hack
+    # Disables children pathfinding
+    # ```
+    # power1.lv ~ power2.lv
+    # power1.hv ~ power2.hv
+    # -> power1 is not connected power2
+    # ```
+    set_max_paths(int(MAX_PATHS), 0, 0)
 
-    # Load PCB / cached --------------------------------------------------------
-    pcb = C_kicad_pcb_file.loads(config.build.paths.layout)
-    transformer = PCB_Transformer(pcb.kicad_pcb, G, app)
-    load_designators(G, attach=True)
-
-    # Pre-run solver -----------------------------------------------------------
-    parameters = app.get_children(False, types=Parameter)
-    if parameters:
-        logger.info("Simplifying parameter graph")
-        solver.inspect_get_known_supersets(first(parameters), force_update=True)
-
-    # Pickers ------------------------------------------------------------------
-    if config.build.keep_picked_parts:
-        load_descriptive_properties(G)
-    try:
-        pick_part_recursively(app, solver)
-    except PickError as ex:
-        raise UserPickError.from_pick_error(ex) from ex
-
-    # Footprints ----------------------------------------------------------------
-    # Use standard footprints for known packages regardless of
-    # what's otherwise been specified.
-    # FIXME: this currently includes explicitly set footprints, but shouldn't
-    F.has_package.standardize_footprints(app, solver)
-    create_footprint_library(app)
-
-    # Pre-netlist preparation ---------------------------------------------------
-    attach_random_designators(G)
-    nets = attach_nets(G)
-    # We have to re-attach the footprints, and subsequently nets, because the first
-    # attachment is typically done before the footprints have been created
-    # and therefore many nets won't be re-attached properly. Also, we just created
-    # and attached them to the design above, so they weren't even there to attach
-    transformer.attach()
-    if config.build.keep_net_names:
-        load_net_names(G)
-    attach_net_names(nets)
-
-    # Update PCB --------------------------------------------------------------
-    logger.info("Updating PCB")
-    original_pcb = deepcopy(pcb)
-    transformer.apply_design(config.build.paths.fp_lib_table)
-    transformer.check_unattached_fps()
-
-    if transform_trait := app.try_get_trait(F.has_layout_transform):
-        logger.info("Transforming PCB")
-        transform_trait.transform(transformer)
-
-    # set layout
-    apply_layouts(app)
-    transformer.move_footprints()
-    apply_routing(app, transformer)
-
-    if pcb == original_pcb:
-        if config.build.frozen:
-            logger.info("No changes to layout. Passed --frozen check.")
-        else:
-            logger.info(
-                f"No changes to layout. Not writing {config.build.paths.layout}"
-            )
-    elif config.build.frozen:
-        original_path = config.build.paths.output_base.with_suffix(
-            ".original.kicad_pcb"
-        )
-        updated_path = config.build.paths.output_base.with_suffix(".updated.kicad_pcb")
-        original_pcb.dumps(original_path)
-        pcb.dumps(updated_path)
-
-        # TODO: make this a real util
-        def _try_relative(path: Path) -> Path:
+    with LoggingStage("prebuild", "Running pre-build checks"):
+        if not SKIP_SOLVING:
+            logger.info("Resolving bus parameters")
             try:
-                return path.relative_to(Path.cwd(), walk_up=True)
-            except ValueError:
-                return path
+                F.is_bus_parameter.resolve_bus_parameters(G())
+            # FIXME: this is a hack around a compiler bug
+            except KeyErrorAmbiguous as ex:
+                raise UserException(
+                    "Unfortunately, there's a compiler bug at the moment that means "
+                    "that this sometimes fails. Try again, and it'll probably work. "
+                    "See https://github.com/atopile/atopile/issues/807"
+                ) from ex
+        else:
+            logger.warning("Skipping bus parameter resolution")
 
-        original_relative = _try_relative(original_path)
-        updated_relative = _try_relative(updated_path)
+        logger.info("Running checks")
+        try:
+            run_checks(app, G())
+        except RequiresExternalUsageNotFulfilled as ex:
+            # TODO ato code
+            raise UserException(str(ex)) from ex
 
-        raise UserException(
-            "Built as frozen, but layout changed. \n"
-            f"Original layout: {original_relative}\n"
-            f"Updated layout: {updated_relative}\n"
-            "You can see the changes by running:\n"
-            f'`diff --color "{original_relative}" "{updated_relative}"`',
-            title="Frozen failed",
-            # No markdown=False here because we have both a command and paths
-        )
-    else:
-        backup_file = config.build.paths.output_base.with_suffix(
-            f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
-        )
-        logger.info(f"Backing up layout to {backup_file}")
-        with config.build.paths.layout.open("rb") as f:
-            backup_file.write_bytes(f.read())
+        # Pre-pick project checks - things to look at before time is spend ---------
+        # Make sure the footprint libraries we're looking for exist
+        consolidate_footprints(app)
 
-        logger.info(f"Updating layout {config.build.paths.layout}")
-        pcb.dumps(config.build.paths.layout)
+    with LoggingStage("load-pcb", "Loading PCB"):
+        pcb = try_load_kicad_pcb_file(config.build.paths.layout)
+        transformer = PCB_Transformer(pcb.kicad_pcb, G(), app)
+        if config.build.keep_designators:
+            load_designators(G(), attach=True)
 
-    # Build targets -----------------------------------------------------------
-    logger.info("Building targets")
+    with LoggingStage("picker", "Picking components") as stage:
+        if config.build.keep_picked_parts:
+            load_descriptive_properties(G())
+        try:
+            pick_part_recursively(app, solver, progress=stage)
+        except* PickError as ex:
+            raise ExceptionGroup(
+                "Failed to pick parts for some modules",
+                [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
+            ) from ex
+        save_parameters(G())
+
+    with LoggingStage("footprints", "Handling footprints"):
+        # Use standard footprints for known packages regardless of
+        # what's otherwise been specified.
+        # FIXME: this currently includes explicitly set footprints, but shouldn't
+        F.has_package.standardize_footprints(app, solver)
+        create_footprint_library(app)
+
+    with LoggingStage("nets", "Preparing nets"):
+        attach_random_designators(G())
+        nets = attach_nets(G())
+        # We have to re-attach the footprints, and subsequently nets, because the first
+        # attachment is typically done before the footprints have been created
+        # and therefore many nets won't be re-attached properly. Also, we just created
+        # and attached them to the design above, so they weren't even there to attach
+        transformer.attach()
+        if config.build.keep_net_names:
+            load_net_names(G())
+        attach_net_names(nets)
+        check_net_names(G())
+
+    with LoggingStage("update-pcb", "Updating PCB"):
+        original_pcb = deepcopy(pcb)
+        transformer.apply_design(config.build.paths.fp_lib_table)
+        transformer.check_unattached_fps()
+
+        if transform_trait := app.try_get_trait(F.has_layout_transform):
+            logger.info("Transforming PCB")
+            transform_trait.transform(transformer)
+
+        # set layout
+        apply_layouts(app)
+        transformer.move_footprints()
+        apply_routing(app, transformer)
+
+        if pcb == original_pcb:
+            if config.build.frozen:
+                logger.info("No changes to layout. Passed --frozen check.")
+            else:
+                logger.info(
+                    f"No changes to layout. Not writing {config.build.paths.layout}"
+                )
+        elif config.build.frozen:
+            original_path = config.build.paths.output_base.with_suffix(
+                ".original.kicad_pcb"
+            )
+            updated_path = config.build.paths.output_base.with_suffix(
+                ".updated.kicad_pcb"
+            )
+            original_pcb.dumps(original_path)
+            pcb.dumps(updated_path)
+
+            # TODO: make this a real util
+            def _try_relative(path: Path) -> Path:
+                try:
+                    return path.relative_to(Path.cwd(), walk_up=True)
+                except ValueError:
+                    return path
+
+            original_relative = _try_relative(original_path)
+            updated_relative = _try_relative(updated_path)
+
+            raise UserException(
+                "Built as frozen, but layout changed. \n"
+                f"Original layout: {original_relative}\n"
+                f"Updated layout: {updated_relative}\n"
+                "You can see the changes by running:\n"
+                f'`diff --color "{original_relative}" "{updated_relative}"`',
+                title="Frozen failed",
+                # No markdown=False here because we have both a command and paths
+            )
+        else:
+            backup_file = config.build.paths.output_base.with_suffix(
+                f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
+            )
+            logger.info(f"Backing up layout to {backup_file}")
+            with config.build.paths.layout.open("rb") as f:
+                backup_file.write_bytes(f.read())
+
+            logger.info(f"Updating layout {config.build.paths.layout}")
+            pcb.dumps(config.build.paths.layout)
 
     # Figure out what targets to build
     if config.build.targets == ["__default__"]:
@@ -204,18 +237,15 @@ def build(app: Module) -> None:
     built_targets = []
     with accumulate() as accumulator:
         for target_name in targets:
-            logger.info(f"Building '{target_name}' for '{config.build.name}' config")
-            with accumulator.collect():
-                muster.targets[target_name](app, solver)
-            built_targets.append(target_name)
-
-    logger.info(
-        f"Built {', '.join(f'\'{target}\'' for target in built_targets)} "
-        f"for '{config.build.name}' config"
-    )
+            with LoggingStage(
+                f"target-{target_name}", f"Building [green]'{target_name}'[/green]"
+            ):
+                with accumulator.collect():
+                    muster.targets[target_name](app, solver)
+                built_targets.append(target_name)
 
 
-TargetType = Callable[[Module, DefaultSolver], None]
+TargetType = Callable[[Module, Solver], None]
 
 
 class Muster:
@@ -250,7 +280,7 @@ muster = Muster()
 
 
 @muster.register("bom")
-def generate_bom(app: Module, solver: DefaultSolver) -> None:
+def generate_bom(app: Module, solver: Solver) -> None:
     """Generate a BOM for the project."""
     write_bom_jlcpcb(
         app.get_children_modules(types=Module),
@@ -259,36 +289,58 @@ def generate_bom(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("mfg-data", default=False)
-def generate_manufacturing_data(app: Module, solver: DefaultSolver) -> None:
-    """Generate a designator map for the project."""
-    export_step(
-        config.build.paths.layout,
-        step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
-    )
-    export_glb(
-        config.build.paths.layout,
-        glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
-    )
-    export_dxf(
-        config.build.paths.layout,
-        dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
-    )
+def generate_manufacturing_data(app: Module, solver: Solver) -> None:
+    """
+    Generate manufacturing artifacts for the project.
+    - STEP
+    - GLB
+    - DXF
+    - Gerber zip
+    - Pick and place (default and JLCPCB)
+    - Testpoint-location
+    """
+    # Create temp copy of layout file with git hash substituted
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_layout = githash_layout(
+            config.build.paths.layout,
+            Path(tmpdir) / config.build.paths.layout.name,
+        )
 
-    export_gerber(
-        config.build.paths.layout,
-        gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
-    )
+        export_step(
+            tmp_layout,
+            step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+        )
+        export_glb(
+            tmp_layout,
+            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+        )
+        export_dxf(
+            tmp_layout,
+            dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
+        )
 
-    pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
-    export_pick_and_place(config.build.paths.layout, pick_and_place_file=pnp_file)
-    convert_kicad_pick_and_place_to_jlcpcb(
-        pnp_file,
-        config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
-    )
+        export_gerber(
+            tmp_layout,
+            gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
+        )
+
+        pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
+        export_pick_and_place(tmp_layout, pick_and_place_file=pnp_file)
+        convert_kicad_pick_and_place_to_jlcpcb(
+            pnp_file,
+            config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),
+        )
+
+        export_testpoints(
+            app,
+            testpoints_file=config.build.paths.output_base.with_suffix(
+                ".testpoints.json"
+            ),
+        )
 
 
 @muster.register("manifest")
-def generate_manifest(app: Module, solver: DefaultSolver) -> None:
+def generate_manifest(app: Module, solver: Solver) -> None:
     """Generate a manifest for the project."""
     with accumulate() as accumulator:
         with accumulator.collect():
@@ -311,13 +363,13 @@ def generate_manifest(app: Module, solver: DefaultSolver) -> None:
 
 
 @muster.register("layout-module-map")
-def generate_module_map(app: Module, solver: DefaultSolver) -> None:
+def generate_module_map(app: Module, solver: Solver) -> None:
     """Generate a designator map for the project."""
     layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
-def generate_variable_report(app: Module, solver: DefaultSolver) -> None:
+def generate_variable_report(app: Module, solver: Solver) -> None:
     """Generate a report of all the variable values in the design."""
     # TODO: support other file formats
     export_parameters_to_file(
@@ -421,9 +473,5 @@ def consolidate_footprints(app: Module) -> None:
             assert False, "How'd we get here?"
 
         raise ex.derive(
-            [
-                _make_user_resource_exception(e)
-                for e in ex.exceptions
-                if isinstance(e, (FileNotFoundError, LibNotInTable))
-            ]
+            [_make_user_resource_exception(e) for e in iter_leaf_exceptions(ex)]
         ) from ex

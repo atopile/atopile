@@ -9,6 +9,7 @@ from collections import defaultdict
 from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
+from math import floor
 from pathlib import Path
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
 
@@ -24,15 +25,21 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import DeprecatedException, UserException, downgrade
 from faebryk.libs.geometry.basic import Geometry
-from faebryk.libs.kicad.fileformats import (
+from faebryk.libs.kicad.fileformats_common import C_pts
+from faebryk.libs.kicad.fileformats_common import (
+    gen_uuid as _gen_uuid,
+)
+from faebryk.libs.kicad.fileformats_latest import (
     UUID,
     C_arc,
     C_circle,
     C_effects,
     C_footprint,
     C_fp_text,
+    C_group,
     C_kicad_pcb_file,
     C_line,
+    C_net,
     C_polygon,
     C_rect,
     C_stroke,
@@ -43,19 +50,19 @@ from faebryk.libs.kicad.fileformats import (
     C_xyr,
     C_xyz,
     E_fill,
+    _SingleOrMultiLayer,
 )
-from faebryk.libs.kicad.fileformats import (
-    gen_uuid as _gen_uuid,
-)
-from faebryk.libs.kicad.fileformats_common import C_pts
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
+    Tree,
     cast_assert,
     dataclass_as_kwargs,
     find,
+    groupby,
     hash_string,
+    re_in,
     yield_missing,
 )
 
@@ -65,7 +72,7 @@ logger = logging.getLogger(__name__)
 PCB = C_kicad_pcb_file.C_kicad_pcb
 Footprint = PCB.C_pcb_footprint
 Pad = Footprint.C_pad
-Net = PCB.C_net
+Net = C_net
 
 # TODO remove
 GR_Line = C_line
@@ -345,11 +352,12 @@ class PCB_Transformer:
 
         known_nets: dict[F.Net, Net] = {}
         pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
+        mapped_net_names = set()
 
         for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
             total_pads = 0
             # map from net name to the number of pads we've
-            # linked corroborating it's accuracy
+            # linked corroborating its accuracy
             net_candidates: Mapping[str, int] = defaultdict(int)
 
             for ato_pad, ato_fp in net.get_connected_pads().items():
@@ -371,11 +379,19 @@ class PCB_Transformer:
                         pcb_pad.net.name if pcb_pad.net is not None else None
                         for pcb_pad in pcb_pads
                     )
+                    conflicting = net_names & mapped_net_names
+                    net_names -= mapped_net_names
+
                     if (
                         len(net_names) == 1
                         and (net_name := first(net_names)) is not None
                     ):
                         net_candidates[net_name] += 1
+                    elif len(net_names) == 0 and conflicting:
+                        logger.warning(
+                            "Net name has already been used: %s",
+                            ", ".join(f"`{n}`" for n in conflicting),
+                        )
 
                 total_pads += 1
 
@@ -386,6 +402,7 @@ class PCB_Transformer:
                     and net_candidates[best_net_name] > total_pads * match_threshold
                 ):
                     known_nets[net] = pcb_nets_by_name[best_net_name]
+                    mapped_net_names.add(best_net_name)
 
         return known_nets
 
@@ -441,7 +458,11 @@ class PCB_Transformer:
         if layers != {"F.SilkS", "B.SilkS"}:
             raise NotImplementedError(f"Unsupported layers: {layers}")
 
-        content = [geo for geo in get_all_geos(fp) if geo.layer in layers]
+        content = [
+            geo
+            for geo in get_all_geos(fp)
+            if any(layer in layers for layer in geo.get_layers())
+        ]
 
         if not content:
             logger.warning(
@@ -564,13 +585,13 @@ class PCB_Transformer:
             for sub_lines in [
                 geo_to_lines(pcb_geo)
                 for pcb_geo in get_all_geos(self.pcb)
-                if pcb_geo.layer == "Edge.Cuts"
+                if "Edge.Cuts" in pcb_geo.get_layers()
             ]
             + [
                 geo_to_lines(fp_geo, fp)
                 for fp in self.pcb.footprints
                 for fp_geo in get_all_geos(fp)
-                if fp_geo.layer == "Edge.Cuts"
+                if "Edge.Cuts" in fp_geo.get_layers()
             ]
             for line in sub_lines
         ]
@@ -882,7 +903,9 @@ class PCB_Transformer:
             layers = [layers]
 
         for layer in layers:
-            if any([zone.layer == layer for zone in zones]):
+            if any(
+                [zone.layers is not None and layer in zone.layers for zone in zones]
+            ):
                 logger.warning(f"Zone already exists in {layer=}")
                 return
 
@@ -890,11 +913,10 @@ class PCB_Transformer:
             Zone(
                 net=net.number,
                 net_name=net.name,
-                layer=layers[0] if len(layers) == 1 else None,
                 layers=layers if len(layers) > 1 else None,
                 uuid=self.gen_uuid(mark=True),
                 name=f"layer_fill_{net.name}",
-                polygon=C_polygon(C_pts([point2d_to_coord(p) for p in polygon])),
+                polygon=C_polygon(pts=C_pts([point2d_to_coord(p) for p in polygon])),
                 min_thickness=0.2,
                 filled_areas_thickness=False,
                 fill=Zone.C_fill(
@@ -914,7 +936,6 @@ class PCB_Transformer:
                     # island_removal_mode=Zone.C_fill.E_island_removal_mode.do_not_remove, # noqa E501
                     island_area_min=10.0,
                 ),
-                locked=False,
                 hatch=Zone.C_hatch(mode=Zone.C_hatch.E_mode.edge, pitch=0.5),
                 priority=0,
                 keepout=Zone.C_keepout(
@@ -936,7 +957,7 @@ class PCB_Transformer:
     def _add_group(
         self, members: list[UUID], name: Optional[str] = None, locked: bool = False
     ) -> UUID:
-        group = C_kicad_pcb_file.C_kicad_pcb.C_group(
+        group = C_group(
             name=name, members=members, uuid=self.gen_uuid(mark=True), locked=locked
         )
         self.pcb.groups.append(group)
@@ -973,7 +994,7 @@ class PCB_Transformer:
                     center_at.x + size.value.x / 2, center_at.y + size.value.y / 2
                 ),
                 stroke=C_stroke(width=0.15, type=C_stroke.E_type.solid),
-                fill=E_fill.solid,
+                fill=E_fill.yes,
                 layer=layer,
                 uuid=self.gen_uuid(mark=True),
             )
@@ -1066,7 +1087,12 @@ class PCB_Transformer:
                     obj = obj.layer
                 if isinstance(obj, C_fp_text):
                     obj = obj.layer
-                obj.layer = _flip(obj.layer)
+
+                match obj:
+                    case _SingleOrMultiLayer():
+                        obj.apply_to_layers(_flip)
+                    case _:
+                        obj.layer = _flip(obj.layer)
 
         # Label
         if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
@@ -1142,7 +1168,7 @@ class PCB_Transformer:
             mid=arc_center,
             end=arc_end,
             stroke=C_stroke(0.05, C_stroke.E_type.solid),
-            layer="Edge.Cuts",
+            layers=["Edge.Cuts"],
             uuid=self.gen_uuid(mark=True),
         )
 
@@ -1280,7 +1306,7 @@ class PCB_Transformer:
             for geo in get_all_geos(self.pcb):
                 if not isinstance(geo, (Line, Arc)):
                     continue
-                if geo.layer != "Edge.Cuts":
+                if "Edge.Cuts" not in geo.get_layers():
                     continue
                 self.delete_geo(geo)
 
@@ -1290,7 +1316,9 @@ class PCB_Transformer:
 
         # create Edge.Cuts geometries
         for geo in geometry:
-            assert geo.layer == "Edge.Cuts", f"Geometry {geo} is not on Edge.Cuts layer"
+            assert (
+                "Edge.Cuts" in geo.get_layers()
+            ), f"Geometry {geo} is not on Edge.Cuts layer"
 
             self.insert_geo(geo)
 
@@ -1302,6 +1330,15 @@ class PCB_Transformer:
         BOTTOM = auto()
         LEFT = auto()
         RIGHT = auto()
+
+    def hide_all_designators(
+        self,
+    ) -> None:
+        for _, fp in self.get_all_footprints():
+            fp.propertys["Reference"].hide = True
+
+            for txt in [txt for txt in fp.fp_texts if txt.text == "${REFERENCE}"]:
+                txt.effects.hide = True
 
     def set_designator_position(
         self,
@@ -1434,12 +1471,11 @@ class PCB_Transformer:
 
         lib_attrs["pads"] = [
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
-                net=None,
                 **{
                     # Cannot use asdict because it converts children dataclasses too
-                    **dataclass_as_kwargs(p),
+                    **(dataclass_as_kwargs(p)),
                     # We have to handle the rotation separately because
-                    # because it must consider the rotation of the parent footprint
+                    # it must consider the rotation of the parent footprint
                     "at": C_xyr(x=p.at.x, y=p.at.y, r=p.at.r + at.r),
                 },
             )
@@ -1550,22 +1586,22 @@ class PCB_Transformer:
 
         # Flip primitives
         for line in footprint.fp_lines:
-            line.layer = _flip(line.layer)
+            line.apply_to_layers(_flip)
 
         for arc in footprint.fp_arcs:
-            arc.layer = _flip(arc.layer)
+            arc.apply_to_layers(_flip)
 
         for circle in footprint.fp_circles:
-            circle.layer = _flip(circle.layer)
+            circle.apply_to_layers(_flip)
 
         for rect in footprint.fp_rects:
-            rect.layer = _flip(rect.layer)
+            rect.apply_to_layers(_flip)
 
         for text in footprint.fp_texts:
             text.layer.layer = _flip(text.layer.layer)
 
         for polygon in footprint.fp_poly:
-            polygon.layer = _flip(polygon.layer)
+            polygon.apply_to_layers(_flip)
 
         # Flip anything unknown
         _backup_flip(footprint.unknown)
@@ -1587,7 +1623,6 @@ class PCB_Transformer:
         updates = self._fp_common_fields_dict(lib_footprint)
         updates["pads"] = [
             C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
-                net=None,
                 **{
                     # Cannot use asdict because it converts children dataclasses too
                     **dataclass_as_kwargs(p),
@@ -1677,13 +1712,7 @@ class PCB_Transformer:
             value=value,
             layer=C_text_layer(layer=layer),
             uuid=UUID(uuid),
-            effects=C_footprint.C_property.C_footprint_property_effects(
-                font=self.font,
-                # This inner hide should be None and the outer below drives things
-                # otherwise KiCAD will convert-on-save and you can get some weird
-                # behaviour
-                hide=None,
-            ),
+            effects=C_footprint.C_property.C_footprint_property_effects(font=self.font),
             at=C_xyr(x=0, y=0, r=0),
             hide=hide,
         )
@@ -1693,6 +1722,7 @@ class PCB_Transformer:
         "Partnumber",
         "Manufacturer",
         "JLCPCB description",
+        "PARAM_.*",
     }
 
     def _update_footprint_from_node(
@@ -1768,14 +1798,13 @@ class PCB_Transformer:
         # Take any descriptive properties defined on the component
         if c_props_t := component.try_get_trait(F.has_descriptive_properties):
             for prop_name, prop_value in c_props_t.get_properties().items():
-                if prop_name in self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB:
+                if re_in(prop_name, self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB):
                     property_values[prop_name] = prop_value
 
         if c_props_t := component.try_get_trait(F.has_datasheet):
             property_values["Datasheet"] = c_props_t.get_datasheet()
 
         property_values["Reference"] = ref
-        property_values["Footprint"] = pcb_fp.name
 
         if value_t := component.try_get_trait(F.has_simple_value_representation):
             property_values["Value"] = value_t.get_value()
@@ -1827,59 +1856,84 @@ class PCB_Transformer:
         # Each new component in the cluster is inserted with one vertical spacing
         # Each new cluster is inserted with one horizontal spacing
 
-        HORIZONTAL_SPACING = 10
-        VERTICAL_SPACING = -5
+        DEFAULT_HORIZONTAL_SPACING = 10
+        DEFAULT_VERTICAL_SPACING = 10
+        CANVAS_EXTENT = 2147  # KiCad canvas goes to +/- approx. 2147mm in X and Y
+
+        def _incremented_point(point: C_xyr, dx: int = 0, dy: int = 0) -> C_xyr:
+            return C_xyr(x=point.x + dx, y=point.y + dy, r=point.r)
+
+        def _iter_modules(tree: Tree[Module]):
+            # yields nodes with footprints in a sensible order
+            grouped = groupby(tree, lambda c: c.has_trait(F.has_footprint))
+            yield from grouped[True]
+            for child in grouped[False]:
+                yield from _iter_modules(tree[child])
+
+        def _get_cluster(component: Module) -> Node | None:
+            if (parent := component.get_parent()) is not None:
+                return cast_assert(Node, parent[0])
+            return None
+
+        components = _iter_modules(self.app.get_tree(types=Module))
+        clusters = groupby(components, _get_cluster)
+
+        if clusters:
+            # scaled to fit all clusters inside the canvas boundary
+            horizontal_spacing = min(
+                floor(CANVAS_EXTENT / len(clusters)), DEFAULT_HORIZONTAL_SPACING
+            )
+            vertical_spacing = min(
+                floor(CANVAS_EXTENT / max(len(clusters[c]) for c in clusters)),
+                DEFAULT_VERTICAL_SPACING,
+            )
+        else:
+            horizontal_spacing = DEFAULT_HORIZONTAL_SPACING
+            vertical_spacing = DEFAULT_VERTICAL_SPACING
 
         cluster_point = copy.deepcopy(self.default_component_insert_point)
+        insert_point = copy.deepcopy(self.default_component_insert_point)
+        for cluster in clusters:
+            insert_point = copy.deepcopy(cluster_point)
+            cluster_has_footprints = False
 
-        def _new_cluster() -> C_xyr:
-            next_point = copy.deepcopy(cluster_point)
-            cluster_point.x += HORIZONTAL_SPACING
-            return next_point
+            for component in clusters[cluster]:
+                # If this component isn't the most special in it's chain of
+                # specialization then skip it. We should only pick components that are
+                # the most special.
+                if component is not component.get_most_special():
+                    continue
 
-        cluster_points = defaultdict(_new_cluster)
-        cluster_points[None]  # Trigger top-level components, so they're at the top
+                pcb_fp, new_fp = self._update_footprint_from_node(
+                    component, fp_lib_path, logger, insert_point
+                )
+                if new_fp:
+                    insert_point = _incremented_point(
+                        insert_point, dy=-vertical_spacing
+                    )
+                    cluster_has_footprints = True
 
-        def _increment_cluster_point(key):
-            cluster_points[key].y += VERTICAL_SPACING
+                processed_fps.add(pcb_fp)
 
-        for component, _ in gf.nodes_with_trait(F.has_footprint):
-            # FIXME: it'd be nice to allow query composition so
-            # we could ask for all the modules with footprints
-            assert isinstance(component, Module)
-
-            # If this component isn't the most special in it's chain of specialization
-            # then skip it. We should only pick components that are the most special.
-            if component is not component.get_most_special():
-                continue
-
-            cluster_key = component.get_parent()
-            insert_point = cluster_points[cluster_key]
-            pcb_fp, new_fp = self._update_footprint_from_node(
-                component, fp_lib_path, logger, insert_point
-            )
-            # If we used that point, increment the cluster point
-            if new_fp:
-                _increment_cluster_point(cluster_key)
-
-            processed_fps.add(pcb_fp)
+            if cluster_has_footprints:
+                cluster_point = _incremented_point(cluster_point, dx=horizontal_spacing)
 
         ## Remove footprints that aren't present in the design
         # TODO: figure out how this should work with some
         # concept of a --tidy flag or the likes
         # Should this remove unmarked footprints?
-        for pcb_fp in self.pcb.footprints:
-            if pcb_fp not in processed_fps:
-                if ref_prop := pcb_fp.propertys.get("Reference"):
-                    removed_fp_ref = ref_prop.value
-                else:
-                    # This should practically never occur
-                    removed_fp_ref = "<no reference>"
-                logger.info(
-                    f"Removing outdated component with Reference `{removed_fp_ref}`",
-                    extra={"markdown": True},
-                )
-                self.remove_footprint(pcb_fp)
+
+        for pcb_fp in FuncSet[Footprint](self.pcb.footprints) - processed_fps:
+            if ref_prop := pcb_fp.propertys.get("Reference"):
+                removed_fp_ref = ref_prop.value
+            else:
+                # This should practically never occur
+                removed_fp_ref = "<no reference>"
+            logger.info(
+                f"Removing outdated component with Reference `{removed_fp_ref}`",
+                extra={"markdown": True},
+            )
+            self.remove_footprint(pcb_fp)
 
         # Update nets
         # All nets MUST have a name by this point
@@ -1921,24 +1975,20 @@ class PCB_Transformer:
                 # We needn't check again here for a lack of pcb pads on the atopile pad
                 # because we've already raised a warning on binding of the trait
                 for pcb_pad in pcb_pads_connected_to_pad:
-                    pcb_pad.net = Footprint.C_pad.C_net(
-                        name=pcb_net.name,
-                        number=pcb_net.number,
-                    )
+                    pcb_pad.net = C_net(name=pcb_net.name, number=pcb_net.number)
 
             processed_nets.add(pcb_net)
 
         ## Remove nets that aren't present in the design
-        for pcb_net in self.pcb.nets:
+        for pcb_net in FuncSet[Net](self.pcb.nets) - processed_nets:
             # Net number == 0 and name == "" are the default values
             # They represent unconnected to nets, so skip them
             if pcb_net.number == 0:
                 assert pcb_net.name == ""
                 continue
 
-            if pcb_net not in processed_nets:
-                logger.info(
-                    f"Removing net `{pcb_net.name}`",
-                    extra={"markdown": True},
-                )
-                self.remove_net(pcb_net)
+            logger.info(
+                f"Removing net `{pcb_net.name}`",
+                extra={"markdown": True},
+            )
+            self.remove_net(pcb_net)

@@ -9,7 +9,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 from faebryk.exporters.netlist.netlist import FBRKNetlist
-from faebryk.libs.kicad.fileformats import C_fields, C_kicad_netlist_file
+from faebryk.libs.kicad.fileformats_latest import C_fields, C_kicad_netlist_file
 from faebryk.libs.util import duplicates
 
 logger = logging.getLogger(__name__)

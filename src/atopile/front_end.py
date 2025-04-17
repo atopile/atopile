@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from itertools import chain
+from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
     Any,
@@ -22,6 +22,7 @@ from typing import (
 )
 
 from antlr4 import ParserRuleContext
+from more_itertools import last
 from pint import UndefinedUnitError
 
 import faebryk.library._F as F
@@ -40,7 +41,7 @@ from atopile.datatypes import (
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
 from atopile.parser.AtoParserVisitor import AtoParserVisitor
-from faebryk.core.node import NodeException
+from faebryk.core.node import FieldExistsError, NodeException
 from faebryk.core.parameter import (
     Arithmetic,
     ConstrainableExpression,
@@ -53,13 +54,9 @@ from faebryk.core.parameter import (
     Parameter,
 )
 from faebryk.core.trait import Trait
-from faebryk.libs.exceptions import (
-    accumulate,
-    downgrade,
-    iter_through_errors,
-    suppress_after_count,
-)
+from faebryk.libs.exceptions import accumulate, downgrade, iter_through_errors
 from faebryk.libs.library.L import Range, Single
+from faebryk.libs.picker.picker import does_not_require_picker_check
 from faebryk.libs.sets.quantity_sets import Quantity_Interval, Quantity_Set
 from faebryk.libs.sets.sets import BoolSet
 from faebryk.libs.units import (
@@ -75,12 +72,13 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    groupby,
     has_attr_or_property,
     has_instance_settable_attr,
     import_from_path,
     is_type_pair,
     not_none,
-    partition,
+    partition_as_list,
 )
 
 logger = logging.getLogger(__name__)
@@ -289,14 +287,6 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
             return KeyOptMap(imports)
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppressor_visitDep_import_stmt = suppress_after_count(
-        3,
-        DeprecatedException,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
-
     def visitDep_import_stmt(
         self, ctx: ap.Dep_import_stmtContext
     ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Dep_import_stmtContext]]:
@@ -305,7 +295,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
-        with downgrade(DeprecatedException), self._suppressor_visitDep_import_stmt:
+        # TODO: @v0.4 remove this deprecated import form
+        with downgrade(DeprecatedException):
             raise DeprecatedException.from_ctx(
                 ctx,
                 "`import <something> from <path>` is deprecated and"
@@ -543,6 +534,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         }
 
     def _build(self, context: Context, ref: TypeRef) -> L.Node:
+        assert self._is_reset()
+
         if ref not in context.refs:
             raise errors.UserKeyError.from_ctx(
                 context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
@@ -562,36 +555,45 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         finally:
             self._finish()
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppressor_finish = suppress_after_count(
-        3,
-        errors.UserActionWithoutEffectError,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
+    def _is_reset(self) -> bool:
+        """
+        Make sure caches that aren't intended to be shared between builds are empty.
+        True if the caches are empty, False if they are not.
+        """
+        return (
+            not self._node_stack
+            and not self._traceback_stack
+            and not self._param_assignments
+        )
 
     def _finish(self):
         self._merge_parameter_assignments()
+        assert self._is_reset()
+
+    class ParamAssignmentIsGospel(errors.UserException):
+        """
+        The parameter assignment is treated as the precise specification of the
+        component, rather than merely as a requirement for it's later selection
+        """
+
+        title = "Parameter assignments are component definition"  # type: ignore
 
     def _merge_parameter_assignments(self):
         with accumulate(
             errors._BaseBaseUserException, SkipPriorFailedException
         ) as ex_acc:
             # Handle missing definitions
-            params_without_defitions, params_with_definitions = partition(
+            params_without_defitions, params_with_definitions = partition_as_list(
                 lambda p: any(a.is_definition for a in self._param_assignments[p]),
                 self._param_assignments,
             )
 
             for param in params_without_defitions:
-                last_declaration = self._param_assignments[param][-1]
+                last_declaration = last(self._param_assignments.pop(param))
                 with ex_acc.collect(), ato_error_converter():
-                    with (
-                        downgrade(
-                            errors.UserActionWithoutEffectError,
-                            to_level=logging.DEBUG,
-                        ),
-                        self._suppressor_finish,
+                    # TODO: @v0.4 remove this deprecated import form
+                    with downgrade(
+                        errors.UserActionWithoutEffectError, to_level=logging.DEBUG
                     ):
                         raise errors.UserActionWithoutEffectError.from_ctx(
                             last_declaration.ctx,
@@ -599,33 +601,84 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             traceback=last_declaration.traceback,
                         )
             # Handle parameter assignments
-            for param in params_with_definitions:
-                assignments = self._param_assignments[param]
-                definitions = [a for a in assignments if a.is_definition]
-                assert definitions
+            # assignments override each other
+            # assignments made in the block definition of the component are "is"
+            # external assignments are requirements treated as a subset
 
-                with ex_acc.collect(), ato_error_converter():
-                    # TODO: revisit this language detail
-                    # every assignment overrides the previous one
-                    # this is consistent with v0.2
-                    last_definition = definitions[-1]
-                    value, ctx, traceback = (
-                        not_none(last_definition.value),
-                        last_definition.ctx,
-                        last_definition.traceback,
+            # Allowing external assignments in the first place is a bit weird
+            # Got to figure out how people are using this.
+            # My guess is that in 99% of cases you can replace them by a `&=`
+            params_by_node = groupby(
+                params_with_definitions, key=lambda p: p.get_parent_force()[0]
+            )
+            for assignee_node, assigned_params in params_by_node.items():
+                is_part_module = isinstance(assignee_node, L.Module) and (
+                    assignee_node.has_trait(F.is_pickable_by_supplier_id)
+                    or assignee_node.has_trait(F.is_pickable_by_part_number)
+                )
+
+                gospel_params: list[Parameter] = []
+                for param in assigned_params:
+                    assignments = self._param_assignments.pop(param)
+                    definitions = [a for a in assignments if a.is_definition]
+                    non_root_definitions, root_definitions = partition_as_list(
+                        lambda a: a.is_root_assignment, definitions
                     )
 
-                    # Set final value of parameter
-                    assert isinstance(
-                        ctx, ParserRuleContext
-                    )  # Since value and ctx should be None together
+                    assert definitions
+                    for definition in definitions:
+                        logger.debug(
+                            "Assignment:  %s [%s] := %s",
+                            param,
+                            definition.ref,
+                            definition.value,
+                        )
 
-                    try:
-                        param.constrain_subset(value)
-                    except UnitCompatibilityError as ex:
-                        raise errors.UserTypeError.from_ctx(
-                            ctx, str(ex), traceback=traceback
-                        ) from ex
+                    # Don't see how this could happen, but just in case
+                    root_after_external = (False, True) in pairwise(
+                        a.is_root_assignment for a in definitions
+                    )
+                    assert not root_after_external
+
+                    with ex_acc.collect(), ato_error_converter():
+                        # Workaround for missing difference between alias and subset
+                        # Only relevant for code-as-data part modules
+                        # TODO: consider a warning for definitions that aren't purely
+                        # narrowing
+                        if is_part_module and non_root_definitions:
+                            raise errors.UserNotImplementedError.from_ctx(
+                                last(non_root_definitions).ctx,
+                                "You can't assign to a `component` with a specific"
+                                " part number outside of its definition",
+                                traceback=last(non_root_definitions).traceback,
+                            )
+
+                        elif is_part_module and root_definitions:
+                            param.alias_is(not_none(last(root_definitions).value))
+                            param.add(does_not_require_picker_check())
+                            gospel_params.append(param)
+
+                        elif not is_part_module:
+                            definition = last(definitions)
+                            value = not_none(definition.value)
+                            try:
+                                logger.debug("Constraining %s to %s", param, value)
+                                param.constrain_subset(value)
+                            except UnitCompatibilityError as ex:
+                                raise errors.UserTypeError.from_ctx(
+                                    definition.ctx,
+                                    str(ex),
+                                    traceback=definition.traceback,
+                                ) from ex
+
+                if gospel_params:
+                    with downgrade(self.ParamAssignmentIsGospel, to_level=logging.INFO):
+                        raise self.ParamAssignmentIsGospel(
+                            f"`component` `{assignee_node.get_full_name()}`"
+                            " is completely specified by a part number, so these"
+                            " params are treated as its exact specification:"
+                            + ", ".join(f"`{p}`" for p in gospel_params)
+                        )
 
     @property
     def _current_node(self) -> L.Node:
@@ -972,7 +1025,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             ) from ex
 
-        assert isinstance(node, Parameter)
+        if not isinstance(node, Parameter):
+            raise errors.UserSyntaxError.from_ctx(
+                src_ctx,
+                f"Node {name} is {type(node)} not a Parameter",
+                traceback=self.get_traceback(),
+            )
         return node
 
     def _ensure_param(
@@ -1033,14 +1091,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _record_failed_node(self, node: L.Node, name: str):
         self._failed_nodes.setdefault(node, set()).add(name)
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppressor_visitAssign_stmt = suppress_after_count(
-        5,
-        errors.UserException,
-        logger=logger,
-        suppression_warning="Suppressing further warnings of this type",
-    )
-
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
         dec = ctx.field_reference_or_declaration()
@@ -1077,7 +1127,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with self._init_node(
                         self._get_referenced_class(ctx, ref)
                     ) as new_node:
-                        self._current_node.add(new_node, name=name)
+                        try:
+                            self._current_node.add(new_node, name=name)
+                        except FieldExistsError as e:
+                            raise errors.UserAlreadyExistsError.from_ctx(
+                                ctx,
+                                f"Field `{assigned_name}` already exists",
+                                traceback=self.get_traceback(),
+                            ) from e
                         new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
@@ -1118,7 +1175,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             # Check if it's a property or attribute that can be set
             if has_instance_settable_attr(target, name):
-                setattr(target, name, value)
+                try:
+                    setattr(target, name, value)
+                except errors.UserException as e:
+                    e.attach_origin_from_ctx(assignable_ctx)
+                    raise
             elif (
                 # If ModuleShims has a settable property, use it
                 hasattr(GlobalAttributes, name)
@@ -1127,16 +1188,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ):
                 prop = cast_assert(property, getattr(GlobalAttributes, name))
                 assert prop.fset is not None
+                # TODO: @v0.4 remove this deprecated import form
                 with (
                     downgrade(DeprecatedException, errors.UserNotImplementedError),
-                    self._suppressor_visitAssign_stmt,
                     _attach_ctx_to_ex(ctx, self.get_traceback()),
                 ):
                     prop.fset(target, value)
             else:
                 # Strictly, these are two classes of errors that could use independent
                 # suppression, but we'll just suppress them both collectively for now
-                with downgrade(errors.UserException), self._suppressor_visitAssign_stmt:
+                # TODO: @v0.4 remove this deprecated import form
+                with downgrade(errors.UserException):
                     raise errors.UserException.from_ctx(
                         ctx,
                         f"Ignoring assignment of `{value}` to `{name}` on `{target}`",
@@ -1148,14 +1210,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return NOTHING
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppression_get_mif_and_warn_when_exists = suppress_after_count(
-        3,
-        errors.UserAlreadyExistsError,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
-
     def _get_mif_and_warn_when_exists(
         self, name: ReferencePartType, ctx: ParserRuleContext
     ) -> L.ModuleInterface | None:
@@ -1165,10 +1219,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return None
 
         if isinstance(mif, L.ModuleInterface):
-            with (
-                downgrade(errors.UserAlreadyExistsError),
-                self._suppression_get_mif_and_warn_when_exists,
-            ):
+            # TODO: @v0.4 remove this deprecated import form
+            with downgrade(errors.UserAlreadyExistsError):
                 raise errors.UserAlreadyExistsError(
                     f"`{name}` already exists; skipping."
                 )
@@ -1217,21 +1269,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         mif = self._current_node.add(F.Electrical(), name=name)
         return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppression_connect = suppress_after_count(
-        3,
-        DeprecatedException,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
-
-    _suppression_connect_type_warning = suppress_after_count(
-        3,
-        errors.UserTypeError,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
-
     def _connect(
         self, a: L.ModuleInterface, b: L.ModuleInterface, ctx: ParserRuleContext | None
     ):
@@ -1248,14 +1285,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if pair := is_type_pair(a, b, F.Electrical, F.ElectricSignal):
             pair[0].connect(pair[1].line)
 
-            with (
-                downgrade(errors.UserTypeError),
-                self._suppression_connect_type_warning,
-            ):
+            # TODO: @v0.4 remove this deprecated import form
+            with downgrade(errors.UserTypeError):
+                a, b = pair
+                a_type = a.__class__.__name__
+                b_type = b.__class__.__name__
                 raise errors.UserTypeError.from_ctx(
                     ctx,
-                    f"Connected `{pair[0]}`, a `signal` / `Electrical` to "
-                    f"`{pair[1]}.line`, because `{pair[1]}` is a `{type(pair[1])}`. "
+                    f"Connected `{a}` (type {a_type}) to "
+                    f"`{b}.line`, because `{b}` is an `{b_type}`. "
                     "This means that the reference isn't also connected through.",
                     traceback=self.get_traceback(),
                 )
@@ -1266,6 +1304,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 a.connect(b)
 
             except NodeException as top_ex:
+                top_ex = errors.UserNodeException.from_node_exception(
+                    top_ex, ctx, self.get_traceback()
+                )
+
                 # If that fails, try connecting via duck-typing
                 for name, (c_a, c_b) in a.zip_children_by_name_with(
                     b, L.ModuleInterface
@@ -1274,13 +1316,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         if has_attr_or_property(a, name):
                             c_a = getattr(a, name)
                         else:
-                            raise
+                            raise top_ex
 
                     if c_b is None:
                         if has_attr_or_property(b, name):
                             c_b = getattr(b, name)
                         else:
-                            raise
+                            raise top_ex
 
                     try:
                         self._connect(c_a, c_b, None)
@@ -1296,10 +1338,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     ):  # Check that this is the top-level _connect call
                         # TODO: @v0.4 increase the level of this to WARNING
                         # when there's an alternative
-                        with (
-                            downgrade(DeprecatedException, to_level=logging.DEBUG),
-                            self._suppression_connect,
-                        ):
+                        with downgrade(DeprecatedException, to_level=logging.DEBUG):
                             raise DeprecatedException.from_ctx(
                                 ctx,
                                 f"Connected `{a}` to `{b}` by duck-typing."
@@ -1693,14 +1732,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return Range(start, end)
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppressor_visitCum_assign_stmt = suppress_after_count(
-        3,
-        DeprecatedException,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
-
     def visitCum_assign_stmt(self, ctx: ap.Cum_assign_stmtContext | Any):
         """
         Cumulative assignments can only be made on top of
@@ -1729,20 +1760,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # TODO: @v0.4 increase the level of this to WARNING
         # when there's an alternative
-        with (
-            downgrade(DeprecatedException, to_level=logging.DEBUG),
-            self._suppressor_visitCum_assign_stmt,
-        ):
+        with downgrade(DeprecatedException, to_level=logging.DEBUG):
             raise DeprecatedException(f"{ctx.cum_operator().getText()} is deprecated.")
         return NOTHING
-
-    # TODO: @v0.4 remove this deprecated import form
-    _suppressor_visitSet_assign_stmt = suppress_after_count(
-        3,
-        DeprecatedException,
-        logger=logger,
-        suppression_warning="Suppressing further deprecation warnings",
-    )
 
     def visitSet_assign_stmt(self, ctx: ap.Set_assign_stmtContext):
         """
@@ -1767,7 +1787,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Syntax should protect from this
             raise ValueError(f"Unhandled set assignment operator {ctx}")
 
-        with downgrade(DeprecatedException), self._suppressor_visitSet_assign_stmt:
+        # TODO: @v0.4 remove this deprecated import form
+        with downgrade(DeprecatedException):
             lhs = ref_dec.field_reference().getText()
             rhs = ctx.cum_assignable().getText()
             if ctx.OR_ASSIGN():
@@ -1800,14 +1821,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return unit
 
-    # TODO: @v0.4 remove this deprecated import form
-    _suppressor_visitDeclaration_stmt = suppress_after_count(
-        3,
-        errors.UserKeyError,
-        logger=logger,
-        suppression_warning="Suppressing further warnings of this type",
-    )
-
     def _handleParameterDeclaration(
         self, ref: TypeRef, unit: UnitType, ctx: ParserRuleContext
     ):
@@ -1819,7 +1832,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 assignment.is_definition
                 for assignment in self._param_assignments[param]
             )
-            with downgrade(errors.UserKeyError), self._suppressor_visitDeclaration_stmt:
+            # TODO: @v0.4 remove this deprecated import form
+            with downgrade(errors.UserKeyError):
                 if declaration_after_definition:
                     raise errors.UserKeyError.from_ctx(
                         ctx,

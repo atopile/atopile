@@ -22,7 +22,7 @@ def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
     if isinstance(exc, type):
         exc = exc.__name__
     if not isinstance(exc, str):
-        exc = f'({", ".join(e.__name__ for e in exc)})'
+        exc = f"({', '.join(e.__name__ for e in exc)})"
 
     return (
         f"try:\n    {stmt}\nexcept {exc} as e:\n    print('{stmt.split(' ')[-1]}', e)"
@@ -31,7 +31,7 @@ def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
 
 def topo_sort(modules_out: dict[str, tuple[Path, str]]):
     def find_deps(module_path: Path) -> set[str]:
-        f = module_path.read_text()
+        f = module_path.read_text(encoding="utf-8")
         p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
         return set(p.findall(f))
 
@@ -138,7 +138,8 @@ def main():
             # )
             for module, class_ in modules_ordered
         )
-        + "\n"
+        + "\n",
+        encoding="utf-8",
     )
 
 

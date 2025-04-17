@@ -98,7 +98,7 @@ std::unordered_set<GI_ref_weak> Graph::get_gif_edges(GI_ref_weak from) {
     return this->e_cache_simple[from];
 }
 
-std::unordered_map<GI_ref_weak, Link_ref> &Graph::get_edges(GI_ref_weak from) {
+Map<GI_ref_weak, Link_ref> &Graph::get_edges(GI_ref_weak from) {
     return this->e_cache[from];
 }
 

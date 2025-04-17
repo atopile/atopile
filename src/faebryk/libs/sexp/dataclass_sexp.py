@@ -13,12 +13,26 @@ from dataclasses_json import CatchAll
 from dataclasses_json.utils import CatchAllVar
 from sexpdata import Symbol
 
-from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.sexp.util import prettify_sexp_string
-from faebryk.libs.util import cast_assert, duplicates, groupby, zip_non_locked
+from faebryk.libs.util import (
+    ConfigFlag,
+    cast_assert,
+    duplicates,
+    groupby,
+    indented_container,
+    md_list,
+    pretty_type,
+    zip_non_locked,
+)
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
+
+SEXP_LOG = ConfigFlag(
+    "SEXP_LOG", default=False, descr="Enable sexp decode logging (very verbose)"
+)
+
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +88,10 @@ class SymEnum(StrEnum): ...
 
 class DecodeError(UserResourceException):
     """Error during decoding"""
+
+
+class ParseError(UserResourceException):
+    """Error during parsing"""
 
 
 def _prettify_stack(stack: list[tuple[str, type]] | None) -> str:
@@ -164,12 +182,12 @@ def _convert(
             return t(str(val))
 
         return t(val)
-    except DecodeError:
+    except Exception:
+        logger.debug(
+            f"Failed to decode `{_prettify_stack(substack)}` "
+            f"({pretty_type(t)}) with \n{indented_container(val)}"
+        )
         raise
-    except Exception as e:
-        raise DecodeError(
-            f"Failed to decode {_prettify_stack(substack)} ({t}) with {val} "
-        ) from e
 
 
 netlist_obj = str | Symbol | int | float | bool | list
@@ -182,8 +200,8 @@ def _decode[T: DataclassInstance](
     stack: list[tuple[str, type]] | None = None,
     ignore_assertions: bool = False,
 ) -> T:
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"parse into: {t.__name__} {'-'*40}")
+    if SEXP_LOG:
+        logger.debug(f"parse into: {t.__name__} {'-' * 40}")
         logger.debug(f"sexp: {sexp}")
 
     # check if t is dataclass type
@@ -217,7 +235,7 @@ def _decode[T: DataclassInstance](
         if isinstance(val, list):
             if len(val):
                 if isinstance(key := val[0], Symbol):
-                    if str(key) in key_fields or str(key) + "s" in key_fields:
+                    if (str(key) in key_fields) or str(key) + "s" in key_fields:
                         ungrouped_key_values.append(val)
                         continue
 
@@ -226,7 +244,9 @@ def _decode[T: DataclassInstance](
     key_values = groupby(
         ungrouped_key_values,
         lambda val: (
-            str(val[0]) + "s" if str(val[0]) + "s" in key_fields else str(val[0])
+            str(val[0]) + "s"
+            if str(val[0]) + "s" in key_fields and str(val[0]) not in key_fields
+            else str(val[0])
         ),
     )
     pos_values = {
@@ -238,7 +258,7 @@ def _decode[T: DataclassInstance](
         # and positional_fields[i].name not in value_dict
     }
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"processing: {_prettify_stack(stack)}")
         logger.debug(f"key_fields: {list(key_fields.keys())}")
         logger.debug(
@@ -302,14 +322,18 @@ def _decode[T: DataclassInstance](
                         f" {key_t=} types={[v[0] for v in values_with_key]}"
                     )
                 if d := duplicates(values_with_key, key=lambda v: v[0]):
-                    raise ValueError(f"Duplicate keys: {d}")
+                    raise ValueError(
+                        f"Duplicate keys at `{_prettify_stack(stack)}`: {d}"
+                    )
                 value_dict[name] = dict(values_with_key)
             else:
                 raise NotImplementedError(
                     f"Multidict not supported for {origin} in field {f}"
                 )
         else:
-            assert len(values) == 1, f"Duplicate key: {name}"
+            if len(values) != 1:
+                raise ValueError(f"Duplicate key at `{_prettify_stack(stack)}`: {name}")
+
             out = _convert(
                 values[0][1:],
                 f.type,
@@ -370,23 +394,30 @@ def _decode[T: DataclassInstance](
     for f in fs:
         sp = sexp_field.from_field(f)
         if sp.assert_value is not None:
-            assert value_dict[f.name] == sp.assert_value, (
-                f"Fileformat assertion! {f.name} has to be"
-                f" {sp.assert_value} but is {value_dict[f.name]}"
-            )
+            with downgrade(
+                AssertionError,
+                to_level=logging.DEBUG,
+                raise_anyway=not ignore_assertions,
+            ):
+                assert value_dict[f.name] == sp.assert_value, (
+                    f"Fileformat assertion! {f.name} has to be"
+                    f" {sp.assert_value} but is {value_dict[f.name]}"
+                )
 
     # Unprocessed values should be None if there aren't any,
     # so they don't get reproduced etc...
     if catch_all_fields and not unprocessed:
         value_dict[catch_all_fields[0].name] = None
 
-    if logger.isEnabledFor(logging.DEBUG):
+    if SEXP_LOG:
         logger.debug(f"value_dict: {value_dict}")
 
     try:
         out = t(**value_dict)
     except TypeError as e:
-        raise TypeError(f"Failed to create {t} with {value_dict}") from e
+        raise TypeError(
+            f"Failed to create {pretty_type(t)} with \n{md_list(value_dict)}"
+        ) from e
 
     # set parent pointers for all dataclasses in the tree
     for v in value_dict.values():
@@ -496,8 +527,8 @@ def _encode(t) -> netlist_type:
         for i, v in sorted(catch_all.items(), key=lambda x: x[0]):
             sexp.insert(i, v)
 
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"Dumping {type(t).__name__} {'-'*40}")
+    if SEXP_LOG:
+        logger.debug(f"Dumping {type(t).__name__} {'-' * 40}")
         logger.debug(f"Obj: {t}")
         logger.debug(f"Sexp: {sexp}")
 
@@ -510,14 +541,20 @@ def loads[T: DataclassInstance](
     text = s
     sexp = s
     if isinstance(s, Path):
-        text = s.read_text()
+        text = s.read_text(encoding="utf-8")
     if isinstance(text, str):
         try:
             sexp = sexpdata.loads(text)
         except Exception as e:
-            raise DecodeError(f"Failed to parse sexp: {text}") from e
+            raise ParseError(f"Failed to parse sexp: {text}") from e
 
-    return _decode([sexp], t, ignore_assertions=ignore_assertions)
+    try:
+        return _decode([sexp], t, ignore_assertions=ignore_assertions)
+    except Exception as e:
+        if isinstance(s, Path):
+            raise DecodeError(f"Failed to decode file {s}\n\n{e}") from e
+        else:
+            raise DecodeError(f"Failed to decode sexp\n\n{e}") from e
 
 
 def dumps(obj, path: PathLike | None = None) -> str:
@@ -526,7 +563,7 @@ def dumps(obj, path: PathLike | None = None) -> str:
     text = sexpdata.dumps(sexp)
     text = prettify_sexp_string(text)
     if path:
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
     return text
 
 
@@ -560,14 +597,14 @@ class JSON_File:
     def loads[T](cls: type[T], path: Path | str) -> T:
         text = path
         if isinstance(path, Path):
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
         return cls.from_json(text)
 
     def dumps(self, path: PathLike | None = None):
         path = Path(path) if path else None
         text = self.to_json(indent=4)
         if path:
-            path.write_text(text)
+            path.write_text(text, encoding="utf-8")
         return text
 
 

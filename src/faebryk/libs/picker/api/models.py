@@ -3,8 +3,9 @@
 
 import functools
 import logging
-from dataclasses import dataclass, field, make_dataclass
+from dataclasses import asdict, dataclass, field, make_dataclass
 from textwrap import indent
+from typing import Any, Iterable
 
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
@@ -37,6 +38,26 @@ def SerializableField():
     )
 
 
+# Consider moving to a more general markdown utility
+def _md_list(items: Iterable[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
+
+
+# Consider making this a mixin instead
+def _pretty_params_helper(params) -> str:
+    def _map(v: Any) -> str:
+        if v is None:
+            return "**unconstrained**"
+        elif isinstance(v, (P_Set, int, float)):
+            return f"`{v}`"
+        elif isinstance(v, str):
+            return f'"{v}"'
+        else:
+            return str(v)
+
+    return _md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
+
+
 @dataclass_json
 @dataclass(frozen=True, kw_only=True)
 class BaseParams(Serializable):
@@ -46,6 +67,9 @@ class BaseParams(Serializable):
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
+
+    def pretty_str(self) -> str:
+        return _pretty_params_helper(self)
 
 
 def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
@@ -72,12 +96,12 @@ def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
 
 ResistorParams = _make_params_for_type(F.Resistor, "resistors")
 CapacitorParams = _make_params_for_type(F.Capacitor, "capacitors")
-InductorParams = _make_params_for_type(F.Inductor, "inductors")
-DiodeParams = _make_params_for_type(F.Diode, "diodes")
-TVSParams = _make_params_for_type(F.TVS, "tvs")
-LEDParams = _make_params_for_type(F.LED, "leds")
-LDOParams = _make_params_for_type(F.LDO, "ldos")
-MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
+# InductorParams = _make_params_for_type(F.Inductor, "inductors")
+# DiodeParams = _make_params_for_type(F.Diode, "diodes")
+# TVSParams = _make_params_for_type(F.TVS, "tvs")
+# LEDParams = _make_params_for_type(F.LED, "leds")
+# LDOParams = _make_params_for_type(F.LDO, "ldos")
+# MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
 
 
 @dataclass_json
@@ -93,6 +117,9 @@ class LCSCParams(Serializable):
     def deserialize(cls, data: dict) -> "LCSCParams":
         return cls(**data)
 
+    def pretty_str(self) -> str:
+        return _pretty_params_helper(self)
+
 
 @dataclass_json
 @dataclass(frozen=True)
@@ -107,6 +134,9 @@ class ManufacturerPartParams(Serializable):
     @classmethod
     def deserialize(cls, data: dict) -> "ManufacturerPartParams":
         return cls(**data)
+
+    def pretty_str(self) -> str:
+        return _pretty_params_helper(self)
 
 
 @dataclass_json
@@ -198,17 +228,19 @@ class Component:
         module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
 
         missing_attrs = []
-        for name, literal in self.attribute_literals.items():
-            if not hasattr(module, name):
-                missing_attrs.append(name)
-                continue
+        # only for type picks
+        if module.has_trait(F.is_pickable_by_type):
+            for name, literal in self.attribute_literals.items():
+                if not hasattr(module, name):
+                    missing_attrs.append(name)
+                    continue
 
-            p = getattr(module, name)
-            assert isinstance(p, Parameter)
-            if literal is None:
-                literal = p.domain.unbounded(p)
+                p = getattr(module, name)
+                assert isinstance(p, Parameter)
+                if literal is None:
+                    literal = p.domain.unbounded(p)
 
-            p.alias_is(literal)
+                p.alias_is(literal)
 
         if missing_attrs:
             with downgrade(UserException):
@@ -227,6 +259,9 @@ class Component:
                 f"{indent(str(self.attributes), ' '*4)}\n--->\n"
                 f"{indent(module.pretty_params(), ' '*4)}"
             )
+
+    def __rich_repr__(self):
+        yield f"{type(self).__name__}({self.lcsc_display})"
 
     class ParseError(Exception):
         pass

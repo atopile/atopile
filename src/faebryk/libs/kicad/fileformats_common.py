@@ -20,6 +20,10 @@ logger = logging.getLogger(__name__)
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
 
+# @kicad10
+KICAD_FP_VERSION = 20241229
+
+
 class UUID(str):
     pass
 
@@ -98,6 +102,7 @@ class C_effects:
     class C_font:
         size: C_wh
         thickness: Optional[float] = None
+        unresolved_font_name: Optional[str] = None
 
     @dataclass
     class C_justify:
@@ -123,7 +128,7 @@ class C_effects:
             c_effects[-1] = [Symbol("hide"), Symbol("yes")]
         return c_effects
 
-    hide: bool = False
+    hide: bool | None = False
 
     # Legal:
     # (justify mirror right)
@@ -152,7 +157,14 @@ class C_effects:
 
 @dataclass
 class C_pts:
+    @dataclass
+    class C_arc:
+        start: C_xy
+        mid: C_xy
+        end: C_xy
+
     xys: list[C_xy] = field(**sexp_field(multidict=True), default_factory=list)
+    arcs: list[C_arc] = field(**sexp_field(multidict=True), default_factory=list)
 
 
 @dataclass(kw_only=True)
@@ -160,12 +172,24 @@ class C_kicad_footprint_file_header(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_file_header:
         name: str = field(**sexp_field(positional=True))
-        version: int = field(default=20240108)
+        version: int = field(default=KICAD_FP_VERSION)
         generator: str = ""
         generator_version: str = ""
         unknown: CatchAll = None
 
     footprint: C_footprint_file_header
+
+
+@dataclass
+class C_kicad_pcb_file_header(SEXP_File):
+    @dataclass
+    class C_kicad_pcb_header:
+        version: int = field(**sexp_field())
+        generator: str
+        generator_version: str
+        unknown: CatchAll = None
+
+    kicad_pcb: C_kicad_pcb_header
 
 
 def gen_uuid(mark: str = ""):

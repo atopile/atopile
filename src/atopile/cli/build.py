@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from more_itertools import first
 
-from atopile import errors
+from atopile.cli.logging import NOW, LoggingStage
 from atopile.config import config
+from atopile.telemetry import log_to_posthog
 from faebryk.libs.app.pcb import open_pcb
 
 if TYPE_CHECKING:
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@log_to_posthog("cli:build_end")
 def build(
     entry: Annotated[str | None, typer.Argument()] = None,
     selected_builds: Annotated[
@@ -36,6 +38,7 @@ def build(
     ] = None,
     keep_picked_parts: bool | None = None,
     keep_net_names: bool | None = None,
+    keep_designators: bool | None = None,
     standalone: bool = False,
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
@@ -47,6 +50,7 @@ def build(
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
     from atopile import buildutil
+    from atopile.cli.install import check_missing_deps_or_offer_to_install
     from atopile.config import BuildType
     from faebryk.library import _F as F
     from faebryk.libs.exceptions import accumulate, log_user_errors
@@ -57,56 +61,43 @@ def build(
         target=target,
         option=option,
         standalone=standalone,
+        frozen=frozen,
+        keep_picked_parts=keep_picked_parts,
+        keep_net_names=keep_net_names,
+        keep_designators=keep_designators,
     )
 
+    check_missing_deps_or_offer_to_install()
+
     if open_layout is not None:
-        config.project.pcbnew_auto = open_layout
+        config.project.open_layout_on_build = open_layout
 
-    for build_cfg in config.project.builds.values():
-        if keep_picked_parts is not None:
-            build_cfg.keep_picked_parts = keep_picked_parts
-
-        if keep_net_names is not None:
-            build_cfg.keep_net_names = keep_net_names
-
-        if frozen is not None:
-            build_cfg.frozen = frozen
-            if frozen:
-                if keep_picked_parts is False:  # is, ignores None
-                    raise errors.UserBadParameterError(
-                        "`--keep-picked-parts` conflict with `--frozen`"
-                    )
-
-                build_cfg.keep_picked_parts = True
-
-                if keep_net_names is False:  # is, ignores None
-                    raise errors.UserBadParameterError(
-                        "`--keep-net-names` conflict with `--frozen`"
-                    )
-
-                build_cfg.keep_net_names = True
-
+    logger.info("Saving logs to %s", config.project.paths.logs / NOW)
     with accumulate() as accumulator:
         for build in config.builds:
             with accumulator.collect(), log_user_errors(logger), build:
                 logger.info("Building '%s'", config.build.name)
-                match config.build.build_type:
-                    case BuildType.ATO:
-                        app = _init_ato_app()
-                    case BuildType.PYTHON:
-                        app = _init_python_app()
-                        app.add(F.is_app_root())
-                    case _:
-                        raise ValueError(
-                            f"Unknown build type: {config.build.build_type}"
-                        )
+                with LoggingStage(
+                    name=f"init-{config.build.name}",
+                    description="Initializing app",
+                ):
+                    match config.build.build_type:
+                        case BuildType.ATO:
+                            app = _init_ato_app()
+                        case BuildType.PYTHON:
+                            app = _init_python_app()
+                            app.add(F.is_app_root())
+                        case _:
+                            raise ValueError(
+                                f"Unknown build type: {config.build.build_type}"
+                            )
 
                 # TODO: add a way to override the following with custom build machinery
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
 
-    if config.project.pcbnew_auto:
+    if config.should_open_layout_on_build():
         selected_build_names = list(config.selected_builds)
         if len(selected_build_names) == 1:
             build = config.project.builds[first(selected_build_names)]

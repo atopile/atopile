@@ -57,11 +57,11 @@ class HasUnit:
         return obj.units if HasUnit.check(obj) else dimensionless
 
 
-def to_si_str(
+def to_si(
     value: Quantity | float | int,
     unit: UnitsContainer,
     num_decimals: int = 2,
-) -> str:
+):
     """
     Convert a float to a string with SI prefix and unit.
     """
@@ -78,7 +78,20 @@ def to_si_str(
         clean_decimals = frac.rstrip("0")
         m = f"{int_}.{clean_decimals}" if clean_decimals else int_
 
+    return m, u
+
+
+def to_si_str(
+    value: Quantity | float | int,
+    unit: UnitsContainer,
+    num_decimals: int = 2,
+) -> str:
+    m, u = to_si(value, unit, num_decimals)
     return f"{m}{u}"
+
+
+def format_time(seconds: float) -> str:
+    return to_si_str(seconds, "s")
 
 
 def Scalar(value: float):
