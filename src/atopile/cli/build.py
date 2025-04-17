@@ -160,7 +160,7 @@ def _init_ato_app() -> "Module":
 
     node = front_end.bob.build_file(
         config.build.entry_file_path,
-        TypeRef(config.build.entry_section.split(".")),
+        TypeRef.from_path_str(config.build.entry_section),
     )
     assert isinstance(node, L.Module)
     return node

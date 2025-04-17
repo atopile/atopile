@@ -30,6 +30,11 @@ class TypeRef(tuple[str]):
         """Return a Ref with a single item."""
         return cls((str(name),))
 
+    @classmethod
+    def from_path_str(cls, path: str) -> "TypeRef":
+        """Return a Ref from a path string."""
+        return cls(path.split("."))
+
 
 KeyType = str | int
 ReferencePartType = tuple[str, KeyType | None]
