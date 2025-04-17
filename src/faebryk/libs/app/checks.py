@@ -11,6 +11,7 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.app.erc import simple_erc
 from faebryk.libs.kicad.fileformats_latest import C_kicad_drc_report_file
+from faebryk.libs.units import to_si_str
 from faebryk.libs.util import groupby, md_list
 
 logger = logging.getLogger(__name__)
@@ -58,9 +59,11 @@ class DrcException(CheckException):
         self,
         shorts: list[Violation],
         unconnected: list[Violation],
+        units: str,
     ):
         self.shorts = shorts
         self.unconnected = unconnected
+        self.units = units
         super().__init__(
             f"{type(self).__name__} ("
             f"{len(self.shorts)} shorts,"
@@ -68,11 +71,14 @@ class DrcException(CheckException):
             f")"
         )
 
-    @staticmethod
-    def pretty_violation(violation: Violation):
+    def pretty_violation(self, violation: Violation):
+        def _convert_coord(c):
+            x, y = (to_si_str(subcoord, self.units) for subcoord in (c.x, c.y))
+            return f"({x},{y})"
+
         return {
             violation.description: [
-                f"{i.description} @({i.pos.x},{i.pos.y})" for i in violation.items
+                f"{i.description} @{_convert_coord(i.pos)}" for i in violation.items
             ]
         }
 
@@ -81,13 +87,13 @@ class DrcException(CheckException):
         if self.shorts:
             out += "\n\n ## Shorts\n"
             out += md_list(
-                [DrcException.pretty_violation(v) for v in self.shorts],
+                [self.pretty_violation(v) for v in self.shorts],
                 recursive=True,
             )
         if self.unconnected:
             out += "\n\n ## Missing connections\n"
             out += md_list(
-                [DrcException.pretty_violation(v) for v in self.unconnected],
+                [self.pretty_violation(v) for v in self.unconnected],
                 recursive=True,
             )
         return out
@@ -104,4 +110,4 @@ def run_drc(app: Module, G: Graph):
 
     shorts = grouped.get(C_kicad_drc_report_file.C_Violation.C_Type.shorting_items, [])
     if shorts or not_connected:
-        raise DrcException(shorts, not_connected)
+        raise DrcException(shorts, not_connected, drc_report.coordinate_units)

@@ -238,8 +238,8 @@ def build(app: Module) -> None:
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
 
-    if "mfg-data" in targets:
-        with LoggingStage("drc", "Running pre-manufacturing checks"):
+    if generate_manufacturing_data.__muster_name__ in targets:
+        with LoggingStage("pre-manufacturing", "Running pre-manufacturing checks"):
             try:
                 run_post_pcb_checks(app, G())
             except DrcException as ex:
@@ -283,6 +283,7 @@ class Muster:
 
         def decorator(func: TargetType):
             self.add_target(func, name, default)
+            func.__muster_name__ = name or func.__name__
             return func
 
         return decorator
