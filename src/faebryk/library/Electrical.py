@@ -1,7 +1,9 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 
 
 class Electrical(ModuleInterface):
@@ -22,10 +24,22 @@ class Electrical(ModuleInterface):
         assert len(nets) == 1
         return next(iter(nets))
 
-    def crosses_footprint_boundary(self):
-        net = self.get_net()
+    def crosses_pad_boundary(self) -> bool:
+        from faebryk.library.Pad import Pad
 
-        if net is None:
-            return False
+        def _get_pad(n: Node):
+            if (parent := n.get_parent()) is None:
+                return None
 
-        return len(net.get_footprints()) > 1
+            parent_node, name_on_parent = parent
+
+            return (
+                parent_node
+                if isinstance(parent_node, Pad) and name_on_parent == "net"
+                else None
+            )
+
+        net = self.get_connected().keys()
+        pads_on_net = {pad for n in net if (pad := _get_pad(n)) is not None}
+
+        return len(pads_on_net) > 1

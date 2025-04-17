@@ -100,11 +100,10 @@ class ElectricSignal(F.Signal):
 
     @predicated_once(lambda result: result is True)
     def is_pulled_at(self, required_resistance: Quantity_Interval) -> bool:
-        connected_to = self.line.get_connected()
-        if connected_to is None:
+        if (connected_to := self.line.get_connected()) is None:
             return False
 
-        resistors = []
+        resistors: list[F.Resistor] = []
         for mif, _ in connected_to.items():
             if (maybe_parent := mif.get_parent()) is not None:
                 parent, _ = maybe_parent
@@ -115,7 +114,10 @@ class ElectricSignal(F.Signal):
         if len(resistors) == 0:
             return False
         elif len(resistors) == 1:
-            return resistors[0].resistance in required_resistance
+            if (resistance := resistors[0].resistance.try_get_literal_subset()) is None:
+                return False
+
+            return required_resistance.is_superset_of(resistance)
         else:
             raise ValueError(
                 "Cannot determine effective resistance of multiple resistors"

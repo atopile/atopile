@@ -95,8 +95,13 @@ class UserDesignCheckException(UserException):
         cls,
         message: str,
         nodes: Sequence["Node"],
+        bus: set["Node"] | None = None,
     ):
         msg = f"{message}: \n{md_list(f'`{node.get_full_name()}`' for node in nodes)}"
+        if bus:
+            msg += (
+                f"\n\nBus: \n{md_list(f'`{n}`' for n in sorted(str(n) for n in bus))}"
+            )
         return cls(msg)
 
 

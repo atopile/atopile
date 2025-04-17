@@ -39,7 +39,9 @@ def check_design(G: Graph):
                 try:
                     trait.check()
                 except F.implements_design_check.CheckException as e:
-                    raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
+                    raise UserDesignCheckException.from_nodes(
+                        str(e), e.nodes, e.bus
+                    ) from e
 
 
 def run_pre_build_checks(app: Module, G: Graph):
