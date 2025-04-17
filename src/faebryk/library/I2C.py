@@ -50,7 +50,9 @@ class I2C(ModuleInterface):
             self.scl,
             self.sda,
             pred=pred,
-            required_resistance=L.Range(1 * P.kohm, 10 * P.kohm),
+            required_resistance=L.Range(
+                1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
+            ),
         )
 
     def terminate(self, owner: Module):
