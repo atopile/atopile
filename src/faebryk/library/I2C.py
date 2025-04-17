@@ -40,7 +40,7 @@ class I2C(ModuleInterface):
 
             return (
                 len(bus) > 1
-                # arbitrarily choose an interface to repreesnt the bus for this check
+                # arbitrarily choose an interface to represent the bus for this check
                 and first(sorted(bus, key=lambda n: str(n))) is interface
                 # indicates usage
                 and signal.line.crosses_pad_boundary()
