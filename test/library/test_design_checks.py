@@ -56,15 +56,15 @@ def test_i2c_requires_pulls():
     )
 
     # connection crosses pad boundary, so the check now fails
-    with pytest.raises(Exception):  # (UserDesignCheckException):
-        check_design(app2.get_graph())
-
-    # terminating the connection does not completely satisfy the check
-    app2.a.i2c.terminate(app2.a)
     with pytest.raises(UserDesignCheckException):
         check_design(app2.get_graph())
 
-    # setting a sufficient resistance does satisfy the check
+    # terminating the connection without providing resistance values results in a
+    # warning
+    app2.a.i2c.terminate(app2.a)
+    check_design(app2.get_graph())
+
+    # setting a sufficient resistance fully satisfies the check
     app2.a.i2c.pull_up_sda.resistance.alias_is(0.2 * P.kohm)
     app2.a.i2c.pull_up_scl.resistance.alias_is(0.2 * P.kohm)
     check_design(app2.get_graph())
