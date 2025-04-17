@@ -13,7 +13,7 @@ from faebryk.libs.exceptions import UserDesignCheckException, accumulate
 logger = logging.getLogger(__name__)
 
 
-class RequiresExternalUsageNotFulfilled(Exception):
+class RequiresExternalUsageNotFulfilled(UserDesignCheckException):
     def __init__(self, nodes: list[Node]):
         self.nodes = nodes
         super().__init__(
@@ -22,10 +22,13 @@ class RequiresExternalUsageNotFulfilled(Exception):
         )
 
 
-def check_requires_external_usage(G: Graph):
+def check_requires_external_usage(app: Module, G: Graph):
     unfulfilled = []
     for node, trait in GraphFunctions(G).nodes_with_trait(F.requires_external_usage):
         if not trait.fulfilled:
+            # Don't check the app module itself
+            if app is node:
+                continue
             unfulfilled.append(node)
     if unfulfilled:
         raise RequiresExternalUsageNotFulfilled(unfulfilled)
@@ -43,7 +46,7 @@ def check_design(G: Graph):
 
 
 def run_pre_build_checks(app: Module, G: Graph):
-    check_requires_external_usage(G)
+    check_requires_external_usage(app, G)
     check_design(G)
     simple_erc(G)
 

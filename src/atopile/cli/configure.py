@@ -14,10 +14,11 @@ from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
 import atopile.version
+from faebryk.libs.paths import get_config_dir
 
 yaml = YAML()
 
-CONFIGURED_FOR_PATH = Path("~/.atopile/configured_for.yaml").expanduser().absolute()
+CONFIGURED_FOR_PATH = get_config_dir() / "configured_for.yaml"
 
 
 logger = logging.getLogger(__name__)

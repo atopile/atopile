@@ -34,18 +34,18 @@ def test_requires_external_usage():
 
     # no connections
     with pytest.raises(RequiresExternalUsageNotFulfilled):
-        check_requires_external_usage(app.get_graph())
+        check_requires_external_usage(app, app.get_graph())
 
     # internal connection
     app.outer1.a.connect(app.outer1.inner.b)
     with pytest.raises(RequiresExternalUsageNotFulfilled):
-        check_requires_external_usage(app.get_graph())
+        check_requires_external_usage(app, app.get_graph())
 
     # path to external
     app.outer1.inner.b.connect(app.outer2.a)
     with pytest.raises(RequiresExternalUsageNotFulfilled):
-        check_requires_external_usage(app.get_graph())
+        check_requires_external_usage(app, app.get_graph())
 
     # direct external connection
     app.outer1.a.connect(app.outer2.inner.b)
-    check_requires_external_usage(app.get_graph())
+    check_requires_external_usage(app, app.get_graph())

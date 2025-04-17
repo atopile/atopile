@@ -231,7 +231,8 @@ def test_import_ato(bob: Bob, tmp_path):
         module SpecialResistor from Resistor:
             footprint = "R0805"
         """
-        )
+        ),
+        encoding="utf-8",
     )
 
     top_module_content = dedent(
