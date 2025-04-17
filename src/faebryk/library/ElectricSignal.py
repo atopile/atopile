@@ -11,7 +11,6 @@ from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.units import P
-from faebryk.libs.util import predicated_once
 
 
 class ElectricSignal(F.Signal):
@@ -95,10 +94,6 @@ class ElectricSignal(F.Signal):
         return _can_be_surge_protected_defined(self.reference.lv, self.line)
 
     @property
-    def is_pulled(self) -> bool:
-        return self.is_pulled_at(Quantity_Interval(0 * P.ohm))
-
-    @property
     def pull_resistance(self) -> Quantity_Interval | None:
         if (connected_to := self.line.get_connected()) is None:
             return None
@@ -112,17 +107,10 @@ class ElectricSignal(F.Signal):
                     resistors.append(parent)
 
         if len(resistors) == 0:
-            return None
+            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
         elif len(resistors) == 1:
             return resistors[0].resistance.try_get_literal_subset()
         else:
-            raise ValueError(
-                "Cannot determine effective resistance of multiple resistors"
-            )
-
-    @predicated_once(lambda result: result is True)
-    def is_pulled_at(self, required_resistance: Quantity_Interval) -> bool:
-        if (pull_resistance := self.pull_resistance) is None:
-            return False
-
-        return required_resistance.is_superset_of(pull_resistance)
+            # cannot determine effective resistance of multiple resistors without
+            # inspecting circuit topology
+            return None

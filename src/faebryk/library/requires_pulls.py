@@ -10,7 +10,7 @@ from faebryk.libs.util import md_list
 
 
 class requires_pulls(Module.TraitT.decless()):
-    class RequiresPullNotFulfilled(F.implements_design_check.CheckException):
+    class RequiresPullNotFulfilled(F.implements_design_check.UnfulfilledCheckException):
         def __init__(
             self,
             signals: Sequence[F.ElectricSignal],
@@ -23,7 +23,40 @@ class requires_pulls(Module.TraitT.decless()):
                 f"{
                     md_list(
                         {
-                            f'`{signal.get_name()}`': signal.pull_resistance
+                            f'`{signal.get_name()}`': (
+                                pull_resistance
+                                if (pull_resistance := signal.pull_resistance)
+                                is not None
+                                else 'unknown'
+                            )
+                            for signal in signals
+                        }
+                    )
+                }\n\nBus:"
+            )
+            super().__init__(message, nodes=list(bus))
+
+    class RequiresPullMaybeUnfulfilled(
+        F.implements_design_check.MaybeUnfulfilledCheckException
+    ):
+        def __init__(
+            self,
+            signals: Sequence[F.ElectricSignal],
+            bus: set[Node],
+            required_resistance: Quantity_Interval,
+        ):
+            message = (
+                f"Signal{'s' if len(signals) != 1 else ''} potentially not pulled with "
+                f"appropriate resistance (must be within {required_resistance}):\n"
+                f"{
+                    md_list(
+                        {
+                            f'`{signal.get_name()}`': (
+                                pull_resistance
+                                if (pull_resistance := signal.pull_resistance)
+                                is not None
+                                else 'unknown'
+                            )
                             for signal in signals
                         }
                     )
@@ -64,15 +97,27 @@ class requires_pulls(Module.TraitT.decless()):
             ]
         )
 
-        unfulfilled = [
+        maybe_unfulfilled = {
+            signal for signal in signals if signal.pull_resistance is None
+        }
+
+        unfulfilled = {
             signal
             for signal in signals
-            if not signal.is_pulled_at(self.required_resistance)
-        ]
+            if signal.pull_resistance is not None
+            and not self.required_resistance.is_superset_of(signal.pull_resistance)
+        }
 
         if unfulfilled:
             raise requires_pulls.RequiresPullNotFulfilled(
-                signals=unfulfilled,
+                signals=list(unfulfilled | maybe_unfulfilled),
+                bus={node for signal in signals for node in self._get_bus(signal)},
+                required_resistance=self.required_resistance,
+            )
+
+        if maybe_unfulfilled:
+            raise requires_pulls.RequiresPullMaybeUnfulfilled(
+                signals=list(unfulfilled | maybe_unfulfilled),
                 bus={node for signal in signals for node in self._get_bus(signal)},
                 required_resistance=self.required_resistance,
             )

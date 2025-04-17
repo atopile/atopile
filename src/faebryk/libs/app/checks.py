@@ -8,7 +8,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.app.erc import simple_erc
-from faebryk.libs.exceptions import UserDesignCheckException, accumulate
+from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,12 @@ def check_design(G: Graph):
             with accumulator.collect():
                 try:
                     trait.check()
-                except F.implements_design_check.CheckException as e:
+                except F.implements_design_check.MaybeUnfulfilledCheckException as e:
+                    with downgrade(UserDesignCheckException):
+                        raise UserDesignCheckException.from_nodes(
+                            str(e), e.nodes
+                        ) from e
+                except F.implements_design_check.UnfulfilledCheckException as e:
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
 
 
