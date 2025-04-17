@@ -16,13 +16,13 @@ class requires_pulls(Module.TraitT.decless()):
             bus: set[Node],
             required_resistance: Quantity_Interval,
         ):
-            # FIXME
-            super().__init__(
-                "Signals requiring pulls but not pulled "
-                f"(must be within {required_resistance})",
-                nodes=nodes,
-                bus=bus,
+            signal_names = [f"`{signal.get_name()}`" for signal in nodes]
+            message = (
+                f"Signal{'s' if len(signal_names) != 1 else ''} "
+                f"{', '.join(signal_names)} not pulled with "
+                f"appropriate resistance (must be within {required_resistance})\n\nBus"
             )
+            super().__init__(message, nodes=list(bus))
 
     def __init__(
         self,

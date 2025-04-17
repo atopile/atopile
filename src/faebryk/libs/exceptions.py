@@ -91,17 +91,9 @@ class UserDesignCheckException(UserException):
     """Indicates a failing design check"""
 
     @classmethod
-    def from_nodes(
-        cls,
-        message: str,
-        nodes: Sequence["Node"],
-        bus: set["Node"] | None = None,
-    ):
-        msg = f"{message}: \n{md_list(f'`{node.get_full_name()}`' for node in nodes)}"
-        if bus:
-            msg += (
-                f"\n\nBus: \n{md_list(f'`{n}`' for n in sorted(str(n) for n in bus))}"
-            )
+    def from_nodes(cls, message: str, nodes: Sequence["Node"]) -> Self:
+        nodes = sorted(nodes, key=lambda n: str(n))
+        msg = f"{message}: \n{md_list(f'`{node}`' for node in nodes)}"
         return cls(msg)
 
 
