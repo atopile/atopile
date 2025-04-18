@@ -25,11 +25,13 @@ class BuildError(Exception):
     """Failed to build the project."""
 
 
+ENABLE_PROFILING = False
+
+
 def build_project(prj_path: Path, request: pytest.FixtureRequest):
     """Generically "build" the project."""
     friendly_node_name = pathvalidate.sanitize_filename(str(request.node.name))
     artifact_dir = _repo_root() / "artifacts"
-    profile_path = artifact_dir / (friendly_node_name + "-profile.html")
 
     try:
         ato_build_args = [
@@ -37,9 +39,11 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
             "--keep-net-names",
         ]
         ato_build_env = {"NONINTERACTIVE": "1"}
-        run_live(
-            [
-                sys.executable,
+
+        profile = []
+        if ENABLE_PROFILING:
+            profile_path = artifact_dir / (friendly_node_name + "-profile.html")
+            profile = [
                 "-m",
                 "pyinstrument",
                 "--html",
@@ -47,6 +51,11 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
                 profile_path,
                 "-i",
                 "0.01",
+            ]
+        run_live(
+            [
+                sys.executable,
+                *profile,
                 "-m",
                 "atopile",
                 "-v",
@@ -90,7 +99,7 @@ REPOS = [
     TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
     TestRepo("atopile/esp32-s3").xfail("Known issue"),
     TestRepo("atopile/cell-sim").xfail("Known issue"),
-    TestRepo("atopile/hil").xfail("Known issue"),
+    TestRepo("atopile/hil"),
     TestRepo("atopile/rp2040").xfail("Known issue"),
     TestRepo("atopile/tca9548apwr").xfail("Known issue"),
     TestRepo("atopile/nau7802").xfail("Known issue"),
