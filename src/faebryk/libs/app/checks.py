@@ -3,9 +3,9 @@
 
 
 import logging
+from pathlib import Path
 
 import faebryk.library._F as F
-from atopile import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
@@ -47,8 +47,8 @@ def check_requires_external_usage(app: Module, G: Graph):
         raise RequiresExternalUsageNotFulfilled(unfulfilled)
 
 
-def run_post_pcb_checks(app: Module, G: Graph):
-    run_drc(app, G)
+def run_post_pcb_checks(app: Module, G: Graph, pcb: Path):
+    run_drc(app, G, pcb)
 
 
 type Violation = C_kicad_drc_report_file.C_Violation
@@ -85,13 +85,13 @@ class DrcException(CheckException):
     def pretty(self) -> str:
         out = ""
         if self.shorts:
-            out += "\n\n ## Shorts\n"
+            out += "\n\nShorts\n"
             out += md_list(
                 [self.pretty_violation(v) for v in self.shorts],
                 recursive=True,
             )
         if self.unconnected:
-            out += "\n\n ## Missing connections\n"
+            out += "\n\nMissing connections\n"
             out += md_list(
                 [self.pretty_violation(v) for v in self.unconnected],
                 recursive=True,
@@ -99,10 +99,9 @@ class DrcException(CheckException):
         return out
 
 
-def run_drc(app: Module, G: Graph):
+def run_drc(app: Module, G: Graph, pcb: Path):
     from faebryk.libs.kicad.drc import run_drc as run_drc_kicad
 
-    pcb = config.config.build.paths.layout
     drc_report = run_drc_kicad(pcb)
 
     grouped = groupby(drc_report.violations, lambda v: v.type)

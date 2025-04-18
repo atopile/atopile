@@ -135,6 +135,7 @@ def _fmt(s: str) -> str:
             ),
         ),
         # List of dicts of lists
+        # TODO: currently not supported, but also not needed yet
         # (
         #     [{"a": [1, 2, 3], "b": [4, 5, 6]}, {"c": [7, 8, 9]}],
         #     False,

@@ -238,10 +238,10 @@ def build(app: Module) -> None:
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
 
-    if generate_manufacturing_data.__muster_name__ in targets:
+    if generate_manufacturing_data.__muster_name__ in targets:  # type: ignore
         with LoggingStage("pre-manufacturing", "Running pre-manufacturing checks"):
             try:
-                run_post_pcb_checks(app, G())
+                run_post_pcb_checks(app, G(), config.build.paths.layout)
             except DrcException as ex:
                 raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
@@ -283,7 +283,7 @@ class Muster:
 
         def decorator(func: TargetType):
             self.add_target(func, name, default)
-            func.__muster_name__ = name or func.__name__
+            func.__muster_name__ = name or func.__name__  # type: ignore
             return func
 
         return decorator
