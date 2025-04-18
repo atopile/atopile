@@ -39,17 +39,17 @@ class B0505S_1WR3_ReferenceDesign(Module):
         self.power_in.decoupled.decouple(owner=self).explicit(
             nominal_capacitance=4.7 * P.uF,
             tolerance=0.2,
-            footprint="C0805",
+            footprint=F.has_package.Package.C0805,
         )
         self.ic.power_in.decoupled.decouple(owner=self).explicit(
             nominal_capacitance=4.7 * P.uF,
             tolerance=0.2,
-            footprint="C0805",
+            footprint=F.has_package.Package.C0805,
         )
         self.power_out.decoupled.decouple(owner=self).explicit(
             nominal_capacitance=10 * P.uF,
             tolerance=0.2,
-            footprint="C0805",
+            footprint=F.has_package.Package.C0805,
         )
         self.anti_emi_capacitor.capacitance.constrain_subset(
             L.Range.from_center_rel(270 * P.pF, 0.2)
