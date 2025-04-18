@@ -39,3 +39,6 @@ class FilterElectricalRC(F.Filter):
         )
 
         self.in_.line.connect_via(self.resistor, self.out.line)
+
+        # Set the max voltage of the capacitor to twice the output voltage
+        self.capacitor.max_voltage.alias_is(self.out.reference.voltage * 2)

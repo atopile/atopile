@@ -54,23 +54,46 @@ class _B0505S_1WR3(Module):
     def has_descriptive_properties_defined(self):
         return F.has_descriptive_properties_defined(
             {
+                DescriptiveProperties.manufacturer: "EVISUN",
                 DescriptiveProperties.partno: "B0505S-1WR3",
             },
         )
+
+    lcsc_part = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C7465178"})
 
     def __preinit__(self):
         self.power_in.voltage.constrain_subset(L.Range(4.3 * P.V, 9 * P.V))
         self.power_out.voltage.constrain_superset(L.Range.from_center_rel(5 * P.V, 0.1))
 
 
-# TODO should be a reference design
-class B0505S_1WR3(Module):
+class B0505S_1WR3_ReferenceDesign(Module):
     ic: _B0505S_1WR3
 
+    power_in: F.ElectricPower
+    power_out: F.ElectricPower
+
+    ferrite_in: F.Inductor
+    ferrite_out: F.Inductor
+
     def __preinit__(self):
-        self.ic.power_in.get_trait(F.can_be_decoupled).decouple(
-            owner=self
-        ).capacitance.constrain_subset(L.Range.from_center_rel(4.7 * P.uF, 0.1))
-        self.ic.power_out.get_trait(F.can_be_decoupled).decouple(
-            owner=self
-        ).capacitance.constrain_subset(L.Range.from_center_rel(10 * P.uF, 0.1))
+        self.power_in.voltage.alias_is(self.ic.power_in.voltage)
+        self.power_out.voltage.alias_is(self.ic.power_out.voltage)
+
+        self.ferrite_in.inductance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.uH, 0.1)
+        )
+        self.ferrite_out.inductance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.uH, 0.1)
+        )
+        self.power_in.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.uF, 0.2)
+        )
+        self.power_out.decoupled.decouple(owner=self).capacitance.constrain_subset(
+            L.Range.from_center_rel(10 * P.uF, 0.2)
+        )
+
+        self.power_in.hv.connect_via(self.ferrite_in, self.ic.power_in.hv)
+        self.power_in.lv.connect(self.ic.power_in.lv)
+
+        self.power_out.hv.connect_via(self.ferrite_out, self.ic.power_out.hv)
+        self.power_out.lv.connect(self.ic.power_out.lv)

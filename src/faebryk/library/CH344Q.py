@@ -74,10 +74,12 @@ class CH344Q(F.CH344):
     def descriptive_properties(self):
         return F.has_descriptive_properties_defined(
             {
-                DescriptiveProperties.manufacturer: "WCH",
+                DescriptiveProperties.manufacturer: "WCH(Jiangsu Qin Heng)",
                 DescriptiveProperties.partno: "CH344Q",
             },
         )
+
+    lcsc_part = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C2988084"})
 
     @L.rt_field
     def can_attach_to_footprint(self):

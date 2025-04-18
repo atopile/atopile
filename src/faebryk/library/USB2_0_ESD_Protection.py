@@ -25,8 +25,6 @@ class USB2_0_ESD_Protection(Module):
     vbus_esd_protection = L.p_field(domain=L.Domains.BOOL())
     data_esd_protection = L.p_field(domain=L.Domains.BOOL())
 
-    no_pick: F.has_part_removed
-
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
