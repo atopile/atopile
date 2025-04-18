@@ -272,6 +272,17 @@ def nearest_common_ancestor(net: F.Net, cache: SimpleNamespace) -> str | None:
     return None
 
 
+@strategy("concatenate_roots")
+def concatenate_roots(net: F.Net, cache: SimpleNamespace) -> str | None:
+    roots = set()
+    for mif in net.get_connected_interfaces():
+        root = mif.get_hierarchy()[1][0]
+        roots.add(root.get_name())
+
+    if roots:
+        return "_".join(sorted(roots))
+
+
 @strategy("fallback")
 def fallback(net: F.Net, cache: SimpleNamespace) -> str | None:
     # FIXME
@@ -284,22 +295,23 @@ class NameAssignment:
     current_name: str
     tried_names: list[str]
 
+    strategies = [
+        existing,
+        expected,
+        suggested,
+        heuristic,
+        nearest_common_ancestor,
+        concatenate_roots,
+        fallback,
+    ]
+
     def __init__(self, net: F.Net):
         self.net = net
         self.tried_names = []
         self.current_name = self._generate_initial_name()
 
     def _generate_initial_name(self) -> str:
-        name_generators = [
-            existing,
-            expected,
-            suggested,
-            heuristic,
-            nearest_common_ancestor,
-            fallback,
-        ]
-
-        for generator in name_generators:
+        for generator in self.strategies:
             if (name := generator(self.net)) is not None:
                 self.origin = generator.name
                 self.tried_names.append(name)
