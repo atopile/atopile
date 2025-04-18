@@ -39,6 +39,7 @@ def build(
     keep_picked_parts: bool | None = None,
     keep_net_names: bool | None = None,
     keep_designators: bool | None = None,
+    hide_designators: bool | None = None,
     standalone: bool = False,
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
@@ -65,6 +66,7 @@ def build(
         keep_picked_parts=keep_picked_parts,
         keep_net_names=keep_net_names,
         keep_designators=keep_designators,
+        hide_designators=hide_designators,
     )
 
     check_missing_deps_or_offer_to_install()

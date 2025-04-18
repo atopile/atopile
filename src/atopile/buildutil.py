@@ -182,6 +182,8 @@ def build(app: Module) -> None:
         apply_layouts(app)
         transformer.move_footprints()
         apply_routing(app, transformer)
+        if config.build.hide_designators:
+            transformer.hide_all_designators()
 
         if pcb == original_pcb:
             if config.build.frozen:
