@@ -1052,7 +1052,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _ensure_param(
         self,
         node: L.Node,
-        name: ReferencePartType | str,
+        name: ReferencePartType,
         unit: UnitType,
         src_ctx: ParserRuleContext,
     ) -> Parameter:
@@ -1060,8 +1060,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         Ensure a node has a param with a given name
         If it already exists, check the unit is compatible and return it
         """
-        if isinstance(name, str):
-            name = (name, None)
 
         try:
             param = self.get_node_attr(node, name)
@@ -1127,13 +1125,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Can't declare fields in a nested object `{assigned_ref}`",
                     traceback=self.get_traceback(),
                 )
-            if assigned_name[1] is not None:
+            name, key = assigned_name
+            if key is not None:
                 raise errors.UserSyntaxError.from_ctx(
                     ctx,
                     f"Can't use keys with `new` statements `{assigned_ref}`",
                     traceback=self.get_traceback(),
                 )
-            name = assigned_name[0]
 
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitTypeReference(new_stmt_ctx.type_reference())
@@ -1180,14 +1178,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # String or boolean
         elif assignable_ctx.string() or assignable_ctx.boolean_():
-            if assigned_name[1] is not None:
+            name, key = assigned_name
+            if key is not None:
                 raise errors.UserSyntaxError.from_ctx(
                     ctx,
                     f"Can't use keys with non-arithmetic attribute assignments "
                     f"`{assigned_ref}`",
                     traceback=self.get_traceback(),
                 )
-            name = assigned_name[0]
 
             # Check if it's a property or attribute that can be set
             if has_instance_settable_attr(target, name):
@@ -1847,7 +1845,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self, ref: TypeRef, unit: UnitType, ctx: ParserRuleContext
     ):
         assert unit is not None, "Type info should be enforced by the parser"
-        name = ref[-1]
+        name = FieldRef.from_type_ref(ref).last
         param = self._ensure_param(self._current_node, name, unit, ctx)
         if param in self._param_assignments:
             declaration_after_definition = any(
