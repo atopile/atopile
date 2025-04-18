@@ -164,6 +164,7 @@ from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay
 from faebryk.library.XT30PW2plus2 import XT30PW2plus2
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
+from faebryk.library.B0505S_1WR3_ReferenceDesign import B0505S_1WR3_ReferenceDesign
 from faebryk.library.ButtonCell import ButtonCell
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
