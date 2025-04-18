@@ -14,7 +14,7 @@ from faebryk.libs.picker.picker import pick_part_recursively
 
 
 def _get_attr(node: L.Node, name: str, key: str | None = None) -> L.Node:
-    return Bob.get_node_attr(node, ReferencePartType((name, key)))
+    return Bob.get_node_attr(node, ReferencePartType(name, key))
 
 
 @pytest.mark.usefixtures("setup_project_config")

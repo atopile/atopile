@@ -22,7 +22,7 @@ def _get_mif(node: L.Node, name: str, key: str | None = None) -> L.ModuleInterfa
 
 
 def _get_attr(node: L.Node, name: str, key: str | None = None) -> L.Node:
-    return Bob.get_node_attr(node, ReferencePartType((name, key)))
+    return Bob.get_node_attr(node, ReferencePartType(name, key))
 
 
 def test_empty_module_build(bob: Bob):

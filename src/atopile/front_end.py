@@ -116,8 +116,10 @@ class BasicsMixin:
 
     def visitFieldReferencePart(
         self, ctx: ap.Field_reference_partContext
-    ) -> tuple[str, str | int | None]:
-        return self.visitName(ctx.name()), self.visitArrayIndex(ctx.array_index())
+    ) -> ReferencePartType:
+        return ReferencePartType(
+            self.visitName(ctx.name()), self.visitArrayIndex(ctx.array_index())
+        )
 
     def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
         pin = ctx.pin_reference_end()
@@ -836,41 +838,44 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return item
 
     @staticmethod
-    def get_node_attr(node: L.Node, name: ReferencePartType) -> L.Node:
+    def get_node_attr(node: L.Node, ref: ReferencePartType) -> L.Node:
         """
         Analogous to `getattr`
 
         Returns the value if it exists, otherwise raises an AttributeError
         Required because we're seeing attributes in both the attrs and runtime
         """
-        _name, key = name
 
-        if has_attr_or_property(node, _name):
+        if has_attr_or_property(node, ref.name):
             # Build-time attributes are attached as real attributes
-            result = getattr(node, _name)
-            if key is not None and isinstance(result, L.Node):
-                raise ValueError(f"{_name} is not subscriptable")
-            if not isinstance(result, L.Node) and key is None:
+            result = getattr(node, ref.name)
+            if ref.key is not None and isinstance(result, L.Node):
+                raise ValueError(f"{ref.name} is not subscriptable")
+            if not isinstance(result, L.Node) and ref.key is None:
                 raise ValueError(
-                    f"{_name} is a {type(result).__name__} and needs a key"
+                    f"{ref.name} is a {type(result)._ref.name__} and needs a ref.key"
                 )
             if isinstance(result, dict):
-                if key not in result:
-                    raise AttributeError(name=f"{_name}[{key}]", obj=node)
-                result = result[key]
+                assert ref.key is not None
+                if ref.key not in result:
+                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+                result = result[ref.key]
             elif isinstance(result, list):
-                if key not in result:
-                    raise AttributeError(name=f"{_name}[{key}]", obj=node)
+                assert ref.key is not None
                 # TODO type check key
-                result = result[key]  # type: ignore
+                if not isinstance(ref.key, int):
+                    raise ValueError(f"Key `{ref.key}` is not an integer")
+                if ref.key >= len(result):
+                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+                result = result[ref.key]
             # TODO handle non-module & non-dict & non-list case
-        elif _name in node.runtime and key is None:
+        elif ref.name in node.runtime and ref.key is None:
             # Runtime attributes are attached as runtime attributes
-            result = node.runtime[_name]
+            result = node.runtime[ref.name]
         else:
             # Wah wah wah - we don't know what this is
-            friendly_name = _name if key is None else f"{_name}[{key}]"
-            raise AttributeError(name=friendly_name, obj=node)
+            friendlyname = ref.name if ref.key is None else f"{ref.name}[{ref.key}]"
+            raise AttributeError(name=friendlyname, obj=node)
 
         if isinstance(result, L.Module):
             return result.get_most_special()
@@ -879,7 +884,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def _get_referenced_node(self, ref: FieldRef, ctx: ParserRuleContext) -> L.Node:
         node = self._current_node
-        for i, name in enumerate(ref):
+        for name in ref:
             try:
                 node = self.get_node_attr(node, name)
             except AttributeError as ex:
@@ -1052,7 +1057,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _ensure_param(
         self,
         node: L.Node,
-        name: ReferencePartType,
+        ref: ReferencePartType,
         unit: UnitType,
         src_ctx: ParserRuleContext,
     ) -> Parameter:
@@ -1062,33 +1067,32 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         """
 
         try:
-            param = self.get_node_attr(node, name)
+            param = self.get_node_attr(node, ref)
         except AttributeError:
             # Here we attach only minimal information, so we can override it later
-            _name, key = name
-            if key is not None:
-                if not isinstance(key, str):
+            if ref.key is not None:
+                if not isinstance(ref.key, str):
                     raise errors.UserNotImplementedError.from_ctx(
                         src_ctx,
-                        f"Can't forward assign to a non-string key `{name}`",
+                        f"Can't forward assign to a non-string key `{ref}`",
                         traceback=self.get_traceback(),
                     )
-                container = getattr(node, name[0])
+                container = getattr(node, ref.name)
                 param = node.add(
                     Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
-                    name=key,
+                    name=ref.key,
                     container=container,
                 )
             else:
                 param = node.add(
                     Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
-                    name=_name,
+                    name=ref.name,
                 )
         else:
             if not isinstance(param, Parameter):
                 raise errors.UserTypeError.from_ctx(
                     src_ctx,
-                    f"Cannot assign a parameter to `{name}` on `{node}` because its"
+                    f"Cannot assign a parameter to `{ref}` on `{node}` because its"
                     f" type is `{param.__class__.__name__}`",
                     traceback=self.get_traceback(),
                 )
@@ -1126,8 +1130,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Can't declare fields in a nested object `{assigned_ref}`",
                     traceback=self.get_traceback(),
                 )
-            name, key = assigned_name
-            if key is not None:
+            if assigned_name.key is not None:
                 raise errors.UserSyntaxError.from_ctx(
                     ctx,
                     f"Can't use keys with `new` statements `{assigned_ref}`",
@@ -1143,7 +1146,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         self._get_referenced_class(ctx, ref)
                     ) as new_node:
                         try:
-                            self._current_node.add(new_node, name=name)
+                            self._current_node.add(new_node, name=assigned_name.name)
                         except FieldExistsError as e:
                             raise errors.UserAlreadyExistsError.from_ctx(
                                 ctx,
@@ -1153,7 +1156,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
-                self._record_failed_node(self._current_node, name)
+                self._record_failed_node(self._current_node, assigned_name.name)
                 raise
 
             return NOTHING
@@ -1181,8 +1184,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # String or boolean
         elif assignable_ctx.string() or assignable_ctx.boolean_():
-            name, key = assigned_name
-            if key is not None:
+            if assigned_name.key is not None:
                 raise errors.UserSyntaxError.from_ctx(
                     ctx,
                     f"Can't use keys with non-arithmetic attribute assignments "
@@ -1191,19 +1193,21 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
 
             # Check if it's a property or attribute that can be set
-            if has_instance_settable_attr(target, name):
+            if has_instance_settable_attr(target, assigned_name.name):
                 try:
-                    setattr(target, name, value)
+                    setattr(target, assigned_name.name, value)
                 except errors.UserException as e:
                     e.attach_origin_from_ctx(assignable_ctx)
                     raise
             elif (
                 # If ModuleShims has a settable property, use it
-                hasattr(GlobalAttributes, name)
-                and isinstance(getattr(GlobalAttributes, name), property)
-                and getattr(GlobalAttributes, name).fset
+                hasattr(GlobalAttributes, assigned_name.name)
+                and isinstance(getattr(GlobalAttributes, assigned_name.name), property)
+                and getattr(GlobalAttributes, assigned_name.name).fset
             ):
-                prop = cast_assert(property, getattr(GlobalAttributes, name))
+                prop = cast_assert(
+                    property, getattr(GlobalAttributes, assigned_name.name)
+                )
                 assert prop.fset is not None
                 # TODO: @v0.4 remove this deprecated import form
                 with (
@@ -1218,7 +1222,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with downgrade(errors.UserException):
                     raise errors.UserException.from_ctx(
                         ctx,
-                        f"Ignoring assignment of `{value}` to `{name}` on `{target}`",
+                        f"Ignoring assignment of `{value}` to `{assigned_name}` on"
+                        f" `{target}`",
                         traceback=self.get_traceback(),
                     )
 
@@ -1262,7 +1267,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise ValueError(f"Unhandled pin name type `{ctx}`")
 
-        if mif := self._get_mif_and_warn_when_exists((name, None), ctx):
+        if mif := self._get_mif_and_warn_when_exists(ReferencePartType(name), ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
         if shims_t := self._current_node.try_get_trait(_has_ato_cmp_attrs):
@@ -1280,7 +1285,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> KeyOptMap[L.ModuleInterface]:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
-        if mif := self._get_mif_and_warn_when_exists((name, None), ctx):
+        if mif := self._get_mif_and_warn_when_exists(ReferencePartType(name), ctx):
             return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
         mif = self._current_node.add(F.Electrical(), name=name)
@@ -1321,7 +1326,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 a.connect(b)
 
             except NodeException as top_ex:
-                assert ctx is not None
                 top_ex = errors.UserNodeException.from_node_exception(
                     top_ex, ctx, self.get_traceback()
                 )

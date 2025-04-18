@@ -37,7 +37,22 @@ class TypeRef(tuple[str]):
 
 
 KeyType = str | int
-ReferencePartType = tuple[str, KeyType | None]
+
+
+class ReferencePartType:
+    def __init__(self, name: str, key: KeyType | None = None):
+        # TODO remove
+        assert isinstance(name, str)
+        self.name = name
+        self.key = key
+
+    def __str__(self) -> str:
+        if self.key is not None:
+            return f"{self.name}[{self.key}]"
+        return self.name
+
+    def has_key(self) -> bool:
+        return self.key is not None
 
 
 class FieldRef:
@@ -50,7 +65,7 @@ class FieldRef:
         self.parts = list(parts)
         # shim A.1
         if pin is not None:
-            self.parts.append((f"_{pin}", None))
+            self.parts.append(ReferencePartType(f"_{pin}"))
 
     def __iter__(self) -> Iterator[ReferencePartType]:
         return iter(self.parts)
@@ -73,19 +88,17 @@ class FieldRef:
         return self.parts[-1]
 
     def __str__(self) -> str:
-        return ".".join(
-            f"{name}[{key}]" if key is not None else name for name, key in self.parts
-        )
+        return ".".join(str(part) for part in self.parts)
 
     def to_type_ref(self) -> TypeRef | None:
-        if any(key is not None for _, key in self.parts):
+        if any(part.has_key() for part in self.parts):
             return None
-        return TypeRef(map(lambda x: x[0], self.parts))
+        return TypeRef(map(lambda x: x.name, self.parts))
 
     @classmethod
     def from_type_ref(cls, type_ref: TypeRef) -> "FieldRef":
         """Return a FieldRef from a TypeRef."""
-        return cls(map(lambda x: (x, None), type_ref))
+        return cls(map(ReferencePartType, type_ref))
 
 
 class KeyOptItem[V](tuple[TypeRef | None, V]):
