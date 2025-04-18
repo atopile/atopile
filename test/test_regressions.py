@@ -1,13 +1,13 @@
 import os
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from subprocess import CalledProcessError
 
 import git
 import pathvalidate
 import pytest
-from attr import dataclass
 
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir, run_live
