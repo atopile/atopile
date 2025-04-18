@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import TypeGuard, cast
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 from faebryk.core.node import Node, NodeException
 from faebryk.libs.util import cast_assert
@@ -50,6 +50,9 @@ class TraitUnbound(NodeException):
 
 class Trait(Node):
     __decless_trait__: bool = False
+
+    if TYPE_CHECKING:
+        TraitT: type["TraitT"]
 
     # TODO once
     @classmethod
@@ -176,3 +179,9 @@ class TraitImpl(Node):
         if not issubclass(obj, Trait):
             return False
         return getattr(obj, "__trait__", None) is not None
+
+
+class TraitT(Trait): ...
+
+
+Trait.TraitT = TraitT

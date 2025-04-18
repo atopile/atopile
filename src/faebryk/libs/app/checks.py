@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-
 import logging
 from pathlib import Path
 
@@ -10,6 +9,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.app.erc import simple_erc
+from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
 from faebryk.libs.kicad.fileformats_latest import C_kicad_drc_report_file
 from faebryk.libs.units import to_si_str
 from faebryk.libs.util import groupby, md_list
@@ -17,16 +17,7 @@ from faebryk.libs.util import groupby, md_list
 logger = logging.getLogger(__name__)
 
 
-class CheckException(Exception): ...
-
-
-def run_checks(app: Module, G: Graph):
-    # TODO should make a Trait Trait: `implements_design_check`
-    check_requires_external_usage(app, G)
-    simple_erc(G)
-
-
-class RequiresExternalUsageNotFulfilled(CheckException):
+class RequiresExternalUsageNotFulfilled(UserDesignCheckException):
     def __init__(self, nodes: list[Node]):
         self.nodes = nodes
         super().__init__(
@@ -35,6 +26,7 @@ class RequiresExternalUsageNotFulfilled(CheckException):
         )
 
 
+# TODO: convert to trait-based check
 def check_requires_external_usage(app: Module, G: Graph):
     unfulfilled = []
     for node, trait in GraphFunctions(G).nodes_with_trait(F.requires_external_usage):
@@ -47,6 +39,32 @@ def check_requires_external_usage(app: Module, G: Graph):
         raise RequiresExternalUsageNotFulfilled(unfulfilled)
 
 
+def check_design(G: Graph):
+    # TODO: split checks by stage
+    with accumulate(UserDesignCheckException) as accumulator:
+        for _, trait in GraphFunctions(G).nodes_with_trait(F.implements_design_check):
+            with accumulator.collect():
+                try:
+                    trait.check()
+                except F.implements_design_check.MaybeUnfulfilledCheckException as e:
+                    with downgrade(UserDesignCheckException):
+                        raise UserDesignCheckException.from_nodes(
+                            str(e), e.nodes
+                        ) from e
+                except F.implements_design_check.UnfulfilledCheckException as e:
+                    raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
+
+
+def run_pre_build_checks(app: Module, G: Graph):
+    check_requires_external_usage(app, G)
+    check_design(G)
+    simple_erc(G)
+
+
+def run_post_build_checks(app: Module, G: Graph):
+    check_design(G)
+
+
 def run_post_pcb_checks(app: Module, G: Graph, pcb: Path):
     run_drc(app, G, pcb)
 
@@ -54,7 +72,7 @@ def run_post_pcb_checks(app: Module, G: Graph, pcb: Path):
 type Violation = C_kicad_drc_report_file.C_Violation
 
 
-class DrcException(CheckException):
+class DrcException(UserDesignCheckException):
     def __init__(
         self,
         shorts: list[Violation],
@@ -99,6 +117,7 @@ class DrcException(CheckException):
         return out
 
 
+# TODO: convert to trait-based check
 def run_drc(app: Module, G: Graph, pcb: Path):
     from faebryk.libs.kicad.drc import run_drc as run_drc_kicad
 
