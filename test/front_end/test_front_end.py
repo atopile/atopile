@@ -5,13 +5,24 @@ import pytest
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
-from atopile import errors
-from atopile.datatypes import TypeRef
+from atopile import address, errors
+from atopile.datatypes import ReferencePartType, TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import cast_assert
+
+
+def _get_mif(node: L.Node, name: str, key: str | None = None) -> L.ModuleInterface:
+    return cast_assert(
+        L.ModuleInterface,
+        _get_attr(node, name, key),
+    )
+
+
+def _get_attr(node: L.Node, name: str, key: str | None = None) -> L.Node:
+    return Bob.get_node_attr(node, ReferencePartType((name, key)))
 
 
 def test_empty_module_build(bob: Bob):
@@ -24,7 +35,7 @@ def test_empty_module_build(bob: Bob):
     tree = parse_text_as_file(text)
     node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
-    assert isinstance(node, bob.modules[":A"])
+    assert isinstance(node, bob.modules[address.AddrStr(":A")])
 
 
 def test_simple_module_build(bob: Bob):
@@ -74,10 +85,10 @@ def test_simple_new(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
-    child = Bob.get_node_attr(node, "child")
+    child = _get_attr(node, "child")
     assert child.has_trait(_has_ato_cmp_attrs)
 
-    a = Bob.get_node_attr(child, "a")
+    a = _get_attr(child, "a")
     assert isinstance(a, F.Electrical)
 
 
@@ -137,7 +148,7 @@ def test_resistor(bob: Bob, repo_root: Path):
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
 
@@ -158,10 +169,10 @@ def test_standard_library_import(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
 
-    assert Bob.get_node_attr(node, "power_in")
+    assert _get_attr(node, "power_in")
 
 
 @pytest.mark.parametrize(
@@ -210,7 +221,7 @@ def test_reserved_attrs(
 
     assert isinstance(node, L.Module)
 
-    a = Bob.get_node_attr(node, "a")
+    a = _get_attr(node, "a")
     assert a.get_trait(F.has_package)._enum_set == {pkg}
     assert a.get_trait(F.has_descriptive_properties).get_properties() == {
         DescriptiveProperties.partno: "1234567890"
@@ -251,7 +262,7 @@ def test_import_ato(bob: Bob, tmp_path):
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
 
 
@@ -291,10 +302,6 @@ def test_traceback(bob: Bob, module: str, count: int):
 # - signal ~ signal
 # - higher-level mif
 # - duck-typed
-def _get_mif(node: L.Node, name: str) -> L.ModuleInterface:
-    return cast_assert(L.ModuleInterface, Bob.get_node_attr(node, name))
-
-
 def test_signal_connect(bob: Bob):
     text = dedent(
         """
@@ -431,3 +438,55 @@ def test_requires(bob: Bob):
 
     a = _get_mif(node, "a")
     assert a.has_trait(F.requires_external_usage)
+
+
+def test_key(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+        module App:
+            r = new Resistor
+            signal a ~ r.unnamed[0]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    r = _get_attr(node, "r")
+    assert isinstance(r, F.Resistor)
+
+
+def test_pin_ref(bob: Bob):
+    text = dedent(
+        """
+        module Abc:
+            pin 1 ~ signal b
+
+        module App:
+            abc = new Abc
+            signal a ~ abc.1
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+
+def test_non_ex_pin_ref(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+        module App:
+            r = new Resistor
+            signal a ~ r.unnamed[2]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserKeyError):
+        bob.build_ast(tree, TypeRef(["App"]))

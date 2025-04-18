@@ -4,7 +4,7 @@ Datatypes used in the model.
 
 import logging
 from contextlib import contextmanager
-from typing import Iterable
+from typing import Iterable, Iterator, Self
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -40,21 +40,47 @@ KeyType = str | int
 ReferencePartType = tuple[str, KeyType | None]
 
 
-class FieldRef(tuple[ReferencePartType]):
+class FieldRef:
     """
     A class representing a field reference.
     e.g app.modules[multiresistor].resistors[0].unnamed[1]
     """
 
+    def __init__(self, parts: Iterable[ReferencePartType], pin: int | None = None):
+        self.parts = list(parts)
+        # shim A.1
+        if pin is not None:
+            self.parts.append((f"_{pin}", None))
+
+    def __iter__(self) -> Iterator[ReferencePartType]:
+        return iter(self.parts)
+
+    def __len__(self) -> int:
+        return len(self.parts)
+
+    def __getitem__(self, index: int) -> ReferencePartType:
+        return self.parts[index]
+
+    def __contains__(self, item: ReferencePartType) -> bool:
+        return item in self.parts
+
+    @property
+    def stem(self) -> Self:
+        return type(self)(self.parts[:-1])
+
+    @property
+    def last(self) -> ReferencePartType:
+        return self.parts[-1]
+
     def __str__(self) -> str:
         return ".".join(
-            f"{name}[{key}]" if key is not None else name for name, key in self
+            f"{name}[{key}]" if key is not None else name for name, key in self.parts
         )
 
     def to_type_ref(self) -> TypeRef | None:
-        if any(key is not None for _, key in self):
+        if any(key is not None for _, key in self.parts):
             return None
-        return TypeRef(map(lambda x: x[0], self))
+        return TypeRef(map(lambda x: x[0], self.parts))
 
     @classmethod
     def from_type_ref(cls, type_ref: TypeRef) -> "FieldRef":
@@ -63,7 +89,7 @@ class FieldRef(tuple[ReferencePartType]):
 
 
 class KeyOptItem[V](tuple[TypeRef | None, V]):
-    """A class representing anf optionally-named thing."""
+    """A class representing an optionally-named thing."""
 
     @property
     def ref(self) -> TypeRef | None:

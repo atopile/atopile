@@ -264,6 +264,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#pin_reference_end.
+    def visitPin_reference_end(self, ctx:AtoParser.Pin_reference_endContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#field_reference_part.
     def visitField_reference_part(self, ctx:AtoParser.Field_reference_partContext):
         return self.visitChildren(ctx)

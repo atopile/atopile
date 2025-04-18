@@ -120,8 +120,15 @@ class BasicsMixin:
         return self.visitName(ctx.name()), self.visitArrayIndex(ctx.array_index())
 
     def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
+        pin = ctx.pin_reference_end()
+        if pin is not None:
+            pin = int(pin.NUMBER().getText())
         return FieldRef(
-            self.visitFieldReferencePart(part) for part in ctx.field_reference_part()
+            parts=(
+                self.visitFieldReferencePart(part)
+                for part in ctx.field_reference_part()
+            ),
+            pin=pin,
         )
 
     def visitString(self, ctx: ap.StringContext) -> str:
@@ -387,7 +394,11 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         return context
 
 
-def _is_int(name: str) -> bool:
+def _is_int(name: str | int | None) -> bool:
+    if name is None:
+        return False
+    if isinstance(name, int):
+        return True
     try:
         int(name)
     except ValueError:
@@ -833,18 +844,23 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         Required because we're seeing attributes in both the attrs and runtime
         """
         _name, key = name
+
         if has_attr_or_property(node, _name):
             # Build-time attributes are attached as real attributes
             result = getattr(node, _name)
-            if key is not None and isinstance(result, L.Module):
+            if key is not None and isinstance(result, L.Node):
                 raise ValueError(f"{_name} is not subscriptable")
             if not isinstance(result, L.Node) and key is None:
                 raise ValueError(
                     f"{_name} is a {type(result).__name__} and needs a key"
                 )
             if isinstance(result, dict):
+                if key not in result:
+                    raise AttributeError(name=f"{_name}[{key}]", obj=node)
                 result = result[key]
             elif isinstance(result, list):
+                if key not in result:
+                    raise AttributeError(name=f"{_name}[{key}]", obj=node)
                 # TODO type check key
                 result = result[key]  # type: ignore
             # TODO handle non-module & non-dict & non-list case
@@ -875,8 +891,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                 # Wah wah wah - we don't know what this is
                 # Build a nice error message
-                if ref[:i]:
-                    msg = f"`{FieldRef(ref[:i])}` has no attribute `{ex.name}`"
+                if ref.stem:
+                    msg = f"`{ref.stem}` has no attribute `{ex.name}`"
                 else:
                     msg = f"No attribute `{name}`"
                 raise errors.UserKeyError.from_ctx(
@@ -1005,7 +1021,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     self.visitBlock(super_ctx.block())
 
     def _get_param(
-        self, node: L.Node, name: str, src_ctx: ParserRuleContext
+        self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext
     ) -> Parameter:
         """
         Get a param from a node.
@@ -1013,14 +1029,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         it later. Used in forward-declaration.
         """
         try:
-            node = self.get_node_attr(node, name)
+            node = self.get_node_attr(node, ref)
         except AttributeError as ex:
-            if name in self._failed_nodes.get(node, set()):
+            if ref in self._failed_nodes.get(node, set()):
                 raise SkipPriorFailedException() from ex
             # Wah wah wah - we don't know what this is
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
-                f"Parameter `{name}` not found and"
+                f"Parameter `{ref}` not found and"
                 " forward-declared params are not yet implemented",
                 traceback=self.get_traceback(),
             ) from ex
@@ -1028,7 +1044,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if not isinstance(node, Parameter):
             raise errors.UserSyntaxError.from_ctx(
                 src_ctx,
-                f"Node {name} is {type(node)} not a Parameter",
+                f"Node {ref} is {type(node)} not a Parameter",
                 traceback=self.get_traceback(),
             )
         return node
@@ -1101,7 +1117,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         assigned_name: ReferencePartType = assigned_ref[-1]
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
-        target = self._get_referenced_node(FieldRef(assigned_ref[:-1]), ctx)
+        target = self._get_referenced_node(assigned_ref.stem, ctx)
 
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
@@ -1304,6 +1320,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 a.connect(b)
 
             except NodeException as top_ex:
+                assert ctx is not None
                 top_ex = errors.UserNodeException.from_node_exception(
                     top_ex, ctx, self.get_traceback()
                 )
@@ -1597,8 +1614,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitAtom(self, ctx: ap.AtomContext) -> Numeric:
         if ctx.field_reference():
             ref = self.visitFieldReference(ctx.field_reference())
-            target = self._get_referenced_node(FieldRef(ref[:-1]), ctx)
-            return self._get_param(target, ref[-1], ctx)
+            target = self._get_referenced_node(ref.stem, ctx)
+            return self._get_param(target, ref.last, ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1744,7 +1761,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         target = self._get_referenced_node(assignee_ref, ctx)
         self.visitDeclaration_stmt(ref_dec.declaration_stmt())
 
-        assignee = self._get_param(target, assignee_ref[-1], ctx)
+        assignee = self._get_param(target, assignee_ref.last, ctx)
         value = self.visitCum_assignable(ctx.cum_assignable())
 
         # HACK: we have no way to check by what operator
@@ -1776,7 +1793,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         target = self._get_referenced_node(assignee_ref, ctx)
         self.visitDeclaration_stmt(ref_dec.declaration_stmt())
 
-        assignee = self._get_param(target, assignee_ref[-1], ctx)
+        assignee = self._get_param(target, assignee_ref.last, ctx)
         value = self.visitCum_assignable(ctx.cum_assignable())
 
         if ctx.OR_ASSIGN():

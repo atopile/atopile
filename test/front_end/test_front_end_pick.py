@@ -4,13 +4,17 @@ from textwrap import dedent
 import pytest
 
 import faebryk.library._F as F
-from atopile.datatypes import TypeRef
+from atopile.datatypes import ReferencePartType, TypeRef
 from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
+
+
+def _get_attr(node: L.Node, name: str, key: str | None = None) -> L.Node:
+    return Bob.get_node_attr(node, ReferencePartType((name, key)))
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -36,7 +40,7 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
@@ -70,7 +74,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert isinstance(r1, F.Capacitor)
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.C0402}
 

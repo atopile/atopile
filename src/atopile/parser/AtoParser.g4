@@ -238,17 +238,19 @@ bilateral_tolerance
 key
     : NUMBER
     ;
-// TODO deprecate ".key"
 array_index
-    : '.' key
-    | '[' key ']'
+    : '[' key ']'
     ;
 
+// backwards compatibility for A.1
+pin_reference_end
+    : '.' NUMBER
+    ;
 field_reference_part
     : name array_index?
     ;
 field_reference
-    : field_reference_part ('.' field_reference_part)*
+    : field_reference_part ('.' field_reference_part)* pin_reference_end?
     ;
 type_reference
     : name ('.' name)*
