@@ -147,7 +147,7 @@ def test_projects(
             # Translate the error message to clearly distinguish from clone errors
             raise InstallError from ex
 
-            build_project(path, request=request)
+        build_project(path, request=request)
 
     try:
         if multipackage:
