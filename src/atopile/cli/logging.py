@@ -516,7 +516,7 @@ class LoggingStage(Advancable):
         for level, level_name in self._LOG_LEVELS.items():
             log_file = log_dir / f"{self._sanitized_name}.{level_name}.log"
 
-            self._file_handles[level_name] = log_file.open("w")
+            self._file_handles[level_name] = log_file.open("w", encoding="utf-8")
             file_console = Console(
                 file=self._file_handles[level_name],
                 width=500,

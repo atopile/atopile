@@ -39,7 +39,13 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import run_checks
+from faebryk.libs.app.checks import (
+    DrcException,
+    RequiresExternalUsageNotFulfilled,
+    run_post_build_checks,
+    run_post_pcb_checks,
+    run_pre_build_checks,
+)
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -111,7 +117,11 @@ def build(app: Module) -> None:
             logger.warning("Skipping bus parameter resolution")
 
         logger.info("Running checks")
-        run_checks(app, G())
+        try:
+            run_pre_build_checks(app, G())
+        except RequiresExternalUsageNotFulfilled as ex:
+            # TODO ato code
+            raise UserException(str(ex)) from ex
 
         # Pre-pick project checks - things to look at before time is spend ---------
         # Make sure the footprint libraries we're looking for exist
@@ -154,6 +164,10 @@ def build(app: Module) -> None:
             load_net_names(G())
         attach_net_names(nets)
         check_net_names(G())
+
+    with LoggingStage("postbuild", "Running post-build checks"):
+        logger.info("Running checks")
+        run_post_build_checks(app, G())
 
     with LoggingStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb)
@@ -229,6 +243,13 @@ def build(app: Module) -> None:
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
 
+    if generate_manufacturing_data.__muster_name__ in targets:  # type: ignore
+        with LoggingStage("pre-manufacturing", "Running pre-manufacturing checks"):
+            try:
+                run_post_pcb_checks(app, G(), config.build.paths.layout)
+            except DrcException as ex:
+                raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
+
     # Make the noise
     built_targets = []
     with accumulate() as accumulator:
@@ -267,6 +288,7 @@ class Muster:
 
         def decorator(func: TargetType):
             self.add_target(func, name, default)
+            func.__muster_name__ = name or func.__name__  # type: ignore
             return func
 
         return decorator

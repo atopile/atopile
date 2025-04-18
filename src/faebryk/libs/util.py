@@ -19,6 +19,8 @@ import time
 import uuid
 from abc import abstractmethod
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from enum import Enum, StrEnum
@@ -799,7 +801,9 @@ class Lazy(LazyMixin):
         lazy_construct(cls)
 
 
-def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
+def once[T, **P](
+    f: Callable[P, T], _cacheable: Callable[[T], bool] | None = None
+) -> Callable[P, T]:
     # TODO add flag for this optimization
     # might not be desirable if different instances with same hash
     # return same values here
@@ -815,9 +819,14 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
         if len(param_list) == 1:
 
             def wrapper_single(self) -> Any:
-                if not hasattr(self, attr_name):
-                    setattr(self, attr_name, f(self))
-                return getattr(self, attr_name)
+                if hasattr(self, attr_name):
+                    return getattr(self, attr_name)
+
+                result = f(self)
+                if _cacheable is None or _cacheable(result):
+                    setattr(self, attr_name, result)
+
+                return result
 
             return wrapper_single
 
@@ -833,7 +842,8 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
                 return cache[lookup]
 
             result = f(*args, **kwargs)
-            cache[lookup] = result
+            if _cacheable is None or _cacheable(result):
+                cache[lookup] = result
             return result
 
         return wrapper_self
@@ -844,12 +854,22 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
             return wrapper.cache[lookup]
 
         result = f(*args, **kwargs)
-        wrapper.cache[lookup] = result
+        if _cacheable is None or _cacheable(result):
+            wrapper.cache[lookup] = result
         return result
 
     wrapper.cache = {}
     wrapper._is_once_wrapper = True
     return wrapper
+
+
+def predicated_once[T](
+    pred: Callable[[T], bool],
+):
+    def decorator[F](f: F) -> F:
+        return once(f, pred)
+
+    return decorator
 
 
 def assert_once[T, O, **P](
@@ -1134,7 +1154,7 @@ class DAG[T]:
 
         return False  # No cycles found in any component of the graph
 
-    def to_tree(self) -> "Tree[T]":
+    def to_tree(self, extra_roots: Iterable[T] = tuple()) -> "Tree[T]":
         tree = Tree[T]()
 
         def node_to_tree(node: DAG[T].Node) -> Tree[T]:
@@ -1143,7 +1163,7 @@ class DAG[T]:
                 tree[child.value] = node_to_tree(child)
             return tree
 
-        for root in self.roots:
+        for root in self.roots | set(extra_roots):
             tree[root] = node_to_tree(self.nodes[root])
         return tree
 
@@ -1579,6 +1599,10 @@ def run_live(
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
 
+    # on windows just run the command since select does not work
+    if sys.platform == "win32":
+        return subprocess.run(*args, **kwargs)
+
     process = subprocess.Popen(
         *args,
         stdout=subprocess.PIPE,
@@ -1637,7 +1661,7 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
     ):
         # check if pid still alive
         try:
-            pid = int(lock_file_path.read_text())
+            pid = int(lock_file_path.read_text(encoding="utf-8"))
         except ValueError:
             lock_file_path.unlink(missing_ok=True)
             continue
@@ -1650,7 +1674,7 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
         time.sleep(0.1)
 
     # write our pid to the lock file
-    lock_file_path.write_text(str(os.getpid()))
+    lock_file_path.write_text(str(os.getpid()), encoding="utf-8")
     try:
         yield
     finally:
@@ -1755,24 +1779,52 @@ def times_out(seconds: float):
     def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            import signal
+            # Check the platform
+            if sys.platform == "win32":
+                # Windows implementation using concurrent.futures
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(func, *args, **kwargs)
+                try:
+                    # Wait for the function to complete with the specified timeout
+                    result = future.result(timeout=seconds)
+                    # Shutdown the executor without waiting for the worker thread to
+                    # finish
+                    # if the result was obtained successfully.
+                    executor.shutdown(wait=False, cancel_futures=False)
+                    return result
+                except FuturesTimeoutError:
+                    # If a timeout occurs, cancel the future (best effort) and shutdown.
+                    # Raise the standard TimeoutError for consistency.
+                    future.cancel()
+                    # Shutdown the executor without waiting for the worker thread,
+                    # as it's likely stuck or running long.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise TimeoutError(
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                    )
+                except Exception as e:
+                    # If the function itself raised an exception, ensure cleanup and re
+                    # -raise.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise e
+            else:
+                # Non-Windows (Unix-like) implementation using signal
+                import signal  # Import signal only when needed
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError(
-                    f"Function {func.__name__} exceeded time limit of {seconds}s"
-                )
+                def timeout_handler(signum, frame):
+                    raise TimeoutError(
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                    )
 
-            # Set up the signal handler
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            # Set alarm to trigger after specified seconds
-            signal.setitimer(signal.ITIMER_REAL, seconds)
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.setitimer(signal.ITIMER_REAL, seconds)
 
-            try:
-                return func(*args, **kwargs)
-            finally:
-                # Cancel the alarm and restore the old signal handler
-                signal.setitimer(signal.ITIMER_REAL, 0)
-                signal.signal(signal.SIGALRM, old_handler)
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    # Clean up the timer and restore the original signal handler
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, old_handler)
 
         return wrapper
 
@@ -2073,7 +2125,7 @@ def md_list[T](
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
                 lines.append(f"{indent}-{key_str}")
-            nested = md_list(v, indent_level + 1, recursive, mapper)
+            nested = md_list(v, indent_level + 1, recursive=recursive, mapper=mapper)
             lines.append(nested)
         else:
             value_str = str(v)
@@ -2229,3 +2281,14 @@ def clone_repo(
             raise
 
     return clone_target
+
+
+def find_file(base_dir: Path, pattern: str):
+    """
+    equivalent to `find base_dir -type f -name pattern`
+    """
+    if not base_dir.exists() or not base_dir.is_dir():
+        return None
+    for file in base_dir.rglob(pattern):
+        if file.is_file():
+            yield file

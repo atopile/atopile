@@ -65,5 +65,5 @@ def export_testpoints(
             "layer": layer,
         }
 
-    with open(testpoints_file, "w") as f:
+    with open(testpoints_file, "w", encoding="utf-8") as f:
         json.dump(obj=testpoint_data, fp=f, indent=4)

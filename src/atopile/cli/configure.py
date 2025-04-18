@@ -14,10 +14,11 @@ from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
 import atopile.version
+from faebryk.libs.paths import get_config_dir
 
 yaml = YAML()
 
-CONFIGURED_FOR_PATH = Path("~/.atopile/configured_for.yaml").expanduser().absolute()
+CONFIGURED_FOR_PATH = get_config_dir() / "configured_for.yaml"
 
 
 logger = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ def do_configure() -> None:
     """Perform system configuration required for atopile."""
     if config.install_kicad_plugin is None:
         config.install_kicad_plugin = questionary.confirm(
-            ":wrench: Install KiCAD plugin?", default=True
+            "🔧 Install KiCAD plugin?", default=True
         ).ask()
 
     if config.install_kicad_plugin:

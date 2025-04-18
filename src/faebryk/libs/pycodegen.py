@@ -108,6 +108,6 @@ def fix_indent(text: str) -> str:
 def format_and_write(code: str, path: Path):
     code = code.strip()
     code = black.format_file_contents(code, fast=True, mode=black.FileMode())
-    path.write_text(code)
+    path.write_text(code, encoding="utf-8")
 
     subprocess.check_output(["ruff", "check", "--fix", path])

@@ -10,7 +10,7 @@ from faebryk.libs.util import repo_root as _repo_root
 
 
 def _extract_classes_from_file(filepath: Path):
-    with open(filepath, "r") as file:
+    with open(filepath, "r", encoding="utf-8") as file:
         module = ast.parse(file.read())
     classes = [node for node in module.body if isinstance(node, ast.ClassDef)]
     return classes

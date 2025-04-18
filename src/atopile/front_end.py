@@ -1309,13 +1309,23 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         elif name_or_attr_ctx := ctx.name_or_attr():
             ref = self.visitName_or_attr(name_or_attr_ctx)
             node = self._get_referenced_node(ref, ctx)
-            assert isinstance(node, L.ModuleInterface)
+            if not isinstance(node, L.ModuleInterface):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect `{node}` because it's not a `ModuleInterface`",
+                    traceback=self.get_traceback(),
+                )
             return node
         elif numerical_ctx := ctx.numerical_pin_ref():
             pin_name = numerical_ctx.getText()
             ref = Ref(pin_name.split("."))
             node = self._get_referenced_node(ref, ctx)
-            assert isinstance(node, L.ModuleInterface)
+            if not isinstance(node, L.ModuleInterface):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect `{node}` because it's not a `ModuleInterface`",
+                    traceback=self.get_traceback(),
+                )
             return node
         else:
             raise ValueError(f"Unhandled connectable type `{ctx}`")

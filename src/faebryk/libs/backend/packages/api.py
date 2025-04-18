@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 import requests
 from dataclasses_json.api import dataclass_json
 from github_oidc.client import get_actions_header
+from pydantic.networks import HttpUrl
 
 from atopile.config import config
 from faebryk.libs.package.dist import Dist
@@ -34,9 +35,15 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
+            @dataclass_json
+            @dataclass(frozen=True)
+            class Info:
+                url: HttpUrl
+                fields: dict[str, str]
+
             status: Literal["ok"]
-            upload_url: str
             release_id: str
+            upload_info: Info
 
     class PublishUploadComplete:
         @dataclass_json
@@ -235,16 +242,21 @@ class PackagesAPIClient:
             raise Errors.PackagesApiHTTPError(e, detail) from e
         return response
 
-    @staticmethod
     def _upload(
+        self,
         url: str,
         file_path: Path,
+        data: dict[str, str],
         timeout: float = 10,
         skip_verify: bool = False,
     ) -> requests.Response:
-        response = requests.put(
+        response = self._client.post(
             url,
-            files={"file": file_path.read_bytes(), "Content-Type": "application/zip"},
+            data=data,
+            files={
+                "file": (file_path.name, file_path.read_bytes()),
+                "Content-Type": "application/zip",
+            },
             timeout=timeout,
             verify=not skip_verify,
         )
@@ -298,16 +310,28 @@ class PackagesAPIClient:
         response = _Models.Publish.Response.from_dict(r.json())  # type: ignore
 
         ## Upload the package
-        self._upload(response.upload_url, dist.path, skip_verify=skip_auth)
+        try:
+            r = self._upload(
+                url=response.upload_info.url,
+                file_path=dist.path,
+                data=response.upload_info.fields,
+                skip_verify=skip_auth,
+            )
+        except Errors.PackagesApiHTTPError:
+            raise
 
         ## Confirm upload
-        r = self._post(
-            "/v1/publish/upload-complete",
-            data=_Models.PublishUploadComplete.Request(
-                release_id=response.release_id,
-            ).to_dict(),  # type: ignore
-            authenticate=not skip_auth,
-        )
+        try:
+            r = self._post(
+                "/v1/publish/upload-complete",
+                data=_Models.PublishUploadComplete.Request(
+                    release_id=response.release_id,
+                ).to_dict(),  # type: ignore
+                authenticate=not skip_auth,
+            )
+        except Errors.PackagesApiHTTPError:
+            raise
+
         response = _Models.PublishUploadComplete.Response.from_dict(r.json())  # type: ignore
         return response
 

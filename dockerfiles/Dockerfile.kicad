@@ -18,6 +18,8 @@ ENV ATO_FROZEN=1
 # since it's all Github actions currently supports.
 # In the future we might consider creating a distinct github-actions
 # container to reconcile this with other more standard CI systems.
+# FIXME: consider something like this instead:
+# https://github.com/myoung34/docker-github-actions-runner/pull/223
 USER root
 
 WORKDIR /opt/atopile
@@ -27,8 +29,8 @@ chown -R kicad:kicad /opt/atopile
 
 # We need to set the github workspace as a safe directory according
 # to git so we can get version information like the githash from it
-git config --global --add safe.directory /github/workspace
-git config --global --add safe.directory /workspace
+# Safety doesnt apply, as a single user system https://github.com/git/git/commit/8959555cee7ec045958f9b6dd62e541affb7e7d9
+git config --global --add safe.directory '*'
 EORUN
 
 COPY --from=ghcr.io/astral-sh/uv:0.6.8 /uv /bin/uv

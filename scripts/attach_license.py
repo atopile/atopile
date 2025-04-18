@@ -13,7 +13,7 @@ LICENSE = """# This file is part of the faebryk project
 def update_file(filepath: Path) -> bool:
     """Update a Python file with the license if it's not present."""
 
-    with open(filepath, "r+") as file:
+    with open(filepath, "r+", encoding="utf-8") as file:
         contents = file.read()
 
         if LICENSE not in contents:

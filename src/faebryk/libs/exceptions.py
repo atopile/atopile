@@ -2,7 +2,7 @@ import contextlib
 import logging
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import Callable, Iterable, Self, Type, cast
+from typing import TYPE_CHECKING, Callable, Iterable, Self, Sequence, Type, cast
 
 from caseconverter import titlecase
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -11,6 +11,11 @@ from rich.text import Text
 from rich.traceback import Traceback
 
 from faebryk.libs.logging import ReprHighlighter
+from faebryk.libs.util import md_list
+
+if TYPE_CHECKING:
+    from faebryk.core.node import Node
+
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +85,16 @@ class DeprecatedException(UserException):
 
 class UserResourceException(UserException):
     """Indicates an issue with a user-facing resource, e.g. layout files."""
+
+
+class UserDesignCheckException(UserException):
+    """Indicates a failing design check"""
+
+    @classmethod
+    def from_nodes(cls, message: str, nodes: Sequence["Node"]) -> Self:
+        nodes = sorted(nodes, key=lambda n: str(n))
+        msg = f"{message}\n{md_list(f'`{node}`' for node in nodes)}"
+        return cls(msg)
 
 
 class Pacman[T: Exception](contextlib.suppress, ABC):
