@@ -3,9 +3,12 @@
 import logging
 from enum import Enum
 
+from more_itertools import first
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.node import Node
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -26,6 +29,30 @@ class I2C(ModuleInterface):
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
+        )
+
+    @L.rt_field
+    def requires_pulls(self):
+        def pred(signal: F.ElectricSignal, bus: set[Node]):
+            interface = signal.get_parent_of_type(I2C)
+
+            assert interface in bus
+
+            return (
+                len(bus) > 1
+                # arbitrarily choose an interface to represent the bus for this check
+                and first(sorted(bus, key=lambda n: str(n))) is interface
+                # indicates usage
+                and signal.line.crosses_pad_boundary()
+            )
+
+        return F.requires_pulls(
+            self.scl,
+            self.sda,
+            pred=pred,
+            required_resistance=L.Range(
+                1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
+            ),
         )
 
     def terminate(self, owner: Module):

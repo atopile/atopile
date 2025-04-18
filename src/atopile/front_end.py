@@ -1384,7 +1384,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         elif reference_ctx := ctx.field_reference():
             ref = self.visitFieldReference(reference_ctx)
             node = self._get_referenced_node(ref, ctx)
-            assert isinstance(node, L.ModuleInterface)
+            if not isinstance(node, L.ModuleInterface):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect `{node}` because it's not a `ModuleInterface`",
+                    traceback=self.get_traceback(),
+                )
             return node
         else:
             raise ValueError(f"Unhandled connectable type `{ctx}`")

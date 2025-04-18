@@ -9,6 +9,8 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import CNode, Node
 from faebryk.libs.library import L
+from faebryk.libs.sets.quantity_sets import Quantity_Interval
+from faebryk.libs.units import P
 
 
 class ElectricSignal(F.Signal):
@@ -90,3 +92,25 @@ class ElectricSignal(F.Signal):
                 return out
 
         return _can_be_surge_protected_defined(self.reference.lv, self.line)
+
+    @property
+    def pull_resistance(self) -> Quantity_Interval | None:
+        if (connected_to := self.line.get_connected()) is None:
+            return None
+
+        resistors: list[F.Resistor] = []
+        for mif, _ in connected_to.items():
+            if (maybe_parent := mif.get_parent()) is not None:
+                parent, _ = maybe_parent
+
+                if isinstance(parent, F.Resistor):
+                    resistors.append(parent)
+
+        if len(resistors) == 0:
+            return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
+        elif len(resistors) == 1:
+            return resistors[0].resistance.try_get_literal_subset()
+        else:
+            # cannot determine effective resistance of multiple resistors without
+            # inspecting circuit topology
+            return None
