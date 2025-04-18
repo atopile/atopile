@@ -181,7 +181,120 @@ def _name_shittiness(name: str | None) -> float:
     return 1
 
 
+class NameAssignment:
+    net: F.Net
+    current_name: str
+    tried_names: list[str]
+
+    _expected_names: list[str] | None = None
+    _suggested_names: list[str] | None = None
+
+    def __init__(self, net: F.Net):
+        self.net = net
+        self.tried_names = []
+        self.current_name = self._generate_initial_name()
+
+    def _generate_initial_name(self) -> str:
+        name_generators = [
+            self._generate_existing_name,
+            self._generate_expected_name,
+            self._generate_suggested_name,
+            self._generate_name_via_heuristic,
+            self._generate_fallback_name,
+        ]
+
+        for generator in name_generators:
+            if (name := generator(self.net)) is not None:
+                return name
+
+        assert False, "Unable to generate initial net name"
+
+    @staticmethod
+    def _generate_existing_name(net: F.Net) -> str | None:
+        if (has_overriden_name := net.try_get_trait(F.has_overriden_name)) is not None:
+            return has_overriden_name.get_name()
+
+    def _generate_expected_name(self, net: F.Net) -> str | None:
+        if self._expected_names is None:
+            expected_names = []
+            for mif in net.get_connected_interfaces():
+                if (
+                    has_net_name := mif.try_get_trait(F.has_net_name)
+                ) is not None and has_net_name.level == F.has_net_name.Level.EXPECTED:
+                    expected_names.append(has_net_name.name)
+
+            self._expected_names = sorted(expected_names, key=lambda name: len(name))
+
+        if self._expected_names:
+            for name in self._expected_names:
+                if name not in self.tried_names:
+                    return name
+
+    def _generate_suggested_name(self, net: F.Net) -> str | None:
+        if self._suggested_names is None:
+            suggested_names = []
+            for mif in net.get_connected_interfaces():
+                if (
+                    has_net_name := mif.try_get_trait(F.has_net_name)
+                ) is not None and has_net_name.level == F.has_net_name.Level.SUGGESTED:
+                    suggested_names.append(has_net_name.name)
+
+            self._suggested_names = sorted(suggested_names, key=lambda name: len(name))
+
+        if self._suggested_names:
+            for name in self._suggested_names:
+                if name not in self.tried_names:
+                    return name
+
+    @staticmethod
+    def _generate_name_via_heuristic(net: F.Net) -> str: ...
+
+    @staticmethod
+    def _generate_fallback_name(net: F.Net) -> str:
+        # FIXME
+        return net.get_name(accept_no_parent=True)
+
+
 def attach_net_names(nets: Iterable[F.Net]) -> None:
+    """
+    Generate and attach net names. Requires all nets in design as input.
+
+    Net naming algorithm:
+
+    1. Generate starting names using the first available of the following:
+       - Pre-existing name
+       - Majority expected name among member mifs
+       - Majority suggested name among member mifs
+       - First applicable heuristic
+       - Final segment of node address of nearest common ancestor of member mifs
+       - Something else? FIXME
+    2. Iterate until no conflicts remain
+       - Switch to next expected name, if there is one
+       - Switch to next suggested name, if there is one
+       - Switch to next heuristic, if there is one
+       - Prefix with preceding segment of node address
+       - If fully-qualified address has already been used, suffix with a number
+
+
+    Notes:
+     - no deconfliction for overridden names
+     - attach origin to `has_net_name` for traceability
+           (deconfliction sequence on NameAssignment)
+     - conflict detection should be case-insensitive
+     - limit names to 255 chars
+    """
+
+    names = [NameAssignment(net) for net in nets]
+
+    # TODO: deconflict
+
+    for name in names:
+        name.net.add(F.has_overriden_name_defined(name.current_name))
+
+    assert all(n.has_trait(F.has_overriden_name) for n in nets)
+
+
+def attach_net_names_old(nets: Iterable[F.Net]) -> None:
     """
     Generate good net names, assuming that we're passed all the nets in a design
     """
