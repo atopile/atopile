@@ -37,6 +37,7 @@ from atopile.datatypes import (
     ReferencePartType,
     StackList,
     TypeRef,
+    is_int,
 )
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
@@ -109,7 +110,7 @@ class BasicsMixin:
             return None
         if key := ctx.key():
             out = key.getText()
-            if _is_int(out):
+            if is_int(out):
                 return int(out)
             return out
         return None
@@ -394,18 +395,6 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 context.refs[ref] = item
 
         return context
-
-
-def _is_int(name: str | int | None) -> bool:
-    if name is None:
-        return False
-    if isinstance(name, int):
-        return True
-    try:
-        int(name)
-    except ValueError:
-        return False
-    return True
 
 
 @contextmanager
@@ -884,7 +873,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def _get_referenced_node(self, ref: FieldRef, ctx: ParserRuleContext) -> L.Node:
         node = self._current_node
-        for name in ref:
+        for i, name in enumerate(ref):
             try:
                 node = self.get_node_attr(node, name)
             except AttributeError as ex:
@@ -896,12 +885,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                 # Wah wah wah - we don't know what this is
                 # Build a nice error message
-                if ref.stem:
-                    msg = f"`{ref.stem}` has no attribute `{ex.name}`"
+                if i > 0:
+                    msg = f"`{FieldRef(ref.parts[:i])}` has no attribute `{ex.name}`"
                 else:
                     msg = f"No attribute `{name}`"
                 raise errors.UserKeyError.from_ctx(
                     ctx, msg, traceback=self.get_traceback()
+                ) from ex
+            except ValueError as ex:
+                raise errors.UserKeyError.from_ctx(
+                    ctx, str(ex), traceback=self.get_traceback()
                 ) from ex
 
         return node
@@ -1045,6 +1038,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 " forward-declared params are not yet implemented",
                 traceback=self.get_traceback(),
             ) from ex
+        except ValueError as ex:
+            raise errors.UserValueError.from_ctx(
+                src_ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
 
         if not isinstance(node, Parameter):
             raise errors.UserSyntaxError.from_ctx(
@@ -1088,6 +1085,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
                     name=ref.name,
                 )
+        except ValueError as ex:
+            raise errors.UserValueError.from_ctx(
+                src_ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
         else:
             if not isinstance(param, Parameter):
                 raise errors.UserTypeError.from_ctx(
@@ -1239,6 +1240,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             mif = self.get_node_attr(self._current_node, name)
         except AttributeError:
             return None
+        except ValueError as ex:
+            raise errors.UserValueError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
 
         if isinstance(mif, L.ModuleInterface):
             # TODO: @v0.4 remove this deprecated import form
@@ -1258,6 +1263,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitPindef_stmt(
         self, ctx: ap.Pindef_stmtContext
     ) -> KeyOptMap[L.ModuleInterface]:
+        return self.visitPin_stmt(ctx.pin_stmt(), declaration=False)
+
+    def visitPin_declaration(
+        self, ctx: ap.Pin_declarationContext
+    ) -> KeyOptMap[L.ModuleInterface]:
+        return self.visitPin_stmt(ctx.pin_stmt(), declaration=True)
+
+    def visitPin_stmt(
+        self, ctx: ap.Pin_stmtContext, declaration: bool
+    ) -> KeyOptMap[L.ModuleInterface]:
         if ctx.name():
             name = self.visitName(ctx.name())
         elif ctx.totally_an_integer():
@@ -1267,11 +1282,24 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise ValueError(f"Unhandled pin name type `{ctx}`")
 
-        if mif := self._get_mif_and_warn_when_exists(ReferencePartType(name), ctx):
-            return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
+        ref = FieldRef(parts=[], pin=name).last
+        if declaration:
+            if mif := self._get_mif_and_warn_when_exists(ref, ctx):
+                return KeyOptMap.from_item(
+                    KeyOptItem.from_kv(TypeRef.from_one(name), mif)
+                )
+        else:
+            try:
+                mif = self.get_node_attr(self._current_node, ref)
+            except AttributeError:
+                pass
+            else:
+                return KeyOptMap.from_item(
+                    KeyOptItem.from_kv(TypeRef.from_one(name), mif)
+                )
 
         if shims_t := self._current_node.try_get_trait(_has_ato_cmp_attrs):
-            mif = shims_t.add_pin(name)
+            mif = shims_t.add_pin(name, ref.name)
             return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
         raise errors.UserTypeError.from_ctx(

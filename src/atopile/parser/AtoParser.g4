@@ -32,7 +32,7 @@ simple_stmt
     | set_assign_stmt
     | connect_stmt
     | retype_stmt
-    | pindef_stmt
+    | pin_declaration
     | signaldef_stmt
     | assert_stmt
     | declaration_stmt
@@ -121,6 +121,12 @@ signaldef_stmt
     : 'signal' name
     ;
 pindef_stmt
+    : pin_stmt
+    ;
+pin_declaration
+    : pin_stmt
+    ;
+pin_stmt
     : 'pin' (name | totally_an_integer | string)
     ;
 

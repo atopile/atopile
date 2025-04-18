@@ -129,6 +129,16 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#pin_declaration.
+    def visitPin_declaration(self, ctx:AtoParser.Pin_declarationContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#pin_stmt.
+    def visitPin_stmt(self, ctx:AtoParser.Pin_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#new_stmt.
     def visitNew_stmt(self, ctx:AtoParser.New_stmtContext):
         return self.visitChildren(ctx)

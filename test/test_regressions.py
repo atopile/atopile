@@ -31,6 +31,11 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
     profile_path = artifact_dir / (friendly_node_name + "-profile.html")
 
     try:
+        ato_build_args = [
+            "--keep-picked-parts",
+            "--keep-net-names",
+        ]
+        ato_build_env = {"NONINTERACTIVE": "1"}
         run_live(
             [
                 sys.executable,
@@ -45,10 +50,9 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
                 "atopile",
                 "-v",
                 "build",
-                "--keep-picked-parts",
-                "--keep-net-names",
+                *ato_build_args,
             ],
-            env={**os.environ, "NONINTERACTIVE": "1"},
+            env={**os.environ, **ato_build_env},
             cwd=prj_path,
             stdout=print,
             stderr=print,
@@ -67,21 +71,24 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    "repo_uri",
+    "repo_uri, xfail_reason, multipackage",
     [
-        ("https://github.com/atopile/spin-servo-drive"),
-        ("https://github.com/atopile/esp32-s3"),
-        ("https://github.com/atopile/cell-sim"),
-        ("https://github.com/atopile/hil"),
-        ("https://github.com/atopile/rp2040"),
-        ("https://github.com/atopile/tca9548apwr"),
-        ("https://github.com/atopile/nau7802"),
-        ("https://github.com/atopile/lv2842xlvddcr"),
-        ("https://github.com/atopile/bq24045dsqr"),
+        ("https://github.com/atopile/spin-servo-drive", "Known issue", None),
+        ("https://github.com/atopile/esp32-s3", "Known issue", None),
+        ("https://github.com/atopile/cell-sim", "Known issue", None),
+        ("https://github.com/atopile/hil", None, None),
+        ("https://github.com/atopile/rp2040", "Known issue", None),
+        ("https://github.com/atopile/tca9548apwr", "Known issue", None),
+        ("https://github.com/atopile/nau7802", "Known issue", None),
+        ("https://github.com/atopile/lv2842xlvddcr", "Known issue", None),
+        ("https://github.com/atopile/bq24045dsqr", "Known issue", None),
+        ("https://github.com/atopile/packages", None, "packages"),
     ],
 )
 def test_projects(
     repo_uri: str,
+    xfail_reason: str | None,
+    multipackage: str | None,
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):
@@ -99,21 +106,40 @@ def test_projects(
 
     prj_path = tmp_path / "project"
 
-    # Generically "install" the project
-    try:
-        run_live(
-            [sys.executable, "-m", "atopile", "-v", "install"],
-            env={**os.environ, "NONINTERACTIVE": "1"},
-            cwd=prj_path,
-            stdout=print,
-            stderr=print,
-        )
-    except CalledProcessError as ex:
-        # Translate the error message to clearly distinguish from clone errors
-        raise InstallError from ex
+    def run_project(path: Path):
+        # Generically "install" the project
+        try:
+            ato_dir = path / ".ato"
+            if ato_dir.exists():
+                robustly_rm_dir(ato_dir)
+            run_live(
+                [sys.executable, "-m", "atopile", "-v", "sync"],
+                env={**os.environ, "NONINTERACTIVE": "1"},
+                cwd=path,
+                stdout=print,
+                stderr=print,
+            )
+        except CalledProcessError as ex:
+            # Translate the error message to clearly distinguish from clone errors
+            raise InstallError from ex
 
-    build_project(prj_path, request=request)
+            build_project(path, request=request)
+
+    try:
+        if multipackage:
+            subpath = prj_path / multipackage
+            for subdir in subpath.iterdir():
+                if subdir.is_dir():
+                    run_project(subdir)
+        else:
+            run_project(prj_path)
+    except (InstallError, BuildError):
+        if xfail_reason:
+            pytest.xfail(xfail_reason)
+        else:
+            raise
 
     repo = git.Repo(prj_path)
-    if any(item.a_path.endswith(".kicad_pcb") for item in repo.index.diff(None)):
+    diff = repo.index.diff(None)
+    if diff and any(item.a_path.endswith(".kicad_pcb") for item in diff):
         pytest.xfail("can't build with --frozen yet")

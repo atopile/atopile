@@ -490,3 +490,31 @@ def test_non_ex_pin_ref(bob: Bob):
     tree = parse_text_as_file(text)
     with pytest.raises(errors.UserKeyError):
         bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_regression_pin_refs(bob: Bob):
+    text = dedent(
+        """
+        import ElectricPower
+        component App:
+            signal CNT ~ pin 3
+            signal NP ~ pin 5
+            signal VIN_ ~ pin 2
+            signal VINplus ~ pin 1
+            signal VO_ ~ pin 4
+            signal VOplus ~ pin 6
+
+            power_in = new ElectricPower
+            power_out = new ElectricPower
+
+            power_in.vcc ~ pin 1
+            power_in.gnd ~ pin 2
+            power_out.vcc ~ pin 6
+            power_out.gnd ~ pin 4
+    """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)

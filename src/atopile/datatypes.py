@@ -10,6 +10,18 @@ log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
 
+def is_int(name: str | int | None) -> bool:
+    if name is None:
+        return False
+    if isinstance(name, int):
+        return True
+    try:
+        int(name)
+    except ValueError:
+        return False
+    return True
+
+
 class TypeRef(tuple[str]):
     """Shell class to provide basic utils for a reference."""
 
@@ -61,11 +73,19 @@ class FieldRef:
     e.g app.modules[multiresistor].resistors[0].unnamed[1]
     """
 
-    def __init__(self, parts: Iterable[ReferencePartType], pin: int | None = None):
+    def __init__(
+        self, parts: Iterable[ReferencePartType], pin: int | str | None = None
+    ):
         self.parts = list(parts)
         # shim A.1
         if pin is not None:
-            self.parts.append(ReferencePartType(f"_{pin}"))
+            ref = None
+            if isinstance(pin, str) and not is_int(pin):
+                ref = ReferencePartType(pin)
+            else:
+                # TODO: consider shiming A.0 as A.pins[0] instead of A._0
+                ref = ReferencePartType(f"_{pin}")
+            self.parts.append(ref)
 
     def __iter__(self) -> Iterator[ReferencePartType]:
         return iter(self.parts)
@@ -79,6 +99,9 @@ class FieldRef:
     def __contains__(self, item: ReferencePartType) -> bool:
         return item in self.parts
 
+    def __bool__(self) -> bool:
+        return bool(self.parts)
+
     @property
     def stem(self) -> Self:
         return type(self)(self.parts[:-1])
@@ -86,6 +109,9 @@ class FieldRef:
     @property
     def last(self) -> ReferencePartType:
         return self.parts[-1]
+
+    def append(self, part: ReferencePartType) -> Self:
+        return type(self)(self.parts + [part])
 
     def __str__(self) -> str:
         return ".".join(str(part) for part in self.parts)
