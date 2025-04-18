@@ -7,6 +7,7 @@ from subprocess import CalledProcessError
 import git
 import pathvalidate
 import pytest
+from attr import dataclass
 
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir, run_live
@@ -68,30 +69,53 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
         raise BuildError from ex
 
 
+@dataclass
+class TestRepo:
+    repo_uri: str
+    xfail_reason: str | None = None
+    multipackage: str | None = None
+
+    def __post_init__(self):
+        if not self.repo_uri.startswith("https") and not self.repo_uri.startswith(
+            "ssh"
+        ):
+            self.repo_uri = f"https://github.com/{self.repo_uri}"
+
+    def xfail(self, reason: str):
+        self.xfail_reason = reason
+        return self
+
+
+REPOS = [
+    TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
+    TestRepo("atopile/esp32-s3").xfail("Known issue"),
+    TestRepo("atopile/cell-sim").xfail("Known issue"),
+    TestRepo("atopile/hil").xfail("Known issue"),
+    TestRepo("atopile/rp2040").xfail("Known issue"),
+    TestRepo("atopile/tca9548apwr").xfail("Known issue"),
+    TestRepo("atopile/nau7802").xfail("Known issue"),
+    TestRepo("atopile/lv2842xlvddcr").xfail("Known issue"),
+    TestRepo("atopile/bq24045dsqr").xfail("Known issue"),
+    TestRepo("atopile/packages", multipackage="packages"),
+]
+
+
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
-    "repo_uri, xfail_reason, multipackage",
-    [
-        ("https://github.com/atopile/spin-servo-drive", "Known issue", None),
-        ("https://github.com/atopile/esp32-s3", "Known issue", None),
-        ("https://github.com/atopile/cell-sim", "Known issue", None),
-        ("https://github.com/atopile/hil", None, None),
-        ("https://github.com/atopile/rp2040", "Known issue", None),
-        ("https://github.com/atopile/tca9548apwr", "Known issue", None),
-        ("https://github.com/atopile/nau7802", "Known issue", None),
-        ("https://github.com/atopile/lv2842xlvddcr", "Known issue", None),
-        ("https://github.com/atopile/bq24045dsqr", "Known issue", None),
-        ("https://github.com/atopile/packages", None, "packages"),
-    ],
+    "test_cfg",
+    REPOS,
+    ids=lambda x: x.repo_uri,
 )
 def test_projects(
-    repo_uri: str,
-    xfail_reason: str | None,
-    multipackage: str | None,
+    test_cfg: TestRepo,
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):
+    repo_uri = test_cfg.repo_uri
+    xfail_reason = test_cfg.xfail_reason
+    multipackage = test_cfg.multipackage
+
     # Clone the repository
     # Using gh to use user credentials if run locally
     try:
@@ -141,5 +165,9 @@ def test_projects(
 
     repo = git.Repo(prj_path)
     diff = repo.index.diff(None)
-    if diff and any(item.a_path.endswith(".kicad_pcb") for item in diff):
+    # Check if diff exists and if any item in the diff represents
+    # a change to a KiCad PCB file
+    if diff and any(
+        item.a_path is not None and item.a_path.endswith(".kicad_pcb") for item in diff
+    ):
         pytest.xfail("can't build with --frozen yet")
