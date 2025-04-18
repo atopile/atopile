@@ -201,7 +201,7 @@ def _decode[T: DataclassInstance](
     ignore_assertions: bool = False,
 ) -> T:
     if SEXP_LOG:
-        logger.debug(f"parse into: {t.__name__} {'-'*40}")
+        logger.debug(f"parse into: {t.__name__} {'-' * 40}")
         logger.debug(f"sexp: {sexp}")
 
     # check if t is dataclass type
@@ -322,14 +322,18 @@ def _decode[T: DataclassInstance](
                         f" {key_t=} types={[v[0] for v in values_with_key]}"
                     )
                 if d := duplicates(values_with_key, key=lambda v: v[0]):
-                    raise ValueError(f"Duplicate keys: {d}")
+                    raise ValueError(
+                        f"Duplicate keys at `{_prettify_stack(stack)}`: {d}"
+                    )
                 value_dict[name] = dict(values_with_key)
             else:
                 raise NotImplementedError(
                     f"Multidict not supported for {origin} in field {f}"
                 )
         else:
-            assert len(values) == 1, f"Duplicate key: {name}"
+            if len(values) != 1:
+                raise ValueError(f"Duplicate key at `{_prettify_stack(stack)}`: {name}")
+
             out = _convert(
                 values[0][1:],
                 f.type,
@@ -524,7 +528,7 @@ def _encode(t) -> netlist_type:
             sexp.insert(i, v)
 
     if SEXP_LOG:
-        logger.debug(f"Dumping {type(t).__name__} {'-'*40}")
+        logger.debug(f"Dumping {type(t).__name__} {'-' * 40}")
         logger.debug(f"Obj: {t}")
         logger.debug(f"Sexp: {sexp}")
 
@@ -537,7 +541,7 @@ def loads[T: DataclassInstance](
     text = s
     sexp = s
     if isinstance(s, Path):
-        text = s.read_text()
+        text = s.read_text(encoding="utf-8")
     if isinstance(text, str):
         try:
             sexp = sexpdata.loads(text)
@@ -559,7 +563,7 @@ def dumps(obj, path: PathLike | None = None) -> str:
     text = sexpdata.dumps(sexp)
     text = prettify_sexp_string(text)
     if path:
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
     return text
 
 
@@ -593,14 +597,14 @@ class JSON_File:
     def loads[T](cls: type[T], path: Path | str) -> T:
         text = path
         if isinstance(path, Path):
-            text = path.read_text()
+            text = path.read_text(encoding="utf-8")
         return cls.from_json(text)
 
     def dumps(self, path: PathLike | None = None):
         path = Path(path) if path else None
         text = self.to_json(indent=4)
         if path:
-            path.write_text(text)
+            path.write_text(text, encoding="utf-8")
         return text
 
 

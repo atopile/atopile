@@ -98,7 +98,7 @@ class ERCFaultShortedModuleInterfaces(ERCFaultShort):
         Given two shorted ModuleInterfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        return cls(f"`{" ~ ".join(mif.get_full_name() for mif in path)}`", path)
+        return cls(f"`{' ~ '.join(mif.get_full_name() for mif in path)}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
@@ -247,7 +247,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
 
 def check_modules_for_erc(module: Iterable[Module]):
     for m in module:
-        logger.info(f"Checking {m} {'-'*20}")
+        logger.info(f"Checking {m} {'-' * 20}")
         simple_erc(m.get_graph())
 
 

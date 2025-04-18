@@ -5,13 +5,24 @@ import pytest
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
-from atopile import errors
-from atopile.datatypes import Ref
+from atopile import address, errors
+from atopile.datatypes import ReferencePartType, TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import cast_assert
+
+
+def _get_mif(node: L.Node, name: str, key: str | None = None) -> L.ModuleInterface:
+    return cast_assert(
+        L.ModuleInterface,
+        _get_attr(node, name, key),
+    )
+
+
+def _get_attr(node: L.Node, name: str, key: str | None = None) -> L.Node:
+    return Bob.get_node_attr(node, ReferencePartType(name, key))
 
 
 def test_empty_module_build(bob: Bob):
@@ -22,9 +33,9 @@ def test_empty_module_build(bob: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
-    assert isinstance(node, bob.modules[":A"])
+    assert isinstance(node, bob.modules[address.AddrStr(":A")])
 
 
 def test_simple_module_build(bob: Bob):
@@ -35,7 +46,7 @@ def test_simple_module_build(bob: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
 
     param = node.runtime["a"]
@@ -52,7 +63,7 @@ def test_arithmetic(bob: Bob):
         """
     )
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
     assert isinstance(node, L.Module)
 
     # TODO: check output
@@ -71,13 +82,13 @@ def test_simple_new(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
-    child = Bob.get_node_attr(node, "child")
+    child = _get_attr(node, "child")
     assert child.has_trait(_has_ato_cmp_attrs)
 
-    a = Bob.get_node_attr(child, "a")
+    a = _get_attr(child, "a")
     assert isinstance(a, F.Electrical)
 
 
@@ -110,7 +121,7 @@ def test_nested_nodes(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
@@ -133,11 +144,11 @@ def test_resistor(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
 
@@ -154,14 +165,14 @@ def test_standard_library_import(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
 
-    assert Bob.get_node_attr(node, "power_in")
+    assert _get_attr(node, "power_in")
 
 
 @pytest.mark.parametrize(
@@ -206,11 +217,11 @@ def test_reserved_attrs(
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
-    a = Bob.get_node_attr(node, "a")
+    a = _get_attr(node, "a")
     assert a.get_trait(F.has_package)._enum_set == {pkg}
     assert a.get_trait(F.has_descriptive_properties).get_properties() == {
         DescriptiveProperties.partno: "1234567890"
@@ -231,7 +242,8 @@ def test_import_ato(bob: Bob, tmp_path):
         module SpecialResistor from Resistor:
             footprint = "R0805"
         """
-        )
+        ),
+        encoding="utf-8",
     )
 
     top_module_content = dedent(
@@ -246,11 +258,11 @@ def test_import_ato(bob: Bob, tmp_path):
     bob.search_paths.append(some_module_search_path)
 
     tree = parse_text_as_file(top_module_content)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = _get_attr(node, "r1")
     assert isinstance(r1, F.Resistor)
 
 
@@ -280,7 +292,7 @@ def test_traceback(bob: Bob, module: str, count: int):
     tree = parse_text_as_file(text)
 
     with pytest.raises(errors.UserKeyError) as e:
-        bob.build_ast(tree, Ref([module]))
+        bob.build_ast(tree, TypeRef([module]))
 
     assert e.value.traceback is not None
     assert len(e.value.traceback) == count
@@ -290,10 +302,6 @@ def test_traceback(bob: Bob, module: str, count: int):
 # - signal ~ signal
 # - higher-level mif
 # - duck-typed
-def _get_mif(node: L.Node, name: str) -> L.ModuleInterface:
-    return cast_assert(L.ModuleInterface, Bob.get_node_attr(node, name))
-
-
 def test_signal_connect(bob: Bob):
     text = dedent(
         """
@@ -306,7 +314,7 @@ def test_signal_connect(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -334,7 +342,7 @@ def test_interface_connect(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -381,7 +389,7 @@ def test_duck_type_connect(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -410,3 +418,103 @@ def test_shim_power(bob: Bob):
     assert a.lv.is_connected_to(b.lv)
     assert a.hv.is_connected_to(b.hv)
     assert not a.lv.is_connected_to(b.hv)
+
+
+def test_requires(bob: Bob):
+    text = dedent(
+        """
+        module App:
+            signal a
+            signal b
+
+            a.required = True
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(node, "a")
+    assert a.has_trait(F.requires_external_usage)
+
+
+def test_key(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+        module App:
+            r = new Resistor
+            signal a ~ r.unnamed[0]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    r = _get_attr(node, "r")
+    assert isinstance(r, F.Resistor)
+
+
+def test_pin_ref(bob: Bob):
+    text = dedent(
+        """
+        module Abc:
+            pin 1 ~ signal b
+
+        module App:
+            abc = new Abc
+            signal a ~ abc.1
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+
+def test_non_ex_pin_ref(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+        module App:
+            r = new Resistor
+            signal a ~ r.unnamed[2]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserKeyError):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_regression_pin_refs(bob: Bob):
+    text = dedent(
+        """
+        import ElectricPower
+        component App:
+            signal CNT ~ pin 3
+            signal NP ~ pin 5
+            signal VIN_ ~ pin 2
+            signal VINplus ~ pin 1
+            signal VO_ ~ pin 4
+            signal VOplus ~ pin 6
+
+            power_in = new ElectricPower
+            power_out = new ElectricPower
+
+            power_in.vcc ~ pin 1
+            power_in.gnd ~ pin 2
+            power_out.vcc ~ pin 6
+            power_out.gnd ~ pin 4
+    """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)

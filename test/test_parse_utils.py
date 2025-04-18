@@ -41,7 +41,9 @@ EXAMPLES_DIR = repo_root / "examples"
 def test_example_reconstruction(example: Path):
     assert example.exists()
     file_ast = atopile.parse.parse_file(example)
-    assert atopile.parse_utils.reconstruct(file_ast) == example.read_text()
+    assert atopile.parse_utils.reconstruct(file_ast) == example.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_partial_reconstruction():

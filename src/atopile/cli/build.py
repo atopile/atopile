@@ -8,6 +8,7 @@ from more_itertools import first
 
 from atopile.cli.logging import NOW, LoggingStage
 from atopile.config import config
+from atopile.telemetry import log_to_posthog
 from faebryk.libs.app.pcb import open_pcb
 
 if TYPE_CHECKING:
@@ -16,6 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@log_to_posthog("cli:build_end")
 def build(
     entry: Annotated[str | None, typer.Argument()] = None,
     selected_builds: Annotated[
@@ -153,12 +155,12 @@ def _init_ato_app() -> "Module":
     """Initialize a specific .ato build."""
 
     from atopile import front_end
-    from atopile.datatypes import Ref
+    from atopile.datatypes import TypeRef
     from faebryk.libs.library import L
 
     node = front_end.bob.build_file(
         config.build.entry_file_path,
-        Ref(config.build.entry_section.split(".")),
+        TypeRef.from_path_str(config.build.entry_section),
     )
     assert isinstance(node, L.Module)
     return node

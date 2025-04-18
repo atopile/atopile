@@ -43,7 +43,7 @@ def test_examples_build(
     assert example.exists()
 
     example_copy = tmp_path / example.name
-    example_copy.write_text(example.read_text())
+    example_copy.write_text(example.read_text(encoding="utf-8"), encoding="utf-8")
     example = example_copy
 
     # Copy dependencies to the tmp dir directly because standalone mode doens't include

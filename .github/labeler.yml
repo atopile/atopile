@@ -1,0 +1,70 @@
+# ------------------------------------------------------------
+# Generic labels
+# ------------------------------------------------------------
+# Add 'enhancement' label to any PR where the head branch name starts with `feature` or has a `feature` section in the name
+enhancement:
+  - head-branch: ["^feature", "feature"]
+
+# Add 'bug' label to any PR where the head branch name starts with `bug` or has a `bug` section in the name
+bug:
+  - head-branch: ["^bugfix", "bugfix", "^bug", "bug", "^fix", "fix"]
+
+# Add 'Documentation' label to any change to .md files within the entire repository
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: "**/*.md"
+
+# Add 'ci' label to any change to the `.github` directory
+ci:
+  - changed-files:
+      - any-glob-to-any-file: "**/.github/**/*"
+
+# Add 'tests' label to any change to `test` or `tests` directories
+tests:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/test{,s}/**/*"
+
+# ------------------------------------------------------------
+# Folder based labels
+# ------------------------------------------------------------
+library:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/faebryk/library/*"
+
+faebryk:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/faebryk/*"
+
+ato:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/atopile/*"
+
+picker:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/faebryk/libs/picker/*"
+
+importers:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/faebryk/importers/*"
+
+exporters:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/faebryk/exporters/*"
+
+cli:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "src/atopile/cli/*"
+
+kicad:
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*[kK]i[cC]ad*"
+          - "**/*KICAD*"
