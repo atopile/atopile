@@ -3,7 +3,7 @@ from typing import Iterable
 
 from antlr4 import InputStream
 
-from atopile.front_end import Bob, Ref
+from atopile.front_end import Bob, TypeRef
 from atopile.parse import make_parser
 from atopile.parser.AtoParser import AtoParser
 from faebryk.core.parameter import Expression, Is, Parameter
@@ -19,7 +19,7 @@ def _parse(src: str) -> AtoParser:
     return make_parser(input)
 
 
-def _build_file(src: str, ref: Ref = Ref(["App"])) -> L.Module:
+def _build_file(src: str, ref: TypeRef = TypeRef(["App"])) -> L.Module:
     tree = _parse(textwrap.dedent(src)).file_input()
     bob = Bob()
     return cast_assert(L.Module, bob.build_ast(tree, ref))

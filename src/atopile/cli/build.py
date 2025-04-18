@@ -155,12 +155,12 @@ def _init_ato_app() -> "Module":
     """Initialize a specific .ato build."""
 
     from atopile import front_end
-    from atopile.datatypes import Ref
+    from atopile.datatypes import TypeRef
     from faebryk.libs.library import L
 
     node = front_end.bob.build_file(
         config.build.entry_file_path,
-        Ref(config.build.entry_section.split(".")),
+        TypeRef.from_path_str(config.build.entry_section),
     )
     assert isinstance(node, L.Module)
     return node

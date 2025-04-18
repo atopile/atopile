@@ -30,7 +30,15 @@ import faebryk.libs.library.L as L
 from atopile import address, errors
 from atopile.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
 from atopile.config import config
-from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
+from atopile.datatypes import (
+    FieldRef,
+    KeyOptItem,
+    KeyOptMap,
+    ReferencePartType,
+    StackList,
+    TypeRef,
+    is_int,
+)
 from atopile.parse import parser
 from atopile.parser.AtoParser import AtoParser as ap
 from atopile.parser.AtoParserVisitor import AtoParserVisitor
@@ -94,16 +102,37 @@ class BasicsMixin:
         """
         return ctx.getText()
 
-    def visitAttr(self, ctx: ap.AttrContext) -> Ref:
-        return Ref([self.visitName(name) for name in ctx.name()])
+    def visitTypeReference(self, ctx: ap.Type_referenceContext) -> TypeRef:
+        return TypeRef(self.visitName(name) for name in ctx.name())
 
-    def visitName_or_attr(self, ctx: ap.Name_or_attrContext) -> Ref:
-        if ctx.name():
-            return Ref.from_one(self.visitName(ctx.name()))
-        elif ctx.attr():
-            return self.visitAttr(ctx.attr())
+    def visitArrayIndex(self, ctx: ap.Array_indexContext | None) -> str | int | None:
+        if ctx is None:
+            return None
+        if key := ctx.key():
+            out = key.getText()
+            if is_int(out):
+                return int(out)
+            return out
+        return None
 
-        raise errors.UserException.from_ctx(ctx, "Expected a name or attribute")
+    def visitFieldReferencePart(
+        self, ctx: ap.Field_reference_partContext
+    ) -> ReferencePartType:
+        return ReferencePartType(
+            self.visitName(ctx.name()), self.visitArrayIndex(ctx.array_index())
+        )
+
+    def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
+        pin = ctx.pin_reference_end()
+        if pin is not None:
+            pin = int(pin.NUMBER().getText())
+        return FieldRef(
+            parts=(
+                self.visitFieldReferencePart(part)
+                for part in ctx.field_reference_part()
+            ),
+            pin=pin,
+        )
 
     def visitString(self, ctx: ap.StringContext) -> str:
         raw: str = ctx.getText()
@@ -204,7 +233,7 @@ class Context:
 
     @dataclass
     class ImportPlaceholder:
-        ref: Ref
+        ref: TypeRef
         from_path: str
         original_ctx: ParserRuleContext
 
@@ -213,7 +242,7 @@ class Context:
 
     # Scope information
     scope_ctx: ap.BlockdefContext | ap.File_inputContext
-    refs: dict[Ref, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
+    refs: dict[TypeRef, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
 
 
 class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -235,11 +264,11 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         if from_path := ctx.string():
             lazy_imports = [
                 Context.ImportPlaceholder(
-                    ref=self.visitName_or_attr(name_or_attr),
+                    ref=self.visitTypeReference(reference),
                     from_path=self.visitString(from_path),
                     original_ctx=ctx,
                 )
-                for name_or_attr in ctx.name_or_attr()
+                for reference in ctx.type_reference()
             ]
             return KeyOptMap(
                 KeyOptItem.from_kv(li.ref, (li, ctx)) for li in lazy_imports
@@ -248,9 +277,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         else:
             # Standard library imports are special, and don't require a from path
             imports = []
-            for collector, name_or_attr in iter_through_errors(ctx.name_or_attr()):
+            for collector, reference in iter_through_errors(ctx.type_reference()):
                 with collector():
-                    ref = self.visitName_or_attr(name_or_attr)
+                    ref = self.visitTypeReference(reference)
                     if len(ref) > 1:
                         raise errors.UserKeyError.from_ctx(
                             ctx, "Standard library imports must be single-name"
@@ -272,7 +301,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         self, ctx: ap.Dep_import_stmtContext
     ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Dep_import_stmtContext]]:
         lazy_import = Context.ImportPlaceholder(
-            ref=self.visitName_or_attr(ctx.name_or_attr()),
+            ref=self.visitTypeReference(ctx.type_reference()),
             from_path=self.visitString(ctx.string()),
             original_ctx=ctx,
         )
@@ -282,7 +311,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 ctx,
                 "`import <something> from <path>` is deprecated and"
                 " will be removed in a future version. Use "
-                f"`from {ctx.string().getText()} import {ctx.name_or_attr().getText()}`"
+                f"`from {ctx.string().getText()} import"
+                f" {ctx.type_reference().getText()}`"
                 " instead.",
             )
         return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
@@ -290,7 +320,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
     def visitBlockdef(
         self, ctx: ap.BlockdefContext
     ) -> KeyOptMap[tuple[ap.BlockdefContext, ap.BlockdefContext]]:
-        ref = Ref.from_one(self.visitName(ctx.name()))
+        ref = TypeRef.from_one(self.visitName(ctx.name()))
         return KeyOptMap.from_kv(ref, (ctx, ctx))
 
     def visitSimple_stmt(
@@ -307,11 +337,13 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
     # TODO: @v0.4: remove this shimming
     @staticmethod
-    def _find_shim(file_path: Path | None, ref: Ref) -> tuple[Type[L.Node], str] | None:
+    def _find_shim(
+        file_path: Path | None, ref: TypeRef
+    ) -> tuple[Type[L.Node], str] | None:
         if file_path is None:
             return None
 
-        import_addr = address.AddrStr.from_parts(file_path, str(Ref(ref)))
+        import_addr = address.AddrStr.from_parts(file_path, str(TypeRef(ref)))
 
         for shim_addr in shim_map:
             if import_addr.endswith(shim_addr):
@@ -344,8 +376,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                 if hasattr(item_ctx, "name"):
                     dep_ctx = item_ctx.name()  # type: ignore
-                elif hasattr(item_ctx, "name_or_attr"):
-                    dep_ctx = item_ctx.name_or_attr()  # type: ignore
+                elif hasattr(item_ctx, "reference"):
+                    dep_ctx = item_ctx.reference()  # type: ignore
                 else:
                     dep_ctx = item_ctx
 
@@ -363,14 +395,6 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 context.refs[ref] = item
 
         return context
-
-
-def _is_int(name: str) -> bool:
-    try:
-        int(name)
-    except ValueError:
-        return False
-    return True
 
 
 @contextmanager
@@ -421,7 +445,7 @@ class _ParameterDefinition:
 
     ctx: ParserRuleContext
     traceback: Sequence[ParserRuleContext]
-    ref: Ref
+    ref: FieldRef
     value: Range | Single | None = None
 
     @property
@@ -474,14 +498,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._failed_nodes = FuncDict[L.Node, set[str]]()
 
     def build_ast(
-        self, ast: ap.File_inputContext, ref: Ref, file_path: Path | None = None
+        self, ast: ap.File_inputContext, ref: TypeRef, file_path: Path | None = None
     ) -> L.Node:
         """Build a Module from an AST and reference."""
         file_path = self._sanitise_path(file_path) if file_path else None
         context = self.index_ast(ast, file_path)
         return self._build(context, ref)
 
-    def build_file(self, path: Path, ref: Ref) -> L.Node:
+    def build_file(self, path: Path, ref: TypeRef) -> L.Node:
         """Build a Module from a file and reference."""
         context = self.index_file(self._sanitise_path(path))
         return self._build(context, ref)
@@ -502,7 +526,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     return None
 
             return address.AddrStr.from_parts(
-                self._scopes[ctx_].file_path, str(Ref(ref))
+                self._scopes[ctx_].file_path, str(TypeRef(ref))
             )
 
         return {
@@ -511,7 +535,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if (addr := _get_addr(ctx)) is not None
         }
 
-    def _build(self, context: Context, ref: Ref) -> L.Node:
+    def _build(self, context: Context, ref: TypeRef) -> L.Node:
         assert self._is_reset()
 
         if ref not in context.refs:
@@ -578,7 +602,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             f"Attribute `{param}` declared but never assigned.",
                             traceback=last_declaration.traceback,
                         )
-
             # Handle parameter assignments
             # assignments override each other
             # assignments made in the block definition of the component are "is"
@@ -713,7 +736,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise errors.UserFileNotFoundError.from_ctx(
                 item.original_ctx,
-                f"Can't find {item.from_path} in {", ".join(map(str, search_paths))}",
+                f"Can't find {item.from_path} in {', '.join(map(str, search_paths))}",
             )
 
         from_path = self._sanitise_path(candidate_from_path)
@@ -763,7 +786,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
 
     def _get_referenced_class(
-        self, ctx: ParserRuleContext, ref: Ref
+        self, ctx: ParserRuleContext, ref: TypeRef
     ) -> Type[L.Node] | ap.BlockdefContext:
         """
         Returns the class / object referenced by the given ref,
@@ -804,38 +827,53 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return item
 
     @staticmethod
-    def get_node_attr(node: L.Node, name: str) -> L.Node:
+    def get_node_attr(node: L.Node, ref: ReferencePartType) -> L.Node:
         """
         Analogous to `getattr`
 
         Returns the value if it exists, otherwise raises an AttributeError
         Required because we're seeing attributes in both the attrs and runtime
         """
-        if _is_int(name):
-            name = f"_{name}"
 
-        if has_attr_or_property(node, name):
+        if has_attr_or_property(node, ref.name):
             # Build-time attributes are attached as real attributes
-            result = getattr(node, name)
-        elif name in node.runtime:
+            result = getattr(node, ref.name)
+            if ref.key is not None and isinstance(result, L.Node):
+                raise ValueError(f"{ref.name} is not subscriptable")
+            if not isinstance(result, L.Node) and ref.key is None:
+                raise ValueError(
+                    f"{ref.name} is a {type(result)._ref.name__} and needs a ref.key"
+                )
+            if isinstance(result, dict):
+                assert ref.key is not None
+                if ref.key not in result:
+                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+                result = result[ref.key]
+            elif isinstance(result, list):
+                assert ref.key is not None
+                # TODO type check key
+                if not isinstance(ref.key, int):
+                    raise ValueError(f"Key `{ref.key}` is not an integer")
+                if ref.key >= len(result):
+                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+                result = result[ref.key]
+            # TODO handle non-module & non-dict & non-list case
+        elif ref.name in node.runtime and ref.key is None:
             # Runtime attributes are attached as runtime attributes
-            result = node.runtime[name]
+            result = node.runtime[ref.name]
         else:
             # Wah wah wah - we don't know what this is
-            raise AttributeError(name=name, obj=node)
+            friendlyname = ref.name if ref.key is None else f"{ref.name}[{ref.key}]"
+            raise AttributeError(name=friendlyname, obj=node)
 
         if isinstance(result, L.Module):
             return result.get_most_special()
 
         return result
 
-    def _get_referenced_node(self, ref: Ref, ctx: ParserRuleContext) -> L.Node:
+    def _get_referenced_node(self, ref: FieldRef, ctx: ParserRuleContext) -> L.Node:
         node = self._current_node
         for i, name in enumerate(ref):
-            # Shim integer names to make valid python identifiers
-            if _is_int(name):
-                name = f"_{name}"
-
             try:
                 node = self.get_node_attr(node, name)
             except AttributeError as ex:
@@ -847,18 +885,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                 # Wah wah wah - we don't know what this is
                 # Build a nice error message
-                if ref[:i]:
-                    msg = f"`{Ref(ref[:i])}` has no attribute `{name}`"
+                if i > 0:
+                    msg = f"`{FieldRef(ref.parts[:i])}` has no attribute `{ex.name}`"
                 else:
                     msg = f"No attribute `{name}`"
                 raise errors.UserKeyError.from_ctx(
                     ctx, msg, traceback=self.get_traceback()
                 ) from ex
+            except ValueError as ex:
+                raise errors.UserKeyError.from_ctx(
+                    ctx, str(ex), traceback=self.get_traceback()
+                ) from ex
 
         return node
 
     def _try_get_referenced_node(
-        self, ref: Ref, ctx: ParserRuleContext
+        self, ref: FieldRef, ctx: ParserRuleContext
     ) -> L.Node | None:
         try:
             return self._get_referenced_node(ref, ctx)
@@ -913,7 +955,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # Find the superclass of the new node, if there's one defined
             block_type = item.blocktype()
             if super_ctx := item.blockdef_super():
-                super_ref = self.visitName_or_attr(super_ctx.name_or_attr())
+                super_ref = self.visitTypeReference(super_ctx.type_reference())
                 # Create a base node to build off
                 base_class = self._get_referenced_class(item, super_ref)
             else:
@@ -977,7 +1019,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     self.visitBlock(super_ctx.block())
 
     def _get_param(
-        self, node: L.Node, name: str, src_ctx: ParserRuleContext
+        self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext
     ) -> Parameter:
         """
         Get a param from a node.
@@ -985,22 +1027,26 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         it later. Used in forward-declaration.
         """
         try:
-            node = self.get_node_attr(node, name)
+            node = self.get_node_attr(node, ref)
         except AttributeError as ex:
-            if name in self._failed_nodes.get(node, set()):
+            if ref in self._failed_nodes.get(node, set()):
                 raise SkipPriorFailedException() from ex
             # Wah wah wah - we don't know what this is
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
-                f"Parameter `{name}` not found and"
+                f"Parameter `{ref}` not found and"
                 " forward-declared params are not yet implemented",
                 traceback=self.get_traceback(),
+            ) from ex
+        except ValueError as ex:
+            raise errors.UserValueError.from_ctx(
+                src_ctx, str(ex), traceback=self.get_traceback()
             ) from ex
 
         if not isinstance(node, Parameter):
             raise errors.UserSyntaxError.from_ctx(
                 src_ctx,
-                f"Node {name} is {type(node)} not a Parameter",
+                f"Node {ref} is {type(node)} not a Parameter",
                 traceback=self.get_traceback(),
             )
         return node
@@ -1008,7 +1054,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _ensure_param(
         self,
         node: L.Node,
-        name: str,
+        ref: ReferencePartType,
         unit: UnitType,
         src_ctx: ParserRuleContext,
     ) -> Parameter:
@@ -1016,18 +1062,38 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         Ensure a node has a param with a given name
         If it already exists, check the unit is compatible and return it
         """
+
         try:
-            param = self.get_node_attr(node, name)
+            param = self.get_node_attr(node, ref)
         except AttributeError:
             # Here we attach only minimal information, so we can override it later
-            param = node.add(
-                Parameter(units=unit, domain=L.Domains.Numbers.REAL()), name=name
-            )
+            if ref.key is not None:
+                if not isinstance(ref.key, str):
+                    raise errors.UserNotImplementedError.from_ctx(
+                        src_ctx,
+                        f"Can't forward assign to a non-string key `{ref}`",
+                        traceback=self.get_traceback(),
+                    )
+                container = getattr(node, ref.name)
+                param = node.add(
+                    Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
+                    name=ref.key,
+                    container=container,
+                )
+            else:
+                param = node.add(
+                    Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
+                    name=ref.name,
+                )
+        except ValueError as ex:
+            raise errors.UserValueError.from_ctx(
+                src_ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
         else:
             if not isinstance(param, Parameter):
                 raise errors.UserTypeError.from_ctx(
                     src_ctx,
-                    f"Cannot assign a parameter to `{name}` on `{node}` because its"
+                    f"Cannot assign a parameter to `{ref}` on `{node}` because its"
                     f" type is `{param.__class__.__name__}`",
                     traceback=self.get_traceback(),
                 )
@@ -1047,12 +1113,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
-        assigned_ref = self.visitName_or_attr(ctx.name_or_attr())
+        dec = ctx.field_reference_or_declaration()
+        assigned_ref = self.visitFieldReference(
+            dec.field_reference() or dec.declaration_stmt().field_reference()
+        )
 
-        assigned_name: str = assigned_ref[-1]
+        assigned_name: ReferencePartType = assigned_ref[-1]
         assignable_ctx = ctx.assignable()
         assert isinstance(assignable_ctx, ap.AssignableContext)
-        target = self._get_referenced_node(Ref(assigned_ref[:-1]), ctx)
+        target = self._get_referenced_node(assigned_ref.stem, ctx)
 
         ########## Handle New Statements ##########
         if new_stmt_ctx := assignable_ctx.new_stmt():
@@ -1062,9 +1131,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Can't declare fields in a nested object `{assigned_ref}`",
                     traceback=self.get_traceback(),
                 )
+            if assigned_name.key is not None:
+                raise errors.UserSyntaxError.from_ctx(
+                    ctx,
+                    f"Can't use keys with `new` statements `{assigned_ref}`",
+                    traceback=self.get_traceback(),
+                )
 
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
-            ref = self.visitName_or_attr(new_stmt_ctx.name_or_attr())
+            ref = self.visitTypeReference(new_stmt_ctx.type_reference())
 
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
@@ -1072,7 +1147,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         self._get_referenced_class(ctx, ref)
                     ) as new_node:
                         try:
-                            self._current_node.add(new_node, name=assigned_name)
+                            self._current_node.add(new_node, name=assigned_name.name)
                         except FieldExistsError as e:
                             raise errors.UserAlreadyExistsError.from_ctx(
                                 ctx,
@@ -1082,27 +1157,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
-                self._record_failed_node(self._current_node, assigned_name)
+                self._record_failed_node(self._current_node, assigned_name.name)
                 raise
 
             return NOTHING
 
         ########## Handle Regular Assignments ##########
         value = self.visit(assignable_ctx)
+        # Arithmetic
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            unit = HasUnit.get_units(value)
-            if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
-                # TODO: handle this in _ensure_param with better error
-                # e.g ... with existing units declared here: ...
-                if not provided_unit.is_compatible_with(unit):
-                    raise errors.UserIncompatibleUnitError.from_ctx(
-                        ctx,
-                        f"Implied units ({unit}) are incompatible"
-                        f" with explicit units ({provided_unit}).",
-                        traceback=self.get_traceback(),
-                    )
-                self._handleParameterDeclaration(assigned_ref, provided_unit, ctx)
+            declaration = ctx.field_reference_or_declaration().declaration_stmt()
+            if declaration:
+                # check valid declaration
+                # create param with corresponding units
+                self.visitDeclaration_stmt(declaration)
 
+            unit = HasUnit.get_units(value)
             param = self._ensure_param(target, assigned_name, unit, ctx)
             self._param_assignments[param].append(
                 _ParameterDefinition(
@@ -1113,21 +1183,32 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
             )
 
+        # String or boolean
         elif assignable_ctx.string() or assignable_ctx.boolean_():
+            if assigned_name.key is not None:
+                raise errors.UserSyntaxError.from_ctx(
+                    ctx,
+                    f"Can't use keys with non-arithmetic attribute assignments "
+                    f"`{assigned_ref}`",
+                    traceback=self.get_traceback(),
+                )
+
             # Check if it's a property or attribute that can be set
-            if has_instance_settable_attr(target, assigned_name):
+            if has_instance_settable_attr(target, assigned_name.name):
                 try:
-                    setattr(target, assigned_name, value)
+                    setattr(target, assigned_name.name, value)
                 except errors.UserException as e:
                     e.attach_origin_from_ctx(assignable_ctx)
                     raise
             elif (
                 # If ModuleShims has a settable property, use it
-                hasattr(GlobalAttributes, assigned_name)
-                and isinstance(getattr(GlobalAttributes, assigned_name), property)
-                and getattr(GlobalAttributes, assigned_name).fset
+                hasattr(GlobalAttributes, assigned_name.name)
+                and isinstance(getattr(GlobalAttributes, assigned_name.name), property)
+                and getattr(GlobalAttributes, assigned_name.name).fset
             ):
-                prop = cast_assert(property, getattr(GlobalAttributes, assigned_name))
+                prop = cast_assert(
+                    property, getattr(GlobalAttributes, assigned_name.name)
+                )
                 assert prop.fset is not None
                 # TODO: @v0.4 remove this deprecated import form
                 with (
@@ -1142,8 +1223,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with downgrade(errors.UserException):
                     raise errors.UserException.from_ctx(
                         ctx,
-                        f"Ignoring assignment of `{value}` to `{assigned_name}` "
-                        f"on `{target}`",
+                        f"Ignoring assignment of `{value}` to `{assigned_name}` on"
+                        f" `{target}`",
                         traceback=self.get_traceback(),
                     )
 
@@ -1153,12 +1234,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return NOTHING
 
     def _get_mif_and_warn_when_exists(
-        self, name: str, ctx: ParserRuleContext
+        self, name: ReferencePartType, ctx: ParserRuleContext
     ) -> L.ModuleInterface | None:
         try:
             mif = self.get_node_attr(self._current_node, name)
         except AttributeError:
             return None
+        except ValueError as ex:
+            raise errors.UserValueError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
 
         if isinstance(mif, L.ModuleInterface):
             # TODO: @v0.4 remove this deprecated import form
@@ -1178,6 +1263,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitPindef_stmt(
         self, ctx: ap.Pindef_stmtContext
     ) -> KeyOptMap[L.ModuleInterface]:
+        return self.visitPin_stmt(ctx.pin_stmt(), declaration=False)
+
+    def visitPin_declaration(
+        self, ctx: ap.Pin_declarationContext
+    ) -> KeyOptMap[L.ModuleInterface]:
+        return self.visitPin_stmt(ctx.pin_stmt(), declaration=True)
+
+    def visitPin_stmt(
+        self, ctx: ap.Pin_stmtContext, declaration: bool
+    ) -> KeyOptMap[L.ModuleInterface]:
         if ctx.name():
             name = self.visitName(ctx.name())
         elif ctx.totally_an_integer():
@@ -1187,12 +1282,25 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         else:
             raise ValueError(f"Unhandled pin name type `{ctx}`")
 
-        if mif := self._get_mif_and_warn_when_exists(name, ctx):
-            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+        ref = FieldRef(parts=[], pin=name).last
+        if declaration:
+            if mif := self._get_mif_and_warn_when_exists(ref, ctx):
+                return KeyOptMap.from_item(
+                    KeyOptItem.from_kv(TypeRef.from_one(name), mif)
+                )
+        else:
+            try:
+                mif = self.get_node_attr(self._current_node, ref)
+            except AttributeError:
+                pass
+            else:
+                return KeyOptMap.from_item(
+                    KeyOptItem.from_kv(TypeRef.from_one(name), mif)
+                )
 
         if shims_t := self._current_node.try_get_trait(_has_ato_cmp_attrs):
-            mif = shims_t.add_pin(name)
-            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+            mif = shims_t.add_pin(name, ref.name)
+            return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
         raise errors.UserTypeError.from_ctx(
             ctx,
@@ -1205,11 +1313,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> KeyOptMap[L.ModuleInterface]:
         name = self.visitName(ctx.name())
         # TODO: @v0.4: remove this protection
-        if mif := self._get_mif_and_warn_when_exists(name, ctx):
-            return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+        if mif := self._get_mif_and_warn_when_exists(ReferencePartType(name), ctx):
+            return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
         mif = self._current_node.add(F.Electrical(), name=name)
-        return KeyOptMap.from_item(KeyOptItem.from_kv(Ref.from_one(name), mif))
+        return KeyOptMap.from_item(KeyOptItem.from_kv(TypeRef.from_one(name), mif))
 
     def _connect(
         self, a: L.ModuleInterface, b: L.ModuleInterface, ctx: ParserRuleContext | None
@@ -1306,19 +1414,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
             (_, mif), *_ = self.visit(def_stmt)
             return mif
-        elif name_or_attr_ctx := ctx.name_or_attr():
-            ref = self.visitName_or_attr(name_or_attr_ctx)
-            node = self._get_referenced_node(ref, ctx)
-            if not isinstance(node, L.ModuleInterface):
-                raise errors.UserTypeError.from_ctx(
-                    ctx,
-                    f"Can't connect `{node}` because it's not a `ModuleInterface`",
-                    traceback=self.get_traceback(),
-                )
-            return node
-        elif numerical_ctx := ctx.numerical_pin_ref():
-            pin_name = numerical_ctx.getText()
-            ref = Ref(pin_name.split("."))
+        elif reference_ctx := ctx.field_reference():
+            ref = self.visitFieldReference(reference_ctx)
             node = self._get_referenced_node(ref, ctx)
             if not isinstance(node, L.ModuleInterface):
                 raise errors.UserTypeError.from_ctx(
@@ -1331,7 +1428,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise ValueError(f"Unhandled connectable type `{ctx}`")
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
-        from_ref, to_ref = map(self.visitName_or_attr, ctx.name_or_attr())
+        from_ref = self.visitFieldReference(ctx.field_reference())
+        to_ref = self.visitTypeReference(ctx.type_reference())
         from_node = self._get_referenced_node(from_ref, ctx)
 
         # Only Modules can be specialized (since they're the only
@@ -1552,10 +1650,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return self.visitAtom(ctx.atom())
 
     def visitAtom(self, ctx: ap.AtomContext) -> Numeric:
-        if ctx.name_or_attr():
-            ref = self.visitName_or_attr(ctx.name_or_attr())
-            target = self._get_referenced_node(Ref(ref[:-1]), ctx)
-            return self._get_param(target, ref[-1], ctx)
+        if ctx.field_reference():
+            ref = self.visitFieldReference(ctx.field_reference())
+            target = self._get_referenced_node(ref.stem, ctx)
+            return self._get_param(target, ref.last, ctx)
 
         elif ctx.literal_physical():
             return self.visitLiteral_physical(ctx.literal_physical())
@@ -1696,13 +1794,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
-        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
-        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
-            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
-        else:
-            assignee = self._get_param(target, assignee_ref[-1], ctx)
+        ref_dec = ctx.field_reference_or_declaration()
+        assignee_ref = self.visitFieldReference(ref_dec.field_reference())
+        target = self._get_referenced_node(assignee_ref, ctx)
+        self.visitDeclaration_stmt(ref_dec.declaration_stmt())
 
+        assignee = self._get_param(target, assignee_ref.last, ctx)
         value = self.visitCum_assignable(ctx.cum_assignable())
 
         # HACK: we have no way to check by what operator
@@ -1729,13 +1826,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         Unlike assignments, they may not implicitly declare an attribute.
         """
-        assignee_ref = self.visitName_or_attr(ctx.name_or_attr())
-        target = self._get_referenced_node(Ref(assignee_ref[:-1]), ctx)
-        if provided_unit := self._try_get_unit_from_type_info(ctx.type_info()):
-            assignee = self._ensure_param(target, assignee_ref[-1], provided_unit, ctx)
-        else:
-            assignee = self._get_param(target, assignee_ref[-1], ctx)
+        ref_dec = ctx.field_reference_or_declaration()
+        assignee_ref = self.visitFieldReference(ref_dec.field_reference())
+        target = self._get_referenced_node(assignee_ref, ctx)
+        self.visitDeclaration_stmt(ref_dec.declaration_stmt())
 
+        assignee = self._get_param(target, assignee_ref.last, ctx)
         value = self.visitCum_assignable(ctx.cum_assignable())
 
         if ctx.OR_ASSIGN():
@@ -1748,12 +1844,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # TODO: @v0.4 remove this deprecated import form
         with downgrade(DeprecatedException):
+            lhs = ref_dec.field_reference().getText()
+            rhs = ctx.cum_assignable().getText()
             if ctx.OR_ASSIGN():
-                subset = ctx.cum_assignable().getText()
-                superset = ctx.name_or_attr().getText()
+                subset = lhs
+                superset = rhs
             else:
-                subset = ctx.name_or_attr().getText()
-                superset = ctx.cum_assignable().getText()
+                subset = rhs
+                superset = lhs
             raise DeprecatedException(
                 f"Set assignment of `{assignee}` is deprecated."
                 f' Use "assert `{subset}` within `{superset}` "instead.'
@@ -1765,21 +1863,24 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> UnitType | None:
         if ctx is None:
             return None
-        unit_ctx: ap.Name_or_attrContext = ctx.name_or_attr()
+        unit_ctx: ap.UnitContext = ctx.unit()
+        if unit_ctx is None:
+            return None
         # TODO: @v0.4.0: remove this shim
-        unit_ref = self.visitName_or_attr(unit_ctx)
-        if len(unit_ref) == 1 and unit_ref[0] in _declaration_domain_to_unit:
-            unit = _declaration_domain_to_unit[unit_ref[0]]
+        unit = unit_ctx.getText()
+        if unit in _declaration_domain_to_unit:
+            unit = _declaration_domain_to_unit[unit]
             # TODO: consider deprecating this
         else:
-            unit = self._get_unit_from_ctx(ctx.name_or_attr())
+            unit = self._get_unit_from_ctx(unit_ctx)
+
         return unit
 
     def _handleParameterDeclaration(
-        self, ref: Ref, unit: UnitType, ctx: ParserRuleContext
+        self, ref: TypeRef, unit: UnitType, ctx: ParserRuleContext
     ):
         assert unit is not None, "Type info should be enforced by the parser"
-        name = ref[-1]
+        name = FieldRef.from_type_ref(ref).last
         param = self._ensure_param(self._current_node, name, unit, ctx)
         if param in self._param_assignments:
             declaration_after_definition = any(
@@ -1803,23 +1904,36 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     )
         else:
             self._param_assignments[param].append(
-                _ParameterDefinition(ref=ref, ctx=ctx, traceback=self.get_traceback())
+                _ParameterDefinition(
+                    ref=FieldRef.from_type_ref(ref),
+                    ctx=ctx,
+                    traceback=self.get_traceback(),
+                )
             )
 
-    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext):
+    def visitDeclaration_stmt(self, ctx: ap.Declaration_stmtContext | None):
         """Handle declaration statements."""
-        assigned_value_ref = self.visitName_or_attr(ctx.name_or_attr())
-        if len(assigned_value_ref) > 1:
+        if ctx is None:
+            return NOTHING
+        ref = self.visitFieldReference(ctx.field_reference())
+        if len(ref) > 1:
             raise errors.UserSyntaxError.from_ctx(
                 ctx,
-                f"Can't declare fields in a nested object `{assigned_value_ref}`",
+                f"Can't declare fields in a nested object `{ref}`",
+                traceback=self.get_traceback(),
+            )
+        type_ref = ref.to_type_ref()
+        if type_ref is None:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't declare keyed attributes `{ref}`",
                 traceback=self.get_traceback(),
             )
 
         # check declaration type
         unit = self._try_get_unit_from_type_info(ctx.type_info())
         if unit is not None:
-            self._handleParameterDeclaration(assigned_value_ref, unit, ctx)
+            self._handleParameterDeclaration(type_ref, unit, ctx)
             return NOTHING
 
         assert False, "Only parameter declarations supported"

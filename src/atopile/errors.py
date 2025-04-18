@@ -323,7 +323,7 @@ class UserNodeException(UserException):
     def from_node_exception(
         cls,
         node_ex: NodeException,
-        origin: ParserRuleContext,
+        origin: ParserRuleContext | None,
         traceback: Sequence[ParserRuleContext | None] | None,
         *args,
         **kwargs,
