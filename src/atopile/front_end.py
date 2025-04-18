@@ -1164,6 +1164,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
             declaration = ctx.field_reference_or_declaration().declaration_stmt()
             if declaration:
+                # check valid declaration
+                # create param with corresponding units
                 self.visitDeclaration_stmt(declaration)
 
             unit = HasUnit.get_units(value)
