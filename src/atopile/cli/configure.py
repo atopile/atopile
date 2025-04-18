@@ -101,7 +101,7 @@ def do_configure() -> None:
     """Perform system configuration required for atopile."""
     if config.install_kicad_plugin is None:
         config.install_kicad_plugin = questionary.confirm(
-            ":wrench: Install KiCAD plugin?", default=True
+            "🔧 Install KiCAD plugin?", default=True
         ).ask()
 
     if config.install_kicad_plugin:
