@@ -1065,8 +1065,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             param = self.get_node_attr(node, name)
         except AttributeError:
             # Here we attach only minimal information, so we can override it later
-            if name[1] is not None:
-                if not isinstance(name[1], str):
+            _name, key = name
+            if key is not None:
+                if not isinstance(key, str):
                     raise errors.UserNotImplementedError.from_ctx(
                         src_ctx,
                         f"Can't forward assign to a non-string key `{name}`",
@@ -1075,13 +1076,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 container = getattr(node, name[0])
                 param = node.add(
                     Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
-                    name=name[1],
+                    name=key,
                     container=container,
                 )
             else:
                 param = node.add(
                     Parameter(units=unit, domain=L.Domains.Numbers.REAL()),
-                    name=name[0],
+                    name=_name,
                 )
         else:
             if not isinstance(param, Parameter):
