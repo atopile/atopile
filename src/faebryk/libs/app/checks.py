@@ -26,6 +26,7 @@ class RequiresExternalUsageNotFulfilled(UserDesignCheckException):
         )
 
 
+# TODO: convert to trait-based check
 def check_requires_external_usage(app: Module, G: Graph):
     unfulfilled = []
     for node, trait in GraphFunctions(G).nodes_with_trait(F.requires_external_usage):
@@ -116,6 +117,7 @@ class DrcException(UserDesignCheckException):
         return out
 
 
+# TODO: convert to trait-based check
 def run_drc(app: Module, G: Graph, pcb: Path):
     from faebryk.libs.kicad.drc import run_drc as run_drc_kicad
 
