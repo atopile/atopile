@@ -68,7 +68,7 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
             cap.capacitance.constrain_subset(
                 L.Range.from_center_rel(value * P.nF, 0.05)
             )
-
+            cap.add(F.has_package(F.has_package.Package.C0603))
         # decoupling isolated power in
         for i, cap in enumerate(
             self.transceiver.power_isolated_in.decoupled.decouple(self)
@@ -78,6 +78,7 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
             cap.capacitance.constrain_subset(
                 L.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
             )
+            cap.add(F.has_package(F.has_package.Package.C0603))
         # decoupling isolated power out
         for i, cap in enumerate(
             self.transceiver.power_isolated_out.decoupled.decouple(self)
@@ -87,3 +88,4 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
             cap.capacitance.constrain_subset(
                 L.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
             )
+            cap.add(F.has_package(F.has_package.Package.C0603))
