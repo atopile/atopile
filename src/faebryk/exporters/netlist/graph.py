@@ -256,8 +256,23 @@ def suggested(net: F.Net, cache: SimpleNamespace) -> str | None:
         return None
 
 
-@strategy("heuristic")
-def heuristic(net: F.Net, cache: SimpleNamespace) -> str | None: ...
+@strategy("best_mif")
+def best_mif(net: F.Net, cache: SimpleNamespace) -> str | None:
+    exclude = (F.Electrical, F.Pad, F.Footprint)
+    mif_names: dict[str, int] = {}
+
+    for mif in net.get_connected_interfaces():
+        for parent, _ in reversed(mif.get_hierarchy()[:-1]):
+            if not isinstance(parent, exclude):
+                name = parent.get_name(accept_no_parent=True)
+                mif_names.setdefault(name, 0)
+                mif_names[name] += 1
+                break
+
+    if mif_names:
+        return max(mif_names, key=lambda k: mif_names[k])
+
+    return None
 
 
 @strategy("nearest_common_ancestor")
@@ -299,7 +314,7 @@ class NameAssignment:
         existing,
         expected,
         suggested,
-        heuristic,
+        best_mif,
         nearest_common_ancestor,
         concatenate_roots,
         fallback,
