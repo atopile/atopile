@@ -39,7 +39,12 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.library import _F as F
-from faebryk.libs.app.checks import RequiresExternalUsageNotFulfilled, run_checks
+from faebryk.libs.app.checks import (
+    DrcException,
+    RequiresExternalUsageNotFulfilled,
+    run_checks,
+    run_post_pcb_checks,
+)
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
@@ -233,6 +238,13 @@ def build(app: Module) -> None:
     known_targets = set(muster.targets.keys())
     targets = list(set(targets) - excluded_targets & known_targets)
 
+    if generate_manufacturing_data.__muster_name__ in targets:  # type: ignore
+        with LoggingStage("pre-manufacturing", "Running pre-manufacturing checks"):
+            try:
+                run_post_pcb_checks(app, G(), config.build.paths.layout)
+            except DrcException as ex:
+                raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
+
     # Make the noise
     built_targets = []
     with accumulate() as accumulator:
@@ -271,6 +283,7 @@ class Muster:
 
         def decorator(func: TargetType):
             self.add_target(func, name, default)
+            func.__muster_name__ = name or func.__name__  # type: ignore
             return func
 
         return decorator

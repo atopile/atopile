@@ -5,7 +5,7 @@ from enum import IntEnum, StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional
 
-from dataclasses_json import CatchAll, Undefined, dataclass_json
+from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
@@ -83,6 +83,128 @@ class _CuItemWithSoldermaskLayers(_SingleOrMultiLayer):
         # no mask layer when track is on internal layer
         if any(layer.startswith("In") for layer in self.layers):
             assert not any(layer.endswith(".Mask") for layer in self.layers)
+
+
+@dataclass_json(undefined=Undefined.INCLUDE)
+@dataclass(kw_only=True)
+class C_kicad_drc_report_file(JSON_File):
+    """
+    Represents the structure of a KiCad DRC report file (JSON format).
+    Based on an example DRC report.
+    """
+
+    class C_Severity(StrEnum):
+        INFO = auto()
+        EXCLUSION = auto()
+        ACTION = auto()
+        WARNING = auto()
+        ERROR = auto()
+        DEBUG = auto()
+
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class C_Position:
+        x: float
+        y: float
+        unknown: CatchAll = None
+
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class C_Item:
+        description: str
+        pos: "C_kicad_drc_report_file.C_Position"
+        uuid: UUID
+        unknown: CatchAll = None
+
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class C_Violation:
+        class C_Type(StrEnum):
+            """
+            Extracted from pcbnew/drc/drc_item.cpp
+            """
+
+            unconnected_items = auto()
+            shorting_items = auto()
+            items_not_allowed = auto()
+            text_on_edge_cuts = auto()
+            clearance = auto()
+            creepage = auto()
+            tracks_crossing = auto()
+            copper_edge_clearance = auto()
+            zones_intersect = auto()
+            isolated_copper = auto()
+            starved_thermal = auto()
+            via_dangling = auto()
+            track_dangling = auto()
+            hole_clearance = auto()
+            hole_to_hole = auto()
+            holes_co_located = auto()
+            connection_width = auto()
+            track_width = auto()
+            track_angle = auto()
+            track_segment_length = auto()
+            annular_width = auto()
+            drill_out_of_range = auto()
+            via_diameter = auto()
+            padstack = auto()
+            padstack_invalid = auto()
+            microvia_drill_out_of_range = auto()
+            courtyards_overlap = auto()
+            missing_courtyard = auto()
+            malformed_courtyard = auto()
+            pth_inside_courtyard = auto()
+            npth_inside_courtyard = auto()
+            item_on_disabled_layer = auto()
+            invalid_outline = auto()
+            duplicate_footprints = auto()
+            missing_footprint = auto()
+            extra_footprint = auto()
+            net_conflict = auto()
+            footprint_symbol_mismatch = auto()
+            footprint_filters_mismatch = auto()
+            lib_footprint_issues = auto()
+            lib_footprint_mismatch = auto()
+            unresolved_variable = auto()
+            assertion_failure = auto()
+            generic_warning = auto()
+            generic_error = auto()
+            copper_sliver = auto()
+            solder_mask_bridge = auto()
+            silk_over_copper = auto()
+            silk_edge_clearance = auto()
+            silk_overlap = auto()
+            text_height = auto()
+            text_thickness = auto()
+            length_out_of_range = auto()
+            skew_out_of_range = auto()
+            too_many_vias = auto()
+            diff_pair_gap_out_of_range = auto()
+            diff_pair_uncoupled_length_too_long = auto()
+            footprint = auto()
+            footprint_type_mismatch = auto()
+            through_hole_pad_without_hole = auto()
+            mirrored_text_on_front_layer = auto()
+            nonmirrored_text_on_back_layer = auto()
+
+        description: str
+        items: list["C_kicad_drc_report_file.C_Item"]
+        severity: "C_kicad_drc_report_file.C_Severity"
+        type: C_Type
+        # excluded: bool = False
+        unknown: CatchAll = None
+
+    # https://schemas.kicad.org/drc.v1.json
+    schema: Optional[str] = field(metadata=config(field_name="$schema"), default=None)
+    date: str  # ISO8601
+    kicad_version: str  # Major.Minor.Patch
+    source: str
+    coordinate_units: str  # mm, in, mil, ..
+
+    violations: list[C_Violation] = field(default_factory=list)
+    unconnected_items: list[C_Violation] = field(default_factory=list)
+    schematic_parity: list[C_Violation] = field(default_factory=list)
+    unknown: CatchAll = None
 
 
 @dataclass_json(undefined=Undefined.INCLUDE)
