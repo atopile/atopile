@@ -195,7 +195,7 @@ requires-dist = [
     { name = "fastapi-github-oidc", specifier = ">=0.2.1" },
     { name = "freetype-py", specifier = ">=2.4,<2.6" },
     { name = "gitpython", specifier = ">=3.1.41" },
-    { name = "kicadcliwrapper", specifier = ">=1.0.0,<2.0.0" },
+    { name = "kicadcliwrapper", specifier = ">=1.1.0,<2.0.0" },
     { name = "matplotlib", specifier = ">=3.7.1,<4.0.0" },
     { name = "more-itertools", specifier = ">=10.4,<10.7" },
     { name = "nanobind", specifier = ">=2.6.1" },
@@ -1190,15 +1190,15 @@ wheels = [
 
 [[package]]
 name = "kicadcliwrapper"
-version = "1.0.4"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "black" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/35/81ea7803d9f45d902ca79027e0d7475ca8a4be75d2432c198b8779a2d208/kicadcliwrapper-1.0.4.tar.gz", hash = "sha256:e80a0cfef838db5ab14f1699a268e154d9f5687a6dfd761dd57f624c70ac35a2", size = 25440 }
+sdist = { url = "https://files.pythonhosted.org/packages/82/9c/2749b48db0477eb5b21fd60dd264601500e701b555368e1c9efe812b2f37/kicadcliwrapper-1.1.0.tar.gz", hash = "sha256:4bf177d5e9f3c9ba4d1f8be06f685849f82232e6ab3b4880a6aaa753aeaefb55", size = 48676 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/9f/14199af1b484b1821ad6b08c00715c9f38a2a127b9bc33ec7ad80e46bb9e/kicadcliwrapper-1.0.4-py3-none-any.whl", hash = "sha256:8f68b8d28c164211bc2aa3593bed091aad537a37b4cb6af1576061190485f214", size = 26806 },
+    { url = "https://files.pythonhosted.org/packages/e2/d6/0dc42cd851d2b9e673748acad8c8048b43fd995c468d195f4e01c7f94c0e/kicadcliwrapper-1.1.0-py3-none-any.whl", hash = "sha256:4999c6da8a46164af9e5ac8a84413b097cbf9ed543bb2241480debd93509b7ab", size = 38749 },
 ]
 
 [[package]]

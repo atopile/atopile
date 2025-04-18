@@ -21,6 +21,13 @@ class Net(Module):
             and (pad := mif.get_parent_of_type(F.Pad)) is not None
         }
 
+    def get_footprints(self) -> set[F.Footprint]:
+        return {
+            fp
+            for mif in self.get_connected_interfaces()
+            if (fp := mif.get_parent_of_type(F.Footprint)) is not None
+        }
+
     # TODO should this be here?
     def get_connected_interfaces(self):
         return {

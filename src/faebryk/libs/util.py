@@ -801,7 +801,9 @@ class Lazy(LazyMixin):
         lazy_construct(cls)
 
 
-def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
+def once[T, **P](
+    f: Callable[P, T], _cacheable: Callable[[T], bool] | None = None
+) -> Callable[P, T]:
     # TODO add flag for this optimization
     # might not be desirable if different instances with same hash
     # return same values here
@@ -817,9 +819,14 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
         if len(param_list) == 1:
 
             def wrapper_single(self) -> Any:
-                if not hasattr(self, attr_name):
-                    setattr(self, attr_name, f(self))
-                return getattr(self, attr_name)
+                if hasattr(self, attr_name):
+                    return getattr(self, attr_name)
+
+                result = f(self)
+                if _cacheable is None or _cacheable(result):
+                    setattr(self, attr_name, result)
+
+                return result
 
             return wrapper_single
 
@@ -835,7 +842,8 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
                 return cache[lookup]
 
             result = f(*args, **kwargs)
-            cache[lookup] = result
+            if _cacheable is None or _cacheable(result):
+                cache[lookup] = result
             return result
 
         return wrapper_self
@@ -846,12 +854,22 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
             return wrapper.cache[lookup]
 
         result = f(*args, **kwargs)
-        wrapper.cache[lookup] = result
+        if _cacheable is None or _cacheable(result):
+            wrapper.cache[lookup] = result
         return result
 
     wrapper.cache = {}
     wrapper._is_once_wrapper = True
     return wrapper
+
+
+def predicated_once[T](
+    pred: Callable[[T], bool],
+):
+    def decorator[F](f: F) -> F:
+        return once(f, pred)
+
+    return decorator
 
 
 def assert_once[T, O, **P](
@@ -2107,7 +2125,7 @@ def md_list[T](
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
                 lines.append(f"{indent}-{key_str}")
-            nested = md_list(v, indent_level + 1, recursive, mapper)
+            nested = md_list(v, indent_level + 1, recursive=recursive, mapper=mapper)
             lines.append(nested)
         else:
             value_str = str(v)
