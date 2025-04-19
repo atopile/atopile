@@ -89,3 +89,11 @@ class Analog_Devices_ADM2587EBRWZ_ReferenceDesign(Module):
                 L.Range.from_center_rel(capacitance_values[i] * P.nF, 0.05)
             )
             cap.add(F.has_package(F.has_package.Package.C0603))
+
+        # pull the read enable pin low
+        self.transceiver.read_enable.pulled.pull(
+            up=False, owner=self
+        ).resistance.constrain_subset(L.Range.from_center_rel(10 * P.kohm, 0.05))
+
+        # connect read enable (active high) and write enable (active low) together
+        self.transceiver.read_enable.connect(self.transceiver.write_enable)
