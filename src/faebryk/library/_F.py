@@ -215,6 +215,7 @@ from faebryk.library.LDO import LDO
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.RP2040Pinmux import RP2040Pinmux
 from faebryk.library.DE9RS232Connector import DE9RS232Connector
+from faebryk.library.Texas_Instruments_SN74LVC541APWR import Texas_Instruments_SN74LVC541APWR
 from faebryk.library.SWDConnector import SWDConnector
 from faebryk.library.Analog_Devices_ADM2587EBRWZ import Analog_Devices_ADM2587EBRWZ
 from faebryk.library.HLK_LD2410B_P import HLK_LD2410B_P
