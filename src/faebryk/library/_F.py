@@ -29,6 +29,7 @@ from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.Signal import Signal
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.has_footprint import has_footprint
+from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.is_pickable import is_pickable
@@ -40,7 +41,6 @@ from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
-from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_part_picked import has_part_picked

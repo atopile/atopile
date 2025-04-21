@@ -2,9 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 
+import pytest
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
+from faebryk.libs.app.checks import run_check_post_solve
+from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.library import L
 
 
@@ -41,3 +45,42 @@ def test_addressor():
     assert app.config[0].line.is_connected_to(app.ref.hv)
     assert app.config[1].line.is_connected_to(app.ref.hv)
     assert app.config[2].line.is_connected_to(app.ref.lv)
+
+
+class I2CBusTopology(Module):
+    server: F.I2C
+    clients = L.list_field(3, ConfigurableI2CClient)
+
+    def __preinit__(self) -> None:
+        # self.server.address.alias_is(0)
+        self.server.connect(*[c.i2c for c in self.clients])
+        self.server.terminate(self)
+
+
+def test_i2c_unique_addresses():
+    app = I2CBusTopology()
+    app.clients[0].addressor.offset.alias_is(1)
+    app.clients[1].addressor.offset.alias_is(2)
+    app.clients[2].addressor.offset.alias_is(3)
+
+    solver = DefaultSolver()
+    solver.simplify(app)
+
+    run_check_post_solve(app, app.get_graph(), solver)
+
+
+def test_i2c_duplicate_addresses():
+    app = I2CBusTopology()
+    app.clients[0].addressor.offset.alias_is(1)
+    app.clients[1].addressor.offset.alias_is(3)
+    app.clients[2].addressor.offset.alias_is(3)
+
+    solver = DefaultSolver()
+    solver.simplify(app)
+
+    # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
+    with pytest.raises(ExceptionGroup) as e:
+        run_check_post_solve(app, app.get_graph(), solver)
+    assert e.group_contains(
+        UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
+    )

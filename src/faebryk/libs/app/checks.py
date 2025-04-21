@@ -8,6 +8,7 @@ import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.app.erc import simple_erc
 from faebryk.libs.exceptions import UserDesignCheckException, accumulate, downgrade
 from faebryk.libs.kicad.fileformats_latest import C_kicad_drc_report_file
@@ -39,13 +40,18 @@ def check_requires_external_usage(app: Module, G: Graph):
         raise RequiresExternalUsageNotFulfilled(unfulfilled)
 
 
-def check_design(G: Graph):
+def check_design(G: Graph, solver: Solver | None = None, pcb: Path | None = None):
     # TODO: split checks by stage
     with accumulate(UserDesignCheckException) as accumulator:
         for _, trait in GraphFunctions(G).nodes_with_trait(F.implements_design_check):
             with accumulator.collect():
                 try:
-                    trait.check()
+                    if pcb is not None:
+                        trait.check_post_pcb(pcb=pcb)
+                    elif solver is not None:
+                        trait.check_post_solve(solver=solver)
+                    else:
+                        trait.check_post_design()
                 except F.implements_design_check.MaybeUnfulfilledCheckException as e:
                     with downgrade(UserDesignCheckException):
                         raise UserDesignCheckException.from_nodes(
@@ -55,17 +61,18 @@ def check_design(G: Graph):
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
 
 
-def run_pre_build_checks(app: Module, G: Graph):
+def run_check_post_design(app: Module, G: Graph):
     check_requires_external_usage(app, G)
     check_design(G)
     simple_erc(G)
 
 
-def run_post_build_checks(app: Module, G: Graph):
-    check_design(G)
+def run_check_post_solve(app: Module, G: Graph, solver: Solver):
+    check_design(G, solver=solver)
 
 
-def run_post_pcb_checks(app: Module, G: Graph, pcb: Path):
+def run_check_post_pcb(app: Module, G: Graph, pcb: Path):
+    check_design(G, pcb=pcb)
     run_drc(app, G, pcb)
 
 

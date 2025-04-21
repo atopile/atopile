@@ -9,8 +9,11 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.core.solver.solver import Solver
 from faebryk.libs.library import L
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import P
+from faebryk.libs.util import invert_dict, md_list, partition_as_list
 
 logger = logging.getLogger(__name__)
 
@@ -83,3 +86,70 @@ class I2C(ModuleInterface):
     def __preinit__(self) -> None:
         self.frequency.add(F.is_bus_parameter())
         # self.bus_addresses.add(F.is_bus_parameter(reduce=(self.address, Union)))
+
+    def _hack_get_connected(self):
+        """
+        Workaround for hierarchical mifs not working currently
+        """
+        # Find all I2C interfaces connected to the same bus (via SCL line)
+        # Assumption: If SCL is connected, SDA is also connected to the same
+        # set of interfaces
+        # Ensure the signal is connected to a line
+        scl_line = self.scl.line
+        # Get all nodes connected to the line
+        connected_nodes = scl_line.get_connected()
+
+        bus_interfaces: set[I2C] = set()
+        for node in connected_nodes:
+            interface = node.get_parent_of_type(I2C)
+            # Filter out nodes not part of an I2C interface
+            if interface is not None:
+                bus_interfaces.add(interface)
+
+        return bus_interfaces
+
+    class requires_unique_addresses(ModuleInterface.TraitT.decless()):
+        class DuplicateAddressException(
+            F.implements_design_check.UnfulfilledCheckException
+        ):
+            def __init__(self, duplicates: dict[P_Set, list["I2C"]], bus: set["I2C"]):
+                message = "Duplicate I2C addresses found on the bus:\\n"
+                message += md_list(
+                    {f"{addr}": nodes for addr, nodes in duplicates.items()}
+                )
+                super().__init__(message, nodes=list(bus))
+
+        design_check: F.implements_design_check
+
+        @F.implements_design_check.register_post_solve_check
+        def __check_post_solve__(self, solver: Solver):
+            obj = self.get_obj(I2C)
+            bus_interfaces = obj._hack_get_connected()
+
+            # If only self or less found, no conflicts possible
+            if len(bus_interfaces) <= 1:
+                return
+
+            # Get addresses, handling potential unresolved parameters gracefully
+            addresses: dict[I2C, P_Set] = {
+                interface: solver.inspect_get_known_supersets(interface.address)
+                for interface in bus_interfaces
+            }
+            unresolved, resolved = partition_as_list(
+                lambda s: s[1].is_single_element(), addresses.items()
+            )
+
+            # Check for duplicates
+            by_id = invert_dict(dict(resolved))
+            duplicates = {
+                addr: busses for addr, busses in by_id.items() if len(busses) > 1
+            }
+            if duplicates:
+                raise I2C.requires_unique_addresses.DuplicateAddressException(
+                    duplicates=duplicates, bus=bus_interfaces
+                )
+
+            # TODO: Consider raising MaybeUnfulfilled if there are unresolved addresses?
+            # For now, we only raise if we find concrete duplicates.
+
+    address_check: requires_unique_addresses
