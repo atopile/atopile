@@ -1,0 +1,65 @@
+import Addressor3
+import I2C
+import ElectricPower
+import ElectricLogic
+import Resistor
+
+module I2CClientExampleIC:
+    signal gnd ~ pin 9
+    signal vcc ~ pin 21
+
+    signal i2c_sda ~ pin 20
+    signal i2c_scl ~ pin 19
+
+    signal i2c_address_pin_1 ~ pin 22
+    signal i2c_address_pin_2 ~ pin 23
+    signal i2c_address_pin_3 ~ pin 18
+
+    manufacturer = "Texas Instruments"
+    mpn = "TCA9548APWR" # 8-channel I2C switch
+
+
+module I2CClientExampleDriver:
+    addressor = new Addressor3
+    ic = new I2CClientExampleIC
+    power = new ElectricPower
+
+    i2c = new I2C
+
+    # Setup addressor
+    assert addressor.address is i2c.address 
+    assert addressor.base is 16
+    addressor.address_lines[0].line ~ ic.i2c_address_pin_1
+    addressor.address_lines[1].line ~ ic.i2c_address_pin_2
+    addressor.address_lines[2].line ~ ic.i2c_address_pin_3
+    addressor.address_lines[0].reference ~ power
+    
+    # connect IC to driver
+    power.lv ~ ic.gnd
+    power.hv ~ ic.vcc
+    i2c.sda.line ~ ic.i2c_sda
+    i2c.scl.line ~ ic.i2c_scl
+    i2c.sda.reference ~ power
+    i2c.scl.reference ~ power
+
+
+
+module App:
+    i2c_client = new I2CClientExampleDriver
+    i2c_server = new I2CClientExampleDriver
+
+    r1 = new Resistor
+    r2 = new Resistor
+
+    # set address to 0x10 | 0x02
+    assert i2c_client.addressor.address is 18
+
+    i2c_server.i2c ~ i2c_client.i2c
+    i2c_client.i2c.sda.line ~ r1.unnamed[0]
+    i2c_client.i2c.scl.line ~ r2.unnamed[0]
+
+    r1.unnamed[1] ~ i2c_client.power.hv
+    r2.unnamed[1] ~ i2c_client.power.hv
+
+    assert r1.resistance within 9kohm to 11kohm
+    assert r2.resistance within 9kohm to 11kohm

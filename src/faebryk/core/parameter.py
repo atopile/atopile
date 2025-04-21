@@ -550,7 +550,7 @@ class Expression(ParameterOperatable):
         self.operatable_operands: set[ParameterOperatable] = {
             op for op in operands if isinstance(op, ParameterOperatable)
         }
-        self.non_operands: list[Any] = []
+        self.non_operands = None
 
     def __preinit__(self):
         for op in self.operatable_operands:
@@ -1313,22 +1313,29 @@ class Implies(Logic):
         super().__init__(condition, implication)
 
 
+# TODO: consider making void return type expression
 class IfThenElse(Expression):
+    NON_OPERANDS_T = tuple[Callable[[], None], Callable[[], None], SyncedFlag]
+
     def __init__(
         self,
         condition: ParameterOperatable.BooleanLike,
         if_true: Callable[[], None] | None = None,
         if_false: Callable[[], None] | None = None,
+        *,
+        non_operands: NON_OPERANDS_T | None = None,
     ):
         # FIXME domain
         super().__init__(None, condition)
 
         # TODO a bit hacky
-        self.non_operands = [
-            if_true or (lambda: None),
-            if_false or (lambda: None),
-            SyncedFlag(),
-        ]
+        if non_operands is None:
+            non_operands = (
+                if_true or (lambda: None),
+                if_false or (lambda: None),
+                SyncedFlag(),
+            )
+        self.non_operands = non_operands  # type: ignore
 
     def try_run(self):
         if self.fullfilled:
@@ -1352,20 +1359,24 @@ class IfThenElse(Expression):
         return cast_assert(ConstrainableExpression | BoolSet, self.operands[0])
 
     @property
+    def _non_operands(self) -> NON_OPERANDS_T:
+        return cast(IfThenElse.NON_OPERANDS_T, self.non_operands)
+
+    @property
     def if_true(self) -> Callable[[], None]:
-        return self.non_operands[0]
+        return self._non_operands[0]
 
     @property
     def if_false(self) -> Callable[[], None]:
-        return self.non_operands[1]
+        return self._non_operands[1]
 
     @property
     def fullfilled(self) -> bool:
-        return self.non_operands[2]
+        return bool(self._non_operands[2])
 
     @fullfilled.setter
     def fullfilled(self, value: bool):
-        self.non_operands[2].set(value)
+        self._non_operands[2].set(value)
 
 
 class Setic(Expression):
@@ -1913,6 +1924,7 @@ FullyAssociative = Add | Multiply | Or | Union | Intersection
 Associative = FullyAssociative
 Involutory = Not
 
+HasSideEffects = IfThenElse
 
 # python help --------------------------------------------------------------------------
 CanonicalExpressionR = (

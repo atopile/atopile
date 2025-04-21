@@ -83,6 +83,8 @@ def _exec_pure_literal_operands(
     expr_type: type[CanonicalExpression], operands: Iterable[SolverAll]
 ) -> SolverLiteral | None:
     operands = list(operands)
+    if expr_type not in _CanonicalExpressions:
+        return None
     if not all(MutatorUtils.is_literal(o) for o in operands):
         return None
     try:
