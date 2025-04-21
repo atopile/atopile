@@ -104,7 +104,9 @@ class ElectricSignal(F.Signal):
                 parent, _ = maybe_parent
 
                 if isinstance(parent, F.Resistor):
-                    resistors.append(parent)
+                    other_side = [x for x in parent.unnamed if x is not mif]
+                    if other_side == [self.reference.hv]:
+                        resistors.append(parent)
 
         if len(resistors) == 0:
             return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)
