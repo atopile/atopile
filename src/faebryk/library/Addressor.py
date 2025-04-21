@@ -36,7 +36,8 @@ class Addressor(ModuleInterface):
         self.offset.constrain_le(1 << self._address_bits)
 
         self.address.alias_is(self.base + self.offset)
-        self.offset.constrain_cardinality(1)
+        # TODO: not implemented yet
+        # self.offset.constrain_cardinality(1)
 
         for i, line in enumerate(self.address_lines):
             (self.offset.operation_is_bit_set(i)).if_then_else(
