@@ -51,3 +51,14 @@ class USB2_0_ESD_Protection(Module):
         self.usb[0].usb_if.buspower.voltage.constrain_subset(
             L.Range(4.75 * P.V, 5.25 * P.V)
         )
+
+    # TODO: remove @https://github.com/atopile/atopile/issues/727
+    @property
+    def usb_in(self) -> F.USB2_0:
+        """Unprotected USB input"""
+        return self.usb[0]
+
+    @property
+    def usb_out(self) -> F.USB2_0:
+        """Protected USB output"""
+        return self.usb[1]
