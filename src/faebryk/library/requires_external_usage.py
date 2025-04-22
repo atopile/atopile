@@ -15,9 +15,6 @@ class requires_external_usage(Trait.decless()):
     def fulfilled(self) -> bool:
         obj = self.get_obj(type=ModuleInterface)
         connected_to = set(obj.connected.get_connected_nodes(types=[type(obj)]))
-        # no connections
-        if not connected_to:
-            return False
         parent = obj.get_parent()
         # no shared parent possible
         if parent is None:
@@ -25,6 +22,9 @@ class requires_external_usage(Trait.decless()):
         # TODO: disables checks for floating modules
         if parent[0].get_parent() is None:
             return True
+        # no connections
+        if not connected_to:
+            return False
         parent, _ = parent
 
         for c in connected_to:
