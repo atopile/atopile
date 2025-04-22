@@ -40,7 +40,7 @@ class PCB(Node):
         self._path = path
         self._pcb_file = try_load_kicad_pcb_file(path)
         self._transformer = PCB_Transformer(
-            self._pcb_file.kicad_pcb, self.get_graph(), self.app
+            self._pcb_file.kicad_pcb, self.app.get_graph(), self.app
         )
 
     def attach_to_app(self, app: Module):

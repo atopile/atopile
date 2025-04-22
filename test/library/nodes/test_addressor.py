@@ -7,7 +7,7 @@ import pytest
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
-from faebryk.libs.app.checks import run_check_post_solve
+from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.library import L
 
@@ -65,8 +65,9 @@ def test_i2c_unique_addresses():
 
     solver = DefaultSolver()
     solver.simplify(app)
+    app.add(F.has_solver(solver))
 
-    run_check_post_solve(app, app.get_graph(), solver)
+    check_design(app.get_graph(), stage=F.implements_design_check.CheckStage.POST_SOLVE)
 
 
 def test_i2c_duplicate_addresses():
@@ -77,10 +78,13 @@ def test_i2c_duplicate_addresses():
 
     solver = DefaultSolver()
     solver.simplify(app)
+    app.add(F.has_solver(solver))
 
     # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
     with pytest.raises(ExceptionGroup) as e:
-        run_check_post_solve(app, app.get_graph(), solver)
+        check_design(
+            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_SOLVE
+        )
     assert e.group_contains(
         UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
     )
