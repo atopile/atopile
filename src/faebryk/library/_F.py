@@ -29,14 +29,13 @@ from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.Signal import Signal
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.has_footprint import has_footprint
-from faebryk.library.implements_design_check import implements_design_check
+from faebryk.library.has_solver import has_solver
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
-from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.can_bridge import can_bridge
@@ -69,6 +68,7 @@ from faebryk.library.has_single_electric_reference_defined import has_single_ele
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic
 from faebryk.library.Footprint import Footprint
+from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
 from faebryk.library.is_pickable_by_part_number import is_pickable_by_part_number
 from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_id
@@ -90,6 +90,8 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_footprint_impl import has_footprint_impl
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
+from faebryk.library.PCB import PCB
+from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.Pad import Pad
 from faebryk.library.has_symbol_layout import has_symbol_layout

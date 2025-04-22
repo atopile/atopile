@@ -4,9 +4,12 @@ import logging
 from typing import TYPE_CHECKING, TypeGuard, cast
 
 from faebryk.core.node import Node, NodeException
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, cast_assert
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from faebryk.core.graph import Graph
 
 
 class TraitNotFound(NodeException):
@@ -140,6 +143,18 @@ class Trait(Node):
         return issubclass(obj.__trait__, cls)
 
     # TODO check subclasses implementing abstractmethods (use subclass_init)
+
+    @classmethod
+    def find_unique(cls, G: "Graph"):
+        from faebryk.core.graph import GraphFunctions
+
+        matches = GraphFunctions(G).nodes_with_trait(cls)
+        if len(matches) != 1:
+            if len(matches) == 0:
+                raise KeyErrorNotFound(cls)
+            else:
+                raise KeyErrorAmbiguous(matches, cls)
+        return matches[0][1]
 
 
 # Hack, using this as protocol

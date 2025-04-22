@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Callable, Optional
 
+import faebryk.library._F as F
 from atopile import layout
 from atopile.cli.logging import LoggingStage
 from atopile.config import config
@@ -34,23 +35,16 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     githash_layout,
 )
 from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, get_footprint
-from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
-from faebryk.library import _F as F
-from faebryk.libs.app.checks import (
-    DrcException,
-    RequiresExternalUsageNotFulfilled,
-    run_check_post_design,
-    run_check_post_pcb,
-    run_check_post_solve,
-)
+from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import (
     attach_random_designators,
     load_designators,
 )
+from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
@@ -68,7 +62,6 @@ from faebryk.libs.exceptions import (
     iter_through_errors,
 )
 from faebryk.libs.kicad.fileformats_latest import C_kicad_fp_lib_table_file
-from faebryk.libs.kicad.fileformats_version import try_load_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
@@ -92,6 +85,12 @@ def build(app: Module) -> None:
         return app.get_graph()
 
     solver = _get_solver()
+    app.add(F.has_solver(solver))
+    pcb = F.PCB()
+    pcb.attach_to_app(app)
+
+    # TODO remove, once erc split up
+    app.add(needs_erc_check())
 
     # TODO remove hack
     # Disables children pathfinding
@@ -102,7 +101,9 @@ def build(app: Module) -> None:
     # ```
     set_max_paths(int(MAX_PATHS), 0, 0)
 
-    with LoggingStage("prebuild", "Running pre-build checks"):
+    excluded_checks = tuple(set(config.build.exclude_checks))
+
+    with LoggingStage("checks-post-design", "Running post-design checks"):
         if not SKIP_SOLVING:
             logger.info("Resolving bus parameters")
             try:
@@ -117,20 +118,18 @@ def build(app: Module) -> None:
         else:
             logger.warning("Skipping bus parameter resolution")
 
-        logger.info("Running checks")
-        try:
-            run_check_post_design(app, G())
-        except RequiresExternalUsageNotFulfilled as ex:
-            # TODO ato code
-            raise UserException(str(ex)) from ex
+        check_design(
+            G(),
+            stage=F.implements_design_check.CheckStage.POST_DESIGN,
+            exclude=excluded_checks,
+        )
 
         # Pre-pick project checks - things to look at before time is spend ---------
         # Make sure the footprint libraries we're looking for exist
         consolidate_footprints(app)
 
     with LoggingStage("load-pcb", "Loading PCB"):
-        pcb = try_load_kicad_pcb_file(config.build.paths.layout)
-        transformer = PCB_Transformer(pcb.kicad_pcb, G(), app)
+        pcb.load_from_file(config.build.paths.layout)
         if config.build.keep_designators:
             load_designators(G(), attach=True)
 
@@ -160,29 +159,33 @@ def build(app: Module) -> None:
         # attachment is typically done before the footprints have been created
         # and therefore many nets won't be re-attached properly. Also, we just created
         # and attached them to the design above, so they weren't even there to attach
-        transformer.attach()
+        pcb.transformer.attach()
         if config.build.keep_net_names:
             load_net_names(G())
         attach_net_names(nets)
         check_net_names(G())
 
-    with LoggingStage("postbuild", "Running post-build checks"):
+    with LoggingStage("checks-post-solve", "Running post-solve checks"):
         logger.info("Running checks")
-        run_check_post_solve(app, G(), solver)
+        check_design(
+            G(),
+            stage=F.implements_design_check.CheckStage.POST_SOLVE,
+            exclude=excluded_checks,
+        )
 
     with LoggingStage("update-pcb", "Updating PCB"):
-        original_pcb = deepcopy(pcb)
-        transformer.apply_design(config.build.paths.fp_lib_table)
-        transformer.check_unattached_fps()
+        original_pcb = deepcopy(pcb.pcb_file)
+        pcb.transformer.apply_design(config.build.paths.fp_lib_table)
+        pcb.transformer.check_unattached_fps()
 
         if transform_trait := app.try_get_trait(F.has_layout_transform):
             logger.info("Transforming PCB")
-            transform_trait.transform(transformer)
+            transform_trait.transform(pcb.transformer)
 
         # set layout
         apply_layouts(app)
-        transformer.move_footprints()
-        apply_routing(app, transformer)
+        pcb.transformer.move_footprints()
+        apply_routing(app, pcb.transformer)
 
         if pcb == original_pcb:
             if config.build.frozen:
@@ -199,7 +202,7 @@ def build(app: Module) -> None:
                 ".updated.kicad_pcb"
             )
             original_pcb.dumps(original_path)
-            pcb.dumps(updated_path)
+            pcb.pcb_file.dumps(updated_path)
 
             # TODO: make this a real util
             def _try_relative(path: Path) -> Path:
@@ -229,7 +232,7 @@ def build(app: Module) -> None:
                 backup_file.write_bytes(f.read())
 
             logger.info(f"Updating layout {config.build.paths.layout}")
-            pcb.dumps(config.build.paths.layout)
+            pcb.pcb_file.dumps(config.build.paths.layout)
 
     # Figure out what targets to build
     if config.build.targets == ["__default__"]:
@@ -245,10 +248,14 @@ def build(app: Module) -> None:
     targets = list(set(targets) - excluded_targets & known_targets)
 
     if generate_manufacturing_data.__muster_name__ in targets:  # type: ignore
-        with LoggingStage("pre-manufacturing", "Running pre-manufacturing checks"):
+        with LoggingStage("checks-post-pcb", "Running post-pcb checks"):
             try:
-                run_check_post_pcb(app, G(), config.build.paths.layout)
-            except DrcException as ex:
+                check_design(
+                    G(),
+                    stage=F.implements_design_check.CheckStage.POST_PCB,
+                    exclude=excluded_checks,
+                )
+            except F.PCB.requires_drc_check.DrcException as ex:
                 raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
     # Make the noise
