@@ -23,11 +23,11 @@ class I2C(ModuleInterface):
     sda: F.ElectricLogic
 
     address = L.p_field(
-        within=L.Range(1, 0x7F),
+        within=L.Range(0, 0x7F),
         domain=L.Domains.Numbers.NATURAL(),
     )
     bus_addresses = L.p_field(
-        within=L.Range(1, 0x7F),
+        within=L.Range(0, 0x7F),
         domain=L.Domains.Numbers.NATURAL(),
     )
 
@@ -55,7 +55,7 @@ class I2C(ModuleInterface):
                 # arbitrarily choose an interface to represent the bus for this check
                 and first(sorted(bus, key=lambda n: str(n))) is interface
                 # indicates usage
-                and signal.line.crosses_pad_boundary()
+                and signal.line.net_crosses_pad_boundary()
             )
 
         return F.requires_pulls(
@@ -65,6 +65,12 @@ class I2C(ModuleInterface):
             required_resistance=L.Range(
                 1 * (1 - 0.1) * P.kohm, 10 * (1 + 0.1) * P.kohm
             ),
+        )
+
+    def bus_crosses_pad_boundary(self):
+        return (
+            self.scl.line.net_crosses_pad_boundary()
+            or self.sda.line.net_crosses_pad_boundary()
         )
 
     def terminate(self, owner: Module):

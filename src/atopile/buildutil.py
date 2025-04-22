@@ -19,6 +19,7 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
+from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
     attach_nets,
@@ -392,6 +393,14 @@ def generate_variable_report(app: Module, solver: Solver) -> None:
     # TODO: support other file formats
     export_parameters_to_file(
         app, solver, config.build.paths.output_base.with_suffix(".variables.md")
+    )
+
+
+@muster.register("i2c-tree")
+def generate_i2c_tree(app: Module, solver: Solver) -> None:
+    """Generate a Mermaid diagram of the I2C bus tree."""
+    export_i2c_tree(
+        app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
     )
 
 
