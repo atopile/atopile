@@ -15,3 +15,4 @@ class USB3(ModuleInterface):
         self.usb3_if.usb_if.buspower.voltage.constrain_subset(
             L.Range(4.75 * P.V, 5.5 * P.V)
         )
+        self.usb3_if.add(F.has_net_name.suggested("usb3_if"))

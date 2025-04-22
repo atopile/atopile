@@ -4,10 +4,7 @@
 import logging
 import re
 from collections import defaultdict
-from collections.abc import Callable
 from dataclasses import dataclass
-from queue import Empty, PriorityQueue
-from types import SimpleNamespace
 from typing import Generator, Iterable, Mapping
 
 import faebryk.library._F as F
@@ -15,7 +12,8 @@ from atopile.errors import UserException
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.core.node import Node, NodeNoParent
+from faebryk.core.node import NodeNoParent
+from faebryk.exporters.netlist.net_naming import generate_assignments
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
 from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby
@@ -184,162 +182,6 @@ def _name_shittiness(name: str | None) -> float:
     return 1
 
 
-type NameStrategyFunc = Callable[[F.Net, SimpleNamespace], str | None]
-
-
-class NameStrategy:
-    def __init__(self, name: str, func: NameStrategyFunc):
-        self.name = name
-        self.generate = func
-        self.cache = SimpleNamespace()
-
-    def __call__(self, net: F.Net) -> str | None:
-        return self.generate(net, self.cache)
-
-
-def strategy(name: str) -> Callable[[NameStrategyFunc], NameStrategy]:
-    def decorator(func: NameStrategyFunc) -> NameStrategy:
-        return NameStrategy(name, func)
-
-    return decorator
-
-
-@strategy("existing")
-def existing(net: F.Net, cache: SimpleNamespace) -> str | None:
-    if (has_overriden_name := net.try_get_trait(F.has_overriden_name)) is not None:
-        return has_overriden_name.get_name()
-
-
-@strategy("expected")
-def expected(net: F.Net, cache: SimpleNamespace) -> str | None:
-    if getattr(cache, "expected_names", None) is None:
-        cache.expected_names = PriorityQueue()
-
-        expected_names = FuncDict[Node, str]()
-        for mif in net.get_connected_interfaces():
-            for node, has_net_name in mif.get_parents_with_trait(
-                F.has_net_name, include_self=True
-            ):
-                if has_net_name.level == F.has_net_name.Level.EXPECTED:
-                    expected_names[node] = has_net_name.name
-
-        for node, name in expected_names.items():
-            cache.expected_names.put((len(node.get_hierarchy()), name))
-
-    try:
-        _, name = cache.expected_names.get(block=False)
-        return name
-    except Empty:
-        return None
-
-
-@strategy("suggested")
-def suggested(net: F.Net, cache: SimpleNamespace) -> str | None:
-    if getattr(cache, "suggested_names", None) is None:
-        cache.suggested_names = PriorityQueue()
-
-        suggestions = FuncDict[Node, str]()
-        for mif in net.get_connected_interfaces():
-            for node, has_net_name in mif.get_parents_with_trait(
-                F.has_net_name, include_self=True
-            ):
-                if has_net_name.level == F.has_net_name.Level.SUGGESTED:
-                    suggestions[node] = has_net_name.name
-
-        for node, name in suggestions.items():
-            cache.suggested_names.put((len(node.get_hierarchy()), name))
-
-    try:
-        _, name = cache.suggested_names.get(block=False)
-        return name
-    except Empty:
-        return None
-
-
-@strategy("best_mif")
-def best_mif(net: F.Net, cache: SimpleNamespace) -> str | None:
-    exclude = (F.Electrical, F.Pad, F.Footprint)
-    mif_names: dict[str, int] = {}
-
-    for mif in net.get_connected_interfaces():
-        for parent, _ in reversed(mif.get_hierarchy()[:-1]):
-            if not isinstance(parent, exclude):
-                name = parent.get_name(accept_no_parent=True)
-                mif_names.setdefault(name, 0)
-                mif_names[name] += 1
-                break
-
-    if mif_names:
-        return max(mif_names, key=lambda k: mif_names[k])
-
-    return None
-
-
-@strategy("nearest_common_ancestor")
-def nearest_common_ancestor(net: F.Net, cache: SimpleNamespace) -> str | None:
-    if (
-        nca := L.Node.nearest_common_ancestor(*net.get_connected_interfaces())
-    ) is not None:
-        nca_node, nca_name = nca
-        if nca_node.get_parent() is not None:
-            return nca_name
-
-    return None
-
-
-@strategy("concatenate_roots")
-def concatenate_roots(net: F.Net, cache: SimpleNamespace) -> str | None:
-    roots = set()
-    for mif in net.get_connected_interfaces():
-        root = mif.get_hierarchy()[1][0]
-        roots.add(root.get_name())
-
-    if roots:
-        return "_".join(sorted(roots))
-
-
-@strategy("fallback")
-def fallback(net: F.Net, cache: SimpleNamespace) -> str | None:
-    # FIXME
-    mif_names = [mif.get_full_name() for mif in net.get_connected_interfaces()]
-    return "_".join(mif_names)
-
-
-class NameAssignment:
-    net: F.Net
-    current_name: str
-    tried_names: list[str]
-
-    strategies = [
-        existing,
-        expected,
-        suggested,
-        best_mif,
-        nearest_common_ancestor,
-        concatenate_roots,
-        fallback,
-    ]
-
-    def __init__(self, net: F.Net):
-        self.net = net
-        self.tried_names = []
-        self.current_name = self._generate_initial_name()
-
-    def _generate_initial_name(self) -> str:
-        for generator in self.strategies:
-            if (name := generator(self.net)) is not None:
-                self.origin = generator.name
-                self.tried_names.append(name)
-                return name
-
-        assert False, "Unable to generate initial net name"
-
-    def __rich_repr__(self):
-        yield self.origin
-        yield self.current_name
-        yield [mif.get_full_name() for mif in self.net.get_connected_interfaces()]
-
-
 def attach_net_names(nets: Iterable[F.Net]) -> None:
     """
     Generate and attach net names. Requires all nets in design as input.
@@ -369,18 +211,14 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
      - limit names to 255 chars
     """
 
-    names = [NameAssignment(net) for net in nets]
-
-    # TODO: deconflict
-
-    for name in names:
-        name.net.add(F.has_overriden_name_defined(name.current_name))
+    assignments = generate_assignments(nets)
 
     from rich import print
 
-    print(names)
+    print(list(assignments))
 
-    print(sorted([name.current_name for name in names]))
+    for assignment in assignments:
+        assignment.attach()
 
     assert all(n.has_trait(F.has_overriden_name) for n in nets)
 

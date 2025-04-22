@@ -13,6 +13,7 @@ from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from atopile.front_end import DeprecatedException
 from faebryk.core.cpp import set_max_paths
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.pathfinder import MAX_PATHS
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -157,6 +158,11 @@ def build(app: Module) -> None:
         if config.build.keep_net_names:
             load_net_names(G())
         attach_net_names(nets)
+
+        import sys
+
+        sys.exit(0)
+
         check_net_names(G())
 
     with LoggingStage("update-pcb", "Updating PCB"):
