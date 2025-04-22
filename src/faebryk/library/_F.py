@@ -142,6 +142,7 @@ from faebryk.library.has_package import has_package
 from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Potentiometer import Potentiometer
+from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
