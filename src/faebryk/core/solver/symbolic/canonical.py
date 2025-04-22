@@ -9,6 +9,7 @@ from faebryk.core.parameter import (
     Add,
     And,
     CanonicalExpression,
+    Cardinality,
     Ceil,
     ConstrainableExpression,
     Cos,
@@ -157,9 +158,10 @@ def convert_to_canonical_operations(mutator: Mutator):
     ```
     """
 
-    UnsupportedOperations: dict[type[Expression], type[Expression]] = {
+    UnsupportedOperations: dict[type[Expression], type[Expression] | None] = {
         GreaterThan: GreaterOrEqual,
         LessThan: LessOrEqual,
+        Cardinality: None,
     }
 
     def c[T: CanonicalExpression](op: type[T], *operands) -> T:
@@ -293,9 +295,18 @@ def convert_to_canonical_operations(mutator: Mutator):
     exprs = mutator.nodes_of_type(Expression, sort_by_depth=True)
     for e in exprs:
         if type(e) in UnsupportedOperations:
+            replacement = UnsupportedOperations[type(e)]
+            if replacement is None:
+                logger.warning(
+                    f"{type(e)}({e.compact_repr(mutator.print_context)}) not supported "
+                    f"by solver, skipping"
+                )
+                mutator.remove(e)
+                continue
+
             logger.warning(
                 f"{type(e)}({e.compact_repr(mutator.print_context)}) not supported "
-                f"by solver, converting to {UnsupportedOperations[type(e)]}"
+                f"by solver, converting to {replacement}"
             )
 
         from_ops = [e]

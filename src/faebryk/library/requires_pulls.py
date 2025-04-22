@@ -4,7 +4,6 @@ from typing import Callable
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.util import md_list
 
@@ -86,7 +85,10 @@ class requires_pulls(Module.TraitT.decless()):
             )
         }
 
-    def _check(self):
+    design_check: F.implements_design_check
+
+    @F.implements_design_check.register_post_design_check
+    def __check_post_design__(self):
         signals = (
             self.signals
             if self.pred is None
@@ -121,7 +123,3 @@ class requires_pulls(Module.TraitT.decless()):
                 bus={node for signal in signals for node in self._get_bus(signal)},
                 required_resistance=self.required_resistance,
             )
-
-    @L.rt_field
-    def check(self) -> F.implements_design_check:
-        return F.implements_design_check(self._check)

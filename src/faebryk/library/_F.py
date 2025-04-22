@@ -29,6 +29,7 @@ from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.Signal import Signal
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.has_footprint import has_footprint
+from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.is_pickable import is_pickable
@@ -40,7 +41,6 @@ from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
-from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
 from faebryk.library.has_part_picked import has_part_picked
@@ -175,6 +175,7 @@ from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.PoweredLED import PoweredLED
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.USB_Type_C_Receptacle_24_pin import USB_Type_C_Receptacle_24_pin
+from faebryk.library.Addressor import Addressor
 from faebryk.library.Diodes_Incorporated_AP255x_x import Diodes_Incorporated_AP255x_x
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.EnablePin import EnablePin
@@ -202,6 +203,7 @@ from faebryk.library.TPS2116 import TPS2116
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.I2C import I2C
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
+from faebryk.library.Addressor3 import Addressor3
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
 from faebryk.library.ElectricLogicGates import ElectricLogicGates

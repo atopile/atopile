@@ -14,6 +14,7 @@ from faebryk.core.parameter import (
     GreaterThan,
     Intersection,
     Is,
+    IsBitSet,
     IsSubset,
     Log,
     Multiply,
@@ -72,6 +73,7 @@ _CanonicalExpressions = {
     GreaterOrEqual: operator.ge,
     GreaterThan: operator.gt,
     IsSubset: P_Set.is_subset_of,
+    IsBitSet: Quantity_Interval_Disjoint.op_is_bit_set,
 }
 
 # Pure literal folding -----------------------------------------------------------------
@@ -81,6 +83,8 @@ def _exec_pure_literal_operands(
     expr_type: type[CanonicalExpression], operands: Iterable[SolverAll]
 ) -> SolverLiteral | None:
     operands = list(operands)
+    if expr_type not in _CanonicalExpressions:
+        return None
     if not all(MutatorUtils.is_literal(o) for o in operands):
         return None
     try:

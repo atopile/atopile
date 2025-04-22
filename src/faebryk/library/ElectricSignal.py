@@ -100,11 +100,18 @@ class ElectricSignal(F.Signal):
 
         resistors: list[F.Resistor] = []
         for mif, _ in connected_to.items():
-            if (maybe_parent := mif.get_parent()) is not None:
-                parent, _ = maybe_parent
+            if (maybe_parent := mif.get_parent()) is None:
+                continue
+            parent, _ = maybe_parent
 
-                if isinstance(parent, F.Resistor):
-                    resistors.append(parent)
+            if not isinstance(parent, F.Resistor):
+                continue
+            other_side = [x for x in parent.unnamed if x is not mif]
+            if len(other_side) != 1:
+                continue
+            if self.reference.hv not in other_side[0].get_connected():
+                continue
+            resistors.append(parent)
 
         if len(resistors) == 0:
             return Quantity_Interval.from_center(0 * P.ohm, 0 * P.ohm)

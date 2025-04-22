@@ -1035,8 +1035,10 @@ class Mutator:
             )
             for op in operands
         ]
-        new_expr = expr_factory(*new_operands)
-        new_expr.non_operands = non_operands
+        if non_operands is not None:
+            new_expr = expr_factory(*new_operands, non_operands=non_operands)  # type: ignore
+        else:
+            new_expr = expr_factory(*new_operands)
 
         if constrain and isinstance(new_expr, ConstrainableExpression):
             new_expr.constrained = True

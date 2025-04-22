@@ -19,6 +19,7 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
+from faebryk.exporters.documentation.i2c import export_i2c_tree
 from faebryk.exporters.netlist.graph import (
     attach_net_names,
     attach_nets,
@@ -42,9 +43,9 @@ from faebryk.library import _F as F
 from faebryk.libs.app.checks import (
     DrcException,
     RequiresExternalUsageNotFulfilled,
-    run_post_build_checks,
-    run_post_pcb_checks,
-    run_pre_build_checks,
+    run_check_post_design,
+    run_check_post_pcb,
+    run_check_post_solve,
 )
 from faebryk.libs.app.designators import (
     attach_random_designators,
@@ -118,7 +119,7 @@ def build(app: Module) -> None:
 
         logger.info("Running checks")
         try:
-            run_pre_build_checks(app, G())
+            run_check_post_design(app, G())
         except RequiresExternalUsageNotFulfilled as ex:
             # TODO ato code
             raise UserException(str(ex)) from ex
@@ -167,7 +168,7 @@ def build(app: Module) -> None:
 
     with LoggingStage("postbuild", "Running post-build checks"):
         logger.info("Running checks")
-        run_post_build_checks(app, G())
+        run_check_post_solve(app, G(), solver)
 
     with LoggingStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb)
@@ -246,7 +247,7 @@ def build(app: Module) -> None:
     if generate_manufacturing_data.__muster_name__ in targets:  # type: ignore
         with LoggingStage("pre-manufacturing", "Running pre-manufacturing checks"):
             try:
-                run_post_pcb_checks(app, G(), config.build.paths.layout)
+                run_check_post_pcb(app, G(), config.build.paths.layout)
             except DrcException as ex:
                 raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
@@ -392,6 +393,14 @@ def generate_variable_report(app: Module, solver: Solver) -> None:
     # TODO: support other file formats
     export_parameters_to_file(
         app, solver, config.build.paths.output_base.with_suffix(".variables.md")
+    )
+
+
+@muster.register("i2c-tree")
+def generate_i2c_tree(app: Module, solver: Solver) -> None:
+    """Generate a Mermaid diagram of the I2C bus tree."""
+    export_i2c_tree(
+        app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
     )
 
 
