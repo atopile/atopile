@@ -87,7 +87,7 @@ def build(app: Module) -> None:
     solver = _get_solver()
     app.add(F.has_solver(solver))
     pcb = F.PCB()
-    pcb.attach_to_app(app)
+    app.add(F.PCB.has_pcb(pcb))
 
     # TODO remove, once erc split up
     app.add(needs_erc_check())

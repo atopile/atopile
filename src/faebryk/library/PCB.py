@@ -43,11 +43,6 @@ class PCB(Node):
             self._pcb_file.kicad_pcb, self.app.get_graph(), self.app
         )
 
-    def attach_to_app(self, app: Module):
-        assert self.app is None
-        self.app = app
-        self.app.add(PCB.has_pcb(self))
-
     @property
     def transformer(self) -> "PCB_Transformer":
         assert self._transformer is not None
@@ -137,3 +132,8 @@ class PCB(Node):
         def __init__(self, pcb: "PCB"):
             super().__init__()
             self.pcb = pcb
+
+        def on_obj_set(self):
+            assert self.pcb.app is None
+            self.pcb.app = self.get_obj(Module)
+            return super().on_obj_set()
