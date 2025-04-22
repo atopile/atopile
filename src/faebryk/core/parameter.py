@@ -22,6 +22,7 @@ from faebryk.core.core import Namespace
 from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.node import Node, f_field
 from faebryk.core.trait import Trait
+from faebryk.libs.sets.numeric_sets import NumberLike
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -42,6 +43,7 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
     KeyErrorNotFound,
+    SyncedFlag,
     abstract,
     cast_assert,
     find,
@@ -197,6 +199,9 @@ class ParameterOperatable(Node):
 
     def operation_is_ne(self, other: NumberLike):
         return NotEqual(left=self, right=other)
+
+    def operation_is_bit_set(self, index: NumberLike):
+        return IsBitSet(self, index=index)
 
     def operation_is_subset(self, other: Sets):
         return IsSubset(left=self, right=other)
@@ -545,7 +550,7 @@ class Expression(ParameterOperatable):
         self.operatable_operands: set[ParameterOperatable] = {
             op for op in operands if isinstance(op, ParameterOperatable)
         }
-        self.non_operands: list[Any] = []
+        self.non_operands = None
 
     def __preinit__(self):
         for op in self.operatable_operands:
@@ -587,6 +592,8 @@ class Expression(ParameterOperatable):
         if type(self) is not type(other):
             return False
         if len(self.operands) != len(other.operands):
+            return False
+        if self.non_operands or other.non_operands:
             return False
         # if lit is non-single/empty set we can't correlate thus can't be congruent
         #  in general
@@ -889,11 +896,10 @@ class ConstrainableExpression(Expression):
     # we must force a value (at the end of solving at the least)
     def if_then_else(
         self,
-        if_true: Callable[[], Any],
-        if_false: Callable[[], Any],
-        preference: bool | None = None,
+        if_true: Callable[[], Any] | None = None,
+        if_false: Callable[[], Any] | None = None,
     ):
-        return IfThenElse(self, if_true, if_false, preference)
+        return IfThenElse(self, if_true, if_false)
 
     @staticmethod
     def operation_switch_case_implications(
@@ -1307,46 +1313,70 @@ class Implies(Logic):
         super().__init__(condition, implication)
 
 
+# TODO: consider making void return type expression
 class IfThenElse(Expression):
+    NON_OPERANDS_T = tuple[Callable[[], None], Callable[[], None], SyncedFlag]
+
     def __init__(
         self,
-        condition: ConstrainableExpression,
+        condition: ParameterOperatable.BooleanLike,
         if_true: Callable[[], None] | None = None,
         if_false: Callable[[], None] | None = None,
-        preference: bool | None = None,
+        *,
+        non_operands: NON_OPERANDS_T | None = None,
     ):
         # FIXME domain
         super().__init__(None, condition)
 
         # TODO a bit hacky
-        self.non_operands = [
-            if_true or (lambda: None),
-            if_false or (lambda: None),
-            preference,
-        ]
+        if non_operands is None:
+            non_operands = (
+                if_true or (lambda: None),
+                if_false or (lambda: None),
+                SyncedFlag(),
+            )
+        self.non_operands = non_operands  # type: ignore
 
-        # TODO actually implement this
-        if preference is not None:
-            if preference:
-                condition.constrain()
-                if if_true:
-                    if_true()
-            else:
-                condition.operation_not().constrain()
-                if if_false:
-                    if_false()
+    def try_run(self):
+        if self.fullfilled:
+            return
+        if isinstance(self.condition, ParameterOperatable):
+            lit = self.condition.try_get_literal()
+        else:
+            lit = self.condition
+        if lit is None or lit == BoolSet(True, False):
+            return
+        self.fullfilled = True
+
+        if lit == BoolSet(True):
+            self.if_true()
+        else:
+            assert lit == BoolSet(False)
+            self.if_false()
+
+    @property
+    def condition(self) -> ConstrainableExpression | BoolSet:
+        return cast_assert(ConstrainableExpression | BoolSet, self.operands[0])
+
+    @property
+    def _non_operands(self) -> NON_OPERANDS_T:
+        return cast(IfThenElse.NON_OPERANDS_T, self.non_operands)
 
     @property
     def if_true(self) -> Callable[[], None]:
-        return self.non_operands[0]
+        return self._non_operands[0]
 
     @property
     def if_false(self) -> Callable[[], None]:
-        return self.non_operands[1]
+        return self._non_operands[1]
 
     @property
-    def preference(self) -> bool | None:
-        return self.non_operands[2]
+    def fullfilled(self) -> bool:
+        return bool(self._non_operands[2])
+
+    @fullfilled.setter
+    def fullfilled(self, value: bool):
+        self._non_operands[2].set(value)
 
 
 class Setic(Expression):
@@ -1580,6 +1610,43 @@ class NotEqual(NumericPredicate):
         symbol="≠",
         placement=NumericPredicate.ReprStyle.Placement.INFIX_FIRST,
     )
+
+
+class IsBitSet(NumericPredicate):
+    # TODO: consider making a BitwiseAnd that's more general
+    REPR_STYLE = Arithmetic.ReprStyle(
+        symbol="b[]",
+        placement=Arithmetic.ReprStyle.Placement.INFIX,
+    )
+
+    def __init__(self, operand, index: NumberLike):
+        super().__init__(operand, index)
+
+        unit = HasUnit.get_units_or_dimensionless(operand)
+        if not unit.is_compatible_with(dimensionless):
+            raise ValueError("operand must have dimensionless unit")
+
+        # check domain to be natural
+        if isinstance(operand, ParameterOperatable):
+            if not isinstance(operand.domain, Numbers) or not operand.domain.integer:
+                raise ValueError("operand must have natural domain")
+        else:
+            # this is pretty ugly
+            # TODO consider making a domain extraction function that handles any type
+            if isinstance(operand, Quantity_Interval_Disjoint):
+                if not operand.is_integer:
+                    raise ValueError("operand must have integer domain")
+            elif isinstance(operand, int):
+                pass
+            else:
+                raise ValueError("operand must be a ParameterOperatable or int")
+
+        _index = Quantity_Interval_Disjoint.from_value(index)
+        if not _index.is_single_element() or not _index.is_integer or _index.any() < 0:
+            raise ValueError("index must be a non-negative single integer")
+
+    def has_implicit_constraint(self) -> bool:
+        return False
 
 
 class SeticPredicate(Predicate):
@@ -1825,7 +1892,8 @@ p_field = f_field(Parameter)
 CanonicalNumericExpression = Add | Multiply | Power | Round | Abs | Sin | Log
 CanonicalLogicExpression = Or | Not
 CanonicalSeticExpression = Intersection | Union | SymmetricDifference
-CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan
+CanonicalPredicate = GreaterOrEqual | IsSubset | Is | GreaterThan | IsBitSet
+CanonicalOther = IfThenElse
 
 CanonicalConstrainableExpression = CanonicalLogicExpression | CanonicalPredicate
 
@@ -1834,6 +1902,7 @@ CanonicalExpression = (
     | CanonicalLogicExpression
     | CanonicalSeticExpression
     | CanonicalPredicate
+    | CanonicalOther
 )
 CanonicalNumber = Quantity_Interval_Disjoint | Quantity_Set_Discrete
 CanonicalBoolean = BoolSet
@@ -1855,6 +1924,7 @@ FullyAssociative = Add | Multiply | Or | Union | Intersection
 Associative = FullyAssociative
 Involutory = Not
 
+HasSideEffects = IfThenElse
 
 # python help --------------------------------------------------------------------------
 CanonicalExpressionR = (

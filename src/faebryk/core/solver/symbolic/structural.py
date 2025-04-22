@@ -14,6 +14,7 @@ from faebryk.core.parameter import (
     Domain,
     Expression,
     GreaterOrEqual,
+    HasSideEffects,
     Is,
     IsSubset,
     Multiply,
@@ -119,13 +120,19 @@ def convert_inequality_with_literal_to_subset(mutator: Mutator):
 def remove_unconstrained(mutator: Mutator):
     """
     Remove all expressions that are not involved in any constrained predicates
+    or expressions with side effects
     Note: Not possible for Parameters, want to keep those around for REPR
     """
     objs = mutator.nodes_of_type(Expression)
     for obj in objs:
         if obj.constrained:
             continue
-        if mutator.utils.get_constrained_expressions_involved_in(obj):
+        if isinstance(obj, HasSideEffects):
+            continue
+        if any(
+            e.constrained or isinstance(e, HasSideEffects)
+            for e in mutator.utils.get_expressions_involved_in(obj)
+        ):
             continue
         mutator.remove(obj)
 

@@ -23,7 +23,7 @@ class Electrical(ModuleInterface):
         assert len(nets) == 1
         return next(iter(nets))
 
-    def crosses_pad_boundary(self) -> bool:
+    def net_crosses_pad_boundary(self) -> bool:
         from faebryk.library.Pad import Pad
 
         def _get_pad(n: Node):
