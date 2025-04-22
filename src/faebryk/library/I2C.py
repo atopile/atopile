@@ -128,7 +128,7 @@ class I2C(ModuleInterface):
 
         @F.implements_design_check.register_post_solve_check
         def __check_post_solve__(self):
-            solver = F.has_solver.find_unique(self.get_graph()).solver
+            solver = self.design_check.get_solver()
             obj = self.get_obj(I2C)
             bus_interfaces = obj._hack_get_connected()
 

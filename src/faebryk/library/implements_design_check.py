@@ -6,6 +6,10 @@ import logging
 from enum import Enum, auto
 from typing import Any, Callable, Sequence
 
+from more_itertools import first
+
+import faebryk.library._F as F
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
 
@@ -55,6 +59,14 @@ class implements_design_check(Trait.TraitT.decless()):
             raise TypeError(f"Method {func.__name__} is not a post-pcb check name.")
         return func
 
+    def get_solver(self):
+        return F.has_solver.find_unique(self.get_graph()).solver
+
+    def get_pcb(self):
+        matches = GraphFunctions(self.get_graph()).nodes_of_type(F.PCB)
+        assert len(matches) == 1
+        return first(matches)
+
     def check_post_design(self):
         if not hasattr(self.get_obj(Trait), "__check_post_design__"):
             return False
@@ -74,12 +86,18 @@ class implements_design_check(Trait.TraitT.decless()):
         return True
 
     def run(self, stage: CheckStage) -> bool:
+        label = (
+            f"`{self.get_name_of_test()}` for `{self.get_obj(Trait).get_full_name()}`"
+        )
         match stage:
             case implements_design_check.CheckStage.POST_DESIGN:
+                logger.debug(f"Running post-design check {label}")
                 return self.check_post_design()
             case implements_design_check.CheckStage.POST_SOLVE:
+                logger.debug(f"Running post-solve check {label}")
                 return self.check_post_solve()
             case implements_design_check.CheckStage.POST_PCB:
+                logger.debug(f"Running post-pcb check {label}")
                 return self.check_post_pcb()
 
     def on_check(self):
@@ -91,6 +109,6 @@ class implements_design_check(Trait.TraitT.decless()):
         ):
             raise TypeError(f"Trait implementation {obj} has no check methods.")
 
-    def get_name(self) -> str:
+    def get_name_of_test(self) -> str:
         obj = self.get_obj(Trait)
         return type(obj).__qualname__

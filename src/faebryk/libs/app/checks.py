@@ -17,17 +17,19 @@ def check_design(
 ):
     """
     args:
-        exclude: list of names of checks to exclude
-            e.g "I2C.
+        exclude: list of names of checks to exclude e.g:
+        - `I2C.requires_unique_addresses`
     """
+    logger.info(f"Running design checks for stage {stage.name}")
+
     with accumulate(UserDesignCheckException) as accumulator:
         for _, trait in GraphFunctions(G).nodes_with_trait(F.implements_design_check):
-            if trait.get_name() in exclude:
+            if trait.get_name_of_test() in exclude:
                 continue
 
             with accumulator.collect():
                 try:
-                    ran = trait.run(stage)
+                    trait.run(stage)
                 except F.implements_design_check.MaybeUnfulfilledCheckException as e:
                     with downgrade(UserDesignCheckException):
                         raise UserDesignCheckException.from_nodes(
@@ -35,9 +37,3 @@ def check_design(
                         ) from e
                 except F.implements_design_check.UnfulfilledCheckException as e:
                     raise UserDesignCheckException.from_nodes(str(e), e.nodes) from e
-                else:
-                    if ran:
-                        logger.debug(
-                            f"Checked `{trait.get_name()}` for"
-                            f" '{trait.get_parent_force()[0].get_full_name()}'"
-                        )
