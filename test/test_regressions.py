@@ -25,11 +25,13 @@ class BuildError(Exception):
     """Failed to build the project."""
 
 
+ENABLE_PROFILING = False
+
+
 def build_project(prj_path: Path, request: pytest.FixtureRequest):
     """Generically "build" the project."""
     friendly_node_name = pathvalidate.sanitize_filename(str(request.node.name))
     artifact_dir = _repo_root() / "artifacts"
-    profile_path = artifact_dir / (friendly_node_name + "-profile.html")
 
     try:
         ato_build_args = [
@@ -37,9 +39,11 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
             "--keep-net-names",
         ]
         ato_build_env = {"NONINTERACTIVE": "1"}
-        run_live(
-            [
-                sys.executable,
+
+        profile = []
+        if ENABLE_PROFILING:
+            profile_path = artifact_dir / (friendly_node_name + "-profile.html")
+            profile = [
                 "-m",
                 "pyinstrument",
                 "--html",
@@ -47,6 +51,11 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
                 profile_path,
                 "-i",
                 "0.01",
+            ]
+        run_live(
+            [
+                sys.executable,
+                *profile,
                 "-m",
                 "atopile",
                 "-v",
@@ -70,7 +79,7 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
 
 
 @dataclass
-class TestRepo:
+class _TestRepo:
     repo_uri: str
     xfail_reason: str | None = None
     multipackage: str | None = None
@@ -87,16 +96,16 @@ class TestRepo:
 
 
 REPOS = [
-    TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
-    TestRepo("atopile/esp32-s3").xfail("Known issue"),
-    TestRepo("atopile/cell-sim").xfail("Known issue"),
-    TestRepo("atopile/hil").xfail("Known issue"),
-    TestRepo("atopile/rp2040").xfail("Known issue"),
-    TestRepo("atopile/tca9548apwr").xfail("Known issue"),
-    TestRepo("atopile/nau7802").xfail("Known issue"),
-    TestRepo("atopile/lv2842xlvddcr").xfail("Known issue"),
-    TestRepo("atopile/bq24045dsqr").xfail("Known issue"),
-    TestRepo("atopile/packages", multipackage="packages"),
+    _TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
+    _TestRepo("atopile/esp32-s3").xfail("Known issue"),
+    _TestRepo("atopile/cell-sim").xfail("Known issue"),
+    _TestRepo("atopile/hil"),
+    _TestRepo("atopile/rp2040").xfail("Known issue"),
+    _TestRepo("atopile/tca9548apwr").xfail("Known issue"),
+    _TestRepo("atopile/nau7802").xfail("Known issue"),
+    _TestRepo("atopile/lv2842xlvddcr").xfail("Known issue"),
+    _TestRepo("atopile/bq24045dsqr").xfail("Known issue"),
+    _TestRepo("atopile/packages", multipackage="packages"),
 ]
 
 
@@ -108,7 +117,7 @@ REPOS = [
     ids=lambda x: x.repo_uri,
 )
 def test_projects(
-    test_cfg: TestRepo,
+    test_cfg: _TestRepo,
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):

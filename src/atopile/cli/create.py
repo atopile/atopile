@@ -716,30 +716,33 @@ class AtoTemplate(Template):
         self.attributes.append(f'designator_prefix = "{designator_prefix}"')
 
         # Collect and sort pins first
-        sorted_pins = []
+        unsorted_pins = []
         if hasattr(easyeda_symbol, "units") and easyeda_symbol.units:
             for unit in easyeda_symbol.units:
                 if hasattr(unit, "pins"):
                     for pin in unit.pins:
                         pin_num = pin.settings.spice_pin_number
                         pin_name = pin.name.text
-                        if (
-                            pin_name
-                            and pin_name not in ["NC", "nc"]
-                            and not re.match(r"^[0-9]+$", pin_name)
-                        ):
-                            sorted_pins.append((sanitize_name(pin_name), pin_num))
+                        if pin_name and pin_name not in ["NC", "nc"]:
+                            if re.match(r"^[0-9]+$", pin_name):
+                                unsorted_pins.append((sanitize_name(pin_name), pin_num))
+                            else:
+                                unsorted_pins.append((None, pin_num))
 
         # Sort pins by name using natsort
-        sorted_pins = natsorted(sorted_pins, key=lambda x: x[0])
+        sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
 
         # Process sorted pins
         for pin_name, pin_num in sorted_pins:
-            if pin_name not in self.defined_signals:
+            if pin_name is None:
+                self.pins.append(f"pin {pin_num}")
+
+            elif pin_name in self.defined_signals:
+                self.pins.append(f"{pin_name} ~ pin {pin_num}")
+
+            else:
                 self.pins.append(f"signal {pin_name} ~ pin {pin_num}")
                 self.defined_signals.add(pin_name)
-            else:
-                self.pins.append(f"{pin_name} ~ pin {pin_num}")
 
     def dumps(self) -> str:
         output = f"component {self.name}:\n"
