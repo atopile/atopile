@@ -22,6 +22,9 @@ class requires_external_usage(Trait.decless()):
         # no shared parent possible
         if parent is None:
             return True
+        # TODO: disables checks for floating modules
+        if parent[0].get_parent() is None:
+            return True
         parent, _ = parent
 
         for c in connected_to:
