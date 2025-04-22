@@ -10,6 +10,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.util import KeyErrorNotFound
 
 NO_LCSC_DISPLAY = "No LCSC number"
 
@@ -49,9 +50,16 @@ def load_descriptive_properties(G: Graph):
                 continue
 
             param_name = key.removeprefix("PARAM_")
+            # Skip if parameter doesn't exist in node
+            try:
+                param = node[param_name]
+            except KeyErrorNotFound:
+                logger.warning(
+                    f"Parameter {param_name} not found in node {node.get_name()}"
+                )
+                continue
             param_value = json.loads(value.value)
             param_value = P_Set.deserialize(param_value)
-            param = node[param_name]
             assert isinstance(param, Parameter)
             param.alias_is(param_value)
 
