@@ -79,7 +79,7 @@ def build_project(prj_path: Path, request: pytest.FixtureRequest):
 
 
 @dataclass
-class TestRepo:
+class _TestRepo:
     repo_uri: str
     xfail_reason: str | None = None
     multipackage: str | None = None
@@ -96,16 +96,16 @@ class TestRepo:
 
 
 REPOS = [
-    TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
-    TestRepo("atopile/esp32-s3").xfail("Known issue"),
-    TestRepo("atopile/cell-sim").xfail("Known issue"),
-    TestRepo("atopile/hil"),
-    TestRepo("atopile/rp2040").xfail("Known issue"),
-    TestRepo("atopile/tca9548apwr").xfail("Known issue"),
-    TestRepo("atopile/nau7802").xfail("Known issue"),
-    TestRepo("atopile/lv2842xlvddcr").xfail("Known issue"),
-    TestRepo("atopile/bq24045dsqr").xfail("Known issue"),
-    TestRepo("atopile/packages", multipackage="packages"),
+    _TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
+    _TestRepo("atopile/esp32-s3").xfail("Known issue"),
+    _TestRepo("atopile/cell-sim").xfail("Known issue"),
+    _TestRepo("atopile/hil"),
+    _TestRepo("atopile/rp2040").xfail("Known issue"),
+    _TestRepo("atopile/tca9548apwr").xfail("Known issue"),
+    _TestRepo("atopile/nau7802").xfail("Known issue"),
+    _TestRepo("atopile/lv2842xlvddcr").xfail("Known issue"),
+    _TestRepo("atopile/bq24045dsqr").xfail("Known issue"),
+    _TestRepo("atopile/packages", multipackage="packages"),
 ]
 
 
@@ -117,7 +117,7 @@ REPOS = [
     ids=lambda x: x.repo_uri,
 )
 def test_projects(
-    test_cfg: TestRepo,
+    test_cfg: _TestRepo,
     tmp_path: Path,
     request: pytest.FixtureRequest,
 ):
