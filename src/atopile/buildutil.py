@@ -187,7 +187,7 @@ def build(app: Module) -> None:
         pcb.transformer.move_footprints()
         apply_routing(app, pcb.transformer)
 
-        if pcb == original_pcb:
+        if pcb.pcb_file == original_pcb:
             if config.build.frozen:
                 logger.info("No changes to layout. Passed --frozen check.")
             else:
