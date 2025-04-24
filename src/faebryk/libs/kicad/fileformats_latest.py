@@ -958,18 +958,13 @@ class C_footprint:
 
     @dataclass(kw_only=True)
     class C_property:
-        @dataclass(kw_only=True)
-        class C_footprint_property_effects(C_effects):
-            # driven by the outer hide in C_property
-            hide: bool | None = None
-
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_footprint_property_effects
+        effects: C_fp_text.C_fp_text_effects
 
     @dataclass
     class C_footprint_polygon(C_polygon):

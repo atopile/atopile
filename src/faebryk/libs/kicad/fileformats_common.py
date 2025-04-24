@@ -13,7 +13,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     netlist_type,
     sexp_field,
 )
-from faebryk.libs.util import KeyErrorAmbiguous
+from faebryk.libs.util import KeyErrorAmbiguous, compare_dataclasses
 
 logger = logging.getLogger(__name__)
 
@@ -206,3 +206,7 @@ def gen_uuid(mark: str = ""):
         formatted = formatted[: idx + i] + "-" + formatted[idx + i :]
 
     return UUID(formatted)
+
+
+def compare_without_uuid[T](before: T, after: T):
+    return compare_dataclasses(before, after, skip_keys=("uuid",))

@@ -1712,7 +1712,7 @@ class PCB_Transformer:
             value=value,
             layer=C_text_layer(layer=layer),
             uuid=UUID(uuid),
-            effects=C_footprint.C_property.C_footprint_property_effects(font=self.font),
+            effects=C_fp_text.C_fp_text_effects(font=self.font),
             at=C_xyr(x=0, y=0, r=0),
             hide=hide,
         )
@@ -1748,7 +1748,9 @@ class PCB_Transformer:
         ## Update existing footprint
         if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
             pcb_fp = pcb_fp_t.get_fp()
-            if fp_id != pcb_fp.name:
+
+            # TODO: this is where I have to implement the footprint override
+            if True or fp_id != pcb_fp.name:
                 # Copy the data structure so if we later mutate it we don't
                 # end up w/ those changes everywhere
                 lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import collections.abc
+import difflib
 import hashlib
 import importlib.util
 import inspect
@@ -22,7 +23,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, is_dataclass
 from enum import Enum, StrEnum
 from functools import wraps
 from genericpath import commonprefix
@@ -30,6 +31,7 @@ from importlib.metadata import Distribution
 from itertools import chain, pairwise
 from json import JSONEncoder
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from textwrap import indent
 from types import ModuleType
 from typing import (
@@ -337,7 +339,7 @@ def Holder[T, P](_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
     return __wrapper[T, P]
 
 
-def not_none(x):
+def not_none[T](x: T | None) -> T:
     assert x is not None
     return x
 
@@ -2303,3 +2305,57 @@ def find_file(base_dir: Path, pattern: str):
     for file in base_dir.rglob(pattern):
         if file.is_file():
             yield file
+
+
+def call_with_file_capture[T](func: Callable[[Path], T]) -> tuple[T, bytes]:
+    with NamedTemporaryFile("rb") as f:
+        path = Path(f.name)
+        return func(path), path.read_bytes()
+
+
+def diff(before: str, after: str) -> str:
+    """
+    diff two strings
+    """
+    return "\n".join(difflib.ndiff(before.splitlines(), after.splitlines()))
+
+
+def compare_dataclasses[T](
+    before: T, after: T, skip_keys: tuple[str, ...] = ()
+) -> dict[str, dict[str, Any]]:
+    """
+    check two dataclasses for equivalence (with some keys skipped)
+    """
+
+    def _fmt(b, a):
+        return {"before": b, "after": a}
+
+    if type(before) is not type(after) and not all(
+        isinstance(x, (int, float)) for x in (before, after)
+    ):
+        return {"": (before, after)}
+    if not is_dataclass(before):
+        if isinstance(before, list):
+            assert isinstance(after, list)
+            return {
+                f"[{i}]{k}": v
+                for i, (b, a) in enumerate(zip(before, after))
+                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+            }
+        if isinstance(before, dict):
+            assert isinstance(after, dict)
+            return {
+                f"[{i!r}]{k}": v
+                for i, (b, a) in zip_dicts_by_key(before, after).items()
+                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+            }
+        return {"": _fmt(before, after)} if before != after else {}
+
+    return {
+        f".{f.name}{k}": v
+        for f in fields(before)  # type: ignore
+        if f.name not in skip_keys
+        for k, v in compare_dataclasses(
+            getattr(before, f.name), getattr(after, f.name), skip_keys=skip_keys
+        ).items()
+    }

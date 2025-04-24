@@ -1,30 +1,40 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import json
 import logging
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 
+from dataclasses_json import (
+    CatchAll,
+    Undefined,
+    dataclass_json,
+)
+from dataclasses_json import (
+    config as dataclasses_json_config,
+)
 from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
 from easyeda2kicad.easyeda.easyeda_importer import (
     Easyeda3dModelImporter,
     EasyedaFootprintImporter,
     EasyedaSymbolImporter,
 )
-from easyeda2kicad.easyeda.parameters_easyeda import EeSymbol
-from easyeda2kicad.kicad.export_kicad_3d_model import Exporter3dModelKicad
+from easyeda2kicad.easyeda.parameters_easyeda import Ee3dModel, EeSymbol, ee_footprint
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
 
 import faebryk.library._F as F
 from atopile.config import config
 from faebryk.core.module import Module
+from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
+from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
     Part,
     Supplier,
 )
-from faebryk.libs.util import ConfigFlag
+from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +42,7 @@ CRAWL_DATASHEET = ConfigFlag(
     "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
 )
 
-EASYEDA_CACHE_FOLDER = Path("cache/easyeda")
-
-EXPORT_NON_EXISTING_MODELS = False
-
+WORKAROUND_SMD_3D_MODEL_FIX = True
 """
 easyeda2kicad has not figured out 100% yet how to do model translations.
 It's unfortunately also not really easy.
@@ -44,16 +51,270 @@ an x,y translation of 0. However that makes some other SMD components behave eve
 Since in a typical design most components are passives etc, this workaround can save
 a lot of time and manual work.
 """
-WORKAROUND_SMD_3D_MODEL_FIX = True
 
+WORKAROUND_THT_INCH_MM_SWAP_FIX = False
 """
 Some THT models seem to be fixed when assuming their translation is mm instead of inch.
 Does not really make a lot of sense.
 """
-WORKAROUND_THT_INCH_MM_SWAP_FIX = False
 
 
-def _fix_3d_model_offsets(ki_footprint):
+def _decode_easyeda_date(date: str | int | float) -> datetime:
+    if isinstance(date, str):
+        return datetime.fromisoformat(date)
+    return datetime.fromtimestamp(date)
+
+
+@dataclass_json(undefined=Undefined.INCLUDE)
+@dataclass
+class EasyEDAAPIResponse:
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class PackageDetail:
+        updateTime: int
+        unknown: CatchAll = None
+
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class Lcsc:
+        number: str
+        unknown: CatchAll = None
+
+    packageDetail: PackageDetail
+    updated_at: datetime = field(
+        metadata=dataclasses_json_config(decoder=_decode_easyeda_date)
+    )
+    lcsc: Lcsc
+    _atopile_queried_at: float | None = field(
+        default=None,
+        metadata=dataclasses_json_config(field_name="atopile_queried_at"),
+    )
+    unknown: CatchAll = None
+
+    @property
+    def query_time(self) -> datetime:
+        return datetime.fromtimestamp(not_none(self._atopile_queried_at))
+
+    @classmethod
+    def from_api_dict(cls, data: dict):
+        out: EasyEDAAPIResponse = cls.from_dict(data)  # type: ignore
+        out._atopile_queried_at = datetime.timestamp(datetime.now())
+        return out
+
+    def serialize(self) -> bytes:
+        return self.to_json(indent=4).encode("utf-8")  # type: ignore
+
+    def dump(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.serialize())
+
+    @classmethod
+    def deserialize(cls, data: bytes):
+        out: cls = cls.from_json(data.decode("utf-8"))  # type: ignore
+        if out._atopile_queried_at is None:
+            out._atopile_queried_at = datetime.timestamp(out.updated_at)
+        return out
+
+    @classmethod
+    def load(cls, path: Path):
+        return cls.deserialize(path.read_bytes())
+
+    def raw(self) -> dict:
+        return self.to_dict()  # type: ignore
+
+
+class EasyEDA3DModel:
+    def __init__(self, step: bytes, name: str):
+        self.step = step
+        self.name = name
+
+    def serialize(self) -> bytes:
+        return self.step
+
+    def dump(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.step)
+
+    @classmethod
+    def deserialize(cls, data: bytes, name: str):
+        return cls(data, name)
+
+    @classmethod
+    def load(cls, path: Path):
+        return cls(path.read_bytes(), path.name)
+
+
+class EasyEDAFootprint:
+    cache: dict[Path, "EasyEDAFootprint"] = {}
+
+    def __init__(self, footprint: C_kicad_footprint_file):
+        self.footprint = footprint
+
+    def serialize(self) -> bytes:
+        return self.footprint.dumps().encode("utf-8")
+
+    @classmethod
+    def load(cls, path: Path):
+        # assume not disk modifications during run
+        if path in cls.cache:
+            return cls.cache[path]
+        out = cls(kicad_footprint_file(path))
+        cls.cache[path] = out
+        return out
+
+    @classmethod
+    def from_api(cls, footprint: ee_footprint, model_path: str):
+        exporter = ExporterFootprintKicad(footprint)
+        _fix_3d_model_offsets(exporter)
+        fp_raw = call_with_file_capture(
+            lambda path: exporter.export(str(path), model_path)
+        )[1]
+        fp = kicad_footprint_file(fp_raw.decode("utf-8"))
+        # workaround: remove wrl ending easyeda likes to add for no reason
+        for m in fp.footprint.model:
+            if m.path.suffix == ".wrl":
+                m.path = m.path.parent
+        return cls(fp)
+
+    def dump(self, path: Path):
+        type(self).cache[path] = self
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.serialize())
+
+    @property
+    def library_name(self):
+        return self.footprint.footprint.name
+
+    @property
+    def base_name(self):
+        return self.library_name.split(":")[-1]
+
+
+class EasyEDASymbol:
+    def __init__(self, symbol: EeSymbol):
+        self.symbol = symbol
+
+    def serialize(self) -> bytes:
+        from faebryk.libs.footprint_lifecycle import PartLifecycle
+
+        lifecycle = PartLifecycle.singleton()
+
+        exporter = ExporterSymbolKicad(self.symbol, KicadVersion.v6)
+        # TODO this is weird
+        fp_lib_name = str(lifecycle.easyeda2kicad._FP_PATH)
+        return exporter.export(footprint_lib_name=fp_lib_name).encode("utf-8")
+
+    def get_datasheet_url(self):
+        part = self.symbol
+        # TODO use easyeda2kicad api as soon as works again
+        # return part.info.datasheet
+
+        if not CRAWL_DATASHEET:
+            return None
+
+        import re
+
+        import requests
+
+        url = part.info.datasheet
+        if not url:
+            return None
+        # make requests act like curl
+        lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
+        lcsc_id = part.info.lcsc_id
+        # find _{partno}.pdf in html
+        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
+        if match:
+            pdfurl = match.group(1)
+            logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
+            return pdfurl
+        else:
+            return None
+
+
+class EasyEDAPart:
+    def __init__(
+        self,
+        lcsc_id: str,
+        footprint: EasyEDAFootprint,
+        symbol: EasyEDASymbol,
+        model: EasyEDA3DModel | None = None,
+    ):
+        self.lcsc_id = lcsc_id
+        self.footprint = footprint
+        self.symbol = symbol
+        self.model = model
+        self._pre_model: Ee3dModel | None = None
+
+    @property
+    def identifier(self):
+        return self.lcsc_id
+
+    @property
+    def model_name(self):
+        if self.model:
+            return self.model.name
+        assert self._pre_model is not None
+        return self._pre_model.name
+
+    def load_model(self):
+        from faebryk.libs.footprint_lifecycle import PartLifecycle
+
+        lifecycle = PartLifecycle.singleton()
+        assert self.model is None
+        assert self._pre_model is not None
+        if lifecycle.easyeda2kicad.shall_refresh_model(self):
+            logger.debug(f"Downloading model for {self.identifier}")
+            model = EasyedaApi().get_step_3d_model(uuid=self._pre_model.uuid)
+            self.model = EasyEDA3DModel(model, self._pre_model.name)
+        else:
+            self.model = lifecycle.easyeda2kicad.load_model(self)
+
+        self._pre_model = None
+
+    @classmethod
+    def from_api_response(cls, data: EasyEDAAPIResponse, download_model: bool):
+        """
+        args:
+            download_model: Purely for performance and api overloading
+        """
+        from faebryk.libs.footprint_lifecycle import PartLifecycle
+
+        lifecycle = PartLifecycle.singleton()
+
+        easyeda_footprint = EasyedaFootprintImporter(
+            easyeda_cp_cad_data=data.raw()
+        ).get_footprint()
+
+        easyeda_symbol = EasyedaSymbolImporter(
+            easyeda_cp_cad_data=data.raw()
+        ).get_symbol()
+
+        easyeda_model = Easyeda3dModelImporter(
+            easyeda_cp_cad_data=data.raw(),
+            download_raw_3d_model=False,
+        ).output
+
+        model_name = easyeda_footprint.model_3d.name
+        model_path = lifecycle.easyeda2kicad.get_model_path(
+            data.lcsc.number, model_name
+        )
+        kicad_model_path = _relative_kicad_model_path(model_path)
+
+        part = cls(
+            lcsc_id=data.lcsc.number,
+            footprint=EasyEDAFootprint.from_api(easyeda_footprint, kicad_model_path),
+            symbol=EasyEDASymbol(easyeda_symbol),
+        )
+        part._pre_model = easyeda_model
+
+        if download_model:
+            part.load_model()
+
+        return part
+
+
+def _fix_3d_model_offsets(ki_footprint: ExporterFootprintKicad):
     if ki_footprint.output.model_3d is None:
         return
 
@@ -65,6 +326,20 @@ def _fix_3d_model_offsets(ki_footprint):
         if ki_footprint.input.info.fp_type != "smd":
             ki_footprint.output.model_3d.translation.x *= 2.54
             ki_footprint.output.model_3d.translation.y *= 2.54
+
+
+def _relative_kicad_model_path(model_path: Path) -> str:
+    try:
+        return str(
+            "${KIPRJMOD}"
+            / model_path.relative_to(
+                config.build.paths.kicad_project.parent, walk_up=True
+            )
+        )
+    except RuntimeError:
+        # FIXME: this shouldn't need to exist
+        # It's a workaround that'll only work for a single user.
+        return str(model_path.resolve())
 
 
 class LCSCException(Exception):
@@ -82,144 +357,41 @@ class LCSC_NoDataException(LCSCException): ...
 class LCSC_PinmapException(LCSCException): ...
 
 
-def get_raw(lcsc_id: str):
+def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
+    from faebryk.libs.footprint_lifecycle import PartLifecycle
+
+    lifecycle = PartLifecycle.singleton()
+    if not lifecycle.easyeda_api.shall_refresh(lcsc_id):
+        return lifecycle.easyeda_api.load(lcsc_id)
+
+    logger.debug(f"Downloading API data {lcsc_id}")
     api = EasyedaApi()
-
-    cache_base = config.project.paths.build / EASYEDA_CACHE_FOLDER
-    cache_base.mkdir(parents=True, exist_ok=True)
-
-    comp_path = cache_base.joinpath(lcsc_id)
-    if not comp_path.exists():
-        logger.debug(f"Did not find component {lcsc_id} in cache, downloading...")
-        cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
-        serialized = json.dumps(cad_data)
-        comp_path.write_text(serialized, encoding="utf-8")
-
-    data = json.loads(comp_path.read_text(encoding="utf-8"))
-
+    cad_data = api.get_cad_data_of_component(lcsc_id=lcsc_id)
     # API returned no data
-    if not data:
+    if not cad_data:
         raise LCSC_NoDataException(
             lcsc_id, f"Failed to fetch data from EasyEDA API for part {lcsc_id}"
         )
-
-    return data
-
-
-def download_easyeda_info(lcsc_id: str, get_model: bool = True):
-    # easyeda api access & caching --------------------------------------------
-    data = get_raw(lcsc_id)
-
-    easyeda_footprint = EasyedaFootprintImporter(
-        easyeda_cp_cad_data=data
-    ).get_footprint()
-
-    easyeda_symbol = EasyedaSymbolImporter(easyeda_cp_cad_data=data).get_symbol()
-
-    # paths -------------------------------------------------------------------
-    name = easyeda_footprint.info.name
-    out_base_path = config.project.paths.component_lib
-    fp_base_path = out_base_path / "footprints" / "lcsc.pretty"  # TODO: config property
-    sym_base_path = out_base_path / "lcsc.kicad_sym"
-    model_base_path = out_base_path / "lcsc"
-    fp_base_path.mkdir(exist_ok=True, parents=True)
-    footprint_filename = f"{name}.kicad_mod"
-    footprint_filepath = fp_base_path.joinpath(footprint_filename)
-
-    # The base_path has to be split from the full path, because the exporter
-    # will append .3dshapes to it
-    model_base_path_full = model_base_path.with_suffix(".3dshapes")
-    model_base_path_full.mkdir(exist_ok=True, parents=True)
-
-    # export to kicad ---------------------------------------------------------
-    ki_footprint = ExporterFootprintKicad(easyeda_footprint)
-    ki_symbol = ExporterSymbolKicad(easyeda_symbol, KicadVersion.v6)
-
-    _fix_3d_model_offsets(ki_footprint)
-
-    easyeda_model = Easyeda3dModelImporter(
-        easyeda_cp_cad_data=data, download_raw_3d_model=False
-    ).output
-
-    ki_model = None
-    if easyeda_model:
-        ki_model = Exporter3dModelKicad(easyeda_model)
-
-    if easyeda_model is not None:
-        model_path = model_base_path_full / f"{easyeda_model.name}.wrl"
-        if get_model and not model_path.exists():
-            logger.debug(f"Downloading & Exporting 3dmodel {model_path}")
-            easyeda_model = Easyeda3dModelImporter(
-                easyeda_cp_cad_data=data, download_raw_3d_model=True
-            ).output
-            assert easyeda_model is not None
-            ki_model = Exporter3dModelKicad(easyeda_model)
-            ki_model.export(str(model_base_path))
-
-        if not model_path.exists() and not EXPORT_NON_EXISTING_MODELS:
-            ki_footprint.output.model_3d = None
-    elif get_model:
-        logger.warning(f"No 3D model for '{name}'")
-
-    if not footprint_filepath.exists():
-        logger.debug(f"Exporting footprint {footprint_filepath}")
-        try:
-            kicad_model_path = str(
-                "${KIPRJMOD}"
-                / model_base_path_full.relative_to(
-                    config.build.paths.kicad_project.parent, walk_up=True
-                )
-            )
-        except RuntimeError:
-            # FIXME: this shouldn't need to exist
-            # It's a workaround that'll only work for a single user.
-            kicad_model_path = str(model_base_path_full.resolve())
-
-        logger.debug(f"Exporting 3D model to: {kicad_model_path}")
-        ki_footprint.export(
-            footprint_full_path=str(footprint_filepath),
-            model_3d_path=kicad_model_path,
-        )
-
-    if not sym_base_path.exists():
-        logger.debug(f"Exporting symbol {sym_base_path}")
-        ki_symbol.export(str(sym_base_path))
-
-    return (
-        ki_footprint,
-        ki_model,
-        easyeda_footprint,
-        easyeda_model,
-        easyeda_symbol,
-        footprint_filepath,
+    return lifecycle.easyeda_api.ingest(
+        lcsc_id, EasyEDAAPIResponse.from_api_dict(cad_data)
     )
 
 
-def get_datasheet_url(part: EeSymbol):
-    # TODO use easyeda2kicad api as soon as works again
-    # return part.info.datasheet
+def download_easyeda_info(lcsc_id: str, get_model: bool = True):
+    from faebryk.libs.footprint_lifecycle import PartLifecycle
 
-    if not CRAWL_DATASHEET:
-        return None
+    lifecycle = PartLifecycle.singleton()
 
-    import re
+    data = get_raw(lcsc_id)
+    part = EasyEDAPart.from_api_response(data, download_model=False)
 
-    import requests
+    if get_model and not part._pre_model:
+        logger.warning(f"No 3D model for '{lcsc_id} ({part.footprint.base_name})'")
 
-    url = part.info.datasheet
-    if not url:
-        return None
-    # make requests act like curl
-    lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
-    lcsc_id = part.info.lcsc_id
-    # find _{partno}.pdf in html
-    match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
-    if match:
-        pdfurl = match.group(1)
-        logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
-        return pdfurl
-    else:
-        return None
+    if get_model and lifecycle.easyeda2kicad.shall_refresh_model(part):
+        part.load_model()
+
+    return lifecycle.easyeda2kicad.ingest_part(part)
 
 
 def check_attachable(component: Module):
@@ -237,28 +409,25 @@ def check_attachable(component: Module):
 def attach(
     component: Module, partno: str, get_model: bool = True, check_only: bool = False
 ):
+    from faebryk.libs.footprint_lifecycle import PartLifecycle
+
+    lifecycle = PartLifecycle.singleton()
     try:
-        _, _, easyeda_footprint, _, easyeda_symbol, footprint_filepath = (
-            download_easyeda_info(partno, get_model=get_model)
-        )
+        part = download_easyeda_info(partno, get_model=get_model)
     except LCSC_NoDataException:
         if component.has_trait(F.has_footprint):
-            easyeda_symbol = None
-            easyeda_footprint = None
-            footprint_filepath = None
+            part = None
         else:
             raise
 
     # TODO maybe check the symbol matches, even if a footprint is already attached?
     if not component.has_trait(F.has_footprint):
-        assert easyeda_symbol is not None
-        assert easyeda_footprint is not None
-        assert footprint_filepath is not None
+        assert part is not None
         if not component.has_trait(F.can_attach_to_footprint):
             # TODO make this a trait
             pins = [
                 (pin.settings.spice_pin_number, pin.name.text)
-                for unit in easyeda_symbol.units
+                for unit in part.symbol.symbol.units
                 for pin in unit.pins
             ]
             try:
@@ -274,14 +443,20 @@ def attach(
             component.add(F.can_attach_to_footprint_via_pinmap(pinmap))
 
             sym = F.Symbol.with_component(component, pinmap)
-            sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{easyeda_footprint.info.name}"))
+            sym.add(F.Symbol.has_kicad_symbol(f"lcsc:{part.identifier}"))
 
         if check_only:
             return
 
         # footprint
-        fp = F.KicadFootprint([p.number for p in easyeda_footprint.pads])
-        fp.add(F.KicadFootprint.has_file(footprint_filepath))
+        fp = F.KicadFootprint([p.name for p in part.footprint.footprint.footprint.pads])
+        fp.add(
+            F.KicadFootprint.has_file(
+                lifecycle.easyeda2kicad.get_fp_path(
+                    part.identifier, part.footprint.base_name
+                )
+            )
+        )
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:
@@ -289,10 +464,8 @@ def attach(
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 
-    if easyeda_symbol is not None:
-        datasheet = get_datasheet_url(easyeda_symbol)
-        if datasheet:
-            component.add(F.has_datasheet_defined(datasheet))
+    if part is not None and (datasheet := part.symbol.get_datasheet_url()):
+        component.add(F.has_datasheet_defined(datasheet))
 
     # model done by kicad (in fp)
 
