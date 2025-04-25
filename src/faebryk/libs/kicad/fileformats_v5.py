@@ -142,7 +142,7 @@ class C_kicad_footprint_file_v5(SEXP_File):
                 )
 
         descr: Optional[str] = None
-        tags: list[str] = field(default_factory=list)
+        tags: Optional[list[str]] = None
         tedit: Optional[str] = None
 
         fp_lines: list[C_line_v5] = field(

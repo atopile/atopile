@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 
@@ -926,7 +926,12 @@ class C_embedded_file:
 
     @dataclass
     class C_data:
-        bytes: Symbol = field(**sexp_field(positional=True))
+        bytes: list[Symbol] = field(**sexp_field(positional=True))
+
+        @property
+        @once
+        def merged(self):
+            return "".join(str(v) for v in self.bytes)
 
         @property
         @once
@@ -935,8 +940,8 @@ class C_embedded_file:
 
             import zstd
 
-            assert self.bytes.startswith("|") and self.bytes.endswith("|")
-            return zstd.decompress(b64decode(self.bytes[1:-1])).decode("utf-8")
+            assert self.merged.startswith("|") and self.merged.endswith("|")
+            return zstd.decompress(b64decode(self.merged[1:-1])).decode("utf-8")
 
         @classmethod
         def from_text(cls, text: str):
@@ -945,17 +950,12 @@ class C_embedded_file:
             import zstd
 
             return cls(
-                bytes=Symbol(b64encode(zstd.compress(text.encode("utf-8"))).decode())
+                bytes=[Symbol(b64encode(zstd.compress(text.encode("utf-8"))).decode())]
             )
 
     name: str
     type: C_type
-    data: C_data | None = field(
-        default=None,
-        **sexp_field(
-            preprocessor=lambda x: ["".join(str(v) for v in cast(list[Symbol], x))]
-        ),
-    )
+    data: C_data | None = None
     """
     base64 encoded data
     """
@@ -1893,12 +1893,12 @@ class C_kicad_pcb_file(SEXP_File):
 class C_kicad_footprint_file(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
-        descr: Optional[str] = None
-        tags: Optional[list[str]] = None
-        version: int = field(**sexp_field(), default=KICAD_PCB_VERSION)
-        generator: str
-        generator_version: str = ""
-        tedit: Optional[str] = None
+        descr: Optional[str] = field(default=None, **sexp_field(order=-1))
+        tags: Optional[list[str]] = field(default=None, **sexp_field(order=-1))
+        version: int = field(**sexp_field(order=-1), default=KICAD_PCB_VERSION)
+        generator: str = field(**sexp_field(order=-1), default="faebryk")
+        generator_version: str = field(**sexp_field(order=-1), default="latest")
+        tedit: Optional[str] = field(default=None, **sexp_field(order=-1))
         unknown: CatchAll = None
 
     footprint: C_footprint_in_file
