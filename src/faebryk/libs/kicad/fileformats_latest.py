@@ -3,7 +3,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 
@@ -25,6 +25,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
+from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
@@ -920,15 +921,53 @@ class C_dimension:
 
 @dataclass(kw_only=True)
 class C_embedded_file:
+    class C_type(SymEnum):
+        other = auto()
+
+    @dataclass
+    class C_data:
+        bytes: Symbol = field(**sexp_field(positional=True))
+
+        @property
+        @once
+        def text(self):
+            from base64 import b64decode
+
+            import zstd
+
+            assert self.bytes.startswith("|") and self.bytes.endswith("|")
+            return zstd.decompress(b64decode(self.bytes[1:-1])).decode("utf-8")
+
+        @classmethod
+        def from_text(cls, text: str):
+            from base64 import b64encode
+
+            import zstd
+
+            return cls(
+                bytes=Symbol(b64encode(zstd.compress(text.encode("utf-8"))).decode())
+            )
+
     name: str
-    data: str  # Base64 encoded data
-    md5: str | None = None  # MD5 hash of the file content
+    type: C_type
+    data: C_data | None = field(
+        default=None,
+        **sexp_field(
+            preprocessor=lambda x: ["".join(str(v) for v in cast(list[Symbol], x))]
+        ),
+    )
+    """
+    base64 encoded data
+    """
+    checksum: str | None = None  # MD5 hash of the file content
 
 
 @dataclass
 class C_embedded_files:
-    are_fonts_embedded: bool = False
-    files: list[C_embedded_file] = field(default_factory=list)
+    # are_fonts_embedded: bool = False
+    files: dict[str, C_embedded_file] = field(
+        default_factory=dict, **sexp_field(multidict=True, key=lambda x: x.name)
+    )
 
 
 @dataclass(kw_only=True)
