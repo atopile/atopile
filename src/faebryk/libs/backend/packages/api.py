@@ -26,6 +26,7 @@ class _Models:
         class Request:
             identifier: str
             package_version: str
+            git_ref: str | None
             package_size: int
             manifest: dict[str, Any]
             """
@@ -280,7 +281,12 @@ class PackagesAPIClient:
             raise Errors.AuthenticationError(e) from e
 
     def publish(
-        self, identifier: str, version: str, dist: Dist, skip_auth: bool = False
+        self,
+        identifier: str,
+        version: str,
+        git_ref: str | None,
+        dist: Dist,
+        skip_auth: bool = False,
     ) -> _Models.PublishUploadComplete.Response:
         """
         Publish a package to the package registry.
@@ -297,6 +303,7 @@ class PackagesAPIClient:
                 data=_Models.Publish.Request(
                     identifier=identifier,
                     package_version=version,
+                    git_ref=git_ref,
                     package_size=filesize,
                     manifest=dist.manifest.model_dump(mode="json"),
                 ).to_dict(),  # type: ignore

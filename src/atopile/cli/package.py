@@ -149,6 +149,12 @@ def publish(
 
     logger.info("Package distribution built: %s", dist.path)
 
+    try:
+        repo = Repo(config.project.paths.root)
+        git_ref = str(repo.head.ref)
+    except Exception:
+        git_ref = None
+
     # Upload sequence
     if dry_run:
         logger.info("Dry run, skipping upload")
@@ -159,6 +165,7 @@ def publish(
                 identifier=config.project.package.identifier,
                 version=str(config.project.package.version),
                 dist=dist,
+                git_ref=git_ref,
                 skip_auth=skip_auth,
             ).url
         except packages_api.Errors.ReleaseAlreadyExistsError:
