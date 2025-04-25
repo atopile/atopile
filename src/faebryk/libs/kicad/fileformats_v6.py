@@ -137,7 +137,7 @@ class C_kicad_footprint_file_v6(SEXP_File):
                 fp_texts=[t.convert_to_new() for t in texts],
                 fp_poly=self.fp_poly,
                 pads=self.pads,
-                model=self.model,
+                models=self.models,
             )
 
     footprint: C_footprint_in_file

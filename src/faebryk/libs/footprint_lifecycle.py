@@ -29,8 +29,8 @@ class PartLifecycle:
 
     ```
     EasyEDA API => easyeda2kicad => picker/lcsc.py
-        -> build/cache/easyeda => picker/lcsc.py
-        -> <component_lib>/footprints/lcsc.pretty => libs/app/pcb.py
+        -> build/cache/easyeda/parts/<id>/<id>.json => picker/lcsc.py
+        -> build/cache/easyeda/parts/<id>/*.kicad*|.step => libs/app/pcb.py
         -> <component_lib>/footprints/atopile.pretty => transformer.py
         -> <layout_path>/<build>/<build>.kicad_pcb
     ```

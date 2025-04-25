@@ -23,6 +23,7 @@ from easyeda2kicad.easyeda.easyeda_importer import (
 from easyeda2kicad.easyeda.parameters_easyeda import Ee3dModel, EeSymbol, ee_footprint
 from easyeda2kicad.kicad.export_kicad_footprint import ExporterFootprintKicad
 from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVersion
+from more_itertools import first
 
 import faebryk.library._F as F
 from atopile.config import config
@@ -173,7 +174,7 @@ class EasyEDAFootprint:
         )[1]
         fp = kicad_footprint_file(fp_raw.decode("utf-8"))
         # workaround: remove wrl ending easyeda likes to add for no reason
-        for m in fp.footprint.model:
+        for m in fp.footprint.models:
             if m.path.suffix == ".wrl":
                 m.path = m.path.parent
         return cls(fp)
@@ -245,6 +246,10 @@ class EasyEDASymbol:
             self.symbol,
             other.symbol,
         )
+
+    @property
+    def kicad_symbol(self):
+        return first(self.symbol.kicad_symbol_lib.symbols.values())
 
 
 class EasyEDAPart:

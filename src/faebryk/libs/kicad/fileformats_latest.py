@@ -1178,7 +1178,7 @@ class C_footprint:
     embedded_fonts: E_embedded_fonts | None = None
     embedded_files: C_embedded_files | None = None
     component_classes: list[str] | None = None
-    model: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
+    models: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
 
 
 @dataclass
