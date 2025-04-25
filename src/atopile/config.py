@@ -373,6 +373,15 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     which typically builds **all** targets.
     """
 
+    exclude_checks: list[str] = Field(default=[])
+    """
+    A list of checks to exclude.
+
+    Use qualified name of check e.g
+        - `PCB.requires_drc_check`
+        - `I2C.requires_unique_addresses`
+        - `requires_external_usage`
+    """
     fail_on_drcs: bool = Field(default=False)
     dont_solve_equations: bool = Field(default=False)
     keep_designators: bool | None = Field(default=True)

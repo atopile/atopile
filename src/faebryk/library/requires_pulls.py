@@ -1,3 +1,7 @@
+# This file is part of the faebryk project
+# SPDX-License-Identifier: MIT
+
+import logging
 from collections.abc import Sequence
 from typing import Callable
 
@@ -6,6 +10,8 @@ from faebryk.core.module import Module
 from faebryk.core.node import Node
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.util import md_list
+
+logger = logging.getLogger(__name__)
 
 
 class requires_pulls(Module.TraitT.decless()):

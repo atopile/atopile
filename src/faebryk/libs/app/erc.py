@@ -13,6 +13,7 @@ from faebryk.core.cpp import Path
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
 
@@ -269,3 +270,12 @@ def check_library_for_erc(lib):
     members = inspect.getmembers(lib, inspect.isclass)
     module_classes = [m[1] for m in members if issubclass(m[1], Module)]
     check_classes_for_erc(module_classes)
+
+
+# TODO split this up
+class needs_erc_check(Trait.decless()):
+    design_check: F.implements_design_check
+
+    @F.implements_design_check.register_post_design_check
+    def __check_post_design__(self):
+        simple_erc(self.get_graph())

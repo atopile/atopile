@@ -9,7 +9,6 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
-from faebryk.core.solver.solver import Solver
 from faebryk.libs.library import L
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import P
@@ -128,7 +127,8 @@ class I2C(ModuleInterface):
         design_check: F.implements_design_check
 
         @F.implements_design_check.register_post_solve_check
-        def __check_post_solve__(self, solver: Solver):
+        def __check_post_solve__(self):
+            solver = self.design_check.get_solver()
             obj = self.get_obj(I2C)
             bus_interfaces = obj._hack_get_connected()
 
