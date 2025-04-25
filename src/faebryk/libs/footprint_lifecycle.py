@@ -5,13 +5,15 @@ import logging
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from more_itertools import first
+
 from atopile.config import config as Gcfg
-from faebryk.libs.kicad.fileformats_common import compare_without_uuid
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
     EasyEDAAPIResponse,
     EasyEDAFootprint,
     EasyEDAPart,
+    EasyEDASymbol,
 )
 from faebryk.libs.util import indented_container, once, robustly_rm_dir
 
@@ -115,27 +117,40 @@ class PartLifecycle:
 
         def ingest_part(self, part: EasyEDAPart) -> EasyEDAPart:
             footprint = part.footprint
-            path = self.get_fp_path(part.identifier, part.footprint.base_name)
-            if path.exists():
-                existing = EasyEDAFootprint.load(path)
-                if diff := compare_without_uuid(
-                    existing.footprint,
-                    footprint.footprint,
-                ):
+            fp_path = self.get_fp_path(part.identifier, part.footprint.base_name)
+            if fp_path.exists():
+                existing = EasyEDAFootprint.load(fp_path)
+                if diff := existing.compare(footprint):
                     # TODO question user
                     logger.warning(
-                        f"Updating cached {part.footprint.base_name}:"
+                        f"Updating cached footprint {part.footprint.base_name}:"
                         f" {indented_container(diff, recursive=True)}"
                     )
-                    footprint.dump(path)
+                    footprint.dump(fp_path)
             else:
-                footprint.dump(path)
+                footprint.dump(fp_path)
 
             model_path = self.get_model_path(part.identifier, part.model_name)
             if part.model:
                 part.model.dump(model_path)
             elif model_path.exists():
                 part.model = EasyEDA3DModel.load(model_path)
+
+            # TODO not sure about name
+            sym_name = first(part.symbol.symbol.kicad_symbol_lib.symbols.keys())
+            sym_path = self._get_sym_path(part.identifier, sym_name)
+            # TODO actually check for changes
+            if sym_path.exists():
+                existing = EasyEDASymbol.load(sym_path)
+                if diff := existing.compare(part.symbol):
+                    # TODO question user
+                    logger.warning(
+                        f"Updating cached symbol {sym_name}:"
+                        f" {indented_container(diff, recursive=True)}"
+                    )
+                    part.symbol.dump(sym_path)
+            else:
+                part.symbol.dump(sym_path)
 
             return part
 

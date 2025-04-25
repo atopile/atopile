@@ -27,14 +27,16 @@ from easyeda2kicad.kicad.export_kicad_symbol import ExporterSymbolKicad, KicadVe
 import faebryk.library._F as F
 from atopile.config import config
 from faebryk.core.module import Module
+from faebryk.libs.kicad.fileformats_common import compare_without_uuid
 from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
+from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
     Part,
     Supplier,
 )
-from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none
+from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 
 logger = logging.getLogger(__name__)
 
@@ -189,47 +191,60 @@ class EasyEDAFootprint:
     def base_name(self):
         return self.library_name.split(":")[-1]
 
+    def compare(self, other: "EasyEDAFootprint"):
+        return compare_without_uuid(
+            self.footprint,
+            other.footprint,
+        )
+
 
 class EasyEDASymbol:
-    def __init__(self, symbol: EeSymbol):
+    cache: dict[Path, "EasyEDASymbol"] = {}
+
+    def __init__(self, symbol: C_kicad_sym_file):
         self.symbol = symbol
 
-    def serialize(self) -> bytes:
-        from faebryk.libs.footprint_lifecycle import PartLifecycle
+    @classmethod
+    def from_api(cls, symbol: EeSymbol):
+        from faebryk.libs.kicad.fileformats_v6 import C_symbol_in_file_v6
+        from faebryk.libs.sexp.dataclass_sexp import loads as sexp_loads
 
-        lifecycle = PartLifecycle.singleton()
-
-        exporter = ExporterSymbolKicad(self.symbol, KicadVersion.v6)
+        exporter = ExporterSymbolKicad(symbol, KicadVersion.v6)
         # TODO this is weird
-        fp_lib_name = str(lifecycle.easyeda2kicad._FP_PATH)
-        return exporter.export(footprint_lib_name=fp_lib_name).encode("utf-8")
+        fp_lib_name = symbol.info.lcsc_id
+        raw = exporter.export(footprint_lib_name=fp_lib_name)
+        sym = sexp_loads(raw, C_symbol_in_file_v6).symbol.convert_to_new()
+        sym_file = C_kicad_sym_file(
+            C_kicad_sym_file.C_kicad_symbol_lib(
+                version=1,
+                generator="faebryk",
+                symbols={sym.name: sym},
+            )
+        )
+        return cls(sym_file)
 
-    def get_datasheet_url(self):
-        part = self.symbol
-        # TODO use easyeda2kicad api as soon as works again
-        # return part.info.datasheet
+    def serialize(self) -> bytes:
+        return self.symbol.dumps().encode("utf-8")
 
-        if not CRAWL_DATASHEET:
-            return None
+    def dump(self, path: Path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(self.serialize())
+        type(self).cache[path] = self
 
-        import re
+    @classmethod
+    def load(cls, path: Path):
+        # assume not disk modifications during run
+        if path in cls.cache:
+            return cls.cache[path]
+        out = cls(C_kicad_sym_file.loads(path))
+        cls.cache[path] = out
+        return out
 
-        import requests
-
-        url = part.info.datasheet
-        if not url:
-            return None
-        # make requests act like curl
-        lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
-        lcsc_id = part.info.lcsc_id
-        # find _{partno}.pdf in html
-        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
-        if match:
-            pdfurl = match.group(1)
-            logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
-            return pdfurl
-        else:
-            return None
+    def compare(self, other: "EasyEDASymbol"):
+        return compare_without_uuid(
+            self.symbol,
+            other.symbol,
+        )
 
 
 class EasyEDAPart:
@@ -239,12 +254,15 @@ class EasyEDAPart:
         footprint: EasyEDAFootprint,
         symbol: EasyEDASymbol,
         model: EasyEDA3DModel | None = None,
+        datasheet_url: str | None = None,
     ):
         self.lcsc_id = lcsc_id
         self.footprint = footprint
         self.symbol = symbol
         self.model = model
         self._pre_model: Ee3dModel | None = None
+        self.datasheet_url = datasheet_url
+        self._pre_datasheet: str | None = None
 
     @property
     def identifier(self):
@@ -304,14 +322,47 @@ class EasyEDAPart:
         part = cls(
             lcsc_id=data.lcsc.number,
             footprint=EasyEDAFootprint.from_api(easyeda_footprint, kicad_model_path),
-            symbol=EasyEDASymbol(easyeda_symbol),
+            symbol=EasyEDASymbol.from_api(easyeda_symbol),
         )
         part._pre_model = easyeda_model
+        part._pre_datasheet = easyeda_symbol.info.datasheet
 
         if download_model:
             part.load_model()
 
         return part
+
+    def load_datasheet(self):
+        if self.datasheet_url:
+            return self.datasheet_url
+
+        # TODO use easyeda2kicad api as soon as works again
+        # return symbol.info.datasheet
+
+        if not CRAWL_DATASHEET:
+            return None
+
+        import re
+
+        import requests
+
+        url = self._pre_datasheet
+        if not url:
+            return None
+
+        logger.debug(f"Crawling datasheet for {self.identifier}")
+
+        # make requests act like curl
+        lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
+        lcsc_id = self.lcsc_id
+        # find _{partno}.pdf in html
+        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
+        if match:
+            pdfurl = match.group(1)
+            logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
+            return pdfurl
+        else:
+            return None
 
 
 def _fix_3d_model_offsets(ki_footprint: ExporterFootprintKicad):
@@ -357,6 +408,7 @@ class LCSC_NoDataException(LCSCException): ...
 class LCSC_PinmapException(LCSCException): ...
 
 
+@once
 def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
     from faebryk.libs.footprint_lifecycle import PartLifecycle
 
@@ -426,8 +478,9 @@ def attach(
         if not component.has_trait(F.can_attach_to_footprint):
             # TODO make this a trait
             pins = [
-                (pin.settings.spice_pin_number, pin.name.text)
-                for unit in part.symbol.symbol.units
+                (pin.number.number, pin.name.name)
+                for sym in part.symbol.symbol.kicad_symbol_lib.symbols.values()
+                for unit in sym.symbols.values()
                 for pin in unit.pins
             ]
             try:
@@ -464,7 +517,7 @@ def attach(
 
     component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
 
-    if part is not None and (datasheet := part.symbol.get_datasheet_url()):
+    if part is not None and (datasheet := part.load_datasheet()):
         component.add(F.has_datasheet_defined(datasheet))
 
     # model done by kicad (in fp)
