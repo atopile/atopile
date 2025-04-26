@@ -2087,10 +2087,12 @@ class C_kicad_fp_lib_table_file(SEXP_File):
             descr: str
 
         version: int | None = field(default=None, **sexp_field())
-        libs: list[C_lib] = field(**sexp_field(multidict=True), default_factory=list)
+        libs: dict[str, C_lib] = field(
+            **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
+        )
 
     fp_lib_table: C_fp_lib_table
 
     @classmethod
     def skeleton(cls, version: int = 7) -> "C_kicad_fp_lib_table_file":
-        return cls(cls.C_fp_lib_table(version=version, libs=[]))
+        return cls(cls.C_fp_lib_table(version=version, libs={}))

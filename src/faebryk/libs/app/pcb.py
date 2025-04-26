@@ -3,7 +3,6 @@
 
 import logging
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -14,7 +13,7 @@ from atopile.cli.logging import ALERT
 from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
-from faebryk.core.node import Node, NodeException
+from faebryk.core.node import Node
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.exceptions import UserResourceException, downgrade
@@ -26,7 +25,6 @@ from faebryk.libs.util import (
     cast_assert,
     duplicates,
     groupby,
-    hash_string,
     md_list,
     not_none,
     once,
@@ -120,15 +118,17 @@ def ensure_footprint_lib(
     )
 
     matching_libs = [
-        lib_ for lib_ in fptable.fp_lib_table.libs if lib_.name == lib.name
+        lib_ for lib_ in fptable.fp_lib_table.libs.values() if lib_.name == lib.name
     ]
     lib_is_duplicated = len(matching_libs) != 1
     lib_is_outdated = any(lib_ != lib for lib_ in matching_libs)
 
     if lib_is_duplicated or lib_is_outdated:
-        fptable.fp_lib_table.libs = [
-            lib for lib in fptable.fp_lib_table.libs if lib.name != lib_name
-        ] + [lib]
+        fptable.fp_lib_table.libs = {
+            lib.name: lib
+            for lib in fptable.fp_lib_table.libs.values()
+            if lib.name != lib_name
+        } | {lib.name: lib}
 
         logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
 
@@ -227,90 +227,3 @@ def check_net_names(graph: Graph):
     }
     if net_name_collisions:
         raise UserResourceException(f"Net name collision: {net_name_collisions}")
-
-
-def create_footprint_library(app: Module, no_fp_lib: bool = False) -> None:
-    """
-    Ensure all KicadFootprints have a kicad identifier (via the F.has_kicad_footprint
-    trait).
-
-    Create a footprint library for all the footprints with files and without KiCAD
-    identifiers.
-
-    Check all of the KicadFootprints have a manual identifier. Raise an error if they
-    don't.
-
-    Args:
-        no_fp_lib: If True, don't create a footprint library (only useful for testing)
-    """
-    from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
-
-    package_fp_paths = set(KNOWN_PACKAGES_TO_FOOTPRINT.values())
-
-    LIB_NAME = "atopile"
-
-    # Create the library it doesn't exist
-    atopile_fp_dir = config.project.paths.get_footprint_lib("atopile")
-    atopile_fp_dir.mkdir(parents=True, exist_ok=True)
-    if not no_fp_lib:
-        ensure_footprint_lib(LIB_NAME, atopile_fp_dir)
-
-    # Cache the mapping from path to identifier and the path to the new file
-    path_map: dict[Path, tuple[str, Path]] = {}
-
-    for fp in app.get_children(direct_only=False, types=F.KicadFootprint):
-        # has_kicad_identifier implies has_kicad_footprint, but not the other way around
-        if fp.has_trait(F.has_kicad_footprint):
-            # I started writing this and forgot where I was going
-            # So I'm going to leave it an attempt to prompt my or someone else's ideas
-            # as to what we were supposed to do here
-            pass
-        else:
-            if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
-                path = has_file_t.file
-                # We privilege packages and assume it's what's driving
-                if path in package_fp_paths:
-                    if path in path_map:
-                        id_, new_path = path_map[path]
-                    else:
-                        id_ = f"{LIB_NAME}:{path.stem}"
-                        new_path = atopile_fp_dir / path.name
-                        shutil.copy(path, new_path)
-                        path_map[path] = (id_, new_path)
-
-                else:
-                    try:
-                        prj_rel_path = path.relative_to(config.project.paths.root)
-
-                    # Raised when the file isn't relative to the project directory
-                    except ValueError as ex:
-                        raise UserResourceException(
-                            f"Footprint file {path} is outside the project"
-                            " directory. Footprint files must be in the project"
-                            " directory.",
-                            markdown=False,
-                        ) from ex
-
-                    # Copy the footprint to the new library with a
-                    # pseudo-guaranteed unique name
-                    if prj_rel_path in path_map:
-                        id_, new_path = path_map[prj_rel_path]
-                    else:
-                        mini_hash = hash_string(str(prj_rel_path))[:6]
-                        id_ = f"{LIB_NAME}:{prj_rel_path.stem}-{mini_hash}"
-                        new_path = (
-                            atopile_fp_dir
-                            / f"{prj_rel_path.stem}-{mini_hash}{prj_rel_path.suffix}"
-                        )
-                        shutil.copy(path, new_path)
-                        path_map[prj_rel_path] = (id_, new_path)
-
-                fp.add(F.KicadFootprint.has_file(new_path))  # Override with new path
-                # Attach the newly minted identifier
-                fp.add(F.KicadFootprint.has_kicad_identifier(id_))
-            else:
-                # This shouldn't happen
-                # KicadFootprint should always have a file, or an identifier
-                raise NodeException(
-                    fp, f"{fp.__class__.__name__} has no footprint identifier or file"
-                )

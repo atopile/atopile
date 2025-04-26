@@ -508,7 +508,9 @@ def attach(
 
         # footprint
         fp = F.KicadFootprint([p.name for p in part.footprint.footprint.footprint.pads])
-        fp.add(F.KicadFootprint.has_file(lifecycle.library.get_footprint(part)))
+        path, fp_id = lifecycle.library.get_footprint(part)
+        fp.add(F.KicadFootprint.has_file(path))
+        fp.add(F.KicadFootprint.has_kicad_identifier(fp_id))
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:

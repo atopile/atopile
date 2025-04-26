@@ -7,7 +7,6 @@ from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import _get_bomline
 from faebryk.libs.app.designators import attach_random_designators, load_designators
-from faebryk.libs.app.pcb import create_footprint_library
 from faebryk.libs.iso_metric_screw_thread import Iso262_MetricScrewThreadSizes
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -19,7 +18,6 @@ def _build(app: Module):
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
     F.has_package.standardize_footprints(app, solver)
-    create_footprint_library(app, no_fp_lib=True)
     attach_random_designators(app.get_graph())
 
 

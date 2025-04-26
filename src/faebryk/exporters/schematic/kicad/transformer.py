@@ -211,7 +211,9 @@ class SchTransformer:
             fp_lib_table_paths += [GLOBAL_FP_LIB_PATH]
 
         for lib_path in fp_lib_table_paths:
-            for lib in C_kicad_fp_lib_table_file.loads(lib_path).fp_lib_table.libs:
+            for lib in C_kicad_fp_lib_table_file.loads(
+                lib_path
+            ).fp_lib_table.libs.values():
                 resolved_lib_dir = Path(
                     (lib.uri)
                     .replace("${KIPRJMOD}", str(lib_path.parent))

@@ -40,7 +40,9 @@ def _find_footprint(
         with err_accumulator.collect():
             lib_table = C_kicad_fp_lib_table_file.loads(lib_table_path)
             try:
-                return find(lib_table.fp_lib_table.libs, lambda x: x.name == lib_id)
+                return find(
+                    lib_table.fp_lib_table.libs.values(), lambda x: x.name == lib_id
+                )
             except KeyErrorNotFound as ex:
                 raise LibNotInTable(
                     lib_id=lib_id, lib_table_path=lib_table_path

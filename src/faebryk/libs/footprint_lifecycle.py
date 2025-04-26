@@ -3,11 +3,17 @@
 
 import logging
 from datetime import datetime, timedelta
+from hashlib import md5
 from pathlib import Path
 
 from more_itertools import first
 
+from atopile.cli.logging import ALERT
 from atopile.config import config as Gcfg
+from faebryk.libs.kicad.fileformats_latest import (
+    C_kicad_footprint_file,
+    C_kicad_fp_lib_table_file,
+)
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
     EasyEDAAPIResponse,
@@ -151,11 +157,73 @@ class PartLifecycle:
             return part
 
     class Library:
-        def get_footprint(self, part: EasyEDAPart) -> Path:
+        LIBNAME = "atopile"
+
+        @property
+        def _PATH(self) -> Path:
+            # TODO change to parts later
+            return Gcfg.project.paths.component_lib / "footprints" / "atopile.pretty"
+
+        @property
+        def fp_table(self) -> C_kicad_fp_lib_table_file:
+            fp_table_path = Gcfg.build.paths.fp_lib_table
+            if not fp_table_path.exists():
+                fp_table = C_kicad_fp_lib_table_file.skeleton()
+            else:
+                fp_table = C_kicad_fp_lib_table_file.loads(fp_table_path)
+
+            fppath = self._PATH
+            fppath_rel = fppath.resolve().relative_to(
+                Gcfg.build.paths.fp_lib_table.parent.resolve(),
+                # FIXME set to false, only needed here because fps are in build
+                # instead of in project dir
+                walk_up=True,
+            )
+
+            uri = str(fppath_rel)
+            assert not uri.startswith("/")
+            assert not uri.startswith("${KIPRJMOD}")
+            uri = "${KIPRJMOD}/" + uri
+
+            if self.LIBNAME not in fp_table.fp_lib_table.libs:
+                lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+                    name=self.LIBNAME,
+                    type="KiCad",
+                    uri=uri,
+                    options="",
+                    descr="atopile: atopile footprints",
+                )
+                fp_table.fp_lib_table.libs[self.LIBNAME] = lib
+                # TODO move somewhere else
+                logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
+            else:
+                lib = fp_table.fp_lib_table.libs[self.LIBNAME]
+
+            fp_table.dumps(fp_table_path)
+            return fp_table
+
+        def get_footprint(self, part: EasyEDAPart) -> tuple[Path, str]:
+            # TODO use traits instead of eagerly modifying fp-lib-table
             lifecycle = PartLifecycle.singleton()
-            return lifecycle.easyeda2kicad.get_fp_path(
+
+            eeda_path = lifecycle.easyeda2kicad.get_fp_path(
                 part.identifier, part.footprint.base_name
             )
+            fp = C_kicad_footprint_file.loads(eeda_path)
+            mini_hash = md5(eeda_path.read_bytes()).hexdigest()[:6]
+            _, name = fp.footprint.name.split(":", maxsplit=1)
+            unique_name = f"{name}-{mini_hash}"
+            fp.footprint.name = f"{self.LIBNAME}:{unique_name}"
+
+            out_path = self._PATH / f"{unique_name}{eeda_path.suffix}"
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            fp.dumps(out_path)
+
+            return out_path, fp.footprint.name
+
+        def __init__(self) -> None:
+            # TODO remove
+            self.fp_table
 
     class PCB:
         pass

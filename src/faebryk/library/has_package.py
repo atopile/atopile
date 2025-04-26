@@ -133,6 +133,7 @@ class has_package(Module.TraitT.decless()):
 
             if fp_path := KNOWN_PACKAGES_TO_FOOTPRINT.get(package):
                 if can_attach_t := node.try_get_trait(F.can_attach_to_footprint):
+                    # FIXME this function should use the lifecycle manager instead
                     fp = _get_footprint(fp_path)
                     kicad_fp = F.KicadFootprint.from_file(fp)
                     kicad_fp.add(F.KicadFootprint.has_file(fp_path))
