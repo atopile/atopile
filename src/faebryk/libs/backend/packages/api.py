@@ -13,6 +13,7 @@ from github_oidc.client import get_actions_header
 from pydantic.networks import HttpUrl
 
 from atopile.config import config
+from faebryk.libs.package.artifacts import Artifacts
 from faebryk.libs.package.dist import Dist
 from faebryk.libs.util import indented_container, once
 
@@ -26,7 +27,9 @@ class _Models:
         class Request:
             identifier: str
             package_version: str
+            git_ref: str | None
             package_size: int
+            artifacts_size: int | None
             manifest: dict[str, Any]
             """
             contents of the `ato.yaml` file
@@ -44,6 +47,7 @@ class _Models:
             status: Literal["ok"]
             release_id: str
             upload_info: Info
+            artifacts_upload_info: Info
 
     class PublishUploadComplete:
         @dataclass_json
@@ -280,16 +284,19 @@ class PackagesAPIClient:
             raise Errors.AuthenticationError(e) from e
 
     def publish(
-        self, identifier: str, version: str, dist: Dist, skip_auth: bool = False
+        self,
+        identifier: str,
+        version: str,
+        git_ref: str | None,
+        dist: Dist,
+        artifacts: Artifacts | None,
+        skip_auth: bool = False,
     ) -> _Models.PublishUploadComplete.Response:
         """
         Publish a package to the package registry.
 
         Only works in Github Actions.
         """
-        # Get filesize of dist.path
-        filesize = dist.path.stat().st_size
-
         ## Request upload
         try:
             r = self._post(
@@ -297,7 +304,9 @@ class PackagesAPIClient:
                 data=_Models.Publish.Request(
                     identifier=identifier,
                     package_version=version,
-                    package_size=filesize,
+                    git_ref=git_ref,
+                    package_size=dist.bytes,
+                    artifacts_size=artifacts.bytes if artifacts else None,
                     manifest=dist.manifest.model_dump(mode="json"),
                 ).to_dict(),  # type: ignore
                 authenticate=not skip_auth,
@@ -319,6 +328,18 @@ class PackagesAPIClient:
             )
         except Errors.PackagesApiHTTPError:
             raise
+
+        ## Upload the artifacts
+        if artifacts:
+            try:
+                r = self._upload(
+                    url=response.artifacts_upload_info.url,
+                    file_path=artifacts.path,
+                    data=response.artifacts_upload_info.fields,
+                    skip_verify=skip_auth,
+                )
+            except Errors.PackagesApiHTTPError:
+                raise
 
         ## Confirm upload
         try:

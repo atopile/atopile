@@ -9,6 +9,7 @@ import faebryk.libs.backend.packages.api as packages_api
 from atopile.config import config
 from atopile.errors import UserBadParameterError, UserException
 from faebryk.libs.backend.packages.api import PackagesAPIClient
+from faebryk.libs.package.artifacts import Artifacts
 from faebryk.libs.package.dist import Dist, DistValidationError
 
 # Set up logging
@@ -85,6 +86,15 @@ def publish(
         str | None,
         typer.Argument(help="The address of the package to publish."),
     ] = None,
+    include_artifacts: Annotated[
+        bool,
+        typer.Option(
+            "--include-artifacts",
+            "-a",
+            envvar="ATO_CLI_PACKAGE_INCLUDE_ARTIFACTS",
+            help="Include build artifacts in the package.",
+        ),
+    ] = True,
     skip_auth: Annotated[
         bool,
         typer.Option("--skip-auth", "-s", help="Skip authentication."),
@@ -149,6 +159,19 @@ def publish(
 
     logger.info("Package distribution built: %s", dist.path)
 
+    if include_artifacts:
+        artifacts = Artifacts.build_artifacts(
+            cfg=config.project, output_path=config.project.paths.build
+        )
+    else:
+        artifacts = None
+
+    try:
+        repo = Repo(config.project.paths.root)
+        git_ref = str(repo.head.ref)
+    except Exception:
+        git_ref = None
+
     # Upload sequence
     if dry_run:
         logger.info("Dry run, skipping upload")
@@ -159,6 +182,8 @@ def publish(
                 identifier=config.project.package.identifier,
                 version=str(config.project.package.version),
                 dist=dist,
+                artifacts=artifacts,
+                git_ref=git_ref,
                 skip_auth=skip_auth,
             ).url
         except packages_api.Errors.ReleaseAlreadyExistsError:
