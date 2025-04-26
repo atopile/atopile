@@ -16,6 +16,12 @@ class Artifacts:
     def build_artifacts(
         cfg: atopile.config.ProjectConfig, output_path: Path
     ) -> "Artifacts":
+        """
+        Build a zip file containing all the build artifacts.
+        """
+
+        # TODO: build targets should register their artifacts for inclusion here
+
         builds_dir = cfg.paths.build / "builds"
 
         with tempfile.TemporaryDirectory() as temp_dir:
