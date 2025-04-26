@@ -5,16 +5,16 @@
 import faebryk.library._F as F
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
-from faebryk.libs.units import P
 
 
 class TI_CD4011BE(F.CD4011):
-    footprint = L.f_field(F.has_footprint_defined)(
-        F.DIP(pin_cnt=14, spacing=7.62 * P.mm, long_pads=False)
-    )
+    # footprint = L.f_field(F.has_footprint_defined)(
+    #    F.DIP(pin_cnt=14, spacing=7.62 * P.mm, long_pads=False)
+    # )
 
-    def __preinit__(self):
-        self.footprint.get_footprint().get_trait(F.can_attach_via_pinmap).attach(
+    @L.rt_field
+    def can_attach(self):
+        return F.can_attach_to_footprint_via_pinmap(
             {
                 "7": self.power.lv,
                 "14": self.power.hv,
@@ -33,11 +33,9 @@ class TI_CD4011BE(F.CD4011):
             }
         )
 
-        self.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.manufacturer: "Texas Instruments",
-                    DescriptiveProperties.partno: "CD4011BE",
-                },
-            )
-        )
+    mfn_pn = L.f_field(F.has_descriptive_properties_defined)(
+        {
+            DescriptiveProperties.manufacturer: "Texas Instruments",
+            DescriptiveProperties.partno: "CD4011BE",
+        },
+    )
