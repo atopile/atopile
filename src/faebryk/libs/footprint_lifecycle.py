@@ -19,10 +19,6 @@ from faebryk.libs.util import indented_container, once, robustly_rm_dir
 
 logger = logging.getLogger(__name__)
 
-# TODO delete old cache dir (build/cache/easyeda)
-#  and build/kicad/libs/footprints/lcsc.pretty
-#  and build/kicad/libs/lcsc.3dshapes
-
 
 class PartLifecycle:
     """
@@ -154,9 +150,21 @@ class PartLifecycle:
 
             return part
 
+    class Library:
+        def get_footprint(self, part: EasyEDAPart) -> Path:
+            lifecycle = PartLifecycle.singleton()
+            return lifecycle.easyeda2kicad.get_fp_path(
+                part.identifier, part.footprint.base_name
+            )
+
+    class PCB:
+        pass
+
     def __init__(self):
         self.easyeda_api = self.EasyEDA_API()
         self.easyeda2kicad = self.Easyeda2Kicad()
+        self.library = self.Library()
+        self.pcb = self.PCB()
 
         self._delete_deprecated_cache()
 
@@ -169,6 +177,12 @@ class PartLifecycle:
             if path.exists():
                 logger.warning(f"Deleting deprecated cache {path}")
                 robustly_rm_dir(path)
+
+        # FIXME ask user
+        # fp_path = Gcfg.project.paths.component_lib / "footprints"
+        # if fp_path.exists():
+        #    logger.warning(f"Deleting deprecated library {fp_path}")
+        # robustly_rm_dir(fp_path)
 
     @classmethod
     @once
