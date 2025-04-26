@@ -1,10 +1,12 @@
 import logging
+from base64 import b64decode, b64encode
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional
 
+import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 
 from faebryk.libs.kicad.fileformats_common import (
@@ -923,35 +925,36 @@ class C_dimension:
 class C_embedded_file:
     class C_type(SymEnum):
         other = auto()
+        model = auto()
+        font = auto()
+        datasheet = auto()
+        worksheet = auto()
 
     @dataclass
     class C_data:
-        bytes: list[Symbol] = field(**sexp_field(positional=True))
+        compressed: list[Symbol] = field(**sexp_field(positional=True))
 
         @property
         @once
         def merged(self):
-            return "".join(str(v) for v in self.bytes)
+            return "".join(str(v) for v in self.compressed)
 
         @property
         @once
-        def text(self):
-            from base64 import b64decode
-
-            import zstd
-
+        def uncompressed(self) -> bytes:
             assert self.merged.startswith("|") and self.merged.endswith("|")
-            return zstd.decompress(b64decode(self.merged[1:-1])).decode("utf-8")
+            return zstd.decompress(b64decode(self.merged[1:-1]))
 
         @classmethod
-        def from_text(cls, text: str):
-            from base64 import b64encode
-
-            import zstd
-
-            return cls(
-                bytes=[Symbol(b64encode(zstd.compress(text.encode("utf-8"))).decode())]
-            )
+        def compress(cls, data: bytes):
+            # from kicad:common/embedded_files.cpp
+            b64 = b64encode(zstd.compress(data)).decode()
+            CHUNK_LEN = 76
+            # chunk string to 76 characters
+            chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
+            chunks[0] = "|" + chunks[0]
+            chunks[-1] = chunks[-1] + "|"
+            return cls(compressed=[Symbol(c) for c in chunks])
 
     name: str
     type: C_type
@@ -960,6 +963,16 @@ class C_embedded_file:
     base64 encoded data
     """
     checksum: str | None = None  # MD5 hash of the file content
+
+    @staticmethod
+    def make_checksum(data: bytes) -> None:
+        # from kicad:libs/kimath/include/mmh3_hash.h
+        # FIXME
+        # import mmh3
+
+        # SEED = 0xABBA2345
+        # return mmh3.mmh3_x64_128_digest(data, SEED).hex().upper()
+        return None
 
 
 @dataclass

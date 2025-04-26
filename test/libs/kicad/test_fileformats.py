@@ -238,11 +238,14 @@ def test_embedded():
 
     sexp = loads(data, C_embedded_files)
     s_data = not_none(sexp.files["TCA9548APWR.kicad_sym"].data)
-    text = s_data.text
+    text = s_data.uncompressed.decode("utf-8")
 
     assert 'symbol "TCA9548APWR"' in text
 
     encoded = dumps(sexp)
 
     sexp2 = loads(encoded, C_embedded_files)
-    assert not_none(sexp2.files["TCA9548APWR.kicad_sym"].data).text == text
+    assert (
+        not_none(sexp2.files["TCA9548APWR.kicad_sym"].data).uncompressed.decode("utf-8")
+        == text
+    )
