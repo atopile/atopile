@@ -23,7 +23,7 @@ Design circuit boards with the same powerful workflows that software developers 
 - 📦 Embedded package manager to install and manage modules from https://packages.atopile.io, or Github
 - 🔍 Version control line-by-line diffable code w/ git
 
-Jump right in with the [quickstart guide](quickstart.md)
+Jump right in with the [quickstart guide](https://docs.atopile.io/quickstart)
 
 
 ## Who's atopile for?
