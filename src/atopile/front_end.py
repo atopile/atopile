@@ -1018,6 +1018,38 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
+    @contextmanager
+    def _init_nodes(
+        self, node_type: ap.BlockdefContext | Type[L.Node], count: int
+    ) -> Generator[list[L.Node], None, None]:
+        nodes = []
+        promised_supers = []
+        for _ in range(count):
+            new_node, new_promised_supers = self._new_node(
+                node_type, promised_supers=[]
+            )
+
+            # Shim on component and module classes defined in ato
+            # Do not shim fabll modules, or interfaces
+            if isinstance(node_type, ap.BlockdefContext):
+                if node_type.blocktype().COMPONENT() or node_type.blocktype().MODULE():
+                    # Some shims add the trait themselves
+                    if not new_node.has_trait(_has_ato_cmp_attrs):
+                        new_node.add(_has_ato_cmp_attrs())
+
+            nodes.append(new_node)
+            promised_supers.append(new_promised_supers)
+
+        yield nodes
+
+        for i, node in enumerate(nodes):
+            with self._node_stack.enter(node):
+                for super_ctx in promised_supers[i]:
+                    # TODO: this would be better if we had the
+                    # "from xyz" super in the traceback too
+                    with self._traceback_stack.enter(super_ctx.name()):
+                        self.visitBlock(super_ctx.block())
+
     def _get_param(
         self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext
     ) -> Parameter:
@@ -1143,18 +1175,42 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
-                    with self._init_node(
-                        self._get_referenced_class(ctx, ref)
-                    ) as new_node:
-                        try:
-                            self._current_node.add(new_node, name=assigned_name.name)
-                        except FieldExistsError as e:
-                            raise errors.UserAlreadyExistsError.from_ctx(
-                                ctx,
-                                f"Field `{assigned_name}` already exists",
-                                traceback=self.get_traceback(),
-                            ) from e
-                        new_node.add(from_dsl(ctx))
+                    if new_count_ctx := new_stmt_ctx.new_count():
+                        new_count = int(new_count_ctx.getText())
+                        with self._init_nodes(
+                            self._get_referenced_class(ctx, ref), new_count
+                        ) as new_nodes:
+                            setattr(self._current_node, assigned_name.name, list())
+                            for node in new_nodes:
+                                try:
+                                    self._current_node.add(
+                                        node,
+                                        container=getattr(
+                                            self._current_node, assigned_name.name
+                                        ),
+                                    )
+                                except FieldExistsError as e:
+                                    raise errors.UserAlreadyExistsError.from_ctx(
+                                        ctx,
+                                        f"Field `{assigned_name}` already exists",
+                                        traceback=self.get_traceback(),
+                                    ) from e
+                                node.add(from_dsl(ctx))
+                    else:
+                        with self._init_node(
+                            self._get_referenced_class(ctx, ref)
+                        ) as new_node:
+                            try:
+                                self._current_node.add(
+                                    new_node, name=assigned_name.name
+                                )
+                            except FieldExistsError as e:
+                                raise errors.UserAlreadyExistsError.from_ctx(
+                                    ctx,
+                                    f"Field `{assigned_name}` already exists",
+                                    traceback=self.get_traceback(),
+                                ) from e
+                            new_node.add(from_dsl(ctx))
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name.name)
