@@ -134,7 +134,7 @@ new_stmt
     : 'new' type_reference ('[' new_count ']')?
     ;
 new_count
-    : NUMBER // INTEGER?
+    : NUMBER
     ;
 
 string_stmt

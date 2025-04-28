@@ -1158,8 +1158,21 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
                     if new_count_ctx := new_stmt_ctx.new_count():
-                        # invalid ints will result in UserSyntaxError before this point (FIXME)
-                        new_count = int(new_count_ctx.getText())
+                        try:
+                            new_count = int(new_count_ctx.getText())
+                        except ValueError:
+                            raise errors.UserValueError.from_ctx(
+                                ctx,
+                                f"Invalid integer `{new_count_ctx.getText()}`",
+                                traceback=self.get_traceback(),
+                            )
+
+                        if new_count < 0:
+                            raise errors.UserValueError.from_ctx(
+                                ctx,
+                                f"Negative integer `{new_count}`",
+                                traceback=self.get_traceback(),
+                            )
 
                         setattr(self._current_node, assigned_name.name, list())
                         for _ in range(new_count):

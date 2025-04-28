@@ -140,7 +140,7 @@ def test_invalid_multiple_new_count(bob: Bob):
             TypeRef(["A"]),
         )
 
-    with pytest.raises(errors.UserSyntaxError):
+    with pytest.raises(errors.UserValueError):
         bob.build_ast(
             parse_text_as_file(
                 dedent(
@@ -153,7 +153,7 @@ def test_invalid_multiple_new_count(bob: Bob):
             TypeRef(["A"]),
         )
 
-    with pytest.raises(errors.UserSyntaxError):
+    with pytest.raises(errors.UserValueError):
         bob.build_ast(
             parse_text_as_file(
                 dedent(
