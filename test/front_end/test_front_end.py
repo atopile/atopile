@@ -126,6 +126,47 @@ def test_multiple_new(bob: Bob):
         _get_attr(node, "resistors", 5)
 
 
+def test_invalid_multiple_new_count(bob: Bob):
+    with pytest.raises(errors.UserSyntaxError):
+        bob.build_ast(
+            parse_text_as_file(
+                dedent(
+                    """
+                    module A:
+                        resistors = new Resistor[-1]
+                    """
+                )
+            ),
+            TypeRef(["A"]),
+        )
+
+    with pytest.raises(errors.UserSyntaxError):
+        bob.build_ast(
+            parse_text_as_file(
+                dedent(
+                    """
+                    module A:
+                        resistors = new Resistor[1.0]
+                    """
+                )
+            ),
+            TypeRef(["A"]),
+        )
+
+    with pytest.raises(errors.UserSyntaxError):
+        bob.build_ast(
+            parse_text_as_file(
+                dedent(
+                    """
+                    module A:
+                        resistors = new Resistor[0x10]
+                    """
+                )
+            ),
+            TypeRef(["A"]),
+        )
+
+
 def test_nested_nodes(bob: Bob):
     text = dedent(
         """
