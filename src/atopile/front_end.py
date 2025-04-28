@@ -1173,6 +1173,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitTypeReference(new_stmt_ctx.type_reference())
 
+            def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
+                try:
+                    obj.add(
+                        node,
+                        container=getattr(obj, container_name)
+                        if container_name
+                        else None,
+                    )
+                except FieldExistsError as e:
+                    raise errors.UserAlreadyExistsError.from_ctx(
+                        ctx,
+                        f"Field `{assigned_name}` already exists",
+                        traceback=self.get_traceback(),
+                    ) from e
+                node.add(from_dsl(ctx))
+
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
                     if new_count_ctx := new_stmt_ctx.new_count():
@@ -1182,35 +1198,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         ) as new_nodes:
                             setattr(self._current_node, assigned_name.name, list())
                             for node in new_nodes:
-                                try:
-                                    self._current_node.add(
-                                        node,
-                                        container=getattr(
-                                            self._current_node, assigned_name.name
-                                        ),
-                                    )
-                                except FieldExistsError as e:
-                                    raise errors.UserAlreadyExistsError.from_ctx(
-                                        ctx,
-                                        f"Field `{assigned_name}` already exists",
-                                        traceback=self.get_traceback(),
-                                    ) from e
-                                node.add(from_dsl(ctx))
+                                _add_node(self._current_node, node, assigned_name.name)
                     else:
                         with self._init_node(
                             self._get_referenced_class(ctx, ref)
                         ) as new_node:
-                            try:
-                                self._current_node.add(
-                                    new_node, name=assigned_name.name
-                                )
-                            except FieldExistsError as e:
-                                raise errors.UserAlreadyExistsError.from_ctx(
-                                    ctx,
-                                    f"Field `{assigned_name}` already exists",
-                                    traceback=self.get_traceback(),
-                                ) from e
-                            new_node.add(from_dsl(ctx))
+                            _add_node(self._current_node, new_node, assigned_name.name)
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name.name)
