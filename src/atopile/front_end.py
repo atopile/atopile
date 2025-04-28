@@ -1142,6 +1142,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 try:
                     obj.add(
                         node,
+                        name=assigned_name.name if container_name is None else None,
                         container=getattr(obj, container_name)
                         if container_name
                         else None,
@@ -1172,7 +1173,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                         with self._init_node(
                             self._get_referenced_class(ctx, ref)
                         ) as new_node:
-                            _add_node(self._current_node, new_node, assigned_name.name)
+                            _add_node(self._current_node, new_node)
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name.name)
