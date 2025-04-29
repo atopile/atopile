@@ -2142,7 +2142,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitFor_stmt(self, ctx: ap.For_stmtContext):
         if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP):
-            raise errors.UserSyntaxError.from_ctx(
+            raise errors.UserFeatureNotEnabledError.from_ctx(
                 ctx,
                 "Experimental feature not enabled. "
                 'Use `#pragma experiment("FOR_LOOP")` in your file.',

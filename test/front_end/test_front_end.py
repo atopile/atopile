@@ -691,7 +691,9 @@ def test_for_loop_no_pragma(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    with pytest.raises(errors.UserException, match="Experimental feature not enabled"):
+    with pytest.raises(
+        errors.UserFeatureNotEnabledError, match="Experimental feature not enabled"
+    ):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
