@@ -842,3 +842,31 @@ def test_plain_trait(bob: Bob):
 
     assert isinstance(node, L.Module)
     assert node.has_trait(F.is_not_pickable)
+
+
+def test_unimported_trait(bob: Bob):
+    text = dedent(
+        """
+        module App:
+            trait is_not_pickable
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitNotFoundError, match="No such trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_invalid_trait(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+
+        module App:
+            trait Resistor
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidTraitError, match="is not a valid trait"):
+        bob.build_ast(tree, TypeRef(["App"]))

@@ -1745,16 +1745,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             ) from ex
 
-        if isinstance(trait_cls, type(L.Module.TraitT)):
-            trait = trait_cls()
-            self._current_node.add(trait)
-
-        else:
+        if isinstance(trait_cls, ap.BlockdefContext) or not issubclass(
+            trait_cls, L.Module.TraitT
+        ):
             raise errors.UserInvalidTraitError.from_ctx(
                 ctx,
                 f"`{ref}` is not a valid trait",
                 traceback=self.get_traceback(),
             )
+
+        self._current_node.add(trait_cls())
 
         return NOTHING
 
