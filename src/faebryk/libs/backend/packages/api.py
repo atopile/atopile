@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import sys
 from dataclasses import dataclass
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -201,6 +203,15 @@ class PackagesAPIClient:
 
     def __init__(self):
         self._client = requests.Session()
+        self._client.headers.update(
+            {
+                "User-Agent": (
+                    f"atopile/{get_package_version('atopile')} "
+                    f"({sys.platform}; "
+                    f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})"
+                ),
+            }
+        )
 
     def _get(
         self,
