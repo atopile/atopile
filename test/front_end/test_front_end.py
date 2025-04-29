@@ -784,3 +784,39 @@ def test_for_loop_empty_list(bob: Bob):
     test_pins = cast(list[F.Electrical], test_pins)
     assert len(test_pins) == 2
     assert not test_pins[0].is_connected_to(test_pins[1])
+
+
+def test_for_loop_syntax_error(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors:
+            resistors[0].unnamed[0] ~ resistors[1].unnamed[0]
+        """
+    )
+
+    with pytest.raises(errors.UserSyntaxError, match="missing INDENT"):
+        parse_text_as_file(text)
+
+
+def test_for_loop_stale_ref(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors:
+                assert r.resistance is 100 kohm
+            r.unnamed[0] ~ r.unnamed[1]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserKeyError):
+        bob.build_ast(tree, TypeRef(["App"]))

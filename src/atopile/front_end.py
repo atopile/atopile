@@ -1050,7 +1050,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return self.resolve_node(self._current_node, ref)
         except AttributeError as ex:
             raise errors.UserKeyError.from_ctx(
-                ctx, ex.name, traceback=self.get_traceback()
+                ctx, str(ex), traceback=self.get_traceback()
             ) from ex
         except ValueError as ex:
             raise errors.UserKeyError.from_ctx(
