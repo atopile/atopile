@@ -351,3 +351,13 @@ class UserNoProjectException(UserException):
         **kwargs,
     ):
         super().__init__(msg, *args, **kwargs)
+
+
+class UserFeatureNotAvailableError(UserException):
+    def __init__(self, msg="Feature Not Available", *args, **kwargs):
+        super().__init__(msg, *args, **kwargs)
+
+
+class UserFeatureNotEnabledError(UserSyntaxError):
+    def __init__(self, msg="Feature Not Enabled", *args, **kwargs):
+        super().__init__(msg, *args, **kwargs)

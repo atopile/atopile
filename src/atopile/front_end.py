@@ -11,6 +11,7 @@ from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import StrEnum
 from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
@@ -79,6 +80,7 @@ from faebryk.libs.util import (
     import_from_path,
     is_type_pair,
     not_none,
+    once,
     partition_as_list,
 )
 
@@ -396,6 +398,17 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
         return context
 
+    def visitPragma_stmt(self, ctx: ap.Pragma_stmtContext):
+        # pragma experiment() handled in Bob::_is_feature_enabled()
+        # test parsing
+        try:
+            pragma = _parse_pragma(ctx.PRAGMA().getText().strip())[1]
+            _FeatureFlags.feature_from_experiment_call(pragma)
+        except errors.UserException as ex:
+            # Re-raise the exception with the context from the pragma statement
+            raise errors.UserException.from_ctx(ctx, str(ex)) from ex
+        return NOTHING
+
 
 @contextmanager
 def ato_error_converter():
@@ -466,6 +479,111 @@ class _ParameterDefinition:
         return len(self.ref) == 1
 
 
+def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
+    """
+    pragma_stmt: '#pragma' function_call
+    function_call: NAME '(' argument (',' argument)* ')'
+    argument: literal
+    literal: STRING | NUMBER | BOOLEAN
+
+    returns (name, [arg1, arg2, ...])
+    """
+    import re
+
+    _pragma = "#pragma"
+    _function_name = r"(?P<function_name>\w+)"
+    _string = r'"([^"]*)"'
+    _int = r"(\d+)"
+    _args_str = r"(?P<args_str>.*?)"
+
+    pragma_syntax = re.compile(rf"^{_pragma}\s+{_function_name}\(\s*{_args_str}\s*\)$")
+    _individual_arg_pattern = re.compile(rf"{_string}|{_int}")
+    match = pragma_syntax.match(pragma_text)
+
+    if match is None:
+        raise errors.UserSyntaxError(f"Malformed pragma: '{pragma_text}'")
+
+    data = match.groupdict()
+    name = data["function_name"]
+    args_str = data["args_str"]
+    found_args = _individual_arg_pattern.findall(args_str)
+    arguments = [
+        string_arg if string_arg is not None else int(int_arg)
+        for string_arg, int_arg in found_args
+    ]
+    return name, arguments
+
+
+class _FeatureFlags:
+    class Feature(StrEnum):
+        # TODO: remove
+        # empty enum not cool with python
+        _PLACEHOLDER = "__PLACEHOLDER__"
+
+    def __init__(self):
+        self.flags = set[_FeatureFlags.Feature]()
+
+    def enable(self, feature: Feature):
+        self.flags.add(feature)
+
+    def disable(self, feature: Feature):
+        self.flags.discard(feature)
+
+    @staticmethod
+    def feature_from_experiment_call(args: list[str | int | float | bool]) -> Feature:
+        if len(args) != 1:
+            raise errors.UserSyntaxError("Experiment pragma takes exactly one argument")
+
+        feature_name = args[0]
+        if not isinstance(feature_name, str):
+            raise errors.UserSyntaxError(
+                "Experiment pragma takes a single string argument"
+            )
+        if feature_name not in _FeatureFlags.Feature:
+            raise errors.UserFeatureNotAvailableError(
+                f"Unknown experiment feature: '{feature_name}'"
+            )
+        return _FeatureFlags.Feature(feature_name)
+
+    @classmethod
+    def from_file_ctx(cls, file_ctx: ap.File_inputContext) -> "_FeatureFlags":
+        """Parses pragmas in a file context and returns the set of enabled features."""
+        out = cls()
+
+        experiment_calls = [
+            pragma
+            for stmt_ctx in file_ctx.stmt()
+            if (
+                pragma := _parse_pragma(
+                    stmt_ctx.pragma_stmt().PRAGMA().getText().strip()
+                )
+            )[0]
+            == "experiment"
+        ]
+
+        for _, args in experiment_calls:
+            out.enable(_FeatureFlags.feature_from_experiment_call(args))
+
+        return out
+
+    def enabled(self, feature: Feature) -> bool:
+        return feature in self.flags
+
+    def enabled_in_ctx(self, ctx: ParserRuleContext, feature: Feature) -> bool:
+        current_ctx = ctx
+        while current_ctx is not None and not isinstance(
+            current_ctx, ap.File_inputContext
+        ):
+            current_ctx = current_ctx.parentCtx
+
+        if not isinstance(current_ctx, ap.File_inputContext):
+            # This shouldn't happen if ctx is from a parsed file
+            logger.warning(f"Could not find file context for feature check '{feature}'")
+            return False  # Default to disabled if context is weird
+
+        return self.enabled(feature)
+
+
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
@@ -496,6 +614,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # so we don't report dud key errors when it was a higher failure
         # that caused the node not to exist
         self._failed_nodes = FuncDict[L.Node, set[str]]()
+
+    @once
+    def _get_enabled_features(self, file_ctx: ap.File_inputContext) -> _FeatureFlags:
+        return _FeatureFlags.from_file_ctx(file_ctx)
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: TypeRef, file_path: Path | None = None
