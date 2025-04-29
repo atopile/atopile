@@ -1,14 +1,17 @@
+from enum import StrEnum
 from pathlib import Path
 from textwrap import dedent
+from typing import cast
 
 import pytest
 
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import address, errors
-from atopile.datatypes import ReferencePartType, TypeRef
+from atopile.datatypes import KeyType, ReferencePartType, TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import cast_assert
@@ -21,7 +24,7 @@ def _get_mif(node: L.Node, name: str, key: str | None = None) -> L.ModuleInterfa
     )
 
 
-def _get_attr(node: L.Node, name: str, key: str | None = None) -> L.Node:
+def _get_attr(node: L.Node, name: str, key: KeyType | None = None) -> L.Node:
     return Bob.get_node_attr(node, ReferencePartType(name, key))
 
 
@@ -90,6 +93,79 @@ def test_simple_new(bob: Bob):
 
     a = _get_attr(child, "a")
     assert isinstance(a, F.Electrical)
+
+
+def test_multiple_new(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+
+        module A:
+            resistors = new Resistor[5]
+            resistors[0].package = "R0402"
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["A"]))
+
+    assert isinstance(node, L.Module)
+    resistors = [cast(F.Resistor, _get_attr(node, "resistors", i)) for i in range(5)]
+    assert len(set(resistors)) == 5
+    for c in resistors:
+        assert isinstance(c, F.Resistor)
+
+    solver = DefaultSolver()
+    assert (
+        resistors[0].get_trait(F.has_package).get_package(solver)
+        == F.has_package.Package.R0402
+    )
+
+    assert _get_attr(node, "resistors", -1) is _get_attr(node, "resistors", 4)
+
+    with pytest.raises(AttributeError):
+        _get_attr(node, "resistors", 5)
+
+
+def test_invalid_multiple_new_count(bob: Bob):
+    with pytest.raises(errors.UserSyntaxError):
+        bob.build_ast(
+            parse_text_as_file(
+                dedent(
+                    """
+                    module A:
+                        resistors = new Resistor[-1]
+                    """
+                )
+            ),
+            TypeRef(["A"]),
+        )
+
+    with pytest.raises(errors.UserValueError):
+        bob.build_ast(
+            parse_text_as_file(
+                dedent(
+                    """
+                    module A:
+                        resistors = new Resistor[1.0]
+                    """
+                )
+            ),
+            TypeRef(["A"]),
+        )
+
+    with pytest.raises(errors.UserValueError):
+        bob.build_ast(
+            parse_text_as_file(
+                dedent(
+                    """
+                    module A:
+                        resistors = new Resistor[0x10]
+                    """
+                )
+            ),
+            TypeRef(["A"]),
+        )
 
 
 def test_nested_nodes(bob: Bob):
@@ -634,3 +710,55 @@ def test_regression_pin_refs(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
+
+
+def test_pragma_feature_existing(bob: Bob):
+    from atopile.front_end import _FeatureFlags
+
+    # add test enum to Feature enum class
+    class TestFeatures(StrEnum):
+        BLA = "BLA"
+
+    _FeatureFlags.Feature = TestFeatures  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("BLA")
+
+        module App:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_pragma_feature_nonexisting(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BLAB")
+
+        module App:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserException, match="Unknown experiment"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_pragma_feature_multiple_args(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BLAB", 5)
+
+        module App:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserException, match="takes exactly one argument"):
+        bob.build_ast(tree, TypeRef(["App"]))

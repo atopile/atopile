@@ -17,9 +17,14 @@ file_input
     : (NEWLINE | stmt)* EOF
     ;
 
+pragma_stmt
+    : PRAGMA
+    ;
+
 stmt
     : simple_stmts
     | compound_stmt
+    | pragma_stmt
     ;
 simple_stmts
     : simple_stmt (';' simple_stmt)* ';'? NEWLINE
@@ -138,7 +143,10 @@ pin_stmt
     ;
 
 new_stmt
-    : 'new' type_reference
+    : 'new' type_reference ('[' new_count ']')?
+    ;
+new_count
+    : NUMBER
     ;
 
 string_stmt

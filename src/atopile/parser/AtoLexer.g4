@@ -49,7 +49,7 @@ PASS: 'pass';
 DIRECTED_CONNECT: '~>';
 CONNECT: '~';
 
-// Stuff from the Python3 grammar we based this on
+// Stuff from the Python3 grammer we based this on
 
 /// identifier   ::=  id_start id_continue*
 NAME: ID_START ID_CONTINUE*;
@@ -142,6 +142,8 @@ IDIV_ASSIGN: '//=';
 // https://docs.python.org/3.12/reference/lexical_analysis.html#physical-lines
 NEWLINE: '\r'? '\n'; // Unix, Windows
 
+PRAGMA:
+	'#pragma' ~[\r\n]*; // Keep on default channel (pre-comment)
 // https://docs.python.org/3.12/reference/lexical_analysis.html#comments
 COMMENT: '#' ~[\r\n]* -> channel(HIDDEN);
 
