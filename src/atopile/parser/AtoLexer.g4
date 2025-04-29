@@ -36,6 +36,9 @@ NEW: 'new';
 FROM: 'from';
 IMPORT: 'import';
 
+FOR: 'for';
+IN: 'in';
+
 ASSERT: 'assert';
 TO: 'to';
 

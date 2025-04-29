@@ -8,24 +8,23 @@ import pytest
 import faebryk.core.parameter as fab_param
 import faebryk.library._F as F
 from atopile import address, errors
-from atopile.datatypes import KeyType, ReferencePartType, TypeRef
+from atopile.datatypes import TypeRef
 from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
 
-def _get_mif(node: L.Node, name: str, key: str | None = None) -> L.ModuleInterface:
+def _get_mif(
+    bob: Bob, node: L.Node, name: str, key: str | None = None
+) -> L.ModuleInterface:
     return cast_assert(
         L.ModuleInterface,
-        _get_attr(node, name, key),
+        bob.resolve_field_shortcut(node, name, key),
     )
-
-
-def _get_attr(node: L.Node, name: str, key: KeyType | None = None) -> L.Node:
-    return Bob.get_node_attr(node, ReferencePartType(name, key))
 
 
 def test_empty_module_build(bob: Bob):
@@ -88,10 +87,10 @@ def test_simple_new(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
-    child = _get_attr(node, "child")
+    child = bob.resolve_node_shortcut(node, "child")
     assert child.has_trait(_has_ato_cmp_attrs)
 
-    a = _get_attr(child, "a")
+    a = bob.resolve_node_shortcut(child, "a")
     assert isinstance(a, F.Electrical)
 
 
@@ -110,7 +109,8 @@ def test_multiple_new(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
-    resistors = [cast(F.Resistor, _get_attr(node, "resistors", i)) for i in range(5)]
+    resistors = bob.resolve_field_shortcut(node, "resistors")
+    assert isinstance(resistors, list)
     assert len(set(resistors)) == 5
     for c in resistors:
         assert isinstance(c, F.Resistor)
@@ -121,10 +121,12 @@ def test_multiple_new(bob: Bob):
         == F.has_package.Package.R0402
     )
 
-    assert _get_attr(node, "resistors", -1) is _get_attr(node, "resistors", 4)
+    assert bob.resolve_node_shortcut(
+        node, "resistors", -1
+    ) is bob.resolve_node_shortcut(node, "resistors", 4)
 
     with pytest.raises(AttributeError):
-        _get_attr(node, "resistors", 5)
+        bob.resolve_node_shortcut(node, "resistors", 5)
 
 
 def test_invalid_multiple_new_count(bob: Bob):
@@ -224,7 +226,7 @@ def test_resistor(bob: Bob, repo_root: Path):
 
     assert isinstance(node, L.Module)
 
-    r1 = _get_attr(node, "r1")
+    r1 = bob.resolve_node_shortcut(node, "r1")
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
 
@@ -245,10 +247,10 @@ def test_standard_library_import(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    r1 = _get_attr(node, "r1")
+    r1 = bob.resolve_node_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
 
-    assert _get_attr(node, "power_in")
+    assert bob.resolve_node_shortcut(node, "power_in")
 
 
 @pytest.mark.parametrize(
@@ -297,7 +299,7 @@ def test_reserved_attrs(
 
     assert isinstance(node, L.Module)
 
-    a = _get_attr(node, "a")
+    a = bob.resolve_node_shortcut(node, "a")
     assert a.get_trait(F.has_package)._enum_set == {pkg}
     assert a.get_trait(F.has_descriptive_properties).get_properties() == {
         DescriptiveProperties.partno: "1234567890"
@@ -338,7 +340,7 @@ def test_import_ato(bob: Bob, tmp_path):
 
     assert isinstance(node, L.Module)
 
-    r1 = _get_attr(node, "r1")
+    r1 = bob.resolve_node_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
 
 
@@ -394,9 +396,9 @@ def test_signal_connect(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    a = _get_mif(node, "a")
-    b = _get_mif(node, "b")
-    c = _get_mif(node, "c")
+    a = _get_mif(bob, node, "a")
+    b = _get_mif(bob, node, "b")
+    c = _get_mif(bob, node, "c")
 
     assert a.is_connected_to(b)
     assert not a.is_connected_to(c)
@@ -422,19 +424,19 @@ def test_interface_connect(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    a = _get_mif(node, "a")
-    b = _get_mif(node, "b")
-    c = _get_mif(node, "c")
+    a = _get_mif(bob, node, "a")
+    b = _get_mif(bob, node, "b")
+    c = _get_mif(bob, node, "c")
 
     assert a.is_connected_to(b)
     assert not a.is_connected_to(c)
 
-    a_one = _get_mif(a, "one")
-    b_one = _get_mif(b, "one")
-    c_one = _get_mif(c, "one")
-    a_two = _get_mif(a, "two")
-    b_two = _get_mif(b, "two")
-    c_two = _get_mif(c, "two")
+    a_one = _get_mif(bob, a, "one")
+    b_one = _get_mif(bob, b, "one")
+    c_one = _get_mif(bob, c, "one")
+    a_two = _get_mif(bob, a, "two")
+    b_two = _get_mif(bob, b, "two")
+    c_two = _get_mif(bob, c, "two")
 
     assert a_one.is_connected_to(b_one)
     assert a_two.is_connected_to(b_two)
@@ -469,13 +471,13 @@ def test_duck_type_connect(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    a = _get_mif(node, "a")
-    b = _get_mif(node, "b")
+    a = _get_mif(bob, node, "a")
+    b = _get_mif(bob, node, "b")
 
-    a_one = _get_mif(a, "one")
-    b_one = _get_mif(b, "one")
-    a_two = _get_mif(a, "two")
-    b_two = _get_mif(b, "two")
+    a_one = _get_mif(bob, a, "one")
+    b_one = _get_mif(bob, b, "one")
+    a_two = _get_mif(bob, a, "two")
+    b_two = _get_mif(bob, b, "two")
 
     assert a_one.is_connected_to(b_one)
     assert a_two.is_connected_to(b_two)
@@ -499,8 +501,8 @@ def test_directed_connect_signals(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    a = _get_mif(node, "a")
-    b = _get_mif(node, "b")
+    a = _get_mif(bob, node, "a")
+    b = _get_mif(bob, node, "b")
 
     assert a.is_connected_to(b)
 
@@ -526,11 +528,11 @@ def test_directed_connect_power_via_led(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    power = cast_assert(F.ElectricPower, _get_attr(node, "power"))
+    power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
     current_limiting_resistor = cast_assert(
-        F.Resistor, _get_attr(node, "current_limiting_resistor")
+        F.Resistor, bob.resolve_node_shortcut(node, "current_limiting_resistor")
     )
-    led = cast_assert(F.LED, _get_attr(node, "led"))
+    led = cast_assert(F.LED, bob.resolve_node_shortcut(node, "led"))
 
     assert power.hv.is_connected_to(current_limiting_resistor.unnamed[0])
     assert current_limiting_resistor.unnamed[1].is_connected_to(led.anode)
@@ -555,8 +557,8 @@ def test_directed_connect_signal_to_resistor(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    a = _get_mif(node, "a")
-    r = cast_assert(F.Resistor, _get_attr(node, "r"))
+    a = _get_mif(bob, node, "a")
+    r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
 
     assert a.is_connected_to(r.unnamed[0])
 
@@ -628,7 +630,7 @@ def test_requires(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    a = _get_mif(node, "a")
+    a = _get_mif(bob, node, "a")
     assert a.has_trait(F.requires_external_usage)
 
 
@@ -647,7 +649,7 @@ def test_key(bob: Bob):
 
     assert isinstance(node, L.Module)
 
-    r = _get_attr(node, "r")
+    r = bob.resolve_node_shortcut(node, "r")
     assert isinstance(r, F.Resistor)
 
 
@@ -719,6 +721,7 @@ def test_pragma_feature_existing(bob: Bob):
     class TestFeatures(StrEnum):
         BLA = "BLA"
 
+    _BACKUP = _FeatureFlags.Feature
     _FeatureFlags.Feature = TestFeatures  # type: ignore
 
     text = dedent(
@@ -732,6 +735,8 @@ def test_pragma_feature_existing(bob: Bob):
 
     tree = parse_text_as_file(text)
     bob.build_ast(tree, TypeRef(["App"]))
+
+    _FeatureFlags.Feature = _BACKUP  # type: ignore
 
 
 def test_pragma_feature_nonexisting(bob: Bob):
@@ -761,4 +766,178 @@ def test_pragma_feature_multiple_args(bob: Bob):
 
     tree = parse_text_as_file(text)
     with pytest.raises(errors.UserException, match="takes exactly one argument"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_for_loop_basic(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors:
+                r.unnamed[0] ~ r.unnamed[1]
+                assert r.resistance is 100 kohm +/- 10%
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    resistors = bob.resolve_field_shortcut(node, "resistors")
+    assert isinstance(resistors, list)
+    for r in resistors:
+        assert isinstance(r, F.Resistor)
+        assert r.unnamed[0].is_connected_to(r.unnamed[1])
+        assert r.resistance.try_get_literal() == L.Range.from_center_rel(
+            100 * P.kohm, 0.1
+        )
+
+
+def test_for_loop_no_pragma(bob: Bob):
+    text = dedent(
+        """
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors:
+                r.unnamed[0] ~ r.unnamed[1]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(
+        errors.UserFeatureNotEnabledError, match="Experimental feature not enabled"
+    ):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_for_loop_nested_error(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            resistors2 = new Resistor[5]
+            for r in resistors:
+                for r2 in resistors2:
+                    r.unnamed[0] ~ r2.unnamed[0]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    # nested for loops are not allowed
+    with pytest.raises(errors.UserException, match="Nested"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_for_loop_variable_conflict(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            r = new Resistor  # Existing attribute
+            resistors = new Resistor[3]
+            for r in resistors:  # Conflict!
+                pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    with pytest.raises(errors.UserKeyError, match="conflicts with an existing"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_for_loop_iterate_non_list(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            r_single = new Resistor
+            for r in r_single: # Cannot iterate over a single component
+                pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    with pytest.raises(errors.UserTypeError, match="Cannot iterate over type"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_for_loop_empty_list(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+        import Electrical
+
+        module App:
+            resistors = new Resistor[0] # Empty list
+            test_pins = new Electrical[2]
+            for r in resistors:
+                # This should never be reached
+                test_pins[0] ~ test_pins[1]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    # Should build without errors and the assert False should not trigger
+    app = bob.build_ast(tree, TypeRef(["App"]))
+
+    # Check that the test_pins are not connected
+    test_pins = bob.resolve_field_shortcut(app, "test_pins")
+    assert isinstance(test_pins, list)
+    for pin in test_pins:
+        assert isinstance(pin, F.Electrical)
+    test_pins = cast(list[F.Electrical], test_pins)
+    assert len(test_pins) == 2
+    assert not test_pins[0].is_connected_to(test_pins[1])
+
+
+def test_for_loop_syntax_error(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors:
+            resistors[0].unnamed[0] ~ resistors[1].unnamed[0]
+        """
+    )
+
+    with pytest.raises(errors.UserSyntaxError, match="missing INDENT"):
+        parse_text_as_file(text)
+
+
+def test_for_loop_stale_ref(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors:
+                assert r.resistance is 100 kohm
+            r.unnamed[0] ~ r.unnamed[1]
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserKeyError):
         bob.build_ast(tree, TypeRef(["App"]))
