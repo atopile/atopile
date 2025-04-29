@@ -115,10 +115,10 @@ retype_stmt
     ;
 
 directed_connect_stmt
-    : connectable (DIRECTED_CONNECT bridgeable)+
+    : connectable (SPERM bridgeable)+
     ;
 connect_stmt
-    : connectable CONNECT connectable
+    : connectable WIRE connectable
     ;
 bridgeable
     : field_reference

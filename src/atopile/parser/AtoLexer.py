@@ -504,8 +504,8 @@ class AtoLexer(AtoLexerBase):
     WITHIN = 18
     IS = 19
     PASS = 20
-    DIRECTED_CONNECT = 21
-    CONNECT = 22
+    SPERM = 21
+    WIRE = 22
     NAME = 23
     STRING_LITERAL = 24
     BYTES_LITERAL = 25
@@ -588,8 +588,8 @@ class AtoLexer(AtoLexerBase):
     symbolicNames = [ "<INVALID>",
             "INDENT", "DEDENT", "STRING", "NUMBER", "INTEGER", "COMPONENT", 
             "MODULE", "INTERFACE", "PIN", "SIGNAL", "NEW", "FROM", "IMPORT", 
-            "ASSERT", "TO", "TRUE", "FALSE", "WITHIN", "IS", "PASS", "DIRECTED_CONNECT", 
-            "CONNECT", "NAME", "STRING_LITERAL", "BYTES_LITERAL", "DECIMAL_INTEGER", 
+            "ASSERT", "TO", "TRUE", "FALSE", "WITHIN", "IS", "PASS", "SPERM", 
+            "WIRE", "NAME", "STRING_LITERAL", "BYTES_LITERAL", "DECIMAL_INTEGER", 
             "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", 
             "IMAG_NUMBER", "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", "PLUS_MINUS_SIGN", 
             "PERCENT", "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", "CLOSE_PAREN", 
@@ -606,28 +606,27 @@ class AtoLexer(AtoLexerBase):
     ruleNames = [ "STRING", "NUMBER", "INTEGER", "COMPONENT", "MODULE", 
                   "INTERFACE", "PIN", "SIGNAL", "NEW", "FROM", "IMPORT", 
                   "ASSERT", "TO", "TRUE", "FALSE", "WITHIN", "IS", "PASS", 
-                  "DIRECTED_CONNECT", "CONNECT", "NAME", "STRING_LITERAL", 
-                  "BYTES_LITERAL", "DECIMAL_INTEGER", "OCT_INTEGER", "HEX_INTEGER", 
-                  "BIN_INTEGER", "FLOAT_NUMBER", "IMAG_NUMBER", "PLUS_OR_MINUS", 
-                  "PLUS_SLASH_MINUS", "PLUS_MINUS_SIGN", "PERCENT", "DOT", 
-                  "ELLIPSIS", "STAR", "OPEN_PAREN", "CLOSE_PAREN", "COMMA", 
-                  "COLON", "SEMI_COLON", "POWER", "ASSIGN", "OPEN_BRACK", 
-                  "CLOSE_BRACK", "OR_OP", "XOR", "AND_OP", "LEFT_SHIFT", 
-                  "RIGHT_SHIFT", "ADD", "MINUS", "DIV", "IDIV", "OPEN_BRACE", 
-                  "CLOSE_BRACE", "LESS_THAN", "GREATER_THAN", "EQUALS", 
-                  "GT_EQ", "LT_EQ", "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", 
-                  "ADD_ASSIGN", "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", 
-                  "DIV_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN", 
-                  "LEFT_SHIFT_ASSIGN", "RIGHT_SHIFT_ASSIGN", "POWER_ASSIGN", 
-                  "IDIV_ASSIGN", "NEWLINE", "PRAGMA", "COMMENT", "WS", "EXPLICIT_LINE_JOINING", 
-                  "ERRORTOKEN", "SHORT_STRING", "LONG_STRING", "LONG_STRING_ITEM", 
-                  "LONG_STRING_CHAR", "STRING_ESCAPE_SEQ", "NON_ZERO_DIGIT", 
-                  "DIGIT", "OCT_DIGIT", "HEX_DIGIT", "BIN_DIGIT", "POINT_FLOAT", 
-                  "EXPONENT_FLOAT", "INT_PART", "EXPONENT", "SHORT_BYTES", 
-                  "LONG_BYTES", "LONG_BYTES_ITEM", "SHORT_BYTES_CHAR_NO_SINGLE_QUOTE", 
-                  "SHORT_BYTES_CHAR_NO_DOUBLE_QUOTE", "LONG_BYTES_CHAR", 
-                  "BYTES_ESCAPE_SEQ", "SPACES", "LINE_JOINING", "UNICODE_OIDS", 
-                  "UNICODE_OIDC", "ID_START", "ID_CONTINUE" ]
+                  "SPERM", "WIRE", "NAME", "STRING_LITERAL", "BYTES_LITERAL", 
+                  "DECIMAL_INTEGER", "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", 
+                  "FLOAT_NUMBER", "IMAG_NUMBER", "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", 
+                  "PLUS_MINUS_SIGN", "PERCENT", "DOT", "ELLIPSIS", "STAR", 
+                  "OPEN_PAREN", "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", 
+                  "POWER", "ASSIGN", "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", 
+                  "XOR", "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", "ADD", "MINUS", 
+                  "DIV", "IDIV", "OPEN_BRACE", "CLOSE_BRACE", "LESS_THAN", 
+                  "GREATER_THAN", "EQUALS", "GT_EQ", "LT_EQ", "NOT_EQ_1", 
+                  "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", "SUB_ASSIGN", 
+                  "MULT_ASSIGN", "AT_ASSIGN", "DIV_ASSIGN", "AND_ASSIGN", 
+                  "OR_ASSIGN", "XOR_ASSIGN", "LEFT_SHIFT_ASSIGN", "RIGHT_SHIFT_ASSIGN", 
+                  "POWER_ASSIGN", "IDIV_ASSIGN", "NEWLINE", "PRAGMA", "COMMENT", 
+                  "WS", "EXPLICIT_LINE_JOINING", "ERRORTOKEN", "SHORT_STRING", 
+                  "LONG_STRING", "LONG_STRING_ITEM", "LONG_STRING_CHAR", 
+                  "STRING_ESCAPE_SEQ", "NON_ZERO_DIGIT", "DIGIT", "OCT_DIGIT", 
+                  "HEX_DIGIT", "BIN_DIGIT", "POINT_FLOAT", "EXPONENT_FLOAT", 
+                  "INT_PART", "EXPONENT", "SHORT_BYTES", "LONG_BYTES", "LONG_BYTES_ITEM", 
+                  "SHORT_BYTES_CHAR_NO_SINGLE_QUOTE", "SHORT_BYTES_CHAR_NO_DOUBLE_QUOTE", 
+                  "LONG_BYTES_CHAR", "BYTES_ESCAPE_SEQ", "SPACES", "LINE_JOINING", 
+                  "UNICODE_OIDS", "UNICODE_OIDC", "ID_START", "ID_CONTINUE" ]
 
     grammarFileName = "AtoLexer.g4"
 

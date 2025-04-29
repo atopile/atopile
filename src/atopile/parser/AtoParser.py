@@ -208,8 +208,8 @@ class AtoParser ( AtoParserBase ):
     symbolicNames = [ "<INVALID>", "INDENT", "DEDENT", "STRING", "NUMBER", 
                       "INTEGER", "COMPONENT", "MODULE", "INTERFACE", "PIN", 
                       "SIGNAL", "NEW", "FROM", "IMPORT", "ASSERT", "TO", 
-                      "TRUE", "FALSE", "WITHIN", "IS", "PASS", "DIRECTED_CONNECT", 
-                      "CONNECT", "NAME", "STRING_LITERAL", "BYTES_LITERAL", 
+                      "TRUE", "FALSE", "WITHIN", "IS", "PASS", "SPERM", 
+                      "WIRE", "NAME", "STRING_LITERAL", "BYTES_LITERAL", 
                       "DECIMAL_INTEGER", "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", 
                       "FLOAT_NUMBER", "IMAG_NUMBER", "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", 
                       "PLUS_MINUS_SIGN", "PERCENT", "DOT", "ELLIPSIS", "STAR", 
@@ -333,8 +333,8 @@ class AtoParser ( AtoParserBase ):
     WITHIN=18
     IS=19
     PASS=20
-    DIRECTED_CONNECT=21
-    CONNECT=22
+    SPERM=21
+    WIRE=22
     NAME=23
     STRING_LITERAL=24
     BYTES_LITERAL=25
@@ -1793,11 +1793,11 @@ class AtoParser ( AtoParserBase ):
             return self.getTypedRuleContext(AtoParser.ConnectableContext,0)
 
 
-        def DIRECTED_CONNECT(self, i:int=None):
+        def SPERM(self, i:int=None):
             if i is None:
-                return self.getTokens(AtoParser.DIRECTED_CONNECT)
+                return self.getTokens(AtoParser.SPERM)
             else:
-                return self.getToken(AtoParser.DIRECTED_CONNECT, i)
+                return self.getToken(AtoParser.SPERM, i)
 
         def bridgeable(self, i:int=None):
             if i is None:
@@ -1832,7 +1832,7 @@ class AtoParser ( AtoParserBase ):
             _la = self._input.LA(1)
             while True:
                 self.state = 261
-                self.match(AtoParser.DIRECTED_CONNECT)
+                self.match(AtoParser.SPERM)
                 self.state = 262
                 self.bridgeable()
                 self.state = 265 
@@ -1864,8 +1864,8 @@ class AtoParser ( AtoParserBase ):
                 return self.getTypedRuleContext(AtoParser.ConnectableContext,i)
 
 
-        def CONNECT(self):
-            return self.getToken(AtoParser.CONNECT, 0)
+        def WIRE(self):
+            return self.getToken(AtoParser.WIRE, 0)
 
         def getRuleIndex(self):
             return AtoParser.RULE_connect_stmt
@@ -1888,7 +1888,7 @@ class AtoParser ( AtoParserBase ):
             self.state = 267
             self.connectable()
             self.state = 268
-            self.match(AtoParser.CONNECT)
+            self.match(AtoParser.WIRE)
             self.state = 269
             self.connectable()
         except RecognitionException as re:
