@@ -629,5 +629,20 @@ def test_pragma_feature_nonexisting(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    with pytest.raises(errors.UserFeatureNotAvailableError):
+    with pytest.raises(errors.UserException, match="Unknown experiment"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_pragma_feature_multiple_args(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BLAB", 5)
+
+        module App:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserException, match="takes exactly one argument"):
         bob.build_ast(tree, TypeRef(["App"]))

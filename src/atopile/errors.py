@@ -354,8 +354,8 @@ class UserNoProjectException(UserException):
 
 
 class UserFeatureNotAvailableError(UserException):
-    title = "Feature Not Available"  # type: ignore
+    msg = "Feature Not Available"
 
 
 class UserFeatureNotEnabledError(UserSyntaxError):
-    title = "Feature Not Enabled"  # type: ignore
+    msg = "Feature Not Enabled"

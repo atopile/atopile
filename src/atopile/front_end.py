@@ -401,8 +401,12 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
     def visitPragma_stmt(self, ctx: ap.Pragma_stmtContext):
         # pragma experiment() handled in Bob::_is_feature_enabled()
         # test parsing
-        pragma = _parse_pragma(ctx.PRAGMA().getText().strip())[1]
-        _FeatureFlags.feature_from_experiment_call(pragma)
+        try:
+            pragma = _parse_pragma(ctx.PRAGMA().getText().strip())[1]
+            _FeatureFlags.feature_from_experiment_call(pragma)
+        except errors.UserException as ex:
+            # Re-raise the exception with the context from the pragma statement
+            raise errors.UserException.from_ctx(ctx, str(ex)) from ex
         return NOTHING
 
 
@@ -486,14 +490,28 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
     """
     import re
 
-    pragma_syntax = re.compile(r"^#pragma\s+(\w+)\(\s*([^\)]*)\s*\)$")
+    _pragma = "#pragma"
+    _function_name = r"(?P<function_name>\w+)"
+    _string = r'"([^"]*)"'
+    _int = r"(\d+)"
+    _args_str = r"(?P<args_str>.*?)"
+
+    pragma_syntax = re.compile(rf"^{_pragma}\s+{_function_name}\(\s*{_args_str}\s*\)$")
+    _individual_arg_pattern = re.compile(rf"{_string}|{_int}")
     match = pragma_syntax.match(pragma_text)
+
     if match is None:
         raise errors.UserSyntaxError(f"Malformed pragma: '{pragma_text}'")
-    name = match.group(1)
-    # TODO ugly
-    args = [eval(arg) for arg in match.group(2).split(",")]
-    return name, args
+
+    data = match.groupdict()
+    name = data["function_name"]
+    args_str = data["args_str"]
+    found_args = _individual_arg_pattern.findall(args_str)
+    arguments = [
+        string_arg if string_arg is not None else int(int_arg)
+        for string_arg, int_arg in found_args
+    ]
+    return name, arguments
 
 
 class _FeatureFlags:
