@@ -46,8 +46,8 @@ WITHIN: 'within';
 IS: 'is';
 PASS: 'pass';
 
-DIRECTED_CONNECT: '~>';
-CONNECT: '~';
+SPERM: '~>';
+WIRE: '~';
 
 // Stuff from the Python3 grammer we based this on
 
