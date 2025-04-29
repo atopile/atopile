@@ -830,6 +830,8 @@ def test_for_loop_stale_ref(bob: Bob):
 def test_plain_trait(bob: Bob):
     text = dedent(
         """
+        import is_not_pickable
+
         module App:
             trait is_not_pickable
         """

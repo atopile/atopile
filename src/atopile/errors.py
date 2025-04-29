@@ -363,7 +363,13 @@ class UserFeatureNotEnabledError(UserSyntaxError):
         super().__init__(msg, *args, **kwargs)
 
 
+class UserTraitNotFoundError(UserSyntaxError):
+    """
+    Raised when a trait is not found.
+    """
+
+
 class UserInvalidTraitError(UserSyntaxError):
     """
-    Raised when an invalid trait is used.
+    Raised when something other than a valid trait follows the `trait` keyword
     """

@@ -128,7 +128,7 @@ def serializedATN():
         1,0,0,0,298,299,5,14,0,0,299,300,3,128,64,0,300,301,5,15,0,0,301,
         302,3,118,59,0,302,303,5,43,0,0,303,304,3,18,9,0,304,63,1,0,0,0,
         305,306,5,16,0,0,306,307,3,68,34,0,307,65,1,0,0,0,308,309,5,23,0,
-        0,309,310,3,128,64,0,310,67,1,0,0,0,311,313,3,84,42,0,312,314,3,
+        0,309,310,3,120,60,0,310,67,1,0,0,0,311,313,3,84,42,0,312,314,3,
         70,35,0,313,312,1,0,0,0,314,315,1,0,0,0,315,313,1,0,0,0,315,316,
         1,0,0,0,316,69,1,0,0,0,317,324,3,72,36,0,318,324,3,74,37,0,319,324,
         3,76,38,0,320,324,3,78,39,0,321,324,3,80,40,0,322,324,3,82,41,0,
@@ -2421,8 +2421,8 @@ class AtoParser ( AtoParserBase ):
         def TRAIT(self):
             return self.getToken(AtoParser.TRAIT, 0)
 
-        def name(self):
-            return self.getTypedRuleContext(AtoParser.NameContext,0)
+        def type_reference(self):
+            return self.getTypedRuleContext(AtoParser.Type_referenceContext,0)
 
 
         def getRuleIndex(self):
@@ -2446,7 +2446,7 @@ class AtoParser ( AtoParserBase ):
             self.state = 308
             self.match(AtoParser.TRAIT)
             self.state = 309
-            self.name()
+            self.type_reference()
         except RecognitionException as re:
             localctx.exception = re
             self._errHandler.reportError(self, re)

@@ -161,7 +161,7 @@ assert_stmt
     ;
 
 trait_stmt
-    : 'trait' name
+    : 'trait' type_reference
     ;
 
 // Comparison operators --------------------

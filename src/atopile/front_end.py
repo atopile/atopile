@@ -291,7 +291,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                     name = ref[0]
                     if not hasattr(F, name) or not issubclass(
-                        getattr(F, name), (L.Module, L.ModuleInterface)
+                        getattr(F, name), (L.Module, L.ModuleInterface, L.Module.TraitT)
                     ):
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Unknown standard library module: '{name}'"
@@ -1732,24 +1732,29 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return NOTHING
 
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
-        # TODO: trait must be imported
+        # TODO: restrict list of importable traits
         # TODO: param templating
-        # TODO: make list of importable traits
-
-        _TRAITS = {
-            "is_not_pickable": F.is_not_pickable,
-        }
-
-        name = self.visitName(ctx.name())
 
         try:
-            trait = _TRAITS[name]
-        except KeyError:
-            raise errors.UserInvalidTraitError.from_ctx(
-                ctx, f"No such trait: `{name}`", traceback=self.get_traceback()
-            )
+            ref = self.visitTypeReference(ctx.type_reference())
+            trait_cls = self._get_referenced_class(ctx, ref)
+        except errors.UserKeyError as ex:
+            raise errors.UserTraitNotFoundError.from_ctx(
+                ctx,
+                f"No such trait: `{ctx.type_reference().getText()}`",
+                traceback=self.get_traceback(),
+            ) from ex
 
-        self._current_node.add(trait())
+        if isinstance(trait_cls, type(L.Module.TraitT)):
+            trait = trait_cls()
+            self._current_node.add(trait)
+
+        else:
+            raise errors.UserInvalidTraitError.from_ctx(
+                ctx,
+                f"`{ref}` is not a valid trait",
+                traceback=self.get_traceback(),
+            )
 
         return NOTHING
 
