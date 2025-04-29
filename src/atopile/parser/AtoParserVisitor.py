@@ -144,6 +144,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#new_count.
+    def visitNew_count(self, ctx:AtoParser.New_countContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#string_stmt.
     def visitString_stmt(self, ctx:AtoParser.String_stmtContext):
         return self.visitChildren(ctx)

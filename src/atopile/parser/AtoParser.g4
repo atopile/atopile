@@ -131,7 +131,10 @@ pin_stmt
     ;
 
 new_stmt
-    : 'new' type_reference
+    : 'new' type_reference ('[' new_count ']')?
+    ;
+new_count
+    : NUMBER
     ;
 
 string_stmt

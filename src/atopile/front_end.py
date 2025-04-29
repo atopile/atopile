@@ -996,10 +996,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         This is to allow for it to be attached in the graph before it's filled,
         and subsequently for errors to be raised in context of it's graph location.
         """
-        new_node, promised_supers = self._new_node(
-            node_type,
-            promised_supers=[],
-        )
+        new_node, promised_supers = self._new_node(node_type, promised_supers=[])
 
         # Shim on component and module classes defined in ato
         # Do not shim fabll modules, or interfaces
@@ -1141,20 +1138,62 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             assert isinstance(new_stmt_ctx, ap.New_stmtContext)
             ref = self.visitTypeReference(new_stmt_ctx.type_reference())
 
+            def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
+                try:
+                    obj.add(
+                        node,
+                        name=assigned_name.name if container_name is None else None,
+                        container=getattr(obj, container_name)
+                        if container_name
+                        else None,
+                    )
+                except FieldExistsError as e:
+                    raise errors.UserAlreadyExistsError.from_ctx(
+                        ctx,
+                        f"Field `{assigned_name}` already exists",
+                        traceback=self.get_traceback(),
+                    ) from e
+                node.add(from_dsl(ctx))
+
             try:
                 with self._traceback_stack.enter(new_stmt_ctx):
-                    with self._init_node(
-                        self._get_referenced_class(ctx, ref)
-                    ) as new_node:
+                    if new_count_ctx := new_stmt_ctx.new_count():
                         try:
-                            self._current_node.add(new_node, name=assigned_name.name)
-                        except FieldExistsError as e:
+                            new_count = int(new_count_ctx.getText())
+                        except ValueError:
+                            raise errors.UserValueError.from_ctx(
+                                ctx,
+                                f"Invalid integer `{new_count_ctx.getText()}`",
+                                traceback=self.get_traceback(),
+                            )
+
+                        if new_count < 0:
+                            raise errors.UserValueError.from_ctx(
+                                ctx,
+                                f"Negative integer `{new_count}`",
+                                traceback=self.get_traceback(),
+                            )
+
+                        if hasattr(self._current_node, assigned_name.name):
                             raise errors.UserAlreadyExistsError.from_ctx(
                                 ctx,
                                 f"Field `{assigned_name}` already exists",
                                 traceback=self.get_traceback(),
-                            ) from e
-                        new_node.add(from_dsl(ctx))
+                            )
+
+                        setattr(self._current_node, assigned_name.name, list())
+                        for _ in range(new_count):
+                            with self._init_node(
+                                self._get_referenced_class(ctx, ref)
+                            ) as new_node:
+                                _add_node(
+                                    self._current_node, new_node, assigned_name.name
+                                )
+                    else:
+                        with self._init_node(
+                            self._get_referenced_class(ctx, ref)
+                        ) as new_node:
+                            _add_node(self._current_node, new_node)
             except Exception:
                 # Not a narrower exception because it's often an ExceptionGroup
                 self._record_failed_node(self._current_node, assigned_name.name)
