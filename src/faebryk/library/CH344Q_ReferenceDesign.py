@@ -61,7 +61,9 @@ class CH344Q_ReferenceDesign(Module):
         # TODO: already done by lowpass filter
         # self.usb_uart_converter.reset.pulled.pull(up=True)
 
-        self.usb_uart_converter.test.set_weak(on=False, owner=self)
+        self.usb_uart_converter.test.set_weak(
+            on=False, owner=self
+        ).resistance.constrain_subset(L.Range.from_center_rel(4.7 * P.kohm, 0.05))
 
         self.ldo.enable_output()
 
@@ -108,7 +110,5 @@ class CH344Q_ReferenceDesign(Module):
 
         for res in self.get_children(direct_only=True, types=F.Resistor):
             res.add(F.has_package(F.has_package.Package.R0402))
-        # TODO:Trait PCB_Transformer.has_linked_kicad_pad not found in
-        # Pad[usb_to_quad_uart_converter.decoupling_power.footprint.pins[1]]
-        # for cap in self.get_children(direct_only=True, types=F.Capacitor):
-        #     cap.add(F.has_package(F.has_package.Package.C0402))
+        for cap in self.get_children(direct_only=True, types=F.Capacitor):
+            cap.add(F.has_package(F.has_package.Package.C0402))

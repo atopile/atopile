@@ -29,7 +29,9 @@ class CH344Q(F.CH344):
             The TNOW pin can be connected to the tx_enable and rx_enable
             pins of the RS485 tranceiver for automatic half-duplex control.
             """
-            self.uart.dtr.set_weak(on=False, owner=owner)
+            self.uart.dtr.set_weak(on=False, owner=owner).resistance.constrain_subset(
+                L.Range.from_center_rel(4.7 * P.kohm, 0.05)
+            )
             self.uart.dtr.connect(self.tnow)
 
     uartwrapper = L.list_field(4, UARTWrapper)
@@ -39,7 +41,9 @@ class CH344Q(F.CH344):
         """
         Use the chip default settings instead of the ones stored in the internal EEPROM
         """
-        self.uart[0].rts.set_weak(on=False, owner=owner)
+        self.uart[0].rts.set_weak(on=False, owner=owner).resistance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.kohm, 0.05)
+        )
 
     @assert_once
     def enable_status_or_modem_signals(
@@ -49,7 +53,9 @@ class CH344Q(F.CH344):
         Enable rx, tx and usb status signal outputs instead of UART modem signals.
         """
         if modem_signals:
-            self.uart[3].rts.set_weak(on=False, owner=owner)
+            self.uart[3].rts.set_weak(
+                on=False, owner=owner
+            ).resistance.constrain_subset(L.Range.from_center_rel(4.7 * P.kohm, 0.05))
             return
         self.act.connect(self.uart[3].dcd)
         self.indicator_tx.connect(self.uart[3].ri)
@@ -60,7 +66,9 @@ class CH344Q(F.CH344):
         """
         Enable UART hardware flow control
         """
-        self.uart[3].dcd.set_weak(on=False, owner=owner)
+        self.uart[3].dcd.set_weak(on=False, owner=owner).resistance.constrain_subset(
+            L.Range.from_center_rel(4.7 * P.kohm, 0.05)
+        )
         # TODO: check if this should just be connected to gnd as there is an
         # internal pull-up resistor
 
