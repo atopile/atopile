@@ -1731,6 +1731,28 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise ValueError(f"Unhandled comparison type {type(cmp)}")
         return NOTHING
 
+    def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
+        # TODO: trait must be imported
+        # TODO: param templating
+        # TODO: make list of importable traits
+
+        _TRAITS = {
+            "is_not_pickable": F.is_not_pickable,
+        }
+
+        name = self.visitName(ctx.name())
+
+        try:
+            trait = _TRAITS[name]
+        except KeyError:
+            raise errors.UserInvalidTraitError.from_ctx(
+                ctx, f"No such trait: `{name}`", traceback=self.get_traceback()
+            )
+
+        self._current_node.add(trait())
+
+        return NOTHING
+
     # Returns fab_param.ConstrainableExpression or BoolSet
     def visitComparison(
         self, ctx: ap.ComparisonContext

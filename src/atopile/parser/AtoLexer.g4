@@ -49,6 +49,8 @@ WITHIN: 'within';
 IS: 'is';
 PASS: 'pass';
 
+TRAIT: 'trait';
+
 // Stuff from the Python3 grammer we based this on
 
 /// identifier   ::=  id_start id_continue*

@@ -43,6 +43,7 @@ simple_stmt
     | declaration_stmt
     | string_stmt
     | pass_stmt
+    | trait_stmt
     ;
 
 compound_stmt
@@ -157,6 +158,10 @@ for_stmt
 
 assert_stmt
     : 'assert' comparison
+    ;
+
+trait_stmt
+    : 'trait' name
     ;
 
 // Comparison operators --------------------

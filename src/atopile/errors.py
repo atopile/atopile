@@ -361,3 +361,9 @@ class UserFeatureNotAvailableError(UserException):
 class UserFeatureNotEnabledError(UserSyntaxError):
     def __init__(self, msg="Feature Not Enabled", *args, **kwargs):
         super().__init__(msg, *args, **kwargs)
+
+
+class UserInvalidTraitError(UserSyntaxError):
+    """
+    Raised when an invalid trait is used.
+    """
