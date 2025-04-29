@@ -11,7 +11,7 @@ from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import StrEnum, auto
 from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
@@ -516,9 +516,7 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
 
 class _FeatureFlags:
     class Feature(StrEnum):
-        # TODO: remove
-        # empty enum not cool with python
-        _PLACEHOLDER = "__PLACEHOLDER__"
+        DIRECTED_CONNECT = auto()
 
     def __init__(self):
         self.flags = set[_FeatureFlags.Feature]()
@@ -1572,6 +1570,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
+        features = _FeatureFlags()
+        if not features.enabled_in_ctx(ctx, _FeatureFlags.Feature.DIRECTED_CONNECT):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                # TODO: consistent error message for disabled features
+                "Directed connect is not enabled",
+                traceback=self.get_traceback(),
+            )
+
         head = self.visitConnectable(ctx.connectable())
         bridgeables = [self.visitBridgeable(c) for c in ctx.bridgeable()]
 
