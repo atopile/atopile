@@ -1174,6 +1174,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                                 traceback=self.get_traceback(),
                             )
 
+                        if hasattr(self._current_node, assigned_name.name):
+                            raise errors.UserAlreadyExistsError.from_ctx(
+                                ctx,
+                                f"Field `{assigned_name}` already exists",
+                                traceback=self.get_traceback(),
+                            )
+
                         setattr(self._current_node, assigned_name.name, list())
                         for _ in range(new_count):
                             with self._init_node(
