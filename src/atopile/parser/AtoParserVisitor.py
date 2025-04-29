@@ -14,6 +14,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#pragma_stmt.
+    def visitPragma_stmt(self, ctx:AtoParser.Pragma_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#stmt.
     def visitStmt(self, ctx:AtoParser.StmtContext):
         return self.visitChildren(ctx)

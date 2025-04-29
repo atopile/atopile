@@ -17,9 +17,14 @@ file_input
     : (NEWLINE | stmt)* EOF
     ;
 
+pragma_stmt
+    : PRAGMA
+    ;
+
 stmt
     : simple_stmts
     | compound_stmt
+    | pragma_stmt
     ;
 simple_stmts
     : simple_stmt (';' simple_stmt)* ';'? NEWLINE

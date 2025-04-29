@@ -351,3 +351,11 @@ class UserNoProjectException(UserException):
         **kwargs,
     ):
         super().__init__(msg, *args, **kwargs)
+
+
+class UserFeatureNotAvailableError(UserException):
+    title = "Feature Not Available"  # type: ignore
+
+
+class UserFeatureNotEnabledError(UserSyntaxError):
+    title = "Feature Not Enabled"  # type: ignore

@@ -1,3 +1,4 @@
+from enum import StrEnum
 from pathlib import Path
 from textwrap import dedent
 from typing import cast
@@ -593,3 +594,40 @@ def test_regression_pin_refs(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
+
+
+def test_pragma_feature_existing(bob: Bob):
+    from atopile.front_end import _FeatureFlags
+
+    # add test enum to Feature enum class
+    class TestFeatures(StrEnum):
+        BLA = "BLA"
+
+    _FeatureFlags.Feature = TestFeatures  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("BLA")
+
+        module App:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_pragma_feature_nonexisting(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BLAB")
+
+        module App:
+            pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserFeatureNotAvailableError):
+        bob.build_ast(tree, TypeRef(["App"]))
