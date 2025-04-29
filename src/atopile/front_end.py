@@ -1591,7 +1591,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if not isinstance(b, L.Module):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
-                    f"Can't connect `{b}` because it is not a `Module`",
+f"Can't bridge via `{b}` because it is not a `Module`",
                     traceback=self.get_traceback(),
                 )
 
