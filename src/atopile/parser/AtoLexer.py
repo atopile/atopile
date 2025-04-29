@@ -39,7 +39,7 @@ def serializedATN():
         1,9,1,10,1,10,1,10,1,10,1,10,1,10,1,10,1,11,1,11,1,11,1,11,1,11,
         1,11,1,11,1,12,1,12,1,12,1,13,1,13,1,13,1,13,1,13,1,14,1,14,1,14,
         1,14,1,14,1,14,1,15,1,15,1,15,1,15,1,15,1,15,1,15,1,16,1,16,1,16,
-        1,17,1,17,1,17,1,17,1,17,1,18,1,18,1,19,1,19,1,19,1,20,1,20,5,20,
+        1,17,1,17,1,17,1,17,1,17,1,18,1,18,1,18,1,19,1,19,1,20,1,20,5,20,
         332,8,20,10,20,12,20,335,9,20,1,21,1,21,1,21,1,21,1,21,3,21,342,
         8,21,1,21,1,21,3,21,346,8,21,1,22,1,22,1,22,1,22,1,22,3,22,353,8,
         22,1,22,1,22,3,22,357,8,22,1,23,1,23,5,23,361,8,23,10,23,12,23,364,
@@ -294,7 +294,7 @@ def serializedATN():
         1,0,0,0,9,244,1,0,0,0,11,251,1,0,0,0,13,261,1,0,0,0,15,265,1,0,0,
         0,17,272,1,0,0,0,19,276,1,0,0,0,21,281,1,0,0,0,23,288,1,0,0,0,25,
         295,1,0,0,0,27,298,1,0,0,0,29,303,1,0,0,0,31,309,1,0,0,0,33,316,
-        1,0,0,0,35,319,1,0,0,0,37,324,1,0,0,0,39,326,1,0,0,0,41,329,1,0,
+        1,0,0,0,35,319,1,0,0,0,37,324,1,0,0,0,39,327,1,0,0,0,41,329,1,0,
         0,0,43,341,1,0,0,0,45,352,1,0,0,0,47,370,1,0,0,0,49,372,1,0,0,0,
         51,379,1,0,0,0,53,386,1,0,0,0,55,395,1,0,0,0,57,399,1,0,0,0,59,405,
         1,0,0,0,61,407,1,0,0,0,63,411,1,0,0,0,65,413,1,0,0,0,67,415,1,0,
@@ -346,7 +346,7 @@ def serializedATN():
         0,0,313,314,5,105,0,0,314,315,5,110,0,0,315,32,1,0,0,0,316,317,5,
         105,0,0,317,318,5,115,0,0,318,34,1,0,0,0,319,320,5,112,0,0,320,321,
         5,97,0,0,321,322,5,115,0,0,322,323,5,115,0,0,323,36,1,0,0,0,324,
-        325,5,126,0,0,325,38,1,0,0,0,326,327,5,126,0,0,327,328,5,62,0,0,
+        325,5,126,0,0,325,326,5,62,0,0,326,38,1,0,0,0,327,328,5,126,0,0,
         328,40,1,0,0,0,329,333,3,215,107,0,330,332,3,217,108,0,331,330,1,
         0,0,0,332,335,1,0,0,0,333,331,1,0,0,0,333,334,1,0,0,0,334,42,1,0,
         0,0,335,333,1,0,0,0,336,342,7,0,0,0,337,338,7,1,0,0,338,342,7,2,
@@ -498,8 +498,8 @@ class AtoLexer(AtoLexerBase):
     WITHIN = 18
     IS = 19
     PASS = 20
-    CONNECT = 21
-    DIRECTED_CONNECT = 22
+    DIRECTED_CONNECT = 21
+    CONNECT = 22
     NAME = 23
     STRING_LITERAL = 24
     BYTES_LITERAL = 25
@@ -570,7 +570,7 @@ class AtoLexer(AtoLexerBase):
     literalNames = [ "<INVALID>",
             "'component'", "'module'", "'interface'", "'pin'", "'signal'", 
             "'new'", "'from'", "'import'", "'assert'", "'to'", "'True'", 
-            "'False'", "'within'", "'is'", "'pass'", "'~'", "'~>'", "'+/-'", 
+            "'False'", "'within'", "'is'", "'pass'", "'~>'", "'~'", "'+/-'", 
             "'\\u00B1'", "'%'", "'.'", "'...'", "'*'", "'('", "')'", "','", 
             "':'", "';'", "'**'", "'='", "'['", "']'", "'|'", "'^'", "'&'", 
             "'<<'", "'>>'", "'+'", "'-'", "'/'", "'//'", "'{'", "'}'", "'<'", 
@@ -581,25 +581,24 @@ class AtoLexer(AtoLexerBase):
     symbolicNames = [ "<INVALID>",
             "INDENT", "DEDENT", "STRING", "NUMBER", "INTEGER", "COMPONENT", 
             "MODULE", "INTERFACE", "PIN", "SIGNAL", "NEW", "FROM", "IMPORT", 
-            "ASSERT", "TO", "TRUE", "FALSE", "WITHIN", "IS", "PASS", "CONNECT", 
-            "DIRECTED_CONNECT", "NAME", "STRING_LITERAL", "BYTES_LITERAL", 
-            "DECIMAL_INTEGER", "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", 
-            "FLOAT_NUMBER", "IMAG_NUMBER", "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", 
-            "PLUS_MINUS_SIGN", "PERCENT", "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", 
-            "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", "POWER", "ASSIGN", 
-            "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", "XOR", "AND_OP", "LEFT_SHIFT", 
-            "RIGHT_SHIFT", "ADD", "MINUS", "DIV", "IDIV", "OPEN_BRACE", 
-            "CLOSE_BRACE", "LESS_THAN", "GREATER_THAN", "EQUALS", "GT_EQ", 
-            "LT_EQ", "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", 
-            "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", "DIV_ASSIGN", "AND_ASSIGN", 
-            "OR_ASSIGN", "XOR_ASSIGN", "LEFT_SHIFT_ASSIGN", "RIGHT_SHIFT_ASSIGN", 
-            "POWER_ASSIGN", "IDIV_ASSIGN", "NEWLINE", "COMMENT", "WS", "EXPLICIT_LINE_JOINING", 
-            "ERRORTOKEN" ]
+            "ASSERT", "TO", "TRUE", "FALSE", "WITHIN", "IS", "PASS", "DIRECTED_CONNECT", 
+            "CONNECT", "NAME", "STRING_LITERAL", "BYTES_LITERAL", "DECIMAL_INTEGER", 
+            "OCT_INTEGER", "HEX_INTEGER", "BIN_INTEGER", "FLOAT_NUMBER", 
+            "IMAG_NUMBER", "PLUS_OR_MINUS", "PLUS_SLASH_MINUS", "PLUS_MINUS_SIGN", 
+            "PERCENT", "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", "CLOSE_PAREN", 
+            "COMMA", "COLON", "SEMI_COLON", "POWER", "ASSIGN", "OPEN_BRACK", 
+            "CLOSE_BRACK", "OR_OP", "XOR", "AND_OP", "LEFT_SHIFT", "RIGHT_SHIFT", 
+            "ADD", "MINUS", "DIV", "IDIV", "OPEN_BRACE", "CLOSE_BRACE", 
+            "LESS_THAN", "GREATER_THAN", "EQUALS", "GT_EQ", "LT_EQ", "NOT_EQ_1", 
+            "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", "SUB_ASSIGN", "MULT_ASSIGN", 
+            "AT_ASSIGN", "DIV_ASSIGN", "AND_ASSIGN", "OR_ASSIGN", "XOR_ASSIGN", 
+            "LEFT_SHIFT_ASSIGN", "RIGHT_SHIFT_ASSIGN", "POWER_ASSIGN", "IDIV_ASSIGN", 
+            "NEWLINE", "COMMENT", "WS", "EXPLICIT_LINE_JOINING", "ERRORTOKEN" ]
 
     ruleNames = [ "STRING", "NUMBER", "INTEGER", "COMPONENT", "MODULE", 
                   "INTERFACE", "PIN", "SIGNAL", "NEW", "FROM", "IMPORT", 
                   "ASSERT", "TO", "TRUE", "FALSE", "WITHIN", "IS", "PASS", 
-                  "CONNECT", "DIRECTED_CONNECT", "NAME", "STRING_LITERAL", 
+                  "DIRECTED_CONNECT", "CONNECT", "NAME", "STRING_LITERAL", 
                   "BYTES_LITERAL", "DECIMAL_INTEGER", "OCT_INTEGER", "HEX_INTEGER", 
                   "BIN_INTEGER", "FLOAT_NUMBER", "IMAG_NUMBER", "PLUS_OR_MINUS", 
                   "PLUS_SLASH_MINUS", "PLUS_MINUS_SIGN", "PERCENT", "DOT", 

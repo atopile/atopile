@@ -109,13 +109,15 @@ retype_stmt
     : field_reference '->' type_reference
     ;
 
+directed_connect_stmt
+    : connectable (DIRECTED_CONNECT bridgeable)+
+    ;
 connect_stmt
     : connectable CONNECT connectable
     ;
-directed_connect_stmt
-    : connectable (DIRECTED_CONNECT connectable)+
+bridgeable
+    : field_reference
     ;
-
 connectable
     : field_reference
     | signaldef_stmt

@@ -1411,44 +1411,23 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
-        connectables = [self.visitConnectable(c) for c in ctx.connectable()]
-        if isinstance(connectables[-1], L.ModuleInterface):
-            start, bridges, end = connectables[0], connectables[1:-1], connectables[-1]
+        head = self.visitConnectable(ctx.connectable())
+        bridgeables = [self.visitBridgeable(c) for c in ctx.bridgeable()]
+
+        if isinstance(bridgeables[-1], L.ModuleInterface):
+            bridgeables, tail = bridgeables[:-1], bridgeables[-1]
         else:
-            start, bridges, end = connectables[0], connectables[1:], None
+            tail = None
 
-        if not isinstance(start, L.ModuleInterface):
-            raise errors.UserTypeError.from_ctx(
-                ctx,
-                f"Can't connect `{start}` because it's not a `ModuleInterface`",
-                traceback=self.get_traceback(),
-            )
-
-        for bridge in bridges:
-            if not isinstance(bridge, L.Module):
+        for b in bridgeables:
+            if not isinstance(b, L.Module):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
-                    f"Can't connect via `{bridge}` because it's not a `Module`",
+                    f"Can't connect `{b}` because it is not a `Module`",
                     traceback=self.get_traceback(),
                 )
 
-            if not bridge.has_trait(F.can_bridge):
-                raise errors.UserTypeError.from_ctx(
-                    ctx,
-                    f"Can't connect via `{bridge}` because it is not bridgeable",
-                    traceback=self.get_traceback(),
-                )
-
-        if end is None:
-            start.connect_via(bridges)
-        elif isinstance(end, L.ModuleInterface):
-            start.connect_via(bridges, end)
-        else:
-            raise errors.UserTypeError.from_ctx(
-                ctx,
-                f"Can't connect `{end}` because it's not a `ModuleInterface`",
-                traceback=self.get_traceback(),
-            )
+        head.connect_via(bridgeables, *([tail] if tail else []))
 
         return NOTHING
 
@@ -1469,6 +1448,30 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return node
         else:
             raise ValueError(f"Unhandled connectable type `{ctx}`")
+
+    def visitBridgeable(
+        self, ctx: ap.BridgeableContext
+    ) -> L.Module | L.ModuleInterface:
+        ref = self.visitFieldReference(ctx.field_reference())
+        node = self._get_referenced_node(ref, ctx)
+
+        match node:
+            case L.Module():
+                if not node.has_trait(F.can_bridge):
+                    raise errors.UserTypeError.from_ctx(
+                        ctx,
+                        f"Can't connect via `{node}` because it is not bridgeable",
+                        traceback=self.get_traceback(),
+                    )
+                return node
+            case L.ModuleInterface():
+                return node
+            case _:
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect via `{node}` because it's not a `Module`",
+                    traceback=self.get_traceback(),
+                )
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref = self.visitFieldReference(ctx.field_reference())

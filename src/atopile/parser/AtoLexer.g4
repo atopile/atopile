@@ -46,8 +46,8 @@ WITHIN: 'within';
 IS: 'is';
 PASS: 'pass';
 
-CONNECT: '~';
 DIRECTED_CONNECT: '~>';
+CONNECT: '~';
 
 // Stuff from the Python3 grammar we based this on
 
