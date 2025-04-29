@@ -75,6 +75,7 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    complete_type_string,
     groupby,
     has_attr_or_property,
     has_instance_settable_attr,
@@ -584,7 +585,7 @@ class _FeatureFlags:
         return flags.enabled(feature)
 
 
-type Field = L.Node | list[L.Node] | dict[str, L.Node]
+type Field = L.Node | list[L.Node] | dict[str, L.Node] | set[L.Node]
 
 
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -2162,26 +2163,45 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             loop_var_name = self.visitName(ctx.name())
             iterable_ref = self.visitFieldReference(ctx.field_reference())
 
-            # TODO handle errors
-            iterable_node = self.resolve_node_field(self._current_node, iterable_ref)
+            try:
+                _iterable_node = self.resolve_node_field(
+                    self._current_node, iterable_ref
+                )
+            except AttributeError as ex:
+                raise errors.UserKeyError.from_ctx(
+                    ctx.field_reference(),
+                    f"Cannot iterate over non-existing field `{iterable_ref}`:"
+                    f"{str(ex)}",
+                    traceback=self.get_traceback(),
+                ) from ex
 
-            if not isinstance(iterable_node, list):
-                # TODO: Support iterating over other types like dicts?
+            iterable_node: list[L.Node] | None = None
+            if isinstance(_iterable_node, list):
+                iterable_node = list(_iterable_node)
+            elif isinstance(_iterable_node, set):
+                iterable_node = list(_iterable_node)
+            elif isinstance(_iterable_node, dict):
+                iterable_node = list(_iterable_node.values())
+
+            if not isinstance(iterable_node, list) or not all(
+                isinstance(item, L.Node) for item in iterable_node
+            ):
                 raise errors.UserTypeError.from_ctx(
                     ctx.field_reference(),
-                    f"Cannot iterate over type '{type(iterable_node).__name__}'."
-                    f" Expected a list (e.g., from `new X[N]`).",
+                    f"Cannot iterate over type `{complete_type_string(_iterable_node)}`"
+                    f". Expected `list[Node]`, `dict[str, Node]` or `set[Node]`"
+                    f"  (e.g., from `new X[N]`).",
                     traceback=self.get_traceback(),
                 )
 
             block_ctx = ctx.block()
 
-            # TODO runtime is not only place for collisions I think
             # Check for variable name collisions before starting the loop
-            original_value = self._current_node.runtime.get(loop_var_name, NOTHING)
-            if loop_var_name in self._current_node.__dict__ or (
-                original_value is not NOTHING
-            ):
+            try:
+                self.resolve_node_property(self._current_node, loop_var_name)
+            except AttributeError:
+                pass
+            else:
                 raise errors.UserKeyError.from_ctx(
                     ctx.name(),
                     f"Loop variable '{loop_var_name}' conflicts with an existing"
