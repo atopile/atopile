@@ -825,3 +825,18 @@ def test_for_loop_stale_ref(bob: Bob):
     tree = parse_text_as_file(text)
     with pytest.raises(errors.UserKeyError):
         bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_plain_trait(bob: Bob):
+    text = dedent(
+        """
+        module App:
+            trait is_not_pickable
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    assert node.has_trait(F.is_not_pickable)
