@@ -605,6 +605,7 @@ def test_pragma_feature_existing(bob: Bob):
     class TestFeatures(StrEnum):
         BLA = "BLA"
 
+    _BACKUP = _FeatureFlags.Feature
     _FeatureFlags.Feature = TestFeatures  # type: ignore
 
     text = dedent(
@@ -618,6 +619,8 @@ def test_pragma_feature_existing(bob: Bob):
 
     tree = parse_text_as_file(text)
     bob.build_ast(tree, TypeRef(["App"]))
+
+    _FeatureFlags.Feature = _BACKUP  # type: ignore
 
 
 def test_pragma_feature_nonexisting(bob: Bob):
