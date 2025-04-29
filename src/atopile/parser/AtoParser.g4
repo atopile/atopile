@@ -47,6 +47,7 @@ simple_stmt
 
 compound_stmt
     : blockdef
+    | for_stmt
     ;
 
 blockdef
@@ -149,6 +150,10 @@ string_stmt
 pass_stmt
     : 'pass'
     ; // the unbound string is a statement used to add doc-strings
+
+for_stmt
+    : FOR name IN field_reference ':' block
+    ;
 
 assert_stmt
     : 'assert' comparison

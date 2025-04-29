@@ -164,6 +164,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#for_stmt.
+    def visitFor_stmt(self, ctx:AtoParser.For_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#assert_stmt.
     def visitAssert_stmt(self, ctx:AtoParser.Assert_stmtContext):
         return self.visitChildren(ctx)

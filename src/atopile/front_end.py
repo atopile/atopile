@@ -35,6 +35,7 @@ from atopile.datatypes import (
     FieldRef,
     KeyOptItem,
     KeyOptMap,
+    KeyType,
     ReferencePartType,
     StackList,
     TypeRef,
@@ -74,6 +75,7 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    complete_type_string,
     groupby,
     has_attr_or_property,
     has_instance_settable_attr,
@@ -516,9 +518,7 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
 
 class _FeatureFlags:
     class Feature(StrEnum):
-        # TODO: remove
-        # empty enum not cool with python
-        _PLACEHOLDER = "__PLACEHOLDER__"
+        FOR_LOOP = "FOR_LOOP"
 
     def __init__(self):
         self.flags = set[_FeatureFlags.Feature]()
@@ -546,6 +546,7 @@ class _FeatureFlags:
         return _FeatureFlags.Feature(feature_name)
 
     @classmethod
+    @once
     def from_file_ctx(cls, file_ctx: ap.File_inputContext) -> "_FeatureFlags":
         """Parses pragmas in a file context and returns the set of enabled features."""
         out = cls()
@@ -553,11 +554,8 @@ class _FeatureFlags:
         experiment_calls = [
             pragma
             for stmt_ctx in file_ctx.stmt()
-            if (
-                pragma := _parse_pragma(
-                    stmt_ctx.pragma_stmt().PRAGMA().getText().strip()
-                )
-            )[0]
+            if (stmt := stmt_ctx.pragma_stmt()) is not None
+            and (pragma := _parse_pragma(stmt.PRAGMA().getText().strip()))[0]
             == "experiment"
         ]
 
@@ -569,7 +567,8 @@ class _FeatureFlags:
     def enabled(self, feature: Feature) -> bool:
         return feature in self.flags
 
-    def enabled_in_ctx(self, ctx: ParserRuleContext, feature: Feature) -> bool:
+    @classmethod
+    def enabled_in_ctx(cls, ctx: ParserRuleContext, feature: Feature) -> bool:
         current_ctx = ctx
         while current_ctx is not None and not isinstance(
             current_ctx, ap.File_inputContext
@@ -581,7 +580,12 @@ class _FeatureFlags:
             logger.warning(f"Could not find file context for feature check '{feature}'")
             return False  # Default to disabled if context is weird
 
-        return self.enabled(feature)
+        flags = cls.from_file_ctx(current_ctx)
+
+        return flags.enabled(feature)
+
+
+type Field = L.Node | list[L.Node] | dict[str, L.Node] | set[L.Node]
 
 
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -614,10 +618,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # so we don't report dud key errors when it was a higher failure
         # that caused the node not to exist
         self._failed_nodes = FuncDict[L.Node, set[str]]()
+        self._in_for_loop = False  # Flag to detect nested loops
 
-    @once
-    def _get_enabled_features(self, file_ctx: ap.File_inputContext) -> _FeatureFlags:
-        return _FeatureFlags.from_file_ctx(file_ctx)
+    def _is_feature_enabled(
+        self, ctx: ParserRuleContext, feature: _FeatureFlags.Feature
+    ) -> bool:
+        return _FeatureFlags.enabled_in_ctx(ctx, feature)
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: TypeRef, file_path: Path | None = None
@@ -778,7 +784,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             )
 
                         elif is_part_module and root_definitions:
-                            param.alias_is(not_none(last(root_definitions).value))
+                            param.alias_is(not_none(last(root_definitions).value))  # type: ignore
                             param.add(does_not_require_picker_check())
                             gospel_params.append(param)
 
@@ -787,7 +793,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             value = not_none(definition.value)
                             try:
                                 logger.debug("Constraining %s to %s", param, value)
-                                param.constrain_subset(value)
+                                param.constrain_subset(value)  # type: ignore
                             except UnitCompatibilityError as ex:
                                 raise errors.UserTypeError.from_ctx(
                                     definition.ctx,
@@ -948,78 +954,113 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return item
 
-    @staticmethod
-    def get_node_attr(node: L.Node, ref: ReferencePartType) -> L.Node:
-        """
-        Analogous to `getattr`
+    def resolve_node_property(self, node: L.Node, name: str) -> Field:
+        if has_attr_or_property(node, name):
+            return getattr(node, name)
+        if name in node.runtime:
+            return node.runtime[name]
 
-        Returns the value if it exists, otherwise raises an AttributeError
-        Required because we're seeing attributes in both the attrs and runtime
-        """
+        # If we know that a previous failure prevented the creation
+        # of this node, raise a SkipPriorFailedException to prevent
+        # error messages about it missing from polluting the output
+        if name in self._failed_nodes.get(node, set()):
+            raise SkipPriorFailedException()
 
-        if has_attr_or_property(node, ref.name):
-            # Build-time attributes are attached as real attributes
-            result = getattr(node, ref.name)
-            if ref.key is not None and isinstance(result, L.Node):
+        raise AttributeError(name=name, obj=node)
+
+    def resolve_node_field_part(self, node: L.Node, ref: ReferencePartType) -> Field:
+        field = self.resolve_node_property(node, ref.name)
+
+        if isinstance(field, L.Node):
+            if ref.key is not None:
                 raise ValueError(f"{ref.name} is not subscriptable")
-            if not isinstance(result, L.Node) and ref.key is None:
+            return field
+
+        if isinstance(field, dict):
+            if ref.key is None:
+                return field
+            if ref.key not in field:
+                raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+            return field[ref.key]
+
+        if isinstance(field, list):
+            if ref.key is None:
+                return field
+            if not isinstance(ref.key, int):
+                raise ValueError(f"Key `{ref.key}` is not an integer")
+            if ref.key >= len(field):
+                raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+            return field[ref.key]
+
+        raise TypeError(f"Unknown field type `{type(field)}`")
+
+    def resolve_node_field(self, src_node: L.Node, ref: FieldRef) -> Field:
+        path: list[Field] = [src_node]
+        for name in ref:
+            last = path[-1]
+            if not isinstance(last, L.Node):
                 raise ValueError(
-                    f"{ref.name} is a {type(result)._ref.name__} and needs a ref.key"
+                    f"{name} is a container and can't be dot accessed."
+                    f"Did you mean to subscript it like this `{name}[0]`?"
                 )
-            if isinstance(result, dict):
-                assert ref.key is not None
-                if ref.key not in result:
-                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
-                result = result[ref.key]
-            elif isinstance(result, list):
-                assert ref.key is not None
-                # TODO type check key
-                if not isinstance(ref.key, int):
-                    raise ValueError(f"Key `{ref.key}` is not an integer")
-                if ref.key >= len(result):
-                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
-                result = result[ref.key]
-            # TODO handle non-module & non-dict & non-list case
-        elif ref.name in node.runtime and ref.key is None:
-            # Runtime attributes are attached as runtime attributes
-            result = node.runtime[ref.name]
-        else:
-            # Wah wah wah - we don't know what this is
-            friendlyname = ref.name if ref.key is None else f"{ref.name}[{ref.key}]"
-            raise AttributeError(name=friendlyname, obj=node)
+            try:
+                field = self.resolve_node_field_part(last, name)
+            except AttributeError as ex:
+                raise AttributeError(
+                    f"{FieldRef(ref.parts[: len(path)])} has no attribute `{ex.name}`"
+                    if len(path) > 1
+                    else f"No attribute `{name}`"
+                ) from ex
+            path.append(field)
+        return path[-1]
 
-        if isinstance(result, L.Module):
-            return result.get_most_special()
+    def resolve_node(
+        self, src_node: L.Node, ref: FieldRef | ReferencePartType
+    ) -> L.Node:
+        if isinstance(ref, ReferencePartType):
+            ref = FieldRef([ref])
+        field = self.resolve_node_field(src_node, ref)
+        if not isinstance(field, L.Node):
+            raise TypeError(f"{ref} is not a node")
+        if isinstance(field, L.Module):
+            return field.get_most_special()
+        return field
 
-        return result
+    def resolve_field_shortcut(
+        self, src_node: L.Node, name: str, key: KeyType | None = None
+    ) -> Field:
+        """
+        Shortcut for `resolve_field(src_node, FieldRef([ReferencePartType(name, key)]))`
+        Useful for tests
+        """
+        return self.resolve_node_field(
+            src_node, FieldRef([ReferencePartType(name, key)])
+        )
+
+    def resolve_node_shortcut(
+        self, src_node: L.Node, name: str, key: KeyType | None = None
+    ) -> L.Node:
+        """
+        Shortcut for `resolve_node(src_node, FieldRef([ReferencePartType(name, key)]))`
+        Useful for tests
+        """
+        return self.resolve_node(src_node, FieldRef([ReferencePartType(name, key)]))
 
     def _get_referenced_node(self, ref: FieldRef, ctx: ParserRuleContext) -> L.Node:
-        node = self._current_node
-        for i, name in enumerate(ref):
-            try:
-                node = self.get_node_attr(node, name)
-            except AttributeError as ex:
-                # If we know that a previous failure prevented the creation
-                # of this node, raise a SkipPriorFailedException to prevent
-                # error messages about it missing from polluting the output
-                if name in self._failed_nodes.get(node, set()):
-                    raise SkipPriorFailedException() from ex
-
-                # Wah wah wah - we don't know what this is
-                # Build a nice error message
-                if i > 0:
-                    msg = f"`{FieldRef(ref.parts[:i])}` has no attribute `{ex.name}`"
-                else:
-                    msg = f"No attribute `{name}`"
-                raise errors.UserKeyError.from_ctx(
-                    ctx, msg, traceback=self.get_traceback()
-                ) from ex
-            except ValueError as ex:
-                raise errors.UserKeyError.from_ctx(
-                    ctx, str(ex), traceback=self.get_traceback()
-                ) from ex
-
-        return node
+        try:
+            return self.resolve_node(self._current_node, ref)
+        except AttributeError as ex:
+            raise errors.UserKeyError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
+        except ValueError as ex:
+            raise errors.UserKeyError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
+        except TypeError as ex:
+            raise errors.UserTypeError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
 
     def _try_get_referenced_node(
         self, ref: FieldRef, ctx: ParserRuleContext
@@ -1146,10 +1187,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         it later. Used in forward-declaration.
         """
         try:
-            node = self.get_node_attr(node, ref)
+            node = self.resolve_node(node, ref)
         except AttributeError as ex:
-            if ref in self._failed_nodes.get(node, set()):
-                raise SkipPriorFailedException() from ex
             # Wah wah wah - we don't know what this is
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
@@ -1183,7 +1222,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         """
 
         try:
-            param = self.get_node_attr(node, ref)
+            param = self.resolve_node(node, ref)
         except AttributeError:
             # Here we attach only minimal information, so we can override it later
             if ref.key is not None:
@@ -1398,7 +1437,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self, name: ReferencePartType, ctx: ParserRuleContext
     ) -> L.ModuleInterface | None:
         try:
-            mif = self.get_node_attr(self._current_node, name)
+            mif = self.resolve_node(self._current_node, name)
         except AttributeError:
             return None
         except ValueError as ex:
@@ -1451,7 +1490,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
         else:
             try:
-                mif = self.get_node_attr(self._current_node, ref)
+                mif = self.resolve_node(self._current_node, ref)
             except AttributeError:
                 pass
             else:
@@ -2100,6 +2139,91 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         assert False, "Only parameter declarations supported"
 
     def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
+        return NOTHING
+
+    def visitFor_stmt(self, ctx: ap.For_stmtContext):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                "Experimental feature not enabled. "
+                'Use `#pragma experiment("FOR_LOOP")` in your file.',
+                traceback=self.get_traceback(),
+            )
+
+        """Handle for loops."""
+        if self._in_for_loop:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                "Nested for loops are not currently supported.",
+                traceback=self.get_traceback(),
+            )
+
+        self._in_for_loop = True
+        try:
+            loop_var_name = self.visitName(ctx.name())
+            iterable_ref = self.visitFieldReference(ctx.field_reference())
+
+            try:
+                _iterable_node = self.resolve_node_field(
+                    self._current_node, iterable_ref
+                )
+            except AttributeError as ex:
+                raise errors.UserKeyError.from_ctx(
+                    ctx.field_reference(),
+                    f"Cannot iterate over non-existing field `{iterable_ref}`:"
+                    f"{str(ex)}",
+                    traceback=self.get_traceback(),
+                ) from ex
+
+            iterable_node: list[L.Node] | None = None
+            if isinstance(_iterable_node, list):
+                iterable_node = list(_iterable_node)
+            elif isinstance(_iterable_node, set):
+                iterable_node = list(_iterable_node)
+            elif isinstance(_iterable_node, dict):
+                iterable_node = list(_iterable_node.values())
+
+            if not isinstance(iterable_node, list) or not all(
+                isinstance(item, L.Node) for item in iterable_node
+            ):
+                raise errors.UserTypeError.from_ctx(
+                    ctx.field_reference(),
+                    f"Cannot iterate over type `{complete_type_string(_iterable_node)}`"
+                    f". Expected `list[Node]`, `dict[str, Node]` or `set[Node]`"
+                    f"  (e.g., from `new X[N]`).",
+                    traceback=self.get_traceback(),
+                )
+
+            block_ctx = ctx.block()
+
+            # Check for variable name collisions before starting the loop
+            try:
+                self.resolve_node_property(self._current_node, loop_var_name)
+            except AttributeError:
+                pass
+            else:
+                raise errors.UserKeyError.from_ctx(
+                    ctx.name(),
+                    f"Loop variable '{loop_var_name}' conflicts with an existing"
+                    f" attribute or runtime variable.",
+                    traceback=self.get_traceback(),
+                )
+
+            # Loop and manage scope temporarily using runtime dict
+            try:
+                for item in iterable_node:
+                    self._current_node.runtime[loop_var_name] = item
+                    self.visitBlock(block_ctx)
+            finally:
+                # Ensure cleanup even if visitBlock raises an error
+                if loop_var_name in self._current_node.runtime:
+                    del self._current_node.runtime[loop_var_name]
+                # Note: We don't restore original_value because the initial check
+                #  ensures it was NOTHING.
+
+        finally:
+            self._in_for_loop = False
+
         return NOTHING
 
 

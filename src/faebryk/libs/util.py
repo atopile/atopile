@@ -2303,3 +2303,34 @@ def find_file(base_dir: Path, pattern: str):
     for file in base_dir.rglob(pattern):
         if file.is_file():
             yield file
+
+
+def complete_type_string(value: Any) -> str:
+    if isinstance(value, (list, set)):
+        inner = unique(
+            (complete_type_string(item) for item in value),
+            lambda x: x,
+        )
+        return f"{type(value).__name__}[{' | '.join(inner)}]"
+    elif isinstance(value, dict):
+        inner_value = unique(
+            (complete_type_string(item) for item in value.values()),
+            lambda x: x,
+        )
+        inner_key = unique(
+            (complete_type_string(item) for item in value.keys()),
+            lambda x: x,
+        )
+        return (
+            f"{type(value).__name__}["
+            f"{' | '.join(inner_key)}, "
+            f"{' | '.join(inner_value)}]"
+        )
+    elif isinstance(value, tuple):
+        inner = unique(
+            (complete_type_string(item) for item in value),
+            lambda x: x,
+        )
+        return f"{type(value).__name__}[{', '.join(inner)}]"
+    else:
+        return type(value).__name__

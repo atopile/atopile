@@ -11,6 +11,7 @@ from faebryk.libs.util import (
     DAG,
     SharedReference,
     assert_once,
+    complete_type_string,
     invert_dict,
     once,
     times_out,
@@ -199,3 +200,8 @@ def test_dag():
 
     dag.add_edge(3, 1)
     assert dag.contains_cycles
+
+
+def test_complete_type_string():
+    a = {"a": 1, 5: object(), "c": {"a": 1}}
+    assert complete_type_string(a) == "dict[str | int, int | object | dict[str, int]]"
