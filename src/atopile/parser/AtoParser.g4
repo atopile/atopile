@@ -115,7 +115,6 @@ connect_stmt
 directed_connect_stmt
     : connectable (DIRECTED_CONNECT connectable)+
     ;
-// FIXME: end is optional
 
 connectable
     : field_reference

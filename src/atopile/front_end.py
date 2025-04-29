@@ -1412,9 +1412,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
         connectables = [self.visitConnectable(c) for c in ctx.connectable()]
-        start, bridges, end = connectables[0], connectables[1:-1], connectables[-1]
-
-        # FIXME: optional end
+        if isinstance(connectables[-1], L.ModuleInterface):
+            start, bridges, end = connectables[0], connectables[1:-1], connectables[-1]
+        else:
+            start, bridges, end = connectables[0], connectables[1:], None
 
         if not isinstance(start, L.ModuleInterface):
             raise errors.UserTypeError.from_ctx(
@@ -1438,14 +1439,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 )
 
-        if not isinstance(end, L.ModuleInterface):
+        if end is None:
+            start.connect_via(bridges)
+        elif isinstance(end, L.ModuleInterface):
+            start.connect_via(bridges, end)
+        else:
             raise errors.UserTypeError.from_ctx(
                 ctx,
                 f"Can't connect `{end}` because it's not a `ModuleInterface`",
                 traceback=self.get_traceback(),
             )
-
-        start.connect_via(bridges, end)
 
         return NOTHING
 
