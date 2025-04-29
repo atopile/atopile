@@ -1612,8 +1612,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
-        features = _FeatureFlags()
-        if not features.enabled_in_ctx(ctx, _FeatureFlags.Feature.DIRECTED_CONNECT):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.DIRECTED_CONNECT):
             raise errors.UserFeatureNotEnabledError.from_ctx(
                 ctx,
                 # TODO: consistent error message for disabled features

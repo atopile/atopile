@@ -488,6 +488,8 @@ def test_duck_type_connect(bob: Bob):
 def test_directed_connect_signals(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("DIRECTED_CONNECT")
+
         module App:
             signal a
             signal b
@@ -510,6 +512,8 @@ def test_directed_connect_signals(bob: Bob):
 def test_directed_connect_power_via_led(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("DIRECTED_CONNECT")
+
         import ElectricPower
         import Resistor
         import LED
@@ -542,6 +546,8 @@ def test_directed_connect_power_via_led(bob: Bob):
 def test_directed_connect_signal_to_resistor(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("DIRECTED_CONNECT")
+
         import Resistor
 
         module App:
@@ -566,6 +572,8 @@ def test_directed_connect_signal_to_resistor(bob: Bob):
 def test_directed_connect_non_bridge(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("DIRECTED_CONNECT")
+
         import Resistor
 
         module A:
@@ -587,6 +595,8 @@ def test_directed_connect_non_bridge(bob: Bob):
 def test_directed_connect_mif_as_bridge(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("DIRECTED_CONNECT")
+
         module App:
             signal a
             signal b
