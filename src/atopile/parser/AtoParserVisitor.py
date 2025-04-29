@@ -119,6 +119,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#directed_connect_stmt.
+    def visitDirected_connect_stmt(self, ctx:AtoParser.Directed_connect_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#signaldef_stmt.
     def visitSignaldef_stmt(self, ctx:AtoParser.Signaldef_stmtContext):
         return self.visitChildren(ctx)

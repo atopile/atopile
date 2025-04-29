@@ -46,12 +46,10 @@ WITHIN: 'within';
 IS: 'is';
 PASS: 'pass';
 
-//
-// Stuff from the Python3 grammer we based this on
-// 
-//
-// 
-//
+CONNECT: '~';
+DIRECTED_CONNECT: '~>';
+
+// Stuff from the Python3 grammar we based this on
 
 /// identifier   ::=  id_start id_continue*
 NAME: ID_START ID_CONTINUE*;
@@ -114,7 +112,7 @@ ADD: '+';
 MINUS: '-';
 DIV: '/';
 IDIV: '//';
-NOT_OP: '~';
+// NOT_OP: '~';  // conflicts with connect
 OPEN_BRACE: '{';
 CLOSE_BRACE: '}';
 LESS_THAN: '<';

@@ -31,6 +31,7 @@ simple_stmt
     | cum_assign_stmt
     | set_assign_stmt
     | connect_stmt
+    | directed_connect_stmt
     | retype_stmt
     | pin_declaration
     | signaldef_stmt
@@ -109,8 +110,13 @@ retype_stmt
     ;
 
 connect_stmt
-    : connectable '~' connectable
+    : connectable CONNECT connectable
     ;
+directed_connect_stmt
+    : connectable (DIRECTED_CONNECT connectable)+
+    ;
+// FIXME: end is optional
+
 connectable
     : field_reference
     | signaldef_stmt

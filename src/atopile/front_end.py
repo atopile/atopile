@@ -1409,6 +1409,46 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return NOTHING
 
+    def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
+        """Connect interfaces via bridgeable modules"""
+        connectables = [self.visitConnectable(c) for c in ctx.connectable()]
+        start, bridges, end = connectables[0], connectables[1:-1], connectables[-1]
+
+        # FIXME: optional end
+
+        if not isinstance(start, L.ModuleInterface):
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't connect `{start}` because it's not a `ModuleInterface`",
+                traceback=self.get_traceback(),
+            )
+
+        for bridge in bridges:
+            if not isinstance(bridge, L.Module):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect via `{bridge}` because it's not a `Module`",
+                    traceback=self.get_traceback(),
+                )
+
+            if not bridge.has_trait(F.can_bridge):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect via `{bridge}` because it is not bridgeable",
+                    traceback=self.get_traceback(),
+                )
+
+        if not isinstance(end, L.ModuleInterface):
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't connect `{end}` because it's not a `ModuleInterface`",
+                traceback=self.get_traceback(),
+            )
+
+        start.connect_via(bridges, end)
+
+        return NOTHING
+
     def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
         """Return the address of the connectable object."""
         if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
