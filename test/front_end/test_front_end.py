@@ -983,6 +983,19 @@ def test_unimported_trait(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
+def test_nonexistent_trait(bob: Bob):
+    text = dedent(
+        """
+        module App:
+            trait this_trait_does_not_exist
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitNotFoundError, match="No such trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
 def test_invalid_trait(bob: Bob):
     text = dedent(
         """
