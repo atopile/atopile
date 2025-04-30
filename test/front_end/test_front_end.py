@@ -1063,3 +1063,6 @@ def test_slice_bigger_start_than_end(bob: Bob):
     resistors = cast(list[F.Resistor], resistors)
     for r in resistors[3:1]:
         assert r.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+
+    for r in set(resistors) - set(resistors[3:1]):
+        assert r.resistance.try_get_literal() is None
