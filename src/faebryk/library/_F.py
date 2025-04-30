@@ -205,6 +205,8 @@ from faebryk.library.TPS2116 import TPS2116
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.I2C import I2C
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
+from faebryk.library.Addressor1 import Addressor1
+from faebryk.library.Addressor2 import Addressor2
 from faebryk.library.Addressor3 import Addressor3
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
