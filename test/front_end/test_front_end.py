@@ -956,6 +956,8 @@ def test_for_loop_stale_ref(bob: Bob):
 def test_plain_trait(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("TRAITS")
+
         import is_not_pickable
 
         module App:
@@ -973,6 +975,8 @@ def test_plain_trait(bob: Bob):
 def test_unimported_trait(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("TRAITS")
+
         module App:
             trait is_not_pickable
         """
@@ -986,6 +990,8 @@ def test_unimported_trait(bob: Bob):
 def test_nonexistent_trait(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("TRAITS")
+
         module App:
             trait this_trait_does_not_exist
         """
@@ -999,6 +1005,8 @@ def test_nonexistent_trait(bob: Bob):
 def test_invalid_trait(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("TRAITS")
+
         import Resistor
 
         module App:
@@ -1014,6 +1022,8 @@ def test_invalid_trait(bob: Bob):
 def test_parameterised_trait(bob: Bob):
     text = dedent(
         """
+        #pragma experiment("TRAITS")
+
         import requires_pulls
 
         module App:

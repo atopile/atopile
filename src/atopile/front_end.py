@@ -520,6 +520,7 @@ class _FeatureFlags:
     class Feature(StrEnum):
         DIRECTED_CONNECT = "DIRECTED_CONNECT"
         FOR_LOOP = "FOR_LOOP"
+        TRAITS = "TRAITS"
 
     def __init__(self):
         self.flags = set[_FeatureFlags.Feature]()
@@ -1787,6 +1788,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return NOTHING
 
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                # TODO: consistent error message for disabled features
+                "Trait statements are not enabled",
+                traceback=self.get_traceback(),
+            )
+
         # TODO: restrict list of importable traits
         # TODO: param templating
 
