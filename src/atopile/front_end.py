@@ -518,7 +518,7 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
 
 class _FeatureFlags:
     class Feature(StrEnum):
-        DIRECTED_CONNECT = "DIRECTED_CONNECT"
+        BRIDGE_CONNECT = "BRIDGE_CONNECT"
         FOR_LOOP = "FOR_LOOP"
 
     def __init__(self):
@@ -1612,7 +1612,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.DIRECTED_CONNECT):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.BRIDGE_CONNECT):
             raise errors.UserFeatureNotEnabledError.from_ctx(
                 ctx,
                 # TODO: consistent error message for disabled features
