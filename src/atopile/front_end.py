@@ -1684,7 +1684,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
 
         # reverse direction
-        if (bool(ctx.LSPERM())):
+        if bool(ctx.LSPERM()):
             bridgeables.reverse()
 
         head = None
