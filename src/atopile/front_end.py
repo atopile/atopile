@@ -1683,8 +1683,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        in_reverse = bool(ctx.LSPERM())
-        if in_reverse:
+        if (in_reverse := bool(ctx.LSPERM())):
             bridgeables.reverse()
 
         head = None
@@ -1733,7 +1732,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise NotImplementedError(f"Unhandled connectable type `{ctx}`")
 
     def visitMif(self, ctx: ap.MifContext) -> L.ModuleInterface:
-        """Return the address of the connectable object."""
+        """Return the mif object of the connectable object."""
         try:
             connectable = self.visitConnectable(ctx.connectable())
         except TypeError as ex:
