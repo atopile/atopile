@@ -485,6 +485,132 @@ def test_duck_type_connect(bob: Bob):
     assert not any(a_two.is_connected_to(other) for other in [a_one, b_one])
 
 
+def test_directed_connect_signals(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("DIRECTED_CONNECT")
+
+        module App:
+            signal a
+            signal b
+
+            a ~> b
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(bob, node, "a")
+    b = _get_mif(bob, node, "b")
+
+    assert a.is_connected_to(b)
+
+
+def test_directed_connect_power_via_led(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("DIRECTED_CONNECT")
+
+        import ElectricPower
+        import Resistor
+        import LED
+
+        module App:
+            power = new ElectricPower
+            current_limiting_resistor = new Resistor
+            led = new LED
+
+            power.hv ~> current_limiting_resistor ~> led ~> power.lv
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
+    current_limiting_resistor = cast_assert(
+        F.Resistor, bob.resolve_node_shortcut(node, "current_limiting_resistor")
+    )
+    led = cast_assert(F.LED, bob.resolve_node_shortcut(node, "led"))
+
+    assert power.hv.is_connected_to(current_limiting_resistor.unnamed[0])
+    assert current_limiting_resistor.unnamed[1].is_connected_to(led.anode)
+    assert led.cathode.is_connected_to(power.lv)
+
+
+def test_directed_connect_signal_to_resistor(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("DIRECTED_CONNECT")
+
+        import Resistor
+
+        module App:
+            signal a
+
+            r = new Resistor
+            a ~> r
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(bob, node, "a")
+    r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
+
+    assert a.is_connected_to(r.unnamed[0])
+
+
+def test_directed_connect_non_bridge(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("DIRECTED_CONNECT")
+
+        import Resistor
+
+        module A:
+            pass
+
+        module App:
+            signal a
+            signal b
+            bridge = new A
+            a ~> bridge ~> b
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTypeError, match="not bridgeable"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_directed_connect_mif_as_bridge(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("DIRECTED_CONNECT")
+
+        module App:
+            signal a
+            signal b
+            signal c
+
+            a ~> b ~> c
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTypeError, match="not a `Module`"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
 def test_shim_power(bob: Bob):
     from atopile.attributes import Power
 

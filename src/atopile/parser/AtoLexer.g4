@@ -49,6 +49,9 @@ WITHIN: 'within';
 IS: 'is';
 PASS: 'pass';
 
+SPERM: '~>';
+WIRE: '~';
+
 // Stuff from the Python3 grammer we based this on
 
 /// identifier   ::=  id_start id_continue*
@@ -112,7 +115,7 @@ ADD: '+';
 MINUS: '-';
 DIV: '/';
 IDIV: '//';
-NOT_OP: '~';
+// NOT_OP: '~';  // conflicts with connect
 OPEN_BRACE: '{';
 CLOSE_BRACE: '}';
 LESS_THAN: '<';
