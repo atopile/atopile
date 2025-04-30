@@ -373,3 +373,9 @@ class UserInvalidTraitError(UserSyntaxError):
     """
     Raised when something other than a valid trait follows the `trait` keyword
     """
+
+
+class UserTraitError(UserSyntaxError):
+    """
+    Raised when there's an error applying a trait.
+    """

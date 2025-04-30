@@ -870,3 +870,18 @@ def test_invalid_trait(bob: Bob):
     tree = parse_text_as_file(text)
     with pytest.raises(errors.UserInvalidTraitError, match="is not a valid trait"):
         bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_parameterised_trait(bob: Bob):
+    text = dedent(
+        """
+        import requires_pulls
+
+        module App:
+            trait requires_pulls
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitError, match="Error applying trait"):
+        bob.build_ast(tree, TypeRef(["App"]))

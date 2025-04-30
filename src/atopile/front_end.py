@@ -1754,7 +1754,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        self._current_node.add(trait_cls())
+        try:
+            self._current_node.add(trait_cls())
+        except Exception as e:
+            raise errors.UserTraitError.from_ctx(
+                ctx,
+                f"Error applying trait `{ref}`: {e}",
+                traceback=self.get_traceback(),
+            ) from e
 
         return NOTHING
 
