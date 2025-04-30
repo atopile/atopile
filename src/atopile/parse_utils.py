@@ -169,7 +169,7 @@ class PygmentsLexer(pygments.lexer.Lexer):
         AtoLexer.AND_OP: pygments_token.Token,
         AtoLexer.LEFT_SHIFT: pygments_token.Token,
         AtoLexer.RIGHT_SHIFT: pygments_token.Token,
-        AtoLexer.ADD: pygments_token.Token,
+        AtoLexer.PLUS: pygments_token.Token,
         AtoLexer.MINUS: pygments_token.Token,
         AtoLexer.DIV: pygments_token.Token,
         AtoLexer.IDIV: pygments_token.Token,
@@ -203,6 +203,8 @@ class PygmentsLexer(pygments.lexer.Lexer):
         AtoLexer.WS: pygments_token.Whitespace,
         AtoLexer.EXPLICIT_LINE_JOINING: pygments_token.Token,
         AtoLexer.ERRORTOKEN: pygments_token.Error,
+        AtoLexer.FOR: pygments_token.Keyword,
+        AtoLexer.IN: pygments_token.Keyword,
     }
 
     name = "atopile"

@@ -27,7 +27,7 @@ stmt
     | pragma_stmt
     ;
 simple_stmts
-    : simple_stmt (';' simple_stmt)* ';'? NEWLINE
+    : simple_stmt (SEMI_COLON simple_stmt)* SEMI_COLON? NEWLINE
     ;
 simple_stmt
     : import_stmt
@@ -52,15 +52,15 @@ compound_stmt
     ;
 
 blockdef
-    : blocktype name blockdef_super? ':' block
+    : blocktype name blockdef_super? COLON block
     ;
 // TODO @v0.4 consider ()
 blockdef_super
-    : 'from' type_reference
+    : FROM type_reference
     ;
 // TODO @v0.4 consider removing component (or more explicit code-as-data)
 blocktype
-    : ('component' | 'module' | 'interface')
+    : (COMPONENT | MODULE | INTERFACE)
     ;
 block
     : simple_stmts
@@ -69,11 +69,11 @@ block
 
 // TODO: @v0.4 remove the deprecated import form
 dep_import_stmt
-    : 'import' type_reference 'from' string
+    : IMPORT type_reference FROM string
     ;
 import_stmt
-    : ('from' string)? 'import' type_reference (
-        ',' type_reference
+    : (FROM string)? IMPORT type_reference (
+        COMMA type_reference
     )*
     ;
 
@@ -92,11 +92,14 @@ cum_assign_stmt
     ;
 // TODO: consider sets cum operator
 set_assign_stmt
-    : field_reference_or_declaration ('|=' | '&=') cum_assignable
+    : field_reference_or_declaration (
+        OR_ASSIGN
+        | AND_ASSIGN
+    ) cum_assignable
     ;
 cum_operator
-    : '+='
-    | '-='
+    : ADD_ASSIGN
+    | SUB_ASSIGN
     ;
 cum_assignable
     : literal_physical
@@ -112,7 +115,7 @@ assignable
     ;
 
 retype_stmt
-    : field_reference '->' type_reference
+    : field_reference ARROW type_reference
     ;
 
 directed_connect_stmt
@@ -131,7 +134,7 @@ connectable
     ;
 
 signaldef_stmt
-    : 'signal' name
+    : SIGNAL name
     ;
 pindef_stmt
     : pin_stmt
@@ -140,14 +143,14 @@ pin_declaration
     : pin_stmt
     ;
 pin_stmt
-    : 'pin' (name | totally_an_integer | string)
+    : PIN (name | number_hint_natural | string)
     ;
 
 new_stmt
-    : 'new' type_reference ('[' new_count ']')?
+    : NEW type_reference ('[' new_count ']')?
     ;
 new_count
-    : NUMBER
+    : number_hint_natural
     ;
 
 string_stmt
@@ -155,15 +158,15 @@ string_stmt
     ; // the unbound string is a statement used to add doc-strings
 
 pass_stmt
-    : 'pass'
+    : PASS
     ; // the unbound string is a statement used to add doc-strings
 
 for_stmt
-    : FOR name IN field_reference ':' block
+    : FOR name IN field_reference slice? COLON block
     ;
 
 assert_stmt
-    : 'assert' comparison
+    : ASSERT comparison
     ;
 
 // Comparison operators --------------------
@@ -182,43 +185,43 @@ compare_op_pair
     ;
 
 lt_arithmetic_or
-    : '<' arithmetic_expression
+    : LESS_THAN arithmetic_expression
     ;
 gt_arithmetic_or
-    : '>' arithmetic_expression
+    : GREATER_THAN arithmetic_expression
     ;
 lt_eq_arithmetic_or
-    : '<=' arithmetic_expression
+    : LT_EQ arithmetic_expression
     ;
 gt_eq_arithmetic_or
-    : '>=' arithmetic_expression
+    : GT_EQ arithmetic_expression
     ;
 in_arithmetic_or
-    : 'within' arithmetic_expression
+    : WITHIN arithmetic_expression
     ;
 is_arithmetic_or
-    : 'is' arithmetic_expression
+    : IS arithmetic_expression
     ;
 
 // Arithmetic operators --------------------
 
 arithmetic_expression
-    : arithmetic_expression ('|' | '&') sum
+    : arithmetic_expression (OR_OP | AND_OP) sum
     | sum
     ;
 
 sum
-    : sum ('+' | '-') term
+    : sum (PLUS | MINUS) term
     | term
     ;
 
 term
-    : term ('*' | '/') power
+    : term (STAR | DIV) power
     | power
     ;
 
 power
-    : functional ('**' functional)?
+    : functional (POWER functional)?
     ;
 
 functional
@@ -231,6 +234,14 @@ bound
     ;
 
 // Primary elements ----------------
+
+slice
+    : '[' (
+        number_hint_integer? COLON number_hint_integer? (
+            COLON number_hint_integer?
+        )?
+    )? ']'
+    ;
 
 atom
     : field_reference
@@ -249,20 +260,20 @@ literal_physical
     ;
 
 bound_quantity
-    : quantity 'to' quantity
+    : quantity TO quantity
     ;
 bilateral_quantity
     : quantity PLUS_OR_MINUS bilateral_tolerance
     ;
 quantity
-    : ('+' | '-')? NUMBER name?
+    : number name?
     ;
 bilateral_tolerance
-    : NUMBER ('%' | name)?
+    : number_signless (PERCENT | name)?
     ;
 
 key
-    : NUMBER
+    : number_hint_integer
     ;
 array_index
     : '[' key ']'
@@ -270,33 +281,45 @@ array_index
 
 // backwards compatibility for A.1
 pin_reference_end
-    : '.' NUMBER
+    : DOT number_hint_natural
     ;
 field_reference_part
     : name array_index?
     ;
 field_reference
-    : field_reference_part ('.' field_reference_part)* pin_reference_end?
+    : field_reference_part (DOT field_reference_part)* pin_reference_end?
     ;
 type_reference
-    : name ('.' name)*
+    : name (DOT name)*
     ;
 // TODO better unit
 unit
     : name
     ;
 type_info
-    : ':' unit
-    ;
-totally_an_integer
-    : NUMBER
+    : COLON unit
     ;
 name
     : NAME
     ;
+
+// Literals
 string
     : STRING
     ;
 boolean_
-    : ('True' | 'False')
+    : TRUE
+    | FALSE
+    ;
+number_hint_natural
+    : number_signless
+    ;
+number_hint_integer
+    : number
+    ;
+number
+    : (PLUS | MINUS)? number_signless
+    ;
+number_signless
+    : NUMBER
     ;
