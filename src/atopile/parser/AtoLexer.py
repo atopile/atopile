@@ -543,7 +543,7 @@ class AtoLexer(AtoLexerBase):
     AND_OP = 52
     LEFT_SHIFT = 53
     RIGHT_SHIFT = 54
-    ADD = 55
+    PLUS = 55
     MINUS = 56
     DIV = 57
     IDIV = 58
@@ -602,7 +602,7 @@ class AtoLexer(AtoLexerBase):
             "PLUS_MINUS_SIGN", "PERCENT", "DOT", "ELLIPSIS", "STAR", "OPEN_PAREN", 
             "CLOSE_PAREN", "COMMA", "COLON", "SEMI_COLON", "POWER", "ASSIGN", 
             "OPEN_BRACK", "CLOSE_BRACK", "OR_OP", "XOR", "AND_OP", "LEFT_SHIFT", 
-            "RIGHT_SHIFT", "ADD", "MINUS", "DIV", "IDIV", "OPEN_BRACE", 
+            "RIGHT_SHIFT", "PLUS", "MINUS", "DIV", "IDIV", "OPEN_BRACE", 
             "CLOSE_BRACE", "LESS_THAN", "GREATER_THAN", "EQUALS", "GT_EQ", 
             "LT_EQ", "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", "ADD_ASSIGN", 
             "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", "DIV_ASSIGN", "AND_ASSIGN", 
@@ -620,7 +620,7 @@ class AtoLexer(AtoLexerBase):
                   "ELLIPSIS", "STAR", "OPEN_PAREN", "CLOSE_PAREN", "COMMA", 
                   "COLON", "SEMI_COLON", "POWER", "ASSIGN", "OPEN_BRACK", 
                   "CLOSE_BRACK", "OR_OP", "XOR", "AND_OP", "LEFT_SHIFT", 
-                  "RIGHT_SHIFT", "ADD", "MINUS", "DIV", "IDIV", "OPEN_BRACE", 
+                  "RIGHT_SHIFT", "PLUS", "MINUS", "DIV", "IDIV", "OPEN_BRACE", 
                   "CLOSE_BRACE", "LESS_THAN", "GREATER_THAN", "EQUALS", 
                   "GT_EQ", "LT_EQ", "NOT_EQ_1", "NOT_EQ_2", "AT", "ARROW", 
                   "ADD_ASSIGN", "SUB_ASSIGN", "MULT_ASSIGN", "AT_ASSIGN", 

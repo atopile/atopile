@@ -254,6 +254,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#slice.
+    def visitSlice(self, ctx:AtoParser.SliceContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#atom.
     def visitAtom(self, ctx:AtoParser.AtomContext):
         return self.visitChildren(ctx)
@@ -329,11 +334,6 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#totally_an_integer.
-    def visitTotally_an_integer(self, ctx:AtoParser.Totally_an_integerContext):
-        return self.visitChildren(ctx)
-
-
     # Visit a parse tree produced by AtoParser#name.
     def visitName(self, ctx:AtoParser.NameContext):
         return self.visitChildren(ctx)
@@ -346,6 +346,26 @@ class AtoParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtoParser#boolean_.
     def visitBoolean_(self, ctx:AtoParser.Boolean_Context):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number_hint_natural.
+    def visitNumber_hint_natural(self, ctx:AtoParser.Number_hint_naturalContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number_hint_integer.
+    def visitNumber_hint_integer(self, ctx:AtoParser.Number_hint_integerContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number.
+    def visitNumber(self, ctx:AtoParser.NumberContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number_signless.
+    def visitNumber_signless(self, ctx:AtoParser.Number_signlessContext):
         return self.visitChildren(ctx)
 
 
