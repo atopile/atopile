@@ -2330,13 +2330,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 iterable_node = list(_iterable_node)
             elif isinstance(_iterable_node, set):
                 # Convert set to list for deterministic order & slicing
-                # TODO: Warn about potential non-determinism?
                 iterable_node = sorted(list(_iterable_node), key=lambda n: n.get_name())
             elif isinstance(_iterable_node, dict):
-                # Use values for iteration, sorted by key for determinism
-                iterable_node = [
-                    _iterable_node[k] for k in sorted(_iterable_node.keys())
-                ]
+                iterable_node = list(_iterable_node.values())
 
             if not isinstance(iterable_node, list) or not all(
                 isinstance(item, L.Node) for item in iterable_node

@@ -1041,3 +1041,25 @@ def test_slice_invalid_step(bob: Bob):
     tree = parse_text_as_file(text)
     with pytest.raises(errors.UserValueError, match="Slice step cannot be zero"):
         bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_slice_bigger_start_than_end(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors[3:1]:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    resistors = bob.resolve_field_shortcut(node, "resistors")
+    resistors = cast(list[F.Resistor], resistors)
+    for r in resistors[3:1]:
+        assert r.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
