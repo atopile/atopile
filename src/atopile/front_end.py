@@ -1653,7 +1653,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
         """Connect interfaces together"""
-        connectables = [self.visitConnectable(c) for c in ctx.connectable()]
+        connectables = [self.visitMif(c) for c in ctx.mif()]
         for err_cltr, (a, b) in iter_through_errors(
             itertools.pairwise(connectables),
             errors._BaseBaseUserException,
@@ -1674,13 +1674,30 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        head = self.visitConnectable(ctx.connectable())
         bridgeables = [self.visitBridgeable(c) for c in ctx.bridgeable()]
 
+        if bool(ctx.LSPERM()) and bool(ctx.SPERM()):
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                "Only one type of connection direction per statement allowed",
+                traceback=self.get_traceback(),
+            )
+
+        in_reverse = bool(ctx.LSPERM())
+        if in_reverse:
+            bridgeables.reverse()
+
+        head = None
+        tail = None
         if isinstance(bridgeables[-1], L.ModuleInterface):
-            bridgeables, tail = bridgeables[:-1], bridgeables[-1]
+            tail = bridgeables[-1]
+            bridgeables = bridgeables[:-1]
+
+        if isinstance(bridgeables[0], L.ModuleInterface):
+            head = bridgeables[0]
         else:
-            tail = None
+            head = bridgeables[0].get_trait(F.can_bridge).get_out()
+        bridgeables = bridgeables[1:]
 
         for b in bridgeables:
             if not isinstance(b, L.Module):
@@ -1694,47 +1711,66 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return NOTHING
 
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
-        """Return the address of the connectable object."""
+    def visitConnectable(
+        self, ctx: ap.ConnectableContext
+    ) -> L.Module | L.ModuleInterface:
         if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
             (_, mif), *_ = self.visit(def_stmt)
             return mif
-        elif reference_ctx := ctx.field_reference():
-            ref = self.visitFieldReference(reference_ctx)
+        elif field_ref := ctx.field_reference():
+            ref = self.visitFieldReference(field_ref)
             node = self._get_referenced_node(ref, ctx)
-            if not isinstance(node, L.ModuleInterface):
-                raise errors.UserTypeError.from_ctx(
-                    ctx,
-                    f"Can't connect `{node}` because it's not a `ModuleInterface`",
-                    traceback=self.get_traceback(),
+            if not isinstance(node, L.ModuleInterface) and not (
+                isinstance(node, L.Module) and node.has_trait(F.can_bridge)
+            ):
+                raise TypeError(
+                    node,
+                    f"Can't connect `{node}` because it's not a `ModuleInterface`"
+                    f" or `Module` with `can_bridge` trait",
                 )
             return node
         else:
-            raise ValueError(f"Unhandled connectable type `{ctx}`")
+            raise NotImplementedError(f"Unhandled connectable type `{ctx}`")
+
+    def visitMif(self, ctx: ap.MifContext) -> L.ModuleInterface:
+        """Return the address of the connectable object."""
+        try:
+            connectable = self.visitConnectable(ctx.connectable())
+        except TypeError as ex:
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't connect {ex.args[0]} because it's not a `ModuleInterface`",
+                traceback=self.get_traceback(),
+            ) from ex
+        if isinstance(connectable, L.ModuleInterface):
+            return connectable
+        else:
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't connect `{connectable}` because it's not a `ModuleInterface`",
+                traceback=self.get_traceback(),
+            )
 
     def visitBridgeable(
         self, ctx: ap.BridgeableContext
     ) -> L.Module | L.ModuleInterface:
-        ref = self.visitFieldReference(ctx.field_reference())
-        node = self._get_referenced_node(ref, ctx)
-
-        match node:
-            case L.Module():
-                if not node.has_trait(F.can_bridge):
-                    raise errors.UserTypeError.from_ctx(
-                        ctx,
-                        f"Can't connect via `{node}` because it is not bridgeable",
-                        traceback=self.get_traceback(),
-                    )
-                return node
-            case L.ModuleInterface():
-                return node
-            case _:
+        try:
+            return self.visitConnectable(ctx.connectable())
+        except TypeError as ex:
+            node = ex.args[0]
+            if isinstance(node, L.Module):
                 raise errors.UserTypeError.from_ctx(
                     ctx,
-                    f"Can't connect via `{node}` because it's not a `Module`",
+                    f"Can't connect `{node}` because it's not bridgeable "
+                    "(needs `can_bridge` trait)",
                     traceback=self.get_traceback(),
-                )
+                ) from ex
+            else:
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    str(ex),
+                    traceback=self.get_traceback(),
+                ) from ex
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref = self.visitFieldReference(ctx.field_reference())
