@@ -12,6 +12,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
+from functools import reduce
 from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
@@ -98,6 +99,13 @@ class from_dsl(Trait.decless()):
         self.src_ctx = src_ctx
 
 
+@dataclass
+class Number:
+    value: str
+    negative: bool
+    base: int
+
+
 class BasicsMixin:
     def visitName(self, ctx: ap.NameContext) -> str:
         """
@@ -129,7 +137,7 @@ class BasicsMixin:
     def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
         pin = ctx.pin_reference_end()
         if pin is not None:
-            pin = int(pin.NUMBER().getText())
+            pin = self.visitNumber_hint_natural(pin.number_hint_natural())
         return FieldRef(
             parts=(
                 self.visitFieldReferencePart(part)
@@ -151,6 +159,51 @@ class BasicsMixin:
             return False
 
         raise errors.UserException.from_ctx(ctx, f"Expected a boolean value, got {raw}")
+
+    def visitNumber_signless(self, ctx: ap.Number_signlessContext) -> Number:
+        number: str = ctx.getText()
+        base = 10
+        if number.startswith("0") and len(number) > 1:
+            if number[1] in "xX":
+                base = 16
+            elif number[1] in "oO":
+                base = 8
+            elif number[1] in "bB":
+                base = 2
+        return Number(number, False, base)
+
+    def visitNumber(self, ctx: ap.NumberContext) -> Number:
+        number: Number = self.visitNumber_signless(ctx.number_signless())
+        sign = ctx.MINUS()
+        negative = bool(sign)
+        return Number(number.value, negative, number.base)
+
+    def visitNumber_hint_natural(self, ctx: ap.Number_hint_naturalContext) -> int:
+        number = self.visitNumber_signless(ctx.number_signless())
+        if number.negative:
+            raise errors.UserException.from_ctx(
+                ctx, "Natural numbers must be non-negative"
+            )
+
+        try:
+            return int(number.value, number.base)
+        except ValueError as ex:
+            raise errors.UserException.from_ctx(
+                ctx, "Natural numbers must be whole numbers"
+            ) from ex
+
+    def visitNumber_hint_integer(self, ctx: ap.Number_hint_integerContext) -> int:
+        number = self.visitNumber(ctx.number())
+
+        try:
+            out = int(number.value, number.base)
+            if number.negative:
+                out = -out
+            return out
+        except ValueError as ex:
+            raise errors.UserException.from_ctx(
+                ctx, "Integer numbers must be whole numbers"
+            ) from ex
 
 
 class NOTHING:
@@ -518,7 +571,7 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
 
 class _FeatureFlags:
     class Feature(StrEnum):
-        DIRECTED_CONNECT = "DIRECTED_CONNECT"
+        BRIDGE_CONNECT = "BRIDGE_CONNECT"
         FOR_LOOP = "FOR_LOOP"
         TRAITS = "TRAITS"
 
@@ -1477,8 +1530,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> KeyOptMap[L.ModuleInterface]:
         if ctx.name():
             name = self.visitName(ctx.name())
-        elif ctx.totally_an_integer():
-            name = f"{ctx.totally_an_integer().getText()}"
+        elif ctx.number_hint_natural():
+            name = f"{self.visitNumber_hint_natural(ctx.number_hint_natural())}"
         elif ctx.string():
             name = self.visitString(ctx.string())
         else:
@@ -1613,7 +1666,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.DIRECTED_CONNECT):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.BRIDGE_CONNECT):
             raise errors.UserFeatureNotEnabledError.from_ctx(
                 ctx,
                 # TODO: consistent error message for disabled features
@@ -1901,11 +1954,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return self.visitSum(ctx.sum_())
 
     def visitSum(self, ctx: ap.SumContext) -> Numeric:
-        if ctx.ADD() or ctx.MINUS():
+        if ctx.PLUS() or ctx.MINUS():
             lh = self.visitSum(ctx.sum_())
             rh = self.visitTerm(ctx.term())
 
-            if ctx.ADD():
+            if ctx.PLUS():
                 return operator.add(lh, rh)
             else:
                 return operator.sub(lh, rh)
@@ -1994,14 +2047,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
         """Yield a physical value from an implicit quantity context."""
-        raw: str = ctx.NUMBER().getText()
-        if raw.startswith("0x"):
-            value = int(raw, 16)
+        raw: Number = self.visitNumber(ctx.number())
+        if raw.base != 10:
+            value = int(raw.value, raw.base)
         else:
-            value = float(raw)
+            value = float(raw.value)
 
-        # Ignore the positive unary operator
-        if ctx.MINUS():
+        if raw.negative:
             value = -value
 
         if unit_ctx := ctx.name():
@@ -2018,7 +2070,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         nominal_qty = self.visitQuantity(ctx.quantity())
 
         tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
-        tol_num = float(tol_ctx.NUMBER().getText())
+        raw_tol = self.visitNumber_signless(tol_ctx.number_signless())
+        if raw_tol.base != 10:
+            raise errors.UserSyntaxError.from_ctx(
+                tol_ctx,
+                "Tolerance must be a decimal number",
+                traceback=self.get_traceback(),
+            )
+        tol_num = float(raw_tol.value)
 
         # Handle proportional tolerances
         if tol_ctx.PERCENT():
@@ -2241,6 +2300,40 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
         return NOTHING
 
+    def visitSlice(self, ctx: ap.SliceContext | None) -> slice:
+        """Parse slice components into a slice object."""
+        if ctx is None:
+            return slice(None)
+
+        slice_tokens = [
+            self.visitNumber_hint_integer(token) if is_number else None
+            for token in ctx.children
+            if (is_number := isinstance(token, ap.Number_hint_integerContext))
+            or token.getText() == ":"  # TODO ugly
+        ]
+        # remove meaningless colons
+        slice_tokens_folded = reduce(
+            lambda acc, x: acc + [x]
+            if x is not None or not acc or acc[-1] is None
+            else acc,
+            slice_tokens,
+            [],
+        )
+        # Fillup
+        components = slice_tokens_folded + [None] * (3 - len(slice_tokens_folded))
+
+        if not len(components) == 3:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx, "Invalid slice syntax", traceback=self.get_traceback()
+            )
+
+        out = slice(*components)
+        if out.step == 0:
+            raise errors.UserValueError.from_ctx(
+                ctx, "Slice step cannot be zero", traceback=self.get_traceback()
+            )
+        return out
+
     def visitFor_stmt(self, ctx: ap.For_stmtContext):
         if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP):
             raise errors.UserFeatureNotEnabledError.from_ctx(
@@ -2262,6 +2355,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         try:
             loop_var_name = self.visitName(ctx.name())
             iterable_ref = self.visitFieldReference(ctx.field_reference())
+            requested_slice = self.visitSlice(ctx.slice_())
 
             try:
                 _iterable_node = self.resolve_node_field(
@@ -2275,11 +2369,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 ) from ex
 
+            # Prepare the iterable list
             iterable_node: list[L.Node] | None = None
             if isinstance(_iterable_node, list):
                 iterable_node = list(_iterable_node)
             elif isinstance(_iterable_node, set):
-                iterable_node = list(_iterable_node)
+                # Convert set to list for deterministic order & slicing
+                iterable_node = sorted(list(_iterable_node), key=lambda n: n.get_name())
             elif isinstance(_iterable_node, dict):
                 iterable_node = list(_iterable_node.values())
 
@@ -2294,7 +2390,18 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 )
 
-            block_ctx = ctx.block()
+            block_ctx = ctx.block()  # Define block_ctx here
+
+            # Apply slice
+            try:
+                final_iterable = iterable_node[requested_slice]
+            except ValueError as ex:
+                # e.g. slice step cannot be zero
+                raise errors.UserValueError.from_ctx(
+                    ctx.slice_(),
+                    f"Invalid slice parameters: {ex}",
+                    traceback=self.get_traceback(),
+                ) from ex
 
             # Check for variable name collisions before starting the loop
             try:
@@ -2311,7 +2418,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             # Loop and manage scope temporarily using runtime dict
             try:
-                for item in iterable_node:
+                for (
+                    item
+                ) in final_iterable:  # Use the final (potentially sliced) iterable
                     self._current_node.runtime[loop_var_name] = item
                     self.visitBlock(block_ctx)
             finally:

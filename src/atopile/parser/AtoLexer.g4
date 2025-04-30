@@ -113,7 +113,7 @@ XOR: '^';
 AND_OP: '&';
 LEFT_SHIFT: '<<';
 RIGHT_SHIFT: '>>';
-ADD: '+';
+PLUS: '+';
 MINUS: '-';
 DIV: '/';
 IDIV: '//';

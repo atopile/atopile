@@ -14,6 +14,7 @@ from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
@@ -488,7 +489,7 @@ def test_duck_type_connect(bob: Bob):
 def test_directed_connect_signals(bob: Bob):
     text = dedent(
         """
-        #pragma experiment("DIRECTED_CONNECT")
+        #pragma experiment("BRIDGE_CONNECT")
 
         module App:
             signal a
@@ -512,7 +513,7 @@ def test_directed_connect_signals(bob: Bob):
 def test_directed_connect_power_via_led(bob: Bob):
     text = dedent(
         """
-        #pragma experiment("DIRECTED_CONNECT")
+        #pragma experiment("BRIDGE_CONNECT")
 
         import ElectricPower
         import Resistor
@@ -546,7 +547,7 @@ def test_directed_connect_power_via_led(bob: Bob):
 def test_directed_connect_signal_to_resistor(bob: Bob):
     text = dedent(
         """
-        #pragma experiment("DIRECTED_CONNECT")
+        #pragma experiment("BRIDGE_CONNECT")
 
         import Resistor
 
@@ -572,7 +573,7 @@ def test_directed_connect_signal_to_resistor(bob: Bob):
 def test_directed_connect_non_bridge(bob: Bob):
     text = dedent(
         """
-        #pragma experiment("DIRECTED_CONNECT")
+        #pragma experiment("BRIDGE_CONNECT")
 
         import Resistor
 
@@ -595,7 +596,7 @@ def test_directed_connect_non_bridge(bob: Bob):
 def test_directed_connect_mif_as_bridge(bob: Bob):
     text = dedent(
         """
-        #pragma experiment("DIRECTED_CONNECT")
+        #pragma experiment("BRIDGE_CONNECT")
 
         module App:
             signal a
@@ -1034,3 +1035,117 @@ def test_parameterised_trait(bob: Bob):
     tree = parse_text_as_file(text)
     with pytest.raises(errors.UserTraitError, match="Error applying trait"):
         bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_slice_for_loop(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[10]
+            resistors2 = new Resistor[2]
+            for r in resistors[0:3]:
+                assert r.resistance is 100 kohm
+
+            for r in resistors[-3:-1]:
+                assert r.resistance is 200 kohm
+
+            for r in resistors[3:6:2]:
+                assert r.resistance is 150 kohm
+
+            for r in resistors2[:]:
+                assert r.resistance is 250 kohm
+    """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    resistors = bob.resolve_field_shortcut(node, "resistors")
+    resistors2 = bob.resolve_field_shortcut(node, "resistors2")
+    assert isinstance(resistors, list)
+    resistors = cast(list[F.Resistor], resistors)
+    assert isinstance(resistors2, list)
+    resistors2 = cast(list[F.Resistor], resistors2)
+    for r in resistors:
+        assert isinstance(r, F.Resistor)
+
+    # Check values assigned in the loops
+    for r in resistors[0:3]:
+        assert r.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+    for r in resistors[-3:-1]:
+        assert r.resistance.try_get_literal() == P_Set.from_value(200 * P.kohm)
+    for r in resistors[3:6:2]:
+        assert r.resistance.try_get_literal() == P_Set.from_value(150 * P.kohm)
+
+    # Check that other resistors weren't assigned a value in the loop
+    for r in resistors[6:-3]:
+        assert r.resistance.try_get_literal() is None
+
+    for r in resistors2[:]:
+        assert r.resistance.try_get_literal() == P_Set.from_value(250 * P.kohm)
+
+
+def test_slice_non_list(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            r_single = new Resistor
+            for r in r_single[:]: # Attempt to slice a non-list
+                pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    # We expect a TypeError during iteration setup, not slicing itself
+    with pytest.raises(errors.UserTypeError, match="Cannot iterate over type"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_slice_invalid_step(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors[::0]: # Slice step cannot be zero
+                pass
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserValueError, match="Slice step cannot be zero"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_slice_bigger_start_than_end(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            resistors = new Resistor[5]
+            for r in resistors[3:1]:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    resistors = bob.resolve_field_shortcut(node, "resistors")
+    resistors = cast(list[F.Resistor], resistors)
+    for r in resistors[3:1]:
+        assert r.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+
+    for r in set(resistors) - set(resistors[3:1]):
+        assert r.resistance.try_get_literal() is None
