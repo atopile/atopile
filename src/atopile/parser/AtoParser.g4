@@ -36,6 +36,7 @@ simple_stmt
     | cum_assign_stmt
     | set_assign_stmt
     | connect_stmt
+    | directed_connect_stmt
     | retype_stmt
     | pin_declaration
     | signaldef_stmt
@@ -115,8 +116,14 @@ retype_stmt
     : field_reference '->' type_reference
     ;
 
+directed_connect_stmt
+    : connectable (SPERM bridgeable)+
+    ;
 connect_stmt
-    : connectable '~' connectable
+    : connectable WIRE connectable
+    ;
+bridgeable
+    : field_reference
     ;
 connectable
     : field_reference

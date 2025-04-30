@@ -518,6 +518,7 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
 
 class _FeatureFlags:
     class Feature(StrEnum):
+        DIRECTED_CONNECT = "DIRECTED_CONNECT"
         FOR_LOOP = "FOR_LOOP"
 
     def __init__(self):
@@ -1609,6 +1610,36 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return NOTHING
 
+    def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
+        """Connect interfaces via bridgeable modules"""
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.DIRECTED_CONNECT):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                # TODO: consistent error message for disabled features
+                "Directed connect is not enabled",
+                traceback=self.get_traceback(),
+            )
+
+        head = self.visitConnectable(ctx.connectable())
+        bridgeables = [self.visitBridgeable(c) for c in ctx.bridgeable()]
+
+        if isinstance(bridgeables[-1], L.ModuleInterface):
+            bridgeables, tail = bridgeables[:-1], bridgeables[-1]
+        else:
+            tail = None
+
+        for b in bridgeables:
+            if not isinstance(b, L.Module):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't bridge via `{b}` because it is not a `Module`",
+                    traceback=self.get_traceback(),
+                )
+
+        head.connect_via(bridgeables, *([tail] if tail else []))
+
+        return NOTHING
+
     def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
         """Return the address of the connectable object."""
         if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
@@ -1626,6 +1657,30 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return node
         else:
             raise ValueError(f"Unhandled connectable type `{ctx}`")
+
+    def visitBridgeable(
+        self, ctx: ap.BridgeableContext
+    ) -> L.Module | L.ModuleInterface:
+        ref = self.visitFieldReference(ctx.field_reference())
+        node = self._get_referenced_node(ref, ctx)
+
+        match node:
+            case L.Module():
+                if not node.has_trait(F.can_bridge):
+                    raise errors.UserTypeError.from_ctx(
+                        ctx,
+                        f"Can't connect via `{node}` because it is not bridgeable",
+                        traceback=self.get_traceback(),
+                    )
+                return node
+            case L.ModuleInterface():
+                return node
+            case _:
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect via `{node}` because it's not a `Module`",
+                    traceback=self.get_traceback(),
+                )
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref = self.visitFieldReference(ctx.field_reference())

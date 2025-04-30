@@ -114,8 +114,18 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#directed_connect_stmt.
+    def visitDirected_connect_stmt(self, ctx:AtoParser.Directed_connect_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#connect_stmt.
     def visitConnect_stmt(self, ctx:AtoParser.Connect_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#bridgeable.
+    def visitBridgeable(self, ctx:AtoParser.BridgeableContext):
         return self.visitChildren(ctx)
 
 
