@@ -1810,13 +1810,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
 
         try:
-            self._current_node.add(trait_cls())
+            trait = trait_cls()
         except Exception as e:
             raise errors.UserTraitError.from_ctx(
                 ctx,
                 f"Error applying trait `{ref}`: {e}",
                 traceback=self.get_traceback(),
             ) from e
+
+        self._current_node.add(trait)
 
         return NOTHING
 
