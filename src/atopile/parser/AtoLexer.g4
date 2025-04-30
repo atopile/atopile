@@ -49,6 +49,8 @@ WITHIN: 'within';
 IS: 'is';
 PASS: 'pass';
 
+TRAIT: 'trait';
+
 SPERM: '~>';
 WIRE: '~';
 

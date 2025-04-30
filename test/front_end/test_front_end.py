@@ -954,6 +954,89 @@ def test_for_loop_stale_ref(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
+def test_plain_trait(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import is_not_pickable
+
+        module App:
+            trait is_not_pickable
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    assert node.has_trait(F.is_not_pickable)
+
+
+def test_unimported_trait(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        module App:
+            trait is_not_pickable
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitNotFoundError, match="No such trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_nonexistent_trait(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        module App:
+            trait this_trait_does_not_exist
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitNotFoundError, match="No such trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_invalid_trait(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import Resistor
+
+        module App:
+            trait Resistor
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidTraitError, match="is not a valid trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_parameterised_trait(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import requires_pulls
+
+        module App:
+            trait requires_pulls
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitError, match="Error applying trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
 def test_slice_for_loop(bob: Bob):
     text = dedent(
         """

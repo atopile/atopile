@@ -344,7 +344,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                     name = ref[0]
                     if not hasattr(F, name) or not issubclass(
-                        getattr(F, name), (L.Module, L.ModuleInterface)
+                        getattr(F, name), (L.Module, L.ModuleInterface, L.Module.TraitT)
                     ):
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Unknown standard library module: '{name}'"
@@ -573,6 +573,7 @@ class _FeatureFlags:
     class Feature(StrEnum):
         BRIDGE_CONNECT = "BRIDGE_CONNECT"
         FOR_LOOP = "FOR_LOOP"
+        TRAITS = "TRAITS"
 
     def __init__(self):
         self.flags = set[_FeatureFlags.Feature]()
@@ -1837,6 +1838,50 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 cmp.constrain()
             else:
                 raise ValueError(f"Unhandled comparison type {type(cmp)}")
+        return NOTHING
+
+    def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                # TODO: consistent error message for disabled features
+                "Trait statements are not enabled",
+                traceback=self.get_traceback(),
+            )
+
+        # TODO: restrict list of importable traits
+        # TODO: param templating
+
+        try:
+            ref = self.visitTypeReference(ctx.type_reference())
+            trait_cls = self._get_referenced_class(ctx, ref)
+        except errors.UserKeyError as ex:
+            raise errors.UserTraitNotFoundError.from_ctx(
+                ctx,
+                f"No such trait: `{ctx.type_reference().getText()}`",
+                traceback=self.get_traceback(),
+            ) from ex
+
+        if isinstance(trait_cls, ap.BlockdefContext) or not issubclass(
+            trait_cls, L.Module.TraitT
+        ):
+            raise errors.UserInvalidTraitError.from_ctx(
+                ctx,
+                f"`{ref}` is not a valid trait",
+                traceback=self.get_traceback(),
+            )
+
+        try:
+            trait = trait_cls()
+        except Exception as e:
+            raise errors.UserTraitError.from_ctx(
+                ctx,
+                f"Error applying trait `{ref}`: {e}",
+                traceback=self.get_traceback(),
+            ) from e
+
+        self._current_node.add(trait)
+
         return NOTHING
 
     # Returns fab_param.ConstrainableExpression or BoolSet
