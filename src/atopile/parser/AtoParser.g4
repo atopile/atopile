@@ -171,11 +171,26 @@ assert_stmt
     ;
 
 trait_stmt
-    : 'trait' type_reference
+    : TRAIT type_reference (COLON constructor)? (
+        '<' trait_parameter_list? '>'
+    )?
+    ;
+constructor
+    : name
+    ;
+trait_parameter_list
+    : trait_parameter (',' trait_parameter)*
+    ;
+
+trait_parameter
+    : name '=' (
+        NUMBER
+        | STRING
+        | boolean_
+    ) // TOOD: literal
     ;
 
 // Comparison operators --------------------
-
 comparison
     : arithmetic_expression compare_op_pair+
     ;

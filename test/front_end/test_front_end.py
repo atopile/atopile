@@ -1037,6 +1037,75 @@ def test_parameterised_trait(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
+def test_nested_trait_access(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import Symbol
+
+        module App:
+            trait Symbol.has_kicad_symbol
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitNotFoundError, match="No such trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_nested_trait_namepsace_access(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import Symbol
+
+        module App:
+            trait Symbol:has_kicad_symbol
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidTraitError, match="is not a valid trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_alternate_trait_constructor_dot_access(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_explicit_part
+
+        module App:
+            trait has_explicit_part.by_mfr
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTraitNotFoundError, match="No such trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_alternate_trait_constructor(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_explicit_part
+
+        module App:
+            trait has_explicit_part:by_mfr
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    # FIXME: parameters
+    with pytest.raises(errors.UserTraitError, match="Error applying trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
 def test_slice_for_loop(bob: Bob):
     text = dedent(
         """

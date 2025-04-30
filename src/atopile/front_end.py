@@ -7,6 +7,7 @@ import itertools
 import logging
 import operator
 import os
+import typing
 from collections import defaultdict
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -1852,18 +1853,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # TODO: restrict list of importable traits
         # TODO: param templating
 
+        ref = self.visitTypeReference(ctx.constructor().type_reference())
+
+        if (constructor_name := ctx.constructor().name()) is not None:
+            constructor_name = self.visitName(constructor_name)
+
         try:
-            ref = self.visitTypeReference(ctx.type_reference())
             trait_cls = self._get_referenced_class(ctx, ref)
         except errors.UserKeyError as ex:
             raise errors.UserTraitNotFoundError.from_ctx(
                 ctx,
-                f"No such trait: `{ctx.type_reference().getText()}`",
+                f"No such trait: `{ref}`",
                 traceback=self.get_traceback(),
             ) from ex
 
         if isinstance(trait_cls, ap.BlockdefContext) or not issubclass(
-            trait_cls, L.Module.TraitT
+            trait_cls, L.Trait
         ):
             raise errors.UserInvalidTraitError.from_ctx(
                 ctx,
@@ -1871,8 +1876,42 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
+        constructor = trait_cls
+        args = tuple()
+
+        if constructor_name is not None:
+            try:
+                attr = inspect.getattr_static(trait_cls, constructor_name)
+            except AttributeError:
+                raise errors.UserTraitNotFoundError.from_ctx(
+                    ctx,
+                    f"No such trait constructor: `{ref}:{constructor_name}`",
+                    traceback=self.get_traceback(),
+                )
+
+            if not isinstance(attr, classmethod):
+                raise errors.UserInvalidTraitError.from_ctx(
+                    ctx,
+                    f"`{ref}:{constructor_name}` is not a valid trait constructor",
+                    traceback=self.get_traceback(),
+                )
+
+            if inspect.signature(attr.__func__).return_annotation not in (
+                trait_cls,
+                typing.Self,
+            ):
+                raise errors.UserInvalidTraitError.from_ctx(
+                    ctx,
+                    f"`{ref}:{constructor_name}` is not a valid trait constructor "
+                    "(missing or invalid return type annotation)",
+                    traceback=self.get_traceback(),
+                )
+
+            constructor = attr.__func__
+            args = (trait_cls,)
+
         try:
-            trait = trait_cls()
+            trait = constructor(*args)
         except Exception as e:
             raise errors.UserTraitError.from_ctx(
                 ctx,

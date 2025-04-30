@@ -189,6 +189,21 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#constructor.
+    def visitConstructor(self, ctx:AtoParser.ConstructorContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#trait_parameter_list.
+    def visitTrait_parameter_list(self, ctx:AtoParser.Trait_parameter_listContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#trait_parameter.
+    def visitTrait_parameter(self, ctx:AtoParser.Trait_parameterContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#comparison.
     def visitComparison(self, ctx:AtoParser.ComparisonContext):
         return self.visitChildren(ctx)
