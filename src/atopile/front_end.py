@@ -345,7 +345,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                     name = ref[0]
                     if not hasattr(F, name) or not issubclass(
-                        getattr(F, name), (L.Module, L.ModuleInterface, L.Module.TraitT)
+                        getattr(F, name), (L.Module, L.ModuleInterface, L.Trait)
                     ):
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Unknown standard library module: '{name}'"
