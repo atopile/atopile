@@ -1116,10 +1116,7 @@ def test_alternate_trait_constructor_with_params(bob: Bob):
         import has_explicit_part
 
         module App:
-            trait has_explicit_part:by_mfr<
-                mfr="Texas Instruments",
-                partno="TCA9548APWR"
-            >
+            trait has_explicit_part:by_mfr<mfr="TI", partno="TCA9548APWR">
         """
     )
 
@@ -1127,7 +1124,7 @@ def test_alternate_trait_constructor_with_params(bob: Bob):
 
     node = bob.build_ast(tree, TypeRef(["App"]))
     trait = node.get_trait(F.has_explicit_part)
-    assert trait.mfr == "Texas Instruments"
+    assert trait.mfr == "TI"
     assert trait.partno == "TCA9548APWR"
 
 
