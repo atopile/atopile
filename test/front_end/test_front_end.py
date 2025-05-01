@@ -954,6 +954,140 @@ def test_for_loop_stale_ref(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
+def test_list_literal_basic(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            r1 = new Resistor
+            r2 = new Resistor
+            r3 = new Resistor
+            for r in [r1, r3]:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    r1 = bob.resolve_field_shortcut(node, "r1")
+    assert isinstance(r1, F.Resistor)
+    r2 = bob.resolve_field_shortcut(node, "r2")
+    assert isinstance(r2, F.Resistor)
+    r3 = bob.resolve_field_shortcut(node, "r3")
+    assert isinstance(r3, F.Resistor)
+    assert r1.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+    assert r2.resistance.try_get_literal() is None
+    assert r3.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+
+
+def test_list_literal_nested(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module Nested:
+            r1 = new Resistor
+            r2 = new Resistor
+            r3 = new Resistor
+
+        module App:
+            nested = new Nested
+            for r in [nested.r1, nested.r3]:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    nested = bob.resolve_field_shortcut(node, "nested")
+    assert isinstance(nested, L.Module)
+    r1 = bob.resolve_field_shortcut(nested, "r1")
+    assert isinstance(r1, F.Resistor)
+    r2 = bob.resolve_field_shortcut(nested, "r2")
+    assert isinstance(r2, F.Resistor)
+    r3 = bob.resolve_field_shortcut(nested, "r3")
+    assert isinstance(r3, F.Resistor)
+    assert r1.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+    assert r2.resistance.try_get_literal() is None
+    assert r3.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+
+
+def test_list_literal_long(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            r1 = new Resistor
+            r2 = new Resistor
+            r3 = new Resistor
+            for r in [
+                r1,
+                r3,
+            ]:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    r1 = bob.resolve_field_shortcut(node, "r1")
+    assert isinstance(r1, F.Resistor)
+    r2 = bob.resolve_field_shortcut(node, "r2")
+    assert isinstance(r2, F.Resistor)
+    r3 = bob.resolve_field_shortcut(node, "r3")
+    assert isinstance(r3, F.Resistor)
+    assert r1.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+    assert r2.resistance.try_get_literal() is None
+    assert r3.resistance.try_get_literal() == P_Set.from_value(100 * P.kohm)
+
+
+def test_list_literal_empty(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            r1 = new Resistor
+            for r in []:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    r1 = bob.resolve_field_shortcut(node, "r1")
+    assert isinstance(r1, F.Resistor)
+    assert r1.resistance.try_get_literal() is None
+
+
+def test_list_literal_invalid(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        import Resistor
+
+        module App:
+            rs = new Resistor[2]
+            for r in [rs]:
+                assert r.resistance is 100 kohm
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserTypeError, match="Invalid type"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
 def test_plain_trait(bob: Bob):
     text = dedent(
         """

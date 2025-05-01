@@ -1076,7 +1076,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ref = FieldRef([ref])
         field = self.resolve_node_field(src_node, ref)
         if not isinstance(field, L.Node):
-            raise TypeError(f"{ref} is not a node")
+            raise TypeError(field, f"{ref} is not a node")
         if isinstance(field, L.Module):
             return field.get_most_special()
         return field
@@ -2370,27 +2370,28 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
         return out
 
-    def visitFor_stmt(self, ctx: ap.For_stmtContext):
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP):
-            raise errors.UserFeatureNotEnabledError.from_ctx(
-                ctx,
-                "Experimental feature not enabled. "
-                'Use `#pragma experiment("FOR_LOOP")` in your file.',
-                traceback=self.get_traceback(),
-            )
+    def visitList_literal_of_field_references(
+        self, ctx: ap.List_literal_of_field_referencesContext
+    ) -> list[L.Node]:
+        refs = [self.visitFieldReference(ref) for ref in ctx.field_reference()]
+        out = []
+        for ref in refs:
+            try:
+                out.append(self.resolve_node(self._current_node, ref))
+            except TypeError as e:
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Invalid type ({complete_type_string(e.args[0])}) for "
+                    f"list literal: `{ref}`. Expected `Module` or `ModuleInterface`.",
+                    traceback=self.get_traceback(),
+                )
+        return out
 
-        """Handle for loops."""
-        if self._in_for_loop:
-            raise errors.UserSyntaxError.from_ctx(
-                ctx,
-                "Nested for loops are not currently supported.",
-                traceback=self.get_traceback(),
-            )
-
-        self._in_for_loop = True
-        try:
-            loop_var_name = self.visitName(ctx.name())
-            iterable_ref = self.visitFieldReference(ctx.field_reference())
+    def visitIterable_references(
+        self, ctx: ap.Iterable_referencesContext
+    ) -> Iterable[L.Node]:
+        if ref := ctx.field_reference():
+            iterable_ref = self.visitFieldReference(ref)
             requested_slice = self.visitSlice(ctx.slice_())
 
             try:
@@ -2399,7 +2400,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
             except AttributeError as ex:
                 raise errors.UserKeyError.from_ctx(
-                    ctx.field_reference(),
+                    ref,
                     f"Cannot iterate over non-existing field `{iterable_ref}`:"
                     f"{str(ex)}",
                     traceback=self.get_traceback(),
@@ -2425,19 +2426,52 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"  (e.g., from `new X[N]`).",
                     traceback=self.get_traceback(),
                 )
+        elif ref := ctx.list_literal_of_field_references():
+            iterable_node = self.visitList_literal_of_field_references(ref)
+            requested_slice = slice(None)
+        else:
+            raise errors.UserNotImplementedError.from_ctx(
+                ctx,
+                "Unsupported iterable reference",
+                traceback=self.get_traceback(),
+            )
 
+        # Apply slice
+        try:
+            final_iterable = iterable_node[requested_slice]
+        except ValueError as ex:
+            # e.g. slice step cannot be zero
+            raise errors.UserValueError.from_ctx(
+                ctx.slice_(),
+                f"Invalid slice parameters: {ex}",
+                traceback=self.get_traceback(),
+            ) from ex
+
+        return final_iterable
+
+    def visitFor_stmt(self, ctx: ap.For_stmtContext):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                "Experimental feature not enabled. "
+                'Use `#pragma experiment("FOR_LOOP")` in your file.',
+                traceback=self.get_traceback(),
+            )
+
+        # Handle for loops.
+        if self._in_for_loop:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                "Nested for loops are not currently supported.",
+                traceback=self.get_traceback(),
+            )
+
+        self._in_for_loop = True
+        try:
+            loop_var_name = self.visitName(ctx.name())
+
+            iterable = self.visitIterable_references(ctx.iterable_references())
             block_ctx = ctx.block()  # Define block_ctx here
-
-            # Apply slice
-            try:
-                final_iterable = iterable_node[requested_slice]
-            except ValueError as ex:
-                # e.g. slice step cannot be zero
-                raise errors.UserValueError.from_ctx(
-                    ctx.slice_(),
-                    f"Invalid slice parameters: {ex}",
-                    traceback=self.get_traceback(),
-                ) from ex
 
             # Check for variable name collisions before starting the loop
             try:
@@ -2454,9 +2488,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             # Loop and manage scope temporarily using runtime dict
             try:
-                for (
-                    item
-                ) in final_iterable:  # Use the final (potentially sliced) iterable
+                for item in iterable:
                     self._current_node.runtime[loop_var_name] = item
                     self.visitBlock(block_ctx)
             finally:
