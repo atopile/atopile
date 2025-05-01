@@ -1555,3 +1555,45 @@ def test_directed_connect_mixed_directions(bob: Bob):
         match="Only one type of connection direction per statement allowed",
     ):
         bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_module_templating(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+        import Addressor
+
+        module App:
+            addressor7 = new Addressor<address_bits=7>
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    addressor7 = bob.resolve_field_shortcut(node, "addressor7")
+    assert isinstance(addressor7, F.Addressor)
+    assert addressor7._address_bits == 7
+
+
+def test_module_templating_list(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+        import Addressor
+
+        module App:
+            addressors = new Addressor[3]<address_bits=7>
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    addressors = bob.resolve_field_shortcut(node, "addressors")
+    assert isinstance(addressors, list)
+    addressors = cast(list[F.Addressor], addressors)
+    assert all(isinstance(addressor, F.Addressor) for addressor in addressors)
+    assert all(addressor._address_bits == 7 for addressor in addressors)

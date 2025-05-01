@@ -209,13 +209,13 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#trait_parameter_list.
-    def visitTrait_parameter_list(self, ctx:AtoParser.Trait_parameter_listContext):
+    # Visit a parse tree produced by AtoParser#template.
+    def visitTemplate(self, ctx:AtoParser.TemplateContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#trait_parameter.
-    def visitTrait_parameter(self, ctx:AtoParser.Trait_parameterContext):
+    # Visit a parse tree produced by AtoParser#template_arg.
+    def visitTemplate_arg(self, ctx:AtoParser.Template_argContext):
         return self.visitChildren(ctx)
 
 

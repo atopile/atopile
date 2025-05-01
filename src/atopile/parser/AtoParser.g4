@@ -152,7 +152,7 @@ pin_stmt
     ;
 
 new_stmt
-    : NEW type_reference ('[' new_count ']')?
+    : NEW type_reference ('[' new_count ']')? template?
     ;
 new_count
     : number_hint_natural
@@ -186,19 +186,16 @@ assert_stmt
     ;
 
 trait_stmt
-    : TRAIT type_reference (COLON constructor)? (
-        '<' trait_parameter_list? '>'
-    )?
+    : TRAIT type_reference (COLON constructor)? template?
     ;
 constructor
     : name
     ;
-trait_parameter_list
-    : trait_parameter (',' trait_parameter)*
+template
+    : '<' (template_arg (COMMA template_arg)* COMMA?)? '>'
     ;
-
-trait_parameter
-    : name '=' literal
+template_arg
+    : name ASSIGN literal
     ;
 
 // Comparison operators --------------------
