@@ -15,3 +15,6 @@ module I2CPullup:
 
     i2c.sda.line ~ r_sda.p1; r_sda.p2 ~ power.vcc
     i2c.scl.line ~ r_scl.p1; r_scl.p2 ~ power.vcc
+
+    i2c.sda.reference ~ power
+    i2c.scl.reference ~ power

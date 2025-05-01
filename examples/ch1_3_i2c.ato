@@ -1,13 +1,16 @@
+"""
+This example demonstrates how to use the Addressor component to automatically
+configure the address pins of an I2C client device based on a desired I2C address.
+"""
+
 import Addressor3
 import I2C
 import ElectricPower
 import ElectricLogic
 import Resistor
 
-"""
-This example demonstrates how to use the Addressor component to automatically
-configure the address pins of an I2C client device based on a desired I2C address.
-"""
+from "resistors.ato" import I2CPullup
+
 
 module I2CExampleIC:
     """
@@ -30,6 +33,7 @@ module I2CExampleIC:
     manufacturer = "Texas Instruments"
     mpn = "TCA9548APWR" # 8-channel I2C switch
 
+
 module I2CExampleDriver:
     """
     Example driver for the I2C client/server example
@@ -45,7 +49,7 @@ module I2CExampleDriver:
 
     # Setup addressor:
     # Link the addressor's logical address parameter to the I2C interface's address parameter.
-    assert addressor.address is i2c_in.address 
+    assert addressor.address is i2c_in.address
     # Define the base address for the address calculation (can be 0 if no base offset).
     assert addressor.base is 16
     # Connect the addressor's output lines to the physical address pins of the IC.
@@ -54,7 +58,7 @@ module I2CExampleDriver:
     addressor.address_lines[2].line ~ ic.i2c_address_pin_2
     # Provide a reference (e.g., ground) for the addressor's logic lines.
     addressor.address_lines[0].reference ~ power
-    
+
     # connect IC signals to the driver's interfaces (power and I2C)
     power.lv ~ ic.gnd
     power.hv ~ ic.vcc
@@ -106,20 +110,8 @@ module App:
     i2c_server.i2c_out ~ i2c_client_pre.i2c_in
 
     # Add required pull-up resistors for the I2C bus.
-    r1_1 = new Resistor
-    r1_2 = new Resistor
-    i2c_client.i2c_in.sda.line ~ r1_1.unnamed[0]
-    i2c_client.i2c_in.scl.line ~ r1_2.unnamed[0]
-    r1_1.unnamed[1] ~ i2c_client.power.hv
-    r1_2.unnamed[1] ~ i2c_client.power.hv
-    assert r1_1.resistance within 9kohm to 11kohm
-    assert r1_2.resistance within 9kohm to 11kohm
+    i2c_client_pullup = new I2CPullup
+    i2c_client.i2c_in ~ i2c_client_pullup.i2c
 
-    r2_1 = new Resistor
-    r2_2 = new Resistor
-    i2c_bridge.i2c_in.sda.line ~ r2_1.unnamed[0]
-    i2c_bridge.i2c_in.scl.line ~ r2_2.unnamed[0]
-    r2_1.unnamed[1] ~ i2c_bridge.power.hv
-    r2_2.unnamed[1] ~ i2c_bridge.power.hv
-    assert r2_1.resistance within 9kohm to 11kohm
-    assert r2_2.resistance within 9kohm to 11kohm
+    i2c_bridge_pullup = new I2CPullup
+    i2c_bridge.i2c_in ~ i2c_bridge_pullup.i2c
