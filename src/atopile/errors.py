@@ -354,13 +354,15 @@ class UserNoProjectException(UserException):
 
 
 class UserFeatureNotAvailableError(UserException):
-    def __init__(self, msg="Feature Not Available", *args, **kwargs):
-        super().__init__(msg, *args, **kwargs)
+    """
+    Raised when an experimental feature is not recognized.
+    """
 
 
 class UserFeatureNotEnabledError(UserSyntaxError):
-    def __init__(self, msg="Feature Not Enabled", *args, **kwargs):
-        super().__init__(msg, *args, **kwargs)
+    """
+    Raised when an experimental feature has not been enabled.
+    """
 
 
 class UserTraitNotFoundError(UserSyntaxError):

@@ -585,6 +585,10 @@ def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]
 
 
 class _FeatureFlags:
+    class ExperimentPragmaSyntaxError(Exception): ...
+
+    class UnrecognizedExperimentError(Exception): ...
+
     class Feature(StrEnum):
         BRIDGE_CONNECT = "BRIDGE_CONNECT"
         FOR_LOOP = "FOR_LOOP"
@@ -603,16 +607,18 @@ class _FeatureFlags:
     @staticmethod
     def feature_from_experiment_call(args: list[str | int | float | bool]) -> Feature:
         if len(args) != 1:
-            raise errors.UserSyntaxError("Experiment pragma takes exactly one argument")
+            raise _FeatureFlags.ExperimentPragmaSyntaxError(
+                "Experiment pragma takes exactly one argument"
+            )
 
         feature_name = args[0]
         if not isinstance(feature_name, str):
-            raise errors.UserSyntaxError(
+            raise _FeatureFlags.ExperimentPragmaSyntaxError(
                 "Experiment pragma takes a single string argument"
             )
         if feature_name not in _FeatureFlags.Feature:
-            raise errors.UserFeatureNotAvailableError(
-                f"Unknown experiment feature: '{feature_name}'"
+            raise _FeatureFlags.UnrecognizedExperimentError(
+                f"Unknown experiment feature: `{feature_name}`"
             )
         return _FeatureFlags.Feature(feature_name)
 
@@ -691,10 +697,35 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._failed_nodes = FuncDict[L.Node, set[str]]()
         self._in_for_loop = False  # Flag to detect nested loops
 
-    def _is_feature_enabled(
+    def _ensure_feature_enabled(
         self, ctx: ParserRuleContext, feature: _FeatureFlags.Feature
-    ) -> bool:
-        return _FeatureFlags.enabled_in_ctx(ctx, feature)
+    ) -> None:
+        try:
+            enabled = _FeatureFlags.enabled_in_ctx(ctx, feature)
+        except _FeatureFlags.UnrecognizedExperimentError as ex:
+            raise errors.UserFeatureNotAvailableError.from_ctx(
+                ctx,
+                message=f"Unknown experiment feature: `{feature}`",
+                feature=feature,
+                traceback=self.get_traceback(),
+            ) from ex
+        except _FeatureFlags.ExperimentPragmaSyntaxError as ex:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                str(ex),
+                traceback=self.get_traceback(),
+            ) from ex
+
+        if not enabled:
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                message=(
+                    "Experimental feature not enabled. "
+                    f'Use `#pragma experiment("{feature.value}")` in your file.'
+                ),
+                feature=feature,
+                traceback=self.get_traceback(),
+            )
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: TypeRef, file_path: Path | None = None
@@ -1713,13 +1744,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
         """Connect interfaces via bridgeable modules"""
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.BRIDGE_CONNECT):
-            raise errors.UserFeatureNotEnabledError.from_ctx(
-                ctx,
-                # TODO: consistent error message for disabled features
-                "Directed connect is not enabled",
-                traceback=self.get_traceback(),
-            )
+        self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.BRIDGE_CONNECT)
 
         bridgeables = [self.visitBridgeable(c) for c in ctx.bridgeable()]
 
@@ -1982,13 +2007,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return constructor, args
 
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS):
-            raise errors.UserFeatureNotEnabledError.from_ctx(
-                ctx,
-                # TODO: consistent error message for disabled features
-                "Trait statements are not enabled",
-                traceback=self.get_traceback(),
-            )
+        self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS)
 
         ref = self.visitTypeReference(ctx.type_reference())
         constructor_name = (
@@ -2543,13 +2562,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return final_iterable
 
     def visitFor_stmt(self, ctx: ap.For_stmtContext):
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP):
-            raise errors.UserFeatureNotEnabledError.from_ctx(
-                ctx,
-                "Experimental feature not enabled. "
-                'Use `#pragma experiment("FOR_LOOP")` in your file.',
-                traceback=self.get_traceback(),
-            )
+        self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP)
 
         # Handle for loops.
         if self._in_for_loop:
