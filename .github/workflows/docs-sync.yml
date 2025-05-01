@@ -35,7 +35,7 @@ jobs:
 
       # Step 5: Run conversion script
       - name: Convert examples to MDX
-        run: node scripts/convert-to-mdx.js
+        run: node tools/docs-sync.js
         # Alternatively, you could use: bash ./scripts/convert-to-mdx.sh
 
       # Step 6: Checkout docs repository
