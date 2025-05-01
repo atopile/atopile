@@ -166,8 +166,19 @@ pass_stmt
     : PASS
     ; // the unbound string is a statement used to add doc-strings
 
+list_literal_of_field_references
+    : '[' (
+        field_reference (COMMA field_reference)* COMMA?
+    )? ']'
+    ;
+
+iterable_references
+    : field_reference slice?
+    | list_literal_of_field_references
+    ;
+
 for_stmt
-    : FOR name IN field_reference slice? COLON block
+    : FOR name IN iterable_references COLON block
     ;
 
 assert_stmt

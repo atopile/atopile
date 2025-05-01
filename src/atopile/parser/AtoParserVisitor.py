@@ -179,6 +179,16 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#list_literal_of_field_references.
+    def visitList_literal_of_field_references(self, ctx:AtoParser.List_literal_of_field_referencesContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#iterable_references.
+    def visitIterable_references(self, ctx:AtoParser.Iterable_referencesContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#for_stmt.
     def visitFor_stmt(self, ctx:AtoParser.For_stmtContext):
         return self.visitChildren(ctx)
