@@ -124,6 +124,7 @@ class Capacitor(Module):
             power = self.get_trait(self._has_power).power
         else:
             power = ElectricPower()
+            self.add(power, name="power_shim")
             power.hv.connect_via(self, power.lv)
             self.add(self._has_power(power))
 
