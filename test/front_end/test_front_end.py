@@ -1088,7 +1088,7 @@ def test_alternate_trait_constructor_dot_access(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
-def test_alternate_trait_constructor(bob: Bob):
+def test_alternate_trait_constructor_no_params_params_required(bob: Bob):
     text = dedent(
         """
         #pragma experiment("TRAITS")
@@ -1101,7 +1101,105 @@ def test_alternate_trait_constructor(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    # FIXME: parameters
+    with pytest.raises(errors.UserTraitError, match="Error applying trait"):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+# TODO: find a trait with a parameter-less alternate constructor
+
+
+def test_alternate_trait_constructor_with_params(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_explicit_part
+
+        module App:
+            trait has_explicit_part:by_mfr<
+                mfr="Texas Instruments",
+                partno="TCA9548APWR"
+            >
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    node = bob.build_ast(tree, TypeRef(["App"]))
+    trait = node.get_trait(F.has_explicit_part)
+    assert trait.mfr == "Texas Instruments"
+    assert trait.partno == "TCA9548APWR"
+
+
+def test_parameterised_trait_with_pos_args(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_net_name
+
+        module App:
+            trait has_net_name<"example">
+        """
+    )
+
+    with pytest.raises(errors.UserSyntaxError):
+        parse_text_as_file(text)
+
+
+def test_parameterised_trait_with_params(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_net_name
+
+        module App:
+            trait has_net_name<name="example">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    node = bob.build_ast(tree, TypeRef(["App"]))
+    trait = node.get_trait(F.has_net_name)
+    assert trait.name == "example"
+    assert trait.level == F.has_net_name.Level.SUGGESTED
+
+
+def test_trait_alternate_constructor_precedence(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_net_name
+
+        module App:
+            trait has_net_name:expected<name="example">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+
+    node = bob.build_ast(tree, TypeRef(["App"]))
+    trait = node.get_trait(F.has_net_name)
+    assert trait.name == "example"
+    assert trait.level == F.has_net_name.Level.EXPECTED
+
+
+def test_parameterised_trait_no_params(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+
+        import has_net_name
+
+        module App:
+            trait has_net_name
+        """
+    )
+
+    tree = parse_text_as_file(text)
     with pytest.raises(errors.UserTraitError, match="Error applying trait"):
         bob.build_ast(tree, TypeRef(["App"]))
 

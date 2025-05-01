@@ -359,6 +359,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#literal.
+    def visitLiteral(self, ctx:AtoParser.LiteralContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#string.
     def visitString(self, ctx:AtoParser.StringContext):
         return self.visitChildren(ctx)

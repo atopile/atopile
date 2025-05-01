@@ -183,11 +183,7 @@ trait_parameter_list
     ;
 
 trait_parameter
-    : name '=' (
-        NUMBER
-        | STRING
-        | boolean_
-    ) // TOOD: literal
+    : name '=' literal
     ;
 
 // Comparison operators --------------------
@@ -324,6 +320,12 @@ name
     ;
 
 // Literals
+literal
+    : string
+    | boolean_
+    | number
+    ;
+
 string
     : STRING
     ;

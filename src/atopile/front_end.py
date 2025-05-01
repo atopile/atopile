@@ -9,7 +9,7 @@ import operator
 import os
 import typing
 from collections import defaultdict
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -1841,23 +1841,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise ValueError(f"Unhandled comparison type {type(cmp)}")
         return NOTHING
 
-    def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
-        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS):
-            raise errors.UserFeatureNotEnabledError.from_ctx(
-                ctx,
-                # TODO: consistent error message for disabled features
-                "Trait statements are not enabled",
-                traceback=self.get_traceback(),
-            )
-
-        # TODO: restrict list of importable traits
-        # TODO: param templating
-
-        ref = self.visitTypeReference(ctx.constructor().type_reference())
-
-        if (constructor_name := ctx.constructor().name()) is not None:
-            constructor_name = self.visitName(constructor_name)
-
+    def _get_trait_constructor(
+        self, ctx: ap.Trait_stmtContext, ref: TypeRef, constructor_name: str | None
+    ) -> tuple[Callable, tuple[Type | None]]:
         try:
             trait_cls = self._get_referenced_class(ctx, ref)
         except errors.UserKeyError as ex:
@@ -1910,18 +1896,51 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             constructor = attr.__func__
             args = (trait_cls,)
 
+        return constructor, args
+
+    def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
+        if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                # TODO: consistent error message for disabled features
+                "Trait statements are not enabled",
+                traceback=self.get_traceback(),
+            )
+
+        ref = self.visitTypeReference(ctx.type_reference())
+        constructor_name = (
+            self.visitName(ctx.constructor().name())
+            if ctx.constructor() is not None
+            else None
+        )
+        trait_name = f"{ref}{f':{constructor_name}' if constructor_name else ''}"
+        constructor, args = self._get_trait_constructor(ctx, ref, constructor_name)
+        kwargs = (
+            {
+                k: v
+                for k, v in (
+                    self.visitTrait_parameter(p) for p in params.trait_parameter()
+                )
+            }
+            if (params := ctx.trait_parameter_list()) is not None
+            else {}
+        )
+
         try:
-            trait = constructor(*args)
+            trait = constructor(*args, **kwargs)
         except Exception as e:
             raise errors.UserTraitError.from_ctx(
                 ctx,
-                f"Error applying trait `{ref}`: {e}",
+                f"Error applying trait `{trait_name}`: {e}",
                 traceback=self.get_traceback(),
             ) from e
 
         self._current_node.add(trait)
 
         return NOTHING
+
+    def visitTrait_parameter(self, ctx: ap.Trait_parameterContext) -> tuple[str, Any]:
+        return self.visitName(ctx.name()), self.visitLiteral(ctx.literal())
 
     # Returns fab_param.ConstrainableExpression or BoolSet
     def visitComparison(
