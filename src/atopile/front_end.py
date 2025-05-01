@@ -2458,7 +2458,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        """Handle for loops."""
+        # Handle for loops.
         if self._in_for_loop:
             raise errors.UserSyntaxError.from_ctx(
                 ctx,
