@@ -129,6 +129,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#mif.
+    def visitMif(self, ctx:AtoParser.MifContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#connectable.
     def visitConnectable(self, ctx:AtoParser.ConnectableContext):
         return self.visitChildren(ctx)
