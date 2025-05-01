@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 class INA228_ReferenceDesign(Module):
     """
-    TODO: add description
+    INA228 high or low side current shunt and voltage monitor with I2C interface.
+    This module implements a minimal reference design for common use cases.
     """
 
     class ShuntedElectricPower(Module):

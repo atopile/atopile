@@ -98,6 +98,7 @@ class CH344Q_ReferenceDesign(Module):
         )
 
         # reset lowpass
+        # #TODO: fix
         # self.reset_lowpass.cutoff_frequency.constrain_subset(
         #    L.Range.from_center_rel(100 * P.Hz, 0.1)
         # )
