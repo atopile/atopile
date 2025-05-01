@@ -6,7 +6,16 @@ from enum import Enum, IntEnum, StrEnum
 from os import PathLike
 from pathlib import Path
 from types import UnionType
-from typing import TYPE_CHECKING, Any, Callable, Iterator, Union, get_args, get_origin
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterator,
+    Self,
+    Union,
+    get_args,
+    get_origin,
+)
 
 import sexpdata
 from dataclasses_json import CatchAll
@@ -579,7 +588,7 @@ def dump_single(obj) -> str:
 
 class SEXP_File:
     @classmethod
-    def loads(cls, path_or_string_or_data: Path | str | list):
+    def loads(cls, path_or_string_or_data: Path | str | list) -> "Self":
         return loads(path_or_string_or_data, cls)
 
     def dumps(self, path: PathLike | None = None):

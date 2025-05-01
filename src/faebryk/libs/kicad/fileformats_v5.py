@@ -142,7 +142,7 @@ class C_kicad_footprint_file_v5(SEXP_File):
                 )
 
         descr: Optional[str] = None
-        tags: list[str] = field(default_factory=list)
+        tags: Optional[list[str]] = None
         tedit: Optional[str] = None
 
         fp_lines: list[C_line_v5] = field(
@@ -206,7 +206,7 @@ class C_kicad_footprint_file_v5(SEXP_File):
                 fp_texts=texts,
                 fp_poly=self.fp_poly,
                 pads=self.pads,
-                model=[self.model.convert_to_new()] if self.model else [],
+                models=[self.model.convert_to_new()] if self.model else [],
             )
 
     module: C_footprint_in_file
