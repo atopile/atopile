@@ -1149,3 +1149,111 @@ def test_slice_bigger_start_than_end(bob: Bob):
 
     for r in set(resistors) - set(resistors[3:1]):
         assert r.resistance.try_get_literal() is None
+
+
+def test_directed_connect_reverse_signals(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BRIDGE_CONNECT")
+
+        module App:
+            signal a
+            signal b
+
+            b <~ a
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(bob, node, "a")
+    b = _get_mif(bob, node, "b")
+
+    assert a.is_connected_to(b)
+
+
+def test_directed_connect_reverse_power_via_led(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BRIDGE_CONNECT")
+
+        import ElectricPower
+        import Resistor
+        import LED
+
+        module App:
+            power = new ElectricPower
+            current_limiting_resistor = new Resistor
+            led = new LED
+
+            power.lv <~ led <~ current_limiting_resistor <~ power.hv
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    power = cast_assert(F.ElectricPower, bob.resolve_node_shortcut(node, "power"))
+    current_limiting_resistor = cast_assert(
+        F.Resistor, bob.resolve_node_shortcut(node, "current_limiting_resistor")
+    )
+    led = cast_assert(F.LED, bob.resolve_node_shortcut(node, "led"))
+
+    assert power.hv.is_connected_to(current_limiting_resistor.unnamed[0])
+    assert current_limiting_resistor.unnamed[1].is_connected_to(led.anode)
+    assert led.cathode.is_connected_to(power.lv)
+
+
+def test_directed_connect_reverse_resistor_to_signal(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BRIDGE_CONNECT")
+
+        import Resistor
+
+        module App:
+            signal a
+
+            r = new Resistor
+            r <~ a
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    a = _get_mif(bob, node, "a")
+    r = cast_assert(F.Resistor, bob.resolve_node_shortcut(node, "r"))
+
+    assert a.is_connected_to(r.unnamed[0])
+
+
+def test_directed_connect_mixed_directions(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("BRIDGE_CONNECT")
+
+        import Resistor
+
+        module App:
+            signal a
+            signal b
+            resistor = new Resistor
+
+            a <~ resistor ~> b
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(
+        errors.UserSyntaxError,
+        match="Only one type of connection direction per statement allowed",
+    ):
+        bob.build_ast(tree, TypeRef(["App"]))

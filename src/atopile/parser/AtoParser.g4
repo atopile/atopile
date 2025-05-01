@@ -120,13 +120,17 @@ retype_stmt
     ;
 
 directed_connect_stmt
-    : connectable (SPERM bridgeable)+
+    // only one type of SPERM per stmt allowed. both here for better error messages
+    : bridgeable ((SPERM | LSPERM) bridgeable)+
     ;
 connect_stmt
-    : connectable WIRE connectable
+    : mif WIRE mif
     ;
 bridgeable
-    : field_reference
+    : connectable
+    ;
+mif
+    : connectable
     ;
 connectable
     : field_reference

@@ -52,6 +52,7 @@ PASS: 'pass';
 TRAIT: 'trait';
 
 SPERM: '~>';
+LSPERM: '<~';
 WIRE: '~';
 
 // Stuff from the Python3 grammer we based this on
