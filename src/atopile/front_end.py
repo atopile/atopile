@@ -106,6 +106,20 @@ class Number:
     negative: bool
     base: int
 
+    def interpret(self) -> int | float:
+        if self.base != 10:
+            out = int(self.value, self.base)
+        else:
+            out = float(self.value)
+
+        if self.negative:
+            out *= -1
+
+        if out.is_integer():
+            out = int(out)
+
+        return out
+
 
 class BasicsMixin:
     def visitName(self, ctx: ap.NameContext) -> str:
@@ -575,6 +589,7 @@ class _FeatureFlags:
         BRIDGE_CONNECT = "BRIDGE_CONNECT"
         FOR_LOOP = "FOR_LOOP"
         TRAITS = "TRAITS"
+        MODULE_TEMPLATING = "MODULE_TEMPLATING"
 
     def __init__(self):
         self.flags = set[_FeatureFlags.Feature]()
@@ -1130,6 +1145,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self,
         item: ap.BlockdefContext | Type[L.Node],
         promised_supers: list[ap.BlockdefContext],
+        kwargs: dict[str, Any] | None = None,
     ) -> tuple[L.Node, list[ap.BlockdefContext]]:
         """
         Kind of analogous to __new__ in Python, except that it's a factory
@@ -1168,7 +1184,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(), promised_supers
+            return super_class(**(kwargs or {})), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -1204,7 +1220,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     @contextmanager
     def _init_node(
-        self, node_type: ap.BlockdefContext | Type[L.Node]
+        self,
+        node_type: ap.BlockdefContext | Type[L.Node],
+        kwargs: dict[str, Any] | None = None,
     ) -> Generator[L.Node, None, None]:
         """
         Kind of analogous to __init__ in Python, except that it's a factory
@@ -1215,7 +1233,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         This is to allow for it to be attached in the graph before it's filled,
         and subsequently for errors to be raised in context of it's graph location.
         """
-        new_node, promised_supers = self._new_node(node_type, promised_supers=[])
+        new_node, promised_supers = self._new_node(
+            node_type, promised_supers=[], kwargs=kwargs
+        )
 
         # Shim on component and module classes defined in ato
         # Do not shim fabll modules, or interfaces
@@ -1325,165 +1345,191 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _record_failed_node(self, node: L.Node, name: str):
         self._failed_nodes.setdefault(node, set()).add(name)
 
+    def _assign_new_node(
+        self,
+        ctx: ap.Assign_stmtContext,
+        assignable_ctx: ap.AssignableContext,
+        assigned_ref: FieldRef,
+    ):
+        if len(assigned_ref) > 1:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't declare fields in a nested object `{assigned_ref}`",
+                traceback=self.get_traceback(),
+            )
+
+        assigned_name = assigned_ref[-1]
+        if assigned_name.key is not None:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't use keys with `new` statements `{assigned_ref}`",
+                traceback=self.get_traceback(),
+            )
+        new_stmt_ctx = assignable_ctx.new_stmt()
+        ref = self.visitTypeReference(new_stmt_ctx.type_reference())
+        kwargs = self.visitTemplate(new_stmt_ctx.template())
+
+        def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
+            try:
+                obj.add(
+                    node,
+                    name=assigned_name.name if container_name is None else None,
+                    container=getattr(obj, container_name) if container_name else None,
+                )
+            except FieldExistsError as e:
+                raise errors.UserAlreadyExistsError.from_ctx(
+                    ctx,
+                    f"Field `{assigned_name}` already exists",
+                    traceback=self.get_traceback(),
+                ) from e
+            node.add(from_dsl(ctx))
+
+        try:
+            with self._traceback_stack.enter(new_stmt_ctx):
+                if new_count_ctx := new_stmt_ctx.new_count():
+                    try:
+                        new_count = int(new_count_ctx.getText())
+                    except ValueError:
+                        raise errors.UserValueError.from_ctx(
+                            ctx,
+                            f"Invalid integer `{new_count_ctx.getText()}`",
+                            traceback=self.get_traceback(),
+                        )
+
+                    if new_count < 0:
+                        raise errors.UserValueError.from_ctx(
+                            ctx,
+                            f"Negative integer `{new_count}`",
+                            traceback=self.get_traceback(),
+                        )
+
+                    if hasattr(self._current_node, assigned_name.name):
+                        raise errors.UserAlreadyExistsError.from_ctx(
+                            ctx,
+                            f"Field `{assigned_name}` already exists",
+                            traceback=self.get_traceback(),
+                        )
+
+                    setattr(self._current_node, assigned_name.name, list())
+                    for _ in range(new_count):
+                        with self._init_node(
+                            self._get_referenced_class(ctx, ref), kwargs=kwargs
+                        ) as new_node:
+                            _add_node(self._current_node, new_node, assigned_name.name)
+                else:
+                    with self._init_node(
+                        self._get_referenced_class(ctx, ref), kwargs=kwargs
+                    ) as new_node:
+                        _add_node(self._current_node, new_node)
+        except Exception:
+            # Not a narrower exception because it's often an ExceptionGroup
+            self._record_failed_node(self._current_node, assigned_name.name)
+            raise
+
+    def _assign_arithmetic(
+        self,
+        ctx: ap.Assign_stmtContext,
+        assigned_ref: FieldRef,
+        target: L.Node,
+    ):
+        if declaration := ctx.field_reference_or_declaration().declaration_stmt():
+            # check valid declaration
+            # create param with corresponding units
+            self.visitDeclaration_stmt(declaration)
+
+        assignable_ctx = ctx.assignable()
+        assigned_name = assigned_ref[-1]
+        value = self.visit(assignable_ctx)
+        unit = HasUnit.get_units(value)
+        param = self._ensure_param(target, assigned_name, unit, ctx)
+
+        self._param_assignments[param].append(
+            _ParameterDefinition(
+                ref=assigned_ref,
+                value=value,
+                ctx=ctx,
+                traceback=self.get_traceback(),
+            )
+        )
+
+    def _assign_string_or_bool(
+        self,
+        ctx: ap.Assign_stmtContext,
+        assignable_ctx: ap.AssignableContext,
+        assigned_ref: FieldRef,
+        target: L.Node,
+    ):
+        assigned_name = assigned_ref[-1]
+
+        if assigned_name.key is not None:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't use keys with non-arithmetic attribute assignments "
+                f"`{assigned_ref}`",
+                traceback=self.get_traceback(),
+            )
+
+        value = self.visit(assignable_ctx)
+
+        # Check if it's a property or attribute that can be set
+        if has_instance_settable_attr(target, assigned_name.name):
+            try:
+                setattr(target, assigned_name.name, value)
+            except errors.UserException as e:
+                e.attach_origin_from_ctx(assignable_ctx)
+                raise
+        elif (
+            # If ModuleShims has a settable property, use it
+            hasattr(GlobalAttributes, assigned_name.name)
+            and isinstance(getattr(GlobalAttributes, assigned_name.name), property)
+            and getattr(GlobalAttributes, assigned_name.name).fset
+        ):
+            prop = cast_assert(property, getattr(GlobalAttributes, assigned_name.name))
+            assert prop.fset is not None
+            # TODO: @v0.4 remove this deprecated import form
+            with (
+                downgrade(DeprecatedException, errors.UserNotImplementedError),
+                _attach_ctx_to_ex(ctx, self.get_traceback()),
+            ):
+                prop.fset(target, value)
+        else:
+            # Strictly, these are two classes of errors that could use independent
+            # suppression, but we'll just suppress them both collectively for now
+            # TODO: @v0.4 remove this deprecated import form
+            with downgrade(errors.UserException):
+                raise errors.UserException.from_ctx(
+                    ctx,
+                    f"Ignoring assignment of `{value}` to `{assigned_name}` on"
+                    f" `{target}`",
+                    traceback=self.get_traceback(),
+                )
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
+        assignable_ctx = ctx.assignable()
         dec = ctx.field_reference_or_declaration()
         assigned_ref = self.visitFieldReference(
             dec.field_reference() or dec.declaration_stmt().field_reference()
         )
-
-        assigned_name: ReferencePartType = assigned_ref[-1]
-        assignable_ctx = ctx.assignable()
-        assert isinstance(assignable_ctx, ap.AssignableContext)
         target = self._get_referenced_node(assigned_ref.stem, ctx)
 
-        ########## Handle New Statements ##########
-        if new_stmt_ctx := assignable_ctx.new_stmt():
-            if len(assigned_ref) > 1:
-                raise errors.UserSyntaxError.from_ctx(
-                    ctx,
-                    f"Can't declare fields in a nested object `{assigned_ref}`",
-                    traceback=self.get_traceback(),
-                )
-            if assigned_name.key is not None:
-                raise errors.UserSyntaxError.from_ctx(
-                    ctx,
-                    f"Can't use keys with `new` statements `{assigned_ref}`",
-                    traceback=self.get_traceback(),
-                )
-
-            assert isinstance(new_stmt_ctx, ap.New_stmtContext)
-            ref = self.visitTypeReference(new_stmt_ctx.type_reference())
-
-            def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
-                try:
-                    obj.add(
-                        node,
-                        name=assigned_name.name if container_name is None else None,
-                        container=getattr(obj, container_name)
-                        if container_name
-                        else None,
-                    )
-                except FieldExistsError as e:
-                    raise errors.UserAlreadyExistsError.from_ctx(
-                        ctx,
-                        f"Field `{assigned_name}` already exists",
-                        traceback=self.get_traceback(),
-                    ) from e
-                node.add(from_dsl(ctx))
-
-            try:
-                with self._traceback_stack.enter(new_stmt_ctx):
-                    if new_count_ctx := new_stmt_ctx.new_count():
-                        try:
-                            new_count = int(new_count_ctx.getText())
-                        except ValueError:
-                            raise errors.UserValueError.from_ctx(
-                                ctx,
-                                f"Invalid integer `{new_count_ctx.getText()}`",
-                                traceback=self.get_traceback(),
-                            )
-
-                        if new_count < 0:
-                            raise errors.UserValueError.from_ctx(
-                                ctx,
-                                f"Negative integer `{new_count}`",
-                                traceback=self.get_traceback(),
-                            )
-
-                        if hasattr(self._current_node, assigned_name.name):
-                            raise errors.UserAlreadyExistsError.from_ctx(
-                                ctx,
-                                f"Field `{assigned_name}` already exists",
-                                traceback=self.get_traceback(),
-                            )
-
-                        setattr(self._current_node, assigned_name.name, list())
-                        for _ in range(new_count):
-                            with self._init_node(
-                                self._get_referenced_class(ctx, ref)
-                            ) as new_node:
-                                _add_node(
-                                    self._current_node, new_node, assigned_name.name
-                                )
-                    else:
-                        with self._init_node(
-                            self._get_referenced_class(ctx, ref)
-                        ) as new_node:
-                            _add_node(self._current_node, new_node)
-            except Exception:
-                # Not a narrower exception because it's often an ExceptionGroup
-                self._record_failed_node(self._current_node, assigned_name.name)
-                raise
-
-            return NOTHING
-
-        ########## Handle Regular Assignments ##########
-        value = self.visit(assignable_ctx)
-        # Arithmetic
-        if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            declaration = ctx.field_reference_or_declaration().declaration_stmt()
-            if declaration:
-                # check valid declaration
-                # create param with corresponding units
-                self.visitDeclaration_stmt(declaration)
-
-            unit = HasUnit.get_units(value)
-            param = self._ensure_param(target, assigned_name, unit, ctx)
-            self._param_assignments[param].append(
-                _ParameterDefinition(
-                    ref=assigned_ref,
-                    value=value,
-                    ctx=ctx,
-                    traceback=self.get_traceback(),
-                )
+        if assignable_ctx.new_stmt():
+            self._assign_new_node(
+                ctx=ctx,
+                assignable_ctx=assignable_ctx,
+                assigned_ref=assigned_ref,
             )
-
-        # String or boolean
+        elif (
+            assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression()
+        ):
+            self._assign_arithmetic(ctx=ctx, assigned_ref=assigned_ref, target=target)
         elif assignable_ctx.string() or assignable_ctx.boolean_():
-            if assigned_name.key is not None:
-                raise errors.UserSyntaxError.from_ctx(
-                    ctx,
-                    f"Can't use keys with non-arithmetic attribute assignments "
-                    f"`{assigned_ref}`",
-                    traceback=self.get_traceback(),
-                )
-
-            # Check if it's a property or attribute that can be set
-            if has_instance_settable_attr(target, assigned_name.name):
-                try:
-                    setattr(target, assigned_name.name, value)
-                except errors.UserException as e:
-                    e.attach_origin_from_ctx(assignable_ctx)
-                    raise
-            elif (
-                # If ModuleShims has a settable property, use it
-                hasattr(GlobalAttributes, assigned_name.name)
-                and isinstance(getattr(GlobalAttributes, assigned_name.name), property)
-                and getattr(GlobalAttributes, assigned_name.name).fset
-            ):
-                prop = cast_assert(
-                    property, getattr(GlobalAttributes, assigned_name.name)
-                )
-                assert prop.fset is not None
-                # TODO: @v0.4 remove this deprecated import form
-                with (
-                    downgrade(DeprecatedException, errors.UserNotImplementedError),
-                    _attach_ctx_to_ex(ctx, self.get_traceback()),
-                ):
-                    prop.fset(target, value)
-            else:
-                # Strictly, these are two classes of errors that could use independent
-                # suppression, but we'll just suppress them both collectively for now
-                # TODO: @v0.4 remove this deprecated import form
-                with downgrade(errors.UserException):
-                    raise errors.UserException.from_ctx(
-                        ctx,
-                        f"Ignoring assignment of `{value}` to `{assigned_name}` on"
-                        f" `{target}`",
-                        traceback=self.get_traceback(),
-                    )
-
+            self._assign_string_or_bool(
+                ctx=ctx,
+                assignable_ctx=assignable_ctx,
+                assigned_ref=assigned_ref,
+                target=target,
+            )
         else:
             raise ValueError(f"Unhandled assignable type `{assignable_ctx.getText()}`")
 
@@ -1952,16 +1998,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         )
         trait_name = f"{ref}{f':{constructor_name}' if constructor_name else ''}"
         constructor, args = self._get_trait_constructor(ctx, ref, constructor_name)
-        kwargs = (
-            {
-                k: v
-                for k, v in (
-                    self.visitTrait_parameter(p) for p in params.trait_parameter()
-                )
-            }
-            if (params := ctx.trait_parameter_list()) is not None
-            else {}
-        )
+        kwargs = self.visitTemplate(ctx.template())
 
         try:
             trait = constructor(*args, **kwargs)
@@ -1975,9 +2012,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._current_node.add(trait)
 
         return NOTHING
-
-    def visitTrait_parameter(self, ctx: ap.Trait_parameterContext) -> tuple[str, Any]:
-        return self.visitName(ctx.name()), self.visitLiteral(ctx.literal())
 
     # Returns fab_param.ConstrainableExpression or BoolSet
     def visitComparison(
@@ -2561,6 +2595,27 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             self._in_for_loop = False
 
         return NOTHING
+
+    def visitLiteral(self, ctx: ap.LiteralContext) -> Any:
+        if (string_ctx := ctx.string()) is not None:
+            return self.visitString(string_ctx)
+        elif (boolean_ctx := ctx.boolean_()) is not None:
+            return self.visitBoolean_(boolean_ctx)
+        else:
+            return self.visitNumber(ctx.number()).interpret()
+
+    def visitTemplate_arg(self, ctx: ap.Template_argContext) -> tuple[str, Any]:
+        return ctx.name().getText(), self.visitLiteral(ctx.literal())
+
+    def visitTemplate(self, ctx: ap.TemplateContext | None) -> dict[str, Any]:
+        if ctx is None:
+            return {}
+
+        kwargs = {
+            k: v for k, v in (self.visitTemplate_arg(arg) for arg in ctx.template_arg())
+        }
+
+        return kwargs
 
 
 bob = Bob()
