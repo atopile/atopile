@@ -1,57 +1,53 @@
 import logging
-import sys
+import shutil
+import subprocess
 from pathlib import Path
-from typing import Iterable
 
-from git import Repo
-
-from faebryk.libs.util import AUTO_RECOMPILE, is_editable_install, run_live
+from faebryk.libs.util import (
+    has_uncommitted_changes,
+    is_editable_install,
+    run_live,
+)
 
 logger = logging.getLogger(__name__)
 
 
-if is_editable_install() and AUTO_RECOMPILE.get():
+def check_for_recompile():
+    if not is_editable_install():
+        return
 
-    def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
-        """Check if any of the given files have uncommitted changes."""
-        try:
-            repo = Repo(search_parent_directories=True)
-            diff_index = repo.index.diff(None)  # Get uncommitted changes
-
-            # Convert all files to Path objects for consistent comparison
-            files = [Path(f).resolve() for f in files]
-            repo_root = Path(repo.working_dir)
-
-            # Check if any of the files have changes
-            for diff in diff_index:
-                diff_path = (repo_root / diff.a_path).resolve()
-                if diff_path in files:
-                    return True
-
-            return False
-        except Exception:
-            # If we can't check git status (not a git repo, etc), assume we don't need to recompile # noqa: E501  # pre-existing
-            return False
-
-    SAUCY_FILES = [
-        "AtoParser.g4",
-        "AtoLexer.g4",
-        "AtoParserBase.py",
-        "AtoLexerBase.py",
-    ]
     THIS_DIR = Path(__file__).parent
+    parser_files = THIS_DIR.rglob("Ato*")
+    if not has_uncommitted_changes(parser_files):
+        return
 
-    if has_uncommitted_changes(THIS_DIR / f for f in SAUCY_FILES):
-        logger.warning("Recompiling ANTLR4 grammars due to changes in grammar files")
-        bin_dir = Path(sys.executable).parent
+    # binary provided by antlr4-tools python package
+    if shutil.which("antlr4") is None:
+        logger.warning("antlr-tools not found, did you run `uv sync --dev`?")
+        return
+
+    logger.warning("Recompiling ato grammar")
+
+    # compile using antlr4 python package
+    GRAMMAR_FILES = [
+        "AtoLexer.g4",
+        "AtoParser.g4",
+    ]
+
+    try:
         run_live(
             [
-                bin_dir / "antlr4",
+                "antlr4",
+                "-long-messages",
                 "-visitor",
                 "-no-listener",
                 "-Dlanguage=Python3",
-                "AtoLexer.g4",
-                "AtoParser.g4",
+                *GRAMMAR_FILES,
             ],
             cwd=THIS_DIR,
         )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ANTLR compilation failed:\\n{e.stderr}")
+
+
+check_for_recompile()
