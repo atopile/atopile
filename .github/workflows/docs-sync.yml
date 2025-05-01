@@ -29,16 +29,12 @@ jobs:
         with:
           node-version: '20'
 
-      # Step 4: Install dependencies (if needed)
-      - name: Install dependencies
-        run: npm install
-
-      # Step 5: Run conversion script
+      # Step 4: Run conversion script
       - name: Convert examples to MDX
         run: node tools/docs-sync.js
         # Alternatively, you could use: bash ./scripts/convert-to-mdx.sh
 
-      # Step 6: Checkout docs repository
+      # Step 5: Checkout docs repository
       - name: Checkout docs repository
         uses: actions/checkout@v4
         with:
@@ -46,13 +42,13 @@ jobs:
           token: ${{ steps.generate-token.outputs.token }}
           path: docs-repo
 
-      # Step 7: Copy converted files to docs repository
+      # Step 6: Copy converted files to docs repository
       - name: Copy converted MDX files
         run: |
           mkdir -p docs-repo/examples/
           cp -R converted-examples/* docs-repo/examples/
 
-      # Step 8: Commit and push changes to docs repository
+      # Step 7: Commit and push changes to docs repository
       - name: Commit and push to docs repository
         working-directory: ./docs-repo
         run: |
