@@ -7,8 +7,9 @@ import itertools
 import logging
 import operator
 import os
+import typing
 from collections import defaultdict
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
@@ -344,7 +345,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                     name = ref[0]
                     if not hasattr(F, name) or not issubclass(
-                        getattr(F, name), (L.Module, L.ModuleInterface, L.Module.TraitT)
+                        getattr(F, name), (L.Module, L.ModuleInterface, L.Trait)
                     ):
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Unknown standard library module: '{name}'"
@@ -1876,6 +1877,64 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise ValueError(f"Unhandled comparison type {type(cmp)}")
         return NOTHING
 
+    def _get_trait_constructor(
+        self, ctx: ap.Trait_stmtContext, ref: TypeRef, constructor_name: str | None
+    ) -> tuple[Callable, tuple[Type | None]]:
+        try:
+            trait_cls = self._get_referenced_class(ctx, ref)
+        except errors.UserKeyError as ex:
+            raise errors.UserTraitNotFoundError.from_ctx(
+                ctx,
+                f"No such trait: `{ref}`",
+                traceback=self.get_traceback(),
+            ) from ex
+
+        if isinstance(trait_cls, ap.BlockdefContext) or not issubclass(
+            trait_cls, L.Trait
+        ):
+            raise errors.UserInvalidTraitError.from_ctx(
+                ctx,
+                f"`{ref}` is not a valid trait",
+                traceback=self.get_traceback(),
+            )
+
+        constructor = trait_cls
+        args = tuple()
+
+        if constructor_name is not None:
+            try:
+                attr = inspect.getattr_static(trait_cls, constructor_name)
+            except AttributeError:
+                raise errors.UserTraitNotFoundError.from_ctx(
+                    ctx,
+                    f"No such trait constructor: `{ref}:{constructor_name}`",
+                    traceback=self.get_traceback(),
+                )
+
+            if not isinstance(attr, classmethod):
+                raise errors.UserInvalidTraitError.from_ctx(
+                    ctx,
+                    f"`{ref}:{constructor_name}` is not a valid trait constructor",
+                    traceback=self.get_traceback(),
+                )
+
+            if inspect.signature(attr.__func__).return_annotation not in (
+                typing.Self,
+                trait_cls,
+                trait_cls.__name__,
+            ):
+                raise errors.UserInvalidTraitError.from_ctx(
+                    ctx,
+                    f"`{ref}:{constructor_name}` is not a valid trait constructor "
+                    "(missing or invalid return type annotation)",
+                    traceback=self.get_traceback(),
+                )
+
+            constructor = attr.__func__
+            args = (trait_cls,)
+
+        return constructor, args
+
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
         if not self._is_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS):
             raise errors.UserFeatureNotEnabledError.from_ctx(
@@ -1885,40 +1944,40 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
 
-        # TODO: restrict list of importable traits
-        # TODO: param templating
+        ref = self.visitTypeReference(ctx.type_reference())
+        constructor_name = (
+            self.visitName(ctx.constructor().name())
+            if ctx.constructor() is not None
+            else None
+        )
+        trait_name = f"{ref}{f':{constructor_name}' if constructor_name else ''}"
+        constructor, args = self._get_trait_constructor(ctx, ref, constructor_name)
+        kwargs = (
+            {
+                k: v
+                for k, v in (
+                    self.visitTrait_parameter(p) for p in params.trait_parameter()
+                )
+            }
+            if (params := ctx.trait_parameter_list()) is not None
+            else {}
+        )
 
         try:
-            ref = self.visitTypeReference(ctx.type_reference())
-            trait_cls = self._get_referenced_class(ctx, ref)
-        except errors.UserKeyError as ex:
-            raise errors.UserTraitNotFoundError.from_ctx(
-                ctx,
-                f"No such trait: `{ctx.type_reference().getText()}`",
-                traceback=self.get_traceback(),
-            ) from ex
-
-        if isinstance(trait_cls, ap.BlockdefContext) or not issubclass(
-            trait_cls, L.Module.TraitT
-        ):
-            raise errors.UserInvalidTraitError.from_ctx(
-                ctx,
-                f"`{ref}` is not a valid trait",
-                traceback=self.get_traceback(),
-            )
-
-        try:
-            trait = trait_cls()
+            trait = constructor(*args, **kwargs)
         except Exception as e:
             raise errors.UserTraitError.from_ctx(
                 ctx,
-                f"Error applying trait `{ref}`: {e}",
+                f"Error applying trait `{trait_name}`: {e}",
                 traceback=self.get_traceback(),
             ) from e
 
         self._current_node.add(trait)
 
         return NOTHING
+
+    def visitTrait_parameter(self, ctx: ap.Trait_parameterContext) -> tuple[str, Any]:
+        return self.visitName(ctx.name()), self.visitLiteral(ctx.literal())
 
     # Returns fab_param.ConstrainableExpression or BoolSet
     def visitComparison(
