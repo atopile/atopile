@@ -1883,8 +1883,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
 
             if inspect.signature(attr.__func__).return_annotation not in (
-                trait_cls,
                 typing.Self,
+                trait_cls,
+                trait_cls.__name__,
             ):
                 raise errors.UserInvalidTraitError.from_ctx(
                     ctx,
