@@ -359,25 +359,25 @@ class UserFeatureNotAvailableError(UserException):
     """
 
 
-class UserFeatureNotEnabledError(UserSyntaxError):
+class UserFeatureNotEnabledError(UserException):
     """
     Raised when an experimental feature has not been enabled.
     """
 
 
-class UserTraitNotFoundError(UserSyntaxError):
+class UserTraitNotFoundError(UserException):
     """
     Raised when a trait is not found.
     """
 
 
-class UserInvalidTraitError(UserSyntaxError):
+class UserInvalidTraitError(UserException):
     """
     Raised when something other than a valid trait follows the `trait` keyword
     """
 
 
-class UserTraitError(UserSyntaxError):
+class UserTraitError(UserException):
     """
     Raised when there's an error applying a trait.
     """

@@ -761,7 +761,7 @@ def test_pragma_feature_nonexisting(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    with pytest.raises(errors.UserException, match="Unknown experiment"):
+    with pytest.raises(errors.UserFeatureNotAvailableError, match="Unknown experiment"):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
@@ -776,7 +776,7 @@ def test_pragma_feature_multiple_args(bob: Bob):
     )
 
     tree = parse_text_as_file(text)
-    with pytest.raises(errors.UserException, match="takes exactly one argument"):
+    with pytest.raises(errors.UserSyntaxError, match="takes exactly one argument"):
         bob.build_ast(tree, TypeRef(["App"]))
 
 

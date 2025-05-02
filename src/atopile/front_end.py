@@ -474,6 +474,10 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         try:
             pragma = _parse_pragma(ctx.PRAGMA().getText().strip())[1]
             _FeatureFlags.feature_from_experiment_call(pragma)
+        except _FeatureFlags.ExperimentPragmaSyntaxError as ex:
+            raise errors.UserSyntaxError.from_ctx(ctx, str(ex)) from ex
+        except _FeatureFlags.UnrecognizedExperimentError as ex:
+            raise errors.UserFeatureNotAvailableError.from_ctx(ctx, str(ex)) from ex
         except errors.UserException as ex:
             # Re-raise the exception with the context from the pragma statement
             raise errors.UserException.from_ctx(ctx, str(ex)) from ex
@@ -700,30 +704,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _ensure_feature_enabled(
         self, ctx: ParserRuleContext, feature: _FeatureFlags.Feature
     ) -> None:
-        try:
-            enabled = _FeatureFlags.enabled_in_ctx(ctx, feature)
-        except _FeatureFlags.UnrecognizedExperimentError as ex:
-            raise errors.UserFeatureNotAvailableError.from_ctx(
-                ctx,
-                message=f"Unknown experiment feature: `{feature}`",
-                feature=feature,
-                traceback=self.get_traceback(),
-            ) from ex
-        except _FeatureFlags.ExperimentPragmaSyntaxError as ex:
-            raise errors.UserSyntaxError.from_ctx(
-                ctx,
-                str(ex),
-                traceback=self.get_traceback(),
-            ) from ex
+        # note syntax errors will be caught before this point
 
-        if not enabled:
+        if not _FeatureFlags.enabled_in_ctx(ctx, feature):
             raise errors.UserFeatureNotEnabledError.from_ctx(
                 ctx,
                 message=(
                     "Experimental feature not enabled. "
                     f'Use `#pragma experiment("{feature.value}")` in your file.'
                 ),
-                feature=feature,
                 traceback=self.get_traceback(),
             )
 
