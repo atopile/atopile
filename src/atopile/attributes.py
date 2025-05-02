@@ -471,6 +471,7 @@ class CapacitorElectrolytic(CommonCapacitor):
             power = self.get_trait(self._has_power).power
         else:
             power = F.ElectricPower()
+            self.add(power, name="power_shim")
             power.hv.connect(self.anode)
             power.lv.connect(self.cathode)
             self.add(self._has_power(power))
