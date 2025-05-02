@@ -26,10 +26,8 @@ class ErrorListenerConverter(ErrorListener):
         msg: str,
         e: Exception | None,
     ):
-        if e is None:
-            msg = msg
-        else:
-            msg = f"{str(e)} '{msg}'"
+        if e is not None and e.args != (None,):
+            msg = f"{e} {msg}"
 
         input_stream: CommonTokenStream = recognizer.getInputStream()
         # This fill is required to get context past the offending symbol
