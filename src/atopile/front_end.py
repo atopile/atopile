@@ -1087,7 +1087,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def resolve_node_field(self, src_node: L.Node, ref: FieldRef) -> Field:
         path: list[Field] = [src_node]
-        for name in ref:
+        for depth, name in enumerate(ref):
             last = path[-1]
             if not isinstance(last, L.Node):
                 raise ValueError(
@@ -1098,7 +1098,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 field = self.resolve_node_field_part(last, name)
             except AttributeError as ex:
                 raise AttributeError(
-                    f"{FieldRef(ref.parts[: len(path)])} has no attribute `{ex.name}`"
+                    f"`{FieldRef(ref.parts[:depth])}` has no attribute `{ex.name}`"
                     if len(path) > 1
                     else f"No attribute `{name}`"
                 ) from ex
