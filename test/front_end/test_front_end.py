@@ -954,14 +954,17 @@ def test_for_loop_stale_ref(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
-def test_for_loop_illegal_statements(bob: Bob):
-    illegal_simple_stmts = [
+@pytest.mark.parametrize(
+    "stmt",
+    [
         "import Resistor",
         "pin 1",
         "signal a",
         "trait is_not_pickable",
-    ]
-
+        "r = new Resistor",
+    ],
+)
+def test_for_loop_illegal_statements(bob: Bob, stmt: str):
     template = dedent(
         """
         #pragma experiment("FOR_LOOP")
@@ -971,15 +974,14 @@ def test_for_loop_illegal_statements(bob: Bob):
 
         module App:
             nodes = new Resistor[10]
-            for {stmt} in nodes:
-                pass
+            for x in nodes:
+                {stmt}
         """
     )
 
-    for stmt in illegal_simple_stmts:
-        text = template.format(stmt=stmt)
-        with pytest.raises(errors.UserSyntaxError):
-            parse_text_as_file(text)
+    text = template.format(stmt=stmt)
+    with pytest.raises(errors.UserSyntaxError):
+        parse_text_as_file(text)
 
 
 def test_list_literal_basic(bob: Bob):
@@ -1627,74 +1629,73 @@ def test_module_templating_list(bob: Bob):
     assert all(addressor._address_bits == 7 for addressor in addressors)
 
 
-def test_reserved_keywords_as_identifiers(bob: Bob):
-    valid = "x"
+# see src/atopile/parser/AtoLexer.g4
+@pytest.mark.parametrize(
+    "name,template",
+    [
+        (name, template)
+        for name in [
+            "component",
+            "module",
+            "interface",
+            "pin",
+            "signal",
+            "new",
+            "from",
+            "import",
+            "for",
+            "in",
+            "assert",
+            "to",
+            "True",
+            "False",
+            "within",
+            "is",
+            "pass",
+            "trait",
+            "int",
+            "float",
+            "string",
+            "str",
+            "bytes",
+            "if",
+            "parameter",
+            "param",
+            "test",
+            "require",
+            "requires",
+            "check",
+            "report",
+            "ensure",
+        ]
+        for template in [
+            """
+            module App:
+                {name} = 10 V +/- 5%
+            """,
+            """
+            import {name}
+            """,
+            """
+            component {name}:
+                pass
+            """,
+            """
+            module {name}:
+                pass
+            """,
+            """
+            interface {name}:
+                pass
+            """,
+        ]
+    ],
+)
+def test_reserved_keywords_as_identifiers(name: str, template: str):
+    template = dedent(template)
 
-    # see src/atopile/parser/AtoLexer.g4
-    reserved = [
-        "component",
-        "module",
-        "interface",
-        "pin",
-        "signal",
-        "new",
-        "from",
-        "import",
-        "for",
-        "in",
-        "assert",
-        "to",
-        "True",
-        "False",
-        "within",
-        "is",
-        "pass",
-        "trait",
-        "int",
-        "float",
-        "string",
-        "str",
-        "bytes",
-        "if",
-        "parameter",
-        "param",
-        "test",
-        "require",
-        "requires",
-        "check",
-        "report",
-        "ensure",
-    ]
+    # ensure template is otherwise valid
+    parse_text_as_file(template.format(name="x"))
 
-    templates = [
-        """
-        module App:
-            {name} = 10 V +/- 5%
-        """,
-        """
-        import {name}
-        """,
-        """
-        component {name}:
-            pass
-        """,
-        """
-        module {name}:
-            pass
-        """,
-        """
-        interface {name}:
-            pass
-        """,
-    ]
-
-    def test_template_with_name(template: str, name: str):
-        # TODO: check name.upper() and name.capitalize()?
-
-        with pytest.raises(errors.UserSyntaxError):
-            parse_text_as_file(template.format(name=name))
-
-    for template in [dedent(t) for t in templates]:
-        parse_text_as_file(template.format(name=valid))
-        for kw in reserved:
-            test_template_with_name(template, kw)
+    with pytest.raises(errors.UserSyntaxError):
+        parse_text_as_file(template.format(name=name))
