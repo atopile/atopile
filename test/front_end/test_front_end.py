@@ -1207,7 +1207,7 @@ def test_nested_trait_access(bob: Bob):
         import Symbol
 
         module App:
-            trait Symbol.has_kicad_symbol
+            trait Symbol.has_kicad_symbol  # wrong syntax
         """
     )
 
@@ -1224,7 +1224,7 @@ def test_nested_trait_namepsace_access(bob: Bob):
         import Symbol
 
         module App:
-            trait Symbol:has_kicad_symbol
+            trait Symbol::has_kicad_symbol  # trait should be moved to the top level
         """
     )
 
@@ -1258,7 +1258,7 @@ def test_alternate_trait_constructor_no_params_params_required(bob: Bob):
         import has_explicit_part
 
         module App:
-            trait has_explicit_part:by_mfr
+            trait has_explicit_part::by_mfr
         """
     )
 
@@ -1278,7 +1278,7 @@ def test_alternate_trait_constructor_with_params(bob: Bob):
         import has_explicit_part
 
         module App:
-            trait has_explicit_part:by_mfr<mfr="TI", partno="TCA9548APWR">
+            trait has_explicit_part::by_mfr<mfr="TI", partno="TCA9548APWR">
         """
     )
 
@@ -1334,7 +1334,7 @@ def test_trait_alternate_constructor_precedence(bob: Bob):
         import has_net_name
 
         module App:
-            trait has_net_name:expected<name="example">
+            trait has_net_name::expected<name="example">
         """
     )
 

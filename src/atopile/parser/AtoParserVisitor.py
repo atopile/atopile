@@ -294,6 +294,21 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#slice_start.
+    def visitSlice_start(self, ctx:AtoParser.Slice_startContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#slice_stop.
+    def visitSlice_stop(self, ctx:AtoParser.Slice_stopContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#slice_step.
+    def visitSlice_step(self, ctx:AtoParser.Slice_stepContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#atom.
     def visitAtom(self, ctx:AtoParser.AtomContext):
         return self.visitChildren(ctx)

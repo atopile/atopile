@@ -121,6 +121,7 @@ STAR: '*';
 OPEN_PAREN: '(';
 CLOSE_PAREN: ')';
 COMMA: ',';
+DOUBLE_COLON: '::';
 COLON: ':';
 SEMI_COLON: ';';
 POWER: '**';

@@ -186,7 +186,8 @@ assert_stmt
     ;
 
 trait_stmt
-    : TRAIT type_reference (COLON constructor)? template?
+    // TODO: move namespacing to type_reference
+    : TRAIT type_reference (DOUBLE_COLON constructor)? template?
     ;
 constructor
     : name
@@ -265,10 +266,19 @@ bound
 
 slice
     : '[' (
-        number_hint_integer? COLON number_hint_integer? (
-            COLON number_hint_integer?
-        )?
+        slice_start? COLON slice_stop? (COLON slice_step?)?
     )? ']'
+    // else [::step] wouldn't match
+    | '[' ( DOUBLE_COLON slice_step?) ']'
+    ;
+slice_start
+    : number_hint_integer
+    ;
+slice_stop
+    : number_hint_integer
+    ;
+slice_step
+    : number_hint_integer
     ;
 
 atom

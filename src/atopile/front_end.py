@@ -13,7 +13,6 @@ from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import StrEnum
-from functools import reduce
 from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
@@ -2448,34 +2447,23 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         if ctx is None:
             return slice(None)
 
-        slice_tokens = [
-            self.visitNumber_hint_integer(token) if is_number else None
-            for token in ctx.children
-            if (is_number := isinstance(token, ap.Number_hint_integerContext))
-            or token.getText() == ":"  # TODO ugly
-        ]
-        # remove meaningless colons
-        slice_tokens_folded = reduce(
-            lambda acc, x: acc + [x]
-            if x is not None or not acc or acc[-1] is None
-            else acc,
-            slice_tokens,
-            [],
-        )
-        # Fillup
-        components = slice_tokens_folded + [None] * (3 - len(slice_tokens_folded))
+        start, stop, step = None, None, None
 
-        if not len(components) == 3:
-            raise errors.UserSyntaxError.from_ctx(
-                ctx, "Invalid slice syntax", traceback=self.get_traceback()
-            )
+        if (start_ctx := ctx.slice_start()) is not None:
+            start = self.visitNumber_hint_integer(start_ctx.number_hint_integer())
 
-        out = slice(*components)
-        if out.step == 0:
+        if (stop_ctx := ctx.slice_stop()) is not None:
+            stop = self.visitNumber_hint_integer(stop_ctx.number_hint_integer())
+
+        if (step_ctx := ctx.slice_step()) is not None:
+            step = self.visitNumber_hint_integer(step_ctx.number_hint_integer())
+
+        if step == 0:
             raise errors.UserValueError.from_ctx(
                 ctx, "Slice step cannot be zero", traceback=self.get_traceback()
             )
-        return out
+
+        return slice(start, stop, step)
 
     def visitList_literal_of_field_references(
         self, ctx: ap.List_literal_of_field_referencesContext
