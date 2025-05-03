@@ -1625,3 +1625,76 @@ def test_module_templating_list(bob: Bob):
     addressors = cast(list[F.Addressor], addressors)
     assert all(isinstance(addressor, F.Addressor) for addressor in addressors)
     assert all(addressor._address_bits == 7 for addressor in addressors)
+
+
+def test_reserved_keywords_as_identifiers(bob: Bob):
+    valid = "x"
+
+    # see src/atopile/parser/AtoLexer.g4
+    reserved = [
+        "component",
+        "module",
+        "interface",
+        "pin",
+        "signal",
+        "new",
+        "from",
+        "import",
+        "for",
+        "in",
+        "assert",
+        "to",
+        "True",
+        "False",
+        "within",
+        "is",
+        "pass",
+        "trait",
+        "int",
+        "float",
+        "string",
+        "str",
+        "bytes",
+        "if",
+        "parameter",
+        "param",
+        "test",
+        "require",
+        "requires",
+        "check",
+        "report",
+        "ensure",
+    ]
+
+    templates = [
+        """
+        module App:
+            {name} = 10 V +/- 5%
+        """,
+        """
+        import {name}
+        """,
+        """
+        component {name}:
+            pass
+        """,
+        """
+        module {name}:
+            pass
+        """,
+        """
+        interface {name}:
+            pass
+        """,
+    ]
+
+    def test_template_with_name(template: str, name: str):
+        # TODO: check name.upper() and name.capitalize()?
+
+        with pytest.raises(errors.UserSyntaxError):
+            parse_text_as_file(template.format(name=name))
+
+    for template in [dedent(t) for t in templates]:
+        parse_text_as_file(template.format(name=valid))
+        for kw in reserved:
+            test_template_with_name(template, kw)

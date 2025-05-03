@@ -55,6 +55,24 @@ SPERM: '~>';
 LSPERM: '<~';
 WIRE: '~';
 
+// Unused but reserved
+
+// TODO: more conservative list
+INT: 'int';
+FLOAT: 'float';
+STRING_: 'string';
+STR: 'str';
+BYTES: 'bytes';
+IF: 'if';
+PARAMETER: 'parameter';
+PARAM: 'param';
+TEST: 'test';
+REQUIRE: 'require';
+REQUIRES: 'requires';
+CHECK: 'check';
+REPORT: 'report';
+ENSURE: 'ensure';
+
 // Stuff from the Python3 grammer we based this on
 
 /// identifier   ::=  id_start id_continue*
