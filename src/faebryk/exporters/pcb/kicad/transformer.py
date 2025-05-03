@@ -367,7 +367,13 @@ class PCB_Transformer:
         pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
         mapped_net_names = set()
 
-        for net in GraphFunctions(self.graph).nodes_of_type(F.Net):
+        named_nets = {
+            n
+            for n in GraphFunctions(self.graph).nodes_of_type(F.Net)
+            if n.has_trait(F.has_overriden_name)
+        }
+
+        for net in named_nets:
             total_pads = 0
             # map from net name to the number of pads we've
             # linked corroborating its accuracy
@@ -1018,9 +1024,9 @@ class PCB_Transformer:
         center_at: C_xyr,
         layer="F.SilkS",
     ):
-        assert layer.endswith(
-            "SilkS"
-        ), "JLCPCB serial number must be on silk screen layer"
+        assert layer.endswith("SilkS"), (
+            "JLCPCB serial number must be on silk screen layer"
+        )
         self.insert_text(
             "JLCJLCJLCJLC",
             at=center_at,
@@ -1329,9 +1335,9 @@ class PCB_Transformer:
 
         # create Edge.Cuts geometries
         for geo in geometry:
-            assert (
-                "Edge.Cuts" in geo.get_layers()
-            ), f"Geometry {geo} is not on Edge.Cuts layer"
+            assert "Edge.Cuts" in geo.get_layers(), (
+                f"Geometry {geo} is not on Edge.Cuts layer"
+            )
 
             self.insert_geo(geo)
 
@@ -1845,10 +1851,11 @@ class PCB_Transformer:
             self.remove_footprint(pcb_fp)
 
         # Update nets
-        # All nets MUST have a name by this point
+        # Every bus has at least one net with name at this point
         f_nets_by_name = {
             n.get_trait(F.has_overriden_name).get_name(): n
             for n in gf.nodes_of_type(F.Net)
+            if n.has_trait(F.has_overriden_name)
         }
 
         processed_nets = FuncSet[Net]()

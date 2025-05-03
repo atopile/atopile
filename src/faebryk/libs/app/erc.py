@@ -190,14 +190,18 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         logger.info(f"Checking {len(nets)} explicit nets")
         for net in nets:
             with accumulator.collect():
-                collisions = {
-                    p[0]
-                    for mif in net.part_of.get_connected()
-                    if (p := mif.get_parent()) and isinstance(p[0], F.Net)
+                nets_on_bus = F.Net.find_nets_for_mif(net.part_of)
+
+                named_collisions = {
+                    neighor_net
+                    for neighor_net in nets_on_bus
+                    if neighor_net.has_trait(F.has_overriden_name)
                 }
 
-                if collisions:
-                    friendly_shorted = ", ".join(n.get_full_name() for n in collisions)
+                if named_collisions:
+                    friendly_shorted = ", ".join(
+                        n.get_full_name() for n in named_collisions
+                    )
                     raise ERCFaultShort(
                         f"Shorted nets: {friendly_shorted}",
                     )

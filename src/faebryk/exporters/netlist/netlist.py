@@ -39,6 +39,8 @@ def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
     from faebryk.exporters.netlist.graph import can_represent_kicad_footprint
 
     nets = GraphFunctions(G).nodes_of_type(F.Net)
+    # all buses have at least one net with name at this point
+    named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
 
     fbrk_nets = [
         FBRKNetlist.Net(
@@ -55,7 +57,7 @@ def make_fbrk_netlist_from_graph(G: Graph) -> FBRKNetlist:
                 key=lambda v: (v.component.name, v.pin),
             ),
         )
-        for net in nets
+        for net in named_nets
     ]
 
     comps = {
