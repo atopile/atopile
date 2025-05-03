@@ -1387,6 +1387,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
         new_stmt_ctx = assignable_ctx.new_stmt()
         ref = self.visitTypeReference(new_stmt_ctx.type_reference())
+
+        if new_stmt_ctx.template() is not None:
+            self._ensure_feature_enabled(
+                new_stmt_ctx, _FeatureFlags.Feature.MODULE_TEMPLATING
+            )
+
         kwargs = self.visitTemplate(new_stmt_ctx.template())
 
         def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
