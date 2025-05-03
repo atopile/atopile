@@ -954,6 +954,34 @@ def test_for_loop_stale_ref(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
+def test_for_loop_illegal_statements(bob: Bob):
+    illegal_simple_stmts = [
+        "import Resistor",
+        "pin 1",
+        "signal a",
+        "trait is_not_pickable",
+    ]
+
+    template = dedent(
+        """
+        #pragma experiment("FOR_LOOP")
+        #pragma experiment("TRAITS")
+
+        import Resistor
+
+        module App:
+            nodes = new Resistor[10]
+            for {stmt} in nodes:
+                pass
+        """
+    )
+
+    for stmt in illegal_simple_stmts:
+        text = template.format(stmt=stmt)
+        with pytest.raises(errors.UserSyntaxError):
+            parse_text_as_file(text)
+
+
 def test_list_literal_basic(bob: Bob):
     text = dedent(
         """
