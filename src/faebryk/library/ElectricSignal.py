@@ -121,3 +121,14 @@ class ElectricSignal(F.Signal):
             # cannot determine effective resistance of multiple resistors without
             # inspecting circuit topology
             return None
+
+    class has_single_electric_reference_shared(F.has_single_electric_reference.impl()):
+        def __init__(self, gnd_only: bool = False):
+            super().__init__()
+            self.gnd_only = gnd_only
+
+        def on_obj_set(self):
+            super().on_obj_set()
+
+            obj = self.get_obj(Module)
+            ElectricSignal.connect_all_module_references(obj, gnd_only=self.gnd_only)
