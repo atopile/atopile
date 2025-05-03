@@ -175,6 +175,7 @@ from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
+from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.PoweredLED import PoweredLED

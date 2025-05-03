@@ -854,7 +854,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # so we don't report dud key errors when it was a higher failure
         # that caused the node not to exist
         self._failed_nodes = FuncDict[L.Node, set[str]]()
-        self._in_for_loop = False  # Flag to detect nested loops
+        self._for_loop_stack = []  # Flag to detect nested loops
 
     def _ensure_feature_enabled(
         self, ctx: ParserRuleContext, feature: _FeatureFlags.Feature
@@ -1347,6 +1347,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             try:
                 field = self.resolve_node_field_part(last, name)
             except AttributeError as ex:
+                # FIXME: seems like len(path) - 1 for some reason (sometimes)
                 raise AttributeError(
                     f"`{FieldRef(ref.parts[:depth])}` has no attribute `{ex.name}`"
                     if len(path) > 1
@@ -2849,14 +2850,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP)
 
         # Handle for loops.
-        if self._in_for_loop:
-            raise errors.UserSyntaxError.from_ctx(
-                ctx,
-                "Nested for loops are not currently supported.",
-                traceback=self.get_traceback(),
-            )
+        # TODO reenable
+        # if self._for_loop_stack:
+        #     raise errors.UserSyntaxError.from_ctx(
+        #         ctx,
+        #         "Nested for loops are not currently supported.",
+        #         traceback=self.get_traceback(),
+        #     )
 
-        self._in_for_loop = True
+        self._for_loop_stack.append(None)
         try:
             loop_var_name = self.visitName(ctx.name())
 
@@ -2889,7 +2891,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 #  ensures it was NOTHING.
 
         finally:
-            self._in_for_loop = False
+            self._for_loop_stack.pop()
 
         return NOTHING
 
