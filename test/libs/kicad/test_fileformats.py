@@ -9,6 +9,7 @@ import pytest
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
 from faebryk.libs.kicad.fileformats_latest import (
     C_effects,
+    C_embedded_files,
     C_footprint,
     C_kicad_footprint_file,
     C_kicad_fp_lib_table_file,
@@ -205,3 +206,46 @@ def test_v5_fp_convert(fp_path: Path):
 def test_v6_fp_convert(fp_path: Path):
     fp = kicad_footprint_file(fp_path)
     assert fp.footprint.name.split(":")[-1] == fp_path.stem
+
+
+def test_embedded():
+    data = (
+        "(file"
+        '    (name "TCA9548APWR.kicad_sym")'
+        "    (type other)"
+        "    (data |KLUv/WCvPs0aACZjbCEA0zzzfQvw6FfUhoV7zwkZml8H6u0W2CGvs/b+/6/+twJfAGYAYAAObZxD"  # noqa: E501
+        "        yaFx2w/DxyoZmF75rlPl4JXc3R+RR2/x6w+/Eflm679kfZHc3d3doagRYQy2CwsMOEfkUWWjJV/D"  # noqa: E501
+        "        yHXeVT/+ieTuDk3Tcb6j/ozk7g5JrviJWWLZjB9Y7a1IART5IRzfyCEoeyc5ARBv3Q9S22JAgCVb"  # noqa: E501
+        "        aUcrAgCC8bI35Z8y1l278TcBTE5KE4TMS1BYJisGdckrQm1SS3wXpRgLz3MIMlpV1uQijza++rJz"  # noqa: E501
+        "        NlAzeoxYIRM0ZewPXoo0aVROf84dpZisJxVbJRStpDY9m7KalG9dX5zguu3r6XHGonjDynUWs90i"  # noqa: E501
+        "        poYP+l82e6qcssGr+UrWe5wYiB/TJDY9sMmNcv0bv33R6mvnV32grlmyZMmHr5bJDNOV4ZzHJawp"  # noqa: E501
+        "        L0u07BM0XZTjIHTQ0QRHB5TTuizDMO7aZqc4UJxXTavzAhy10U7jqGx2GDc3aV2dh1kyszyOgldo"  # noqa: E501
+        "        dD50WpecM3L9EgsmqgaRv6XiC5PUKXuCX5S0gLSma5JWfEUH/4bX/mXEGMf3AuKAmKBxvUMkI7MF"  # noqa: E501
+        "        RaksB2CGyJAMEXeFAa4pQQal4Eipik5DNTKpzqJJVHjaVCM7tdOvgDbEp1FVmQhT8GkV0AaiqpSJ"  # noqa: E501
+        "        qspeugUi1KKiDMoWoUAbBKihUmZKTO6NMkB4mlTLRRWStChGEJwWlTIoSSTk1rcBItOkWi5VFAlJ"  # noqa: E501
+        "        ajaCsDSpmEvJEcqZvQFC0qZaNhVv9k9FxgExaaRWuSgWjZGwgLSoNxsRpZxoJV0gxFRBNhQx31IW"  # noqa: E501
+        "        pbpcKWa0SlWgCvmoKxYSFqguH8WILFVxVchRz8ctaxVWL4PqD+GpCqgpIxtquPMKVj0ZyagthJfj"  # noqa: E501
+        "        r1VYjQw1f+cPGalR10ChTvresEJU9OXLjQLEpx+xCXHglqVAibcltepsEqsSStOjsaOiNvOWHg5G"  # noqa: E501
+        "        V6c/0F0aOmouAi+ywtzqa8sQGap9mMJdrKy3SwekXiYUk56peJepoJu+GM0OSHl/ombFd/pwZOOk"  # noqa: E501
+        "        Tl3FyynP6mQeT1GLGX9FSA24ETWdXAp/hzgeDkegljsUTt+G2Tyc7Bloulah7IHoXIAwuSQSnXSb"  # noqa: E501
+        "        p1lOLwTtiwntzFQB|"
+        "    )"
+        '    (checksum "93211F8E59511F34A759EE478AABDE93")'
+        ")"
+    )
+
+    from faebryk.libs.sexp.dataclass_sexp import dumps, loads
+
+    sexp = loads(data, C_embedded_files)
+    s_data = not_none(sexp.files["TCA9548APWR.kicad_sym"].data)
+    text = s_data.uncompressed.decode("utf-8")
+
+    assert 'symbol "TCA9548APWR"' in text
+
+    encoded = dumps(sexp)
+
+    sexp2 = loads(encoded, C_embedded_files)
+    assert (
+        not_none(sexp2.files["TCA9548APWR.kicad_sym"].data).uncompressed.decode("utf-8")
+        == text
+    )

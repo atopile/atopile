@@ -35,9 +35,15 @@ KICAD_VERSION_NAMES = {
 }
 
 
-def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
+def kicad_footprint_file(path: Path | str) -> C_kicad_footprint_file:
     acc = accumulate(DecodeError, group_message="No decoders succeeded")
-    if path.read_text(encoding="utf-8").startswith("(module"):
+    if isinstance(path, Path):
+        _path = try_relative_to(path.resolve())
+        path = path.read_text(encoding="utf-8")
+    else:
+        _path = "<direct str>"
+
+    if path.startswith("(module"):
         with acc.collect():
             return loads(path, C_kicad_footprint_file_v5).convert_to_new()
     else:
@@ -55,8 +61,7 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
 
     # Nothing succeeded in loading the file
     raise UserResourceException(
-        f"Footprint {try_relative_to(path.resolve())} is not"
-        " a valid KiCad footprint file",
+        f"Footprint {_path} is not a valid KiCad footprint file",
         markdown=False,
     ) from acc.get_exception()
 

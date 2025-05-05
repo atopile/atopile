@@ -99,7 +99,7 @@ def query_helper[T: str | Path | bool](
     # Make a querier
     if type_ is str:
 
-        def querier() -> str:
+        def querier() -> str:  # type: ignore
             return questionary.text(
                 "",
                 default=str(default or ""),
@@ -107,7 +107,7 @@ def query_helper[T: str | Path | bool](
 
     elif type_ is Path:
 
-        def querier() -> Path:
+        def querier() -> Path:  # type: ignore
             return Path(
                 questionary.path(
                     "",
@@ -121,7 +121,7 @@ def query_helper[T: str | Path | bool](
         def querier() -> bool:
             return questionary.confirm(
                 "",
-                default=default or True,
+                default=bool(default) or True,
             ).unsafe_ask()
 
     else:
@@ -676,10 +676,8 @@ class Template(ABC):
         """Common part processing logic used by child classes."""
         name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
         assert isinstance(name, str)
-        _, _, _, _, easyeda_symbol, _ = download_easyeda_info(
-            part.lcsc_display, get_model=False
-        )
-        return name, easyeda_symbol
+        out = download_easyeda_info(part.lcsc_display, get_model=False)
+        return name, out
 
     @abstractmethod
     def add_part(self, part: Component): ...
@@ -693,7 +691,8 @@ class AtoTemplate(Template):
 
     def add_part(self, part: Component):
         # Get common processed data
-        self.name, easyeda_symbol = self._process_part(part)
+        self.name, epart = self._process_part(part)
+        symbol = epart.symbol.kicad_symbol
 
         # Set docstring with description
         self.docstring = part.description
@@ -712,22 +711,20 @@ class AtoTemplate(Template):
             self.attributes.append(f'datasheet_url = "{part.datasheet_url}"')
 
         # Add designator prefix from EasyEDA symbol
-        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
+        designator_prefix = symbol.propertys["Reference"].value
         self.attributes.append(f'designator_prefix = "{designator_prefix}"')
 
         # Collect and sort pins first
         unsorted_pins = []
-        if hasattr(easyeda_symbol, "units") and easyeda_symbol.units:
-            for unit in easyeda_symbol.units:
-                if hasattr(unit, "pins"):
-                    for pin in unit.pins:
-                        pin_num = pin.settings.spice_pin_number
-                        pin_name = pin.name.text
-                        if pin_name and pin_name not in ["NC", "nc"]:
-                            if re.match(r"^[0-9]+$", pin_name):
-                                unsorted_pins.append((sanitize_name(pin_name), pin_num))
-                            else:
-                                unsorted_pins.append((None, pin_num))
+        for unit in symbol.symbols.values():
+            for pin in unit.pins:
+                pin_num = pin.number.number
+                pin_name = pin.name.name
+                if pin_name and pin_name not in ["NC", "nc"]:
+                    if re.match(r"^[0-9]+$", pin_name):
+                        unsorted_pins.append((sanitize_name(pin_name), pin_num))
+                    else:
+                        unsorted_pins.append((None, pin_num))
 
         # Sort pins by name using natsort
         sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
@@ -769,9 +766,10 @@ class FabllTemplate(Template):
 
     def add_part(self, part: Component):
         # Get common processed data
-        self.name, easyeda_symbol = self._process_part(part)
+        self.name, epart = self._process_part(part)
+        symbol = epart.symbol.kicad_symbol
 
-        designator_prefix_str = easyeda_symbol.info.prefix.replace("?", "")
+        designator_prefix_str = symbol.propertys["Reference"].value
         try:
             prefix = has_designator_prefix.Prefix(designator_prefix_str)
             designator_prefix = f"F.has_designator_prefix.Prefix.{prefix.name}"
@@ -813,10 +811,10 @@ class FabllTemplate(Template):
         no_connection: list[str] = []
         interface_names_by_pin_num: dict[str, str] = {}
 
-        for unit in easyeda_symbol.units:
+        for unit in symbol.symbols.values():
             for pin in unit.pins:
-                pin_num = pin.settings.spice_pin_number
-                pin_name = pin.name.text
+                pin_num = pin.number.number
+                pin_name = pin.name.name
                 if re.match(r"^[0-9]+$", pin_name):
                     no_name.append(pin_num)
                 elif pin_name in ["NC", "nc"]:

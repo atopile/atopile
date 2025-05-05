@@ -151,6 +151,7 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
     { name = "urllib3" },
+    { name = "zstd" },
 ]
 
 [package.dev-dependencies]
@@ -219,6 +220,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12,<0.16" },
     { name = "typing-extensions", specifier = ">=4.6.3,<5.0.0" },
     { name = "urllib3", specifier = ">=2.2.1" },
+    { name = "zstd", specifier = ">=1.5.6.7" },
 ]
 
 [package.metadata.requires-dev]
@@ -2771,4 +2773,17 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/02/90/2633473864f67a15526324b007a9f96c96f56d5f32ef2a56cc12f9548723/zstandard-0.23.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:fa6ce8b52c5987b3e34d5674b0ab529a4602b632ebab0a93b07bfb4dfc8f8a33", size = 5191299 },
     { url = "https://files.pythonhosted.org/packages/b0/4c/315ca5c32da7e2dc3455f3b2caee5c8c2246074a61aac6ec3378a97b7136/zstandard-0.23.0-cp313-cp313-win32.whl", hash = "sha256:a9b07268d0c3ca5c170a385a0ab9fb7fdd9f5fd866be004c4ea39e44edce47dd", size = 430862 },
     { url = "https://files.pythonhosted.org/packages/a2/bf/c6aaba098e2d04781e8f4f7c0ba3c7aa73d00e4c436bcc0cf059a66691d1/zstandard-0.23.0-cp313-cp313-win_amd64.whl", hash = "sha256:f3513916e8c645d0610815c257cbfd3242adfd5c4cfa78be514e5a3ebb42a41b", size = 495578 },
+]
+
+[[package]]
+name = "zstd"
+version = "1.5.6.7"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/92/a7/5f4c6c2a62dd88f58133e333af1c251dd08f98d48445f650889d85e43b7b/zstd-1.5.6.7.tar.gz", hash = "sha256:b3fa8f6bfb5e116b950ad633edccae4f65055a213ab4c00c1d4397f4b257b697", size = 649577 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0c/27/d5f9e66e43a2d5a3a8b91ebf03d18b4aa4c0e1aaa09b37e69a7ab95b4eef/zstd-1.5.6.7-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:9b605fdb2eb0695778049062d26105d4cc55e49f97e37fa4cfd06235ae08f1f5", size = 258005 },
+    { url = "https://files.pythonhosted.org/packages/cd/1e/2e783d0d0fea753fb79dde1096abb0e7dbf9d5dc6b08bda3bada9112f1c0/zstd-1.5.6.7-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:b903ebb449bbf38c5c444e9685150f6683e828f50be420e184cef5908399df52", size = 209106 },
+    { url = "https://files.pythonhosted.org/packages/e5/ca/404a8f64cd29cb2b3103a28ae85f426f2efa5b3a31cf3479668c273f5f37/zstd-1.5.6.7-cp313-cp313-manylinux_2_14_x86_64.whl", hash = "sha256:3824899d171f2ce88435e59fbb05505515aae5e47861fc4b1b04b93cb4c25f0b", size = 1949652 },
+    { url = "https://files.pythonhosted.org/packages/ff/d5/d79d2a648f9dd38ef01e07c735812188ce7e116bf2ec294474a5cbd197cd/zstd-1.5.6.7-cp313-cp313-win32.whl", hash = "sha256:fd2b83dbe62e2ede13d39c7b52a72ea7a0d98f7fbddddfaaf6c6d598284a0483", size = 144838 },
+    { url = "https://files.pythonhosted.org/packages/b3/05/2a63c4e33cc0d8f741e381024e0f7c974cd0c3c888bd09da2acd7721f937/zstd-1.5.6.7-cp313-cp313-win_amd64.whl", hash = "sha256:c6658f5b4650e885181db4f23a9eb43f342a8a68aedc2490f7f0b93f8ffa3f90", size = 160084 },
 ]

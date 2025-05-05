@@ -5,7 +5,7 @@ import logging
 import pprint
 from copy import deepcopy
 from functools import singledispatch
-from itertools import chain, groupby
+from itertools import chain
 from os import PathLike
 from pathlib import Path
 from typing import Any, List, Protocol
@@ -35,6 +35,7 @@ from faebryk.libs.kicad.fileformats_sch import (
     C_property,
     C_rect,
     C_stroke,
+    C_symbol,
 )
 from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
@@ -42,6 +43,7 @@ from faebryk.libs.util import (
     cast_assert,
     find,
     get_key,
+    groupby,
     not_none,
     once,
 )
@@ -104,7 +106,7 @@ class SchTransformer:
         self.app = app
         self._symbol_files_index: dict[str, Path] = {}
 
-        self.missing_lib_symbols: list[SCH.C_lib_symbols.C_symbol] = []
+        self.missing_lib_symbols: list[C_symbol] = []
 
         self.dimensions = None
 
@@ -176,7 +178,7 @@ class SchTransformer:
         graph_sym.add(self.has_linked_sch_symbol_defined(symbol))
 
         # Attach the pins on the symbol to the module interface
-        for pin_name, pins in groupby(symbol.pins, key=lambda p: p.name):
+        for pin_name, pins in groupby(symbol.pins, key=lambda p: p.name).items():
             graph_sym.pins[pin_name].add(SchTransformer.has_linked_pins_defined(pins))
 
     def cleanup(self):
@@ -201,6 +203,7 @@ class SchTransformer:
         if isinstance(fp_lib_tables, (str, Path)):
             fp_lib_table_paths = [Path(fp_lib_tables)]
         else:
+            assert isinstance(fp_lib_tables, list)
             fp_lib_table_paths = [Path(p) for p in fp_lib_tables]
 
         # non-local lib, search in kicad global lib
@@ -256,8 +259,8 @@ class SchTransformer:
 
     @staticmethod
     def get_related_lib_sym_units(
-        lib_sym: SCH.C_lib_symbols.C_symbol,
-    ) -> dict[int, list[SCH.C_lib_symbols.C_symbol.C_symbol]]:
+        lib_sym: C_symbol,
+    ) -> dict[int, list[C_symbol.C_symbol]]:
         """
         Figure out units.
         This seems to be purely based on naming convention.
@@ -270,34 +273,34 @@ class SchTransformer:
         That is, we group them by the last number.
         """
         groups = groupby(lib_sym.symbols.items(), key=lambda item: int(item[0][-1]))
-        return {k: [v[1] for v in vs] for k, vs in groups}
+        return {k: [v[1] for v in vs] for k, vs in groups.items()}
 
     @singledispatch
-    def get_lib_symbol(self, sym) -> SCH.C_lib_symbols.C_symbol:
+    def get_lib_symbol(self, sym) -> C_symbol:
         raise NotImplementedError(f"Don't know how to get lib symbol for {type(sym)}")
 
     @get_lib_symbol.register
-    def _(self, sym: F.Symbol) -> SCH.C_lib_symbols.C_symbol:
+    def _(self, sym: F.Symbol) -> C_symbol:
         lib_id = sym.get_trait(F.Symbol.has_kicad_symbol).symbol_name
         return self._ensure_lib_symbol(lib_id)
 
     @get_lib_symbol.register
-    def _(self, sym: SCH.C_symbol_instance) -> SCH.C_lib_symbols.C_symbol:
+    def _(self, sym: SCH.C_symbol_instance) -> C_symbol:
         return self.sch.lib_symbols.symbols[sym.lib_id]
 
     @singledispatch
-    def get_lib_pin(self, pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
+    def get_lib_pin(self, pin) -> C_symbol.C_symbol.C_pin:
         raise NotImplementedError(f"Don't know how to get lib pin for {type(pin)}")
 
     @get_lib_pin.register
-    def _(self, pin: F.Symbol.Pin) -> SCH.C_lib_symbols.C_symbol.C_symbol.C_pin:
-        graph_symbol, _ = pin.get_parent()
+    def _(self, pin: F.Symbol.Pin) -> C_symbol.C_symbol.C_pin:
+        graph_symbol, _ = not_none(pin.get_parent())
         assert isinstance(graph_symbol, Node)
         lib_sym = self.get_lib_symbol(graph_symbol)
         units = self.get_related_lib_sym_units(lib_sym)
         sym = graph_symbol.get_trait(SchTransformer.has_linked_sch_symbol).symbol
 
-        def _name_filter(sch_pin: SCH.C_lib_symbols.C_symbol.C_symbol.C_pin):
+        def _name_filter(sch_pin: C_symbol.C_symbol.C_pin):
             return sch_pin.name in {
                 p.name for p in pin.get_trait(self.has_linked_pins).pins
             }
@@ -361,7 +364,9 @@ class SchTransformer:
                 at=at,
                 effects=C_effects(
                     font=font,
-                    justify=alignment,
+                    justifys=[C_effects.C_justify(list(alignment))]
+                    if alignment
+                    else [],
                 ),
                 uuid=self.gen_uuid(mark=True),
             )
@@ -370,7 +375,7 @@ class SchTransformer:
     def _ensure_lib_symbol(
         self,
         lib_id: str,
-    ) -> SCH.C_lib_symbols.C_symbol:
+    ) -> C_symbol:
         """Ensure a symbol is in the schematic library, and return it"""
         if lib_id in self.sch.lib_symbols.symbols:
             return self.sch.lib_symbols.symbols[lib_id]

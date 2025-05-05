@@ -1,11 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import atexit
-import shutil
 import unittest
-from pathlib import Path
-from tempfile import mkdtemp
 
 import pytest
 
@@ -43,24 +39,17 @@ class TestLCSC(unittest.TestCase):
             # "C225521": (-6.3, 1.3, 0),  # TODO enable
         }
 
-        if not INTERACTIVE_TESTING:
-            lcsc.BUILD_FOLDER = Path(mkdtemp())
-            atexit.register(lambda: shutil.rmtree(lcsc.BUILD_FOLDER))
+        # if not INTERACTIVE_TESTING:
+        #    lcsc.BUILD_FOLDER = Path(mkdtemp())
 
-        lcsc.LIB_FOLDER = lcsc.BUILD_FOLDER / Path("kicad/libs")
-        lcsc.MODEL_PATH = None
-        lcsc.EXPORT_NON_EXISTING_MODELS = True
-
-        for part, expected in test_parts.items():
-            ki_footprint, ki_model, ee_footprint, ee_model, ee_symbol, _ = (
-                lcsc.download_easyeda_info(
-                    part,
-                    get_model=INTERACTIVE_TESTING,
-                )
+        for partid, expected in test_parts.items():
+            part = lcsc.download_easyeda_info(
+                partid,
+                get_model=INTERACTIVE_TESTING,
             )
 
-            translation = ki_footprint.output.model_3d.translation
+            translation = part.footprint.footprint.footprint.models[0].offset.xyz
 
             self.assertEqual(
-                (translation.x, translation.y, translation.z), expected, f"{part}"
+                (translation.x, translation.y, translation.z), expected, f"{partid}"
             )

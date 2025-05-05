@@ -1,10 +1,12 @@
 import logging
+from base64 import b64decode, b64encode
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional
 
+import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 
 from faebryk.libs.kicad.fileformats_common import (
@@ -25,6 +27,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
+from faebryk.libs.util import once
 
 logger = logging.getLogger(__name__)
 
@@ -920,15 +923,64 @@ class C_dimension:
 
 @dataclass(kw_only=True)
 class C_embedded_file:
+    class C_type(SymEnum):
+        other = auto()
+        model = auto()
+        font = auto()
+        datasheet = auto()
+        worksheet = auto()
+
+    @dataclass
+    class C_data:
+        compressed: list[Symbol] = field(**sexp_field(positional=True))
+
+        @property
+        @once
+        def merged(self):
+            return "".join(str(v) for v in self.compressed)
+
+        @property
+        @once
+        def uncompressed(self) -> bytes:
+            assert self.merged.startswith("|") and self.merged.endswith("|")
+            return zstd.decompress(b64decode(self.merged[1:-1]))
+
+        @classmethod
+        def compress(cls, data: bytes):
+            # from kicad:common/embedded_files.cpp
+            b64 = b64encode(zstd.compress(data)).decode()
+            CHUNK_LEN = 76
+            # chunk string to 76 characters
+            chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
+            chunks[0] = "|" + chunks[0]
+            chunks[-1] = chunks[-1] + "|"
+            return cls(compressed=[Symbol(c) for c in chunks])
+
     name: str
-    data: str  # Base64 encoded data
-    md5: str | None = None  # MD5 hash of the file content
+    type: C_type
+    data: C_data | None = None
+    """
+    base64 encoded data
+    """
+    checksum: str | None = None  # MD5 hash of the file content
+
+    @staticmethod
+    def make_checksum(data: bytes) -> None:
+        # from kicad:libs/kimath/include/mmh3_hash.h
+        # FIXME
+        # import mmh3
+
+        # SEED = 0xABBA2345
+        # return mmh3.mmh3_x64_128_digest(data, SEED).hex().upper()
+        return None
 
 
 @dataclass
 class C_embedded_files:
-    are_fonts_embedded: bool = False
-    files: list[C_embedded_file] = field(default_factory=list)
+    # are_fonts_embedded: bool = False
+    files: dict[str, C_embedded_file] = field(
+        default_factory=dict, **sexp_field(multidict=True, key=lambda x: x.name)
+    )
 
 
 @dataclass(kw_only=True)
@@ -958,18 +1010,13 @@ class C_footprint:
 
     @dataclass(kw_only=True)
     class C_property:
-        @dataclass(kw_only=True)
-        class C_footprint_property_effects(C_effects):
-            # driven by the outer hide in C_property
-            hide: bool | None = None
-
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_footprint_property_effects
+        effects: C_fp_text.C_fp_text_effects
 
     @dataclass
     class C_footprint_polygon(C_polygon):
@@ -1183,7 +1230,7 @@ class C_footprint:
     embedded_fonts: E_embedded_fonts | None = None
     embedded_files: C_embedded_files | None = None
     component_classes: list[str] | None = None
-    model: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
+    models: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
 
 
 @dataclass
@@ -1859,12 +1906,12 @@ class C_kicad_pcb_file(SEXP_File):
 class C_kicad_footprint_file(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
-        descr: Optional[str] = None
-        tags: Optional[list[str]] = None
-        version: int = field(**sexp_field(), default=KICAD_PCB_VERSION)
-        generator: str
-        generator_version: str = ""
-        tedit: Optional[str] = None
+        descr: Optional[str] = field(default=None, **sexp_field(order=-1))
+        tags: Optional[list[str]] = field(default=None, **sexp_field(order=-1))
+        version: int = field(**sexp_field(order=-1), default=KICAD_PCB_VERSION)
+        generator: str = field(**sexp_field(order=-1), default="faebryk")
+        generator_version: str = field(**sexp_field(order=-1), default="latest")
+        tedit: Optional[str] = field(default=None, **sexp_field(order=-1))
         unknown: CatchAll = None
 
     footprint: C_footprint_in_file

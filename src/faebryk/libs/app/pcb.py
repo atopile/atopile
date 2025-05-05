@@ -84,6 +84,8 @@ def ensure_footprint_lib(
         except FileNotFoundError:
             fptable = C_kicad_fp_lib_table_file.skeleton()
 
+    assert fptable is not None
+
     relative = True
     try:
         fppath_rel = fppath.resolve().relative_to(
@@ -193,7 +195,7 @@ def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
     """
 
     net_names: dict[F.Net, str] = {
-        cast_assert(F.Net, net): pcb_net_t.get_net().name
+        cast_assert(F.Net, net): not_none(pcb_net_t.get_net().name)
         for net, pcb_net_t in GraphFunctions(graph).nodes_with_trait(
             PCB_Transformer.has_linked_kicad_net
         )
