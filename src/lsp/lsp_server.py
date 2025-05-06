@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import copy
+import functools
 import json
 import os
 import pathlib
@@ -13,6 +14,11 @@ import traceback
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
+
+from atopile.errors import UserSyntaxError
+from atopile.parse import parse_file
+from atopile.parse_utils import get_src_info_from_token
+from faebryk.libs.exceptions import iter_leaf_exceptions
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
@@ -104,7 +110,89 @@ def get_file(uri: str) -> Path:
 # Linting features start here
 # **********************************************************
 
-# TODO
+
+@functools.lru_cache(maxsize=100)
+def _get_static_diagnostics(
+    uri: str, identifier: str | None = None
+) -> list[lsp.Diagnostic]:
+    """
+    Get static diagnostics for a given URI and identifier.
+    Excludes results that rely on other files
+    """
+
+    def _parse_exc(exc: UserSyntaxError) -> lsp.Diagnostic:
+        # default to the start of the file
+        start_line, start_col = 0, 0
+        stop_line, stop_col = 0, 0
+
+        if exc.origin_start is not None:
+            _, start_line, start_col = get_src_info_from_token(exc.origin_start)
+
+            if exc.origin_stop is not None:
+                _, stop_line, stop_col = get_src_info_from_token(exc.origin_stop)
+            else:
+                # just extend to the next line
+                stop_line, stop_col = start_line + 1, 0
+
+        # convert from 1-indexed (ANTLR) to 0-indexed (LSP)
+        start_line = max(start_line - 1, 0)
+        stop_line = max(stop_line - 1, 0)
+
+        return lsp.Diagnostic(
+            range=lsp.Range(
+                start=lsp.Position(line=start_line, character=start_col),
+                end=lsp.Position(line=stop_line, character=stop_col),
+            ),
+            message=str(exc),
+            severity=lsp.DiagnosticSeverity.Error,
+            source=TOOL_DISPLAY,
+        )
+
+    diagnostics = []
+
+    try:
+        parse_file(get_file(uri))
+    except* UserSyntaxError as e:
+        diagnostics = [_parse_exc(error) for error in iter_leaf_exceptions(e)]
+
+    return diagnostics
+
+
+@LSP_SERVER.feature(
+    lsp.TEXT_DOCUMENT_DIAGNOSTIC,
+    lsp.DiagnosticOptions(
+        identifier=TOOL_DISPLAY,
+        inter_file_dependencies=False,  # FIXME: toggle when surfacing semantic errors
+        workspace_diagnostics=False,
+    ),
+)
+def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
+    """Handle document diagnostic request."""
+
+    # TODO: report other errors
+    diagnostics = _get_static_diagnostics(params.text_document.uri, params.identifier)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
+def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
+    """Handle document open request."""
+    diagnostics = _get_static_diagnostics(params.text_document.uri)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
+    """Handle document change request."""
+    # TODO: debounced syntax errors
+    pass
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
+def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
+    """Handle document save request."""
+    diagnostics = _get_static_diagnostics(params.text_document.uri)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
 
 
 # TODO: if you want to handle setting specific severity for your linter
