@@ -4,6 +4,7 @@ on:
       - main  # or your default branch
     paths:
       - 'examples/**'  # adjust to your examples directory
+      - '.github/workflows/docs-sync.yml'
   workflow_dispatch:
 
 jobs:
@@ -45,8 +46,8 @@ jobs:
       # Step 6: Copy converted files to docs repository
       - name: Copy converted MDX files
         run: |
-          mkdir -p docs-repo/examples/
-          cp -R converted-examples/* docs-repo/examples/
+          mkdir -p docs-repo/snippets/examples/
+          cp -R converted-examples/* docs-repo/snippets/examples/
 
       # Step 7: Commit and push changes to docs repository
       - name: Commit and push to docs repository
