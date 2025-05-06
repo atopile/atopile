@@ -10,9 +10,7 @@ import {
     RevealOutputChannelOn,
     ServerOptions,
 } from 'vscode-languageclient/node';
-import { DEBUG_SERVER_SCRIPT_PATH, SERVER_SCRIPT_PATH } from './constants';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
-import { getDebuggerPath } from './python';
 import { getExtensionSettings, getGlobalSettings, getWorkspaceSettings, ISettings } from './settings';
 import { getLSClientTraceLevel, getProjectRoot } from './utilities';
 import { isVirtualWorkspace } from './vscodeapi';
@@ -28,16 +26,7 @@ async function createServer(
 ): Promise<LanguageClient> {
     const command = settings.interpreter[0];
     const cwd = settings.cwd;
-
-    // Set debugger path needed for debugging python code.
     const newEnv = { ...process.env };
-    const debuggerPath = await getDebuggerPath();
-    const isDebugScript = await fsapi.pathExists(DEBUG_SERVER_SCRIPT_PATH);
-    if (newEnv.USE_DEBUGPY && debuggerPath) {
-        newEnv.DEBUGPY_PATH = debuggerPath;
-    } else {
-        newEnv.USE_DEBUGPY = 'False';
-    }
 
     // Set import strategy
     newEnv.LS_IMPORT_STRATEGY = settings.importStrategy;
@@ -45,10 +34,11 @@ async function createServer(
     // Set notification type
     newEnv.LS_SHOW_NOTIFICATION = settings.showNotifications;
 
-    const args =
-        newEnv.USE_DEBUGPY === 'False' || !isDebugScript
-            ? settings.interpreter.slice(1).concat([SERVER_SCRIPT_PATH])
-            : settings.interpreter.slice(1).concat([DEBUG_SERVER_SCRIPT_PATH]);
+    if (newEnv.USE_DEBUGPY !== 'False') {
+        settings.ato.push('--debug');
+    }
+
+    const args = settings.ato.concat(['start-lsp-server']);
     traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
 
     const serverOptions: ServerOptions = {
@@ -63,11 +53,11 @@ async function createServer(
         documentSelector: isVirtualWorkspace()
             ? [{ language: 'ato' }]
             : [
-                  { scheme: 'file', language: 'ato' },
-                  { scheme: 'untitled', language: 'ato' },
-                  { scheme: 'vscode-notebook', language: 'ato' },
-                  { scheme: 'vscode-notebook-cell', language: 'ato' },
-              ],
+                { scheme: 'file', language: 'ato' },
+                { scheme: 'untitled', language: 'ato' },
+                { scheme: 'vscode-notebook', language: 'ato' },
+                { scheme: 'vscode-notebook-cell', language: 'ato' },
+            ],
         outputChannel: outputChannel,
         traceOutputChannel: outputChannel,
         revealOutputChannelOn: RevealOutputChannelOn.Never,

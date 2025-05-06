@@ -16,6 +16,7 @@ export interface ISettings {
     args: string[];
     path: string[];
     interpreter: string[];
+    ato: string[];
     importStrategy: string;
     showNotifications: string;
 }
@@ -83,8 +84,9 @@ export async function getWorkspaceSettings(
         args: resolveVariables(config.get<string[]>(`args`) ?? [], workspace),
         path: resolveVariables(config.get<string[]>(`path`) ?? [], workspace),
         interpreter: resolveVariables(interpreter, workspace),
-        importStrategy: config.get<string>(`importStrategy`) ?? 'useBundled',
-        showNotifications: config.get<string>(`showNotifications`) ?? 'off',
+        ato: resolveVariables(config.get<string[]>(`ato`) ?? [], workspace),
+        importStrategy: getGlobalValue<string>(config, 'importStrategy', 'useBundled'),  // FIXME: bundled not available
+        showNotifications: getGlobalValue<string>(config, 'showNotifications', 'always'),
     };
     return workspaceSetting;
 }
@@ -111,6 +113,7 @@ export async function getGlobalSettings(namespace: string, includeInterpreter?: 
         args: getGlobalValue<string[]>(config, 'args', []),
         path: getGlobalValue<string[]>(config, 'path', []),
         interpreter: interpreter,
+        ato: getGlobalValue<string[]>(config, 'ato', []),
         importStrategy: getGlobalValue<string>(config, 'importStrategy', 'useBundled'),
         showNotifications: getGlobalValue<string>(config, 'showNotifications', 'off'),
     };
@@ -122,6 +125,7 @@ export function checkIfConfigurationChanged(e: ConfigurationChangeEvent, namespa
         `${namespace}.args`,
         `${namespace}.path`,
         `${namespace}.interpreter`,
+        `${namespace}.ato`,
         `${namespace}.importStrategy`,
         `${namespace}.showNotifications`,
     ];

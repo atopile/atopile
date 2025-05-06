@@ -183,6 +183,13 @@ def validate(
     typer.echo(f"{path}: ok")
 
 
+@app.command(hidden=True)
+def start_lsp_server():
+    import lsp
+
+    lsp.run()
+
+
 def main():
     app()
 
