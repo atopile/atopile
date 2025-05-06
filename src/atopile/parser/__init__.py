@@ -47,7 +47,7 @@ def check_for_recompile():
             cwd=THIS_DIR,
         )
     except subprocess.CalledProcessError as e:
-        logger.error(f"ANTLR compilation failed:\\n{e.stderr}")
+        logger.error(f"ANTLR compilation failed:\n{e.stderr}")
 
 
 check_for_recompile()

@@ -2343,8 +2343,11 @@ def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
 
         # Check if any of the files have changes
         for diff in diff_index:
-            diff_path = (repo_root / diff.a_path).resolve()
-            if diff_path in files:
+            touched_file = diff.a_path or diff.b_path
+            # m, c or d
+            assert touched_file is not None
+            touched_path = repo_root / touched_file
+            if touched_path in files:
                 return True
 
         return False
