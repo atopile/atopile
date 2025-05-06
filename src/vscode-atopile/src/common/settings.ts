@@ -16,7 +16,6 @@ export interface ISettings {
     args: string[];
     path: string[];
     interpreter: string[];
-    ato: string[];
     importStrategy: string;
     showNotifications: string;
 }
@@ -125,7 +124,6 @@ export function checkIfConfigurationChanged(e: ConfigurationChangeEvent, namespa
         `${namespace}.args`,
         `${namespace}.path`,
         `${namespace}.interpreter`,
-        `${namespace}.ato`,
         `${namespace}.importStrategy`,
         `${namespace}.showNotifications`,
     ];

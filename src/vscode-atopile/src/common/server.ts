@@ -27,6 +27,7 @@ async function createServer(
     const command = settings.interpreter[0];
     const cwd = settings.cwd;
     const newEnv = { ...process.env };
+    const args = ['-m', 'atopile'];
 
     // Set import strategy
     newEnv.LS_IMPORT_STRATEGY = settings.importStrategy;
@@ -34,11 +35,11 @@ async function createServer(
     // Set notification type
     newEnv.LS_SHOW_NOTIFICATION = settings.showNotifications;
 
-    if (newEnv.USE_DEBUGPY !== 'False') {
-        settings.ato.push('--debug');
+    if (newEnv.USE_DEBUGPY === 'True') {
+        args.push('--debug');
     }
 
-    const args = settings.ato.concat(['start-lsp-server']);
+    args.push('start-lsp-server');
     traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
 
     const serverOptions: ServerOptions = {

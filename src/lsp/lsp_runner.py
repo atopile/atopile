@@ -34,7 +34,7 @@ import lsp.lsp_jsonrpc as jsonrpc  # noqa: E402
 import lsp.lsp_utils as utils  # noqa: E402
 
 
-def start_server():
+def run():
     RPC = jsonrpc.create_json_rpc(sys.stdin.buffer, sys.stdout.buffer)
 
     EXIT_NOW = False
