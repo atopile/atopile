@@ -201,7 +201,11 @@ def _find_modules(
                 raise ExceptionGroup(
                     "Failed to fetch one or more parts",
                     [
-                        PickError(f"{error['message']}\n{query.pretty_str()}", module)
+                        PickError(
+                            f"{error['message']} for {module.get_full_name()}"
+                            f"\n{query.pretty_str()}",
+                            module,
+                        )
                         for module, (query, error) in _map_response(
                             list(zip(queries, errors))
                         ).items()
@@ -313,7 +317,7 @@ def _check_candidates_compatible(
     mappings = [_get_compatible_parameters(m, c, solver) for m, c in module_candidates]
 
     if LOG_PICK_SOLVE:
-        logger.info(f"Solving for modules:" f" {[m for m, _ in module_candidates]}")
+        logger.info(f"Solving for modules: {[m for m, _ in module_candidates]}")
 
     predicates = (
         Is(m_param, c_range)

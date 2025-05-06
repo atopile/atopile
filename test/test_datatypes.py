@@ -1,13 +1,13 @@
-from atopile.datatypes import KeyOptItem, KeyOptMap, Ref, StackList
+from atopile.datatypes import KeyOptItem, KeyOptMap, StackList, TypeRef
 
 
 def test_ref_from_one():
-    assert Ref.from_one("foo") == ("foo",)
-    assert Ref.from_one(42) == ("42",)
+    assert TypeRef.from_one("foo") == ("foo",)
+    assert TypeRef.from_one(42) == ("42",)
 
 
 def test_ref_add_name():
-    assert Ref.from_one("foo").add_name("bar") == ("foo", "bar")
+    assert TypeRef.from_one("foo").add_name("bar") == ("foo", "bar")
 
 
 def test_keyoptitem_from_kv():
@@ -24,7 +24,7 @@ def test_keyoptmap_from_kv():
 
 def test_keyoptitem_ref():
     assert KeyOptItem((None, "foo")).ref is None
-    assert KeyOptItem((Ref.from_one("foo"), "bar")).ref == ("foo",)
+    assert KeyOptItem((TypeRef.from_one("foo"), "bar")).ref == ("foo",)
 
 
 def test_stack_list():

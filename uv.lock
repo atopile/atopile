@@ -124,15 +124,19 @@ dependencies = [
     { name = "cookiecutter" },
     { name = "dataclasses-json" },
     { name = "deprecated" },
+    { name = "fastapi-github-oidc" },
     { name = "freetype-py" },
     { name = "gitpython" },
     { name = "kicadcliwrapper" },
     { name = "matplotlib" },
     { name = "more-itertools" },
+    { name = "nanobind" },
     { name = "natsort" },
     { name = "numpy" },
     { name = "pathvalidate" },
     { name = "pint" },
+    { name = "platformdirs" },
+    { name = "posthog" },
     { name = "psutil" },
     { name = "pydantic-settings" },
     { name = "pygls" },
@@ -181,22 +185,26 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
-    { name = "atopile-easyeda2kicad", specifier = ">=0.9.0" },
+    { name = "atopile-easyeda2kicad", specifier = ">=0.9.5" },
     { name = "attrs", specifier = ">=23.2.0" },
     { name = "black", specifier = ">=24.4.2,<24.11.0" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
     { name = "dataclasses-json", specifier = ">=0.6.7,<0.7.0" },
     { name = "deprecated", specifier = "~=1.2.14" },
+    { name = "fastapi-github-oidc", specifier = ">=0.2.1" },
     { name = "freetype-py", specifier = ">=2.4,<2.6" },
     { name = "gitpython", specifier = ">=3.1.41" },
-    { name = "kicadcliwrapper", specifier = ">=1.0.0,<2.0.0" },
+    { name = "kicadcliwrapper", specifier = ">=1.1.0,<2.0.0" },
     { name = "matplotlib", specifier = ">=3.7.1,<4.0.0" },
     { name = "more-itertools", specifier = ">=10.4,<10.7" },
+    { name = "nanobind", specifier = ">=2.6.1" },
     { name = "natsort", specifier = ">=8.4.0" },
     { name = "numpy", specifier = ">=2.2.0,<3.0.0" },
     { name = "pathvalidate", specifier = ">=3.2.1" },
     { name = "pint", specifier = ">=0.24.4,<1.0.0" },
+    { name = "platformdirs", specifier = ">=4.3.6" },
+    { name = "posthog", specifier = ">=3.23.0" },
     { name = "psutil", specifier = ">=6.0.0,<7.0.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "pygls", specifier = ">=1.3.0" },
@@ -244,15 +252,15 @@ dev = [
 
 [[package]]
 name = "atopile-easyeda2kicad"
-version = "0.9.4"
+version = "0.9.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/72/37/6ffd9f76f0452b93eb1e089d0fb9ecf3f3bd50e5dbb6aa03916367ab1cce/atopile_easyeda2kicad-0.9.4.tar.gz", hash = "sha256:c0d54a06964c6027218373a4dc7d33052619138c8f7724a1852be78e3dfd9379", size = 1474164 }
+sdist = { url = "https://files.pythonhosted.org/packages/69/79/f5fb50adb3cc939948fa9dc9a3aa4b9dc4196e181492ccdf0b7054807e89/atopile_easyeda2kicad-0.9.5.tar.gz", hash = "sha256:76e75c55b50d90c2b37f962da78f4c3a1abcadd1486e29816fcf3bcd7fbcd2d9", size = 1474187 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/4b/2236445330b125207ce8451bfc141f82ca7ce0959f24c289e64e3da98261/atopile_easyeda2kicad-0.9.4-py3-none-any.whl", hash = "sha256:a858505ba62b7a06dbee78e1f2b0228c439071fe71ca48584615ad58a23e03ac", size = 54693 },
+    { url = "https://files.pythonhosted.org/packages/af/40/e05bf39e3ed26c947c243119e5c2721b6f7b302b4b9ed5043caddf6328e2/atopile_easyeda2kicad-0.9.5-py3-none-any.whl", hash = "sha256:e4a90d214ef21fe5e5b1f1b68d0575b7bdcdbb718065e7054fb5571744d1556f", size = 54725 },
 ]
 
 [[package]]
@@ -276,6 +284,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7d/6b/d52e42361e1aa00709585ecc30b3f9684b3ab62530771402248b1b1d6240/babel-2.17.0.tar.gz", hash = "sha256:0c54cffb19f690cdcc52a3b50bcbf71e07a808d1c80d549f2459b9d2cf0afb9d", size = 9951852 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b7/b8/3fe70c75fe32afc4bb507f75563d39bc5642255d1d94f1f23604725780bf/babel-2.17.0-py3-none-any.whl", hash = "sha256:4d0b53093fdfb4b21c92b5213dba5a1b23885afa8383709427046b21c366e5f2", size = 10182537 },
+]
+
+[[package]]
+name = "backoff"
+version = "2.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/d7/5bbeb12c44d7c4f2fb5b56abce497eb5ed9f34d85701de869acedd602619/backoff-2.2.1.tar.gz", hash = "sha256:03f829f5bb1923180821643f8753b0502c3b682293992485b0eef2807afa5cba", size = 17001 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/df/73/b6e24bd22e6720ca8ee9a85a0c4a2971af8497d8f3193fa05390cbd46e09/backoff-2.2.1-py3-none-any.whl", hash = "sha256:63579f9a0628e06278f7e47b7d7d5b6ce20dc65c5e96a6f3ca99a6adca0396e8", size = 15148 },
 ]
 
 [[package]]
@@ -681,12 +698,30 @@ wheels = [
 ]
 
 [[package]]
+name = "distro"
+version = "1.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fc/f8/98eea607f65de6527f8a2e8885fc8015d3e6f5775df186e443e0964a11c3/distro-1.9.0.tar.gz", hash = "sha256:2fa77c6fd8940f116ee1d6b94a2f90b13b5ea8d019b98bc8bafdcabcdd9bdbed", size = 60722 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/12/b3/231ffd4ab1fc9d679809f356cebee130ac7daa00d6d6f3206dd4fd137e9e/distro-1.9.0-py3-none-any.whl", hash = "sha256:7bffd925d65168f85027d8da9af6bddab658135b840670a223589bc0c8ef02b2", size = 20277 },
+]
+
+[[package]]
 name = "execnet"
 version = "2.1.1"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/bb/ff/b4c0dc78fbe20c3e59c0c7334de0c27eb4001a2b2017999af398bf730817/execnet-2.1.1.tar.gz", hash = "sha256:5189b52c6121c24feae288166ab41b32549c7e2348652736540b9e6e7d4e72e3", size = 166524 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/09/2aea36ff60d16dd8879bdb2f5b3ee0ba8d08cbbdcdfe870e695ce3784385/execnet-2.1.1-py3-none-any.whl", hash = "sha256:26dee51f1b80cebd6d0ca8e74dd8745419761d3bef34163928cbebbdc4749fdc", size = 40612 },
+]
+
+[[package]]
+name = "fastapi-github-oidc"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e4/ab/a6909604af8c231cfd19531a3e78500cd1d7baac6524f109d0b609096e20/fastapi_github_oidc-0.2.1.tar.gz", hash = "sha256:64892ae2c031cc04d1bd353a5b3d477433197a9a6b4e1dee04e0b798b7005a8f", size = 20642 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a6/55/682fdbb38620861a3e9d6bead034ef02a0b70eb45d70e480e5e0bc3deb66/fastapi_github_oidc-0.2.1-py3-none-any.whl", hash = "sha256:3e24102c920aaf4d7349e302db9241b6136d6648b13a52de109cb10e17b779fc", size = 4964 },
 ]
 
 [[package]]
@@ -1155,15 +1190,15 @@ wheels = [
 
 [[package]]
 name = "kicadcliwrapper"
-version = "1.0.4"
+version = "1.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "black" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/35/81ea7803d9f45d902ca79027e0d7475ca8a4be75d2432c198b8779a2d208/kicadcliwrapper-1.0.4.tar.gz", hash = "sha256:e80a0cfef838db5ab14f1699a268e154d9f5687a6dfd761dd57f624c70ac35a2", size = 25440 }
+sdist = { url = "https://files.pythonhosted.org/packages/82/9c/2749b48db0477eb5b21fd60dd264601500e701b555368e1c9efe812b2f37/kicadcliwrapper-1.1.0.tar.gz", hash = "sha256:4bf177d5e9f3c9ba4d1f8be06f685849f82232e6ab3b4880a6aaa753aeaefb55", size = 48676 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c7/9f/14199af1b484b1821ad6b08c00715c9f38a2a127b9bc33ec7ad80e46bb9e/kicadcliwrapper-1.0.4-py3-none-any.whl", hash = "sha256:8f68b8d28c164211bc2aa3593bed091aad537a37b4cb6af1576061190485f214", size = 26806 },
+    { url = "https://files.pythonhosted.org/packages/e2/d6/0dc42cd851d2b9e673748acad8c8048b43fd995c468d195f4e01c7f94c0e/kicadcliwrapper-1.1.0-py3-none-any.whl", hash = "sha256:4999c6da8a46164af9e5ac8a84413b097cbf9ed543bb2241480debd93509b7ab", size = 38749 },
 ]
 
 [[package]]
@@ -1465,6 +1500,15 @@ wheels = [
 ]
 
 [[package]]
+name = "monotonic"
+version = "1.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/ca/8e91948b782ddfbd194f323e7e7d9ba12e5877addf04fb2bf8fca38e86ac/monotonic-1.6.tar.gz", hash = "sha256:3a55207bcfed53ddd5c5bae174524062935efed17792e9de2ad0205ce9ad63f7", size = 7615 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/67/7e8406a29b6c45be7af7740456f7f37025f0506ae2e05fb9009a53946860/monotonic-1.6-py2.py3-none-any.whl", hash = "sha256:68687e19a14f11f26d140dd5c86f3dba4bf5df58003000ed467e0e2a69bca96c", size = 8154 },
+]
+
+[[package]]
 name = "more-itertools"
 version = "10.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1508,11 +1552,11 @@ wheels = [
 
 [[package]]
 name = "nanobind"
-version = "2.5.0"
+version = "2.6.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/20/fa/8e5930837f9b08202c4e566cf529480b0c3266e88f39723388baf8c69700/nanobind-2.5.0.tar.gz", hash = "sha256:cc8412e94acffa20a369191382bcdbb6fbfb302e475e87cacff9516d51023a15", size = 962802 }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/38/c28a15cfc2f311e79ea01a5eba8960eb02f64d58b6f675b8a14ef4680dac/nanobind-2.6.1.tar.gz", hash = "sha256:e05c6816a844aa699e46408add3bff8c743af9fd3d38eafa307a73633fddf94e", size = 968121 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/9e/dadc3831f40e22c1b3925f07894646ada7906ef5b48db5c5eb2b03ca9faa/nanobind-2.5.0-py3-none-any.whl", hash = "sha256:e1e5c816e5d10f0b252d82ba7f769f0f6679f5e043cf406aec3d9e184bf2a60d", size = 236912 },
+    { url = "https://files.pythonhosted.org/packages/26/f9/0b11e9b99a35dbf91972845af6012c562f3f1845a33e5b4ea631568d2740/nanobind-2.6.1-py3-none-any.whl", hash = "sha256:678be25b6ffdb7e3776548c2c9f29072e7eb41219b72c51f8e14ac0fe5c8ae0b", size = 238966 },
 ]
 
 [[package]]
@@ -1721,6 +1765,23 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/63/80/b0306469da7ad89db165ce4c76de2f12eccc7fadb900cab9cbaff760a587/postgrest-0.19.3.tar.gz", hash = "sha256:28a70f03bf3a975aa865a10487b1ce09b7195f56453f7c318a70d3117a3d323c", size = 15095 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/82/f1825a85745912cdd8956aad8ebc4b797d2f891c380c2b8825b35914dbd1/postgrest-0.19.3-py3-none-any.whl", hash = "sha256:03a7e638962454d10bb712c35e63a8a4bc452917917a4e9eb7427bd5b3c6c485", size = 22198 },
+]
+
+[[package]]
+name = "posthog"
+version = "3.23.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "backoff" },
+    { name = "distro" },
+    { name = "monotonic" },
+    { name = "python-dateutil" },
+    { name = "requests" },
+    { name = "six" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5a/dd/30f7d2e992f80fcaedc5b99761e006bbb0b954813243542c480b9576b4be/posthog-3.23.0.tar.gz", hash = "sha256:1ac0305ab6c54a80c4a82c137231f17616bef007bbf474d1a529cda032d808eb", size = 72077 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/17/1e/aa457f5b15c9a018434dd71567c4a8f09c1701607a1d4daf5f01d6eccb7a/posthog-3.23.0-py2.py3-none-any.whl", hash = "sha256:2b07d06670170ac2e21465dffa8d356722834cc877ab34e583da6e525c1037df", size = 84976 },
 ]
 
 [[package]]

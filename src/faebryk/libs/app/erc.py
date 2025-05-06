@@ -13,6 +13,7 @@ from faebryk.core.cpp import Path
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.units import P
 
@@ -98,7 +99,7 @@ class ERCFaultShortedModuleInterfaces(ERCFaultShort):
         Given two shorted ModuleInterfaces, return an exception that describes the
         narrowest path for the fault.
         """
-        return cls(f"`{" ~ ".join(mif.get_full_name() for mif in path)}`", path)
+        return cls(f"`{' ~ '.join(mif.get_full_name() for mif in path)}`", path)
 
 
 class ERCFaultElectricPowerUndefinedVoltage(ERCFault):
@@ -247,7 +248,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
 
 def check_modules_for_erc(module: Iterable[Module]):
     for m in module:
-        logger.info(f"Checking {m} {'-'*20}")
+        logger.info(f"Checking {m} {'-' * 20}")
         simple_erc(m.get_graph())
 
 
@@ -269,3 +270,12 @@ def check_library_for_erc(lib):
     members = inspect.getmembers(lib, inspect.isclass)
     module_classes = [m[1] for m in members if issubclass(m[1], Module)]
     check_classes_for_erc(module_classes)
+
+
+# TODO split this up
+class needs_erc_check(Trait.decless()):
+    design_check: F.implements_design_check
+
+    @F.implements_design_check.register_post_design_check
+    def __check_post_design__(self):
+        simple_erc(self.get_graph())

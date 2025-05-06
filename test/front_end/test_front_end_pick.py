@@ -4,7 +4,7 @@ from textwrap import dedent
 import pytest
 
 import faebryk.library._F as F
-from atopile.datatypes import Ref
+from atopile.datatypes import TypeRef
 from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
 from faebryk.core.module import Module
@@ -32,11 +32,11 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
 
@@ -66,11 +66,11 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["A"]))
+    node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
 
-    r1 = Bob.get_node_attr(node, "r1")
+    r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Capacitor)
     assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.C0402}
 
@@ -99,7 +99,7 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -131,7 +131,7 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 
@@ -163,7 +163,7 @@ def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
     )
 
     tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, Ref(["App"]))
+    node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
 

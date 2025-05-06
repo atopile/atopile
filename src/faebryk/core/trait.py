@@ -1,12 +1,15 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 import logging
-from typing import TypeGuard, cast
+from typing import TYPE_CHECKING, TypeGuard, cast
 
 from faebryk.core.node import Node, NodeException
-from faebryk.libs.util import cast_assert
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, cast_assert
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from faebryk.core.graph import Graph
 
 
 class TraitNotFound(NodeException):
@@ -50,6 +53,9 @@ class TraitUnbound(NodeException):
 
 class Trait(Node):
     __decless_trait__: bool = False
+
+    if TYPE_CHECKING:
+        TraitT: type["TraitT"]
 
     # TODO once
     @classmethod
@@ -138,6 +144,18 @@ class Trait(Node):
 
     # TODO check subclasses implementing abstractmethods (use subclass_init)
 
+    @classmethod
+    def find_unique(cls, G: "Graph"):
+        from faebryk.core.graph import GraphFunctions
+
+        matches = GraphFunctions(G).nodes_with_trait(cls)
+        if len(matches) != 1:
+            if len(matches) == 0:
+                raise KeyErrorNotFound(cls)
+            else:
+                raise KeyErrorAmbiguous(matches, cls)
+        return matches[0][1]
+
 
 # Hack, using this as protocol
 # Can't use actual protocol because CNode doesn't allow multiple inheritance
@@ -176,3 +194,9 @@ class TraitImpl(Node):
         if not issubclass(obj, Trait):
             return False
         return getattr(obj, "__trait__", None) is not None
+
+
+class TraitT(Trait): ...
+
+
+Trait.TraitT = TraitT

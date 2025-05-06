@@ -323,7 +323,7 @@ class UserNodeException(UserException):
     def from_node_exception(
         cls,
         node_ex: NodeException,
-        origin: ParserRuleContext,
+        origin: ParserRuleContext | None,
         traceback: Sequence[ParserRuleContext | None] | None,
         *args,
         **kwargs,
@@ -351,3 +351,33 @@ class UserNoProjectException(UserException):
         **kwargs,
     ):
         super().__init__(msg, *args, **kwargs)
+
+
+class UserFeatureNotAvailableError(UserException):
+    """
+    Raised when an experimental feature is not recognized.
+    """
+
+
+class UserFeatureNotEnabledError(UserException):
+    """
+    Raised when an experimental feature has not been enabled.
+    """
+
+
+class UserTraitNotFoundError(UserException):
+    """
+    Raised when a trait is not found.
+    """
+
+
+class UserInvalidTraitError(UserException):
+    """
+    Raised when something other than a valid trait follows the `trait` keyword
+    """
+
+
+class UserTraitError(UserException):
+    """
+    Raised when there's an error applying a trait.
+    """

@@ -318,7 +318,11 @@ def pick_topologically(
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
     timings = Times(name="pick")
-    logger.info(f"Picking {len(tree)} modules")
+
+    tree_backup = set(tree.keys())
+    _pick_count = len(tree)
+
+    logger.info(f"Picking {_pick_count} modules")
 
     explicit_modules = [
         m
@@ -337,9 +341,6 @@ def pick_topologically(
             progress.advance()
     if explicit_parts:
         tree, _ = update_pick_tree(tree)
-
-    tree_backup = set(tree.keys())
-    _pick_count = len(tree)
 
     def _get_candidates(_tree: Tree[Module]):
         # with timings.as_global("pre-solve"):

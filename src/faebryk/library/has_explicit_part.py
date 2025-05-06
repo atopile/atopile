@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from typing import override
+from typing import Self, override
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -22,7 +22,7 @@ class has_explicit_part(Module.TraitT.decless()):
         partno: str,
         pinmap: dict[str, F.Electrical | None] | None = None,
         override_footprint: tuple[F.Footprint, str] | None = None,
-    ):
+    ) -> Self:
         out = cls()
         out.mfr = mfr
         out.partno = partno
@@ -37,7 +37,7 @@ class has_explicit_part(Module.TraitT.decless()):
         supplier_id: str = "lcsc",
         pinmap: dict[str, F.Electrical | None] | None = None,
         override_footprint: tuple[F.Footprint, str] | None = None,
-    ):
+    ) -> Self:
         if supplier_id != "lcsc":
             raise NotImplementedError(f"Supplier {supplier_id} not supported")
         out = cls()

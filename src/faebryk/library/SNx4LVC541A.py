@@ -22,7 +22,7 @@ class SNx4LVC541A(Module):
 
     power: F.ElectricPower
 
-    OE = L.list_field(2, F.ElectricLogic)
+    output_enable = L.list_field(2, F.ElectricLogic)
 
     # ----------------------------------------
     #                traits
@@ -30,9 +30,10 @@ class SNx4LVC541A(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.ti.com/lit/ds/symlink/sn74lvc541a.pdf?ts=1718881644774&ref_url=https%253A%252F%252Fwww.mouser.ie%252F"
-    )
+
+    @L.rt_field
+    def decoupled(self):
+        return F.can_be_decoupled_rails(self.power)
 
     def __preinit__(self):
         # ----------------------------------------
@@ -47,11 +48,9 @@ class SNx4LVC541A(Module):
         # ----------------------------------------
         #                connections
         # ----------------------------------------
-        # FIXME
-        # self.power.decoupled.decouple()
 
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
+            F.ElectricLogic.connect_all_module_references(self, gnd_only=True)
         )

@@ -23,59 +23,11 @@ class CH344Q_ReferenceDesign(Module):
     usb_uart_converter: F.CH344Q
     oscillator: F.Crystal_Oscillator
     ldo: F.LDO
-    led_rx = L.f_field(F.LEDIndicator)(use_mosfet=False)
-    led_tx = L.f_field(F.LEDIndicator)(use_mosfet=False)
-    led_act = L.f_field(F.LEDIndicator)(use_mosfet=False)
+    led_rx = L.f_field(F.LEDIndicator)(use_mosfet=False, active_low=True)
+    led_tx = L.f_field(F.LEDIndicator)(use_mosfet=False, active_low=True)
+    led_act = L.f_field(F.LEDIndicator)(use_mosfet=False, active_low=True)
     power_led: F.PoweredLED
     reset_lowpass: F.FilterElectricalRC
-
-    # ----------------------------------------
-    #                 traits
-    # ----------------------------------------
-    @L.rt_field
-    def pcb_layout(self):
-        from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
-        from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
-        from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
-
-        Point = F.has_pcb_position.Point
-        L = F.has_pcb_position.layer_type
-        LVL = LayoutTypeHierarchy.Level
-
-        return F.has_pcb_layout_defined(
-            layout=LayoutTypeHierarchy(
-                layouts=[
-                    LVL(
-                        mod_type=F.CH344Q,
-                        layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
-                    ),
-                    LVL(
-                        mod_type=F.Crystal_Oscillator,
-                        layout=LayoutAbsolute(Point((-1, 10.75, 180, L.NONE))),
-                    ),
-                    LVL(
-                        mod_type=F.LDO,
-                        layout=LayoutAbsolute(Point((7.5, -9.25, 270, L.NONE))),
-                    ),
-                    LVL(
-                        mod_type=F.LEDIndicator,
-                        layout=LayoutExtrude(
-                            base=Point((8, 9.5, 0, L.NONE)),
-                            vector=(-1.75, 0, 90),
-                            reverse_order=True,
-                        ),
-                    ),
-                    LVL(
-                        mod_type=F.PoweredLED,
-                        layout=LayoutAbsolute(Point((-6.5, 9.5, 270, L.NONE))),
-                    ),
-                    LVL(
-                        mod_type=F.FilterElectricalRC,
-                        layout=LayoutAbsolute(Point((0, -8, 0, L.NONE))),
-                    ),
-                ]
-            )
-        )
 
     def __preinit__(self):
         # ------------------------------------
@@ -109,7 +61,9 @@ class CH344Q_ReferenceDesign(Module):
         # TODO: already done by lowpass filter
         # self.usb_uart_converter.reset.pulled.pull(up=True)
 
-        self.usb_uart_converter.test.set_weak(on=False, owner=self)
+        self.usb_uart_converter.test.set_weak(
+            on=False, owner=self
+        ).resistance.constrain_subset(L.Range.from_center_rel(4.7 * P.kohm, 0.05))
 
         self.ldo.enable_output()
 
@@ -144,9 +98,18 @@ class CH344Q_ReferenceDesign(Module):
         )
 
         # reset lowpass
-        self.reset_lowpass.cutoff_frequency.constrain_subset(
-            L.Range.from_center_rel(100 * P.Hz, 0.1)
+        # #TODO: fix
+        # self.reset_lowpass.cutoff_frequency.constrain_subset(
+        #    L.Range.from_center_rel(100 * P.Hz, 0.1)
+        # )
+        self.reset_lowpass.capacitor.capacitance.constrain_subset(
+            L.Range.from_center_rel(100 * P.nF, 0.2)
         )
         self.reset_lowpass.resistor.resistance.constrain_subset(
             L.Range.from_center_rel(4.7 * P.kohm, 0.05)
         )
+
+        for res in self.get_children(direct_only=True, types=F.Resistor):
+            res.add(F.has_package(F.has_package.Package.R0402))
+        for cap in self.get_children(direct_only=True, types=F.Capacitor):
+            cap.add(F.has_package(F.has_package.Package.C0402))

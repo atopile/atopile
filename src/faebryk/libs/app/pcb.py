@@ -266,7 +266,7 @@ def create_footprint_library(app: Module, no_fp_lib: bool = False) -> None:
         else:
             if has_file_t := fp.try_get_trait(F.KicadFootprint.has_file):
                 path = has_file_t.file
-                # We priverliage packages and assume this is what's dribing
+                # We privilege packages and assume it's what's driving
                 if path in package_fp_paths:
                     if path in path_map:
                         id_, new_path = path_map[path]

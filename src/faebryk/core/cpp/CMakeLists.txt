@@ -46,11 +46,19 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
 endif()
 
 # configure ------------------------------------------------------------
+
 # c++ standard
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# turn on optimization
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+
+# Set compiler-specific flags
+if(MSVC)
+    # Flags for Microsoft Visual C++
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /std:c++20 /Zc:__cplusplus /O2")
+else()
+    # Flags for other compilers (GCC, Clang, etc.)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O2")
+endif()
 
 # if editable and GCC enable colors
 if(${EDITABLE} AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -70,8 +78,11 @@ file(GLOB_RECURSE SOURCE_FILES
 
 # build ----------------------------------------------------------------
 nanobind_add_module(${PROJECT_NAME} ${SOURCE_FILES})
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_20)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION .)
+
+message(STATUS "CMAKE_CXX_FLAGS: ${CMAKE_CXX_FLAGS}")
 
 if(${EDITABLE})
 # create pyi stub file with type annotations

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from atopile.front_end import Bob, Ref, ap
+from atopile.front_end import Bob, TypeRef, ap
 from faebryk.core.core import Namespace
 from faebryk.core.node import Node
 from faebryk.core.trait import Trait
@@ -82,7 +82,7 @@ def test_init_args(name: str, module):
         pytest.skip("Skipped abstract class")
 
 
-def _module_addr(file: Path, module_name: Ref):
+def _module_addr(file: Path, module_name: TypeRef):
     return f"{file.name}:{module_name}"
 
 
@@ -100,6 +100,6 @@ _file_and_modules = [
     _file_and_modules,
     ids=[_module_addr(file, module_name) for file, module_name in _file_and_modules],
 )
-def test_instance_library_ato(file: Path, module_name: Ref):
+def test_instance_library_ato(file: Path, module_name: TypeRef):
     bob = Bob()
     bob.build_file(file, module_name)

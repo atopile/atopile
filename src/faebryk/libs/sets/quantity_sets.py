@@ -630,6 +630,13 @@ class Quantity_Interval_Disjoint(Quantity_Set):
             deviation /= max(abs(self).max_elem, abs(other_qty).max_elem)
         return deviation
 
+    def op_is_bit_set(self, other: QuantitySetLike) -> BoolSet:
+        other_qty = Quantity_Interval_Disjoint.from_value(other)
+        if not self.is_single_element() or not other_qty.is_single_element():
+            return BoolSet(False, True)
+        # TODO more checking
+        return BoolSet((int(self.any()) >> int(other_qty.any())) & 1 == 1)
+
     def __contains__(self, item: Any) -> bool:
         if isinstance(item, (float, int, Number)):
             item = quantity(item)

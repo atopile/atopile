@@ -33,7 +33,7 @@ def dump_and_run(src: str, args: list[str], working_dir: Path):
     # Copy the default_ato.yaml to the tmpdir
     shutil.copy2(DEFAULT_CONFIG, working_dir / "ato.yaml")
 
-    with open(working_dir / "app.ato", "w") as f:
+    with open(working_dir / "app.ato", "w", encoding="utf-8") as f:
         f.write(textwrap.dedent(src))
 
     return exec_build(args, working_dir)

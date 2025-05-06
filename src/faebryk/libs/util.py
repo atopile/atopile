@@ -20,9 +20,12 @@ import time
 import uuid
 from abc import abstractmethod
 from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from enum import Enum, StrEnum
+from datetime import datetime
+from enum import Enum, StrEnum, auto
 from functools import wraps
 from genericpath import commonprefix
 from importlib.metadata import Distribution
@@ -57,6 +60,7 @@ from typing import (
 )
 
 import psutil
+from git import Repo
 
 logger = logging.getLogger(__name__)
 
@@ -804,7 +808,9 @@ class Lazy(LazyMixin):
         lazy_construct(cls)
 
 
-def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
+def once[T, **P](
+    f: Callable[P, T], _cacheable: Callable[[T], bool] | None = None
+) -> Callable[P, T]:
     # TODO add flag for this optimization
     # might not be desirable if different instances with same hash
     # return same values here
@@ -821,9 +827,14 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
 
             @functools.wraps(f)
             def wrapper_single(self) -> Any:
-                if not hasattr(self, attr_name):
-                    setattr(self, attr_name, f(self))
-                return getattr(self, attr_name)
+                if hasattr(self, attr_name):
+                    return getattr(self, attr_name)
+
+                result = f(self)
+                if _cacheable is None or _cacheable(result):
+                    setattr(self, attr_name, result)
+
+                return result
 
             return wrapper_single
 
@@ -839,7 +850,8 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
                 return cache[lookup]
 
             result = f(*args, **kwargs)
-            cache[lookup] = result
+            if _cacheable is None or _cacheable(result):
+                cache[lookup] = result
             return result
 
         return wrapper_self
@@ -850,12 +862,22 @@ def once[T, **P](f: Callable[P, T]) -> Callable[P, T]:
             return wrapper.cache[lookup]
 
         result = f(*args, **kwargs)
-        wrapper.cache[lookup] = result
+        if _cacheable is None or _cacheable(result):
+            wrapper.cache[lookup] = result
         return result
 
     wrapper.cache = {}
     wrapper._is_once_wrapper = True
     return wrapper
+
+
+def predicated_once[T](
+    pred: Callable[[T], bool],
+):
+    def decorator[F](f: F) -> F:
+        return once(f, pred)
+
+    return decorator
 
 
 def assert_once[T, O, **P](
@@ -1052,6 +1074,122 @@ def post_init_decorator(cls):
     return cls
 
 
+class DAG[T]:
+    class Node[T2]:
+        def __init__(self, value: T2):
+            self.value = value
+            self._children = []
+            self._parents = []
+
+        @property
+        def children(self) -> set[T2]:
+            return {child.value for child in self._children}
+
+        @property
+        def parents(self) -> set[T2]:
+            return {parent.value for parent in self._parents}
+
+    def __init__(self):
+        self.nodes: dict[T, DAG[T].Node[T]] = {}
+
+    @property
+    def values(self) -> set[T]:
+        return set(self.nodes.keys())
+
+    @property
+    def roots(self) -> set[T]:
+        return {node.value for node in self.nodes.values() if not node.parents}
+
+    @property
+    def leaves(self) -> set[T]:
+        return {node.value for node in self.nodes.values() if not node.children}
+
+    def get(self, value: T) -> Node[T]:
+        return self.add_or_get(value)
+
+    def get_node(self, value: T) -> Node[T] | None:
+        return self.nodes.get(value)
+
+    def add_or_get(self, value: T) -> Node[T]:
+        node = self.get_node(value)
+        if node is not None:
+            return node
+        node = self.Node(value)
+        self.nodes[value] = node
+        return node
+
+    def add_edge(self, parent: T, child: T):
+        parent_node = self.add_or_get(parent)
+        child_node = self.add_or_get(child)
+        parent_node._children.append(child_node)
+        child_node._parents.append(parent_node)
+
+    def _dfs_cycle_check(
+        self, node: Node[T], visiting: set[Node[T]], visited: set[Node[T]]
+    ) -> bool:
+        """Helper recursive function for cycle detection."""
+        visiting.add(node)
+
+        for child in node._children:
+            if child in visiting:
+                # Cycle detected: trying to visit a node already
+                # in the current recursion stack
+                return True
+            if child not in visited:
+                # Recursively check subtree starting from child
+                if self._dfs_cycle_check(child, visiting, visited):
+                    return True
+
+        # Finished visiting node and all its descendants
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    @property
+    def contains_cycles(self) -> bool:
+        """
+        Checks if the graph contains any cycles using Depth First Search.
+        """
+        visiting = set()  # Nodes currently being visited in the current DFS path
+        visited = set()  # Nodes whose subtrees have been fully explored
+
+        # Iterate through all nodes in the graph
+        # Necessary for graphs that are not fully connected (forests)
+        for node in self.nodes.values():
+            if node not in visited:
+                if self._dfs_cycle_check(node, visiting, visited):
+                    return True  # Cycle found starting from this node
+
+        return False  # No cycles found in any component of the graph
+
+    def to_tree(self, extra_roots: Iterable[T] = tuple()) -> "Tree[T]":
+        tree = Tree[T]()
+
+        def node_to_tree(node: DAG[T].Node) -> Tree[T]:
+            tree = Tree[T]()
+            for child in node._children:
+                tree[child.value] = node_to_tree(child)
+            return tree
+
+        for root in self.roots | set(extra_roots):
+            tree[root] = node_to_tree(self.nodes[root])
+        return tree
+
+    def all_parents(self, value: T) -> set[T]:
+        node = self.get(value)
+        parents = set(node.parents)
+
+        while True:
+            new_parents = set()
+            for parent in parents:
+                new_parents.update(self.get(parent).parents)
+            if not new_parents - parents:
+                break
+            parents.update(new_parents)
+
+        return parents
+
+
 class Tree[T](dict[T, "Tree[T]"]):
     def iter_by_depth(self) -> Iterable[Sequence[T]]:
         yield list(self.keys())
@@ -1109,6 +1247,15 @@ class Tree[T](dict[T, "Tree[T]"]):
             trees = [child for tree in trees for child in tree.values()]
 
         raise KeyErrorNotFound(f"Node {node} not found in tree")
+
+    def to_dag(self, dag: DAG[T] | None = None) -> DAG[T]:
+        if dag is None:
+            dag = DAG()
+        for parent, child_tree in self.items():
+            child_tree.to_dag(dag)
+            for child in child_tree.keys():
+                dag.add_edge(parent, child)
+        return dag
 
 
 # zip iterators, but if one iterators stops producing, the rest continue
@@ -1460,6 +1607,10 @@ def run_live(
 ) -> tuple[str, str, subprocess.Popen]:
     """Runs a process and logs the output live."""
 
+    # on windows just run the command since select does not work
+    if sys.platform == "win32":
+        return subprocess.run(*args, **kwargs)
+
     process = subprocess.Popen(
         *args,
         stdout=subprocess.PIPE,
@@ -1518,7 +1669,7 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
     ):
         # check if pid still alive
         try:
-            pid = int(lock_file_path.read_text())
+            pid = int(lock_file_path.read_text(encoding="utf-8"))
         except ValueError:
             lock_file_path.unlink(missing_ok=True)
             continue
@@ -1531,7 +1682,7 @@ def global_lock(lock_file_path: Path, timeout_s: float | None = None):
         time.sleep(0.1)
 
     # write our pid to the lock file
-    lock_file_path.write_text(str(os.getpid()))
+    lock_file_path.write_text(str(os.getpid()), encoding="utf-8")
     try:
         yield
     finally:
@@ -1636,24 +1787,52 @@ def times_out(seconds: float):
     def decorator[**P, T](func: Callable[P, T]) -> Callable[P, T]:
         @wraps(func)
         def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            import signal
+            # Check the platform
+            if sys.platform == "win32":
+                # Windows implementation using concurrent.futures
+                executor = ThreadPoolExecutor(max_workers=1)
+                future = executor.submit(func, *args, **kwargs)
+                try:
+                    # Wait for the function to complete with the specified timeout
+                    result = future.result(timeout=seconds)
+                    # Shutdown the executor without waiting for the worker thread to
+                    # finish
+                    # if the result was obtained successfully.
+                    executor.shutdown(wait=False, cancel_futures=False)
+                    return result
+                except FuturesTimeoutError:
+                    # If a timeout occurs, cancel the future (best effort) and shutdown.
+                    # Raise the standard TimeoutError for consistency.
+                    future.cancel()
+                    # Shutdown the executor without waiting for the worker thread,
+                    # as it's likely stuck or running long.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise TimeoutError(
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                    )
+                except Exception as e:
+                    # If the function itself raised an exception, ensure cleanup and re
+                    # -raise.
+                    executor.shutdown(wait=False, cancel_futures=True)
+                    raise e
+            else:
+                # Non-Windows (Unix-like) implementation using signal
+                import signal  # Import signal only when needed
 
-            def timeout_handler(signum, frame):
-                raise TimeoutError(
-                    f"Function {func.__name__} exceeded time limit of {seconds}s"
-                )
+                def timeout_handler(signum, frame):
+                    raise TimeoutError(
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                    )
 
-            # Set up the signal handler
-            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
-            # Set alarm to trigger after specified seconds
-            signal.setitimer(signal.ITIMER_REAL, seconds)
+                old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+                signal.setitimer(signal.ITIMER_REAL, seconds)
 
-            try:
-                return func(*args, **kwargs)
-            finally:
-                # Cancel the alarm and restore the old signal handler
-                signal.setitimer(signal.ITIMER_REAL, 0)
-                signal.signal(signal.SIGALRM, old_handler)
+                try:
+                    return func(*args, **kwargs)
+                finally:
+                    # Clean up the timer and restore the original signal handler
+                    signal.setitimer(signal.ITIMER_REAL, 0)
+                    signal.signal(signal.SIGALRM, old_handler)
 
         return wrapper
 
@@ -1793,13 +1972,6 @@ def has_instance_settable_attr(obj: object, attr: str) -> bool:
     return False
 
 
-AUTO_RECOMPILE = ConfigFlag(
-    "AUTO_RECOMPILE",
-    default=False,
-    descr="Automatically recompile source files if they have changed",
-)
-
-
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
@@ -1887,33 +2059,39 @@ class SerializableEnum[E: Enum](Serializable):
         } == {e.name: e.value for e in other.enum}
 
 
-def indented_container(
-    obj: Iterable | dict,
+def indented_container[T](
+    obj: Iterable[T] | dict[T, Any],
     indent_level: int = 1,
     recursive: bool = False,
     use_repr: bool = True,
+    mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
     _indent_prefix = "  "
     _indent = _indent_prefix * indent_level
     ind = "\n" + _indent
 
-    def format_v(v: Any) -> str:
+    def format_v(v: T) -> str:
         if not use_repr and isinstance(v, str):
             return indent(v, prefix=_indent)
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
-            return repr(v) if use_repr else str(v)
-        return indented_container(v, indent_level=indent_level + 1, recursive=recursive)
+            return repr(mapper(v)) if use_repr else str(mapper(v))
+        return indented_container(
+            v, indent_level=indent_level + 1, recursive=recursive, mapper=mapper
+        )
 
-    inside = ind.join(f"{k}: {format_v(v)}" for k, v in kvs)
+    inside = ind.join(f"{mapper(k)}: {format_v(v)}" for k, v in kvs)
     if len(kvs):
         inside = f"{ind}{inside}\n"
 
     return f"{{{inside}{_indent_prefix * (indent_level - 1)}}}"
 
 
-def md_list(
-    obj: Iterable | dict, indent_level: int = 0, recursive: bool = False
+def md_list[T](
+    obj: Iterable[T] | dict[T, Any],
+    indent_level: int = 0,
+    recursive: bool = False,
+    mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
 ) -> str:
     """
     Convert an iterable or dictionary into a nested markdown list.
@@ -1928,19 +2106,27 @@ def md_list(
         try:
             kvs = list(enumerate(obj))
         except TypeError:
-            return f"{indent}- {str(obj)}"
+            return f"{indent}- {str(mapper(obj))}"
 
     if not kvs:
+        if isinstance(obj, Tree):
+            return ""
         return f"{indent}- *(empty)*"
 
     lines = deque()
     for k, v in kvs:
-        key_str = f" **{k}**:" if isinstance(obj, dict) else ""
+        k = mapper(k)
+        v = mapper(v)
+        key_str = ""
+
+        if isinstance(obj, dict):
+            sep = ":" if not isinstance(v, Tree) or len(v) else ""
+            key_str = f" **{k}{sep}**"
 
         if recursive and isinstance(v, Iterable) and not isinstance(v, str):
             if isinstance(obj, dict):
                 lines.append(f"{indent}-{key_str}")
-            nested = md_list(v, indent_level + 1, recursive)
+            nested = md_list(v, indent_level + 1, recursive=recursive, mapper=mapper)
             lines.append(nested)
         else:
             value_str = str(v)
@@ -2029,9 +2215,9 @@ def remove_venv_from_env(base_env: dict[str, str] | None = None):
     venv_prompt = env.pop("VIRTUAL_ENV_PROMPT", None)
     if venv_prompt is not None:
         # Remove venv from prompt
-        prompt = env["PS1"]
-        prompt = prompt.replace(venv_prompt, "")
-        env["PS1"] = prompt
+        if prompt := env.get("PS1"):
+            prompt = prompt.replace(venv_prompt, "")
+            env["PS1"] = prompt
 
     env.pop("PYTHONHOME", None)
 
@@ -2043,6 +2229,17 @@ def pretty_type(t: object | type) -> str:
         return t.__qualname__
     except Exception:
         return str(t)
+
+
+class SyncedFlag:
+    def __init__(self, value: bool = False):
+        self.value = value
+
+    def __bool__(self) -> bool:
+        return bool(self.value)
+
+    def set(self, value: bool):
+        self.value = value
 
 
 def re_in(value: str, patterns: Iterable[str]) -> bool:
@@ -2067,3 +2264,173 @@ def union_list[T](*lists: Iterable[T]) -> list[T]:
     for li in lists:
         unioned.extend(li)
     return unioned
+
+
+def clone_repo(
+    repo_url: str,
+    clone_target: Path,
+    depth: int | None = None,
+    ref: str | None = None,
+) -> Path:
+    """Clones a git repository and optionally checks out a specific ref.
+
+    Args:
+        repo_url: The URL of the repository to clone.
+        clone_target: The directory path where the repository should be cloned.
+        depth: If specified, creates a shallow clone with a history truncated
+               to the specified number of commits.
+        ref: The branch, tag, or commit hash to checkout after cloning.
+
+    Returns:
+        The path to the cloned repository (clone_target).
+
+    Raises:
+        git.GitCommandError: If any git command fails.
+    """
+    from git import GitCommandError, Repo
+
+    if depth is not None and ref is not None:
+        # GitPython doesn't automatically handle fetching missing refs on checkout
+        # during shallow clones like the command-line git might with fetch hints.
+        raise NotImplementedError("Cannot specify both depth and ref")
+
+    depth_str = f" with depth {depth or 'full'}" if depth is not None else ""
+    logger.debug(f"Cloning {repo_url} into {clone_target}{depth_str}...")
+    try:
+        repo = Repo.clone_from(repo_url, clone_target, depth=depth)
+        logger.debug(f"Successfully cloned {repo_url}")
+    except GitCommandError as e:
+        logger.error(f"Failed to clone {repo_url}: {e}")
+        raise
+
+    if ref:
+        logger.debug(f"Checking out ref {ref} in {clone_target}...")
+        try:
+            repo.git.checkout(ref)
+            logger.debug(f"Successfully checked out ref {ref}")
+        except GitCommandError as e:
+            logger.error(f"Failed to checkout ref {ref}: {e}")
+            raise
+
+    return clone_target
+
+
+def find_file(base_dir: Path, pattern: str):
+    """
+    equivalent to `find base_dir -type f -name pattern`
+    """
+    if not base_dir.exists() or not base_dir.is_dir():
+        return None
+    for file in base_dir.rglob(pattern):
+        if file.is_file():
+            yield file
+
+
+def complete_type_string(value: Any) -> str:
+    if isinstance(value, (list, set)):
+        inner = unique(
+            (complete_type_string(item) for item in value),
+            lambda x: x,
+        )
+        return f"{type(value).__name__}[{' | '.join(inner)}]"
+    elif isinstance(value, dict):
+        inner_value = unique(
+            (complete_type_string(item) for item in value.values()),
+            lambda x: x,
+        )
+        inner_key = unique(
+            (complete_type_string(item) for item in value.keys()),
+            lambda x: x,
+        )
+        return (
+            f"{type(value).__name__}["
+            f"{' | '.join(inner_key)}, "
+            f"{' | '.join(inner_value)}]"
+        )
+    elif isinstance(value, tuple):
+        inner = unique(
+            (complete_type_string(item) for item in value),
+            lambda x: x,
+        )
+        return f"{type(value).__name__}[{', '.join(inner)}]"
+    else:
+        return type(value).__name__
+
+
+def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
+    """Check if any of the given files have uncommitted changes."""
+    try:
+        repo = Repo(search_parent_directories=True)
+        diff_index = repo.index.diff(None)  # Get uncommitted changes
+
+        # Convert all files to Path objects for consistent comparison
+        files = [Path(f).resolve() for f in files]
+        repo_root = Path(repo.working_dir)
+
+        # Check if any of the files have changes
+        for diff in diff_index:
+            touched_file = diff.a_path or diff.b_path
+            # m, c or d
+            assert touched_file is not None
+            touched_path = repo_root / touched_file
+            if touched_path in files:
+                return True
+
+        return False
+    # TODO bad
+    except Exception:
+        # If we can't check git status (not a git repo, etc), assume we don't
+        # have changes
+        return False
+
+
+def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
+    files = []
+    for path in paths:
+        if path.is_dir():
+            files.extend(path.rglob("**"))
+        else:
+            files.append(path)
+    if not files:
+        return None
+
+    files_with_dates = [
+        (f, datetime.fromtimestamp(max(f.stat().st_mtime, f.stat().st_ctime)))
+        for f in files
+    ]
+    return max(files_with_dates, key=lambda f: f[1])
+
+
+class FileChangedWatcher:
+    class CheckMethod(Enum):
+        FS = auto()
+        HASH = auto()
+
+    def __init__(self, path: Path, method: CheckMethod):
+        self.path = path
+        self.method = method
+
+        match method:
+            case FileChangedWatcher.CheckMethod.FS:
+                self.before = path.stat().st_mtime
+            case FileChangedWatcher.CheckMethod.HASH:
+                self.before = hashlib.sha256(
+                    path.read_bytes(), usedforsecurity=False
+                ).hexdigest()
+
+    def has_changed(self, reset: bool = False) -> bool:
+        match self.method:
+            case FileChangedWatcher.CheckMethod.FS:
+                assert isinstance(self.before, float)
+                new_val = self.path.stat().st_mtime
+                changed = new_val > self.before
+            case FileChangedWatcher.CheckMethod.HASH:
+                assert isinstance(self.before, str)
+                new_val = hashlib.sha256(
+                    self.path.read_bytes(), usedforsecurity=False
+                ).hexdigest()
+                changed = new_val != self.before
+
+        if reset:
+            self.before = new_val
+        return changed

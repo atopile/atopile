@@ -4,10 +4,14 @@ import shutil
 from pathlib import Path
 
 import pathvalidate
+import posthog
 import pytest
 
 from faebryk.libs.util import repo_root as _repo_root
 from faebryk.libs.util import robustly_rm_dir
+
+# Disable telemetry for testing
+posthog.disabled = True
 
 
 def pytest_configure(config):

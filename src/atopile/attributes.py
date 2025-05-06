@@ -29,14 +29,6 @@ def _register_shim(addr: str | address.AddrStr, preferred: str):
     return _wrapper
 
 
-def _is_int(name: str) -> bool:
-    try:
-        int(name)
-    except ValueError:
-        return False
-    return True
-
-
 class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
     """
     This trait defers footprint creation until it's needed,
@@ -60,7 +52,7 @@ class _has_local_kicad_footprint_named_defined(F.has_footprint_impl):
                 pin_names=list(self.pinmap.keys()),
             )
             fp.add(F.KicadFootprint.has_kicad_identifier(self.lib_reference))
-            fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)
+            fp.get_trait(F.can_attach_via_pinmap).attach(self.pinmap)  # type: ignore
             self.set_footprint(fp)
             return fp
 
@@ -87,15 +79,10 @@ class _has_ato_cmp_attrs(L.Module.TraitT.decless()):
         self.module.add(F.can_attach_to_footprint_via_pinmap(self.pinmap))
         self.module.add(F.has_designator_prefix(F.has_designator_prefix.Prefix.U))
 
-    def add_pin(self, name: str) -> F.Electrical:
-        if _is_int(name):
-            py_name = f"_{name}"
-        else:
-            py_name = name
+    def add_pin(self, pinname: str, pyname: str) -> F.Electrical:
+        mif = self.module.add(F.Electrical(), name=pyname)
 
-        mif = self.module.add(F.Electrical(), name=py_name)
-
-        self.pinmap[name] = mif
+        self.pinmap[pinname] = mif
         return mif
 
     def handle_duplicate(self, old: TraitImpl, node: fab_param.Node) -> bool:
@@ -165,8 +152,7 @@ class GlobalAttributes(L.Module):
 
         if value.lower() == "dnp":
             raise DeprecatedException(
-                f"`mpn = {value}` is deprecated. "
-                "Use `exclude_from_bom = True` instead."
+                f"`mpn = {value}` is deprecated. Use `exclude_from_bom = True` instead."
             )
 
         # handles duplicates gracefully
@@ -287,6 +273,22 @@ class GlobalAttributes(L.Module):
         Suggested net name which will have a higher priority than generated net names.
         """
         self.add(F.has_net_name(name, level=F.has_net_name.Level.SUGGESTED))
+
+    @property
+    def required(self):
+        """
+        Only for ModuleInterfaces.
+        If set to `True`, require that interface is connected to something outside
+        of the module it's defined in.
+        """
+        raise AttributeError("write-only")
+
+    @required.setter
+    def required(self, value: bool):
+        if not value:
+            self.del_trait(F.requires_external_usage)
+            return
+        self.add(F.requires_external_usage())
 
 
 def _handle_package_shim(module: L.Module, value: str, starts_with: str):
@@ -469,6 +471,7 @@ class CapacitorElectrolytic(CommonCapacitor):
             power = self.get_trait(self._has_power).power
         else:
             power = F.ElectricPower()
+            self.add(power, name="power_shim")
             power.hv.connect(self.anode)
             power.lv.connect(self.cathode)
             self.add(self._has_power(power))

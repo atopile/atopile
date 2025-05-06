@@ -1,11 +1,9 @@
 import Regulator, ResistorVoltageDivider
 
 module AdjustableRegulator from Regulator:
-    # using vanilla voltage divider without equations
     feedback_div = new ResistorVoltageDivider
     v_ref: voltage
     i_q: current
-    r_total: resistance
     v_in: voltage
     v_out: voltage
 

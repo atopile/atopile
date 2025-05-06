@@ -15,7 +15,7 @@ TEST_CONSTANT = "test_value"
 def test_function():
     return "test_result"
 """
-    module_path.write_text(module_content)
+    module_path.write_text(module_content, encoding="utf-8")
     return module_path
 
 
@@ -26,10 +26,10 @@ def temp_package(tmp_path):
     package_dir.mkdir()
 
     init_path = package_dir / "__init__.py"
-    init_path.write_text("PACKAGE_CONSTANT = 'package_value'")
+    init_path.write_text("PACKAGE_CONSTANT = 'package_value'", encoding="utf-8")
 
     submodule_path = package_dir / "submodule.py"
-    submodule_path.write_text("SUB_CONSTANT = 'sub_value'")
+    submodule_path.write_text("SUB_CONSTANT = 'sub_value'", encoding="utf-8")
 
     return package_dir
 
@@ -38,7 +38,7 @@ def temp_package(tmp_path):
 def temp_non_python_file(tmp_path):
     """Create a temporary non-Python file for testing"""
     non_python_path = tmp_path / "non_python_file.txt"
-    non_python_path.write_text("This is a non-Python file")
+    non_python_path.write_text("This is a non-Python file", encoding="utf-8")
     return non_python_path
 
 

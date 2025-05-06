@@ -12,17 +12,28 @@ What we collect:
 """
 
 import hashlib
+import importlib.metadata
 import logging
 import subprocess
 import time
-from pathlib import Path
+from contextlib import contextmanager
 from typing import Optional
 
 import requests
 from attrs import asdict, define, field
+from posthog import Posthog
 from ruamel.yaml import YAML
 
+from faebryk.libs.paths import get_config_dir
+
 log = logging.getLogger(__name__)
+
+# Public API key, as it'd be embedded in a frontend
+posthog = Posthog(
+    api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
+    host="https://us.i.posthog.com",
+    sync_mode=True,
+)
 
 
 @define
@@ -59,7 +70,9 @@ def log_telemetry():
         # Check if telemetry is enabled
         if not load_telemetry_setting():
             log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
+            posthog.disabled = True
             return
+
         telemetry_data.time = _end_timer()
         telemetry_dict = asdict(telemetry_data)
         log.log(0, "Logging telemetry data %s", telemetry_dict)
@@ -79,18 +92,19 @@ def log_telemetry():
         log.log(0, "Failed to log telemetry data: %s", e)
 
 
-def load_telemetry_setting() -> dict:
-    atopile_home = Path.home() / ".atopile"
-    atopile_yaml = atopile_home / "telemetry.yaml"
+def load_telemetry_setting() -> bool:
+    # Use platformdirs to find the appropriate config directory
+    atopile_config_dir = get_config_dir()
+    atopile_yaml = atopile_config_dir / "telemetry.yaml"
 
     if not atopile_yaml.exists():
-        atopile_home.mkdir(parents=True, exist_ok=True)
-        with atopile_yaml.open("w") as f:
+        atopile_config_dir.mkdir(parents=True, exist_ok=True)  # Use the new path
+        with atopile_yaml.open("w", encoding="utf-8") as f:
             yaml = YAML()
             yaml.dump({"telemetry": True}, f)
         return True
 
-    with atopile_yaml.open() as f:
+    with atopile_yaml.open(encoding="utf-8") as f:
         yaml = YAML()
         config = yaml.load(f)
         return config.get("telemetry", True)
@@ -183,3 +197,32 @@ def get_project_id() -> Optional[str]:
 
     except subprocess.CalledProcessError:
         return None
+
+
+@contextmanager
+def log_to_posthog(event: str, properties: dict | None = None):
+    start_time = time.time()
+
+    def _make_properties():
+        return {
+            "duration": time.time() - start_time,
+            "project_id": get_project_id(),
+            "project_git_hash": get_current_git_hash(),
+            "atopile_version": importlib.metadata.version("atopile"),
+            **(properties or {}),
+        }
+
+    try:
+        yield
+    except Exception as e:
+        posthog.capture_exception(e, get_user_id(), _make_properties())
+        raise
+
+    try:
+        posthog.capture(
+            distinct_id=get_user_id(),
+            event=event,
+            properties=_make_properties(),
+        )
+    except Exception as e:
+        log.debug("Failed to log telemetry data: %s", e, exc_info=e)

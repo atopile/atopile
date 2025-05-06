@@ -13,6 +13,7 @@ from faebryk.core.node import Node
 from faebryk.core.parameter import (
     ConstrainableExpression,
     Expression,
+    IfThenElse,
     Parameter,
     ParameterOperatable,
     Predicate,
@@ -337,6 +338,12 @@ class DefaultSolver(Solver):
 
         if not terminal:
             self.reusable_state = self.state
+
+        ifs = GraphFunctions(
+            *self.state.data.mutation_map.last_stage.output_graphs
+        ).nodes_of_type(IfThenElse)
+        for i in ifs:
+            i.try_run()
 
         return self.state
 
