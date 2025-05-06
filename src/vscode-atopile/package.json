@@ -137,7 +137,7 @@
             },
             {
                 "command": "atopile.create",
-                "title": "Ato Create",
+                "title": "Create a project / build target / component",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
@@ -148,14 +148,14 @@
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.install",
-                "title": "Install JLCPCB Component",
+                "command": "atopile.add",
+                "title": "Add a dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.install_package",
-                "title": "Install Package",
+                "command": "atopile.remove",
+                "title": "Remove a dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },

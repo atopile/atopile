@@ -5,8 +5,8 @@ import * as cp from 'child_process';
 
 let statusbarAtoBuild: vscode.StatusBarItem;
 let statusbarAtoCreate: vscode.StatusBarItem;
-let statusbarAtoInstall: vscode.StatusBarItem;
-let statusbarAtoInstallPackage: vscode.StatusBarItem;
+let statusbarAtoAdd: vscode.StatusBarItem;
+let statusbarAtoRemove: vscode.StatusBarItem;
 let statusbarAtoBuildTarget: vscode.StatusBarItem;
 let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
 
@@ -20,7 +20,6 @@ interface AtoYaml {
     };
     dependencies: string[];
 }
-const atopileInterpreterSetting = 'atopile.interpreter';
 
 async function atoBuild() {
     // save all dirty editors
@@ -28,7 +27,7 @@ async function atoBuild() {
 
     // create a terminal to work with
     let buildTerminal = vscode.window.createTerminal({
-        name: 'ato Build',
+        name: 'ato build',
         cwd: '${workspaceFolder}',
         hideFromUser: false,
     });
@@ -42,7 +41,7 @@ async function atoBuild() {
 
 async function atoCreate() {
     let createTerminal = vscode.window.createTerminal({
-        name: 'ato Create',
+        name: 'ato create',
         cwd: '${workspaceFolder}',
         hideFromUser: false,
     });
@@ -51,42 +50,42 @@ async function atoCreate() {
     createTerminal.show();
 }
 
-async function processInstallJlcpcb() {
-    let result = await window.showInputBox({
-        placeHolder: 'JLCPCB Component ID',
-    });
-    // delete whitespace
-    result = result?.trim();
-
-    // if we got a part, try to install it
-    if (result) {
-        let installTerminal = vscode.window.createTerminal({
-            name: 'ato Install',
-            cwd: '${workspaceFolder}',
-            hideFromUser: false,
-        });
-
-        installTerminal.sendText('ato install --jlcpcb ' + result);
-        installTerminal.show();
-    }
-}
-
-async function processInstallPackage() {
+async function processAddPackage() {
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
     // delete whitespace
     result = result?.trim();
 
-    // if we got a part, try to install it
+    // if we got a part, try to add it
     if (result) {
-        let installTerminal = vscode.window.createTerminal({
-            name: 'ato Install',
+        let addTerminal = vscode.window.createTerminal({
+            name: 'ato add',
             cwd: '${workspaceFolder}',
             hideFromUser: false,
         });
-        installTerminal.sendText('ato install ' + result);
-        installTerminal.show();
+
+        addTerminal.sendText('ato add ' + result);
+        addTerminal.show();
+    }
+}
+
+async function processRemovePackage() {
+    let result = await window.showInputBox({
+        placeHolder: 'Package name',
+    });
+    // delete whitespace
+    result = result?.trim();
+
+    // if we got a part, try to remove it
+    if (result) {
+        let removeTerminal = vscode.window.createTerminal({
+            name: 'ato remove',
+            cwd: '${workspaceFolder}',
+            hideFromUser: false,
+        });
+        removeTerminal.sendText('ato remove ' + result);
+        removeTerminal.show();
     }
 }
 
@@ -117,14 +116,14 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.install', () => {
-            processInstallJlcpcb();
+        vscode.commands.registerCommand('atopile.add', () => {
+            processAddPackage();
         }),
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.install_package', () => {
-            processInstallPackage();
+        vscode.commands.registerCommand('atopile.remove', () => {
+            processRemovePackage();
         }),
     );
 
@@ -143,23 +142,23 @@ export async function activate(context: vscode.ExtensionContext) {
     const commandAtoCreate = 'atopile.create';
     statusbarAtoCreate = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusbarAtoCreate.command = commandAtoCreate;
-    statusbarAtoCreate.text = `$(plus)`;
-    statusbarAtoCreate.tooltip = 'ato: create project/build';
+    statusbarAtoCreate.text = `$(new-file)`;
+    statusbarAtoCreate.tooltip = 'ato: create';
     // statusbarAtoCreate.color = "#F95015";
 
-    const commandAtoInstall = 'atopile.install';
-    statusbarAtoInstall = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoInstall.command = commandAtoInstall;
-    statusbarAtoInstall.text = `$(cloud-download)`;
-    statusbarAtoInstall.tooltip = 'ato: install JLCPCB component';
+    const commandAtoAdd = 'atopile.add';
+    statusbarAtoAdd = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoAdd.command = commandAtoAdd;
+    statusbarAtoAdd.text = `$(package)`;
+    statusbarAtoAdd.tooltip = 'ato: add a dependency';
     // statusbarAtoInstall.color = "#F95015";
 
-    const commandAtoInstallPackage = 'atopile.install_package';
-    statusbarAtoInstallPackage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoInstallPackage.command = commandAtoInstallPackage;
-    statusbarAtoInstallPackage.text = `$(package)`;
-    statusbarAtoInstallPackage.tooltip = 'ato: install package';
-    // statusbarAtoInstallPackage.color = "#F95015";
+    const commandAtoRemove = 'atopile.remove';
+    statusbarAtoRemove = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoRemove.command = commandAtoRemove;
+    statusbarAtoRemove.text = `$(trash)`;
+    statusbarAtoRemove.tooltip = 'ato: remove a dependency';
+    // statusbarAtoRemove.color = "#F95015";
 
     const commandAtoBuild = 'atopile.build';
     statusbarAtoBuild = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
@@ -202,18 +201,18 @@ async function processLaunchKiCAD() {
 function _displayButtons() {
     if (builds.length !== 0) {
         statusbarAtoCreate.show();
-        statusbarAtoInstall.show();
-        statusbarAtoInstallPackage.show();
+        statusbarAtoAdd.show();
+        statusbarAtoRemove.show();
         statusbarAtoBuild.show();
         statusbarAtoLaunchKiCAD.show();
         statusbarAtoBuildTarget.show();
     } else {
         statusbarAtoCreate.hide();
-        statusbarAtoInstall.hide();
-        statusbarAtoInstallPackage.hide();
+        statusbarAtoAdd.hide();
+        statusbarAtoRemove.hide();
         statusbarAtoBuild.hide();
-        statusbarAtoBuildTarget.hide();
         statusbarAtoLaunchKiCAD.hide();
+        statusbarAtoBuildTarget.hide();
     }
 }
 
@@ -221,10 +220,8 @@ async function _loadBuilds() {
     let ws = vscode.workspace.workspaceFolders![0].uri.path;
     let uri = vscode.Uri.file(ws + '/ato.yaml');
 
-    // open ato.yaml file
+    builds = [];
     try {
-        //
-        builds = [];
         const file = await vscode.workspace.fs.readFile(uri);
         let fileStr = String.fromCharCode(...file);
         const data = yaml.load(fileStr) as AtoYaml;
@@ -241,4 +238,4 @@ async function _loadBuilds() {
     }
 }
 
-export function deactivate() {}
+export function deactivate() { }
