@@ -17,6 +17,10 @@ log.setLevel(logging.INFO)
 class ErrorListenerConverter(ErrorListener):
     """Converts an error into an AtoSyntaxError."""
 
+    def __init__(self):
+        super().__init__()
+        self.errors: list[UserSyntaxError] = []
+
     def syntaxError(
         self,
         recognizer,
@@ -34,21 +38,24 @@ class ErrorListenerConverter(ErrorListener):
         # to accurately report the error
         input_stream.fill()
 
-        raise UserSyntaxError.from_tokens(
-            input_stream, offendingSymbol, None, msg, markdown=False
+        self.errors.append(
+            UserSyntaxError.from_tokens(
+                input_stream, offendingSymbol, None, msg, markdown=False
+            )
         )
 
 
-def make_parser(src_stream: InputStream) -> AtoParser:
+def make_parser(src_stream: InputStream) -> tuple[AtoParser, ErrorListenerConverter]:
     """Make a parser from a stream."""
     lexer = AtoLexer(src_stream)
     stream = CommonTokenStream(lexer)
     parser = AtoParser(stream)
 
     parser.removeErrorListeners()
-    parser.addErrorListener(ErrorListenerConverter())
+    listener = ErrorListenerConverter()
+    parser.addErrorListener(listener)
 
-    return parser
+    return parser, listener
 
 
 def parse_text_as_file(
@@ -57,9 +64,12 @@ def parse_text_as_file(
     """Parse a string as a file input."""
     input = InputStream(src_code)
     input.name = src_path
-    parser = make_parser(input)
+    parser, listener = make_parser(input)
 
     tree = parser.file_input()
+
+    if listener.errors:
+        raise ExceptionGroup("Multiple syntax errors found", listener.errors)
 
     return tree
 
@@ -68,9 +78,12 @@ def parse_file(src_path: Path) -> AtoParser.File_inputContext:
     """Parse a file from a path."""
     input = FileStream(str(src_path), encoding="utf-8")
     input.name = src_path
-    parser = make_parser(input)
+    parser, listener = make_parser(input)
 
     tree = parser.file_input()
+
+    if listener.errors:
+        raise ExceptionGroup("Multiple syntax errors found", listener.errors)
 
     return tree
 
