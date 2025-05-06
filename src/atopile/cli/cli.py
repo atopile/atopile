@@ -185,9 +185,9 @@ def validate(
 
 @app.command(hidden=True)
 def start_lsp_server():
-    import lsp
+    from lsp import LSP_SERVER
 
-    lsp.run()
+    LSP_SERVER.start_io()
 
 
 def main():

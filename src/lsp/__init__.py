@@ -1,3 +1,3 @@
-from lsp.main import run
+from lsp.lsp_server import LSP_SERVER
 
-__all__ = ["run"]
+__all__ = ["LSP_SERVER"]
