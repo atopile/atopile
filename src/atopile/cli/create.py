@@ -725,9 +725,9 @@ class AtoTemplate(Template):
                         pin_name = pin.name.text
                         if pin_name and pin_name not in ["NC", "nc"]:
                             if re.match(r"^[0-9]+$", pin_name):
-                                unsorted_pins.append((sanitize_name(pin_name), pin_num))
-                            else:
                                 unsorted_pins.append((None, pin_num))
+                            else:
+                                unsorted_pins.append((sanitize_name(pin_name), pin_num))
 
         # Sort pins by name using natsort
         sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
