@@ -4,6 +4,7 @@ on:
       - main  # or your default branch
     paths:
       - 'examples/**'  # adjust to your examples directory
+      - '.github/workflows/docs-sync.yml'
   workflow_dispatch:
 
 jobs:
