@@ -58,6 +58,13 @@ class ReferencePartType:
         self.name = name
         self.key = key
 
+        self.is_node_reference = True
+        """
+        resistors = new Resistor[5]
+        resistors[0] is a node reference
+        resistors is not a node reference
+        """
+
     def __str__(self) -> str:
         if self.key is not None:
             return f"{self.name}[{self.key}]"
