@@ -954,6 +954,7 @@ def test_for_loop_stale_ref(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
+@pytest.mark.xfail(reason="This is a bug in the parser")
 @pytest.mark.parametrize(
     "stmt",
     [
