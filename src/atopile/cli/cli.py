@@ -24,6 +24,7 @@ from atopile.cli import (
 from atopile.cli.logging import handler, logger
 from atopile.config import config
 from atopile.version import check_for_update
+from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
@@ -167,6 +168,19 @@ def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
     print(config.project.model_dump(mode=format))
+
+
+@app.command(help="Check file for syntax errors and internal consistency")
+def validate(
+    path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
+):
+    from atopile.parse import parse_file
+
+    if path.suffix != ".ato":
+        raise UserResourceException("Invalid file type")
+
+    parse_file(path)
+    typer.echo(f"{path}: ok")
 
 
 def main():
