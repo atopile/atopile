@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import copy
-import functools
 import json
 import os
 import pathlib
@@ -16,7 +15,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile.errors import UserSyntaxError
-from atopile.parse import parse_file
+from atopile.parse import parse_text_as_file
 from atopile.parse_utils import get_src_info_from_token
 from faebryk.libs.exceptions import iter_leaf_exceptions
 
@@ -111,13 +110,14 @@ def get_file(uri: str) -> Path:
 # **********************************************************
 
 
-@functools.lru_cache(maxsize=100)
 def _get_static_diagnostics(
     uri: str, identifier: str | None = None
 ) -> list[lsp.Diagnostic]:
     """
     Get static diagnostics for a given URI and identifier.
-    Excludes results that rely on other files
+    Excludes results that rely on other files.
+
+    TODO: caching
     """
 
     def _parse_exc(exc: UserSyntaxError) -> lsp.Diagnostic:
@@ -149,9 +149,12 @@ def _get_static_diagnostics(
         )
 
     diagnostics = []
+    document = LSP_SERVER.workspace.get_text_document(uri)
+    source_text = document.source
+    file_path = Path(document.path)
 
     try:
-        parse_file(get_file(uri))
+        parse_text_as_file(source_text, file_path)
     except* UserSyntaxError as e:
         diagnostics = [_parse_exc(error) for error in iter_leaf_exceptions(e)]
 
@@ -184,8 +187,9 @@ def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """Handle document change request."""
-    # TODO: debounced syntax errors
-    pass
+    # TODO: debounce
+    diagnostics = _get_static_diagnostics(params.text_document.uri)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
