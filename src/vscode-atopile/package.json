@@ -5,10 +5,6 @@
     "description": "IDE support for atopile.",
     "version": "0.6.0",
     "preview": false,
-    "serverInfo": {
-        "name": "atopile",
-        "module": "atopile"
-    },
     "publisher": "atopile",
     "license": "MIT",
     "homepage": "https://github.com/atopile/atopile",
@@ -68,63 +64,9 @@
         ],
         "configuration": {
             "properties": {
-                "atopile.args": {
-                    "default": [],
-                    "description": "Arguments passed in. Each argument is a separate item in the array.",
-                    "items": {
-                        "type": "string"
-                    },
-                    "scope": "resource",
-                    "type": "array"
-                },
-                "atopile.path": {
-                    "default": [],
+                "atopile.ato": {
                     "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slowdown server response time.",
                     "scope": "resource",
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "atopile.importStrategy": {
-                    "default": "fromEnvironment",
-                    "description": "Defines where `atopile` is imported from. This setting may be ignored if `atopile.path` is set.",
-                    "enum": [
-                        "useBundled",
-                        "fromEnvironment"
-                    ],
-                    "enumDescriptions": [
-                        "Always use the bundled version of `atopile`.",
-                        "Use `atopile` from environment, fallback to bundled version only if `atopile` not available in the environment."
-                    ],
-                    "scope": "window",
-                    "type": "string"
-                },
-                "atopile.interpreter": {
-                    "default": [],
-                    "description": "When set to a path to python executable, extension will use that to launch the server and any subprocess.",
-                    "scope": "resource",
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "atopile.showNotifications": {
-                    "default": "off",
-                    "description": "Controls when notifications are shown by this extension.",
-                    "enum": [
-                        "off",
-                        "onError",
-                        "onWarning",
-                        "always"
-                    ],
-                    "enumDescriptions": [
-                        "All notifications are turned off, any errors or warning are still available in the logs.",
-                        "Notifications are shown only in the case of an error.",
-                        "Notifications are shown for errors and warnings.",
-                        "Notifications are show for anything that the server chooses to show."
-                    ],
-                    "scope": "machine",
                     "type": "string"
                 }
             }
@@ -197,7 +139,8 @@
         "@vscode/python-extension": "^1.0.5",
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
-        "vscode-languageclient": "^8.1.0"
+        "vscode-languageclient": "^8.1.0",
+        "vscode-variables": "^1.0.1"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",
@@ -213,8 +156,8 @@
         "glob": "^10.4.2",
         "prettier": "^3.4.2",
         "ts-loader": "^9.5.1",
-        "webpack": "^5.97.1",
         "typescript": "^5.7.2",
+        "webpack": "^5.97.1",
         "webpack-cli": "^5.1.4"
     }
 }

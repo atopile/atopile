@@ -1,9 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import * as fsapi from 'fs-extra';
-import { Disposable, env, LogOutputChannel } from 'vscode';
-import { State } from 'vscode-languageclient';
+import { ConfigurationChangeEvent, Disposable, env, EventEmitter, LogOutputChannel } from 'vscode';
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -11,65 +9,54 @@ import {
     ServerOptions,
 } from 'vscode-languageclient/node';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
-import { getExtensionSettings, getGlobalSettings, getWorkspaceSettings, ISettings } from './settings';
+import { getWorkspaceSettings, ISettings } from './settings';
 import { getLSClientTraceLevel, getProjectRoot } from './utilities';
-import { isVirtualWorkspace } from './vscodeapi';
+import { isVirtualWorkspace, onDidChangeConfiguration, registerCommand } from './vscodeapi';
+import { SERVER_ID } from './constants';
+import { AtoBinInfo, getAtoBin, initAtoBin, onDidChangeAtoBinInfo } from './findbin';
+import * as fs from 'fs';
 
-export type IInitOptions = { settings: ISettings[]; globalSettings: ISettings };
-
-async function createServer(
+async function _runServer(
+    ato_path: string,
     settings: ISettings,
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
-    initializationOptions: IInitOptions,
 ): Promise<LanguageClient> {
-    const command = settings.interpreter[0];
+    const command = ato_path;
     const cwd = settings.cwd;
-    const newEnv = { ...process.env };
-    const args = ['-m', 'atopile'];
+    const args = ['lsp', 'start'];
 
-    // Set import strategy
-    newEnv.LS_IMPORT_STRATEGY = settings.importStrategy;
-
-    // Set notification type
-    newEnv.LS_SHOW_NOTIFICATION = settings.showNotifications;
-
-    if (newEnv.USE_DEBUGPY === 'True') {
-        args.push('--debug');
-    }
-
-    args.push('start-lsp-server');
     traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
 
     const serverOptions: ServerOptions = {
         command,
         args,
-        options: { cwd, env: newEnv },
+        options: { cwd, env: process.env },
     };
 
     // Options to control the language client
     const clientOptions: LanguageClientOptions = {
-        // Register the server for python documents
+        // Register the server for ato files
+        // TODO: why the difference if virtual
         documentSelector: isVirtualWorkspace()
             ? [{ language: 'ato' }]
             : [
-                { scheme: 'file', language: 'ato' },
-                { scheme: 'untitled', language: 'ato' },
-                { scheme: 'vscode-notebook', language: 'ato' },
-                { scheme: 'vscode-notebook-cell', language: 'ato' },
-            ],
+                  { scheme: 'file', language: 'ato' },
+                  { scheme: 'untitled', language: 'ato' },
+                  { scheme: 'vscode-notebook', language: 'ato' },
+                  { scheme: 'vscode-notebook-cell', language: 'ato' },
+              ],
         outputChannel: outputChannel,
         traceOutputChannel: outputChannel,
         revealOutputChannelOn: RevealOutputChannelOn.Never,
-        initializationOptions,
     };
 
     return new LanguageClient(serverId, serverName, serverOptions, clientOptions);
 }
 
 let _disposables: Disposable[] = [];
-export async function restartServer(
+export async function reStartServer(
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
@@ -82,26 +69,25 @@ export async function restartServer(
         _disposables = [];
     }
     const projectRoot = await getProjectRoot();
-    const workspaceSetting = await getWorkspaceSettings(serverId, projectRoot, true);
+    const workspaceSetting = await getWorkspaceSettings(projectRoot);
 
-    const newLSClient = await createServer(workspaceSetting, serverId, serverName, outputChannel, {
-        settings: await getExtensionSettings(serverId, true),
-        globalSettings: await getGlobalSettings(serverId, false),
-    });
+    const ato_path = getAtoBin(workspaceSetting);
+    if (!ato_path) {
+        traceError(
+            `Server: ato binary not found. If you are sure ato is installed, set atopile.ato in your workspace settings.`,
+        );
+        return undefined;
+    }
+    if (!fs.existsSync(ato_path)) {
+        traceError(`Server: ato binary not found at ${ato_path}. Fix atopile.ato in your workspace settings.`);
+        return undefined;
+    }
+
+    const newLSClient = await _runServer(ato_path, workspaceSetting, serverId, serverName, outputChannel);
     traceInfo(`Server: Start requested.`);
     _disposables.push(
         newLSClient.onDidChangeState((e) => {
-            switch (e.newState) {
-                case State.Stopped:
-                    traceVerbose(`Server State: Stopped`);
-                    break;
-                case State.Starting:
-                    traceVerbose(`Server State: Starting`);
-                    break;
-                case State.Running:
-                    traceVerbose(`Server State: Running`);
-                    break;
-            }
+            traceVerbose(`Server State: ${e.newState}`);
         }),
     );
     try {
@@ -114,4 +100,28 @@ export async function restartServer(
     const level = getLSClientTraceLevel(outputChannel.logLevel, env.logLevel);
     await newLSClient.setTrace(level);
     return newLSClient;
+}
+
+const onNeedsRestartEvent = new EventEmitter<void>();
+export const onNeedsRestart = onNeedsRestartEvent.event;
+
+export async function initServer(disposables: Disposable[]): Promise<void> {
+    disposables.push(
+        onDidChangeAtoBinInfo(async (e: AtoBinInfo) => {
+            // No need to fire, already triggering with setImmediate
+            if (e.init) {
+                return;
+            }
+            onNeedsRestartEvent.fire();
+        }),
+        registerCommand(`${SERVER_ID}.restart`, async () => {
+            onNeedsRestartEvent.fire();
+        }),
+    );
+
+    await initAtoBin(disposables);
+
+    setImmediate(async () => {
+        onNeedsRestartEvent.fire();
+    });
 }
