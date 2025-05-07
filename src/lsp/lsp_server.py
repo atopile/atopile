@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import pathlib
 import sys
@@ -18,7 +19,7 @@ from atopile import front_end
 from atopile.errors import UserException, UserSyntaxError
 from atopile.parse import parse_text_as_file
 from atopile.parse_utils import get_src_info_from_token
-from faebryk.libs.exceptions import iter_leaf_exceptions
+from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
@@ -176,22 +177,25 @@ def _get_build_diagnostics(
 ) -> list[lsp.Diagnostic]:
     # TODO: merge with static?
     # TODO: run partial build?
-    # TODO: show warnings
+
     file_path, source_text = get_file_contents(uri)
-    diagnostics = []
-    try:
-        front_end.bob.try_build_all_from_text(source_text, file_path)
-    except* UserSyntaxError as e:
-        diagnostics = [
-            _convert_exc_to_diagnostic(error) for error in iter_leaf_exceptions(e)
-        ]
-    except* UserException as e:
-        diagnostics = [
+    exc_diagnostics = []
+
+    with DowngradedExceptionCollector(UserException) as collector:
+        try:
+            front_end.bob.try_build_all_from_text(source_text, file_path)
+        except* UserException as e:
+            exc_diagnostics = [
+                _convert_exc_to_diagnostic(error) for error in iter_leaf_exceptions(e)
+            ]
+
+        warning_diagnostics = [
             _convert_exc_to_diagnostic(error, severity=lsp.DiagnosticSeverity.Warning)
-            for error in iter_leaf_exceptions(e)
+            for error, severity in collector
+            if severity == logging.WARNING
         ]
 
-    return diagnostics
+    return exc_diagnostics + warning_diagnostics
 
 
 @LSP_SERVER.feature(

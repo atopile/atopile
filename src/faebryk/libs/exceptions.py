@@ -1,6 +1,7 @@
 import contextlib
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from functools import wraps
 from typing import (
     TYPE_CHECKING,
@@ -264,6 +265,29 @@ class accumulate:
         self.raise_errors()
 
 
+_collectors: list["DowngradedExceptionCollector"] = []
+
+
+class DowngradedExceptionCollector[T: Exception]:
+    def __init__(self, exc_type: Type[T]):
+        self.exceptions: list[tuple[T, int]] = []
+        self.exc_type = exc_type
+
+    def add(self, exception: Exception, severity: int = logging.WARNING):
+        if isinstance(exception, self.exc_type):
+            self.exceptions.append((exception, severity))
+
+    def __enter__(self) -> Self:
+        _collectors.append(self)
+        return self
+
+    def __exit__(self, *args):
+        _collectors.remove(self)
+
+    def __iter__(self) -> Iterator[tuple[T, int]]:
+        return iter(self.exceptions)
+
+
 class downgrade[T: Exception](Pacman):
     """
     Similar to `contextlib.suppress`, but logs the exception instead.
@@ -294,6 +318,9 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
+            for collector in _collectors:
+                collector.add(e, self.to_level)
+
             self.logger.log(self.to_level, str(e), exc_info=e, extra={"markdown": True})
 
         return self.raise_anyway
