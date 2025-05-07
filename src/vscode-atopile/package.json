@@ -140,7 +140,8 @@
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
         "vscode-languageclient": "^8.1.0",
-        "vscode-variables": "^1.0.1"
+        "vscode-variables": "^1.0.1",
+        "which": "^5.0.0"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",
