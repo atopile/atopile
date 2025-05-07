@@ -728,6 +728,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         context = self.index_file(self._sanitise_path(path))
         return self._build(context, ref)
 
+    def build_text(self, text: str, path: Path, ref: TypeRef) -> L.Node:
+        """Build a Module from a string and reference."""
+        context = self.index_text(text, path)
+        return self._build(context, ref)
+
     @property
     def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""
@@ -925,6 +930,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def index_file(self, file_path: Path) -> Context:
         ast = parser.get_ast_from_file(file_path)
+        return self.index_ast(ast, file_path)
+
+    def index_text(self, text: str, file_path: Path | None) -> Context:
+        ast = parser.get_ast_from_text(text, file_path)
         return self.index_ast(ast, file_path)
 
     def _get_search_paths(self, context: Context) -> list[Path]:
