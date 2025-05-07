@@ -1,9 +1,9 @@
 import itertools
 import logging
 import re
+import subprocess
 import sys
 import textwrap
-import webbrowser
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
@@ -209,7 +209,6 @@ PROJECT_NAME_REQUIREMENTS = (
 @log_to_posthog("cli:create_project_end")
 def project(
     template: str = "https://github.com/atopile/project-template @ compiler-v0.4",
-    create_github_repo: bool | None = None,
 ):
     """
     Create a new ato project.
@@ -222,11 +221,6 @@ def project(
         template_branch = template_branch[0].strip()
     else:
         template_branch = None
-
-    if create_github_repo is True and not config.interactive:
-        raise errors.UserException(
-            "Cannot create a GitHub repo when running non-interactively."
-        )
 
     extra_context = {
         "__ato_version": version.get_installed_atopile_version(),
@@ -250,67 +244,85 @@ def project(
             "Directory already exists. Please choose a different name."
         ) from e
 
-    if create_github_repo is None:
-        create_github_repo = (
-            query_helper(
-                "Create a GitHub repo for this project?",
-                bool,
-                default=True,
-            )
-            if config.interactive
-            else False
-        )
+    # check if gh binary is available
+    # TODO: better use gh python package
+    # and check whether auth is configured
+    try:
+        subprocess.check_output(["gh", "--version"])
+    except subprocess.CalledProcessError:
+        gh_available = False
+    else:
+        gh_available = True
 
-    # Get a repo
-    if create_github_repo:
+    # check if already in a git repo
+    create_git_repo = not _in_git_repo(project_path)
+
+    create_github_repo = (
+        query_helper(
+            "Host this project on GitHub?",
+            bool,
+            default=False,
+        )
+        if config.interactive and gh_available and create_git_repo
+        else False
+    )
+
+    if create_git_repo:
         logging.info("Initializing git repo")
         repo = git.Repo.init(project_path)
         repo.git.add(A=True, f=True)
         repo.git.commit(m="Initial commit")
 
-        github_username = query_helper(
-            "What's your GitHub username?",
-            str,
-            validator=r"^[a-zA-Z0-9_-]+$",
+    # Get a repo
+    if create_github_repo:
+        use_existing_repo = query_helper(
+            "Use an existing GitHub repo?",
+            bool,
+            default=False,
         )
 
-        make_repo_url = (
-            f"https://github.com/new?name={project_path.name}&owner={github_username}"
-        )
+        # read from git config
+        github_username = repo.config_reader().get("user", "name")
+        if not github_username:
+            github_username = questionary.text(
+                "What's your GitHub username?",
+                default="",
+            ).unsafe_ask()
 
-        help(
-            f"""
-            We recommend you create a GitHub repo for your project.
+        if use_existing_repo:
 
-            If you already have a repo, you can respond [yellow]n[/]
-            to the next question and provide the URL to your repo.
+            def _check_repo_and_add_remote(url: str) -> bool:
+                try:
+                    repo.create_remote("origin", url).push()
+                    return True
+                except Exception:
+                    return False
 
-            If you don't have one, you can respond yes to the next question
-            or (Cmd/Ctrl +) click the link below to create one.
+            query_helper(
+                ":rocket: What's the [cyan]repo's org and project name?[/]\n",
+                str,
+                default=f"{github_username}/{project_path.name}",
+                validator=_check_repo_and_add_remote,
+                validation_failure_msg="Remote could not be added: {value}",
+                validate_default=False,
+            )
+        else:
 
-            Just select the template you want to use.
+            def _create_repo_and_add_remote(url: str) -> bool:
+                try:
+                    repo.create_remote("origin", url).push()
+                    return True
+                except Exception:
+                    return False
 
-            {make_repo_url}
-            """
-        )
-
-        webbrowser.open(make_repo_url)
-
-        def _repo_validator(url: str) -> bool:
-            try:
-                repo.create_remote("origin", url).push()
-                return True
-            except Exception:
-                return False
-
-        query_helper(
-            ":rocket: What's the [cyan]repo's URL?[/]",
-            str,
-            default=f"https://github.com/{github_username}/{project_path.name}",
-            validator=_repo_validator,
-            validation_failure_msg="Remote could not be added: {value}",
-            validate_default=False,
-        )
+            query_helper(
+                ":rocket: Choose a [cyan]repo org and name:[/]\n",
+                str,
+                default=f"{github_username}/{project_path.name}",
+                validator=_create_repo_and_add_remote,
+                validation_failure_msg="Remote could not be added: {value}",
+                validate_default=False,
+            )
 
     # Wew! New repo created!
     rich.print(
