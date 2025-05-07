@@ -56,7 +56,7 @@ async function _runServer(
 }
 
 let _disposables: Disposable[] = [];
-export async function reStartServer(
+export async function startOrRestartServer(
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,

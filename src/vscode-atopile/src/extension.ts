@@ -4,7 +4,7 @@
 import * as vscode from 'vscode';
 import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
-import { reStartServer, initServer, onNeedsRestart } from './common/server';
+import { startOrRestartServer, initServer, onNeedsRestart } from './common/server';
 import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel } from './common/vscodeapi';
 import * as ui from './ui/ui';
@@ -39,7 +39,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     // Setup Language Server
     const _reStartServer = async () => {
-        g_lsClient = await reStartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
+        g_lsClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
     };
     context.subscriptions.push(
         onNeedsRestart(async () => {

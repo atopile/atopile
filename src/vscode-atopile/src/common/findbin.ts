@@ -16,8 +16,8 @@ export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEve
 let g_pyAtoBin: string | undefined = undefined;
 let g_sysAtoBin: string | undefined = undefined;
 
-export function getAtoBin(settings?: ISettings): string | undefined {
-    if (settings && settings.ato) {
+export function getAtoBin(settings?: ISettings): string | null {
+    if (settings?.ato) {
         traceInfo(`Using ato bin from settings: ${settings.ato}`);
         return settings.ato;
     }
@@ -30,7 +30,7 @@ export function getAtoBin(settings?: ISettings): string | undefined {
         return g_sysAtoBin;
     }
     traceVerbose(`No ato bin found.`);
-    return undefined;
+    return null;
 }
 
 export async function initAtoBin(disposables: Disposable[]): Promise<void> {
@@ -42,10 +42,10 @@ export async function initAtoBin(disposables: Disposable[]): Promise<void> {
             }
             g_pyAtoBin = binDir + '/ato';
             if (!fs.existsSync(g_pyAtoBin)) {
-                traceVerbose(`Ato bin not found in venv: ${g_pyAtoBin}`);
+                traceVerbose(`ato bin not found in venv: ${g_pyAtoBin}`);
                 return;
             }
-            traceInfo(`Ato bin found in venv: ${g_pyAtoBin}`);
+            traceInfo(`ato bin found in venv: ${g_pyAtoBin}`);
             onDidChangeAtoBinInfoEvent.fire({ init: e.init });
         }),
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
@@ -60,9 +60,9 @@ export async function initAtoBin(disposables: Disposable[]): Promise<void> {
     // check if ato in system path
     g_sysAtoBin = await which('ato', { nothrow: true });
     if (g_sysAtoBin) {
-        traceInfo(`Ato bin found in system PATH: ${g_sysAtoBin}`);
+        traceInfo(`ato bin found in system PATH: ${g_sysAtoBin}`);
         onDidChangeAtoBinInfoEvent.fire({ init: true });
     } else {
-        traceVerbose(`Ato bin not found in system PATH.`);
+        traceVerbose(`ato bin not found in system PATH.`);
     }
 }

@@ -65,7 +65,7 @@
         "configuration": {
             "properties": {
                 "atopile.ato": {
-                    "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slowdown server response time.",
+                    "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slow down server response time.",
                     "scope": "resource",
                     "type": "string"
                 }
@@ -139,7 +139,7 @@
         "@vscode/python-extension": "^1.0.5",
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
-        "vscode-languageclient": "^8.1.0",
+        "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0"
     },
