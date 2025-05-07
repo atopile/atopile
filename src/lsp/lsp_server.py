@@ -24,7 +24,11 @@ from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exce
 # Utils for interacting with the atopile front-end
 # **********************************************************
 
-# TODO
+
+def init_atopile_config(working_dir: Path) -> None:
+    from atopile.config import config
+
+    config.apply_options(entry=None, working_dir=working_dir)
 
 
 # **********************************************************
@@ -247,12 +251,23 @@ def initialize(params: lsp.InitializeParams) -> None:
         settings = params.initialization_options["settings"]
         _update_workspace_settings(settings)
         log_to_output(
-            f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
+            f"Settings used to run Server:\r\n"
+            f"{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"
         )
 
     log_to_output(
-        f"Global settings:\r\n{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
+        f"Global settings:\r\n"
+        f"{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
     )
+
+    log_to_output(
+        f"Workspace settings:\r\n"
+        f"{json.dumps(WORKSPACE_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+    )
+
+    working_dir = Path(WORKSPACE_SETTINGS.get("workspaceFS", os.getcwd()))
+    log_to_output(f"Initializing atopile config for `{working_dir}`")
+    init_atopile_config(working_dir)
 
 
 @LSP_SERVER.feature(lsp.EXIT)
