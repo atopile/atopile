@@ -180,7 +180,7 @@ def _get_build_diagnostics(
     file_path, source_text = get_file_contents(uri)
     diagnostics = []
     try:
-        front_end.bob.build_all_from_text(source_text, file_path)
+        front_end.bob.try_build_all_from_text(source_text, file_path)
     except* UserSyntaxError as e:
         diagnostics = [
             _convert_exc_to_diagnostic(error) for error in iter_leaf_exceptions(e)

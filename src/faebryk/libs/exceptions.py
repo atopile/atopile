@@ -2,7 +2,16 @@ import contextlib
 import logging
 from abc import ABC, abstractmethod
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, Iterable, Self, Sequence, Type, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Hashable,
+    Iterable,
+    Self,
+    Sequence,
+    Type,
+    cast,
+)
 
 from caseconverter import titlecase
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -11,7 +20,7 @@ from rich.text import Text
 from rich.traceback import Traceback
 
 from faebryk.libs.logging import ReprHighlighter
-from faebryk.libs.util import md_list
+from faebryk.libs.util import groupby, md_list
 
 if TYPE_CHECKING:
     from faebryk.core.node import Node
@@ -224,20 +233,21 @@ class accumulate:
 
     def get_exception(self) -> Exception | None:
         if self.errors:
-            # Display unique errors in order
-            # FIXME: this is both hard to understand and wildly inefficient
-            displayed_errors = []
-            for error in self.errors:
-                if not any(
-                    existing_error.__dict__ == error.__dict__
-                    for existing_error in displayed_errors
-                ):
-                    displayed_errors.append(error)
 
-            if len(displayed_errors) > 1:
-                return ExceptionGroup(self.group_message, displayed_errors)
+            def _key(error: Exception) -> Hashable:
+                if (get_frozen := getattr(error, "get_frozen")) is not None:
+                    return get_frozen()
+
+                return error
+
+            # Display unique errors in order
+            grouped_errors = groupby(self.errors, key=_key)
+            errors = [group[0] for group in grouped_errors.values()]
+
+            if len(errors) > 1:
+                return ExceptionGroup(self.group_message, errors)
             else:
-                return displayed_errors[0]
+                return errors[0]
 
     def raise_errors(self):
         """
