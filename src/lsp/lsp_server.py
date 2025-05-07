@@ -145,7 +145,9 @@ def _convert_exc_to_diagnostic(
         ),
         message=exc.message,
         severity=severity,
+        code=exc.code,
         source=TOOL_DISPLAY,
+        # TODO: tags
     )
 
 
