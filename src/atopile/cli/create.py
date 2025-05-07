@@ -1,7 +1,6 @@
 import itertools
 import logging
 import re
-import subprocess
 import sys
 import textwrap
 from abc import ABC, abstractmethod
@@ -25,6 +24,7 @@ from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import log_to_posthog
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.libs.github import GithubCLI, GithubCLINotFound, GithubUserNotLoggedIn
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
@@ -35,7 +35,7 @@ from faebryk.libs.pycodegen import (
     gen_repeated_block,
     sanitize_name,
 )
-from faebryk.libs.util import groupby
+from faebryk.libs.util import groupby, try_or
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -247,25 +247,13 @@ def project(
     # check if gh binary is available
     # TODO: better use gh python package
     # and check whether auth is configured
-    try:
-        subprocess.check_output(["gh", "--version"])
-    except subprocess.CalledProcessError:
-        gh_available = False
-    else:
-        gh_available = True
+    gh_cli = try_or(GithubCLI, catch=GithubCLINotFound)
+    github_username = (
+        try_or(gh_cli.get_usernames, catch=GithubUserNotLoggedIn) if gh_cli else None
+    )
 
     # check if already in a git repo
     create_git_repo = not _in_git_repo(project_path)
-
-    create_github_repo = (
-        query_helper(
-            "Host this project on GitHub?",
-            bool,
-            default=False,
-        )
-        if config.interactive and gh_available and create_git_repo
-        else False
-    )
 
     if create_git_repo:
         logging.info("Initializing git repo")
@@ -273,27 +261,31 @@ def project(
         repo.git.add(A=True, f=True)
         repo.git.commit(m="Initial commit")
 
+    create_github_repo = False
+    if config.interactive and gh_cli and create_git_repo and github_username:
+        create_github_repo = query_helper(
+            "Host this project on GitHub?",
+            bool,
+            default=False,
+        )
+
     # Get a repo
     if create_github_repo:
+        assert github_username
+
         use_existing_repo = query_helper(
             "Use an existing GitHub repo?",
             bool,
             default=False,
         )
 
-        # read from git config
-        github_username = repo.config_reader().get("user", "name")
-        if not github_username:
-            github_username = questionary.text(
-                "What's your GitHub username?",
-                default="",
-            ).unsafe_ask()
-
         if use_existing_repo:
 
-            def _check_repo_and_add_remote(url: str) -> bool:
+            def _check_repo_and_add_remote(repo_id: str) -> bool:
                 try:
-                    repo.create_remote("origin", url).push()
+                    # TODO get repo url from gh cli and set as remote
+                    # repo.create_remote("origin", url)
+                    # TODO consider pushing if empty repo
                     return True
                 except Exception:
                     return False
@@ -301,7 +293,7 @@ def project(
             query_helper(
                 ":rocket: What's the [cyan]repo's org and project name?[/]\n",
                 str,
-                default=f"{github_username}/{project_path.name}",
+                default=f"{github_username[0]}/{project_path.name}",
                 validator=_check_repo_and_add_remote,
                 validation_failure_msg="Remote could not be added: {value}",
                 validate_default=False,
@@ -309,16 +301,14 @@ def project(
         else:
 
             def _create_repo_and_add_remote(url: str) -> bool:
-                try:
-                    repo.create_remote("origin", url).push()
-                    return True
-                except Exception:
-                    return False
+                # TODO use gh cli to create repo and set as remote
+                # TODO then push
+                return False
 
             query_helper(
                 ":rocket: Choose a [cyan]repo org and name:[/]\n",
                 str,
-                default=f"{github_username}/{project_path.name}",
+                default=f"{github_username[0]}/{project_path.name}",
                 validator=_create_repo_and_add_remote,
                 validation_failure_msg="Remote could not be added: {value}",
                 validate_default=False,
