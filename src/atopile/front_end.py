@@ -1480,7 +1480,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             _add_node(self._current_node, new_node, assigned_name.name)
                 else:
                     with self._init_node(
-                        self._get_referenced_class(ctx, ref), kwargs=kwargs
+                        self._get_referenced_class(new_stmt_ctx.type_reference(), ref),
+                        kwargs=kwargs,
                     ) as new_node:
                         _add_node(self._current_node, new_node)
         except Exception:
