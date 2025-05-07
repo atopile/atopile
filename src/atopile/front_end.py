@@ -990,8 +990,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 break
         else:
             raise errors.UserFileNotFoundError.from_ctx(
-                item.original_ctx,
-                f"Can't find {item.from_path} in {', '.join(map(str, search_paths))}",
+                item.original_ctx, f"Unable to resolve import `{item.from_path}`"
             )
 
         from_path = self._sanitise_path(candidate_from_path)
@@ -2085,16 +2084,20 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with downgrade(
                         errors.UserNotImplementedError, to_level=logging.WARNING
                     ):
-                        raise errors.UserNotImplementedError(
-                            "`<` is not supported. Use `<=` instead."
+                        raise errors.UserNotImplementedError.from_ctx(
+                            ctx,
+                            "`<` is not supported. Use `<=` instead.",
+                            traceback=self.get_traceback(),
                         )
                     op = LessOrEqual
                 case ">":
                     with downgrade(
                         errors.UserNotImplementedError, to_level=logging.WARNING
                     ):
-                        raise errors.UserNotImplementedError(
-                            "`>` is not supported. Use `>=` instead."
+                        raise errors.UserNotImplementedError.from_ctx(
+                            ctx,
+                            "`>` is not supported. Use `>=` instead.",
+                            traceback=self.get_traceback(),
                         )
                     op = GreaterOrEqual
                 case "<=":
