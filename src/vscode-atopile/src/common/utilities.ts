@@ -11,12 +11,16 @@ function logLevelToTrace(logLevel: LogLevel): Trace {
     switch (logLevel) {
         case LogLevel.Error:
         case LogLevel.Warning:
+            return Trace.Off; // Only application error/warning logs, no LSP message tracing
+
         case LogLevel.Info:
-            return Trace.Messages;
+            return Trace.Off; // Only application info logs, no LSP message tracing
 
         case LogLevel.Debug:
+            return Trace.Messages; // Application debug logs + LSP message tracing
+
         case LogLevel.Trace:
-            return Trace.Verbose;
+            return Trace.Verbose; // Application trace logs + verbose LSP message tracing
 
         case LogLevel.Off:
         default:

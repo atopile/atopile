@@ -20,6 +20,7 @@ from atopile.cli import (
     install,
     package,
     view,
+    lsp,
 )
 from atopile.cli.logging import handler, logger
 from atopile.config import config
@@ -148,6 +149,7 @@ app.add_typer(install.dependencies_app, name="dependencies", help="Manage depend
 app.command(rich_help_panel="Shortcuts")(install.sync)
 app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
+app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 
 
 @app.command(hidden=True)
@@ -191,13 +193,6 @@ def validate(
 
     else:
         typer.echo(f"{path}: ok")
-
-
-@app.command(hidden=True)
-def start_lsp_server():
-    from lsp import LSP_SERVER
-
-    LSP_SERVER.start_io()
 
 
 def main():
