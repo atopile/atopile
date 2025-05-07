@@ -235,9 +235,10 @@ class accumulate:
         if self.errors:
 
             def _key(error: Exception) -> Hashable:
-                if (get_frozen := getattr(error, "get_frozen")) is not None:
-                    return get_frozen()
+                if isinstance(error, UserException):
+                    return error.get_frozen()
 
+                # fallback to id()
                 return error
 
             # Display unique errors in order
