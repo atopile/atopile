@@ -733,6 +733,34 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         context = self.index_text(text, path)
         return self._build(context, ref)
 
+    def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
+        out = {}
+        with accumulate(errors.UserException) as accumulator:
+            for ref in context.refs:
+                if isinstance(context.refs[ref], ap.BlockdefContext):
+                    with accumulator.collect():
+                        out[ref] = self._build(context, ref)
+
+        return out
+
+    def try_build_all_from_file(self, path: Path) -> dict[TypeRef, L.Node]:
+        """
+        Build each top-level block in a file.
+
+        Returns a dict of successful builds, keyed by reference.
+        """
+        context = self.index_file(self._sanitise_path(path))
+        return self._try_build_all(context)
+
+    def try_build_all_from_text(self, text: str, path: Path) -> dict[TypeRef, L.Node]:
+        """
+        Build each top-level block in a string.
+
+        Returns a dict of successful builds, keyed by reference.
+        """
+        context = self.index_text(text, path)
+        return self._try_build_all(context)
+
     @property
     def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""

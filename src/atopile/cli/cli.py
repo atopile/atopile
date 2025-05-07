@@ -24,7 +24,6 @@ from atopile.cli import (
 )
 from atopile.cli.logging import handler, logger
 from atopile.config import config
-from atopile.datatypes import TypeRef
 from atopile.errors import UserException
 from atopile.version import check_for_update
 from faebryk.libs.exceptions import (
@@ -186,13 +185,8 @@ def validate(
     if path.suffix != ".ato":
         raise UserResourceException("Invalid file type")
 
-    # TODO: loop over top-level modules
-
     try:
-        front_end.bob.build_file(
-            path,
-            TypeRef.from_path_str("USBCConn"),  # FIXME
-        )
+        front_end.bob.try_build_all_from_file(path)
     except* UserException as e:
         for error in iter_leaf_exceptions(e):
             logger.error(error, exc_info=error)

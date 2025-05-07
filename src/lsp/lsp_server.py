@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
-from atopile.datatypes import TypeRef
 from atopile.errors import UserException, UserSyntaxError
 from atopile.parse import parse_text_as_file
 from atopile.parse_utils import get_src_info_from_token
@@ -181,11 +180,7 @@ def _get_build_diagnostics(
     file_path, source_text = get_file_contents(uri)
     diagnostics = []
     try:
-        front_end.bob.build_text(
-            source_text,
-            file_path,
-            TypeRef.from_path_str("USBCConn"),  # FIXME (each top-level module)
-        )
+        front_end.bob.build_all_from_text(source_text, file_path)
     except* UserSyntaxError as e:
         diagnostics = [
             _convert_exc_to_diagnostic(error) for error in iter_leaf_exceptions(e)
