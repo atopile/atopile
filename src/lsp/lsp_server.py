@@ -16,8 +16,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
-from atopile.errors import UserException, UserSyntaxError
-from atopile.parse import parse_text_as_file
+from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 
@@ -151,35 +150,13 @@ def _convert_exc_to_diagnostic(
     )
 
 
-# FIXME: do we need this separately?
-def _get_static_diagnostics(
-    uri: str, identifier: str | None = None
-) -> list[lsp.Diagnostic]:
+def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagnostic]:
     """
     Get static diagnostics for a given URI and identifier.
     Excludes results that rely on other files.
 
     TODO: caching
     """
-
-    diagnostics = []
-    file_path, source_text = get_file_contents(uri)
-    try:
-        parse_text_as_file(source_text, file_path, raise_multiple_errors=True)
-    except* UserSyntaxError as e:
-        diagnostics = [
-            _convert_exc_to_diagnostic(error) for error in iter_leaf_exceptions(e)
-        ]
-
-    return diagnostics
-
-
-def _get_build_diagnostics(
-    uri: str, identifier: str | None = None
-) -> list[lsp.Diagnostic]:
-    # TODO: merge with static?
-    # TODO: run partial build?
-
     file_path, source_text = get_file_contents(uri)
     exc_diagnostics = []
 
@@ -204,15 +181,14 @@ def _get_build_diagnostics(
     lsp.TEXT_DOCUMENT_DIAGNOSTIC,
     lsp.DiagnosticOptions(
         identifier=TOOL_DISPLAY,
-        inter_file_dependencies=False,  # FIXME: toggle when surfacing semantic errors
+        inter_file_dependencies=True,
         workspace_diagnostics=False,
     ),
 )
 def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
     """Handle document diagnostic request."""
     LSP_SERVER.publish_diagnostics(
-        params.text_document.uri,
-        _get_build_diagnostics(params.text_document.uri),
+        params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
 
@@ -220,8 +196,7 @@ def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
 def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     """Handle document open request."""
     LSP_SERVER.publish_diagnostics(
-        params.text_document.uri,
-        _get_build_diagnostics(params.text_document.uri),
+        params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
 
@@ -230,8 +205,7 @@ def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """Handle document change request."""
     # TODO: debounce
     LSP_SERVER.publish_diagnostics(
-        params.text_document.uri,
-        _get_build_diagnostics(params.text_document.uri),
+        params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
 
@@ -239,8 +213,7 @@ def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
 def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     """Handle document save request."""
     LSP_SERVER.publish_diagnostics(
-        params.text_document.uri,
-        _get_build_diagnostics(params.text_document.uri),
+        params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
 
 
