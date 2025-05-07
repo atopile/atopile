@@ -184,7 +184,7 @@ def validate(
         raise UserResourceException("Invalid file type")
 
     try:
-        parse_file(path)
+        parse_file(path, raise_multiple_errors=True)
     except* UserSyntaxError as e:
         for error in iter_leaf_exceptions(e):
             logger.error(error, exc_info=error)

@@ -58,34 +58,42 @@ def make_parser(src_stream: InputStream) -> tuple[AtoParser, ErrorListenerConver
     return parser, listener
 
 
+def _parse_input(
+    input: InputStream, raise_multiple_errors: bool = False
+) -> AtoParser.File_inputContext:
+    parser, listener = make_parser(input)
+    tree = parser.file_input()
+
+    match listener.errors:
+        case []:
+            return tree
+        case [error]:
+            raise error
+        case errors:
+            if raise_multiple_errors:
+                raise ExceptionGroup("Multiple syntax errors found", errors)
+
+            raise errors[0]
+
+
 def parse_text_as_file(
-    src_code: str, src_path: None | str | Path = None
+    src_code: str,
+    src_path: None | str | Path = None,
+    raise_multiple_errors: bool = False,
 ) -> AtoParser.File_inputContext:
     """Parse a string as a file input."""
     input = InputStream(src_code)
-    input.name = src_path
-    parser, listener = make_parser(input)
-
-    tree = parser.file_input()
-
-    if listener.errors:
-        raise ExceptionGroup("Multiple syntax errors found", listener.errors)
-
-    return tree
+    input.name = str(src_path)
+    return _parse_input(input, raise_multiple_errors=raise_multiple_errors)
 
 
-def parse_file(src_path: Path) -> AtoParser.File_inputContext:
+def parse_file(
+    src_path: str | Path, raise_multiple_errors: bool = False
+) -> AtoParser.File_inputContext:
     """Parse a file from a path."""
     input = FileStream(str(src_path), encoding="utf-8")
-    input.name = src_path
-    parser, listener = make_parser(input)
-
-    tree = parser.file_input()
-
-    if listener.errors:
-        raise ExceptionGroup("Multiple syntax errors found", listener.errors)
-
-    return tree
+    input.name = str(src_path)
+    return _parse_input(input, raise_multiple_errors=raise_multiple_errors)
 
 
 class FileParser:

@@ -154,7 +154,7 @@ def _get_static_diagnostics(
     file_path = Path(document.path)
 
     try:
-        parse_text_as_file(source_text, file_path)
+        parse_text_as_file(source_text, file_path, raise_multiple_errors=True)
     except* UserSyntaxError as e:
         diagnostics = [_parse_exc(error) for error in iter_leaf_exceptions(e)]
 
