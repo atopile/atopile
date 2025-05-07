@@ -23,8 +23,12 @@ from atopile.cli import (
 )
 from atopile.cli.logging import handler, logger
 from atopile.config import config
+from atopile.errors import UserSyntaxError
 from atopile.version import check_for_update
-from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.exceptions import (
+    UserResourceException,
+    iter_leaf_exceptions,
+)
 from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
@@ -179,8 +183,21 @@ def validate(
     if path.suffix != ".ato":
         raise UserResourceException("Invalid file type")
 
-    parse_file(path)
-    typer.echo(f"{path}: ok")
+    try:
+        parse_file(path, raise_multiple_errors=True)
+    except* UserSyntaxError as e:
+        for error in iter_leaf_exceptions(e):
+            logger.error(error, exc_info=error)
+
+    else:
+        typer.echo(f"{path}: ok")
+
+
+@app.command(hidden=True)
+def start_lsp_server():
+    from lsp import LSP_SERVER
+
+    LSP_SERVER.start_io()
 
 
 def main():

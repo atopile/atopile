@@ -5,99 +5,25 @@
 from __future__ import annotations
 
 import copy
-import functools
-import inspect
 import json
 import os
 import pathlib
 import sys
 import traceback
-from collections import defaultdict
+from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
-import atopile.address
-import atopile.config
-import atopile.datatypes
-import atopile.errors
-import atopile.front_end
-import atopile.parse
-import atopile.parse_utils
-import faebryk.libs.exceptions
+from atopile.errors import UserSyntaxError
+from atopile.parse import parse_text_as_file
+from atopile.parse_utils import get_src_info_from_token
+from faebryk.libs.exceptions import iter_leaf_exceptions
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
 # **********************************************************
 
-_line_to_def_block: dict[Path, list[Optional[atopile.address.AddrStr]]] = {}
-_error_accumulators: dict[Path, faebryk.libs.exceptions.accumulate] = defaultdict(
-    faebryk.libs.exceptions.accumulate
-)
-
-
-def _reset_caches(file: Path):
-    """Remove a file from the cache."""
-    if file in _line_to_def_block:
-        del _line_to_def_block[file]
-
-    atopile.front_end.reset_caches(file)
-
-    del _error_accumulators[file]
-
-
-def _index_class_defs_by_line(file: Path):
-    """Index class definitions in a given file by the line number"""
-    _line_to_def_block[file] = []
-    accumulator = _error_accumulators[file]
-
-    addrs = None
-    try:
-        addrs = atopile.front_end.scoop.ingest_file(file)
-    except* atopile.errors._BaseUserException as ex:
-        accumulator.add_errors(ex)
-    if addrs is None:
-        # we don't chuck a hissy here, but the caller won't progress much
-        # the errors are reported by the caller via publish_errors
-        return
-
-    for addr in addrs:
-        with accumulator.collect():
-            if addr == str(file):
-                continue
-
-            atopile.front_end.bob.get_instance(addr)
-
-            # FIXME: we shouldn't be entangling this
-            # code w/ the front-end so much
-            try:
-                cls_def = atopile.front_end.scoop.get_obj_def(addr)
-                _, start_line, _, stop_line, _ = (
-                    atopile.parse_utils.get_src_info_from_ctx(cls_def.src_ctx.block())
-                )
-            except AttributeError:
-                continue
-
-            # We need to subtract one from the line numbers
-            # because the LSP uses 0-based indexing
-            stop_line_index = stop_line - 1
-
-            if stop_line_index >= len(_line_to_def_block[file]):
-                _line_to_def_block[file].extend(
-                    [None] * (stop_line_index - len(_line_to_def_block[file]) + 1)
-                )
-
-            for i in range(start_line - 1, stop_line_index):
-                _line_to_def_block[file][i] = cls_def.address
-
-
-def _get_def_addr_from_line(file: Path, line: int) -> Optional[atopile.address.AddrStr]:
-    """Get the class definition from a line number"""
-    if file not in _line_to_def_block or not _line_to_def_block[file]:
-        _index_class_defs_by_line(file)
-    file_lines = _line_to_def_block[file]
-    if line >= len(file_lines):
-        return None
-    return file_lines[line]
+# TODO
 
 
 # **********************************************************
@@ -122,19 +48,24 @@ update_sys_path(
 # Imports needed for the language server goes below this.
 # **********************************************************
 # pylint: disable=wrong-import-position,import-error
-import lsp_jsonrpc as jsonrpc  # noqa: E402
-import lsp_utils as utils  # noqa: E402
+
 import lsprotocol.types as lsp  # noqa: E402
 from pygls import server, uris, workspace  # noqa: E402
+
+import lsp.lsp_jsonrpc as jsonrpc  # noqa: E402
+import lsp.lsp_utils as utils  # noqa: E402
 
 WORKSPACE_SETTINGS = {}
 GLOBAL_SETTINGS = {}
 RUNNER = pathlib.Path(__file__).parent / "lsp_runner.py"
+DISTRIBUTION_NAME = "atopile"
 
 MAX_WORKERS = 5
 # TODO: Update the language server name and version.
 LSP_SERVER = server.LanguageServer(
-    name="atopile", version="<server version>", max_workers=MAX_WORKERS
+    name=DISTRIBUTION_NAME,
+    version=get_package_version(DISTRIBUTION_NAME),
+    max_workers=MAX_WORKERS,
 )
 
 
@@ -168,329 +99,104 @@ class URIProtocol(Protocol):
     text_document: TextDocument
 
 
-def project_context(default_factory_if_unprocessable=lambda: None):
-    def wrapper(func):
-        @functools.wraps(func)
-        def new_func(params: URIProtocol):
-            document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-            file = Path(document.path)
-            try:
-                atopile.config.get_project_context()
-            except ValueError:
-                atopile.config.set_project_context(
-                    atopile.config.ProjectContext.from_path(file)
-                )
-            return func(params)
-
-        return new_func
-
-    return wrapper
-
-
 def get_file(uri: str) -> Path:
     document = LSP_SERVER.workspace.get_text_document(uri)
     file = Path(document.path)
     return file
 
 
-def publish_errors(uri: str):
-    file = get_file(uri)
-
-    error_diagnostics = []
-    processed_errors = set()
-    for error in _error_accumulators[file].errors:
-        if (
-            isinstance(error, atopile.errors._BaseUserException)
-            and error.src_path
-            and error.src_col
-            and error.src_line
-        ):
-            # don't duplicate errors
-            if error.get_frozen() in processed_errors:
-                continue
-            processed_errors.add(error.get_frozen())
-
-            message = f"{error.title} - {error.message}"
-
-            # stop properly if we have information, but we don't always,
-            # so default to the first column of the next line
-            if error.src_stop_line and error.src_stop_col:
-                stop_position = lsp.Position(
-                    error.src_stop_line - 1, error.src_stop_col
-                )
-            else:
-                stop_position = lsp.Position(error.src_line - 1, 0)
-
-            diagnostic = lsp.Diagnostic(
-                range=lsp.Range(
-                    lsp.Position(error.src_line - 1, error.src_col), stop_position
-                ),
-                severity=lsp.DiagnosticSeverity.Error,
-                message=message,
-            )
-            error_diagnostics.append(diagnostic)
-
-    LSP_SERVER.publish_diagnostics(uri, error_diagnostics)
-
-
-def publish_errors_decorator(func):
-    # this doesn't use the context manage because we need the URI context
-    @functools.wraps(func)
-    def new_func(params: URIProtocol):
-        accumulator = _error_accumulators[get_file(params.text_document.uri)]
-        if "accumulator" in inspect.signature(func).parameters:
-            return_val = func(params, accumulator=accumulator)
-        return_val = func(params)
-
-        publish_errors(params.text_document.uri)
-        return return_val
-
-    return new_func
-
-
-# TODO: If your tool is a linter then update this section.
-# Delete "Linting features" section if your tool is NOT a linter.
 # **********************************************************
 # Linting features start here
 # **********************************************************
 
-#  See `pylint` implementation for a full featured linter extension:
-#  Pylint: https://github.com/microsoft/vscode-pylint/blob/main/bundled/tool
+
+def _get_static_diagnostics(
+    uri: str, identifier: str | None = None
+) -> list[lsp.Diagnostic]:
+    """
+    Get static diagnostics for a given URI and identifier.
+    Excludes results that rely on other files.
+
+    TODO: caching
+    """
+
+    def _parse_exc(exc: UserSyntaxError) -> lsp.Diagnostic:
+        # default to the start of the file
+        start_line, start_col = 0, 0
+        stop_line, stop_col = 0, 0
+
+        if exc.origin_start is not None:
+            _, start_line, start_col = get_src_info_from_token(exc.origin_start)
+
+            if exc.origin_stop is not None:
+                _, stop_line, stop_col = get_src_info_from_token(exc.origin_stop)
+            else:
+                # just extend to the next line
+                stop_line, stop_col = start_line + 1, 0
+
+        # convert from 1-indexed (ANTLR) to 0-indexed (LSP)
+        start_line = max(start_line - 1, 0)
+        stop_line = max(stop_line - 1, 0)
+
+        return lsp.Diagnostic(
+            range=lsp.Range(
+                start=lsp.Position(line=start_line, character=start_col),
+                end=lsp.Position(line=stop_line, character=stop_col),
+            ),
+            message=str(exc),
+            severity=lsp.DiagnosticSeverity.Error,
+            source=TOOL_DISPLAY,
+        )
+
+    diagnostics = []
+    document = LSP_SERVER.workspace.get_text_document(uri)
+    source_text = document.source
+    file_path = Path(document.path)
+
+    try:
+        parse_text_as_file(source_text, file_path, raise_multiple_errors=True)
+    except* UserSyntaxError as e:
+        diagnostics = [_parse_exc(error) for error in iter_leaf_exceptions(e)]
+
+    return diagnostics
 
 
 @LSP_SERVER.feature(
-    lsp.TEXT_DOCUMENT_COMPLETION,
-    lsp.CompletionOptions(trigger_characters=["."]),
+    lsp.TEXT_DOCUMENT_DIAGNOSTIC,
+    lsp.DiagnosticOptions(
+        identifier=TOOL_DISPLAY,
+        inter_file_dependencies=False,  # FIXME: toggle when surfacing semantic errors
+        workspace_diagnostics=False,
+    ),
 )
-@project_context(lambda: lsp.CompletionList(is_incomplete=False, items=[]))
-@publish_errors_decorator
-def completions(params: Optional[lsp.CompletionParams]) -> lsp.CompletionList:
-    """Handler for completion requests."""
-    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-    file = Path(document.path)
+def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
+    """Handle document diagnostic request."""
 
-    word = utils.cursor_word(document, params.position)
-    class_addr = _get_def_addr_from_line(file, params.position.line) or str(file)
-    items: list[lsp.CompletionItem] = []
-
-    instance_addr = atopile.address.add_instances(class_addr, word.split(".")[:-1])
-    try:
-        instance = atopile.front_end.bob.get_instance(instance_addr)
-    except (KeyError, atopile.errors.UserException):
-        pass
-    else:
-        for child, assignment in instance.assignments.items():
-            items.append(
-                lsp.CompletionItem(
-                    label=child,
-                    kind=lsp.CompletionItemKind.Property,
-                    detail=assignment[0].given_type,
-                )
-            )
-
-        for child in instance.children:
-            items.append(
-                lsp.CompletionItem(label=child, kind=lsp.CompletionItemKind.Method)
-            )
-
-    # Class Defs
-    # FIXME: this is a hack to check whether something could not be class-def
-    if "." not in word:
-        try:
-            class_ctx = atopile.front_end.scoop.get_obj_def(class_addr)
-        except (KeyError, atopile.errors.UserException):
-            pass
-        else:
-            closure_contexts = [class_ctx]
-            if class_ctx.closure:
-                closure_contexts.extend(class_ctx.closure)
-
-            for closure_ctx in closure_contexts:
-                for cls_ref in closure_ctx.local_defs:
-                    items.append(
-                        lsp.CompletionItem(
-                            label=cls_ref[0], kind=lsp.CompletionItemKind.Class
-                        )
-                    )
-
-                for imp_ref in closure_ctx.imports:
-                    items.append(
-                        lsp.CompletionItem(
-                            label=imp_ref[0], kind=lsp.CompletionItemKind.Class
-                        )
-                    )
-
-    return lsp.CompletionList(
-        is_incomplete=False,
-        items=items,
-    )
-
-
-@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
-@project_context(lambda: None)
-@publish_errors_decorator
-def hover_definition(params: lsp.HoverParams) -> Optional[lsp.Hover]:
-    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-    file = Path(document.path)
-
-    class_addr = _get_def_addr_from_line(file, params.position.line)
-    if not class_addr:
-        class_addr = str(file) + "::"
-
-    if word_and_range := utils.cursor_word_and_range(document, params.position):
-        word, range_ = word_and_range
-    else:
-        return None
-
-    try:
-        word = word[
-            : word.index(".", params.position.character - range_.start.character)
-        ]
-    except ValueError:
-        pass
-    word = utils.remove_special_character(word)
-    output_str = ""
-
-    # check if it is an instance
-    try:
-        instance_addr = atopile.address.add_instances(class_addr, word.split("."))
-        instance = atopile.front_end.bob.get_instance(instance_addr)
-    except (KeyError, atopile.errors.UserException, AttributeError):
-        pass
-    else:
-        # TODO: deal with assignments made to super
-        output_str += f"**class**: {str(atopile.address.get_name(instance.supers[0].address))}\n\n"  # noqa: E501  # pre-existing
-        for key, assignment in instance.assignments.items():
-            output_str += "**" + key + "**: "
-            if assignment[0] is None:
-                output_str += "not assigned\n\n"
-            else:
-                output_str += str(assignment[0].value) + "\n\n"
-
-    # check if it is an assignment
-    # FIXME: this is broken, because ClassLayers no longer have assignments attached
-    # class_assignments = atopile.front_end.dizzy.get_layer(class_addr).assignments.get(word, None) # noqa: E501  # pre-existing
-    # if class_assignments:
-    #     output_str = str(class_assignments.value)
-
-    if output_str:
-        return lsp.Hover(
-            contents=lsp.MarkupContent(
-                kind=lsp.MarkupKind.Markdown,
-                value=output_str.strip(),
-            )
-        )
-    return None
-
-
-@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
-@project_context(lambda: None)
-@publish_errors_decorator
-def goto_definition(
-    params: Optional[lsp.DefinitionParams] = None,
-) -> Optional[lsp.Location]:
-    """Handler for goto definition."""
-    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-    file = Path(document.path)
-
-    class_addr = _get_def_addr_from_line(file, params.position.line)
-    if not class_addr:
-        class_addr = str(file)
-
-    word, range_ = utils.cursor_word_and_range(document, params.position)
-    try:
-        word = word[
-            : word.index(".", params.position.character - range_.start.character)
-        ]
-    except ValueError:
-        pass
-    word = utils.remove_special_character(word)
-
-    # See if it's an instance
-    instance_addr = atopile.address.add_instances(class_addr, word.split("."))
-
-    src_ctx = None
-    try:
-        src_ctx = atopile.front_end.bob.get_instance(instance_addr).src_ctx
-    except (KeyError, atopile.errors.UserException, AttributeError):
-        # See if it's a Class instead
-        pass
-
-    # See if it's a class
-    try:
-        src_ctx = atopile.front_end.scoop.get_obj_def(
-            atopile.front_end.lookup_class_in_closure(
-                atopile.front_end.scoop.get_obj_def(class_addr),
-                atopile.datatypes.TypeRef.from_path_str(word),
-            )
-        ).src_ctx
-    except (KeyError, atopile.errors.UserException, AttributeError):
-        pass
-
-    try:
-        file_path, start_line, start_col, stop_line, stop_col = (
-            atopile.parse_utils.get_src_info_from_ctx(src_ctx)
-        )
-    except AttributeError:
-        return
-    else:
-        return lsp.Location(
-            "file://" + str(file_path),
-            lsp.Range(
-                lsp.Position(start_line - 1, start_col),
-                lsp.Position(stop_line - 1, stop_col),
-            ),
-        )
-
-
-@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
-@publish_errors_decorator
-def did_change(params: lsp.DidChangeTextDocumentParams) -> None:
-    """LSP handler for textDocument/didOpen request."""
-    # Currently this just handles new lines so the LSP can still give good completions outside modules # noqa: E501  # pre-existing
-    for event in params.content_changes:
-        # Check if the change is a new line
-        if newlines := event.text.count("\n"):
-            document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-            file = Path(document.path)
-            line_classes = _line_to_def_block[file]
-            insertion_line = event.range.start.line
-            _line_to_def_block[file] = (
-                line_classes[: insertion_line + 1]
-                + line_classes[insertion_line : insertion_line + 1] * newlines
-                + line_classes[insertion_line + 1 :]
-            )
+    # TODO: report other errors
+    diagnostics = _get_static_diagnostics(params.text_document.uri, params.identifier)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
-@project_context(lambda: None)
-@publish_errors_decorator
-def did_open(params: lsp.DidOpenTextDocumentParams) -> None:
-    """LSP handler for textDocument/didOpen request."""
-    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-    file = Path(document.path)
-    _index_class_defs_by_line(file)
+def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
+    """Handle document open request."""
+    diagnostics = _get_static_diagnostics(params.text_document.uri)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
 
 
-# TODO: remove me if we don't have a purpose for it
-# @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CLOSE)
-# def did_close(params: lsp.DidCloseTextDocumentParams) -> None:
-#     """LSP handler for textDocument/didClose request."""
-#     #document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-#     # Publishing empty diagnostics to clear the entries for this file.
-#     #LSP_SERVER.publish_diagnostics(document.uri, [])
-#     log_to_output("did close")
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
+def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
+    """Handle document change request."""
+    # TODO: debounce
+    diagnostics = _get_static_diagnostics(params.text_document.uri)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
-@project_context(lambda: None)
-@publish_errors_decorator
-def did_save(params: lsp.DidSaveTextDocumentParams) -> None:
-    """LSP handler for textDocument/didSave request."""
-    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
-    file = Path(document.path)
-    _reset_caches(file)
-    _index_class_defs_by_line(file)
+def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
+    """Handle document save request."""
+    diagnostics = _get_static_diagnostics(params.text_document.uri)
+    LSP_SERVER.publish_diagnostics(params.text_document.uri, diagnostics)
 
 
 # TODO: if you want to handle setting specific severity for your linter
@@ -515,13 +221,17 @@ def initialize(params: lsp.InitializeParams) -> None:
     paths = "\r\n   ".join(sys.path)
     log_to_output(f"sys.path used to run Server:\r\n   {paths}")
 
-    GLOBAL_SETTINGS.update(**params.initialization_options.get("globalSettings", {}))
+    if params.initialization_options is not None:
+        GLOBAL_SETTINGS.update(
+            **params.initialization_options.get("globalSettings", {})
+        )
 
-    settings = params.initialization_options["settings"]
-    _update_workspace_settings(settings)
-    log_to_output(
-        f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
-    )
+        settings = params.initialization_options["settings"]
+        _update_workspace_settings(settings)
+        log_to_output(
+            f"Settings used to run Server:\r\n{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
+        )
+
     log_to_output(
         f"Global settings:\r\n{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"  # noqa: E501  # pre-existing
     )
