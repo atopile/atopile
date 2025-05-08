@@ -17,15 +17,15 @@ import { AtoBinInfo, getAtoBin, initAtoBin, onDidChangeAtoBinInfo } from './find
 import * as fs from 'fs';
 
 async function _runServer(
-    ato_path: string,
+    ato_path: string[],
     settings: ISettings,
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
 ): Promise<LanguageClient> {
-    const command = ato_path;
+    const command = ato_path[0];
     const cwd = settings.cwd;
-    const args = ['lsp', 'start'];
+    const args = [...ato_path.slice(1), 'lsp', 'start'];
 
     traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
 
@@ -71,15 +71,11 @@ export async function startOrRestartServer(
     const projectRoot = await getProjectRoot();
     const workspaceSetting = await getWorkspaceSettings(projectRoot);
 
-    const ato_path = getAtoBin(workspaceSetting);
+    const ato_path = await getAtoBin(workspaceSetting);
     if (!ato_path) {
         traceError(
             `Server: ato binary not found. If you are sure ato is installed, set atopile.ato in your workspace settings.`,
         );
-        return undefined;
-    }
-    if (!fs.existsSync(ato_path)) {
-        traceError(`Server: ato binary not found at ${ato_path}. Fix atopile.ato in your workspace settings.`);
         return undefined;
     }
 

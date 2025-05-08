@@ -3,12 +3,12 @@ import { window, Uri } from 'vscode';
 import * as cp from 'child_process';
 import { getBuilds, loadBuilds } from '../common/manifest';
 
-let statusbarAtoBuild: vscode.StatusBarItem;
-let statusbarAtoCreate: vscode.StatusBarItem;
 let statusbarAtoAdd: vscode.StatusBarItem;
-let statusbarAtoRemove: vscode.StatusBarItem;
+let statusbarAtoBuild: vscode.StatusBarItem;
 let statusbarAtoBuildTarget: vscode.StatusBarItem;
+let statusbarAtoCreate: vscode.StatusBarItem;
 let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
+let statusbarAtoRemove: vscode.StatusBarItem;
 
 function _displayButtons() {
     const builds = getBuilds();
@@ -117,6 +117,14 @@ export async function activate(context: vscode.ExtensionContext) {
     await _reloadBuilds();
 }
 
+export function deactivate() {
+    statusbarAtoAdd.dispose();
+    statusbarAtoBuild.dispose();
+    statusbarAtoBuildTarget.dispose();
+    statusbarAtoCreate.dispose();
+    statusbarAtoLaunchKiCAD.dispose();
+    statusbarAtoRemove.dispose();
+}
 // Buttons handlers --------------------------------------------------------------------
 
 async function atoBuild() {
