@@ -81,7 +81,7 @@
 					"name": "punctuation.definition.template.begin.bracket.angle.ato"
 				}
 			},
-			"end": "(>)|(?=;)|(?=\\n)|($)",
+			"end": "(>)",
 			"endCaptures": {
 				"1": {
 					"name": "punctuation.definition.template.end.bracket.angle.ato"
@@ -90,6 +90,9 @@
 			"patterns": [
 				{
 					"include": "#template_parameters"
+				},
+				{
+					"include": "#comments"
 				}
 			]
 		},
@@ -113,7 +116,7 @@
 					"name": "punctuation.definition.template.begin.bracket.angle.ato"
 				}
 			},
-			"end": "(>)|(?=;)|(?=\\n)|($)",
+			"end": "(>)",
 			"endCaptures": {
 				"1": {
 					"name": "punctuation.definition.template.end.bracket.angle.ato"
@@ -122,6 +125,9 @@
 			"patterns": [
 				{
 					"include": "#template_parameters"
+				},
+				{
+					"include": "#comments"
 				}
 			]
 		},
@@ -231,7 +237,7 @@
 					"name": "punctuation.definition.template.begin.bracket.angle.ato"
 				}
 			},
-			"end": "(>)|(?=;)|(?=\\n)|($)",
+			"end": "(>)",
 			"endCaptures": {
 				"1": {
 					"name": "punctuation.definition.template.end.bracket.angle.ato"
@@ -240,6 +246,9 @@
 			"patterns": [
 				{
 					"include": "#template_parameters"
+				},
+				{
+					"include": "#comments"
 				}
 			]
 		},
@@ -598,6 +607,9 @@
 						},
 						{
 							"include": "#inheritance_clause"
+						},
+						{
+							"include": "#comments"
 						}
 					]
 				},
@@ -621,6 +633,9 @@
 					"patterns": [
 						{
 							"include": "#inheritance_clause"
+						},
+						{
+							"include": "#comments"
 						}
 					]
 				}
@@ -691,6 +706,9 @@
 					"patterns": [
 						{
 							"include": "#template_parameters"
+						},
+						{
+							"include": "#comments"
 						}
 					]
 				}
@@ -752,6 +770,9 @@
 						},
 						{
 							"include": "#operators"
+						},
+						{
+							"include": "#comments"
 						}
 					]
 				},

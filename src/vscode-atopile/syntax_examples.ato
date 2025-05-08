@@ -191,3 +191,9 @@ complex_assignment = (
     voltage + resistance
     * capacitance
 )
+
+templated = new MyComponent<
+    int_=1,
+    float_=2.5,
+    string_="hello",
+>
