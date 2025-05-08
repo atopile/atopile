@@ -374,7 +374,16 @@ def project(
         logging.info("Initializing git repo")
         repo = git.Repo.init(project_path)
         repo.git.add(A=True, f=True)
-        repo.git.commit(m="Initial commit")
+        try:
+            repo.git.commit(m="Initial commit")
+        except git.GitCommandError as e:
+            if "Author identity unknown" in e.stderr:
+                rich.print(
+                    "[yellow]Warning: Author identity unknown. "
+                    "Staged but not committed.[/yellow]"
+                )
+            else:
+                raise
 
     create_github_repo = False
     if config.interactive and gh_cli and create_git_repo:
