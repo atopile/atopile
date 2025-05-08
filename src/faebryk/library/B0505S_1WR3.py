@@ -12,7 +12,7 @@ from faebryk.libs.units import P  # noqa: F401
 logger = logging.getLogger(__name__)
 
 
-class _B0505S_1WR3(Module):
+class B0505S_1WR3(Module):
     """
     Isolated 5V DC to 5V DC converter.
     R suffix is for shortcircuit protection
@@ -54,23 +54,13 @@ class _B0505S_1WR3(Module):
     def has_descriptive_properties_defined(self):
         return F.has_descriptive_properties_defined(
             {
+                DescriptiveProperties.manufacturer: "EVISUN",
                 DescriptiveProperties.partno: "B0505S-1WR3",
             },
         )
 
+    lcsc_part = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C7465178"})
+
     def __preinit__(self):
         self.power_in.voltage.constrain_subset(L.Range(4.3 * P.V, 9 * P.V))
         self.power_out.voltage.constrain_superset(L.Range.from_center_rel(5 * P.V, 0.1))
-
-
-# TODO should be a reference design
-class B0505S_1WR3(Module):
-    ic: _B0505S_1WR3
-
-    def __preinit__(self):
-        self.ic.power_in.get_trait(F.can_be_decoupled).decouple(
-            owner=self
-        ).capacitance.constrain_subset(L.Range.from_center_rel(4.7 * P.uF, 0.1))
-        self.ic.power_out.get_trait(F.can_be_decoupled).decouple(
-            owner=self
-        ).capacitance.constrain_subset(L.Range.from_center_rel(10 * P.uF, 0.1))

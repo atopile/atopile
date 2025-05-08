@@ -41,3 +41,14 @@ export function getWorkspaceFolders(): readonly WorkspaceFolder[] {
 export function getWorkspaceFolder(uri: Uri): WorkspaceFolder | undefined {
     return workspace.getWorkspaceFolder(uri);
 }
+
+const vscodeVariables = require('vscode-variables');
+
+export function resolvePath(s: string, workspace?: WorkspaceFolder) {
+    // Need to manually resolve workspaceFolder because multiple could be active
+    if (workspace) {
+        s = s.replace('${workspaceFolder}', workspace.uri.fsPath);
+    }
+    return vscodeVariables(s);
+}
+

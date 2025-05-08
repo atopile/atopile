@@ -20,10 +20,16 @@ from atopile.cli import (
     install,
     package,
     view,
+    lsp,
 )
 from atopile.cli.logging import handler, logger
 from atopile.config import config
+from atopile.errors import UserException, UserNoProjectException
 from atopile.version import check_for_update
+from faebryk.libs.exceptions import (
+    UserResourceException,
+    iter_leaf_exceptions,
+)
 from faebryk.libs.logging import FLOG_FMT
 
 app = typer.Typer(
@@ -143,6 +149,7 @@ app.add_typer(install.dependencies_app, name="dependencies", help="Manage depend
 app.command(rich_help_panel="Shortcuts")(install.sync)
 app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
+app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 
 
 @app.command(hidden=True)
@@ -167,6 +174,34 @@ def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
     print(config.project.model_dump(mode=format))
+
+
+@app.command(help="Check file for syntax errors and internal consistency")
+def validate(
+    path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
+):
+    from atopile import front_end
+
+    path = path.resolve().relative_to(Path.cwd())
+
+    # pick up project config if we're in a project
+    # required for package search path inclusion
+    try:
+        config.apply_options(entry=None)
+    except UserNoProjectException:
+        pass
+
+    if path.suffix != ".ato":
+        raise UserResourceException("Invalid file type")
+
+    try:
+        front_end.bob.try_build_all_from_file(path)
+    except* UserException as e:
+        for error in iter_leaf_exceptions(e):
+            logger.error(error, exc_info=error)
+
+    else:
+        typer.echo(f"{path}: ok")
 
 
 def main():

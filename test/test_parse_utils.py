@@ -12,7 +12,8 @@ from faebryk.libs.util import repo_root as _repo_root
 def _parser(src: str):
     input = atopile.parse.InputStream(src)
     input.name = "test"
-    return atopile.parse.make_parser(input)
+    parser, _ = atopile.parse.make_parser(input)
+    return parser
 
 
 @pytest.mark.parametrize(

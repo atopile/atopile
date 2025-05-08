@@ -60,6 +60,13 @@ def test_create_project():
         text=True,
         env={**os.environ, "NONINTERACTIVE": "1"},
     )
+
+    if process.returncode != 0:
+        pytest.fail(
+            f"Process failed with code {process.returncode}\n"
+            f"STDOUT:\n{process.stdout}\n"
+            f"STDERR:\n{process.stderr}"
+        )
     assert process.returncode == 0
     assert f'Created new project "{PROJECT_NAME}"' in process.stdout
 

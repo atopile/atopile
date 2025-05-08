@@ -5,9 +5,6 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.exporters.pcb.layout.absolute import LayoutAbsolute
-from faebryk.exporters.pcb.layout.extrude import LayoutExtrude
-from faebryk.exporters.pcb.layout.typehierarchy import LayoutTypeHierarchy
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -40,73 +37,25 @@ class RS485_Bus_Protection(Module):
     common_mode_filter: F.Common_Mode_Filter
 
     power: F.ElectricPower
-    rs485_dfp: F.RS485HalfDuplex
-    rs485_ufp: F.RS485HalfDuplex
+    rs485_unprotected: F.RS485HalfDuplex
+    rs485_protected: F.RS485HalfDuplex
     earth: F.Electrical
 
     @L.rt_field
-    def has_defined_layout(self):
-        # PCB layout
-        Point = F.has_pcb_position.Point
-        L = F.has_pcb_position.layer_type
-        LVL = LayoutTypeHierarchy.Level
-
-        self.gnd_couple_resistor.add(
-            F.has_pcb_layout_defined(
-                layout=LayoutAbsolute(Point((-10.25, -1.5, 90, L.NONE)))
-            )
-        )
-
-        layouts = [
-            LVL(  # GDT
-                mod_type=F.GDT,
-                layout=LayoutAbsolute(Point((0, 0, 0, L.NONE))),
-            ),
-            LVL(  # gnd_couple_capacitor
-                mod_type=type(self.gnd_couple_capacitor),
-                layout=LayoutAbsolute(Point((-7, -1.5, 90, L.NONE))),
-            ),
-            LVL(  # current_limmiter_resistors
-                mod_type=(
-                    type(self.current_limmiter_resistors[0]),
-                    type(self.current_limmiter_resistors[1]),
-                ),
-                layout=LayoutExtrude(
-                    base=Point((-3, 7.5, 0, L.NONE)),
-                    vector=(6, 0, 90),
-                    reverse_order=True,
-                ),
-            ),
-            # TODO: fix
-            # LVL(  # gnd_couple_resistor
-            #    mod_type=type(self.gnd_couple_resistor),
-            #    layout=LayoutAbsolute(Point((-10.25, -1.5, 90, L.NONE))),
-            # ),
-            LVL(  # CompositeTVS
-                mod_type=type(self.rs485_tvs),
-                layout=LayoutAbsolute(Point((0, 13.5, 0, L.NONE))),
-            ),
-            LVL(  # CommonModeFilter
-                mod_type=F.Common_Mode_Filter,
-                layout=LayoutAbsolute(
-                    Point((0, 18.5, 90, L.NONE)),
-                ),
-            ),
-        ]
-        return F.has_pcb_layout_defined(LayoutTypeHierarchy(layouts))
-
-    @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.rs485_dfp, self.rs485_ufp)
+        return F.can_bridge_defined(self.rs485_unprotected, self.rs485_protected)
 
     def __preinit__(self):
+        # alias
+        gnd = self.power.lv
+
         if self._termination:
             termination_resistor = self.add(F.Resistor(), name="termination_resistor")
             termination_resistor.resistance.constrain_subset(
                 L.Range.from_center_rel(120 * P.ohm, 0.05)
             )
-            self.rs485_ufp.diff_pair.p.line.connect_via(
-                termination_resistor, self.rs485_ufp.diff_pair.n.line
+            self.rs485_unprotected.diff_pair.p.line.connect_via(
+                termination_resistor, self.rs485_unprotected.diff_pair.n.line
             )
         if self._polarization:
             polarization_resistors = self.add_to_container(2, F.Resistor)
@@ -117,11 +66,11 @@ class RS485_Bus_Protection(Module):
             polarization_resistors[1].resistance.constrain_subset(
                 L.Range(380 * P.ohm, 420 * P.ohm)
             )
-            self.rs485_dfp.diff_pair.p.line.connect_via(
+            self.rs485_protected.diff_pair.p.line.connect_via(
                 polarization_resistors[0], self.power.hv
             )
-            self.rs485_dfp.diff_pair.n.line.connect_via(
-                polarization_resistors[1], self.power.lv
+            self.rs485_protected.diff_pair.n.line.connect_via(
+                polarization_resistors[1], gnd
             )
 
         # ----------------------------------------
@@ -139,32 +88,63 @@ class RS485_Bus_Protection(Module):
         self.gnd_couple_resistor.resistance.constrain_subset(
             L.Range.from_center_rel(1 * P.Mohm, 0.05)
         )
-        self.gnd_couple_capacitor.capacitance.constrain_subset(
-            L.Range.from_center_rel(1 * P.uF, 0.05)
+        # self.gnd_couple_capacitor.capacitance.constrain_subset(
+        #     L.Range.from_center_rel(1 * P.uF, 0.1)
+        # )
+        # self.gnd_couple_capacitor.max_voltage.constrain_ge(2 * P.kV)
+        # TODO: fix, dynamic pick, not by pn
+        self.gnd_couple_capacitor.add(F.has_explicit_part.by_supplier("C106126"))
+        self.gdt.add(
+            F.has_explicit_part.by_supplier(
+                "C78322",
+                pinmap={
+                    "1": self.gdt.tube_1,
+                    "2": self.gdt.common,
+                    "3": self.gdt.tube_2,
+                },
+            )
         )
-        self.gnd_couple_capacitor.max_voltage.constrain_ge(2 * P.kV)
+        # TODO: fix, dynamic pick, not by pn
+        self.gnd_couple_resistor.add(F.has_explicit_part.by_supplier("C1513439"))
+        self.common_mode_filter.add(
+            F.has_explicit_part.by_supplier(
+                "C76577",
+                pinmap={
+                    "1": self.common_mode_filter.coil_b.unnamed[1],
+                    "2": self.common_mode_filter.coil_a.unnamed[1],
+                    "3": self.common_mode_filter.coil_b.unnamed[0],
+                    "4": self.common_mode_filter.coil_a.unnamed[0],
+                },
+            )
+        )
 
         # ----------------------------------------
         #               Connections
         # ----------------------------------------
         # rs485_in/out connections
-        self.rs485_dfp.diff_pair.n.line.connect_via(
+        self.rs485_protected.diff_pair.n.line.connect_via(
             [self.common_mode_filter.coil_a, self.current_limmiter_resistors[0]],
-            self.rs485_ufp.diff_pair.n.line,
+            self.rs485_unprotected.diff_pair.n.line,
         )
-        self.rs485_dfp.diff_pair.p.line.connect_via(
+        self.rs485_protected.diff_pair.p.line.connect_via(
             [self.common_mode_filter.coil_b, self.current_limmiter_resistors[1]],
-            self.rs485_ufp.diff_pair.p.line,
+            self.rs485_unprotected.diff_pair.p.line,
         )
 
         # gdt connections
-        self.rs485_ufp.diff_pair.p.line.connect(self.gdt.tube_1)
-        self.rs485_ufp.diff_pair.n.line.connect(self.gdt.tube_2)
+        self.rs485_unprotected.diff_pair.p.line.connect(self.gdt.tube_1)
+        self.rs485_unprotected.diff_pair.n.line.connect(self.gdt.tube_2)
 
         # earth connections
-        self.power.lv.connect_via(self.gnd_couple_resistor, self.earth)
-        self.power.lv.connect_via(self.gnd_couple_capacitor, self.earth)
+        gnd.connect_via(self.gnd_couple_resistor, self.earth)
+        gnd.connect_via(self.gnd_couple_capacitor, self.earth)
         self.gdt.common.connect(self.earth)
 
         # tvs connections
-        self.rs485_dfp.connect(self.rs485_tvs.rs485)
+        self.current_limmiter_resistors[0].p1.connect(
+            self.rs485_tvs.rs485.diff_pair.p.line
+        )
+        self.current_limmiter_resistors[1].p1.connect(
+            self.rs485_tvs.rs485.diff_pair.n.line
+        )
+        self.rs485_tvs.rs485.diff_pair.n.reference.lv.connect(gnd)

@@ -25,7 +25,7 @@ class CBM9002A_56ILG_ReferenceDesign(Module):
             self.logic.line.connect_via(self.cap, self.logic.reference.lv)
 
             self.cap.capacitance.constrain_subset(
-                L.Range.from_center_rel(1 * P.uF, 0.05)
+                L.Range.from_center_rel(1 * P.uF, 0.2)
             )
 
             self.diode.forward_voltage.constrain_subset(L.Range(715 * P.mV, 1.5 * P.V))

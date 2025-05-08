@@ -16,7 +16,8 @@ from faebryk.libs.util import cast_assert
 def _parse(src: str) -> AtoParser:
     input = InputStream(src)
     input.name = "test"
-    return make_parser(input)
+    parser, _ = make_parser(input)
+    return parser
 
 
 def _build_file(src: str, ref: TypeRef = TypeRef(["App"])) -> L.Module:

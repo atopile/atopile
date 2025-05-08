@@ -23,7 +23,8 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
-from enum import Enum, StrEnum
+from datetime import datetime
+from enum import Enum, StrEnum, auto
 from functools import wraps
 from genericpath import commonprefix
 from importlib.metadata import Distribution
@@ -58,6 +59,7 @@ from typing import (
 )
 
 import psutil
+from git import Repo
 
 logger = logging.getLogger(__name__)
 
@@ -1964,13 +1966,6 @@ def has_instance_settable_attr(obj: object, attr: str) -> bool:
     return False
 
 
-AUTO_RECOMPILE = ConfigFlag(
-    "AUTO_RECOMPILE",
-    default=False,
-    descr="Automatically recompile source files if they have changed",
-)
-
-
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
@@ -2334,3 +2329,82 @@ def complete_type_string(value: Any) -> str:
         return f"{type(value).__name__}[{', '.join(inner)}]"
     else:
         return type(value).__name__
+
+
+def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
+    """Check if any of the given files have uncommitted changes."""
+    try:
+        repo = Repo(search_parent_directories=True)
+        diff_index = repo.index.diff(None)  # Get uncommitted changes
+
+        # Convert all files to Path objects for consistent comparison
+        files = [Path(f).resolve() for f in files]
+        repo_root = Path(repo.working_dir)
+
+        # Check if any of the files have changes
+        for diff in diff_index:
+            touched_file = diff.a_path or diff.b_path
+            # m, c or d
+            assert touched_file is not None
+            touched_path = repo_root / touched_file
+            if touched_path in files:
+                return True
+
+        return False
+    # TODO bad
+    except Exception:
+        # If we can't check git status (not a git repo, etc), assume we don't
+        # have changes
+        return False
+
+
+def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
+    files = []
+    for path in paths:
+        if path.is_dir():
+            files.extend(path.rglob("**"))
+        else:
+            files.append(path)
+    if not files:
+        return None
+
+    files_with_dates = [
+        (f, datetime.fromtimestamp(max(f.stat().st_mtime, f.stat().st_ctime)))
+        for f in files
+    ]
+    return max(files_with_dates, key=lambda f: f[1])
+
+
+class FileChangedWatcher:
+    class CheckMethod(Enum):
+        FS = auto()
+        HASH = auto()
+
+    def __init__(self, path: Path, method: CheckMethod):
+        self.path = path
+        self.method = method
+
+        match method:
+            case FileChangedWatcher.CheckMethod.FS:
+                self.before = path.stat().st_mtime
+            case FileChangedWatcher.CheckMethod.HASH:
+                self.before = hashlib.sha256(
+                    path.read_bytes(), usedforsecurity=False
+                ).hexdigest()
+
+    def has_changed(self, reset: bool = False) -> bool:
+        match self.method:
+            case FileChangedWatcher.CheckMethod.FS:
+                assert isinstance(self.before, float)
+                new_val = self.path.stat().st_mtime
+                changed = new_val > self.before
+            case FileChangedWatcher.CheckMethod.HASH:
+                assert isinstance(self.before, str)
+                new_val = hashlib.sha256(
+                    self.path.read_bytes(), usedforsecurity=False
+                ).hexdigest()
+                changed = new_val != self.before
+
+        if reset:
+            self.before = new_val
+        return changed

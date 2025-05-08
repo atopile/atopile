@@ -57,4 +57,5 @@ class TECH_PUBLIC_USBLC6_2SC6(F.USB2_0_ESD_Protection):
         # ------------------------------------
         #          parametrization
         # ------------------------------------
-        pass
+        self.data_esd_protection.alias_is(True)
+        self.vbus_esd_protection.alias_is(True)

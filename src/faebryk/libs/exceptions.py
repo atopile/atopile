@@ -1,8 +1,18 @@
 import contextlib
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, Iterable, Self, Sequence, Type, cast
+from typing import (
+    TYPE_CHECKING,
+    Callable,
+    Hashable,
+    Iterable,
+    Self,
+    Sequence,
+    Type,
+    cast,
+)
 
 from caseconverter import titlecase
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -11,7 +21,7 @@ from rich.text import Text
 from rich.traceback import Traceback
 
 from faebryk.libs.logging import ReprHighlighter
-from faebryk.libs.util import md_list
+from faebryk.libs.util import groupby, md_list
 
 if TYPE_CHECKING:
     from faebryk.core.node import Node
@@ -224,20 +234,22 @@ class accumulate:
 
     def get_exception(self) -> Exception | None:
         if self.errors:
-            # Display unique errors in order
-            # FIXME: this is both hard to understand and wildly inefficient
-            displayed_errors = []
-            for error in self.errors:
-                if not any(
-                    existing_error.__dict__ == error.__dict__
-                    for existing_error in displayed_errors
-                ):
-                    displayed_errors.append(error)
 
-            if len(displayed_errors) > 1:
-                return ExceptionGroup(self.group_message, displayed_errors)
+            def _key(error: Exception) -> Hashable:
+                if isinstance(error, UserException):
+                    return error.get_frozen()
+
+                # fallback to id()
+                return error
+
+            # Display unique errors in order
+            grouped_errors = groupby(self.errors, key=_key)
+            errors = [group[0] for group in grouped_errors.values()]
+
+            if len(errors) > 1:
+                return ExceptionGroup(self.group_message, errors)
             else:
-                return displayed_errors[0]
+                return errors[0]
 
     def raise_errors(self):
         """
@@ -251,6 +263,29 @@ class accumulate:
 
     def __exit__(self, *args):
         self.raise_errors()
+
+
+_collectors: list["DowngradedExceptionCollector"] = []
+
+
+class DowngradedExceptionCollector[T: Exception]:
+    def __init__(self, exc_type: Type[T]):
+        self.exceptions: list[tuple[T, int]] = []
+        self.exc_type = exc_type
+
+    def add(self, exception: Exception, severity: int = logging.WARNING):
+        if isinstance(exception, self.exc_type):
+            self.exceptions.append((exception, severity))
+
+    def __enter__(self) -> Self:
+        _collectors.append(self)
+        return self
+
+    def __exit__(self, *args):
+        _collectors.remove(self)
+
+    def __iter__(self) -> Iterator[tuple[T, int]]:
+        return iter(self.exceptions)
 
 
 class downgrade[T: Exception](Pacman):
@@ -283,6 +318,9 @@ class downgrade[T: Exception](Pacman):
             exceptions = [exc]
 
         for e in exceptions:
+            for collector in _collectors:
+                collector.add(e, self.to_level)
+
             self.logger.log(self.to_level, str(e), exc_info=e, extra={"markdown": True})
 
         return self.raise_anyway

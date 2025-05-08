@@ -13,7 +13,8 @@ logger = logging.getLogger(__name__)
 
 class INA228_ReferenceDesign(Module):
     """
-    TODO: add description
+    INA228 high or low side current shunt and voltage monitor with I2C interface.
+    This module implements a minimal reference design for common use cases.
     """
 
     class ShuntedElectricPower(Module):
@@ -105,6 +106,8 @@ class INA228_ReferenceDesign(Module):
         self.ina288.shunt_input.connect(shunted_power.shunt_sense)
 
         # decouple power rail
-        self.ina288.power.get_trait(F.can_be_decoupled).decouple(
-            owner=self
-        ).capacitance.constrain_subset(L.Range.from_center_rel(0.1 * P.uF, 0.01))
+        self.ina288.power.decoupled.decouple(owner=self).explicit(
+            nominal_capacitance=100 * P.nF,
+            tolerance=0.2,
+            footprint=F.has_package.Package.C0603,
+        )
