@@ -10,6 +10,6 @@ lsp_app = typer.Typer(rich_markup_mode="rich")
 
 @lsp_app.command()
 def start():
-    from atopile.lsp.lsp_server import LSP_SERVER
+    from atopile.lsp import LSP_SERVER
 
     LSP_SERVER.start_io()
