@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
 import { window, Uri } from 'vscode';
-import * as cp from 'child_process';
 import { getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo } from '../common/findbin';
-import { traceInfo } from '../common/log/logging';
+import { traceError } from '../common/log/logging';
+import { openPcb } from '../common/kicad';
 
 let statusbarAtoAdd: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
@@ -253,17 +253,23 @@ async function selectBuildTargetFlow() {
 async function pcbnew() {
     // get the build target name
     let buildArray: string[] = statusbarAtoBuildTarget.text.split('-');
+    const buildtarget = buildArray[0];
 
-    // search for the *.kicad_pcb file in the **/layout/[build]/ folder, relative to workspace root, only find 1 file
-    let path = await vscode.workspace.findFiles('**/layout/' + buildArray[0] + '/*.kicad_pcb', '**/.ato/**', 1);
+    let _paths: Uri[] = await vscode.workspace.findFiles(`**/${buildtarget}/${buildtarget}.kicad_pcb`);
+    let paths: string[] = _paths.map((uri) => uri.fsPath);
 
-    // turn the result into a Uri
-    let schem = Uri.parse(path.toString());
+    if (paths.length === 0) {
+        traceError(`No pcb file found: ${buildtarget}.kicad_pcb`);
+        vscode.window.showErrorMessage(`No pcb file found: ${buildtarget}.kicad_pcb. Did you build the project?`);
+        return;
+    }
+    // TODO handle
+    const path = paths[0];
 
-    // FIXME: cross-platform robust way to open pcb
-
-    // launch if it found a file to open
-    if (schem.path !== '/') {
-        cp.exec(`start "" ${schem.fsPath}`);
+    try {
+        await openPcb(path);
+    } catch (error) {
+        traceError(`Error launching KiCad: ${error}`);
+        vscode.window.showErrorMessage(`Error launching KiCad: ${error}`);
     }
 }
