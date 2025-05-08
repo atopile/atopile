@@ -38,34 +38,284 @@
 			"include": "#strings"
 		},
 		{
+			"name": "meta.trait.definition.simple.ato",
+			"match": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b(?!\\s*::)(?!\\s*<)",
+			"captures": {
+				"1": {
+					"name": "keyword.other.trait.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				}
+			}
+		},
+		{
+			"name": "meta.trait.definition.constructor.ato",
+			"match": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\b(?!\\s*<)",
+			"captures": {
+				"1": {
+					"name": "keyword.other.trait.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				},
+				"3": {
+					"name": "punctuation.separator.double-colon.ato"
+				},
+				"4": {
+					"name": "entity.name.function.constructor.ato"
+				}
+			}
+		},
+		{
+			"name": "meta.trait.definition.template.ato",
+			"begin": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(<)",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.other.trait.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				},
+				"3": {
+					"name": "punctuation.definition.template.begin.bracket.angle.ato"
+				}
+			},
+			"end": "(>)",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.template.end.bracket.angle.ato"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#template_parameters"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		{
+			"name": "meta.trait.definition.constructor.template.ato",
+			"begin": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\s*(<)",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.other.trait.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				},
+				"3": {
+					"name": "punctuation.separator.double-colon.ato"
+				},
+				"4": {
+					"name": "entity.name.function.constructor.ato"
+				},
+				"5": {
+					"name": "punctuation.definition.template.begin.bracket.angle.ato"
+				}
+			},
+			"end": "(>)",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.template.end.bracket.angle.ato"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#template_parameters"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		{
+			"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\b",
+			"captures": {
+				"1": {
+					"name": "entity.name.type.class.ato"
+				},
+				"2": {
+					"name": "punctuation.separator.double-colon.ato"
+				},
+				"3": {
+					"name": "entity.name.function.constructor.ato"
+				}
+			}
+		},
+		{
+			"name": "meta.import.deprecated.ato",
+			"match": "(?:^|;)\\s*(import)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s+(from)\\s+(\"[^\"]*\")",
+			"captures": {
+				"1": {
+					"name": "keyword.control.import.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				},
+				"3": {
+					"name": "keyword.control.import.ato"
+				},
+				"4": {
+					"name": "string.quoted.double.ato"
+				}
+			}
+		},
+		{
+			"name": "meta.import.from.ato",
+			"begin": "(?:^|;)\\s*(from)\\s+(\"[^\"]*\")\\s+(import)\\b\\s+",
+			"end": "(?=;|\\n|$)",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.control.import.ato"
+				},
+				"2": {
+					"name": "string.quoted.double.ato"
+				},
+				"3": {
+					"name": "keyword.control.import.ato"
+				}
+			},
+			"patterns": [
+				{
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.class.ato"
+						}
+					}
+				},
+				{
+					"match": ",",
+					"name": "punctuation.separator.comma.ato"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		{
+			"name": "meta.import.standard.ato",
+			"begin": "(?:^|;)\\s*(import)\\b\\s+",
+			"end": "(?=;|\\n|$)(?!\\s*from\\s+\"[^\"]*\")",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.control.import.ato"
+				}
+			},
+			"patterns": [
+				{
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.class.ato"
+						}
+					}
+				},
+				{
+					"match": ",",
+					"name": "punctuation.separator.comma.ato"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		{
+			"name": "meta.instantiation.template.ato",
+			"begin": "\\b(new)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(<)",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.operator.new.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				},
+				"3": {
+					"name": "punctuation.definition.template.begin.bracket.angle.ato"
+				}
+			},
+			"end": "(>)",
+			"endCaptures": {
+				"1": {
+					"name": "punctuation.definition.template.end.bracket.angle.ato"
+				}
+			},
+			"patterns": [
+				{
+					"include": "#template_parameters"
+				},
+				{
+					"include": "#comments"
+				}
+			]
+		},
+		{
+			"name": "meta.instantiation.ato",
+			"begin": "\\b(new)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(\\[)?",
+			"beginCaptures": {
+				"1": {
+					"name": "keyword.operator.new.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				},
+				"3": {
+					"name": "punctuation.definition.array.begin.bracket.square.ato"
+				}
+			},
+			"end": "(?<=\\])|(?=;)|(?=\\n)|($)",
+			"patterns": [
+				{
+					"include": "#strings"
+				},
+				{
+					"include": "#numbers"
+				},
+				{
+					"include": "#references"
+				},
+				{
+					"include": "#operators"
+				}
+			]
+		},
+		{
+			"include": "#block_definitions"
+		},
+		{
+			"include": "#declarations"
+		},
+		{
+			"match": "(->)\\s*([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
+			"captures": {
+				"1": {
+					"name": "keyword.operator.retype.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				}
+			}
+		},
+		{
 			"include": "#keywords"
+		},
+		{
+			"include": "#references"
 		},
 		{
 			"include": "#numbers"
 		},
 		{
 			"include": "#operators"
-		},
-		{
-			"include": "#block_definitions"
-		},
-		{
-			"include": "#instantiation"
-		},
-		{
-			"include": "#declarations"
-		},
-		{
-			"include": "#traits"
-		},
-		{
-			"include": "#references"
 		}
 	],
 	"repository": {
 		"comments": {
 			"name": "comment.line.number-sign.ato",
-			"match": "#.*"
+			"match": "#(?!pragma\\b).*"
 		},
 		"strings": {
 			"name": "string.quoted.double.ato",
@@ -93,12 +343,12 @@
 					"match": "\\b(assert|within|is|to)\\b"
 				},
 				{
-					"name": "storage.type.definition.ato",
-					"match": "\\b(module|component|interface)\\b"
-				},
-				{
 					"name": "storage.type.declaration.ato",
 					"match": "\\b(pin|signal)\\b"
+				},
+				{
+					"name": "storage.type.definition.ato",
+					"match": "\\b(component|module|interface)\\b"
 				},
 				{
 					"name": "keyword.operator.new.ato",
@@ -154,7 +404,7 @@
 				},
 				{
 					"name": "keyword.operator.comparison.ato",
-					"match": "(<|<=|>|>=)"
+					"match": "(<|>)"
 				},
 				{
 					"name": "keyword.operator.arithmetic.ato",
@@ -264,269 +514,273 @@
 		"template_parameters": {
 			"patterns": [
 				{
-					"match": "([a-zA-Z_][a-zA-Z_0-9]*)\\s*(=)",
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*)\\s*(?=(=))",
 					"captures": {
 						"1": {
 							"name": "variable.parameter.template.ato"
-						},
-						"2": {
-							"name": "keyword.operator.assignment.template.ato"
 						}
 					}
 				},
 				{
-					"match": "<",
-					"name": "punctuation.definition.template.begin.bracket.angle.ato"
-				},
-				{
-					"match": ">",
-					"name": "punctuation.definition.template.end.bracket.angle.ato"
-				},
-				{
-					"match": ",",
-					"name": "punctuation.separator.comma.template.ato"
-				},
-				{
-					"match": "=\\s*(\"[^\"]*\")",
+					"match": "(=\\s*)(\"[^\"]*\")",
 					"captures": {
 						"1": {
+							"name": "keyword.operator.assignment.template.ato"
+						},
+						"2": {
 							"name": "string.quoted.double.template.ato"
 						}
 					}
 				},
 				{
-					"match": "=\\s*([+-]?\\d+(?:\\.\\d+)?)",
+					"match": "(=\\s*)([+-]?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)",
 					"captures": {
 						"1": {
+							"name": "keyword.operator.assignment.template.ato"
+						},
+						"2": {
 							"name": "constant.numeric.template.ato"
 						}
 					}
 				},
 				{
-					"match": "=\\s*(True|False)",
+					"match": "(=\\s*)(True|False)\\b",
 					"captures": {
 						"1": {
+							"name": "keyword.operator.assignment.template.ato"
+						},
+						"2": {
 							"name": "constant.language.boolean.template.ato"
+						}
+					}
+				},
+				{
+					"match": ",",
+					"name": "punctuation.separator.comma.template.ato"
+				}
+			]
+		},
+		"inheritance_clause": {
+			"match": "\\s*\\b(from)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
+			"captures": {
+				"1": {
+					"name": "keyword.control.inheritance.ato"
+				},
+				"2": {
+					"name": "entity.name.type.class.ato"
+				}
+			}
+		},
+		"block_definitions": {
+			"patterns": [
+				{
+					"name": "meta.definition.block.templated.header.ato",
+					"begin": "^\\s*(module|component|interface)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(<)",
+					"beginCaptures": {
+						"1": {
+							"name": "storage.type.definition.ato"
+						},
+						"2": {
+							"name": "entity.name.type.class.ato"
+						},
+						"3": {
+							"name": "punctuation.definition.template.begin.bracket.angle.ato"
+						}
+					},
+					"end": "(:)",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.separator.colon.ato"
+						}
+					},
+					"patterns": [
+						{
+							"include": "#template_parameters"
+						},
+						{
+							"match": "\\s*(>)",
+							"captures": {
+								"1": {
+									"name": "punctuation.definition.template.end.bracket.angle.ato"
+								}
+							}
+						},
+						{
+							"include": "#inheritance_clause"
+						},
+						{
+							"include": "#comments"
+						}
+					]
+				},
+				{
+					"name": "meta.definition.block.simple.header.ato",
+					"begin": "^\\s*(module|component|interface)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)(?!\\s*<)",
+					"beginCaptures": {
+						"1": {
+							"name": "storage.type.definition.ato"
+						},
+						"2": {
+							"name": "entity.name.type.class.ato"
+						}
+					},
+					"end": "(:)",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.separator.colon.ato"
+						}
+					},
+					"patterns": [
+						{
+							"include": "#inheritance_clause"
+						},
+						{
+							"include": "#comments"
+						}
+					]
+				}
+			]
+		},
+		"declarations": {
+			"patterns": [
+				{
+					"match": "\\b(pin)\\s+(?:([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)|(\\d+)|(\"[^\"]*\"))",
+					"captures": {
+						"1": {
+							"name": "storage.type.declaration.pin.ato"
+						},
+						"2": {
+							"name": "entity.name.variable.pin.ato"
+						},
+						"3": {
+							"name": "constant.numeric.integer.pin.ato"
+						},
+						"4": {
+							"name": "string.quoted.double.pin.name.ato"
+						}
+					}
+				},
+				{
+					"match": "\\b(signal)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
+					"captures": {
+						"1": {
+							"name": "storage.type.declaration.signal.ato"
+						},
+						"2": {
+							"name": "entity.name.variable.signal.ato"
+						}
+					}
+				},
+				{
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)*)\\s*(:)\\s*([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
+					"captures": {
+						"1": {
+							"name": "variable.other.declaration.annotated.ato"
+						},
+						"2": {
+							"name": "punctuation.separator.colon.ato"
+						},
+						"3": {
+							"name": "entity.name.type.class.ato"
 						}
 					}
 				}
 			]
-		}
-	},
-	"block_definitions": {
-		"patterns": [
-			{
-				"begin": "^\\s*(module|component|interface)\\s+([a-zA-Z_][a-zA-Z_0-9]*)\\s*(?:(<))?",
-				"beginCaptures": {
-					"1": {
-						"name": "storage.type.definition.ato"
-					},
-					"2": {
-						"name": "entity.name.type.class.ato"
-					},
-					"3": {
-						"name": "punctuation.definition.template.begin.bracket.angle.ato"
-					}
-				},
-				"end": "(?:(?<=>)\\s*)?(?=:)",
-				"name": "meta.definition.block.header.ato",
-				"patterns": [
-					{
-						"match": "\\s*(from)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
-						"captures": {
-							"1": {
-								"name": "keyword.control.inheritance.ato"
-							},
-							"2": {
-								"name": "entity.other.inherited-class.ato"
-							}
+		},
+		"traits": {
+			"patterns": [
+				{
+					"begin": "<",
+					"beginCaptures": {
+						"0": {
+							"name": "punctuation.definition.template.begin.bracket.angle.ato"
 						}
 					},
-					{
-						"include": "#template_parameters"
-					}
-				]
-			}
-		]
-	},
-	"instantiation": {
-		"patterns": [
-			{
-				"begin": "\\b(new)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(?:(\\[)|(<))?",
-				"beginCaptures": {
-					"1": {
-						"name": "keyword.operator.new.ato"
+					"end": ">",
+					"endCaptures": {
+						"0": {
+							"name": "punctuation.definition.template.end.bracket.angle.ato"
+						}
 					},
-					"2": {
-						"name": "entity.name.type.instance.ato"
-					},
-					"3": {
-						"name": "punctuation.definition.array.begin.bracket.square.ato"
-					},
-					"4": {
-						"name": "punctuation.definition.template.begin.bracket.angle.ato"
+					"name": "meta.template.parameters.ato",
+					"patterns": [
+						{
+							"include": "#template_parameters"
+						},
+						{
+							"include": "#comments"
+						}
+					]
+				}
+			]
+		},
+		"references": {
+			"patterns": [
+				{
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*)\\b",
+					"captures": {
+						"1": {
+							"name": "entity.name.type.class.ato"
+						},
+						"2": {
+							"name": "punctuation.separator.double-colon.ato"
+						},
+						"3": {
+							"name": "entity.name.function.constructor.ato"
+						}
 					}
 				},
-				"end": "(?<=\\])|(?<=>)|(?=;)|(?=\\n)|($)",
-				"name": "meta.instantiation.ato",
-				"patterns": [
-					{
-						"include": "#strings"
-					},
-					{
-						"include": "#numbers"
-					},
-					{
-						"include": "#references"
-					},
-					{
-						"include": "#operators"
-					},
-					{
-						"include": "#template_parameters"
-					}
-				]
-			}
-		]
-	},
-	"declarations": {
-		"patterns": [
-			{
-				"match": "\\b(pin)\\s+(?:([a-zA-Z_][a-zA-Z_0-9]*)|(\\d+)|(\"))",
-				"captures": {
-					"1": {
-						"name": "storage.type.declaration.pin.ato"
-					},
-					"2": {
-						"name": "entity.name.variable.pin.ato"
-					},
-					"3": {
-						"name": "constant.numeric.integer.pin.ato"
-					},
-					"4": {
-						"name": "punctuation.definition.string.begin.ato"
-					}
-				}
-			},
-			{
-				"match": "\\b(signal)\\s+([a-zA-Z_][a-zA-Z_0-9]*)",
-				"captures": {
-					"1": {
-						"name": "storage.type.declaration.signal.ato"
-					},
-					"2": {
-						"name": "entity.name.variable.signal.ato"
-					}
-				}
-			},
-			{
-				"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*)\\s*(:)\\s*([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)",
-				"captures": {
-					"1": {
-						"name": "variable.other.declaration.annotated.ato"
-					},
-					"2": {
-						"name": "punctuation.separator.colon.ato"
-					},
-					"3": {
-						"name": "storage.type.annotation.ato"
-					}
-				}
-			}
-		]
-	},
-	"traits": {
-		"patterns": [
-			{
-				"begin": "\\b(trait)\\s+([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(?:(::)\\s*([a-zA-Z_][a-zA-Z_0-9]*))?\\s*(<)?",
-				"beginCaptures": {
-					"1": {
-						"name": "keyword.other.trait.ato"
-					},
-					"2": {
-						"name": "entity.name.trait.ato"
-					},
-					"3": {
-						"name": "punctuation.separator.double-colon.ato"
-					},
-					"4": {
-						"name": "entity.name.function.constructor.trait.ato"
-					},
-					"5": {
-						"name": "punctuation.definition.template.begin.bracket.angle.ato"
+				{
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*)\\s*(\\()",
+					"captures": {
+						"1": {
+							"name": "entity.name.function.call.ato"
+						},
+						"2": {
+							"name": "punctuation.definition.arguments.begin.bracket.round.ato"
+						}
 					}
 				},
-				"end": "(?<=\\>)|(?=;)|(?=\\n)|($)",
-				"name": "meta.trait.definition.ato",
-				"patterns": [
-					{
-						"include": "#strings"
+				{
+					"begin": "([a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)\\s*(\\[)",
+					"beginCaptures": {
+						"1": {
+							"name": "variable.other.indexed.ato"
+						},
+						"2": {
+							"name": "punctuation.definition.array.begin.bracket.square.ato"
+						}
 					},
-					{
-						"include": "#numbers"
+					"end": "(\\])",
+					"endCaptures": {
+						"1": {
+							"name": "punctuation.definition.array.end.bracket.square.ato"
+						}
 					},
-					{
-						"include": "#references"
-					},
-					{
-						"include": "#operators"
-					},
-					{
-						"include": "#template_parameters"
-					}
-				]
-			}
-		]
-	},
-	"references": {
-		"patterns": [
-			{
-				"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*)\\s*(\\()",
-				"captures": {
-					"1": {
-						"name": "entity.name.function.call.ato"
-					},
-					"2": {
-						"name": "punctuation.definition.arguments.begin.bracket.round.ato"
-					}
+					"name": "meta.array.access.ato",
+					"patterns": [
+						{
+							"include": "#strings"
+						},
+						{
+							"include": "#numbers"
+						},
+						{
+							"include": "#references"
+						},
+						{
+							"include": "#operators"
+						},
+						{
+							"include": "#comments"
+						}
+					]
+				},
+				{
+					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)\\b",
+					"name": "variable.other.ato"
 				}
-			},
-			{
-				"begin": "([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\s*(\\[)",
-				"beginCaptures": {
-					"1": {
-						"name": "variable.other.indexed.ato"
-					},
-					"2": {
-						"name": "punctuation.definition.array.begin.bracket.square.ato"
-					}
-				},
-				"end": "(\\])",
-				"endCaptures": {
-					"1": {
-						"name": "punctuation.definition.array.end.bracket.square.ato"
-					}
-				},
-				"name": "meta.array.access.ato",
-				"patterns": [
-					{
-						"include": "#strings"
-					},
-					{
-						"include": "#numbers"
-					},
-					{
-						"include": "#references"
-					},
-					{
-						"include": "#operators"
-					}
-				]
-			},
-			{
-				"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.[a-zA-Z_][a-zA-Z_0-9]*)*)\\b",
-				"name": "variable.other.ato"
-			}
-		]
+			]
+		}
 	}
 }
