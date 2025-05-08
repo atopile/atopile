@@ -1079,12 +1079,12 @@ class Config:
         return entry_addr_override
 
     def _get_entry_arg_file_path(
-        self, entry: str | None
+        self, entry: str | None, working_dir: Path | None
     ) -> tuple[AddrStr | None, Path]:
         # basic the entry address if provided, otherwise leave it as None
 
         if entry is None:
-            entry_arg_file_path = Path.cwd()
+            entry_arg_file_path = working_dir or Path.cwd()
         else:
             entry = AddrStr(entry)
 
@@ -1108,9 +1108,10 @@ class Config:
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
         frozen: bool | None = None,
+        working_dir: Path | None = None,
         **kwargs: Any,
     ) -> None:
-        entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
+        entry, entry_arg_file_path = self._get_entry_arg_file_path(entry, working_dir)
 
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)

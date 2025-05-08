@@ -115,5 +115,12 @@ class FileParser:
 
         return self.cache[src_origin_str]
 
+    def get_ast_from_text(
+        self, src_code: str, src_path: Path | None = None
+    ) -> AtoParser.File_inputContext:
+        """Get the AST from a string."""
+        # TODO: caching
+        return parse_text_as_file(src_code, src_path, raise_multiple_errors=True)
+
 
 parser = FileParser()

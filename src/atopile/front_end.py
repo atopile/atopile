@@ -728,6 +728,39 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         context = self.index_file(self._sanitise_path(path))
         return self._build(context, ref)
 
+    def build_text(self, text: str, path: Path, ref: TypeRef) -> L.Node:
+        """Build a Module from a string and reference."""
+        context = self.index_text(text, path)
+        return self._build(context, ref)
+
+    def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
+        out = {}
+        with accumulate(errors.UserException) as accumulator:
+            for ref in context.refs:
+                if isinstance(context.refs[ref], ap.BlockdefContext):
+                    with accumulator.collect():
+                        out[ref] = self._build(context, ref)
+
+        return out
+
+    def try_build_all_from_file(self, path: Path) -> dict[TypeRef, L.Node]:
+        """
+        Build each top-level block in a file.
+
+        Returns a dict of successful builds, keyed by reference.
+        """
+        context = self.index_file(self._sanitise_path(path))
+        return self._try_build_all(context)
+
+    def try_build_all_from_text(self, text: str, path: Path) -> dict[TypeRef, L.Node]:
+        """
+        Build each top-level block in a string.
+
+        Returns a dict of successful builds, keyed by reference.
+        """
+        context = self.index_text(text, path)
+        return self._try_build_all(context)
+
     @property
     def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
         """Conceptually similar to `sys.modules`"""
@@ -927,6 +960,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         ast = parser.get_ast_from_file(file_path)
         return self.index_ast(ast, file_path)
 
+    def index_text(self, text: str, file_path: Path | None) -> Context:
+        ast = parser.get_ast_from_text(text, file_path)
+        return self.index_ast(ast, file_path)
+
     def _get_search_paths(self, context: Context) -> list[Path]:
         search_paths = [Path(p) for p in self.search_paths]
 
@@ -953,8 +990,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 break
         else:
             raise errors.UserFileNotFoundError.from_ctx(
-                item.original_ctx,
-                f"Can't find {item.from_path} in {', '.join(map(str, search_paths))}",
+                item.original_ctx, f"Unable to resolve import `{item.from_path}`"
             )
 
         from_path = self._sanitise_path(candidate_from_path)
@@ -1443,7 +1479,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             _add_node(self._current_node, new_node, assigned_name.name)
                 else:
                     with self._init_node(
-                        self._get_referenced_class(ctx, ref), kwargs=kwargs
+                        self._get_referenced_class(new_stmt_ctx.type_reference(), ref),
+                        kwargs=kwargs,
                     ) as new_node:
                         _add_node(self._current_node, new_node)
         except Exception:
@@ -2047,16 +2084,20 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with downgrade(
                         errors.UserNotImplementedError, to_level=logging.WARNING
                     ):
-                        raise errors.UserNotImplementedError(
-                            "`<` is not supported. Use `<=` instead."
+                        raise errors.UserNotImplementedError.from_ctx(
+                            ctx,
+                            "`<` is not supported. Use `<=` instead.",
+                            traceback=self.get_traceback(),
                         )
                     op = LessOrEqual
                 case ">":
                     with downgrade(
                         errors.UserNotImplementedError, to_level=logging.WARNING
                     ):
-                        raise errors.UserNotImplementedError(
-                            "`>` is not supported. Use `>=` instead."
+                        raise errors.UserNotImplementedError.from_ctx(
+                            ctx,
+                            "`>` is not supported. Use `>=` instead.",
+                            traceback=self.get_traceback(),
                         )
                     op = GreaterOrEqual
                 case "<=":

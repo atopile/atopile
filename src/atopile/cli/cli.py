@@ -24,7 +24,7 @@ from atopile.cli import (
 )
 from atopile.cli.logging import handler, logger
 from atopile.config import config
-from atopile.errors import UserSyntaxError
+from atopile.errors import UserException, UserNoProjectException
 from atopile.version import check_for_update
 from faebryk.libs.exceptions import (
     UserResourceException,
@@ -180,14 +180,23 @@ def dump_config(format: ConfigFormat = ConfigFormat.python):
 def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
-    from atopile.parse import parse_file
+    from atopile import front_end
+
+    path = path.resolve().relative_to(Path.cwd())
+
+    # pick up project config if we're in a project
+    # required for package search path inclusion
+    try:
+        config.apply_options(entry=None)
+    except UserNoProjectException:
+        pass
 
     if path.suffix != ".ato":
         raise UserResourceException("Invalid file type")
 
     try:
-        parse_file(path, raise_multiple_errors=True)
-    except* UserSyntaxError as e:
+        front_end.bob.try_build_all_from_file(path)
+    except* UserException as e:
         for error in iter_leaf_exceptions(e):
             logger.error(error, exc_info=error)
 
