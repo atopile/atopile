@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { window, Uri } from 'vscode';
 import * as cp from 'child_process';
 import { getBuilds, loadBuilds } from '../common/manifest';
+import { getAtoBin, onDidChangeAtoBinInfo } from '../common/findbin';
+import { traceInfo } from '../common/log/logging';
 
 let statusbarAtoAdd: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
@@ -10,8 +12,14 @@ let statusbarAtoCreate: vscode.StatusBarItem;
 let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
 let statusbarAtoRemove: vscode.StatusBarItem;
 
-function _displayButtons() {
-    const builds = getBuilds();
+async function _displayButtons() {
+    let builds: string[] = [];
+    const atoBin = await _getAtoCommand();
+    // only display buttons if we have a valid ato command
+    if (atoBin) {
+        builds = getBuilds();
+    }
+
     if (builds.length !== 0) {
         statusbarAtoCreate.show();
         statusbarAtoAdd.show();
@@ -34,7 +42,7 @@ function _displayButtons() {
 
 async function _reloadBuilds() {
     await loadBuilds();
-    _displayButtons();
+    await _displayButtons();
     return getBuilds();
 }
 
@@ -115,6 +123,11 @@ export async function activate(context: vscode.ExtensionContext) {
     statusbarAtoBuildTarget.command = commandAtoBuildTarget;
 
     await _reloadBuilds();
+    context.subscriptions.push(
+        onDidChangeAtoBinInfo(async () => {
+            await _reloadBuilds();
+        }),
+    );
 }
 
 export function deactivate() {
@@ -125,12 +138,25 @@ export function deactivate() {
     statusbarAtoLaunchKiCAD.dispose();
     statusbarAtoRemove.dispose();
 }
+
+async function _getAtoCommand() {
+    const atoBin = await getAtoBin();
+    if (atoBin === null) {
+        return null;
+    }
+    return atoBin.join(' ');
+}
 // Buttons handlers --------------------------------------------------------------------
 
 async function atoBuild() {
     // TODO: not sure that's very standard behavior
     // save all dirty editors
     // vscode.workspace.saveAll();
+
+    const atoBin = await _getAtoCommand();
+    if (atoBin === null) {
+        return;
+    }
 
     // create a terminal to work with
     let buildTerminal = vscode.window.createTerminal({
@@ -142,22 +168,32 @@ async function atoBuild() {
     // parse what build target to use
     let buildArray: string[] = statusbarAtoBuildTarget.text.split('-');
 
-    buildTerminal.sendText('ato build --build ' + buildArray[0]);
+    buildTerminal.sendText(atoBin + ' build --build ' + buildArray[0]);
     buildTerminal.show();
 }
 
 async function atoCreate() {
+    const atoBin = await _getAtoCommand();
+    if (atoBin === null) {
+        return;
+    }
+
     let createTerminal = vscode.window.createTerminal({
         name: 'ato create',
         cwd: '${workspaceFolder}',
         hideFromUser: false,
     });
 
-    createTerminal.sendText('ato create');
+    createTerminal.sendText(atoBin + ' create');
     createTerminal.show();
 }
 
 async function atoAddFlow() {
+    const atoBin = await _getAtoCommand();
+    if (atoBin === null) {
+        return;
+    }
+
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
@@ -172,12 +208,17 @@ async function atoAddFlow() {
             hideFromUser: false,
         });
 
-        addTerminal.sendText('ato add ' + result);
+        addTerminal.sendText(atoBin + ' add ' + result);
         addTerminal.show();
     }
 }
 
 async function atoRemoveFlow() {
+    const atoBin = await _getAtoCommand();
+    if (atoBin === null) {
+        return;
+    }
+
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
@@ -191,7 +232,7 @@ async function atoRemoveFlow() {
             cwd: '${workspaceFolder}',
             hideFromUser: false,
         });
-        removeTerminal.sendText('ato remove ' + result);
+        removeTerminal.sendText(atoBin + ' remove ' + result);
         removeTerminal.show();
     }
 }
