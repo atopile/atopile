@@ -96,6 +96,7 @@ module DemoModule from AnotherBaseModule:
     templated_instance_c = new MyComponent<float_=2.5>
     templated_instance_d = new MyComponent<string_="hello">
     templated_instance_e = new MyComponent<int_=1, float_=2.5, string_="hello">
+    templated_instance_f = new MyComponent<int_=1, float_=2.5, string_="hello", bool_=True>
 
     # Semicolon separated instantiations (via assignment):
     inst_a = new MyComponent; inst_b = new AnotherBaseModule
@@ -103,6 +104,9 @@ module DemoModule from AnotherBaseModule:
     # --- Traits ---
     trait trait_name
     trait trait_name<int_=1>
+    trait trait_name<float_=2.5>
+    trait trait_name<string_="hello">
+    trait trait_name<bool_=True>
     trait trait_name::constructor
     trait trait_name::constructor<int_=1>
 
