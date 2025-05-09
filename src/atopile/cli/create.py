@@ -7,10 +7,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Annotated, Any, Callable, Iterator, cast
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
-import git
 import questionary
 import rich
 import typer
@@ -42,6 +41,9 @@ from faebryk.libs.pycodegen import (
     sanitize_name,
 )
 from faebryk.libs.util import groupby, try_or
+
+if TYPE_CHECKING:
+    import git
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -77,6 +79,8 @@ stuck_user_helper_generator = _stuck_user_helper()
 
 def _in_git_repo(path: Path) -> bool:
     """Check if the current directory is in a git repo."""
+    import git
+
     try:
         git.Repo(path)
     except git.InvalidGitRepositoryError:
@@ -218,8 +222,10 @@ PROJECT_NAME_REQUIREMENTS = (
 def setup_github(
     project_path: Path,
     gh_cli: GithubCLI,
-    repo: git.Repo,
+    repo: "git.Repo",
 ):
+    import git
+
     github_username = gh_cli.get_usernames()
 
     use_existing_repo = query_helper(
@@ -365,43 +371,55 @@ def project(
             "Directory already exists. Please choose a different name."
         ) from e
 
-    # check if gh binary is available
-    gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
+    try:
+        import git
 
-    # check if already in a git repo
-    create_git_repo = not _in_git_repo(project_path)
+        no_git = False
+    except ImportError as e:
+        # catch no git executable
+        if "executable" not in e.msg:
+            raise
+        no_git = True
 
-    # git repo
-    if create_git_repo:
-        logging.info("Initializing git repo")
-        repo = git.Repo.init(project_path)
-        repo.git.add(A=True, f=True)
-        try:
-            repo.git.commit(m="Initial commit")
-        except git.GitCommandError as e:
-            if "Author identity unknown" in e.stderr:
-                rich.print(
-                    "[yellow]Warning: Author identity unknown. "
-                    "Staged but not committed.[/yellow]"
-                )
-            else:
-                raise
+    if not no_git:
+        # check if already in a git repo
+        create_git_repo = not _in_git_repo(project_path)
 
-    create_github_repo = False
-    if config.interactive and gh_cli and create_git_repo:
-        create_github_repo = query_helper(
-            "Host this project on GitHub? :octopus::cat:",
-            bool,
-            default=False,
-        )
+        # check if gh binary is available
+        gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
 
-    # Github repo
-    if create_github_repo:
-        try:
-            setup_github(project_path, gh_cli, repo)
-        except Exception:
-            rich.print("[red]Creating GitHub repo interrupted.[/red]")
-            return
+        # git repo
+        if create_git_repo:
+            logging.info("Initializing git repo")
+            repo = git.Repo.init(project_path)
+            repo.git.add(A=True, f=True)
+            try:
+                repo.git.commit(m="Initial commit")
+            except git.GitCommandError as e:
+                if "Author identity unknown" in e.stderr:
+                    rich.print(
+                        "[yellow]Warning: Author identity unknown. "
+                        "Staged but not committed.[/yellow]"
+                    )
+                else:
+                    raise
+
+        create_github_repo = False
+        if config.interactive and gh_cli and create_git_repo:
+            create_github_repo = query_helper(
+                "Host this project on GitHub? :octopus::cat:",
+                bool,
+                default=False,
+            )
+
+        # Github repo
+        if create_github_repo:
+            assert gh_cli is not None
+            try:
+                setup_github(project_path, gh_cli, repo)
+            except Exception:
+                rich.print("[red]Creating GitHub repo interrupted.[/red]")
+                return
 
     # Wew! New repo created!
     rich.print(

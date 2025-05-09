@@ -45,6 +45,23 @@ if (NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
+# Static linking for C++ runtime to avoid DLL/SO dependencies for MSVCRT etc.
+if(MSVC)
+  if(CMAKE_BUILD_TYPE MATCHES Debug)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreadedDebug")
+    message(STATUS "MSVC: Configuring for static debug runtime (/MTd).")
+  else() # Release, RelWithDebInfo, MinSizeRel
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    message(STATUS "MSVC: Configuring for static release runtime (/MT).")
+  endif()
+elseif(NOT APPLE AND (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID MATCHES "Clang"))
+  # Not really needed afaik, also seems to break CI for some reason
+  # For non-Apple GCC/Clang, attempt to link libgcc and libstdc++ statically.
+  # This adds flags to the linker for the shared module.
+  # set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
+  # message(STATUS "GCC/Clang (non-Apple): Attempting to statically link libgcc and libstdc++ for the module.")
+endif()
+
 # configure ------------------------------------------------------------
 
 # c++ standard

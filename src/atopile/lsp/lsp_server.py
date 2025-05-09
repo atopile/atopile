@@ -57,8 +57,8 @@ update_sys_path(
 import lsprotocol.types as lsp  # noqa: E402
 from pygls import server, uris, workspace  # noqa: E402
 
-import lsp.lsp_jsonrpc as jsonrpc  # noqa: E402
-import lsp.lsp_utils as utils  # noqa: E402
+import atopile.lsp.lsp_jsonrpc as jsonrpc  # noqa: E402
+import atopile.lsp.lsp_utils as utils  # noqa: E402
 
 WORKSPACE_SETTINGS = {}
 GLOBAL_SETTINGS = {}

@@ -98,11 +98,18 @@ class ProjectDependency:
                 repo_cache = Path(temp_dir) / ".git_repo.cache"
                 if repo_cache.exists():
                     robustly_rm_dir(repo_cache)
-                path = clone_repo(
-                    self.spec.repo_url,
-                    clone_target=repo_cache,
-                    ref=self.spec.ref,
-                )
+                try:
+                    path = clone_repo(
+                        self.spec.repo_url,
+                        clone_target=repo_cache,
+                        ref=self.spec.ref,
+                    )
+                except ImportError as e:
+                    # no git executable
+                    raise errors.UserException(
+                        f"Could not clone repo {self.spec.repo_url}: {e}"
+                    ) from e
+
                 if self.spec.path_within_repo:
                     path = path / self.spec.path_within_repo
 

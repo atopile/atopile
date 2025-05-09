@@ -9,7 +9,6 @@ import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
-import { initializePython } from './common/python';
 
 let g_lsClient: LanguageClient | undefined;
 
@@ -47,7 +46,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
-    await initServer(context.subscriptions);
+    await initServer(context);
 
     ui.activate(context);
 }

@@ -59,7 +59,6 @@ from typing import (
 )
 
 import psutil
-from git import Repo
 
 logger = logging.getLogger(__name__)
 
@@ -2331,9 +2330,11 @@ def complete_type_string(value: Any) -> str:
         return type(value).__name__
 
 
-def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
+def has_uncommitted_changes(files: Iterable[str | Path]) -> bool | None:
     """Check if any of the given files have uncommitted changes."""
     try:
+        from git import Repo
+
         repo = Repo(search_parent_directories=True)
         diff_index = repo.index.diff(None)  # Get uncommitted changes
 
@@ -2355,7 +2356,7 @@ def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
     except Exception:
         # If we can't check git status (not a git repo, etc), assume we don't
         # have changes
-        return False
+        return None
 
 
 def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:

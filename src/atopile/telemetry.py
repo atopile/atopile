@@ -14,7 +14,6 @@ What we collect:
 import hashlib
 import importlib.metadata
 import logging
-import subprocess
 import time
 from contextlib import contextmanager
 from typing import Optional
@@ -25,6 +24,7 @@ from posthog import Posthog
 from ruamel.yaml import YAML
 
 from faebryk.libs.paths import get_config_dir
+from faebryk.libs.util import cast_assert
 
 log = logging.getLogger(__name__)
 
@@ -132,28 +132,29 @@ def _end_timer():
 def get_user_id() -> str:
     """Generate a unique user ID from the git email."""
     try:
-        git_email = (
-            subprocess.check_output(["git", "config", "user.email"])
-            .decode("ascii")
-            .strip()
-        )
-    except subprocess.CalledProcessError:
-        git_email = "unknown"
-    return git_email
+        import git
+
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            config_reader = repo.config_reader()
+            return cast_assert(str, config_reader.get_value("user", "email", "unknown"))
+        except (git.InvalidGitRepositoryError, git.NoSuchPathError, ValueError):
+            return "unknown"
+    except ImportError:
+        return "unknown"
 
 
 def get_current_git_hash() -> Optional[str]:
     """Get the current git commit hash."""
     try:
-        return (
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
-            )
-            .decode("ascii")
-            .strip()
-        )
+        import git
 
-    except subprocess.CalledProcessError:
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            return repo.head.commit.hexsha
+        except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+            return None
+    except ImportError:
         return None
 
 
@@ -180,23 +181,27 @@ def commonise_project_url(git_url: str) -> str:
 def get_project_id() -> Optional[str]:
     """Get the hashed project ID from the git URL of the project, if not available, return 'none'."""  # noqa: E501  # pre-existing
     try:
-        git_url = (
-            subprocess.check_output(["git", "config", "--get", "remote.origin.url"])
-            .decode("ascii")
-            .strip()
-        )
-        if not git_url:
+        import git
+
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            if not repo.remotes:
+                return None
+            git_url = repo.remotes.origin.url
+            if not git_url:
+                return None
+        except (git.InvalidGitRepositoryError, git.NoSuchPathError, AttributeError):
             return None
-
-        project_url = commonise_project_url(git_url)
-
-        log.log(0, "Project URL: %s", project_url)
-
-        # Hash the project ID to de-identify it
-        return hashlib.sha256(project_url.encode()).hexdigest()
-
-    except subprocess.CalledProcessError:
+    except ImportError:
+        # no git executable
         return None
+
+    project_url = commonise_project_url(git_url)
+
+    log.log(0, "Project URL: %s", project_url)
+
+    # Hash the project ID to de-identify it
+    return hashlib.sha256(project_url.encode()).hexdigest()
 
 
 @contextmanager
