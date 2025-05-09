@@ -1116,7 +1116,7 @@ class C_footprint:
         solder_paste_margin_ratio: Optional[float] = None
         clearance: Optional[float] = None
         teardrops: Optional[C_teardrop] = None
-        zone_connect: Optional[bool] = None
+        zone_connect: Optional[C_padstack.C_layer.E_zone_connection] = None
         thermal_bridge_width: Optional[float] = None
         thermal_bridge_angle: Optional[float] = None
         thermal_gap: Optional[float] = None
