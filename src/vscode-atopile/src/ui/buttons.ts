@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
-import { window, Uri } from 'vscode';
+import { window } from 'vscode';
+import * as os from 'os';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
@@ -190,7 +191,11 @@ async function _getAtoCommand() {
     if (atoBin === null) {
         return null;
     }
-    return atoBin.map((bin) => `"${bin}"`).join(' ');
+    let out = atoBin.map((bin) => `"${bin}"`).join(' ');
+    if (os.platform() === 'win32') {
+        out = '& ' + out;
+    }
+    return out;
 }
 // Buttons handlers --------------------------------------------------------------------
 

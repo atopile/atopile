@@ -29,10 +29,13 @@ async function _runServer(
 
     traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
 
+    // need to run in non-interactive mode
+    const env = { ...process.env, ATO_NON_INTERACTIVE: 'y' };
+
     const serverOptions: ServerOptions = {
         command,
         args,
-        options: { cwd, env: process.env },
+        options: { cwd, env: env },
     };
 
     // Options to control the language client
