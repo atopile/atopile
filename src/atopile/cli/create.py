@@ -7,10 +7,9 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Annotated, Any, Callable, Iterator, cast
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
-import git
 import questionary
 import rich
 import typer
@@ -42,6 +41,9 @@ from faebryk.libs.pycodegen import (
     sanitize_name,
 )
 from faebryk.libs.util import groupby, try_or
+
+if TYPE_CHECKING:
+    import git
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -365,55 +367,55 @@ def project(
             "Directory already exists. Please choose a different name."
         ) from e
 
-    # check if already in a git repo
     try:
-        create_git_repo = not _in_git_repo(project_path)
+        import git
+
         no_git = False
-    except Exception:
-        # TODO improve catching and error message
-        # something wrong with git
-        create_git_repo = False
+    except ImportError as e:
+        # catch no git executable
+        if "executable" not in e.msg:
+            raise
         no_git = True
 
-    # check if gh binary is available
-    gh_cli = (
-        try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
-        if not no_git
-        else None
-    )
+    if not no_git:
+        # check if already in a git repo
+        create_git_repo = not _in_git_repo(project_path)
 
-    # git repo
-    if create_git_repo:
-        logging.info("Initializing git repo")
-        repo = git.Repo.init(project_path)
-        repo.git.add(A=True, f=True)
-        try:
-            repo.git.commit(m="Initial commit")
-        except git.GitCommandError as e:
-            if "Author identity unknown" in e.stderr:
-                rich.print(
-                    "[yellow]Warning: Author identity unknown. "
-                    "Staged but not committed.[/yellow]"
-                )
-            else:
-                raise
+        # check if gh binary is available
+        gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
 
-    create_github_repo = False
-    if config.interactive and gh_cli and create_git_repo:
-        create_github_repo = query_helper(
-            "Host this project on GitHub? :octopus::cat:",
-            bool,
-            default=False,
-        )
+        # git repo
+        if create_git_repo:
+            logging.info("Initializing git repo")
+            repo = git.Repo.init(project_path)
+            repo.git.add(A=True, f=True)
+            try:
+                repo.git.commit(m="Initial commit")
+            except git.GitCommandError as e:
+                if "Author identity unknown" in e.stderr:
+                    rich.print(
+                        "[yellow]Warning: Author identity unknown. "
+                        "Staged but not committed.[/yellow]"
+                    )
+                else:
+                    raise
 
-    # Github repo
-    if create_github_repo:
-        assert gh_cli is not None
-        try:
-            setup_github(project_path, gh_cli, repo)
-        except Exception:
-            rich.print("[red]Creating GitHub repo interrupted.[/red]")
-            return
+        create_github_repo = False
+        if config.interactive and gh_cli and create_git_repo:
+            create_github_repo = query_helper(
+                "Host this project on GitHub? :octopus::cat:",
+                bool,
+                default=False,
+            )
+
+        # Github repo
+        if create_github_repo:
+            assert gh_cli is not None
+            try:
+                setup_github(project_path, gh_cli, repo)
+            except Exception:
+                rich.print("[red]Creating GitHub repo interrupted.[/red]")
+                return
 
     # Wew! New repo created!
     rich.print(

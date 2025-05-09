@@ -104,8 +104,8 @@ class ProjectDependency:
                         clone_target=repo_cache,
                         ref=self.spec.ref,
                     )
-                except Exception as e:
-                    # TODO better exception
+                except ImportError as e:
+                    # no git executable
                     raise errors.UserException(
                         f"Could not clone repo {self.spec.repo_url}: {e}"
                     ) from e
