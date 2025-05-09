@@ -1,5 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
+from collections.abc import Iterator
 import logging
 from abc import abstractmethod
 from dataclasses import InitVar as dataclass_InitVar
@@ -769,6 +770,17 @@ class Node(CNode):
             if parent.has_trait(trait):
                 return parent, parent.get_trait(trait)
         raise KeyErrorNotFound(f"No parent with trait {trait} found")
+
+    def iter_children_with_trait[TR: Trait](
+        self, trait: type[TR], include_self: bool = True
+    ) -> Iterator[tuple["Node", TR]]:
+        if include_self and self.has_trait(trait):
+            yield self, self.get_trait(trait)
+
+        for level in self.get_tree(types=Node).iter_by_depth():
+            for child in level:
+                if child.has_trait(trait):
+                    yield child, child.get_trait(trait)
 
     def get_first_child_of_type[U: Node](self, child_type: type[U]) -> U:
         for level in self.get_tree(types=Node).iter_by_depth():

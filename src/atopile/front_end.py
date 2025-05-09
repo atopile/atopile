@@ -27,6 +27,7 @@ from antlr4 import ParserRuleContext
 from more_itertools import last
 from pint import UndefinedUnitError
 
+from atopile.parse_utils import get_src_info_from_token
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, errors
@@ -98,6 +99,25 @@ class from_dsl(Trait.decless()):
         super().__init__()
         self.src_ctx = src_ctx
 
+    def contains_pos(self, file_path: str, line: int, col: int) -> bool:
+        import sys
+
+        start_file, start_line, start_col = get_src_info_from_token(self.src_ctx.start)
+        _, end_line, end_col = get_src_info_from_token(self.src_ctx.stop)
+
+        # print(
+        #     f"node: {self.obj} (type: {type(self.obj)}): {start_file}:{start_line}:{start_col} - {end_line}:{end_col}",
+        #     file=sys.stderr,
+        # )
+
+        return (
+            start_file == file_path
+            # and start_line <= line
+            # and end_line >= line
+            # and start_col <= col
+            # and end_col >= col
+        )
+
 
 @dataclass
 class Number:
@@ -149,6 +169,7 @@ class BasicsMixin:
         )
 
     def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
+        # TODO: store reference position on `from_dsl` of resolved node`
         pin = ctx.pin_reference_end()
         if pin is not None:
             pin = self.visitNumber_hint_natural(pin.number_hint_natural())
@@ -1822,7 +1843,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return mif
         elif field_ref := ctx.field_reference():
             ref = self.visitFieldReference(field_ref)
-            node = self._get_referenced_node(ref, ctx)
+            node = self._get_referenced_node(ref, field_ref)
             if not isinstance(node, L.ModuleInterface) and not (
                 isinstance(node, L.Module) and node.has_trait(F.can_bridge)
             ):
