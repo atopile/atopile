@@ -225,6 +225,77 @@ def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     )
 
 
+def log(msg: Any):
+    print(msg, file=sys.stderr)
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
+def on_document_hover(params: lsp.HoverParams) -> lsp.Hover:
+    """Handle document hover request."""
+
+    # TODO: index on file change only
+
+    import atopile.parser.AtoParser as ap
+
+    def _ctx_contains_pos(ctx: ap.ParserRuleContext, pos: lsp.Position) -> bool:
+        start_file_uri, start_line, start_col = get_src_info_from_token(ctx.start)
+        _, stop_line, stop_col = get_src_info_from_token(ctx.stop)
+
+        start_file_path = Path.from_uri(start_file_uri)
+        document_file_path = get_file(params.text_document.uri)
+
+        if not start_file_path.samefile(document_file_path):
+            return False
+
+        if not start_line <= pos.line < stop_line:
+            return False
+
+        if start_line == pos.line:
+            return start_col <= pos.character
+
+        if stop_line == pos.line:
+            return stop_col >= pos.character
+
+        return True
+
+    def _find_matching_ref_for_pos(
+        context: front_end.Context, pos: lsp.Position
+    ) -> TypeRef:
+        for ref, ctx in context.refs.items():
+            if not isinstance(ctx, ap.AtoParser.BlockdefContext):
+                continue
+
+            if _ctx_contains_pos(ctx, params.position):
+                return ref
+
+        raise ValueError("No matching ref found")
+
+    # step 1: find the relevant ref
+    text = LSP_SERVER.workspace.get_text_document(params.text_document.uri).source
+    context = front_end.bob.index_text(text, Path(params.text_document.uri))
+    ref = _find_matching_ref_for_pos(context, params.position)
+
+    # step 2: build that ref
+    root = front_end.bob.build_text(text, Path(params.text_document.uri), ref)
+
+    log(f"root: {root.get_full_name()} (type: {type(root)})")
+
+    # step 3: search built graph for node with matching position
+    log(
+        f"searching for: file:{get_file(params.text_document.uri)}:{params.position.line}:{params.position.character}"
+    )
+    for node, trait in root.iter_children_with_trait(front_end.from_dsl):
+        if trait.contains_pos(
+            f"file:{get_file(params.text_document.uri)}",
+            params.position.line,
+            params.position.character,
+        ):
+            log(f"node: {node.get_full_name()} (type: {type(node)})")
+    # TODO: implement
+
+    return lsp.Hover(contents=str(ref))
+
+
 # TODO: if you want to handle setting specific severity for your linter
 # in a user configurable way, then look at look at how it is implemented
 # for `pylint` extension from our team.
