@@ -17,7 +17,7 @@ export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
 // TODO change
-const UV_ATO_VERSION = 'git+https://github.com/atopile/atopile@feature/vsce_autoinstall';
+const UV_ATO_VERSION = 'atopile';
 
 export var g_uv_path_local: string | null = null;
 let g_pyAtoBin: string | null = null;
