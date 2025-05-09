@@ -25,6 +25,7 @@ from posthog import Posthog
 from ruamel.yaml import YAML
 
 from faebryk.libs.paths import get_config_dir
+from faebryk.libs.util import cast_assert
 
 log = logging.getLogger(__name__)
 
@@ -132,14 +133,16 @@ def _end_timer():
 def get_user_id() -> str:
     """Generate a unique user ID from the git email."""
     try:
-        git_email = (
-            subprocess.check_output(["git", "config", "user.email"])
-            .decode("ascii")
-            .strip()
-        )
-    except subprocess.CalledProcessError:
-        git_email = "unknown"
-    return git_email
+        import git
+
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            config_reader = repo.config_reader()
+            return cast_assert(str, config_reader.get_value("user", "email", "unknown"))
+        except (git.InvalidGitRepositoryError, git.NoSuchPathError, ValueError):
+            return "unknown"
+    except ImportError:
+        return "unknown"
 
 
 def get_current_git_hash() -> Optional[str]:
@@ -180,12 +183,20 @@ def commonise_project_url(git_url: str) -> str:
 def get_project_id() -> Optional[str]:
     """Get the hashed project ID from the git URL of the project, if not available, return 'none'."""  # noqa: E501  # pre-existing
     try:
-        git_url = (
-            subprocess.check_output(["git", "config", "--get", "remote.origin.url"])
-            .decode("ascii")
-            .strip()
-        )
-        if not git_url:
+        try:
+            import git
+
+            try:
+                repo = git.Repo(search_parent_directories=True)
+                if not repo.remotes:
+                    return None
+                git_url = repo.remotes.origin.url
+                if not git_url:
+                    return None
+            except (git.InvalidGitRepositoryError, git.NoSuchPathError, AttributeError):
+                return None
+        except ImportError:
+            # no git executable
             return None
 
         project_url = commonise_project_url(git_url)
