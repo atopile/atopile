@@ -95,7 +95,4 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
     if (ato_bin) {
         onDidChangeAtoBinInfoEvent.fire({ init: true });
     }
-
-    // TODO is this the best place?
-    setup.activate(context);
 }

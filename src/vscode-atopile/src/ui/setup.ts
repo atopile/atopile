@@ -86,7 +86,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     const choice = await vscode.window.showWarningMessage(
         'atopile executable not found. How would you like to proceed?',
-        { modal: true },
+        { modal: false },
         'Install Automatically (recommended)',
         'Configure Manually (settings.json)',
     );
