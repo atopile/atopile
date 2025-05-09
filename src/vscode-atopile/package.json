@@ -42,7 +42,8 @@
         "onLanguage:atopile",
         "workspaceContains:*.ato",
         "workspaceContains:ato.yaml",
-        "command:atopile.example"
+        "command:atopile.example",
+        "onStartupFinished"
     ],
     "main": "./dist/extension.js",
     "scripts": {

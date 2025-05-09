@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
+import * as path from 'path';
 
 export interface Build {
     name: string;
@@ -24,10 +25,10 @@ export function getBuilds() {
 
 export async function loadBuilds() {
     builds = [];
-    for (const ws of vscode.workspace.workspaceFolders || []) {
-        let uri = vscode.Uri.file(ws.uri.fsPath + '/ato.yaml');
+    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.ato/**');
+    for (const manifest of manifests) {
         try {
-            const file = await vscode.workspace.fs.readFile(uri);
+            const file = await vscode.workspace.fs.readFile(manifest);
             let fileStr = String.fromCharCode(...file);
             const data = yaml.load(fileStr) as AtoYaml;
 
@@ -35,7 +36,7 @@ export async function loadBuilds() {
                 builds.push({
                     name: k,
                     entry: data.builds[k].entry,
-                    root: ws.uri.fsPath,
+                    root: path.dirname(manifest.fsPath),
                 });
             }
         } catch (error) {
