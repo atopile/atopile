@@ -169,6 +169,7 @@ class BasicsMixin:
         )
 
     def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
+        # TODO: store reference position on `from_dsl` of resolved node`
         pin = ctx.pin_reference_end()
         if pin is not None:
             pin = self.visitNumber_hint_natural(pin.number_hint_natural())

@@ -233,7 +233,7 @@ def log(msg: Any):
 def on_document_hover(params: lsp.HoverParams) -> lsp.Hover:
     """Handle document hover request."""
 
-    # TODO: index on file change only
+    # TODO: precompute on file open/change
 
     import atopile.parser.AtoParser as ap
 
