@@ -279,6 +279,9 @@
 				},
 				{
 					"include": "#operators"
+				},
+				{
+					"include": "#comments"
 				}
 			]
 		},
@@ -314,8 +317,12 @@
 	],
 	"repository": {
 		"comments": {
-			"name": "comment.line.number-sign.ato",
-			"match": "#(?!pragma\\b).*"
+			"patterns": [
+				{
+					"name": "comment.line.number-sign.ato",
+					"match": "(#(?!pragma\\b).*)$"
+				}
+			]
 		},
 		"strings": {
 			"name": "string.quoted.double.ato",
@@ -684,6 +691,9 @@
 							"name": "entity.name.type.class.ato"
 						}
 					}
+				},
+				{
+					"include": "#comments"
 				}
 			]
 		},
@@ -779,6 +789,9 @@
 				{
 					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*(?:\\.(?:[a-zA-Z_][a-zA-Z_0-9]*|\\d+))*)\\b",
 					"name": "variable.other.ato"
+				},
+				{
+					"include": "#comments"
 				}
 			]
 		}
