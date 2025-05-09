@@ -14,7 +14,6 @@ What we collect:
 import hashlib
 import importlib.metadata
 import logging
-import subprocess
 import time
 from contextlib import contextmanager
 from typing import Optional
@@ -148,15 +147,14 @@ def get_user_id() -> str:
 def get_current_git_hash() -> Optional[str]:
     """Get the current git commit hash."""
     try:
-        return (
-            subprocess.check_output(
-                ["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL
-            )
-            .decode("ascii")
-            .strip()
-        )
+        import git
 
-    except subprocess.CalledProcessError:
+        try:
+            repo = git.Repo(search_parent_directories=True)
+            return repo.head.commit.hexsha
+        except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+            return None
+    except ImportError:
         return None
 
 
@@ -183,31 +181,27 @@ def commonise_project_url(git_url: str) -> str:
 def get_project_id() -> Optional[str]:
     """Get the hashed project ID from the git URL of the project, if not available, return 'none'."""  # noqa: E501  # pre-existing
     try:
+        import git
+
         try:
-            import git
-
-            try:
-                repo = git.Repo(search_parent_directories=True)
-                if not repo.remotes:
-                    return None
-                git_url = repo.remotes.origin.url
-                if not git_url:
-                    return None
-            except (git.InvalidGitRepositoryError, git.NoSuchPathError, AttributeError):
+            repo = git.Repo(search_parent_directories=True)
+            if not repo.remotes:
                 return None
-        except ImportError:
-            # no git executable
+            git_url = repo.remotes.origin.url
+            if not git_url:
+                return None
+        except (git.InvalidGitRepositoryError, git.NoSuchPathError, AttributeError):
             return None
-
-        project_url = commonise_project_url(git_url)
-
-        log.log(0, "Project URL: %s", project_url)
-
-        # Hash the project ID to de-identify it
-        return hashlib.sha256(project_url.encode()).hexdigest()
-
-    except subprocess.CalledProcessError:
+    except ImportError:
+        # no git executable
         return None
+
+    project_url = commonise_project_url(git_url)
+
+    log.log(0, "Project URL: %s", project_url)
+
+    # Hash the project ID to de-identify it
+    return hashlib.sha256(project_url.encode()).hexdigest()
 
 
 @contextmanager
