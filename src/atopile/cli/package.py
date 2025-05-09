@@ -2,7 +2,6 @@ import logging
 from typing import Annotated, Iterator
 
 import typer
-from git import Repo
 from semver import Version
 
 import faebryk.libs.backend.packages.api as packages_api
@@ -23,6 +22,8 @@ FROM_GIT = "from-git"
 
 
 def _yield_semver_tags() -> Iterator[Version]:
+    from git import Repo
+
     repo = Repo(config.project.paths.root)
     for tag in repo.tags:
         if not tag.commit == repo.head.commit:
@@ -36,7 +37,12 @@ def _yield_semver_tags() -> Iterator[Version]:
 
 def _apply_version(specd_version: str) -> None:
     if specd_version == FROM_GIT:
-        semver_tags = list(_yield_semver_tags())
+        try:
+            semver_tags = list(_yield_semver_tags())
+        except Exception as e:
+            raise UserException(
+                "Could not determine version from git tags: %s" % e
+            ) from e
 
         if len(semver_tags) == 0:
             raise UserBadParameterError("No semver tags found for the current commit")
@@ -167,6 +173,8 @@ def publish(
         artifacts = None
 
     try:
+        from git import Repo
+
         repo = Repo(config.project.paths.root)
         git_ref = str(repo.head.ref)
     except Exception:

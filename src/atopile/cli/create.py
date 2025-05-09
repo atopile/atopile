@@ -365,11 +365,22 @@ def project(
             "Directory already exists. Please choose a different name."
         ) from e
 
-    # check if gh binary is available
-    gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
-
     # check if already in a git repo
-    create_git_repo = not _in_git_repo(project_path)
+    try:
+        create_git_repo = not _in_git_repo(project_path)
+        no_git = False
+    except Exception:
+        # TODO improve catching and error message
+        # something wrong with git
+        create_git_repo = False
+        no_git = True
+
+    # check if gh binary is available
+    gh_cli = (
+        try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
+        if not no_git
+        else None
+    )
 
     # git repo
     if create_git_repo:
@@ -397,6 +408,7 @@ def project(
 
     # Github repo
     if create_github_repo:
+        assert gh_cli is not None
         try:
             setup_github(project_path, gh_cli, repo)
         except Exception:
