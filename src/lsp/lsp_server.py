@@ -73,6 +73,8 @@ LSP_SERVER = server.LanguageServer(
     name=DISTRIBUTION_NAME,
     version=get_package_version(DISTRIBUTION_NAME),
     max_workers=MAX_WORKERS,
+    # we don't have incremental parsing yet
+    text_document_sync_kind=lsp.TextDocumentSyncKind.Full,
 )
 
 
