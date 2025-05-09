@@ -192,7 +192,8 @@ async function _getAtoCommand() {
         return null;
     }
     let out = atoBin.map((bin) => `"${bin}"`).join(' ');
-    if (os.platform() === 'win32') {
+    // if running in powershell, need to add & to the command
+    if (os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell')) {
         out = '& ' + out;
     }
     return out;
