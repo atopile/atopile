@@ -162,15 +162,26 @@ class GlobalConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data if self.yaml_data else {}
 
 
-def _find_project_config_file(start: Path) -> Path | None:
-    """Search parent directories, up to the root, for a project config file."""
+def _find_project_dir(start: Path) -> Path | None:
+    """
+    Search parent directories, up to the root, for a directory containing a project
+    config file.
+    """
     path = start
-    while not (path / PROJECT_CONFIG_FILENAME).exists():
+    while not (path / PROJECT_CONFIG_FILENAME).is_file():
         path = path.parent
         if path == path.parent:
             return None
 
-    return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+    return path.resolve().absolute()
+
+
+def _find_project_config_file(start: Path) -> Path | None:
+    """Search parent directories, up to the root, for a project config file."""
+    if (project_dir := _find_project_dir(start)) is not None:
+        return project_dir / PROJECT_CONFIG_FILENAME
+
+    return None
 
 
 class ProjectConfigSettingsSource(ConfigFileSettingsSource):

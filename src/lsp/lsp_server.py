@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
+from atopile.config import _find_project_dir
+from atopile.datatypes import TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
@@ -265,7 +267,10 @@ def initialize(params: lsp.InitializeParams) -> None:
         f"{json.dumps(WORKSPACE_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
     )
 
-    working_dir = Path(WORKSPACE_SETTINGS.get("workspaceFS", os.getcwd()))
+    workspace_dir = Path(WORKSPACE_SETTINGS.get("workspaceFS", os.getcwd()))
+    project_dir = _find_project_dir(start=workspace_dir)
+    working_dir = project_dir or workspace_dir
+
     log_to_output(f"Initializing atopile config for `{working_dir}`")
     init_atopile_config(working_dir)
 
