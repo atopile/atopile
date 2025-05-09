@@ -7,9 +7,7 @@ import { traceInfo } from '../common/log/logging';
 import * as buttons from './buttons';
 
 const REPO = 'atopile/atopile';
-//const REF = null;
-// FIXME!
-const REF = 'feature/vsce_autoinstall';
+const REF = null;
 
 interface Example {
     name: string;
