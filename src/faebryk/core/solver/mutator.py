@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from itertools import chain
 from types import UnionType
-from typing import Any, Callable, Iterable, Sequence, cast
+from typing import Any, Callable, Iterable, Sequence, cast, override
 
 from more_itertools import first
 from rich.table import Table
@@ -35,7 +35,7 @@ from faebryk.core.solver.utils import (
     SolverAll,
     SolverAllExtended,
     SolverLiteral,
-    get_graphs,
+    get_graphs_from_nodes,
 )
 from faebryk.libs.exceptions import downgrade
 from faebryk.libs.logging import rich_to_string
@@ -60,6 +60,13 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 if S_LOG:
     logger.setLevel(logging.DEBUG)
+
+
+def _get_pos(*gs: Graph) -> Iterable[ParameterOperatable]:
+    # This assumes that only parameter operatables are in the graphs
+    # which is valid if canonical:filter_non_parameter is run
+    # might need to revert in future if using param traits in solver
+    return cast(list[ParameterOperatable], GraphFunctions(*gs).node_projection)
 
 
 @dataclass
@@ -107,16 +114,14 @@ class Transformations:
          the old node with the new one
         - if a node was removed, we need to copy the graph to remove it
         """
-        return set(get_graphs(self.removed | self.mutated.keys()))
+        return set(get_graphs_from_nodes(self.removed | self.mutated.keys()))
 
     @staticmethod
     def identity(
         *gs: Graph, input_print_context: ParameterOperatable.ReprContext
     ) -> "Transformations":
         return Transformations(
-            mutated={
-                po: po for po in GraphFunctions(*gs).nodes_of_type(ParameterOperatable)
-            },
+            mutated={po: po for po in _get_pos(*gs)},
             input_print_context=input_print_context,
         )
 
@@ -385,7 +390,7 @@ class MutationStage:
         # It's enough to check for mutation graphs and not created ones
         # because the created ones always connect to graphs of the mutated ones
         # else they will be lost anyway
-        return get_graphs(
+        return get_graphs_from_nodes(
             chain(
                 self.transformations.mutated.values(),
                 self.transformations.created,
@@ -394,43 +399,32 @@ class MutationStage:
 
     @property
     def input_graphs(self) -> list[Graph]:
-        return get_graphs(self.transformations.mutated.keys())
+        return get_graphs_from_nodes(self.transformations.mutated.keys())
 
     @property
     @once
     def output_operables(self) -> set[ParameterOperatable]:
-        return GraphFunctions(*self.output_graphs).nodes_of_type(ParameterOperatable)
+        return set(_get_pos(*self.output_graphs))
 
     @staticmethod
     def identity(
-        *graphs: Graph,
+        graphs: list[Graph],
+        nodes: set[ParameterOperatable],
+        print_context: ParameterOperatable.ReprContext,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
-        print_context: ParameterOperatable.ReprContext,
     ) -> "MutationStage":
-        return MutationStage(
+        return MutationStageIdentity(
+            graphs=graphs,
+            nodes=nodes,
             algorithm=algorithm,
             iteration=iteration,
             print_context=print_context,
-            transformations=Transformations.identity(
-                *graphs, input_print_context=print_context
-            ),
         )
 
     @property
-    @once
     def is_identity(self) -> bool:
-        return self.transformations.is_identity
-
-    def as_identity(self, iteration: int = 0) -> "MutationStage":
-        return MutationStage(
-            algorithm="identity",
-            iteration=iteration,
-            print_context=self.input_print_context,
-            transformations=Transformations.identity(
-                *self.output_graphs, input_print_context=self.output_print_context
-            ),
-        )
+        return False
 
     def print_graph_contents(
         self,
@@ -462,8 +456,6 @@ class MutationStage:
             log(f"|Graph {i}|={len(nodes)}/{len(pre_nodes)} [{out}\n]")
 
     def map_forward(self, param: ParameterOperatable) -> ParameterOperatable | None:
-        if self.is_identity:
-            return param
         return self.transformations.mutated.get(param)
 
     @property
@@ -473,19 +465,13 @@ class MutationStage:
         return invert_dict(self.transformations.mutated)
 
     def map_backward(self, param: ParameterOperatable) -> list[ParameterOperatable]:
-        if self.is_identity:
-            return [param]
         return self.backwards_mapping.get(param, [])
 
     @property
     def output_print_context(self) -> ParameterOperatable.ReprContext:
-        if not self.transformations:
-            return self.input_print_context
         return self.transformations.output_print_context
 
     def print_mutation_table(self):
-        if not self.transformations:
-            return
         if not self.transformations.mutated:
             return
 
@@ -663,6 +649,62 @@ class MutationStage:
         )
 
 
+class MutationStageIdentity(MutationStage):
+    def __init__(
+        self,
+        graphs: list[Graph],
+        nodes: set[ParameterOperatable],
+        algorithm: SolverAlgorithm | str,
+        iteration: int,
+        print_context: ParameterOperatable.ReprContext,
+    ):
+        self.algorithm = algorithm
+        self.iteration = iteration
+
+        self.graphs = graphs
+        self.print_context = print_context
+        self.transformations = None
+        self.input_print_context = None
+        self.input_operables = nodes
+
+    @property
+    @override
+    def is_identity(self) -> bool:
+        return True
+
+    @override
+    def map_forward(self, param: ParameterOperatable) -> ParameterOperatable:
+        return param
+
+    @override
+    def map_backward(self, param: ParameterOperatable) -> list[ParameterOperatable]:
+        return [param]
+
+    @property
+    @override
+    def output_graphs(self) -> list[Graph]:
+        return self.graphs
+
+    @property
+    @override
+    def output_operables(self) -> set[ParameterOperatable]:
+        return self.input_operables
+
+    @property
+    @override
+    def input_graphs(self) -> list[Graph]:
+        return self.graphs
+
+    @property
+    @override
+    def output_print_context(self) -> ParameterOperatable.ReprContext:
+        return self.print_context
+
+    @override
+    def print_mutation_table(self):
+        return
+
+
 class MutationMap:
     @dataclass
     class LookupResult:
@@ -820,18 +862,21 @@ class MutationMap:
         )
 
     @staticmethod
-    def identity(
+    def bootstrap(
         *graphs: Graph,
         algorithm: SolverAlgorithm | str = "identity",
         iteration: int = 0,
         print_context: ParameterOperatable.ReprContext | None = None,
     ) -> "MutationMap":
+        print_context = print_context or ParameterOperatable.ReprContext()
         return MutationMap(
-            MutationStage.identity(
-                *graphs,
+            MutationStage(
                 algorithm=algorithm,
                 iteration=iteration,
-                print_context=print_context or ParameterOperatable.ReprContext(),
+                print_context=print_context,
+                transformations=Transformations.identity(
+                    *graphs, input_print_context=print_context
+                ),
             )
         )
 
@@ -1389,7 +1434,10 @@ class Mutator:
         elif created_only:
             out = {n for n in self.transformations.created if isinstance(n, t)}
         else:
-            out = GraphFunctions(*self.G).nodes_of_type(t)
+            if t is ParameterOperatable:
+                out = cast(set[T], _get_pos(*self.G))
+            else:
+                out = GraphFunctions(*self.G).nodes_of_type(t)
 
         if not include_terminated:
             out = {
@@ -1416,7 +1464,10 @@ class Mutator:
         if new_only:
             out = {n for n in self._new_operables if isinstance(n, t)}
         else:
-            out = GraphFunctions(*self.G).nodes_of_types(t)
+            if isinstance(t, tuple) and len(t) == 1 and t[0] is ParameterOperatable:
+                out = cast(set[ParameterOperatable], _get_pos(*self.G))
+            else:
+                out = GraphFunctions(*self.G).nodes_of_types(t)
         out = cast(set[ParameterOperatable], out)
         if not include_terminated:
             out = {
@@ -1450,6 +1501,7 @@ class Mutator:
 
         if new_only and self._mutations_since_last_iteration is not None:
             # Taking into account if op with no literal merged into a op with literal
+            # expensive
             mapping = self._mutations_since_last_iteration.has_merged
             for new, olds in mapping.items():
                 new_lit = self.utils.try_extract_literal(new)
@@ -1459,6 +1511,7 @@ class Mutator:
                 if old_lits == {new_lit}:
                     continue
                 aliases.update(new.get_operations(Is, constrained_only=True))
+            # expensive
             aliases.update(
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
@@ -1473,6 +1526,7 @@ class Mutator:
 
         if new_only and self._mutations_since_last_iteration is not None:
             # Taking into account if op with no literal merged into a op with literal
+            # expensive
             mapping = self._mutations_since_last_iteration.has_merged
             for new, olds in mapping.items():
                 new_lit = self.utils.try_extract_literal(new, allow_subset=True)
@@ -1484,6 +1538,7 @@ class Mutator:
                 if old_lits == {new_lit}:
                     continue
                 subsets.update(new.get_operations(IsSubset, constrained_only=True))
+            # expensive
             subsets.update(
                 self._mutations_since_last_iteration.non_trivial_mutated_expressions
             )
@@ -1579,7 +1634,7 @@ class Mutator:
         if all(g.node_count > 0 for g in gs):
             return gs
         # Handle graph merge
-        gs = get_graphs(self._starting_operables)
+        gs = get_graphs_from_nodes(self._starting_operables)
         self._G = set(gs)
         return self._G
 
@@ -1594,10 +1649,7 @@ class Mutator:
 
         # TODO might not need to sort
         other_param_op = ParameterOperatable.sort_by_depth(
-            (
-                GraphFunctions(*_touched_graphs).nodes_of_type(ParameterOperatable)
-                - touched
-            ),
+            set(_get_pos(*_touched_graphs)) - touched,
             ascending=True,
         )
         for p in other_param_op:
@@ -1606,7 +1658,7 @@ class Mutator:
         # optimization: if just new_ops, no need to copy
         # pass through untouched graphs
         untouched_graphs = self.G - _touched_graphs
-        for p in GraphFunctions(*untouched_graphs).nodes_of_type(ParameterOperatable):
+        for p in _get_pos(*untouched_graphs):
             self.transformations.mutated[p] = p
 
     def check_no_illegal_mutations(self):
@@ -1632,18 +1684,14 @@ class Mutator:
         )
 
         # don't need to check original graph, done above seperately
-        all_new_graphs = get_graphs(self.transformations.mutated.values())
-        all_new_params = {
-            op
-            for g in all_new_graphs
-            for op in GraphFunctions(g).nodes_of_type(ParameterOperatable)
-        }
+        all_new_graphs = get_graphs_from_nodes(self.transformations.mutated.values())
+        all_new_params = set(_get_pos(*all_new_graphs))
         non_registered = all_new_params.difference(
             self.transformations.created, self.transformations.mutated.values()
         )
         if non_registered:
             compact = (op.compact_repr(self.print_context) for op in non_registered)
-            graphs = get_graphs(non_registered)
+            graphs = get_graphs_from_nodes(non_registered)
             # FIXME: this is currently hit during legitimate build
             with downgrade(AssertionError, logger=logger, to_level=logging.DEBUG):
                 assert False, (
@@ -1656,7 +1704,8 @@ class Mutator:
         if not self.transformations.dirty:
             return AlgoResult(
                 mutation_stage=MutationStage.identity(
-                    *self.mutation_map.output_graphs,
+                    graphs=list(self.G),
+                    nodes=self._starting_operables,
                     algorithm=self.algo,
                     iteration=self.iteration,
                     print_context=self.print_context,
