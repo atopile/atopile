@@ -127,6 +127,24 @@ export async function activate(context: vscode.ExtensionContext) {
         onDidChangeAtoBinInfo(async () => {
             await _reloadBuilds();
         }),
+        // on file save of ato.yaml, reload the builds
+        vscode.workspace.onDidSaveTextDocument(async (document) => {
+            if (document.uri.fsPath.endsWith('ato.yaml')) {
+                await _reloadBuilds();
+            }
+        }),
+        // on file creation of ato.yaml, reload the builds
+        vscode.workspace.onDidCreateFiles(async (event) => {
+            if (event.files.some((file) => file.fsPath.endsWith('ato.yaml'))) {
+                await _reloadBuilds();
+            }
+        }),
+        // on file deletion of ato.yaml, reload the builds
+        vscode.workspace.onDidDeleteFiles(async (event) => {
+            if (event.files.some((file) => file.fsPath.endsWith('ato.yaml'))) {
+                await _reloadBuilds();
+            }
+        }),
     );
 }
 
