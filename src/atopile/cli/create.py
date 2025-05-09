@@ -79,6 +79,8 @@ stuck_user_helper_generator = _stuck_user_helper()
 
 def _in_git_repo(path: Path) -> bool:
     """Check if the current directory is in a git repo."""
+    import git
+
     try:
         git.Repo(path)
     except git.InvalidGitRepositoryError:
@@ -220,8 +222,10 @@ PROJECT_NAME_REQUIREMENTS = (
 def setup_github(
     project_path: Path,
     gh_cli: GithubCLI,
-    repo: git.Repo,
+    repo: "git.Repo",
 ):
+    import git
+
     github_username = gh_cli.get_usernames()
 
     use_existing_repo = query_helper(
