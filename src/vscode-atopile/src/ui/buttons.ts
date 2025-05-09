@@ -144,7 +144,7 @@ async function _getAtoCommand() {
     if (atoBin === null) {
         return null;
     }
-    return atoBin.join(' ');
+    return atoBin.map((bin) => `"${bin}"`).join(' ');
 }
 // Buttons handlers --------------------------------------------------------------------
 
