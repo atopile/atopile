@@ -2,8 +2,10 @@ import * as vscode from 'vscode';
 import { window, Uri } from 'vscode';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo } from '../common/findbin';
-import { traceError } from '../common/log/logging';
+import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
+import { glob } from 'glob';
+import * as path from 'path';
 
 let statusbarAtoAdd: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
@@ -301,22 +303,25 @@ async function pcbnew() {
     // get the build target name
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
 
-    const ws = build.root || '';
     const pcb_name = build.name + '.kicad_pcb';
-
-    let _paths: Uri[] = await vscode.workspace.findFiles(`${ws}/**/${build.name}/${pcb_name}`);
-    let paths: string[] = _paths.map((uri) => uri.fsPath);
+    const search_path = `**/${build.name}/${pcb_name}`;
+    let paths: string[] = build.root
+        ? (await glob(search_path, { cwd: build.root })).map((p) => path.join(build.root as string, p))
+        : (await vscode.workspace.findFiles(search_path)).map((uri) => uri.fsPath);
 
     if (paths.length === 0) {
         traceError(`No pcb file found: ${pcb_name}`);
         vscode.window.showErrorMessage(`No pcb file found: ${pcb_name}. Did you build the project?`);
         return;
     }
-    // TODO handle
-    const path = paths[0];
+    if (paths.length > 1) {
+        vscode.window.showErrorMessage(`Bug: multiple pcb files found: ${paths.join(', ')}`);
+        return;
+    }
+    const pcb_path = paths[0];
 
     try {
-        await openPcb(path);
+        await openPcb(pcb_path);
     } catch (error) {
         traceError(`Error launching KiCad: ${error}`);
         vscode.window.showErrorMessage(`Error launching KiCad: ${error}`);
