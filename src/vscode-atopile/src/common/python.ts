@@ -2,10 +2,10 @@
 // Licensed under the MIT License.
 
 /* eslint-disable @typescript-eslint/naming-convention */
-import { Disposable, Event, EventEmitter, ExtensionContext } from 'vscode';
-import { traceInfo, traceVerbose } from './log/logging';
+import { Event, EventEmitter, ExtensionContext } from 'vscode';
+import { traceInfo } from './log/logging';
 // TODO make soft import so we can remove extension dependency
-import { EnvironmentPath, PythonExtension } from '@vscode/python-extension';
+import { PythonExtension } from '@vscode/python-extension';
 
 export interface IInterpreterDetails {
     bin_dir?: string;

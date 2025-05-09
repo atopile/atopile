@@ -1,9 +1,13 @@
 import * as vscode from 'vscode';
-import { window, Uri } from 'vscode';
 import * as yaml from 'js-yaml';
-import * as cp from 'child_process';
 
-let builds: string[] = [];
+export interface Build {
+    name: string;
+    entry: string;
+    root: string | null;
+}
+let builds: Build[] = [];
+
 interface AtoYaml {
     atoVersion: string;
     builds: {
@@ -19,21 +23,24 @@ export function getBuilds() {
 }
 
 export async function loadBuilds() {
-    let ws = vscode.workspace.workspaceFolders![0].uri.path;
-    let uri = vscode.Uri.file(ws + '/ato.yaml');
-
     builds = [];
-    try {
-        const file = await vscode.workspace.fs.readFile(uri);
-        let fileStr = String.fromCharCode(...file);
-        const data = yaml.load(fileStr) as AtoYaml;
+    for (const ws of vscode.workspace.workspaceFolders || []) {
+        let uri = vscode.Uri.file(ws.uri.fsPath + '/ato.yaml');
+        try {
+            const file = await vscode.workspace.fs.readFile(uri);
+            let fileStr = String.fromCharCode(...file);
+            const data = yaml.load(fileStr) as AtoYaml;
 
-        for (const k in data.builds) {
-            // make things easy and put the target name in what is displayed, we
-            // can parse it later without having to reload again
-            builds.push(k + '-' + data.builds[k].entry);
+            for (const k in data.builds) {
+                builds.push({
+                    name: k,
+                    entry: data.builds[k].entry,
+                    root: ws.uri.fsPath,
+                });
+            }
+        } catch (error) {
+            // do nothing
         }
-    } catch (error) {
-        // do nothing
     }
+    return builds;
 }

@@ -40,7 +40,9 @@
     },
     "activationEvents": [
         "onLanguage:atopile",
-        "workspaceContains:*.ato"
+        "workspaceContains:*.ato",
+        "workspaceContains:ato.yaml",
+        "command:atopile.example"
     ],
     "main": "./dist/extension.js",
     "scripts": {
@@ -112,6 +114,11 @@
                 "title": "Launches KiCAD PCB Editor with the current board",
                 "category": "atopile",
                 "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.example",
+                "title": "Open Example Project",
+                "category": "atopile"
             }
         ],
         "languages": [

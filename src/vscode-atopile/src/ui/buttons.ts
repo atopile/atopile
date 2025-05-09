@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { window, Uri } from 'vscode';
-import { getBuilds, loadBuilds } from '../common/manifest';
+import { Build, getBuilds, loadBuilds } from '../common/manifest';
 import { getAtoBin, onDidChangeAtoBinInfo } from '../common/findbin';
 import { traceError } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
@@ -12,13 +12,35 @@ let statusbarAtoCreate: vscode.StatusBarItem;
 let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
 let statusbarAtoRemove: vscode.StatusBarItem;
 
+function _buildsToStr(builds: Build[]): string[] {
+    const multiple_ws = new Set(builds.map((build) => build.root)).size > 1;
+    if (multiple_ws) {
+        return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
+    } else {
+        return builds.map((build) => `${build.name} | ${build.entry}`);
+    }
+}
+
+function _buildStrToBuild(build_str: string): Build {
+    const split = build_str.split(' | ');
+    if (split.length === 3) {
+        const [root, name, entry] = split;
+        return { root, name, entry };
+    } else {
+        const [name, entry] = split;
+        return { root: null, name, entry };
+    }
+}
+
 async function _displayButtons() {
-    let builds: string[] = [];
+    let builds: Build[] = [];
     const atoBin = await _getAtoCommand();
     // only display buttons if we have a valid ato command
     if (atoBin) {
         builds = getBuilds();
     }
+
+    const build_strs = _buildsToStr(builds);
 
     if (builds.length !== 0) {
         statusbarAtoCreate.show();
@@ -28,7 +50,7 @@ async function _displayButtons() {
         statusbarAtoLaunchKiCAD.show();
         statusbarAtoBuildTarget.show();
 
-        statusbarAtoBuildTarget.text = builds[0];
+        statusbarAtoBuildTarget.text = build_strs[0];
         statusbarAtoBuildTarget.tooltip = 'ato: build target';
     } else {
         statusbarAtoCreate.hide();
@@ -44,6 +66,10 @@ async function _reloadBuilds() {
     await loadBuilds();
     await _displayButtons();
     return getBuilds();
+}
+
+export async function forceReloadButtons() {
+    await _reloadBuilds();
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -176,17 +202,17 @@ async function atoBuild() {
         return;
     }
 
+    // parse what build target to use
+    const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
+
     // create a terminal to work with
     let buildTerminal = vscode.window.createTerminal({
-        name: 'ato build',
-        cwd: '${workspaceFolder}',
+        name: `ato build ${build.name}`,
+        cwd: build.root || '${workspaceFolder}',
         hideFromUser: false,
     });
 
-    // parse what build target to use
-    let buildArray: string[] = statusbarAtoBuildTarget.text.split('-');
-
-    buildTerminal.sendText(atoBin + ' build --build ' + buildArray[0]);
+    buildTerminal.sendText(atoBin + ' build --build ' + build.name);
     buildTerminal.show();
 }
 
@@ -259,26 +285,31 @@ async function selectBuildTargetFlow() {
     // check if a new build was created
     await _reloadBuilds();
 
-    const result = await window.showQuickPick(getBuilds(), {
+    const build_strs = _buildsToStr(getBuilds());
+
+    const result = await window.showQuickPick(build_strs, {
         placeHolder: 'Choose build target',
     });
-    // set the statusbar to the new text, ignore if canceled
-    if (result) {
-        statusbarAtoBuildTarget.text = String(result);
+    if (!result) {
+        return;
     }
+
+    statusbarAtoBuildTarget.text = result;
 }
 
 async function pcbnew() {
     // get the build target name
-    let buildArray: string[] = statusbarAtoBuildTarget.text.split('-');
-    const buildtarget = buildArray[0];
+    const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
 
-    let _paths: Uri[] = await vscode.workspace.findFiles(`**/${buildtarget}/${buildtarget}.kicad_pcb`);
+    const ws = build.root || '';
+    const pcb_name = build.name + '.kicad_pcb';
+
+    let _paths: Uri[] = await vscode.workspace.findFiles(`${ws}/**/${build.name}/${pcb_name}`);
     let paths: string[] = _paths.map((uri) => uri.fsPath);
 
     if (paths.length === 0) {
-        traceError(`No pcb file found: ${buildtarget}.kicad_pcb`);
-        vscode.window.showErrorMessage(`No pcb file found: ${buildtarget}.kicad_pcb. Did you build the project?`);
+        traceError(`No pcb file found: ${pcb_name}`);
+        vscode.window.showErrorMessage(`No pcb file found: ${pcb_name}. Did you build the project?`);
         return;
     }
     // TODO handle

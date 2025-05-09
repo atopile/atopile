@@ -6,7 +6,6 @@ import { ISettings } from './settings';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
 import * as os from 'os';
 import * as path from 'path';
-import * as setup from '../ui/setup';
 const which = require('which');
 
 export interface AtoBinInfo {
@@ -16,7 +15,6 @@ export interface AtoBinInfo {
 export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
-// TODO change
 const UV_ATO_VERSION = 'atopile';
 
 export var g_uv_path_local: string | null = null;
