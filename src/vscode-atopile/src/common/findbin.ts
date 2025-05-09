@@ -1,23 +1,32 @@
-import { ConfigurationChangeEvent, Disposable, Event, EventEmitter } from 'vscode';
+import { ConfigurationChangeEvent, Disposable, Event, EventEmitter, ExtensionContext } from 'vscode';
 import { onDidChangePythonInterpreter, IInterpreterDetails, initializePython } from './python';
 import { onDidChangeConfiguration } from './vscodeapi';
 import * as fs from 'fs';
 import { ISettings } from './settings';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
+import * as os from 'os';
+import * as path from 'path';
+import * as setup from '../ui/setup';
 const which = require('which');
 
 export interface AtoBinInfo {
     init: boolean;
 }
 
-const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
+export const onDidChangeAtoBinInfoEvent = new EventEmitter<AtoBinInfo>();
 export const onDidChangeAtoBinInfo: Event<AtoBinInfo> = onDidChangeAtoBinInfoEvent.event;
 
-//TODO use vscode profile folder or something that is standard for extensions to use
-const UVX_PATH_LOCAL = '/tmp/uvx';
-const UVX_ATO_VERSION = 'git+https://github.com/atopile/atopile@feature/vsce_autoinstall';
+// TODO change
+const UV_ATO_VERSION = 'git+https://github.com/atopile/atopile@feature/vsce_autoinstall';
 
-let g_pyAtoBin: string | undefined = undefined;
+export var g_uv_path_local: string | null = null;
+let g_pyAtoBin: string | null = null;
+
+export function getExtensionManagedUvPath(context: ExtensionContext): string | null {
+    // Determine executable name based on platform
+    const uvExecutableName = os.platform() === 'win32' ? 'uv.exe' : 'uv';
+    return path.join(context.globalStorageUri.fsPath, 'uv-bin', uvExecutableName);
+}
 
 export async function getAtoBin(settings?: ISettings): Promise<string[] | null> {
     // event based load
@@ -35,27 +44,31 @@ export async function getAtoBin(settings?: ISettings): Promise<string[] | null> 
         return [g_pyAtoBin];
     }
 
+    // Check extension managed uv
+
     // lazy load
     let sysAtoBin = await which('ato', { nothrow: true });
     if (sysAtoBin) {
         traceInfo(`Using ato bin from system PATH: ${sysAtoBin}`);
         return [sysAtoBin];
     }
-    let uvxBin = await which('uvx', { nothrow: true });
-    if (!uvxBin) {
-        uvxBin = await which(UVX_PATH_LOCAL, { nothrow: true });
+    let uvBin = await which('uv', { nothrow: true });
+    if (!uvBin && g_uv_path_local) {
+        uvBin = await which(g_uv_path_local, { nothrow: true });
     }
-    if (uvxBin) {
-        traceInfo(`Using uvx to run ato: ${uvxBin}`);
-        return [uvxBin, '--from', UVX_ATO_VERSION, 'ato'];
+    if (uvBin) {
+        traceInfo(`Using uv to run ato: ${uvBin}`);
+        return [uvBin, 'tool', 'run', '--from', UV_ATO_VERSION, 'ato'];
     }
 
     traceVerbose(`No ato bin found.`);
     return null;
 }
 
-export async function initAtoBin(disposables: Disposable[]): Promise<void> {
-    disposables.push(
+export async function initAtoBin(context: ExtensionContext): Promise<void> {
+    g_uv_path_local = getExtensionManagedUvPath(context);
+
+    context.subscriptions.push(
         onDidChangePythonInterpreter(async (e: IInterpreterDetails) => {
             const binDir = e.bin_dir;
             if (!binDir) {
@@ -76,10 +89,13 @@ export async function initAtoBin(disposables: Disposable[]): Promise<void> {
         }),
     );
 
-    await initializePython(disposables);
+    await initializePython(context);
 
     let ato_bin = await getAtoBin();
     if (ato_bin) {
         onDidChangeAtoBinInfoEvent.fire({ init: true });
     }
+
+    // TODO is this the best place?
+    setup.activate(context);
 }

@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 /* eslint-disable @typescript-eslint/naming-convention */
-import { Disposable, Event, EventEmitter } from 'vscode';
+import { Disposable, Event, EventEmitter, ExtensionContext } from 'vscode';
 import { traceInfo, traceVerbose } from './log/logging';
 // TODO make soft import so we can remove extension dependency
 import { EnvironmentPath, PythonExtension } from '@vscode/python-extension';
@@ -34,7 +34,7 @@ function _getBinDir(path: string): string | undefined {
     return undefined;
 }
 
-export async function initializePython(disposables: Disposable[]): Promise<void> {
+export async function initializePython(context: ExtensionContext): Promise<void> {
     // TODO: might want to wait for python extension to load if available
     const api = await g_apiSingleton();
 
@@ -43,7 +43,7 @@ export async function initializePython(disposables: Disposable[]): Promise<void>
         return;
     }
 
-    disposables.push(
+    context.subscriptions.push(
         api.environments.onDidChangeActiveEnvironmentPath((e) => {
             traceInfo(`Python venv changed to ${e.path}.`);
             onDidChangePythonInterpreterEvent.fire({ bin_dir: _getBinDir(e.path), init: false });

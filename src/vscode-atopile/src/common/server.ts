@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { ConfigurationChangeEvent, Disposable, env, EventEmitter, LogOutputChannel } from 'vscode';
+import { ConfigurationChangeEvent, Disposable, env, EventEmitter, ExtensionContext, LogOutputChannel } from 'vscode';
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -101,8 +101,8 @@ export async function startOrRestartServer(
 const onNeedsRestartEvent = new EventEmitter<void>();
 export const onNeedsRestart = onNeedsRestartEvent.event;
 
-export async function initServer(disposables: Disposable[]): Promise<void> {
-    disposables.push(
+export async function initServer(context: ExtensionContext): Promise<void> {
+    context.subscriptions.push(
         onDidChangeAtoBinInfo(async (e: AtoBinInfo) => {
             // No need to fire, already triggering with setImmediate
             if (e.init) {
@@ -115,7 +115,7 @@ export async function initServer(disposables: Disposable[]): Promise<void> {
         }),
     );
 
-    await initAtoBin(disposables);
+    await initAtoBin(context);
 
     setImmediate(async () => {
         onNeedsRestartEvent.fire();
