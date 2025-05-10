@@ -2,6 +2,7 @@ import fnmatch
 import logging
 import os
 import re
+import sys
 from abc import ABC, abstractmethod
 from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
@@ -900,7 +901,12 @@ class Config:
         self._project = _try_construct_config(ProjectSettings)
         self._entry = None
         self._selected_builds = None
-        self.interactive = True
+        # Check if we're in an interactive terminal session (cross-platform)
+        try:
+            self.interactive = sys.stdout.isatty() and sys.stdin.isatty()
+        except (AttributeError, ValueError):
+            # If we can't determine, default to True for better user experience
+            self.interactive = True
 
     def __repr__(self) -> str:
         return self._project.__repr__()
