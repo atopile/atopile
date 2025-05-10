@@ -108,7 +108,7 @@ export async function activate(context: vscode.ExtensionContext) {
                     progress.report({ message: 'Downloading and installing uv...' });
                     await downloadAndInstallUv(status);
                     traceInfo('uv installation successful, attempting to install atopile...');
-                    progress.report({ message: 'Checking for atopile...' });
+                    progress.report({ message: 'Installing atopile via uv...' });
                     atoBin = await getAtoBin();
                     if (!atoBin) {
                         traceError('Failed to install atopile via uv');
