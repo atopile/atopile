@@ -123,16 +123,21 @@ def get_file_contents(uri: str) -> tuple[Path, str]:
 
 def _convert_exc_to_diagnostic(
     exc: UserException, severity: lsp.DiagnosticSeverity = lsp.DiagnosticSeverity.Error
-) -> lsp.Diagnostic:
+) -> tuple[Path | None, lsp.Diagnostic]:
     # default to the start of the file
+    start_file_path = None
     start_line, start_col = 0, 0
     stop_line, stop_col = 0, 0
 
     if exc.origin_start is not None:
-        _, start_line, start_col = get_src_info_from_token(exc.origin_start)
+        start_file_path, start_line, start_col = get_src_info_from_token(
+            exc.origin_start
+        )
 
         if exc.origin_stop is not None:
-            _, stop_line, stop_col = get_src_info_from_token(exc.origin_stop)
+            stop_file_path, stop_line, stop_col = get_src_info_from_token(
+                exc.origin_stop
+            )
         else:
             # just extend to the next line
             stop_line, stop_col = start_line + 1, 0
@@ -141,7 +146,7 @@ def _convert_exc_to_diagnostic(
     start_line = max(start_line - 1, 0)
     stop_line = max(stop_line - 1, 0)
 
-    return lsp.Diagnostic(
+    return Path(start_file_path) if start_file_path else None, lsp.Diagnostic(
         range=lsp.Range(
             start=lsp.Position(line=start_line, character=start_col),
             end=lsp.Position(line=stop_line, character=stop_col),
@@ -154,10 +159,13 @@ def _convert_exc_to_diagnostic(
     )
 
 
+def _paths_are_equivalent(path1: Path, path2: Path) -> bool:
+    return path1.resolve() == path2.resolve()
+
+
 def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagnostic]:
     """
     Get static diagnostics for a given URI and identifier.
-    Excludes results that rely on other files.
 
     TODO: caching
     """
@@ -178,7 +186,14 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
             if severity == logging.WARNING
         ]
 
-    return exc_diagnostics + warning_diagnostics
+    document_file_path = get_file(uri)
+
+    return [
+        diag
+        for diag_file_path, diag in exc_diagnostics + warning_diagnostics
+        if diag_file_path is None
+        or _paths_are_equivalent(document_file_path, diag_file_path)
+    ]
 
 
 @LSP_SERVER.feature(
