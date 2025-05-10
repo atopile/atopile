@@ -125,7 +125,6 @@ export async function example_flow() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    traceInfo('Activating example command');
     context.subscriptions.push(
         vscode.commands.registerCommand('atopile.example', () => {
             example_flow();

@@ -94,21 +94,40 @@ export async function activate(context: vscode.ExtensionContext) {
     if (choice === 'Configure Manually (settings.json)') {
         await vscode.commands.executeCommand('workbench.action.openSettings', 'atopile.ato');
     } else if (choice === 'Install Automatically (recommended)') {
-        const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-        context.subscriptions.push(status);
+        await vscode.window.withProgress(
+            {
+                location: vscode.ProgressLocation.Notification,
+                title: 'Setting up atopile',
+                cancellable: false,
+            },
+            async (progress) => {
+                const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+                context.subscriptions.push(status);
 
-        try {
-            await downloadAndInstallUv(status);
-            traceInfo('uv installation successful, attempting to re-check for ato bin.');
-            onDidChangeAtoBinInfoEvent.fire({ init: false });
-        } catch (error: any) {
-            traceError(`Failed to install uv: ${error.message}`);
-            vscode.window.showErrorMessage(
-                `Failed to install uv: ${error.message}. Please configure 'atopile.ato' manually or check logs.`,
-            );
-        } finally {
-            status.dispose();
-        }
+                try {
+                    progress.report({ message: 'Downloading and installing uv...' });
+                    await downloadAndInstallUv(status);
+                    traceInfo('uv installation successful, attempting to install atopile...');
+                    progress.report({ message: 'Checking for atopile...' });
+                    atoBin = await getAtoBin();
+                    if (!atoBin) {
+                        traceError('Failed to install atopile via uv');
+                        vscode.window.showErrorMessage('Failed to install atopile via uv. Please check logs.');
+                        return;
+                    }
+                    // show a message to the user
+                    vscode.window.showInformationMessage(`Installed atopile via uv: ${atoBin.join(' ')}`);
+                    onDidChangeAtoBinInfoEvent.fire({ init: false });
+                } catch (error: any) {
+                    traceError(`Failed to install uv: ${error.message}`);
+                    vscode.window.showErrorMessage(
+                        `Failed to install uv: ${error.message}. Please configure 'atopile.ato' manually or check logs.`,
+                    );
+                } finally {
+                    status.dispose();
+                }
+            },
+        );
     }
 }
 

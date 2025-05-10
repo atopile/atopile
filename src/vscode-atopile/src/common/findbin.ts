@@ -6,7 +6,9 @@ import { ISettings } from './settings';
 import { traceError, traceInfo, traceVerbose } from './log/logging';
 import * as os from 'os';
 import * as path from 'path';
-const which = require('which');
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import * as which from 'which';
 
 export interface AtoBinInfo {
     init: boolean;
@@ -26,7 +28,7 @@ export function getExtensionManagedUvPath(context: ExtensionContext): string | n
     return path.join(context.globalStorageUri.fsPath, 'uv-bin', uvExecutableName);
 }
 
-export async function getAtoBin(settings?: ISettings): Promise<string[] | null> {
+async function _getAtoBin(settings?: ISettings): Promise<string[] | null> {
     // event based load
     if (settings?.ato) {
         if (fs.existsSync(settings.ato)) {
@@ -61,6 +63,35 @@ export async function getAtoBin(settings?: ISettings): Promise<string[] | null> 
 
     traceVerbose(`No ato bin found.`);
     return null;
+}
+
+export async function getAtoBin(settings?: ISettings): Promise<string[] | null> {
+    const atoBin = await _getAtoBin(settings);
+    if (!atoBin) {
+        return null;
+    }
+
+    // Check if ato is working by running the help command
+    try {
+        const execFileAsync = promisify(execFile);
+
+        const command = atoBin[0];
+        const args = [...atoBin.slice(1), '--help'];
+
+        const result = await execFileAsync(command, args)
+            .then(() => ({ exitCode: 0 }))
+            .catch((err: any) => ({ exitCode: err.code || 1 }));
+
+        if (result.exitCode !== 0) {
+            traceError('Failed to run ato');
+            return null;
+        }
+    } catch (error) {
+        traceError(`Error running ato: ${error}`);
+        return null;
+    }
+
+    return atoBin;
 }
 
 export async function initAtoBin(context: ExtensionContext): Promise<void> {

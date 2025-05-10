@@ -160,6 +160,7 @@
         "@types/js-yaml": "^4.0.9",
         "@types/node": "^16.18.126",
         "@types/vscode": "1.78.0",
+        "@types/which": "^3.0.4",
         "@typescript-eslint/eslint-plugin": "^8.16.0",
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",
