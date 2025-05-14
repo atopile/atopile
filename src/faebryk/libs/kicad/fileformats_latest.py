@@ -902,20 +902,27 @@ class C_dimension:
         keep_text_aligned: bool = True
         text_frame: int | None = None
 
-    aligned: float | None = None
-    orthogonal: float | None = None
-    leader: float | None = None
-    center: float | None = None
-    radial: float | None = None
+    @dataclass
+    class C_xypts:
+        xys: list[C_xy] = field(**sexp_field(multidict=True), default_factory=list)
+
+    class E_type(SymEnum):
+        aligned = auto()
+        orthogonal = auto()
+        leader = auto()
+        center = auto()
+        radial = auto()
+
+    type: E_type
     layer: str
     uuid: UUID = field(default_factory=gen_uuid)
-    gr_text: C_text
-    pts: list[C_xy]
+    pts: C_xypts
     height: float
-    leader_length: float
     orientation: float | None = None
+    leader_length: float | None = None
     format: C_format | None = None
     style: C_style | None = None
+    gr_text: C_text
 
 
 @dataclass(kw_only=True)
