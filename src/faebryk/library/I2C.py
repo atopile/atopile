@@ -100,9 +100,11 @@ class I2C(ModuleInterface):
         # Assumption: If SCL is connected, SDA is also connected to the same
         # set of interfaces
         # Ensure the signal is connected to a line
-        scl_line = self.scl.line
-        # Get all nodes connected to the line
-        connected_nodes = scl_line.get_connected()
+
+        # Get all nodes connected electrically to the line
+        connected_nodes = self.scl.line.get_connected()
+        # Get all nodes connected logically to the line
+        connected_nodes |= self.sda.get_connected()
 
         bus_interfaces: set[I2C] = set()
         for node in connected_nodes:
@@ -110,6 +112,9 @@ class I2C(ModuleInterface):
             # Filter out nodes not part of an I2C interface
             if interface is not None:
                 bus_interfaces.add(interface)
+
+        # include shallow connections
+        bus_interfaces |= self.get_connected(include_self=False).keys()
 
         return bus_interfaces
 
