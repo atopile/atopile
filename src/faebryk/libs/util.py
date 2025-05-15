@@ -59,7 +59,6 @@ from typing import (
 )
 
 import psutil
-from git import Repo
 
 logger = logging.getLogger(__name__)
 
@@ -2331,9 +2330,11 @@ def complete_type_string(value: Any) -> str:
         return type(value).__name__
 
 
-def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
+def has_uncommitted_changes(files: Iterable[str | Path]) -> bool | None:
     """Check if any of the given files have uncommitted changes."""
     try:
+        from git import Repo
+
         repo = Repo(search_parent_directories=True)
         diff_index = repo.index.diff(None)  # Get uncommitted changes
 
@@ -2355,7 +2356,7 @@ def has_uncommitted_changes(files: Iterable[str | Path]) -> bool:
     except Exception:
         # If we can't check git status (not a git repo, etc), assume we don't
         # have changes
-        return False
+        return None
 
 
 def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
@@ -2363,7 +2364,7 @@ def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
     for path in paths:
         if path.is_dir():
             files.extend(path.rglob("**"))
-        else:
+        elif path.is_file():
             files.append(path)
     if not files:
         return None
@@ -2385,26 +2386,35 @@ class FileChangedWatcher:
         self.method = method
 
         match method:
-            case FileChangedWatcher.CheckMethod.FS:
+            case FileChangedWatcher.CheckMethod.FS if path.is_file():
                 self.before = path.stat().st_mtime
-            case FileChangedWatcher.CheckMethod.HASH:
+            case FileChangedWatcher.CheckMethod.HASH if path.is_file():
                 self.before = hashlib.sha256(
                     path.read_bytes(), usedforsecurity=False
                 ).hexdigest()
+            case _:
+                self.before = None
 
     def has_changed(self, reset: bool = False) -> bool:
+        changed = True
         match self.method:
-            case FileChangedWatcher.CheckMethod.FS:
-                assert isinstance(self.before, float)
+            case FileChangedWatcher.CheckMethod.FS if self.path.is_file():
                 new_val = self.path.stat().st_mtime
-                changed = new_val > self.before
-            case FileChangedWatcher.CheckMethod.HASH:
-                assert isinstance(self.before, str)
+                if self.before is not None:
+                    assert isinstance(self.before, float)
+                    changed = new_val > self.before
+            case FileChangedWatcher.CheckMethod.HASH if self.path.is_file():
                 new_val = hashlib.sha256(
                     self.path.read_bytes(), usedforsecurity=False
                 ).hexdigest()
-                changed = new_val != self.before
+                if self.before is not None:
+                    assert isinstance(self.before, str)
+                    changed = new_val != self.before
+            case _:
+                new_val = None
+                changed = self.before is not None
 
         if reset:
             self.before = new_val
+
         return changed

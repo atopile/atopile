@@ -12,21 +12,7 @@
 # This should make it easy to add new rules without breaking existing ones.
 
 # Global rule:
-*       @iopapamanoglou @mawildoer
-
-# faebryk
-src/faebryk @iopapamanoglou
-
-# core
-src/faebryk/core @iopapamanoglou
+*       @iopapamanoglou @sam-mellor
 
 # stdlib
 src/faebryk/library @napowderly
-
-# picker
-src/faebryk/libs/picker @sam-mellor
-
-# ato dsl
-src/atopile @mawildoer
-
-

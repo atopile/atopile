@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { ConfigurationChangeEvent, Disposable, env, EventEmitter, LogOutputChannel } from 'vscode';
+import { ConfigurationChangeEvent, Disposable, env, EventEmitter, ExtensionContext, LogOutputChannel } from 'vscode';
 import {
     LanguageClient,
     LanguageClientOptions,
@@ -17,22 +17,25 @@ import { AtoBinInfo, getAtoBin, initAtoBin, onDidChangeAtoBinInfo } from './find
 import * as fs from 'fs';
 
 async function _runServer(
-    ato_path: string,
+    ato_path: string[],
     settings: ISettings,
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
 ): Promise<LanguageClient> {
-    const command = ato_path;
+    const command = ato_path[0];
     const cwd = settings.cwd;
-    const args = ['lsp', 'start'];
+    const args = [...ato_path.slice(1), 'lsp', 'start'];
 
     traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
+
+    // need to run in non-interactive mode
+    const env = { ...process.env, ATO_NON_INTERACTIVE: 'y' };
 
     const serverOptions: ServerOptions = {
         command,
         args,
-        options: { cwd, env: process.env },
+        options: { cwd, env: env },
     };
 
     // Options to control the language client
@@ -71,15 +74,11 @@ export async function startOrRestartServer(
     const projectRoot = await getProjectRoot();
     const workspaceSetting = await getWorkspaceSettings(projectRoot);
 
-    const ato_path = getAtoBin(workspaceSetting);
+    const ato_path = await getAtoBin(workspaceSetting);
     if (!ato_path) {
         traceError(
             `Server: ato binary not found. If you are sure ato is installed, set atopile.ato in your workspace settings.`,
         );
-        return undefined;
-    }
-    if (!fs.existsSync(ato_path)) {
-        traceError(`Server: ato binary not found at ${ato_path}. Fix atopile.ato in your workspace settings.`);
         return undefined;
     }
 
@@ -105,8 +104,8 @@ export async function startOrRestartServer(
 const onNeedsRestartEvent = new EventEmitter<void>();
 export const onNeedsRestart = onNeedsRestartEvent.event;
 
-export async function initServer(disposables: Disposable[]): Promise<void> {
-    disposables.push(
+export async function initServer(context: ExtensionContext): Promise<void> {
+    context.subscriptions.push(
         onDidChangeAtoBinInfo(async (e: AtoBinInfo) => {
             // No need to fire, already triggering with setImmediate
             if (e.init) {
@@ -119,7 +118,7 @@ export async function initServer(disposables: Disposable[]): Promise<void> {
         }),
     );
 
-    await initAtoBin(disposables);
+    await initAtoBin(context);
 
     setImmediate(async () => {
         onNeedsRestartEvent.fire();

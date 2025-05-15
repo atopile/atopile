@@ -4,7 +4,6 @@
 import copy
 import logging
 import re
-import subprocess
 from collections import defaultdict
 from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
@@ -1403,22 +1402,23 @@ class PCB_Transformer:
         knockout: bool = True,
         alignment: Alignment = Alignment_Default,
     ):
-        # check if gitcli is available
         try:
-            subprocess.check_output(["git", "--version"])
-        except subprocess.CalledProcessError:
-            logger.warning("git is not installed")
-            git_human_version = "git is not installed"
+            import git
 
-        try:
-            git_human_version = (
-                subprocess.check_output(["git", "describe", "--always"])
-                .strip()
-                .decode("utf-8")
-            )
-        except subprocess.CalledProcessError:
-            logger.warning("Cannot get git project version")
-            git_human_version = "Cannot get git project version"
+            try:
+                repo = git.Repo(search_parent_directories=True)
+                git_human_version = repo.git.describe("--always")
+            except (
+                git.InvalidGitRepositoryError,
+                git.NoSuchPathError,
+                git.GitCommandError,
+            ):
+                logger.warning("Cannot get git project version")
+                git_human_version = "Cannot get git project version"
+        except ImportError:
+            # Fall back to direct string if git executable is not available
+            logger.warning("git executable not installed, cannot get git version")
+            git_human_version = "git executable not installed"
 
         self.insert_text(
             text=git_human_version,
