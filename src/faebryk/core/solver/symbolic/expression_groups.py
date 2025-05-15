@@ -15,7 +15,7 @@ from faebryk.core.parameter import (
     Reflexive,
     UnaryIdentity,
 )
-from faebryk.core.solver.algorithm import algorithm
+from faebryk.core.solver.algorithm import NO_INVARIANTS, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import FullyAssociative
 from faebryk.libs.util import (
@@ -25,7 +25,7 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-@algorithm("Reflexive predicates", terminal=False)
+@algorithm("Reflexive predicates", invariants=NO_INVARIANTS)
 def reflexive_predicates(mutator: Mutator):
     """
     A not lit (done by literal_folding)
@@ -47,7 +47,7 @@ def reflexive_predicates(mutator: Mutator):
         mutator.utils.alias_is_literal_and_check_predicate_eval(pred, True)
 
 
-@algorithm("Idempotent deduplicate", terminal=False)
+@algorithm("Idempotent deduplicate", invariants=NO_INVARIANTS)
 def idempotent_deduplicate(mutator: Mutator):
     """
     Or(A, A, B) -> Or(A, B)
@@ -63,7 +63,7 @@ def idempotent_deduplicate(mutator: Mutator):
             mutator.mutate_expression(expr, operands=unique_operands)
 
 
-@algorithm("Idempotent unpack", terminal=False)
+@algorithm("Idempotent unpack", invariants=NO_INVARIANTS)
 def idempotent_unpack(mutator: Mutator):
     """
     Abs(Abs(A)) -> Abs(A)
@@ -79,7 +79,7 @@ def idempotent_unpack(mutator: Mutator):
         mutator.mutate_unpack_expression(expr)
 
 
-@algorithm("Unary identity unpack", terminal=False)
+@algorithm("Unary identity unpack", invariants=NO_INVARIANTS)
 def unary_identity_unpack(mutator: Mutator):
     """
     E(A), A not lit -> A
@@ -99,7 +99,7 @@ def unary_identity_unpack(mutator: Mutator):
             mutator.mutate_unpack_expression(expr)
 
 
-@algorithm("Involutory fold", terminal=False)
+@algorithm("Involutory fold", invariants=NO_INVARIANTS)
 def involutory_fold(mutator: Mutator):
     """
     Not(Not(A)) -> A
@@ -121,7 +121,7 @@ def involutory_fold(mutator: Mutator):
             mutator.mutator_neutralize_expressions(expr)
 
 
-@algorithm("Associative expressions", terminal=False)
+@algorithm("Associative expressions", invariants=NO_INVARIANTS)
 def associative_flatten(mutator: Mutator):
     """
     Makes

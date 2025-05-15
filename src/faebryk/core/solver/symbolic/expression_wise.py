@@ -27,7 +27,7 @@ from faebryk.core.parameter import (
     SymmetricDifference,
     Union,
 )
-from faebryk.core.solver.algorithm import SolverAlgorithm, algorithm
+from faebryk.core.solver.algorithm import NO_INVARIANTS, SolverAlgorithm, algorithm
 from faebryk.core.solver.mutator import Mutator
 from faebryk.core.solver.utils import (
     CanonicalExpression,
@@ -87,7 +87,7 @@ def fold_literals[T: CanonicalExpression](
         f(expr, mutator)
 
 
-@algorithm("Expression-wise", terminal=False)
+@algorithm("Expression-wise", invariants=NO_INVARIANTS)
 def expression_wise(mutator: Mutator):
     exprs = mutator.nodes_of_types(
         tuple(expr_wise_algos.keys()), sort_by_depth=True, new_only=False
@@ -113,7 +113,7 @@ def expression_wise_algorithm[T: CanonicalExpression](expr_type: type[T]):
             return expression_wise
         else:
 
-            @algorithm(f"Fold {expr_type.__name__}", terminal=False)
+            @algorithm(f"Fold {expr_type.__name__}", invariants=NO_INVARIANTS)
             def wrapped(mutator: Mutator):
                 fold_literals(mutator, expr_type, func)
 
@@ -121,15 +121,6 @@ def expression_wise_algorithm[T: CanonicalExpression](expr_type: type[T]):
             return wrapped
 
     return wrap
-
-
-# TODO REMOVE JUST A TEST
-@algorithm("NOOOP")
-def noop(mutator: Mutator):
-    pass
-
-
-fold_algorithms.append(noop)
 
 
 # Arithmetic ---------------------------------------------------------------------------
@@ -154,7 +145,7 @@ def fold_add(expr: Add, mutator: Mutator):
     # 6*A
     # (A * 2) + (A * 5)
     literal_operands = list(expr.get_operand_literals().values())
-    p_operands = expr.get_operand_operatables()
+    p_operands = [o for o in expr.operands if not mutator.utils.is_literal(o)]
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
         partition_as_list(lambda o: not mutator.has_been_mutated(o), p_operands)
     )
@@ -207,7 +198,7 @@ def fold_multiply(expr: Multiply, mutator: Mutator):
     """
 
     literal_operands = list(expr.get_operand_literals().values())
-    p_operands = expr.get_operand_operatables()
+    p_operands = [o for o in expr.operands if not mutator.utils.is_literal(o)]
     non_replacable_nonliteral_operands, _replacable_nonliteral_operands = (
         partition_as_list(lambda o: not mutator.has_been_mutated(o), p_operands)
     )

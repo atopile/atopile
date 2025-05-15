@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from functools import wraps
 from typing import TYPE_CHECKING, Callable
 
@@ -14,10 +14,44 @@ type SolverAlgorithmFunc = "Callable[[Mutator], None]"
 
 @dataclass(frozen=True)
 class SolverAlgorithm:
+    @dataclass(frozen=True)
+    class Invariants:
+        no_new_predicates: bool
+        no_new_correlating_predicates: bool
+
+        @property
+        def invariants(self) -> dict[str, bool]:
+            return {field.name: getattr(self, field.name) for field in fields(self)}
+
+        @staticmethod
+        def algo_allowed(
+            algo_invariants: "SolverAlgorithm.Invariants",
+            allowed_invariants: "SolverAlgorithm.Invariants",
+        ) -> bool:
+            return all(
+                algo_invariants.invariants[name] <= value
+                for name, value in allowed_invariants.invariants.items()
+            )
+
+        @staticmethod
+        def fullfills_contract(
+            condition: "SolverAlgorithm.Invariants",
+            request: "SolverAlgorithm.Invariants",
+        ) -> bool:
+            return all(
+                condition.invariants[name] <= value
+                for name, value in request.invariants.items()
+            )
+
+        def __str__(self) -> str:
+            if not any(self.invariants.values()):
+                return "No invariants"
+            return ", ".join(k for k, v in self.invariants.items() if v)
+
     name: str
     func: SolverAlgorithmFunc
     single: bool
-    terminal: bool
+    invariants: Invariants
 
     def __call__(self, *args, **kwargs):
         return self.func(*args, **kwargs)
@@ -26,10 +60,21 @@ class SolverAlgorithm:
         return self.name
 
 
+NO_INVARIANTS = SolverAlgorithm.Invariants(
+    no_new_predicates=False,
+    no_new_correlating_predicates=False,
+)
+
+ALL_INVARIANTS = SolverAlgorithm.Invariants(
+    no_new_predicates=True,
+    no_new_correlating_predicates=True,
+)
+
+
 def algorithm(
     name: str,
     single: bool = False,
-    terminal: bool = True,
+    invariants: SolverAlgorithm.Invariants = ALL_INVARIANTS,
 ) -> Callable[[SolverAlgorithmFunc], SolverAlgorithm]:
     """
     Decorator to wrap an algorithm function
@@ -52,7 +97,7 @@ def algorithm(
             name=name,
             func=wrapped,
             single=single,
-            terminal=terminal,
+            invariants=invariants,
         )
         algorithm._registered_algorithms.append(out)
 

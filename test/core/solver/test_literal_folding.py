@@ -43,6 +43,7 @@ from faebryk.core.parameter import (
     Sqrt,
     Subtract,
 )
+from faebryk.core.solver.algorithm import ALL_INVARIANTS
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.utils import Contradiction, get_graphs
 from faebryk.libs.library.L import Range
@@ -543,7 +544,7 @@ def test_discover_literal_folding(expr: Arithmetic):
             return
         raise
 
-    solver.update_superset_cache(root)
+    solver.simplify(root, output_invariants=ALL_INVARIANTS)
     solver_result = solver.inspect_get_known_supersets(root)
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -606,7 +607,7 @@ def debug_fix_literal_folding(expr: Arithmetic):
     evaluated_expr = evaluate_expr(expr)
     logger.info(f"evaluated_expr: {evaluated_expr}")
 
-    solver.update_superset_cache(root)
+    solver.simplify(root, output_invariants=ALL_INVARIANTS)
     solver_result = solver.inspect_get_known_supersets(root)
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -789,7 +790,7 @@ def test_regression_literal_folding(expr: Arithmetic):
 
     evaluated_expr = evaluate_expr(expr)
 
-    solver.update_superset_cache(root)
+    solver.simplify(root, output_invariants=ALL_INVARIANTS)
     solver_result = solver.inspect_get_known_supersets(root)
 
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
@@ -919,7 +920,7 @@ def test_folding_statistics(expr: Arithmetic):
     assert isinstance(evaluated_expr, Quantity_Interval_Disjoint)
 
     try:
-        solver.update_superset_cache(root)
+        solver.simplify(root, output_invariants=ALL_INVARIANTS)
         solver_result = solver.inspect_get_known_supersets(root)
         assert isinstance(solver_result, Quantity_Interval_Disjoint)
     except Contradiction:

@@ -20,6 +20,8 @@ from faebryk.core.parameter import (
     Parameter,
     ParameterOperatable,
 )
+from faebryk.core.solver.algorithm import ALL_INVARIANTS, NO_INVARIANTS, SolverAlgorithm
+from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.core.solver.utils import (
     Contradiction,
@@ -46,7 +48,7 @@ if TYPE_CHECKING:
     from faebryk.libs.picker.localpick import PickerOption
 
 
-NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
+NO_REUSE_STATE = ConfigFlag("PICKER_NO_REUSE_STATE", default=True)
 
 logger = logging.getLogger(__name__)
 
@@ -230,6 +232,12 @@ def check_missing_picks(module: Module):
             )
 
 
+NO_POST_PICK_INVARIANTS = SolverAlgorithm.Invariants(
+    no_new_correlating_predicates=True,
+    no_new_predicates=False,
+)
+
+
 def find_independent_groups(
     modules: Iterable[Module], solver: Solver
 ) -> list[set[Module]]:
@@ -240,9 +248,12 @@ def find_independent_groups(
 
     modules = set(modules)
 
-    if (
+    # TODO I set it to True, because this works even better than the other method
+    # consider improving the other method, then remove the True
+    if True or (
         not isinstance(solver, DefaultSolver)
-        or (state := solver.reusable_state) is None
+        or (state := solver.reusable_state.find_first_matching(NO_POST_PICK_INVARIANTS))
+        is None
     ):
         # Find params aliased to lits
         aliased = EquivalenceClasses[ParameterOperatable]()
@@ -343,14 +354,31 @@ def pick_topologically(
         tree, _ = update_pick_tree(tree)
 
     def _get_candidates(_tree: Tree[Module]):
+        # TODO enable
+        # pre-solve
         # with timings.as_global("pre-solve"):
-        #    solver.simplify(*get_graphs(tree.keys()))
+        #    solver.simplify(
+        #        *tree,
+        #        input_invariants=NO_POST_PICK_INVARIANTS,
+        #        output_invariants=NO_POST_PICK_INVARIANTS,
+        #    )
         try:
             with timings.as_global("new estimates"):
                 # Rerun solver for new system
-                solver.update_superset_cache(*_tree)
+                solver.simplify(
+                    *_tree,
+                    input_invariants=NO_POST_PICK_INVARIANTS
+                    if not NO_REUSE_STATE
+                    else NO_INVARIANTS,
+                    output_invariants=NO_POST_PICK_INVARIANTS,
+                )
         except Contradiction as e:
             raise PickError(str(e), *_tree.keys())
+        # TODO get rid of this
+        # for some reason, solver times out for voltage dividers (example)...
+        except TimeoutError:
+            if not isinstance(solver, DefaultSolver) or solver.state is None:
+                raise
         with timings.as_global("get candidates"):
             candidates = picker_lib.get_candidates(_tree, solver)
         if LOG_PICK_SOLVE:
@@ -406,7 +434,12 @@ def pick_topologically(
     logger.info(f"Picked complete: picked {_pick_count} parts")
     logger.info("Verify design")
     try:
-        solver.update_superset_cache(*tree_backup)
+        solver.simplify(
+            *tree_backup,
+            # TODO enable
+            # input_invariants=NO_POST_PICK_INVARIANTS,
+            output_invariants=ALL_INVARIANTS,
+        )
     except Contradiction as e:
         raise PickVerificationError(str(e), *tree_backup) from e
 
