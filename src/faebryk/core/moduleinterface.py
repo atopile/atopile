@@ -278,3 +278,12 @@ class ModuleInterface(Node):
             to_check.difference_update(ifs.keys())
 
         return buses
+
+    # TODO get rid of this abomination
+    @property
+    def reference_shim(self):
+        from faebryk.library.has_single_electric_reference import (
+            has_single_electric_reference,
+        )
+
+        return self.get_trait(has_single_electric_reference).get_reference()

@@ -42,9 +42,9 @@ class Module(Node):
             specialer.get_most_special() for specialer in specialers
         )
 
-        assert (
-            len(specialest_next) == 1
-        ), f"Ambiguous specialest {specialest_next} for {self}"
+        assert len(specialest_next) == 1, (
+            f"Ambiguous specialest {specialest_next} for {self}"
+        )
         return next(iter(specialest_next))
 
     def get_children_modules[T: Module](
@@ -228,3 +228,12 @@ class Module(Node):
 
     def get_parameters(self) -> list[Parameter]:
         return list(self.get_children(types=Parameter, direct_only=True))
+
+    # TODO get rid of this abomination
+    @property
+    def reference_shim(self):
+        from faebryk.library.has_single_electric_reference import (
+            has_single_electric_reference,
+        )
+
+        return self.get_trait(has_single_electric_reference).get_reference()
