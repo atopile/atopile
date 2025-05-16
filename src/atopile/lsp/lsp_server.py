@@ -368,30 +368,47 @@ def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     )
 
 
+def _span_to_lsp_range(span: front_end.Span) -> lsp.Range:
+    return lsp.Range(
+        start=lsp.Position(line=span.start.line - 1, character=span.start.col),
+        end=lsp.Position(line=span.end.line - 1, character=span.end.col),
+    )
+
+
+def _query_params(params: lsp.HoverParams | lsp.DefinitionParams) -> dict[str, Any]:
+    return {
+        "file_path": f"file:{get_file(params.text_document.uri)}",
+        "line": params.position.line + 1,  # 0-indexed -> 1-indexed
+        "col": params.position.character,
+    }
+
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
 def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
     """Handle document hover request."""
     for root in GRAPHS.get(params.text_document.uri, {}).values():
         for _, trait in root.iter_children_with_trait(front_end.from_dsl):
-            if (
-                span := trait.get_reference_from_position(
-                    f"file:{get_file(params.text_document.uri)}",
-                    params.position.line + 1,  # 0-indexed -> 1-indexed
-                    params.position.character,
-                )
-            ) is not None:
+            if (span := trait.query_references(**_query_params(params))) is not None:
                 return lsp.Hover(
                     contents=lsp.MarkupContent(
                         kind=lsp.MarkupKind.Markdown, value=trait.description
                     ),
-                    range=lsp.Range(
-                        start=lsp.Position(
-                            line=span.start.line - 1, character=span.start.col
-                        ),
-                        end=lsp.Position(
-                            line=span.end.line - 1, character=span.end.col
-                        ),
-                    ),
+                    range=_span_to_lsp_range(span),
+                )
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | None:
+    """Handle document definition request."""
+    for root in GRAPHS.get(params.text_document.uri, {}).values():
+        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
+            if (spans := trait.query_definition(**_query_params(params))) is not None:
+                origin_span, target_span, target_selection_span = spans
+                return lsp.LocationLink(
+                    target_uri=target_span.start.file,
+                    target_range=_span_to_lsp_range(target_span),
+                    target_selection_range=_span_to_lsp_range(target_selection_span),
+                    origin_selection_range=_span_to_lsp_range(origin_span),
                 )
 
 

@@ -134,27 +134,39 @@ class from_dsl(Trait.decless()):
     def __init__(
         self,
         src_ctx: ParserRuleContext,
-        definition_ctx: ParserRuleContext | None = None,
+        definition_ctx: ap.BlockdefContext | None = None,
     ) -> None:
         super().__init__()
         self.src_ctx = src_ctx
         self.definition_ctx = definition_ctx
         self.references: list[Span] = []
 
-    def get_reference_from_position(
-        self, file_path: str, line: int, col: int
-    ) -> Span | None:
+    def add_reference(self, ctx: ParserRuleContext) -> None:
+        self.references.append(Span.from_ctx(ctx))
+
+    def set_definition(self, ctx: ap.BlockdefContext) -> None:
+        self.definition_ctx = ctx
+
+    def query_references(self, file_path: str, line: int, col: int) -> Span | None:
         # TODO: faster
         for ref in self.references:
             if ref.contains(Position(file_path, line, col)):
                 return ref
         return None
 
-    def add_reference(self, ctx: ParserRuleContext) -> None:
-        self.references.append(Span.from_ctx(ctx))
+    def query_definition(
+        self, file_path: str, line: int, col: int
+    ) -> tuple[Span, Span, Span] | None:
+        if self.definition_ctx is None:
+            return None
 
-    def add_definition(self, ctx: ParserRuleContext) -> None:
-        self.definition_ctx = ctx
+        origin_span = Span.from_ctx(self.src_ctx)
+        if origin_span.contains(Position(file_path, line, col)):
+            target_span = Span.from_ctx(self.definition_ctx)
+            target_selection_span = Span.from_ctx(self.definition_ctx.name())
+            return origin_span, target_span, target_selection_span
+
+        return None
 
     @property
     def description(self) -> str:
@@ -1502,6 +1514,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self,
         ctx: ap.Assign_stmtContext,
         assignable_ctx: ap.AssignableContext,
+        assigned_ctx: ap.Field_referenceContext,
         assigned_ref: FieldRef,
     ):
         if len(assigned_ref) > 1:
@@ -1519,7 +1532,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
         new_stmt_ctx = assignable_ctx.new_stmt()
-        ref = self.visitTypeReference(new_stmt_ctx.type_reference())
+        type_ref_ctx = new_stmt_ctx.type_reference()
+        ref = self.visitTypeReference(type_ref_ctx)
 
         if new_stmt_ctx.template() is not None:
             self._ensure_feature_enabled(
@@ -1528,7 +1542,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         kwargs = self.visitTemplate(new_stmt_ctx.template())
 
-        def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
+        def _add_node(
+            obj: L.Node,
+            node: L.Node,
+            container_name: str | None = None,
+            node_type: type[L.Node] | ap.BlockdefContext | None = None,
+        ):
             try:
                 obj.add(
                     node,
@@ -1541,7 +1560,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Field `{assigned_name}` already exists",
                     traceback=self.get_traceback(),
                 ) from e
-            node.add(from_dsl(new_stmt_ctx))
+            from_dsl_ = node.add(from_dsl(type_ref_ctx))
+            from_dsl_.add_reference(assigned_ctx)
+
+            # TODO: handle Python classes
+            if isinstance(node_type, ap.BlockdefContext):
+                from_dsl_.set_definition(node_type)
 
         try:
             with self._traceback_stack.enter(new_stmt_ctx):
@@ -1571,16 +1595,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                     setattr(self._current_node, assigned_name.name, list())
                     for _ in range(new_count):
-                        with self._init_node(
-                            self._get_referenced_class(ctx, ref), kwargs=kwargs
-                        ) as new_node:
-                            _add_node(self._current_node, new_node, assigned_name.name)
+                        node_type = self._get_referenced_class(ctx, ref)
+                        with self._init_node(node_type, kwargs=kwargs) as new_node:
+                            _add_node(
+                                self._current_node,
+                                node=new_node,
+                                container_name=assigned_name.name,
+                                node_type=node_type,
+                            )
                 else:
-                    with self._init_node(
-                        self._get_referenced_class(new_stmt_ctx.type_reference(), ref),
-                        kwargs=kwargs,
-                    ) as new_node:
-                        _add_node(self._current_node, new_node)
+                    node_type = self._get_referenced_class(
+                        new_stmt_ctx.type_reference(), ref
+                    )
+                    with self._init_node(node_type, kwargs=kwargs) as new_node:
+                        _add_node(
+                            self._current_node, node=new_node, node_type=node_type
+                        )
         except Exception:
             # Not a narrower exception because it's often an ExceptionGroup
             self._record_failed_node(self._current_node, assigned_name.name)
@@ -1677,6 +1707,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             self._assign_new_node(
                 ctx=ctx,
                 assignable_ctx=assignable_ctx,
+                assigned_ctx=dec,
                 assigned_ref=assigned_ref,
             )
         elif (
