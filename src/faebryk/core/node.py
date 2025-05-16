@@ -1,8 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
-from collections.abc import Iterator
 import logging
 from abc import abstractmethod
+from collections.abc import Iterator
 from dataclasses import InitVar as dataclass_InitVar
 from itertools import chain
 from typing import (
@@ -774,10 +774,9 @@ class Node(CNode):
     def iter_children_with_trait[TR: Trait](
         self, trait: type[TR], include_self: bool = True
     ) -> Iterator[tuple["Node", TR]]:
-        if include_self and self.has_trait(trait):
-            yield self, self.get_trait(trait)
-
-        for level in self.get_tree(types=Node).iter_by_depth():
+        for level in self.get_tree(
+            types=Node, include_root=include_self
+        ).iter_by_depth():
             for child in level:
                 if child.has_trait(trait):
                     yield child, child.get_trait(trait)
