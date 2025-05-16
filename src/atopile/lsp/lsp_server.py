@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import copy
 import json
 import logging
@@ -16,6 +17,7 @@ from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
+from atopile.address import AddrStr
 from atopile.config import _find_project_dir
 from atopile.datatypes import TypeRef
 from atopile.errors import UserException
@@ -29,6 +31,8 @@ from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exce
 
 def init_atopile_config(working_dir: Path) -> None:
     from atopile.config import config
+
+    log(f"init_atopile_config: {working_dir}")
 
     config.apply_options(entry=None, working_dir=working_dir)
 
@@ -120,9 +124,24 @@ def get_file_contents(uri: str) -> tuple[Path, str]:
     return file_path, source_text
 
 
+def log(msg: Any):
+    print(msg, file=sys.stderr)
+
+
 # **********************************************************
 # Linting features start here
 # **********************************************************
+
+
+from dataclasses import dataclass, field
+
+from atopile.parser import AtoParser as ap
+from faebryk.core.node import Node
+
+GRAPHS: dict[str, dict[TypeRef, Node]] = {}
+ACTIVE_BUILD_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "ACTIVE_BUILD_TARGET", default=None
+)
 
 
 def _convert_exc_to_diagnostic(
@@ -172,6 +191,7 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
     Get static diagnostics for a given URI and identifier.
 
     TODO: caching
+    FIXME: combine with _build_document
     """
     file_path, source_text = get_file_contents(uri)
     exc_diagnostics = []
@@ -200,6 +220,102 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
     ]
 
 
+def _build_document(uri: str, text: str) -> None:
+    # def _ctx_contains_pos(ctx: ap.ParserRuleContext, pos: lsp.Position) -> bool:
+    #     start_file_uri, start_line, start_col = get_src_info_from_token(ctx.start)
+    #     _, stop_line, stop_col = get_src_info_from_token(ctx.stop)
+
+    #     start_file_path = Path.from_uri(start_file_uri)
+    #     document_file_path = get_file(document.uri)
+
+    #     if not start_file_path.samefile(document_file_path):
+    #         return False
+
+    #     if not start_line <= pos.line < stop_line:
+    #         return False
+
+    #     if start_line == pos.line:
+    #         return start_col <= pos.character
+
+    #     if stop_line == pos.line:
+    #         return stop_col >= pos.character
+
+    #     return True
+
+    # def _find_matching_ref_for_pos(
+    #     context: front_end.Context, pos: lsp.Position
+    # ) -> TypeRef:
+    #     for ref, ctx in context.refs.items():
+    #         if not isinstance(ctx, ap.AtoParser.BlockdefContext):
+    #             continue
+
+    #         if _ctx_contains_pos(ctx, params.position):
+    #             return ref
+
+    #     raise ValueError("No matching ref found")
+
+    context = front_end.bob.index_text(text, Path(uri))
+
+    # TOOD: do something smarter here (only distinct trees?)
+    GRAPHS.setdefault(uri, {})
+    for ref, ctx in context.refs.items():
+        if not isinstance(ctx, ap.AtoParser.BlockdefContext):
+            continue
+
+        try:
+            GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
+        except Exception as e:
+            log(f"Error building {uri}:{ref}: {e}")
+
+
+@dataclass
+class DidChangeBuildTargetParams:
+    buildTarget: str | None = field(default=None)
+
+
+@LSP_SERVER.feature("atopile/didChangeBuildTarget")
+def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None:
+    pass
+
+    # if params.buildTarget:
+    #     log_to_output(
+    #         f"Received atopile/didChangeBuildTarget: buildTarget={params.buildTarget}"
+    #     )
+
+    #     ACTIVE_BUILD_TARGET.set(params.buildTarget)
+
+    #     for uri, build_target in GRAPHS.keys():
+    #         if build_target == params.buildTarget:
+    #             log(f"Re-building {uri} for target {build_target}")
+    #             _build_document(uri, LSP_SERVER.workspace.get_text_document(uri).source)
+    #             LSP_SERVER.publish_diagnostics(uri, _get_diagnostics(uri))
+
+    # TODO: Re-build document with the new target and update diagnostics
+    # doc = LSP_SERVER.workspace.get_text_document(uri)
+    # if doc:
+    #     try:
+    #         _build_document(
+    #             doc.uri, doc.source
+    #         )  # This uses the updated _get_build_target
+    #         ls.publish_diagnostics(
+    #             doc.uri, _get_diagnostics(doc.uri)
+    #         )  # Re-publish diagnostics
+    #         log_to_output(
+    #             f"Successfully rebuilt and re-diagnosed {uri} for target {build_target}"
+    #         )
+    #     except Exception as e:
+    #         log_error(
+    #             f"Error during re-build/re-diagnose for {uri} after target change: {e}"
+    #         )
+    #         log_error(traceback.format_exc())
+    # else:
+    #     log_warning(
+    #         f"Could not find document {uri} in workspace to re-build after target change."
+    #     )
+    # else:
+    #     log_error("atopile/didChangeBuildTarget received without URI")
+
+
 @LSP_SERVER.feature(
     lsp.TEXT_DOCUMENT_DIAGNOSTIC,
     lsp.DiagnosticOptions(
@@ -218,14 +334,26 @@ def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
 def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     """Handle document open request."""
+    _build_document(params.text_document.uri, params.text_document.text)
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
+
+    messages = []
+    for root in GRAPHS.get(params.text_document.uri, {}).values():
+        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
+            messages.append(trait._describe())
+
+    log("\n".join(messages))
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """Handle document change request."""
+    _build_document(
+        params.text_document.uri,
+        LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
+    )
     # TODO: debounce
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
@@ -240,75 +368,31 @@ def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     )
 
 
-def log(msg: Any):
-    print(msg, file=sys.stderr)
-
-
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
-def on_document_hover(params: lsp.HoverParams) -> lsp.Hover:
+def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
     """Handle document hover request."""
-
-    # TODO: precompute on file open/change
-
-    import atopile.parser.AtoParser as ap
-
-    def _ctx_contains_pos(ctx: ap.ParserRuleContext, pos: lsp.Position) -> bool:
-        start_file_uri, start_line, start_col = get_src_info_from_token(ctx.start)
-        _, stop_line, stop_col = get_src_info_from_token(ctx.stop)
-
-        start_file_path = Path.from_uri(start_file_uri)
-        document_file_path = get_file(params.text_document.uri)
-
-        if not start_file_path.samefile(document_file_path):
-            return False
-
-        if not start_line <= pos.line < stop_line:
-            return False
-
-        if start_line == pos.line:
-            return start_col <= pos.character
-
-        if stop_line == pos.line:
-            return stop_col >= pos.character
-
-        return True
-
-    def _find_matching_ref_for_pos(
-        context: front_end.Context, pos: lsp.Position
-    ) -> TypeRef:
-        for ref, ctx in context.refs.items():
-            if not isinstance(ctx, ap.AtoParser.BlockdefContext):
-                continue
-
-            if _ctx_contains_pos(ctx, params.position):
-                return ref
-
-        raise ValueError("No matching ref found")
-
-    # step 1: find the relevant ref
-    text = LSP_SERVER.workspace.get_text_document(params.text_document.uri).source
-    context = front_end.bob.index_text(text, Path(params.text_document.uri))
-    ref = _find_matching_ref_for_pos(context, params.position)
-
-    # step 2: build that ref
-    root = front_end.bob.build_text(text, Path(params.text_document.uri), ref)
-
-    log(f"root: {root.get_full_name()} (type: {type(root)})")
-
-    # step 3: search built graph for node with matching position
-    log(
-        f"searching for: file:{get_file(params.text_document.uri)}:{params.position.line}:{params.position.character}"
-    )
-    for node, trait in root.iter_children_with_trait(front_end.from_dsl):
-        if trait.contains_pos(
-            f"file:{get_file(params.text_document.uri)}",
-            params.position.line,
-            params.position.character,
-        ):
-            log(f"node: {node.get_full_name()} (type: {type(node)})")
-    # TODO: implement
-
-    return lsp.Hover(contents=str(ref))
+    for root in GRAPHS.get(params.text_document.uri, {}).values():
+        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
+            if (
+                span := trait.get_reference_from_position(
+                    f"file:{get_file(params.text_document.uri)}",
+                    params.position.line + 1,  # 0-indexed -> 1-indexed
+                    params.position.character,
+                )
+            ) is not None:
+                return lsp.Hover(
+                    contents=lsp.MarkupContent(
+                        kind=lsp.MarkupKind.Markdown, value=trait.description
+                    ),
+                    range=lsp.Range(
+                        start=lsp.Position(
+                            line=span.start.line - 1, character=span.start.col
+                        ),
+                        end=lsp.Position(
+                            line=span.end.line - 1, character=span.end.col
+                        ),
+                    ),
+                )
 
 
 # TODO: if you want to handle setting specific severity for your linter
