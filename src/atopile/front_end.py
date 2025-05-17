@@ -184,7 +184,7 @@ class from_dsl(Trait.decless()):
         return None
 
     @property
-    def description(self) -> str:
+    def hover_text(self) -> str:
         out = f"(node) {self.obj.get_full_name(types=True)}"
 
         if (
@@ -208,7 +208,7 @@ class from_dsl(Trait.decless()):
 
         return json.dumps(
             {
-                "description": self.description,
+                "hover_text": self.hover_text,
                 "source": _ctx_or_type_to_str(self.src_ctx),
                 "definition": _ctx_or_type_to_str(self.definition_ctx)
                 if self.definition_ctx is not None
@@ -236,7 +236,7 @@ class module_from_dsl(from_dsl):
         self.name = name
 
     @property
-    def description(self) -> str:
+    def hover_text(self) -> str:
         return f"(module) {self.name}"
 
 

@@ -391,7 +391,7 @@ def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
             if (span := trait.query_references(**_query_params(params))) is not None:
                 return lsp.Hover(
                     contents=lsp.MarkupContent(
-                        kind=lsp.MarkupKind.Markdown, value=trait.description
+                        kind=lsp.MarkupKind.Markdown, value=trait.hover_text
                     ),
                     range=_span_to_lsp_range(span),
                 )
