@@ -4,6 +4,7 @@ Build faebryk core objects from ato DSL.
 
 import inspect
 import itertools
+import json
 import logging
 import operator
 import os
@@ -184,24 +185,44 @@ class from_dsl(Trait.decless()):
 
     @property
     def description(self) -> str:
-        return f"(node) {self.obj.get_full_name(types=True)}"
+        out = f"(node) {self.obj.get_full_name(types=True)}"
 
-    def _describe(self) -> str:
-        out = f"{self.description}\n"
-
-        src_text = f"{self.src_ctx.getText().splitlines()[0]} (+{len(self.src_ctx.getText().splitlines()) - 1})"
-        out += f"Source: {src_text} ({self.src_ctx.start.line}:{self.src_ctx.start.column})\n"
-
-        if self.definition_ctx is not None:
-            def_text = f"{self.definition_ctx.getText().splitlines()[0]} (+{len(self.definition_ctx.getText().splitlines()) - 1})"
-            out += f"Definition: {def_text} ({self.definition_ctx.start.line}:{self.definition_ctx.start.column})\n"
-
-        out += "References:\n"
-
-        for ref in self.references:
-            out += f"  - {ref.start.file}:{ref.start.line}:{ref.start.col} - {ref.end.line}:{ref.end.col}\n"
+        if (
+            self.definition_ctx is not None
+            and not isinstance(self.definition_ctx, ap.BlockdefContext)
+            and (doc := inspect.getdoc(self.definition_ctx)) is not None
+        ):
+            out += f"\n\n{doc}"
 
         return out
+
+    def _describe(self) -> str:
+        def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
+            if isinstance(ctx, ParserRuleContext):
+                file, start_line, start_col, end_line, end_col = get_src_info_from_ctx(
+                    ctx
+                )
+                return f"{file}:{start_line}:{start_col} - {end_line}:{end_col}"
+            elif ctx is not None:
+                return f"{inspect.getfile(ctx)}:{inspect.getsourcelines(ctx)[1]}:0"
+
+        return json.dumps(
+            {
+                "description": self.description,
+                "source": _ctx_or_type_to_str(self.src_ctx),
+                "definition": _ctx_or_type_to_str(self.definition_ctx)
+                if self.definition_ctx is not None
+                else None,
+                "references": [
+                    (
+                        f"{ref.start.file}:{ref.start.line}:{ref.start.col} - "
+                        f"{ref.end.line}:{ref.end.col}"
+                    )
+                    for ref in self.references
+                ],
+            },
+            indent=2,
+        )
 
 
 class module_from_dsl(from_dsl):
@@ -209,7 +230,7 @@ class module_from_dsl(from_dsl):
         self,
         src_ctx: ParserRuleContext,
         name: str,
-        definition_ctx: ParserRuleContext | None = None,
+        definition_ctx: ap.BlockdefContext | None = None,
     ) -> None:
         super().__init__(src_ctx, definition_ctx)
         self.name = name
