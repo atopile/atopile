@@ -221,39 +221,6 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
 
 
 def _build_document(uri: str, text: str) -> None:
-    # def _ctx_contains_pos(ctx: ap.ParserRuleContext, pos: lsp.Position) -> bool:
-    #     start_file_uri, start_line, start_col = get_src_info_from_token(ctx.start)
-    #     _, stop_line, stop_col = get_src_info_from_token(ctx.stop)
-
-    #     start_file_path = Path.from_uri(start_file_uri)
-    #     document_file_path = get_file(document.uri)
-
-    #     if not start_file_path.samefile(document_file_path):
-    #         return False
-
-    #     if not start_line <= pos.line < stop_line:
-    #         return False
-
-    #     if start_line == pos.line:
-    #         return start_col <= pos.character
-
-    #     if stop_line == pos.line:
-    #         return stop_col >= pos.character
-
-    #     return True
-
-    # def _find_matching_ref_for_pos(
-    #     context: front_end.Context, pos: lsp.Position
-    # ) -> TypeRef:
-    #     for ref, ctx in context.refs.items():
-    #         if not isinstance(ctx, ap.AtoParser.BlockdefContext):
-    #             continue
-
-    #         if _ctx_contains_pos(ctx, params.position):
-    #             return ref
-
-    #     raise ValueError("No matching ref found")
-
     context = front_end.bob.index_text(text, Path(uri))
 
     # TOOD: do something smarter here (only distinct trees?)
