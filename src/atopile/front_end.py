@@ -2043,6 +2043,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         to_ref = self.visitTypeReference(ctx.type_reference())
         from_node = self._get_referenced_node(from_ref, ctx)
 
+        from_dsl_orig = from_node.try_get_trait(from_dsl)
+
         # Only Modules can be specialized (since they're the only
         # ones with specialization gifs).
         # TODO: consider duck-typing this
@@ -2112,6 +2114,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         except Exception:
             # TODO: skip further errors about this node w/ self._record_failed_node()
             raise
+
+        from_dsl_ = specialized_node.add(from_dsl(src_ctx=ctx.type_reference()))
+        if from_dsl_orig is not None:
+            from_dsl_.references.extend(from_dsl_orig.references)
+
+        from_dsl_.set_definition(class_)
+        from_dsl_.add_reference(ctx.field_reference())
 
         return NOTHING
 
