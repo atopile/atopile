@@ -44,7 +44,7 @@ from atopile.datatypes import (
     is_int,
 )
 from atopile.parse import parser
-from atopile.parse_utils import get_src_info_from_ctx, get_src_info_from_token
+from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtoParser import AtoParser as ap
 from atopile.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import FieldExistsError, NodeException
@@ -93,12 +93,6 @@ logger = logging.getLogger(__name__)
 
 
 Numeric = Parameter | Arithmetic | Quantity_Set
-
-import sys
-
-
-def lsp_log(msg: str):
-    print(msg, file=sys.stderr)
 
 
 @dataclass

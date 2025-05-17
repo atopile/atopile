@@ -12,16 +12,18 @@ import os
 import pathlib
 import sys
 import traceback
+from dataclasses import dataclass, field
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
-from atopile.address import AddrStr
 from atopile.config import _find_project_dir
 from atopile.datatypes import TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
+from atopile.parser import AtoParser as ap
+from faebryk.core.node import Node
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 
 # **********************************************************
@@ -132,12 +134,6 @@ def log(msg: Any):
 # Linting features start here
 # **********************************************************
 
-
-from dataclasses import dataclass, field
-
-from atopile.parser import AtoParser as ap
-from faebryk.core.node import Node
-
 GRAPHS: dict[str, dict[TypeRef, Node]] = {}
 ACTIVE_BUILD_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "ACTIVE_BUILD_TARGET", default=None
@@ -241,46 +237,7 @@ class DidChangeBuildTargetParams:
 
 
 @LSP_SERVER.feature("atopile/didChangeBuildTarget")
-def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None:
-    pass
-
-    # if params.buildTarget:
-    #     log_to_output(
-    #         f"Received atopile/didChangeBuildTarget: buildTarget={params.buildTarget}"
-    #     )
-
-    #     ACTIVE_BUILD_TARGET.set(params.buildTarget)
-
-    #     for uri, build_target in GRAPHS.keys():
-    #         if build_target == params.buildTarget:
-    #             log(f"Re-building {uri} for target {build_target}")
-    #             _build_document(uri, LSP_SERVER.workspace.get_text_document(uri).source)
-    #             LSP_SERVER.publish_diagnostics(uri, _get_diagnostics(uri))
-
-    # TODO: Re-build document with the new target and update diagnostics
-    # doc = LSP_SERVER.workspace.get_text_document(uri)
-    # if doc:
-    #     try:
-    #         _build_document(
-    #             doc.uri, doc.source
-    #         )  # This uses the updated _get_build_target
-    #         ls.publish_diagnostics(
-    #             doc.uri, _get_diagnostics(doc.uri)
-    #         )  # Re-publish diagnostics
-    #         log_to_output(
-    #             f"Successfully rebuilt and re-diagnosed {uri} for target {build_target}"
-    #         )
-    #     except Exception as e:
-    #         log_error(
-    #             f"Error during re-build/re-diagnose for {uri} after target change: {e}"
-    #         )
-    #         log_error(traceback.format_exc())
-    # else:
-    #     log_warning(
-    #         f"Could not find document {uri} in workspace to re-build after target change."
-    #     )
-    # else:
-    #     log_error("atopile/didChangeBuildTarget received without URI")
+def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None: ...
 
 
 @LSP_SERVER.feature(
