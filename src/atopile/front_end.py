@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import (
     Any,
     Iterable,
+    Literal,
     Sequence,
     Type,
     cast,
@@ -219,25 +220,21 @@ class from_dsl(Trait.decless()):
         )
 
 
-class module_from_dsl(from_dsl):
+class type_from_dsl(from_dsl):
     def __init__(
         self,
         src_ctx: ParserRuleContext,
         name: str,
+        category: Literal["module", "module interface", "trait", "unknown"],
         definition_ctx: ap.BlockdefContext | type[L.Node] | None = None,
     ) -> None:
         super().__init__(src_ctx, definition_ctx)
         self.name = name
+        self.category = category
 
     @property
     def hover_text(self) -> str:
-        return f"(module) {self.name}"
-
-
-class trait_from_dsl(from_dsl):
-    @property
-    def hover_text(self) -> str:
-        return f"(trait) {self.obj.get_full_name(types=True)}"
+        return f"({self.category}) {self.name}"
 
 
 @dataclass
@@ -893,10 +890,20 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             with self._init_node(class_) as node:
                 node.add(F.is_app_root())
+                match node:
+                    case L.Module():
+                        category = "module"
+                    case L.Trait():
+                        category = "trait"
+                    case L.ModuleInterface():
+                        category = "module interface"
+                    case _:
+                        category = "unknown"
                 from_dsl_ = node.add(
-                    module_from_dsl(
+                    type_from_dsl(
                         context.ref_ctxs[ref],
                         name=str(ref),
+                        category=category,
                         definition_ctx=class_,
                     )
                 )
@@ -976,7 +983,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._init_node(class_) as node:
                     node.add(F.is_app_root())
                     from_dsl_ = node.add(
-                        module_from_dsl(class_, name=class_.name().getText())
+                        type_from_dsl(
+                            class_,
+                            name=class_.name().getText(),
+                            category="module",
+                        )
                     )
                     from_dsl_.add_reference(class_.name())
                 return node
@@ -2269,7 +2280,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self._current_node.add(trait)
 
         from_dsl_ = trait.add(
-            trait_from_dsl(src_ctx=ctx.type_reference(), definition_ctx=trait_cls)
+            type_from_dsl(
+                src_ctx=ctx.type_reference(),
+                name=str(ref),
+                definition_ctx=trait_cls,
+                category="trait",
+            )
         )
         from_dsl_.add_reference(ctx.type_reference())
 
