@@ -234,6 +234,12 @@ class module_from_dsl(from_dsl):
         return f"(module) {self.name}"
 
 
+class trait_from_dsl(from_dsl):
+    @property
+    def hover_text(self) -> str:
+        return f"(trait) {self.obj.get_full_name(types=True)}"
+
+
 @dataclass
 class Number:
     value: str
@@ -2180,7 +2186,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def _get_trait_constructor(
         self, ctx: ap.Trait_stmtContext, ref: TypeRef, constructor_name: str | None
-    ) -> tuple[Callable, tuple[Type | None]]:
+    ) -> tuple[type[L.Trait], Callable, tuple[Type | None]]:
         try:
             trait_cls = self._get_referenced_class(ctx, ref)
         except errors.UserKeyError as ex:
@@ -2234,7 +2240,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             constructor = attr.__func__
             args = (trait_cls,)
 
-        return constructor, args
+        return trait_cls, constructor, args
 
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
         self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS)
@@ -2245,8 +2251,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if ctx.constructor() is not None
             else None
         )
-        trait_name = f"{ref}{f':{constructor_name}' if constructor_name else ''}"
-        constructor, args = self._get_trait_constructor(ctx, ref, constructor_name)
+        trait_name = f"{ref}{f'::{constructor_name}' if constructor_name else ''}"
+        trait_cls, constructor, args = self._get_trait_constructor(
+            ctx, ref, constructor_name
+        )
         kwargs = self.visitTemplate(ctx.template())
 
         try:
@@ -2259,6 +2267,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ) from e
 
         self._current_node.add(trait)
+
+        from_dsl_ = trait.add(
+            trait_from_dsl(src_ctx=ctx.type_reference(), definition_ctx=trait_cls)
+        )
+        from_dsl_.add_reference(ctx.type_reference())
 
         return NOTHING
 
