@@ -134,7 +134,7 @@ class from_dsl(Trait.decless()):
     def __init__(
         self,
         src_ctx: ParserRuleContext,
-        definition_ctx: ap.BlockdefContext | None = None,
+        definition_ctx: ap.BlockdefContext | type[L.Node] | None = None,
     ) -> None:
         super().__init__()
         self.src_ctx = src_ctx
@@ -144,7 +144,7 @@ class from_dsl(Trait.decless()):
     def add_reference(self, ctx: ParserRuleContext) -> None:
         self.references.append(Span.from_ctx(ctx))
 
-    def set_definition(self, ctx: ap.BlockdefContext) -> None:
+    def set_definition(self, ctx: ap.BlockdefContext | type[L.Node]) -> None:
         self.definition_ctx = ctx
 
     def query_references(self, file_path: str, line: int, col: int) -> Span | None:
@@ -162,8 +162,22 @@ class from_dsl(Trait.decless()):
 
         origin_span = Span.from_ctx(self.src_ctx)
         if origin_span.contains(Position(file_path, line, col)):
-            target_span = Span.from_ctx(self.definition_ctx)
-            target_selection_span = Span.from_ctx(self.definition_ctx.name())
+            if isinstance(self.definition_ctx, ap.BlockdefContext):
+                target_span = Span.from_ctx(self.definition_ctx)
+                target_selection_span = Span.from_ctx(self.definition_ctx.name())
+            else:
+                target_path = inspect.getfile(self.definition_ctx)
+                target_lines = inspect.getsourcelines(self.definition_ctx)
+
+                target_start_line = target_lines[1]
+                target_end_line = target_start_line + len(target_lines[0]) - 1
+
+                target_span = Span(
+                    Position(target_path, target_start_line, 0),
+                    Position(target_path, target_end_line, 0),
+                )
+                target_selection_span = target_span
+
             return origin_span, target_span, target_selection_span
 
         return None
@@ -1563,8 +1577,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             from_dsl_ = node.add(from_dsl(type_ref_ctx))
             from_dsl_.add_reference(assigned_ctx)
 
-            # TODO: handle Python classes
-            if isinstance(node_type, ap.BlockdefContext):
+            if node_type is not None:
                 from_dsl_.set_definition(node_type)
 
         try:
