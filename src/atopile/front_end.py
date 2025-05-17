@@ -224,7 +224,7 @@ class module_from_dsl(from_dsl):
         self,
         src_ctx: ParserRuleContext,
         name: str,
-        definition_ctx: ap.BlockdefContext | None = None,
+        definition_ctx: ap.BlockdefContext | type[L.Node] | None = None,
     ) -> None:
         super().__init__(src_ctx, definition_ctx)
         self.name = name
@@ -449,6 +449,12 @@ class Context:
     # Scope information
     scope_ctx: ap.BlockdefContext | ap.File_inputContext
     refs: dict[TypeRef, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
+    ref_ctxs: dict[TypeRef, ParserRuleContext]
+
+
+ImportKeyOptMap = KeyOptMap[
+    tuple[Context.ImportPlaceholder, ap.Import_stmtContext, ap.Type_referenceContext]
+]
 
 
 class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -464,9 +470,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
     Wendy also knows where to find the best building supplies.
     """
 
-    def visitImport_stmt(
-        self, ctx: ap.Import_stmtContext
-    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Import_stmtContext]]:
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> ImportKeyOptMap:
         if from_path := ctx.string():
             lazy_imports = [
                 Context.ImportPlaceholder(
@@ -477,7 +481,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 for reference in ctx.type_reference()
             ]
             return KeyOptMap(
-                KeyOptItem.from_kv(li.ref, (li, ctx)) for li in lazy_imports
+                KeyOptItem.from_kv(li.ref, (li, ctx, reference))
+                for reference in ctx.type_reference()
+                for li in lazy_imports
             )
 
         else:
@@ -499,13 +505,13 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                             ctx, f"Unknown standard library module: '{name}'"
                         )
 
-                    imports.append(KeyOptItem.from_kv(ref, (getattr(F, name), ctx)))
+                    imports.append(
+                        KeyOptItem.from_kv(ref, (getattr(F, name), ctx, reference))
+                    )
 
             return KeyOptMap(imports)
 
-    def visitDep_import_stmt(
-        self, ctx: ap.Dep_import_stmtContext
-    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Dep_import_stmtContext]]:
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> ImportKeyOptMap:
         lazy_import = Context.ImportPlaceholder(
             ref=self.visitTypeReference(ctx.type_reference()),
             from_path=self.visitString(ctx.string()),
@@ -521,22 +527,17 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 f" {ctx.type_reference().getText()}`"
                 " instead.",
             )
-        return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
+        return KeyOptMap.from_kv(
+            lazy_import.ref, (lazy_import, ctx, ctx.type_reference())
+        )
 
-    def visitBlockdef(
-        self, ctx: ap.BlockdefContext
-    ) -> KeyOptMap[tuple[ap.BlockdefContext, ap.BlockdefContext]]:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> ImportKeyOptMap:
         ref = TypeRef.from_one(self.visitName(ctx.name()))
-        return KeyOptMap.from_kv(ref, (ctx, ctx))
+        return KeyOptMap.from_kv(ref, (ctx, ctx, ctx.name()))
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext | Any
-    ) -> (
-        KeyOptMap[
-            tuple[Context.ImportPlaceholder | ap.BlockdefContext, ParserRuleContext]
-        ]
-        | type[NOTHING]
-    ):
+    ) -> ImportKeyOptMap | type[NOTHING]:
         if ctx.import_stmt() or ctx.dep_import_stmt():
             return super().visitChildren(ctx)
         return NOTHING
@@ -562,8 +563,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         cls, file_path: Path | None, ctx: ap.BlockdefContext | ap.File_inputContext
     ) -> Context:
         surveyor = cls()
-        context = Context(file_path=file_path, scope_ctx=ctx, refs={})
-        for ref, (item, item_ctx) in surveyor.visit(ctx):
+        context = Context(file_path=file_path, scope_ctx=ctx, refs={}, ref_ctxs={})
+        for ref, (item, item_ctx, item_ref_ctx) in surveyor.visit(ctx):
             assert isinstance(item_ctx, ParserRuleContext)
             if ref in context.refs:
                 # Downgrade the error in case we're shadowing things
@@ -599,6 +600,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 context.refs[ref] = shim_cls
             else:
                 context.refs[ref] = item
+
+            context.ref_ctxs[ref] = item_ref_ctx
 
         return context
 
@@ -867,6 +870,32 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         """Build a Module from a string and reference."""
         context = self.index_text(text, path)
         return self._build(context, ref)
+
+    def build_node(self, text: str, path: Path, ref: TypeRef) -> L.Node:
+        """Build a single node from a string and reference."""
+        context = self.index_text(text, path)
+
+        if ref not in context.refs:
+            raise errors.UserKeyError.from_ctx(
+                context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
+            )
+        try:
+            class_ = self._get_referenced_class(context.scope_ctx, ref)
+            assert not isinstance(class_, ap.BlockdefContext)
+            assert issubclass(class_, L.Node)
+
+            with self._init_node(class_) as node:
+                node.add(F.is_app_root())
+                from_dsl_ = node.add(
+                    module_from_dsl(
+                        context.ref_ctxs[ref], name=str(ref), definition_ctx=class_
+                    )
+                )
+                from_dsl_.add_reference(context.ref_ctxs[ref])
+
+            return node
+        except* SkipPriorFailedException:
+            raise errors.UserException("Build failed")
 
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}

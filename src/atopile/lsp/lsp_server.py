@@ -222,13 +222,20 @@ def _build_document(uri: str, text: str) -> None:
     # TOOD: do something smarter here (only distinct trees?)
     GRAPHS.setdefault(uri, {})
     for ref, ctx in context.refs.items():
-        if not isinstance(ctx, ap.AtoParser.BlockdefContext):
-            continue
-
-        try:
-            GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
-        except Exception as e:
-            log(f"Error building {uri}:{ref}: {e}")
+        match ctx:
+            case ap.AtoParser.BlockdefContext():
+                try:
+                    GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
+                except Exception as e:
+                    log(f"Error building {uri}:{ref}: {e}")
+            case front_end.Context.ImportPlaceholder():
+                continue  # TODO
+            case _:  # Node
+                try:
+                    GRAPHS[uri][ref] = front_end.bob.build_node(text, Path(uri), ref)
+                    log_to_output(f"built {uri}:{ref}: {GRAPHS[uri][ref]}")
+                except Exception as e:
+                    log(f"Error building {uri}:{ref}: {e}")
 
 
 @dataclass
