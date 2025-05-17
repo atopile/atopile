@@ -217,7 +217,9 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
 
 
 def _build_document(uri: str, text: str) -> None:
-    context = front_end.bob.index_text(text, Path(uri))
+    init_atopile_config(get_file(uri).parent)
+
+    context = front_end.bob.index_text(text, get_file(uri))
 
     # TOOD: do something smarter here (only distinct trees?)
     GRAPHS.setdefault(uri, {})
@@ -227,15 +229,13 @@ def _build_document(uri: str, text: str) -> None:
                 try:
                     GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
                 except Exception as e:
-                    log(f"Error building {uri}:{ref}: {e}")
-            case front_end.Context.ImportPlaceholder():
-                continue  # TODO
-            case _:  # Node
+                    log_error(f"Error building {uri}:{ref}: {e}")
+            case _:  # Node or ImportPlaceholder
+                log_to_output(f"Building {uri}:{ref} (type: {type(ctx)})")
                 try:
                     GRAPHS[uri][ref] = front_end.bob.build_node(text, Path(uri), ref)
-                    log_to_output(f"built {uri}:{ref}: {GRAPHS[uri][ref]}")
                 except Exception as e:
-                    log(f"Error building {uri}:{ref}: {e}")
+                    log_error(f"Error building {uri}:{ref}: {e}")
 
 
 @dataclass

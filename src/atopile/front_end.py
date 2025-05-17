@@ -881,14 +881,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             )
         try:
             class_ = self._get_referenced_class(context.scope_ctx, ref)
-            assert not isinstance(class_, ap.BlockdefContext)
-            assert issubclass(class_, L.Node)
+
+            if isinstance(class_, Context.ImportPlaceholder):
+                raise NotImplementedError("ImportPlaceholder")
 
             with self._init_node(class_) as node:
                 node.add(F.is_app_root())
                 from_dsl_ = node.add(
                     module_from_dsl(
-                        context.ref_ctxs[ref], name=str(ref), definition_ctx=class_
+                        context.ref_ctxs[ref],
+                        name=str(ref),
+                        definition_ctx=class_,
                     )
                 )
                 from_dsl_.add_reference(context.ref_ctxs[ref])
