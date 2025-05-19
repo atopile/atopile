@@ -9,8 +9,6 @@ from pathlib import Path
 import psutil
 
 import faebryk.library._F as F
-from atopile.cli.logging import ALERT
-from atopile.config import config
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
@@ -18,7 +16,6 @@ from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.exporters.pcb.routing.util import apply_route_in_pcb
 from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats_latest import (
-    C_kicad_fp_lib_table_file,
     C_kicad_project_file,
 )
 from faebryk.libs.util import (
@@ -69,72 +66,6 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
         routes = strategy.calculate(transformer)
         for route in routes:
             apply_route_in_pcb(route, transformer)
-
-
-def ensure_footprint_lib(
-    lib_name: str, fppath: os.PathLike, fptable: C_kicad_fp_lib_table_file | None = None
-):
-    fppath = Path(fppath)
-
-    if fptable is None:
-        try:
-            fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)
-        except FileNotFoundError:
-            fptable = C_kicad_fp_lib_table_file.skeleton()
-
-    assert fptable is not None
-
-    relative = True
-    try:
-        fppath_rel = fppath.resolve().relative_to(
-            config.build.paths.fp_lib_table.parent.resolve(), walk_up=True
-        )
-        # check if not going up outside the project directory
-        # relative_to raises a ValueError if it has to walk up to make a relative path
-        fppath.relative_to(not_none(config.project.paths.root))
-    except ValueError:
-        relative = False
-        with downgrade(UserResourceException):
-            raise UserResourceException(
-                f"Footprint path {fppath} is outside the project directory."
-                "This is unstable behavior and may be deprecated in the future."
-            )
-    else:
-        fppath = fppath_rel
-
-    uri = str(fppath)
-
-    if relative:
-        assert not uri.startswith("/")
-        assert not uri.startswith("${KIPRJMOD}")
-        uri = "${KIPRJMOD}/" + uri
-
-    lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
-        name=lib_name,
-        type="KiCad",
-        uri=uri,
-        options="",
-        descr=f"atopile: {lib_name} footprints",
-    )
-
-    matching_libs = [
-        lib_ for lib_ in fptable.fp_lib_table.libs.values() if lib_.name == lib.name
-    ]
-    lib_is_duplicated = len(matching_libs) != 1
-    lib_is_outdated = any(lib_ != lib for lib_ in matching_libs)
-
-    if lib_is_duplicated or lib_is_outdated:
-        fptable.fp_lib_table.libs = {
-            lib.name: lib
-            for lib in fptable.fp_lib_table.libs.values()
-            if lib.name != lib_name
-        } | {lib.name: lib}
-
-        logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
-
-    fptable.dumps(config.build.paths.fp_lib_table)
-
-    return fptable
 
 
 @once

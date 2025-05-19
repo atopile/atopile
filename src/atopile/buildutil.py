@@ -161,7 +161,7 @@ def build(app: Module) -> None:
 
     with LoggingStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb.pcb_file)
-        pcb.transformer.apply_design(config.build.paths.fp_lib_table)
+        pcb.transformer.apply_design()
         pcb.transformer.check_unattached_fps()
 
         if transform_trait := app.try_get_trait(F.has_layout_transform):

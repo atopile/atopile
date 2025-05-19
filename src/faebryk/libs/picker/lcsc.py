@@ -281,7 +281,7 @@ class EasyEDAPart:
         return self._pre_model.name
 
     def load_model(self):
-        from faebryk.libs.footprint_lifecycle import PartLifecycle
+        from faebryk.libs.part_lifecycle import PartLifecycle
 
         lifecycle = PartLifecycle.singleton()
         assert self.model is None
@@ -301,7 +301,7 @@ class EasyEDAPart:
         args:
             download_model: Purely for performance and api overloading
         """
-        from faebryk.libs.footprint_lifecycle import PartLifecycle
+        from faebryk.libs.part_lifecycle import PartLifecycle
 
         lifecycle = PartLifecycle.singleton()
 
@@ -415,7 +415,7 @@ class LCSC_PinmapException(LCSCException): ...
 
 @once
 def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
-    from faebryk.libs.footprint_lifecycle import PartLifecycle
+    from faebryk.libs.part_lifecycle import PartLifecycle
 
     lifecycle = PartLifecycle.singleton()
     if not lifecycle.easyeda_api.shall_refresh(lcsc_id):
@@ -435,7 +435,7 @@ def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
 
 
 def download_easyeda_info(lcsc_id: str, get_model: bool = True):
-    from faebryk.libs.footprint_lifecycle import PartLifecycle
+    from faebryk.libs.part_lifecycle import PartLifecycle
 
     lifecycle = PartLifecycle.singleton()
 
@@ -466,7 +466,7 @@ def check_attachable(component: Module):
 def attach(
     component: Module, partno: str, get_model: bool = True, check_only: bool = False
 ):
-    from faebryk.libs.footprint_lifecycle import PartLifecycle
+    from faebryk.libs.part_lifecycle import PartLifecycle
 
     lifecycle = PartLifecycle.singleton()
     try:
@@ -508,9 +508,9 @@ def attach(
 
         # footprint
         fp = F.KicadFootprint([p.name for p in part.footprint.footprint.footprint.pads])
-        path, fp_id = lifecycle.library.get_footprint(part)
+        path, ki_fp = lifecycle.library.get_footprint(part)
         fp.add(F.KicadFootprint.has_file(path))
-        fp.add(F.KicadFootprint.has_kicad_identifier(fp_id))
+        fp.add(F.KicadFootprint.has_kicad_identifier(ki_fp.footprint.name))
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:
