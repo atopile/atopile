@@ -142,6 +142,7 @@ from faebryk.library.has_package import has_package
 from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
 from faebryk.library.Potentiometer import Potentiometer
+from faebryk.library.ResistorArray import ResistorArray
 from faebryk.library.Capacitor import Capacitor
 from faebryk.library.has_package_requirement import has_package_requirement
 from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
@@ -164,6 +165,7 @@ from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay
 from faebryk.library.XT30PW2plus2 import XT30PW2plus2
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
+from faebryk.library.B0505S_1WR3_ReferenceDesign import B0505S_1WR3_ReferenceDesign
 from faebryk.library.ButtonCell import ButtonCell
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
@@ -205,6 +207,8 @@ from faebryk.library.TPS2116 import TPS2116
 from faebryk.library.Resistor_Voltage_Divider import Resistor_Voltage_Divider
 from faebryk.library.I2C import I2C
 from faebryk.library.ElecSuper_PSM712_ES import ElecSuper_PSM712_ES
+from faebryk.library.Addressor1 import Addressor1
+from faebryk.library.Addressor2 import Addressor2
 from faebryk.library.Addressor3 import Addressor3
 from faebryk.library.Diodes_Incorporated_AP2552W6_7 import Diodes_Incorporated_AP2552W6_7
 from faebryk.library.Diodes_Incorporated_AP2553W6_7 import Diodes_Incorporated_AP2553W6_7
@@ -214,6 +218,7 @@ from faebryk.library.LDO import LDO
 from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.RP2040Pinmux import RP2040Pinmux
 from faebryk.library.DE9RS232Connector import DE9RS232Connector
+from faebryk.library.Texas_Instruments_SN74LVC541APWR import Texas_Instruments_SN74LVC541APWR
 from faebryk.library.SWDConnector import SWDConnector
 from faebryk.library.Analog_Devices_ADM2587EBRWZ import Analog_Devices_ADM2587EBRWZ
 from faebryk.library.HLK_LD2410B_P import HLK_LD2410B_P

@@ -51,10 +51,19 @@ class I2CBusTopology(Module):
     server: F.I2C
     clients = L.list_field(3, ConfigurableI2CClient)
 
+    def __init__(self, isolated=False):
+        super().__init__()
+        self._isolated = isolated
+
     def __preinit__(self) -> None:
         # self.server.address.alias_is(0)
-        self.server.connect(*[c.i2c for c in self.clients])
-        self.server.terminate(self)
+        if not self._isolated:
+            self.server.connect(*[c.i2c for c in self.clients])
+            self.server.terminate(self)
+        else:
+            self.server.connect_shallow(*[c.i2c for c in self.clients])
+            # for c in [self.server] + [c.i2c for c in self.clients]:
+            #    c.terminate(self)
 
 
 def test_i2c_unique_addresses():
@@ -72,6 +81,26 @@ def test_i2c_unique_addresses():
 
 def test_i2c_duplicate_addresses():
     app = I2CBusTopology()
+    app.clients[0].addressor.offset.alias_is(1)
+    app.clients[1].addressor.offset.alias_is(3)
+    app.clients[2].addressor.offset.alias_is(3)
+
+    solver = DefaultSolver()
+    solver.simplify(app)
+    app.add(F.has_solver(solver))
+
+    # with pytest.raises(F.I2C.requires_unique_addresses.DuplicateAddressException):
+    with pytest.raises(ExceptionGroup) as e:
+        check_design(
+            app.get_graph(), stage=F.implements_design_check.CheckStage.POST_SOLVE
+        )
+    assert e.group_contains(
+        UserDesignCheckException, match="Duplicate I2C addresses found on the bus:"
+    )
+
+
+def test_i2c_duplicate_addresses_isolated():
+    app = I2CBusTopology(isolated=True)
     app.clients[0].addressor.offset.alias_is(1)
     app.clients[1].addressor.offset.alias_is(3)
     app.clients[2].addressor.offset.alias_is(3)

@@ -10,7 +10,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
-from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,6 @@ class App(Module):
         )
 
         self.battery.add(F.has_designator_prefix("B"))
-        self.battery.power.voltage.constrain_superset(L.Range(2.5 * P.V, 4.2 * P.V))
         self.battery.add(F.has_descriptive_properties_defined({"LCSC": "C5239862"}))
         self.battery.voltage.alias_is(3 * P.V)
         self.battery.add(

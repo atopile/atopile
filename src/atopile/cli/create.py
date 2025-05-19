@@ -3,15 +3,13 @@ import logging
 import re
 import sys
 import textwrap
-import webbrowser
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import Annotated, Any, Callable, Iterator, cast
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
-import git
 import questionary
 import rich
 import typer
@@ -25,6 +23,13 @@ from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import log_to_posthog
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.libs.github import (
+    GithubCLI,
+    GithubCLINotFound,
+    GithubRepoAlreadyExists,
+    GithubRepoNotFound,
+    GithubUserNotLoggedIn,
+)
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
@@ -35,7 +40,10 @@ from faebryk.libs.pycodegen import (
     gen_repeated_block,
     sanitize_name,
 )
-from faebryk.libs.util import groupby
+from faebryk.libs.util import groupby, try_or
+
+if TYPE_CHECKING:
+    import git
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -44,7 +52,9 @@ logger.setLevel(logging.INFO)
 
 PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
-create_app = typer.Typer(rich_markup_mode="rich")
+create_app = typer.Typer(
+    rich_markup_mode="rich", help="Create projects / build targets / components"
+)
 
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
@@ -69,6 +79,8 @@ stuck_user_helper_generator = _stuck_user_helper()
 
 def _in_git_repo(path: Path) -> bool:
     """Check if the current directory is in a git repo."""
+    import git
+
     try:
         git.Repo(path)
     except git.InvalidGitRepositoryError:
@@ -117,11 +129,13 @@ def query_helper[T: str | Path | bool](
 
     elif type_ is bool:
         assert default is None or isinstance(default, bool)
+        if default is None:
+            default = True  # type: ignore
 
         def querier() -> bool:
             return questionary.confirm(
                 "",
-                default=bool(default) or True,
+                default=default,  # type: ignore
             ).unsafe_ask()
 
     else:
@@ -205,11 +219,123 @@ PROJECT_NAME_REQUIREMENTS = (
 )
 
 
+def setup_github(
+    project_path: Path,
+    gh_cli: GithubCLI,
+    repo: "git.Repo",
+):
+    import git
+
+    github_username = gh_cli.get_usernames()
+
+    use_existing_repo = query_helper(
+        "Use an existing GitHub repo?",
+        bool,
+        default=False,
+    )
+
+    if use_existing_repo:
+
+        def _check_repo_and_add_remote(repo_id: str) -> bool:
+            try:
+                url = gh_cli.get_repo_url(repo_id)
+                repo.create_remote("origin", url)
+                rich.print(f"Added remote origin: {url}")
+                # Try to push, but don't fail validation if it doesn't work
+                # (e.g. repo not empty, or other reasons)
+                try:
+                    rich.print(
+                        f"Attempting to push initial commit to"
+                        f" {repo.active_branch.name}..."
+                    )
+                    repo.git.push("-u", "origin", repo.active_branch.name)
+                    rich.print("[green]Pushed successfully![/]")
+                except git.GitCommandError as e:
+                    rich.print(
+                        f"[yellow]Could not push to remote:[/yellow] {e.stderr.strip()}"
+                    )
+                    rich.print("You may need to push manually.")
+                return True
+            except GithubRepoNotFound:
+                rich.print(f"[red]Repository {repo_id} not found on GitHub.[/]")
+                return False
+            except git.GitCommandError as e:
+                # This might happen if remote 'origin' already exists
+                rich.print(f"[red]Failed to add remote:[/red] {e.stderr.strip()}")
+                return False
+            except KeyboardInterrupt:
+                rich.print("[red]Aborted.[/red]")
+                return False
+            except Exception as e:
+                rich.print(f"[red]An unexpected error occurred:[/red] {e}")
+                return False
+
+        query_helper(
+            ":rocket: What's the [cyan]repo's org and project name?[/]\n",
+            str,
+            default=f"{github_username[0]}/{project_path.name}",
+            validator=_check_repo_and_add_remote,
+            validation_failure_msg="Remote could not be added: {value}",
+            validate_default=False,
+        )
+    else:
+
+        def _create_repo_and_add_remote(repo_id: str) -> bool:
+            try:
+                # This will create the repo, add remote 'origin'
+                #   and push the current dir
+                # We are currently in project_path, which is the root of
+                #   the new git repo
+                # Ask for visibility
+                visibility = questionary.select(
+                    "Choose repository visibility:",
+                    choices=["public", "private"],
+                    default="public",
+                ).unsafe_ask()
+
+                repo_url = gh_cli.create_repo(
+                    repo_id,
+                    visibility=visibility,
+                    add_remote=True,
+                    path=project_path,
+                )
+                rich.print(
+                    f"[green]Successfully created repository {repo_url} and"
+                    " pushed initial commit![/]"
+                )
+                return True
+            except GithubRepoAlreadyExists:
+                rich.print(f"[red]Repository {repo_id} already exists on GitHub.[/]")
+                # We could offer to use it, but for now, let's just fail validation
+                return False
+            except git.GitCommandError as e:
+                # This might happen if the push fails for some reason
+                rich.print(
+                    f"[red]Failed during git operation (e.g. push):[/red]"
+                    f" {e.stderr.strip()}"
+                )
+                return False
+            except KeyboardInterrupt:
+                rich.print("[red]Aborted.[/red]")
+                return False
+            except Exception as e:
+                rich.print(f"[red]An unexpected error occurred:[/red] {e}")
+                return False
+
+        query_helper(
+            ":rocket: Choose a [cyan]repo org and name:[/]\n",
+            str,
+            default=f"{github_username[0]}/{project_path.name}",
+            validator=_create_repo_and_add_remote,
+            validation_failure_msg="Remote could not be added: {value}",
+            validate_default=False,
+        )
+
+
 @create_app.command()
 @log_to_posthog("cli:create_project_end")
 def project(
     template: str = "https://github.com/atopile/project-template @ compiler-v0.4",
-    create_github_repo: bool | None = None,
 ):
     """
     Create a new ato project.
@@ -222,11 +348,6 @@ def project(
         template_branch = template_branch[0].strip()
     else:
         template_branch = None
-
-    if create_github_repo is True and not config.interactive:
-        raise errors.UserException(
-            "Cannot create a GitHub repo when running non-interactively."
-        )
 
     extra_context = {
         "__ato_version": version.get_installed_atopile_version(),
@@ -250,71 +371,60 @@ def project(
             "Directory already exists. Please choose a different name."
         ) from e
 
-    if create_github_repo is None:
-        create_github_repo = (
-            query_helper(
-                "Create a GitHub repo for this project?",
-                bool,
-                default=True,
-            )
-            if config.interactive
-            else False
-        )
+    try:
+        import git
 
-    # Get a repo
-    if create_github_repo:
-        logging.info("Initializing git repo")
-        repo = git.Repo.init(project_path)
-        repo.git.add(A=True, f=True)
-        repo.git.commit(m="Initial commit")
+        no_git = False
+    except ImportError as e:
+        # catch no git executable
+        if "executable" not in e.msg:
+            raise
+        no_git = True
 
-        github_username = query_helper(
-            "What's your GitHub username?",
-            str,
-            validator=r"^[a-zA-Z0-9_-]+$",
-        )
+    if not no_git:
+        # check if already in a git repo
+        create_git_repo = not _in_git_repo(project_path)
 
-        make_repo_url = (
-            f"https://github.com/new?name={project_path.name}&owner={github_username}"
-        )
+        # check if gh binary is available
+        gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
 
-        help(
-            f"""
-            We recommend you create a GitHub repo for your project.
-
-            If you already have a repo, you can respond [yellow]n[/]
-            to the next question and provide the URL to your repo.
-
-            If you don't have one, you can respond yes to the next question
-            or (Cmd/Ctrl +) click the link below to create one.
-
-            Just select the template you want to use.
-
-            {make_repo_url}
-            """
-        )
-
-        webbrowser.open(make_repo_url)
-
-        def _repo_validator(url: str) -> bool:
+        # git repo
+        if create_git_repo:
+            logging.info("Initializing git repo")
+            repo = git.Repo.init(project_path)
+            repo.git.add(A=True, f=True)
             try:
-                repo.create_remote("origin", url).push()
-                return True
-            except Exception:
-                return False
+                repo.git.commit(m="Initial commit")
+            except git.GitCommandError as e:
+                if "Author identity unknown" in e.stderr:
+                    rich.print(
+                        "[yellow]Warning: Author identity unknown. "
+                        "Staged but not committed.[/yellow]"
+                    )
+                else:
+                    raise
 
-        query_helper(
-            ":rocket: What's the [cyan]repo's URL?[/]",
-            str,
-            default=f"https://github.com/{github_username}/{project_path.name}",
-            validator=_repo_validator,
-            validation_failure_msg="Remote could not be added: {value}",
-            validate_default=False,
-        )
+        create_github_repo = False
+        if config.interactive and gh_cli and create_git_repo:
+            create_github_repo = query_helper(
+                "Host this project on GitHub? :octopus::cat:",
+                bool,
+                default=False,
+            )
+
+        # Github repo
+        if create_github_repo:
+            assert gh_cli is not None
+            try:
+                setup_github(project_path, gh_cli, repo)
+            except Exception:
+                rich.print("[red]Creating GitHub repo interrupted.[/red]")
+                return
 
     # Wew! New repo created!
     rich.print(
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
+        f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]"
     )
 
 

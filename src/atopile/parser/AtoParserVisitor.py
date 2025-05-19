@@ -14,6 +14,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#pragma_stmt.
+    def visitPragma_stmt(self, ctx:AtoParser.Pragma_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#stmt.
     def visitStmt(self, ctx:AtoParser.StmtContext):
         return self.visitChildren(ctx)
@@ -109,8 +114,23 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#directed_connect_stmt.
+    def visitDirected_connect_stmt(self, ctx:AtoParser.Directed_connect_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#connect_stmt.
     def visitConnect_stmt(self, ctx:AtoParser.Connect_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#bridgeable.
+    def visitBridgeable(self, ctx:AtoParser.BridgeableContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#mif.
+    def visitMif(self, ctx:AtoParser.MifContext):
         return self.visitChildren(ctx)
 
 
@@ -144,6 +164,11 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#new_count.
+    def visitNew_count(self, ctx:AtoParser.New_countContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#string_stmt.
     def visitString_stmt(self, ctx:AtoParser.String_stmtContext):
         return self.visitChildren(ctx)
@@ -154,8 +179,43 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
+    # Visit a parse tree produced by AtoParser#list_literal_of_field_references.
+    def visitList_literal_of_field_references(self, ctx:AtoParser.List_literal_of_field_referencesContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#iterable_references.
+    def visitIterable_references(self, ctx:AtoParser.Iterable_referencesContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#for_stmt.
+    def visitFor_stmt(self, ctx:AtoParser.For_stmtContext):
+        return self.visitChildren(ctx)
+
+
     # Visit a parse tree produced by AtoParser#assert_stmt.
     def visitAssert_stmt(self, ctx:AtoParser.Assert_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#trait_stmt.
+    def visitTrait_stmt(self, ctx:AtoParser.Trait_stmtContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#constructor.
+    def visitConstructor(self, ctx:AtoParser.ConstructorContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#template.
+    def visitTemplate(self, ctx:AtoParser.TemplateContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#template_arg.
+    def visitTemplate_arg(self, ctx:AtoParser.Template_argContext):
         return self.visitChildren(ctx)
 
 
@@ -226,6 +286,26 @@ class AtoParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtoParser#bound.
     def visitBound(self, ctx:AtoParser.BoundContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#slice.
+    def visitSlice(self, ctx:AtoParser.SliceContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#slice_start.
+    def visitSlice_start(self, ctx:AtoParser.Slice_startContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#slice_stop.
+    def visitSlice_stop(self, ctx:AtoParser.Slice_stopContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#slice_step.
+    def visitSlice_step(self, ctx:AtoParser.Slice_stepContext):
         return self.visitChildren(ctx)
 
 
@@ -304,13 +384,13 @@ class AtoParserVisitor(ParseTreeVisitor):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#totally_an_integer.
-    def visitTotally_an_integer(self, ctx:AtoParser.Totally_an_integerContext):
+    # Visit a parse tree produced by AtoParser#name.
+    def visitName(self, ctx:AtoParser.NameContext):
         return self.visitChildren(ctx)
 
 
-    # Visit a parse tree produced by AtoParser#name.
-    def visitName(self, ctx:AtoParser.NameContext):
+    # Visit a parse tree produced by AtoParser#literal.
+    def visitLiteral(self, ctx:AtoParser.LiteralContext):
         return self.visitChildren(ctx)
 
 
@@ -321,6 +401,26 @@ class AtoParserVisitor(ParseTreeVisitor):
 
     # Visit a parse tree produced by AtoParser#boolean_.
     def visitBoolean_(self, ctx:AtoParser.Boolean_Context):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number_hint_natural.
+    def visitNumber_hint_natural(self, ctx:AtoParser.Number_hint_naturalContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number_hint_integer.
+    def visitNumber_hint_integer(self, ctx:AtoParser.Number_hint_integerContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number.
+    def visitNumber(self, ctx:AtoParser.NumberContext):
+        return self.visitChildren(ctx)
+
+
+    # Visit a parse tree produced by AtoParser#number_signless.
+    def visitNumber_signless(self, ctx:AtoParser.Number_signlessContext):
         return self.visitChildren(ctx)
 
 

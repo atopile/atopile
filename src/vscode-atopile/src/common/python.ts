@@ -2,79 +2,59 @@
 // Licensed under the MIT License.
 
 /* eslint-disable @typescript-eslint/naming-convention */
-import { commands, Disposable, Event, EventEmitter, Uri } from 'vscode';
-import { traceError, traceLog } from './log/logging';
-import { PythonExtension, ResolvedEnvironment } from '@vscode/python-extension';
+import { Event, EventEmitter, ExtensionContext } from 'vscode';
+import { traceInfo } from './log/logging';
+// TODO make soft import so we can remove extension dependency
+import { PythonExtension } from '@vscode/python-extension';
 
 export interface IInterpreterDetails {
-    path?: string[];
-    resource?: Uri;
+    bin_dir?: string;
+    init: boolean;
 }
 
 const onDidChangePythonInterpreterEvent = new EventEmitter<IInterpreterDetails>();
 export const onDidChangePythonInterpreter: Event<IInterpreterDetails> = onDidChangePythonInterpreterEvent.event;
 
 let _api: PythonExtension | undefined;
-async function getPythonExtensionAPI(): Promise<PythonExtension | undefined> {
+
+async function g_apiSingleton(): Promise<PythonExtension | undefined> {
     if (_api) {
         return _api;
     }
-    _api = await PythonExtension.api();
+    try {
+        _api = await PythonExtension.api();
+    } catch (error) {}
     return _api;
 }
 
-export async function initializePython(disposables: Disposable[]): Promise<void> {
-    try {
-        const api = await getPythonExtensionAPI();
-
-        if (api) {
-            disposables.push(
-                api.environments.onDidChangeActiveEnvironmentPath((e) => {
-                    onDidChangePythonInterpreterEvent.fire({ path: [e.path], resource: e.resource?.uri });
-                }),
-            );
-
-            traceLog('Waiting for interpreter from python extension.');
-            onDidChangePythonInterpreterEvent.fire(await getInterpreterDetails());
-        }
-    } catch (error) {
-        traceError('Error initializing python: ', error);
+function _getBinDir(path: string): string | undefined {
+    if (path.includes('/bin')) {
+        return path.split('/bin')[0] + '/bin';
     }
+    return undefined;
 }
 
-export async function resolveInterpreter(interpreter: string[]): Promise<ResolvedEnvironment | undefined> {
-    const api = await getPythonExtensionAPI();
-    return api?.environments.resolveEnvironment(interpreter[0]);
-}
+export async function initializePython(context: ExtensionContext): Promise<void> {
+    // TODO: might want to wait for python extension to load if available
+    const api = await g_apiSingleton();
 
-export async function getInterpreterDetails(resource?: Uri): Promise<IInterpreterDetails> {
-    const api = await getPythonExtensionAPI();
-    const environment = await api?.environments.resolveEnvironment(
-        api?.environments.getActiveEnvironmentPath(resource),
+    if (!api) {
+        traceInfo('Python extension not found. Assuming ato is installed.');
+        return;
+    }
+
+    context.subscriptions.push(
+        api.environments.onDidChangeActiveEnvironmentPath((e) => {
+            traceInfo(`Python venv changed to ${e.path}.`);
+            onDidChangePythonInterpreterEvent.fire({ bin_dir: _getBinDir(e.path), init: false });
+        }),
     );
-    if (environment?.executable.uri && checkVersion(environment)) {
-        return { path: [environment?.executable.uri.fsPath], resource };
+
+    const path = api.environments.getActiveEnvironmentPath();
+    traceInfo(`Python extension found at ${path.path}.`);
+    const bin_dir = _getBinDir(path.path);
+    if (bin_dir) {
+        traceInfo(`Python venv bin found at ${bin_dir}.`);
+        onDidChangePythonInterpreterEvent.fire({ bin_dir, init: true });
     }
-    return { path: undefined, resource };
-}
-
-export async function getDebuggerPath(): Promise<string | undefined> {
-    const api = await getPythonExtensionAPI();
-    return api?.debug.getDebuggerPackagePath();
-}
-
-export async function runPythonExtensionCommand(command: string, ...rest: any[]) {
-    await getPythonExtensionAPI();
-    return await commands.executeCommand(command, ...rest);
-}
-
-export function checkVersion(resolved: ResolvedEnvironment | undefined): boolean {
-    const version = resolved?.version;
-    if (version?.major === 3 && version?.minor >= 8) {
-        return true;
-    }
-    traceError(`Python version ${version?.major}.${version?.minor} is not supported.`);
-    traceError(`Selected python path: ${resolved?.executable.uri?.fsPath}`);
-    traceError('Supported versions are 3.8 and above.');
-    return false;
 }

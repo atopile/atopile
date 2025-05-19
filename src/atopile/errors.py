@@ -64,6 +64,7 @@ class _BaseUserException(_BaseBaseUserException):
         origin_stop: Token | None = None,
         traceback: Sequence[ParserRuleContext | None] | None = None,
         markdown: bool = True,
+        code: str | None = None,
         **kwargs,
     ):
         super().__init__(msg, *args, **kwargs)
@@ -73,6 +74,7 @@ class _BaseUserException(_BaseBaseUserException):
         self.origin_stop = origin_stop
         self.traceback = traceback
         self.markdown = markdown
+        self.code = code
 
         if self.token_stream is None and (
             self.origin_start is not None or self.origin_stop is not None
@@ -351,3 +353,33 @@ class UserNoProjectException(UserException):
         **kwargs,
     ):
         super().__init__(msg, *args, **kwargs)
+
+
+class UserFeatureNotAvailableError(UserException):
+    """
+    Raised when an experimental feature is not recognized.
+    """
+
+
+class UserFeatureNotEnabledError(UserException):
+    """
+    Raised when an experimental feature has not been enabled.
+    """
+
+
+class UserTraitNotFoundError(UserException):
+    """
+    Raised when a trait is not found.
+    """
+
+
+class UserInvalidTraitError(UserException):
+    """
+    Raised when something other than a valid trait follows the `trait` keyword
+    """
+
+
+class UserTraitError(UserException):
+    """
+    Raised when there's an error applying a trait.
+    """

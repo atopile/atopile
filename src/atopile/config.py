@@ -2,6 +2,7 @@ import fnmatch
 import logging
 import os
 import re
+import sys
 from abc import ABC, abstractmethod
 from contextlib import _GeneratorContextManager, contextmanager
 from contextvars import ContextVar
@@ -388,6 +389,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     keep_picked_parts: bool | None = Field(default=None)
     keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
+    hide_designators: bool | None = Field(default=False)
     paths: BuildTargetPaths
 
     def __init__(self, **data: Any):
@@ -899,7 +901,12 @@ class Config:
         self._project = _try_construct_config(ProjectSettings)
         self._entry = None
         self._selected_builds = None
-        self.interactive = True
+        # Check if we're in an interactive terminal session (cross-platform)
+        try:
+            self.interactive = sys.stdout.isatty() and sys.stdin.isatty()
+        except (AttributeError, ValueError):
+            # If we can't determine, default to True for better user experience
+            self.interactive = True
 
     def __repr__(self) -> str:
         return self._project.__repr__()
@@ -1078,12 +1085,12 @@ class Config:
         return entry_addr_override
 
     def _get_entry_arg_file_path(
-        self, entry: str | None
+        self, entry: str | None, working_dir: Path | None
     ) -> tuple[AddrStr | None, Path]:
         # basic the entry address if provided, otherwise leave it as None
 
         if entry is None:
-            entry_arg_file_path = Path.cwd()
+            entry_arg_file_path = working_dir or Path.cwd()
         else:
             entry = AddrStr(entry)
 
@@ -1107,9 +1114,10 @@ class Config:
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
         frozen: bool | None = None,
+        working_dir: Path | None = None,
         **kwargs: Any,
     ) -> None:
-        entry, entry_arg_file_path = self._get_entry_arg_file_path(entry)
+        entry, entry_arg_file_path = self._get_entry_arg_file_path(entry, working_dir)
 
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)

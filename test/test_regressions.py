@@ -96,15 +96,8 @@ class _TestRepo:
 
 
 REPOS = [
-    _TestRepo("atopile/spin-servo-drive").xfail("Known issue"),
-    _TestRepo("atopile/esp32-s3").xfail("Known issue"),
-    _TestRepo("atopile/cell-sim").xfail("Known issue"),
+    _TestRepo("atopile/spin-servo-drive").xfail("Needs upgrading"),
     _TestRepo("atopile/hil"),
-    _TestRepo("atopile/rp2040").xfail("Known issue"),
-    _TestRepo("atopile/tca9548apwr").xfail("Known issue"),
-    _TestRepo("atopile/nau7802").xfail("Known issue"),
-    _TestRepo("atopile/lv2842xlvddcr").xfail("Known issue"),
-    _TestRepo("atopile/bq24045dsqr").xfail("Known issue"),
     _TestRepo("atopile/packages", multipackage="packages"),
 ]
 

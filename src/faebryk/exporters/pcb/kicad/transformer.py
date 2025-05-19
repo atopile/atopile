@@ -4,7 +4,6 @@
 import copy
 import logging
 import re
-import subprocess
 from collections import defaultdict
 from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
@@ -23,6 +22,7 @@ from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.core.trait import TraitNotFound
 from faebryk.libs.exceptions import DeprecatedException, UserException, downgrade
 from faebryk.libs.geometry.basic import Geometry
 from faebryk.libs.kicad.fileformats_common import C_pts
@@ -1402,22 +1402,23 @@ class PCB_Transformer:
         knockout: bool = True,
         alignment: Alignment = Alignment_Default,
     ):
-        # check if gitcli is available
         try:
-            subprocess.check_output(["git", "--version"])
-        except subprocess.CalledProcessError:
-            logger.warning("git is not installed")
-            git_human_version = "git is not installed"
+            import git
 
-        try:
-            git_human_version = (
-                subprocess.check_output(["git", "describe", "--always"])
-                .strip()
-                .decode("utf-8")
-            )
-        except subprocess.CalledProcessError:
-            logger.warning("Cannot get git project version")
-            git_human_version = "Cannot get git project version"
+            try:
+                repo = git.Repo(search_parent_directories=True)
+                git_human_version = repo.git.describe("--always")
+            except (
+                git.InvalidGitRepositoryError,
+                git.NoSuchPathError,
+                git.GitCommandError,
+            ):
+                logger.warning("Cannot get git project version")
+                git_human_version = "Cannot get git project version"
+        except ImportError:
+            # Fall back to direct string if git executable is not available
+            logger.warning("git executable not installed, cannot get git version")
+            git_human_version = "git executable not installed"
 
         self.insert_text(
             text=git_human_version,
@@ -1971,9 +1972,20 @@ class PCB_Transformer:
                 logger.warning(f"No pads on net `{net_name}`.")
 
             for f_pad in pads_on_net:
-                pcb_pads_connected_to_pad = f_pad.get_trait(
-                    self.has_linked_kicad_pad
-                ).get_pad()[1]
+                # FIXME: if this happens its typically due to a floating component
+                # which wasn't prebviously added to the layout
+                try:
+                    pcb_pads_connected_to_pad = f_pad.get_trait(
+                        self.has_linked_kicad_pad
+                    ).get_pad()[1]
+                except TraitNotFound as ex:
+                    # FIXME: replace this with more robust
+                    raise RuntimeError(
+                        f"No linked KiCAD pad found for `{f_pad.get_full_name()}`."
+                        " This is caused by the component floating, rather than"
+                        " being attached to the app's tree."
+                    ) from ex
+
                 # We needn't check again here for a lack of pcb pads on the atopile pad
                 # because we've already raised a warning on binding of the trait
                 for pcb_pad in pcb_pads_connected_to_pad:

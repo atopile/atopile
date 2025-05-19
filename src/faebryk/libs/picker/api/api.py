@@ -3,7 +3,9 @@
 
 import json
 import logging
+import sys
 from dataclasses import dataclass
+from importlib.metadata import version as get_package_version
 
 import requests
 
@@ -51,6 +53,15 @@ class ApiClient:
 
     def __init__(self):
         self._client = requests.Session()
+        self._client.headers.update(
+            {
+                "User-Agent": (
+                    f"atopile/{get_package_version('atopile')} "
+                    f"({sys.platform}; "
+                    f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})"
+                ),
+            }
+        )
 
     @property
     @once

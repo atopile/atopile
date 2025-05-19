@@ -9,7 +9,8 @@ from faebryk.libs.units import P
 def _parser(src: str):
     input = atopile.parse.InputStream(src)
     input.name = "test"
-    return atopile.parse.make_parser(input)
+    parser, _ = atopile.parse.make_parser(input)
+    return parser
 
 
 @pytest.mark.parametrize(

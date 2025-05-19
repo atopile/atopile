@@ -90,6 +90,10 @@ class Dist:
     def compiler_version_spec(self) -> str:
         return not_none(self.manifest.requires_atopile)
 
+    @property
+    def bytes(self) -> int:
+        return self.path.stat().st_size
+
     @staticmethod
     def get_package_filename(cfg: atopile.config.ProjectConfig) -> str:
         if cfg.package is None:

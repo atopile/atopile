@@ -1,0 +1,14 @@
+import Resistor, Capacitor
+
+module App:
+    r1 = new Resistor
+    r1.resistance = 10kohm +/- 20%
+    r1.package = "R0402"
+
+    c1 = new Capacitor
+    c1.capacitance = 100nF +/- 20%
+    c1.package = "C0402"
+
+    r1.unnamed[0] ~ c1.unnamed[0]
+    r1.unnamed[1] ~ c1.unnamed[1]
+    

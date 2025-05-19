@@ -2,13 +2,13 @@ import logging
 from typing import Annotated, Iterator
 
 import typer
-from git import Repo
 from semver import Version
 
 import faebryk.libs.backend.packages.api as packages_api
 from atopile.config import config
 from atopile.errors import UserBadParameterError, UserException
 from faebryk.libs.backend.packages.api import PackagesAPIClient
+from faebryk.libs.package.artifacts import Artifacts
 from faebryk.libs.package.dist import Dist, DistValidationError
 
 # Set up logging
@@ -22,6 +22,8 @@ FROM_GIT = "from-git"
 
 
 def _yield_semver_tags() -> Iterator[Version]:
+    from git import Repo
+
     repo = Repo(config.project.paths.root)
     for tag in repo.tags:
         if not tag.commit == repo.head.commit:
@@ -35,7 +37,12 @@ def _yield_semver_tags() -> Iterator[Version]:
 
 def _apply_version(specd_version: str) -> None:
     if specd_version == FROM_GIT:
-        semver_tags = list(_yield_semver_tags())
+        try:
+            semver_tags = list(_yield_semver_tags())
+        except Exception as e:
+            raise UserException(
+                "Could not determine version from git tags: %s" % e
+            ) from e
 
         if len(semver_tags) == 0:
             raise UserBadParameterError("No semver tags found for the current commit")
@@ -85,6 +92,15 @@ def publish(
         str | None,
         typer.Argument(help="The address of the package to publish."),
     ] = None,
+    include_artifacts: Annotated[
+        bool,
+        typer.Option(
+            "--include-artifacts",
+            "-a",
+            envvar="ATO_CLI_PACKAGE_INCLUDE_ARTIFACTS",
+            help="Include build artifacts in the package.",
+        ),
+    ] = True,
     skip_auth: Annotated[
         bool,
         typer.Option("--skip-auth", "-s", help="Skip authentication."),
@@ -149,6 +165,21 @@ def publish(
 
     logger.info("Package distribution built: %s", dist.path)
 
+    if include_artifacts:
+        artifacts = Artifacts.build_artifacts(
+            cfg=config.project, output_path=config.project.paths.build
+        )
+    else:
+        artifacts = None
+
+    try:
+        from git import Repo
+
+        repo = Repo(config.project.paths.root)
+        git_ref = str(repo.head.ref)
+    except Exception:
+        git_ref = None
+
     # Upload sequence
     if dry_run:
         logger.info("Dry run, skipping upload")
@@ -159,6 +190,8 @@ def publish(
                 identifier=config.project.package.identifier,
                 version=str(config.project.package.version),
                 dist=dist,
+                artifacts=artifacts,
+                git_ref=git_ref,
                 skip_auth=skip_auth,
             ).url
         except packages_api.Errors.ReleaseAlreadyExistsError:

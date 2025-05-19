@@ -3,14 +3,10 @@
     "displayName": "atopile",
     "icon": "ato_logo_256x256.png",
     "description": "IDE support for atopile.",
-    "version": "0.3.10-dev0",
+    "version": "0.6.0",
     "preview": false,
-    "serverInfo": {
-        "name": "atopile",
-        "module": "atopile"
-    },
     "publisher": "atopile",
-    "license": "Apache-2.0",
+    "license": "MIT",
     "homepage": "https://github.com/atopile/atopile",
     "repository": {
         "type": "git",
@@ -44,7 +40,10 @@
     },
     "activationEvents": [
         "onLanguage:atopile",
-        "workspaceContains:*.ato"
+        "workspaceContains:*.ato",
+        "workspaceContains:ato.yaml",
+        "command:atopile.example",
+        "onStartupFinished"
     ],
     "main": "./dist/extension.js",
     "scripts": {
@@ -68,63 +67,9 @@
         ],
         "configuration": {
             "properties": {
-                "atopile.args": {
-                    "default": [],
-                    "description": "Arguments passed in. Each argument is a separate item in the array.",
-                    "items": {
-                        "type": "string"
-                    },
+                "atopile.ato": {
+                    "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slow down server response time.",
                     "scope": "resource",
-                    "type": "array"
-                },
-                "atopile.path": {
-                    "default": [],
-                    "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slowdown server response time.",
-                    "scope": "resource",
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "atopile.importStrategy": {
-                    "default": "fromEnvironment",
-                    "description": "Defines where `atopile` is imported from. This setting may be ignored if `atopile.path` is set.",
-                    "enum": [
-                        "useBundled",
-                        "fromEnvironment"
-                    ],
-                    "enumDescriptions": [
-                        "Always use the bundled version of `atopile`.",
-                        "Use `atopile` from environment, fallback to bundled version only if `atopile` not available in the environment."
-                    ],
-                    "scope": "window",
-                    "type": "string"
-                },
-                "atopile.interpreter": {
-                    "default": [],
-                    "description": "When set to a path to python executable, extension will use that to launch the server and any subprocess.",
-                    "scope": "resource",
-                    "items": {
-                        "type": "string"
-                    },
-                    "type": "array"
-                },
-                "atopile.showNotifications": {
-                    "default": "off",
-                    "description": "Controls when notifications are shown by this extension.",
-                    "enum": [
-                        "off",
-                        "onError",
-                        "onWarning",
-                        "always"
-                    ],
-                    "enumDescriptions": [
-                        "All notifications are turned off, any errors or warning are still available in the logs.",
-                        "Notifications are shown only in the case of an error.",
-                        "Notifications are shown for errors and warnings.",
-                        "Notifications are show for anything that the server chooses to show."
-                    ],
-                    "scope": "machine",
                     "type": "string"
                 }
             }
@@ -137,7 +82,7 @@
             },
             {
                 "command": "atopile.create",
-                "title": "Ato Create",
+                "title": "Create a project / build target / component",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
@@ -148,14 +93,14 @@
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.install",
-                "title": "Install JLCPCB Component",
+                "command": "atopile.add",
+                "title": "Add a dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.install_package",
-                "title": "Install Package",
+                "command": "atopile.remove",
+                "title": "Remove a dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
@@ -170,6 +115,11 @@
                 "title": "Launches KiCAD PCB Editor with the current board",
                 "category": "atopile",
                 "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.example",
+                "title": "Open Example Project",
+                "category": "atopile"
             }
         ],
         "languages": [
@@ -194,27 +144,33 @@
         ]
     },
     "dependencies": {
+        "@types/decompress": "^4.2.7",
         "@vscode/python-extension": "^1.0.5",
+        "axios": "^1.9.0",
+        "decompress": "^4.2.1",
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
-        "vscode-languageclient": "^8.1.0"
+        "vscode-languageclient": "^9.0.1",
+        "vscode-variables": "^1.0.1",
+        "which": "^5.0.0"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",
         "@types/glob": "^8.1.0",
         "@types/js-yaml": "^4.0.9",
-        "@types/node": "16.x",
+        "@types/node": "^16.18.126",
         "@types/vscode": "1.78.0",
+        "@types/which": "^3.0.4",
         "@typescript-eslint/eslint-plugin": "^8.16.0",
         "@typescript-eslint/parser": "^8.19.0",
         "@vscode/test-electron": "^2.4.0",
         "@vscode/vsce": "^3.2.1",
         "eslint": "^9.17.0",
-        "glob": "^10.4.2",
+        "glob": "^10.4.5",
         "prettier": "^3.4.2",
         "ts-loader": "^9.5.1",
-        "webpack": "^5.97.1",
         "typescript": "^5.7.2",
+        "webpack": "^5.97.1",
         "webpack-cli": "^5.1.4"
     }
 }

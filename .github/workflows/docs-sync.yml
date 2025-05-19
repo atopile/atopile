@@ -1,0 +1,60 @@
+on:
+  push:
+    branches:
+      - main  # or your default branch
+    paths:
+      - 'examples/**'  # adjust to your examples directory
+      - '.github/workflows/docs-sync.yml'
+  workflow_dispatch:
+
+jobs:
+  convert-and-sync:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Checkout source repository
+      - name: Checkout source repository
+        uses: actions/checkout@v4
+
+      # Step 2: Generate GitHub App Token
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.DOCS_SYNC_APP_ID }}
+          private-key: ${{ secrets.DOCS_SYNC_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      # Step 3: Setup Node.js (if your conversion script uses Node.js)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Step 4: Run conversion script
+      - name: Convert examples to MDX
+        run: node tools/docs-sync.js
+        # Alternatively, you could use: bash ./scripts/convert-to-mdx.sh
+
+      # Step 5: Checkout docs repository
+      - name: Checkout docs repository
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/docs
+          token: ${{ steps.generate-token.outputs.token }}
+          path: docs-repo
+
+      # Step 6: Copy converted files to docs repository
+      - name: Copy converted MDX files
+        run: |
+          mkdir -p docs-repo/snippets/examples/
+          cp -R converted-examples/* docs-repo/snippets/examples/
+
+      # Step 7: Commit and push changes to docs repository
+      - name: Commit and push to docs repository
+        working-directory: ./docs-repo
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --quiet && git diff --staged --quiet || git commit -m "Automatically sync converted examples from project repo"
+          git push

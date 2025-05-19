@@ -7,10 +7,12 @@ import itertools
 import logging
 import operator
 import os
+import typing
 from collections import defaultdict
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from enum import StrEnum
 from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
@@ -34,6 +36,7 @@ from atopile.datatypes import (
     FieldRef,
     KeyOptItem,
     KeyOptMap,
+    KeyType,
     ReferencePartType,
     StackList,
     TypeRef,
@@ -73,12 +76,14 @@ from faebryk.libs.units import (
 from faebryk.libs.util import (
     FuncDict,
     cast_assert,
+    complete_type_string,
     groupby,
     has_attr_or_property,
     has_instance_settable_attr,
     import_from_path,
     is_type_pair,
     not_none,
+    once,
     partition_as_list,
 )
 
@@ -92,6 +97,27 @@ class from_dsl(Trait.decless()):
     def __init__(self, src_ctx: ParserRuleContext) -> None:
         super().__init__()
         self.src_ctx = src_ctx
+
+
+@dataclass
+class Number:
+    value: str
+    negative: bool
+    base: int
+
+    def interpret(self) -> int | float:
+        if self.base != 10:
+            out = int(self.value, self.base)
+        else:
+            out = float(self.value)
+
+        if self.negative:
+            out *= -1
+
+        if out.is_integer():
+            out = int(out)
+
+        return out
 
 
 class BasicsMixin:
@@ -125,7 +151,7 @@ class BasicsMixin:
     def visitFieldReference(self, ctx: ap.Field_referenceContext) -> FieldRef:
         pin = ctx.pin_reference_end()
         if pin is not None:
-            pin = int(pin.NUMBER().getText())
+            pin = self.visitNumber_hint_natural(pin.number_hint_natural())
         return FieldRef(
             parts=(
                 self.visitFieldReferencePart(part)
@@ -147,6 +173,51 @@ class BasicsMixin:
             return False
 
         raise errors.UserException.from_ctx(ctx, f"Expected a boolean value, got {raw}")
+
+    def visitNumber_signless(self, ctx: ap.Number_signlessContext) -> Number:
+        number: str = ctx.getText()
+        base = 10
+        if number.startswith("0") and len(number) > 1:
+            if number[1] in "xX":
+                base = 16
+            elif number[1] in "oO":
+                base = 8
+            elif number[1] in "bB":
+                base = 2
+        return Number(number, False, base)
+
+    def visitNumber(self, ctx: ap.NumberContext) -> Number:
+        number: Number = self.visitNumber_signless(ctx.number_signless())
+        sign = ctx.MINUS()
+        negative = bool(sign)
+        return Number(number.value, negative, number.base)
+
+    def visitNumber_hint_natural(self, ctx: ap.Number_hint_naturalContext) -> int:
+        number = self.visitNumber_signless(ctx.number_signless())
+        if number.negative:
+            raise errors.UserException.from_ctx(
+                ctx, "Natural numbers must be non-negative"
+            )
+
+        try:
+            return int(number.value, number.base)
+        except ValueError as ex:
+            raise errors.UserException.from_ctx(
+                ctx, "Natural numbers must be whole numbers"
+            ) from ex
+
+    def visitNumber_hint_integer(self, ctx: ap.Number_hint_integerContext) -> int:
+        number = self.visitNumber(ctx.number())
+
+        try:
+            out = int(number.value, number.base)
+            if number.negative:
+                out = -out
+            return out
+        except ValueError as ex:
+            raise errors.UserException.from_ctx(
+                ctx, "Integer numbers must be whole numbers"
+            ) from ex
 
 
 class NOTHING:
@@ -287,7 +358,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
                     name = ref[0]
                     if not hasattr(F, name) or not issubclass(
-                        getattr(F, name), (L.Module, L.ModuleInterface)
+                        getattr(F, name), (L.Module, L.ModuleInterface, L.Trait)
                     ):
                         raise errors.UserKeyError.from_ctx(
                             ctx, f"Unknown standard library module: '{name}'"
@@ -396,6 +467,21 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
 
         return context
 
+    def visitPragma_stmt(self, ctx: ap.Pragma_stmtContext):
+        # pragma experiment() handled in Bob::_is_feature_enabled()
+        # test parsing
+        try:
+            pragma = _parse_pragma(ctx.PRAGMA().getText().strip())[1]
+            _FeatureFlags.feature_from_experiment_call(pragma)
+        except _FeatureFlags.ExperimentPragmaSyntaxError as ex:
+            raise errors.UserSyntaxError.from_ctx(ctx, str(ex)) from ex
+        except _FeatureFlags.UnrecognizedExperimentError as ex:
+            raise errors.UserFeatureNotAvailableError.from_ctx(ctx, str(ex)) from ex
+        except errors.UserException as ex:
+            # Re-raise the exception with the context from the pragma statement
+            raise errors.UserException.from_ctx(ctx, str(ex)) from ex
+        return NOTHING
+
 
 @contextmanager
 def ato_error_converter():
@@ -466,6 +552,122 @@ class _ParameterDefinition:
         return len(self.ref) == 1
 
 
+def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
+    """
+    pragma_stmt: '#pragma' function_call
+    function_call: NAME '(' argument (',' argument)* ')'
+    argument: literal
+    literal: STRING | NUMBER | BOOLEAN
+
+    returns (name, [arg1, arg2, ...])
+    """
+    import re
+
+    _pragma = "#pragma"
+    _function_name = r"(?P<function_name>\w+)"
+    _string = r'"([^"]*)"'
+    _int = r"(\d+)"
+    _args_str = r"(?P<args_str>.*?)"
+
+    pragma_syntax = re.compile(rf"^{_pragma}\s+{_function_name}\(\s*{_args_str}\s*\)$")
+    _individual_arg_pattern = re.compile(rf"{_string}|{_int}")
+    match = pragma_syntax.match(pragma_text)
+
+    if match is None:
+        raise errors.UserSyntaxError(f"Malformed pragma: '{pragma_text}'")
+
+    data = match.groupdict()
+    name = data["function_name"]
+    args_str = data["args_str"]
+    found_args = _individual_arg_pattern.findall(args_str)
+    arguments = [
+        string_arg if string_arg is not None else int(int_arg)
+        for string_arg, int_arg in found_args
+    ]
+    return name, arguments
+
+
+class _FeatureFlags:
+    class ExperimentPragmaSyntaxError(Exception): ...
+
+    class UnrecognizedExperimentError(Exception): ...
+
+    class Feature(StrEnum):
+        BRIDGE_CONNECT = "BRIDGE_CONNECT"
+        FOR_LOOP = "FOR_LOOP"
+        TRAITS = "TRAITS"
+        MODULE_TEMPLATING = "MODULE_TEMPLATING"
+
+    def __init__(self):
+        self.flags = set[_FeatureFlags.Feature]()
+
+    def enable(self, feature: Feature):
+        self.flags.add(feature)
+
+    def disable(self, feature: Feature):
+        self.flags.discard(feature)
+
+    @staticmethod
+    def feature_from_experiment_call(args: list[str | int | float | bool]) -> Feature:
+        if len(args) != 1:
+            raise _FeatureFlags.ExperimentPragmaSyntaxError(
+                "Experiment pragma takes exactly one argument"
+            )
+
+        feature_name = args[0]
+        if not isinstance(feature_name, str):
+            raise _FeatureFlags.ExperimentPragmaSyntaxError(
+                "Experiment pragma takes a single string argument"
+            )
+        if feature_name not in _FeatureFlags.Feature:
+            raise _FeatureFlags.UnrecognizedExperimentError(
+                f"Unknown experiment feature: `{feature_name}`"
+            )
+        return _FeatureFlags.Feature(feature_name)
+
+    @classmethod
+    @once
+    def from_file_ctx(cls, file_ctx: ap.File_inputContext) -> "_FeatureFlags":
+        """Parses pragmas in a file context and returns the set of enabled features."""
+        out = cls()
+
+        experiment_calls = [
+            pragma
+            for stmt_ctx in file_ctx.stmt()
+            if (stmt := stmt_ctx.pragma_stmt()) is not None
+            and (pragma := _parse_pragma(stmt.PRAGMA().getText().strip()))[0]
+            == "experiment"
+        ]
+
+        for _, args in experiment_calls:
+            out.enable(_FeatureFlags.feature_from_experiment_call(args))
+
+        return out
+
+    def enabled(self, feature: Feature) -> bool:
+        return feature in self.flags
+
+    @classmethod
+    def enabled_in_ctx(cls, ctx: ParserRuleContext, feature: Feature) -> bool:
+        current_ctx = ctx
+        while current_ctx is not None and not isinstance(
+            current_ctx, ap.File_inputContext
+        ):
+            current_ctx = current_ctx.parentCtx
+
+        if not isinstance(current_ctx, ap.File_inputContext):
+            # This shouldn't happen if ctx is from a parsed file
+            logger.warning(f"Could not find file context for feature check '{feature}'")
+            return False  # Default to disabled if context is weird
+
+        flags = cls.from_file_ctx(current_ctx)
+
+        return flags.enabled(feature)
+
+
+type Field = L.Node | list[L.Node] | dict[str, L.Node] | set[L.Node]
+
+
 class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
     """
     Bob is a general contractor who runs his own construction company in the town
@@ -496,6 +698,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # so we don't report dud key errors when it was a higher failure
         # that caused the node not to exist
         self._failed_nodes = FuncDict[L.Node, set[str]]()
+        self._in_for_loop = False  # Flag to detect nested loops
+
+    def _ensure_feature_enabled(
+        self, ctx: ParserRuleContext, feature: _FeatureFlags.Feature
+    ) -> None:
+        # note syntax errors will be caught before this point
+
+        if not _FeatureFlags.enabled_in_ctx(ctx, feature):
+            raise errors.UserFeatureNotEnabledError.from_ctx(
+                ctx,
+                message=(
+                    "Experimental feature not enabled. "
+                    f'Use `#pragma experiment("{feature.value}")` in your file.'
+                ),
+                traceback=self.get_traceback(),
+            )
 
     def build_ast(
         self, ast: ap.File_inputContext, ref: TypeRef, file_path: Path | None = None
@@ -509,6 +727,39 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         """Build a Module from a file and reference."""
         context = self.index_file(self._sanitise_path(path))
         return self._build(context, ref)
+
+    def build_text(self, text: str, path: Path, ref: TypeRef) -> L.Node:
+        """Build a Module from a string and reference."""
+        context = self.index_text(text, path)
+        return self._build(context, ref)
+
+    def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
+        out = {}
+        with accumulate(errors.UserException) as accumulator:
+            for ref in context.refs:
+                if isinstance(context.refs[ref], ap.BlockdefContext):
+                    with accumulator.collect():
+                        out[ref] = self._build(context, ref)
+
+        return out
+
+    def try_build_all_from_file(self, path: Path) -> dict[TypeRef, L.Node]:
+        """
+        Build each top-level block in a file.
+
+        Returns a dict of successful builds, keyed by reference.
+        """
+        context = self.index_file(self._sanitise_path(path))
+        return self._try_build_all(context)
+
+    def try_build_all_from_text(self, text: str, path: Path) -> dict[TypeRef, L.Node]:
+        """
+        Build each top-level block in a string.
+
+        Returns a dict of successful builds, keyed by reference.
+        """
+        context = self.index_text(text, path)
+        return self._try_build_all(context)
 
     @property
     def modules(self) -> dict[address.AddrStr, Type[L.Module]]:
@@ -656,7 +907,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             )
 
                         elif is_part_module and root_definitions:
-                            param.alias_is(not_none(last(root_definitions).value))
+                            param.alias_is(not_none(last(root_definitions).value))  # type: ignore
                             param.add(does_not_require_picker_check())
                             gospel_params.append(param)
 
@@ -665,7 +916,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             value = not_none(definition.value)
                             try:
                                 logger.debug("Constraining %s to %s", param, value)
-                                param.constrain_subset(value)
+                                param.constrain_subset(value)  # type: ignore
                             except UnitCompatibilityError as ex:
                                 raise errors.UserTypeError.from_ctx(
                                     definition.ctx,
@@ -709,6 +960,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         ast = parser.get_ast_from_file(file_path)
         return self.index_ast(ast, file_path)
 
+    def index_text(self, text: str, file_path: Path | None) -> Context:
+        ast = parser.get_ast_from_text(text, file_path)
+        return self.index_ast(ast, file_path)
+
     def _get_search_paths(self, context: Context) -> list[Path]:
         search_paths = [Path(p) for p in self.search_paths]
 
@@ -735,8 +990,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 break
         else:
             raise errors.UserFileNotFoundError.from_ctx(
-                item.original_ctx,
-                f"Can't find {item.from_path} in {', '.join(map(str, search_paths))}",
+                item.original_ctx, f"Unable to resolve import `{item.from_path}`"
             )
 
         from_path = self._sanitise_path(candidate_from_path)
@@ -826,78 +1080,113 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return item
 
-    @staticmethod
-    def get_node_attr(node: L.Node, ref: ReferencePartType) -> L.Node:
-        """
-        Analogous to `getattr`
+    def resolve_node_property(self, node: L.Node, name: str) -> Field:
+        if has_attr_or_property(node, name):
+            return getattr(node, name)
+        if name in node.runtime:
+            return node.runtime[name]
 
-        Returns the value if it exists, otherwise raises an AttributeError
-        Required because we're seeing attributes in both the attrs and runtime
-        """
+        # If we know that a previous failure prevented the creation
+        # of this node, raise a SkipPriorFailedException to prevent
+        # error messages about it missing from polluting the output
+        if name in self._failed_nodes.get(node, set()):
+            raise SkipPriorFailedException()
 
-        if has_attr_or_property(node, ref.name):
-            # Build-time attributes are attached as real attributes
-            result = getattr(node, ref.name)
-            if ref.key is not None and isinstance(result, L.Node):
+        raise AttributeError(name=name, obj=node)
+
+    def resolve_node_field_part(self, node: L.Node, ref: ReferencePartType) -> Field:
+        field = self.resolve_node_property(node, ref.name)
+
+        if isinstance(field, L.Node):
+            if ref.key is not None:
                 raise ValueError(f"{ref.name} is not subscriptable")
-            if not isinstance(result, L.Node) and ref.key is None:
+            return field
+
+        if isinstance(field, dict):
+            if ref.key is None:
+                return field
+            if ref.key not in field:
+                raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+            return field[ref.key]
+
+        if isinstance(field, list):
+            if ref.key is None:
+                return field
+            if not isinstance(ref.key, int):
+                raise ValueError(f"Key `{ref.key}` is not an integer")
+            if ref.key >= len(field):
+                raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
+            return field[ref.key]
+
+        raise TypeError(f"Unknown field type `{type(field)}`")
+
+    def resolve_node_field(self, src_node: L.Node, ref: FieldRef) -> Field:
+        path: list[Field] = [src_node]
+        for depth, name in enumerate(ref):
+            last = path[-1]
+            if not isinstance(last, L.Node):
                 raise ValueError(
-                    f"{ref.name} is a {type(result)._ref.name__} and needs a ref.key"
+                    f"{name} is a container and can't be dot accessed."
+                    f"Did you mean to subscript it like this `{name}[0]`?"
                 )
-            if isinstance(result, dict):
-                assert ref.key is not None
-                if ref.key not in result:
-                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
-                result = result[ref.key]
-            elif isinstance(result, list):
-                assert ref.key is not None
-                # TODO type check key
-                if not isinstance(ref.key, int):
-                    raise ValueError(f"Key `{ref.key}` is not an integer")
-                if ref.key >= len(result):
-                    raise AttributeError(name=f"{ref.name}[{ref.key}]", obj=node)
-                result = result[ref.key]
-            # TODO handle non-module & non-dict & non-list case
-        elif ref.name in node.runtime and ref.key is None:
-            # Runtime attributes are attached as runtime attributes
-            result = node.runtime[ref.name]
-        else:
-            # Wah wah wah - we don't know what this is
-            friendlyname = ref.name if ref.key is None else f"{ref.name}[{ref.key}]"
-            raise AttributeError(name=friendlyname, obj=node)
+            try:
+                field = self.resolve_node_field_part(last, name)
+            except AttributeError as ex:
+                raise AttributeError(
+                    f"`{FieldRef(ref.parts[:depth])}` has no attribute `{ex.name}`"
+                    if len(path) > 1
+                    else f"No attribute `{name}`"
+                ) from ex
+            path.append(field)
+        return path[-1]
 
-        if isinstance(result, L.Module):
-            return result.get_most_special()
+    def resolve_node(
+        self, src_node: L.Node, ref: FieldRef | ReferencePartType
+    ) -> L.Node:
+        if isinstance(ref, ReferencePartType):
+            ref = FieldRef([ref])
+        field = self.resolve_node_field(src_node, ref)
+        if not isinstance(field, L.Node):
+            raise TypeError(field, f"{ref} is not a node")
+        if isinstance(field, L.Module):
+            return field.get_most_special()
+        return field
 
-        return result
+    def resolve_field_shortcut(
+        self, src_node: L.Node, name: str, key: KeyType | None = None
+    ) -> Field:
+        """
+        Shortcut for `resolve_field(src_node, FieldRef([ReferencePartType(name, key)]))`
+        Useful for tests
+        """
+        return self.resolve_node_field(
+            src_node, FieldRef([ReferencePartType(name, key)])
+        )
+
+    def resolve_node_shortcut(
+        self, src_node: L.Node, name: str, key: KeyType | None = None
+    ) -> L.Node:
+        """
+        Shortcut for `resolve_node(src_node, FieldRef([ReferencePartType(name, key)]))`
+        Useful for tests
+        """
+        return self.resolve_node(src_node, FieldRef([ReferencePartType(name, key)]))
 
     def _get_referenced_node(self, ref: FieldRef, ctx: ParserRuleContext) -> L.Node:
-        node = self._current_node
-        for i, name in enumerate(ref):
-            try:
-                node = self.get_node_attr(node, name)
-            except AttributeError as ex:
-                # If we know that a previous failure prevented the creation
-                # of this node, raise a SkipPriorFailedException to prevent
-                # error messages about it missing from polluting the output
-                if name in self._failed_nodes.get(node, set()):
-                    raise SkipPriorFailedException() from ex
-
-                # Wah wah wah - we don't know what this is
-                # Build a nice error message
-                if i > 0:
-                    msg = f"`{FieldRef(ref.parts[:i])}` has no attribute `{ex.name}`"
-                else:
-                    msg = f"No attribute `{name}`"
-                raise errors.UserKeyError.from_ctx(
-                    ctx, msg, traceback=self.get_traceback()
-                ) from ex
-            except ValueError as ex:
-                raise errors.UserKeyError.from_ctx(
-                    ctx, str(ex), traceback=self.get_traceback()
-                ) from ex
-
-        return node
+        try:
+            return self.resolve_node(self._current_node, ref)
+        except AttributeError as ex:
+            raise errors.UserKeyError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
+        except ValueError as ex:
+            raise errors.UserKeyError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
+        except TypeError as ex:
+            raise errors.UserTypeError.from_ctx(
+                ctx, str(ex), traceback=self.get_traceback()
+            ) from ex
 
     def _try_get_referenced_node(
         self, ref: FieldRef, ctx: ParserRuleContext
@@ -911,6 +1200,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self,
         item: ap.BlockdefContext | Type[L.Node],
         promised_supers: list[ap.BlockdefContext],
+        kwargs: dict[str, Any] | None = None,
     ) -> tuple[L.Node, list[ap.BlockdefContext]]:
         """
         Kind of analogous to __new__ in Python, except that it's a factory
@@ -949,7 +1239,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(), promised_supers
+            return super_class(**(kwargs or {})), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -985,7 +1275,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     @contextmanager
     def _init_node(
-        self, node_type: ap.BlockdefContext | Type[L.Node]
+        self,
+        node_type: ap.BlockdefContext | Type[L.Node],
+        kwargs: dict[str, Any] | None = None,
     ) -> Generator[L.Node, None, None]:
         """
         Kind of analogous to __init__ in Python, except that it's a factory
@@ -997,8 +1289,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         and subsequently for errors to be raised in context of it's graph location.
         """
         new_node, promised_supers = self._new_node(
-            node_type,
-            promised_supers=[],
+            node_type, promised_supers=[], kwargs=kwargs
         )
 
         # Shim on component and module classes defined in ato
@@ -1027,10 +1318,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         it later. Used in forward-declaration.
         """
         try:
-            node = self.get_node_attr(node, ref)
+            node = self.resolve_node(node, ref)
         except AttributeError as ex:
-            if ref in self._failed_nodes.get(node, set()):
-                raise SkipPriorFailedException() from ex
             # Wah wah wah - we don't know what this is
             raise errors.UserNotImplementedError.from_ctx(
                 src_ctx,
@@ -1064,7 +1353,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         """
 
         try:
-            param = self.get_node_attr(node, ref)
+            param = self.resolve_node(node, ref)
         except AttributeError:
             # Here we attach only minimal information, so we can override it later
             if ref.key is not None:
@@ -1111,123 +1400,198 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _record_failed_node(self, node: L.Node, name: str):
         self._failed_nodes.setdefault(node, set()).add(name)
 
+    def _assign_new_node(
+        self,
+        ctx: ap.Assign_stmtContext,
+        assignable_ctx: ap.AssignableContext,
+        assigned_ref: FieldRef,
+    ):
+        if len(assigned_ref) > 1:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't declare fields in a nested object `{assigned_ref}`",
+                traceback=self.get_traceback(),
+            )
+
+        assigned_name = assigned_ref[-1]
+        if assigned_name.key is not None:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't use keys with `new` statements `{assigned_ref}`",
+                traceback=self.get_traceback(),
+            )
+        new_stmt_ctx = assignable_ctx.new_stmt()
+        ref = self.visitTypeReference(new_stmt_ctx.type_reference())
+
+        if new_stmt_ctx.template() is not None:
+            self._ensure_feature_enabled(
+                new_stmt_ctx, _FeatureFlags.Feature.MODULE_TEMPLATING
+            )
+
+        kwargs = self.visitTemplate(new_stmt_ctx.template())
+
+        def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
+            try:
+                obj.add(
+                    node,
+                    name=assigned_name.name if container_name is None else None,
+                    container=getattr(obj, container_name) if container_name else None,
+                )
+            except FieldExistsError as e:
+                raise errors.UserAlreadyExistsError.from_ctx(
+                    ctx,
+                    f"Field `{assigned_name}` already exists",
+                    traceback=self.get_traceback(),
+                ) from e
+            node.add(from_dsl(ctx))
+
+        try:
+            with self._traceback_stack.enter(new_stmt_ctx):
+                if new_count_ctx := new_stmt_ctx.new_count():
+                    try:
+                        new_count = int(new_count_ctx.getText())
+                    except ValueError:
+                        raise errors.UserValueError.from_ctx(
+                            ctx,
+                            f"Invalid integer `{new_count_ctx.getText()}`",
+                            traceback=self.get_traceback(),
+                        )
+
+                    if new_count < 0:
+                        raise errors.UserValueError.from_ctx(
+                            ctx,
+                            f"Negative integer `{new_count}`",
+                            traceback=self.get_traceback(),
+                        )
+
+                    if hasattr(self._current_node, assigned_name.name):
+                        raise errors.UserAlreadyExistsError.from_ctx(
+                            ctx,
+                            f"Field `{assigned_name}` already exists",
+                            traceback=self.get_traceback(),
+                        )
+
+                    setattr(self._current_node, assigned_name.name, list())
+                    for _ in range(new_count):
+                        with self._init_node(
+                            self._get_referenced_class(ctx, ref), kwargs=kwargs
+                        ) as new_node:
+                            _add_node(self._current_node, new_node, assigned_name.name)
+                else:
+                    with self._init_node(
+                        self._get_referenced_class(new_stmt_ctx.type_reference(), ref),
+                        kwargs=kwargs,
+                    ) as new_node:
+                        _add_node(self._current_node, new_node)
+        except Exception:
+            # Not a narrower exception because it's often an ExceptionGroup
+            self._record_failed_node(self._current_node, assigned_name.name)
+            raise
+
+    def _assign_arithmetic(
+        self,
+        ctx: ap.Assign_stmtContext,
+        assigned_ref: FieldRef,
+        target: L.Node,
+    ):
+        if declaration := ctx.field_reference_or_declaration().declaration_stmt():
+            # check valid declaration
+            # create param with corresponding units
+            self.visitDeclaration_stmt(declaration)
+
+        assignable_ctx = ctx.assignable()
+        assigned_name = assigned_ref[-1]
+        value = self.visit(assignable_ctx)
+        unit = HasUnit.get_units(value)
+        param = self._ensure_param(target, assigned_name, unit, ctx)
+
+        self._param_assignments[param].append(
+            _ParameterDefinition(
+                ref=assigned_ref,
+                value=value,
+                ctx=ctx,
+                traceback=self.get_traceback(),
+            )
+        )
+
+    def _assign_string_or_bool(
+        self,
+        ctx: ap.Assign_stmtContext,
+        assignable_ctx: ap.AssignableContext,
+        assigned_ref: FieldRef,
+        target: L.Node,
+    ):
+        assigned_name = assigned_ref[-1]
+
+        if assigned_name.key is not None:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                f"Can't use keys with non-arithmetic attribute assignments "
+                f"`{assigned_ref}`",
+                traceback=self.get_traceback(),
+            )
+
+        value = self.visit(assignable_ctx)
+
+        # Check if it's a property or attribute that can be set
+        if has_instance_settable_attr(target, assigned_name.name):
+            try:
+                setattr(target, assigned_name.name, value)
+            except errors.UserException as e:
+                e.attach_origin_from_ctx(assignable_ctx)
+                raise
+        elif (
+            # If ModuleShims has a settable property, use it
+            hasattr(GlobalAttributes, assigned_name.name)
+            and isinstance(getattr(GlobalAttributes, assigned_name.name), property)
+            and getattr(GlobalAttributes, assigned_name.name).fset
+        ):
+            prop = cast_assert(property, getattr(GlobalAttributes, assigned_name.name))
+            assert prop.fset is not None
+            # TODO: @v0.4 remove this deprecated import form
+            with (
+                downgrade(DeprecatedException, errors.UserNotImplementedError),
+                _attach_ctx_to_ex(ctx, self.get_traceback()),
+            ):
+                prop.fset(target, value)
+        else:
+            # Strictly, these are two classes of errors that could use independent
+            # suppression, but we'll just suppress them both collectively for now
+            # TODO: @v0.4 remove this deprecated import form
+            with downgrade(errors.UserException):
+                raise errors.UserException.from_ctx(
+                    ctx,
+                    f"Ignoring assignment of `{value}` to `{assigned_name}` on"
+                    f" `{target}`",
+                    traceback=self.get_traceback(),
+                )
+
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
         """Assignment values and create new instance of things."""
+        assignable_ctx = ctx.assignable()
         dec = ctx.field_reference_or_declaration()
         assigned_ref = self.visitFieldReference(
             dec.field_reference() or dec.declaration_stmt().field_reference()
         )
-
-        assigned_name: ReferencePartType = assigned_ref[-1]
-        assignable_ctx = ctx.assignable()
-        assert isinstance(assignable_ctx, ap.AssignableContext)
         target = self._get_referenced_node(assigned_ref.stem, ctx)
 
-        ########## Handle New Statements ##########
-        if new_stmt_ctx := assignable_ctx.new_stmt():
-            if len(assigned_ref) > 1:
-                raise errors.UserSyntaxError.from_ctx(
-                    ctx,
-                    f"Can't declare fields in a nested object `{assigned_ref}`",
-                    traceback=self.get_traceback(),
-                )
-            if assigned_name.key is not None:
-                raise errors.UserSyntaxError.from_ctx(
-                    ctx,
-                    f"Can't use keys with `new` statements `{assigned_ref}`",
-                    traceback=self.get_traceback(),
-                )
-
-            assert isinstance(new_stmt_ctx, ap.New_stmtContext)
-            ref = self.visitTypeReference(new_stmt_ctx.type_reference())
-
-            try:
-                with self._traceback_stack.enter(new_stmt_ctx):
-                    with self._init_node(
-                        self._get_referenced_class(ctx, ref)
-                    ) as new_node:
-                        try:
-                            self._current_node.add(new_node, name=assigned_name.name)
-                        except FieldExistsError as e:
-                            raise errors.UserAlreadyExistsError.from_ctx(
-                                ctx,
-                                f"Field `{assigned_name}` already exists",
-                                traceback=self.get_traceback(),
-                            ) from e
-                        new_node.add(from_dsl(ctx))
-            except Exception:
-                # Not a narrower exception because it's often an ExceptionGroup
-                self._record_failed_node(self._current_node, assigned_name.name)
-                raise
-
-            return NOTHING
-
-        ########## Handle Regular Assignments ##########
-        value = self.visit(assignable_ctx)
-        # Arithmetic
-        if assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression():
-            declaration = ctx.field_reference_or_declaration().declaration_stmt()
-            if declaration:
-                # check valid declaration
-                # create param with corresponding units
-                self.visitDeclaration_stmt(declaration)
-
-            unit = HasUnit.get_units(value)
-            param = self._ensure_param(target, assigned_name, unit, ctx)
-            self._param_assignments[param].append(
-                _ParameterDefinition(
-                    ref=assigned_ref,
-                    value=value,
-                    ctx=ctx,
-                    traceback=self.get_traceback(),
-                )
+        if assignable_ctx.new_stmt():
+            self._assign_new_node(
+                ctx=ctx,
+                assignable_ctx=assignable_ctx,
+                assigned_ref=assigned_ref,
             )
-
-        # String or boolean
+        elif (
+            assignable_ctx.literal_physical() or assignable_ctx.arithmetic_expression()
+        ):
+            self._assign_arithmetic(ctx=ctx, assigned_ref=assigned_ref, target=target)
         elif assignable_ctx.string() or assignable_ctx.boolean_():
-            if assigned_name.key is not None:
-                raise errors.UserSyntaxError.from_ctx(
-                    ctx,
-                    f"Can't use keys with non-arithmetic attribute assignments "
-                    f"`{assigned_ref}`",
-                    traceback=self.get_traceback(),
-                )
-
-            # Check if it's a property or attribute that can be set
-            if has_instance_settable_attr(target, assigned_name.name):
-                try:
-                    setattr(target, assigned_name.name, value)
-                except errors.UserException as e:
-                    e.attach_origin_from_ctx(assignable_ctx)
-                    raise
-            elif (
-                # If ModuleShims has a settable property, use it
-                hasattr(GlobalAttributes, assigned_name.name)
-                and isinstance(getattr(GlobalAttributes, assigned_name.name), property)
-                and getattr(GlobalAttributes, assigned_name.name).fset
-            ):
-                prop = cast_assert(
-                    property, getattr(GlobalAttributes, assigned_name.name)
-                )
-                assert prop.fset is not None
-                # TODO: @v0.4 remove this deprecated import form
-                with (
-                    downgrade(DeprecatedException, errors.UserNotImplementedError),
-                    _attach_ctx_to_ex(ctx, self.get_traceback()),
-                ):
-                    prop.fset(target, value)
-            else:
-                # Strictly, these are two classes of errors that could use independent
-                # suppression, but we'll just suppress them both collectively for now
-                # TODO: @v0.4 remove this deprecated import form
-                with downgrade(errors.UserException):
-                    raise errors.UserException.from_ctx(
-                        ctx,
-                        f"Ignoring assignment of `{value}` to `{assigned_name}` on"
-                        f" `{target}`",
-                        traceback=self.get_traceback(),
-                    )
-
+            self._assign_string_or_bool(
+                ctx=ctx,
+                assignable_ctx=assignable_ctx,
+                assigned_ref=assigned_ref,
+                target=target,
+            )
         else:
             raise ValueError(f"Unhandled assignable type `{assignable_ctx.getText()}`")
 
@@ -1237,7 +1601,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self, name: ReferencePartType, ctx: ParserRuleContext
     ) -> L.ModuleInterface | None:
         try:
-            mif = self.get_node_attr(self._current_node, name)
+            mif = self.resolve_node(self._current_node, name)
         except AttributeError:
             return None
         except ValueError as ex:
@@ -1275,8 +1639,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     ) -> KeyOptMap[L.ModuleInterface]:
         if ctx.name():
             name = self.visitName(ctx.name())
-        elif ctx.totally_an_integer():
-            name = f"{ctx.totally_an_integer().getText()}"
+        elif ctx.number_hint_natural():
+            name = f"{self.visitNumber_hint_natural(ctx.number_hint_natural())}"
         elif ctx.string():
             name = self.visitString(ctx.string())
         else:
@@ -1290,7 +1654,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
         else:
             try:
-                mif = self.get_node_attr(self._current_node, ref)
+                mif = self.resolve_node(self._current_node, ref)
             except AttributeError:
                 pass
             else:
@@ -1398,7 +1762,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitConnect_stmt(self, ctx: ap.Connect_stmtContext):
         """Connect interfaces together"""
-        connectables = [self.visitConnectable(c) for c in ctx.connectable()]
+        connectables = [self.visitMif(c) for c in ctx.mif()]
         for err_cltr, (a, b) in iter_through_errors(
             itertools.pairwise(connectables),
             errors._BaseBaseUserException,
@@ -1409,23 +1773,107 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return NOTHING
 
-    def visitConnectable(self, ctx: ap.ConnectableContext) -> L.ModuleInterface:
-        """Return the address of the connectable object."""
+    def visitDirected_connect_stmt(self, ctx: ap.Directed_connect_stmtContext):
+        """Connect interfaces via bridgeable modules"""
+        self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.BRIDGE_CONNECT)
+
+        bridgeables = [self.visitBridgeable(c) for c in ctx.bridgeable()]
+
+        if bool(ctx.LSPERM()) and bool(ctx.SPERM()):
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                "Only one type of connection direction per statement allowed",
+                traceback=self.get_traceback(),
+            )
+
+        # reverse direction
+        if bool(ctx.LSPERM()):
+            bridgeables.reverse()
+
+        head = None
+        tail = None
+        if isinstance(bridgeables[-1], L.ModuleInterface):
+            tail = bridgeables[-1]
+            bridgeables = bridgeables[:-1]
+
+        if isinstance(bridgeables[0], L.ModuleInterface):
+            head = bridgeables[0]
+        else:
+            head = bridgeables[0].get_trait(F.can_bridge).get_out()
+        bridgeables = bridgeables[1:]
+
+        for b in bridgeables:
+            if not isinstance(b, L.Module):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't bridge via `{b}` because it is not a `Module`",
+                    traceback=self.get_traceback(),
+                )
+
+        head.connect_via(bridgeables, *([tail] if tail else []))
+
+        return NOTHING
+
+    def visitConnectable(
+        self, ctx: ap.ConnectableContext
+    ) -> L.Module | L.ModuleInterface:
         if def_stmt := ctx.pindef_stmt() or ctx.signaldef_stmt():
             (_, mif), *_ = self.visit(def_stmt)
             return mif
-        elif reference_ctx := ctx.field_reference():
-            ref = self.visitFieldReference(reference_ctx)
+        elif field_ref := ctx.field_reference():
+            ref = self.visitFieldReference(field_ref)
             node = self._get_referenced_node(ref, ctx)
-            if not isinstance(node, L.ModuleInterface):
-                raise errors.UserTypeError.from_ctx(
-                    ctx,
-                    f"Can't connect `{node}` because it's not a `ModuleInterface`",
-                    traceback=self.get_traceback(),
+            if not isinstance(node, L.ModuleInterface) and not (
+                isinstance(node, L.Module) and node.has_trait(F.can_bridge)
+            ):
+                raise TypeError(
+                    node,
+                    f"Can't connect `{node}` because it's not a `ModuleInterface`"
+                    f" or `Module` with `can_bridge` trait",
                 )
             return node
         else:
-            raise ValueError(f"Unhandled connectable type `{ctx}`")
+            raise NotImplementedError(f"Unhandled connectable type `{ctx}`")
+
+    def visitMif(self, ctx: ap.MifContext) -> L.ModuleInterface:
+        """Return the mif object of the connectable object."""
+        try:
+            connectable = self.visitConnectable(ctx.connectable())
+        except TypeError as ex:
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't connect {ex.args[0]} because it's not a `ModuleInterface`",
+                traceback=self.get_traceback(),
+            ) from ex
+        if isinstance(connectable, L.ModuleInterface):
+            return connectable
+        else:
+            raise errors.UserTypeError.from_ctx(
+                ctx,
+                f"Can't connect `{connectable}` because it's not a `ModuleInterface`",
+                traceback=self.get_traceback(),
+            )
+
+    def visitBridgeable(
+        self, ctx: ap.BridgeableContext
+    ) -> L.Module | L.ModuleInterface:
+        try:
+            return self.visitConnectable(ctx.connectable())
+        except TypeError as ex:
+            node = ex.args[0]
+            if isinstance(node, L.Module):
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Can't connect `{node}` because it's not bridgeable "
+                    "(needs `can_bridge` trait)",
+                    traceback=self.get_traceback(),
+                ) from ex
+            else:
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    str(ex),
+                    traceback=self.get_traceback(),
+                ) from ex
 
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref = self.visitFieldReference(ctx.field_reference())
@@ -1531,6 +1979,90 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 raise ValueError(f"Unhandled comparison type {type(cmp)}")
         return NOTHING
 
+    def _get_trait_constructor(
+        self, ctx: ap.Trait_stmtContext, ref: TypeRef, constructor_name: str | None
+    ) -> tuple[Callable, tuple[Type | None]]:
+        try:
+            trait_cls = self._get_referenced_class(ctx, ref)
+        except errors.UserKeyError as ex:
+            raise errors.UserTraitNotFoundError.from_ctx(
+                ctx,
+                f"No such trait: `{ref}`",
+                traceback=self.get_traceback(),
+            ) from ex
+
+        if isinstance(trait_cls, ap.BlockdefContext) or not issubclass(
+            trait_cls, L.Trait
+        ):
+            raise errors.UserInvalidTraitError.from_ctx(
+                ctx,
+                f"`{ref}` is not a valid trait",
+                traceback=self.get_traceback(),
+            )
+
+        constructor = trait_cls
+        args = tuple()
+
+        if constructor_name is not None:
+            try:
+                attr = inspect.getattr_static(trait_cls, constructor_name)
+            except AttributeError:
+                raise errors.UserTraitNotFoundError.from_ctx(
+                    ctx,
+                    f"No such trait constructor: `{ref}:{constructor_name}`",
+                    traceback=self.get_traceback(),
+                )
+
+            if not isinstance(attr, classmethod):
+                raise errors.UserInvalidTraitError.from_ctx(
+                    ctx,
+                    f"`{ref}:{constructor_name}` is not a valid trait constructor",
+                    traceback=self.get_traceback(),
+                )
+
+            if inspect.signature(attr.__func__).return_annotation not in (
+                typing.Self,
+                trait_cls,
+                trait_cls.__name__,
+            ):
+                raise errors.UserInvalidTraitError.from_ctx(
+                    ctx,
+                    f"`{ref}:{constructor_name}` is not a valid trait constructor "
+                    "(missing or invalid return type annotation)",
+                    traceback=self.get_traceback(),
+                )
+
+            constructor = attr.__func__
+            args = (trait_cls,)
+
+        return constructor, args
+
+    def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
+        self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS)
+
+        ref = self.visitTypeReference(ctx.type_reference())
+        constructor_name = (
+            self.visitName(ctx.constructor().name())
+            if ctx.constructor() is not None
+            else None
+        )
+        trait_name = f"{ref}{f':{constructor_name}' if constructor_name else ''}"
+        constructor, args = self._get_trait_constructor(ctx, ref, constructor_name)
+        kwargs = self.visitTemplate(ctx.template())
+
+        try:
+            trait = constructor(*args, **kwargs)
+        except Exception as e:
+            raise errors.UserTraitError.from_ctx(
+                ctx,
+                f"Error applying trait `{trait_name}`: {e}",
+                traceback=self.get_traceback(),
+            ) from e
+
+        self._current_node.add(trait)
+
+        return NOTHING
+
     # Returns fab_param.ConstrainableExpression or BoolSet
     def visitComparison(
         self, ctx: ap.ComparisonContext
@@ -1552,16 +2084,20 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     with downgrade(
                         errors.UserNotImplementedError, to_level=logging.WARNING
                     ):
-                        raise errors.UserNotImplementedError(
-                            "`<` is not supported. Use `<=` instead."
+                        raise errors.UserNotImplementedError.from_ctx(
+                            ctx,
+                            "`<` is not supported. Use `<=` instead.",
+                            traceback=self.get_traceback(),
                         )
                     op = LessOrEqual
                 case ">":
                     with downgrade(
                         errors.UserNotImplementedError, to_level=logging.WARNING
                     ):
-                        raise errors.UserNotImplementedError(
-                            "`>` is not supported. Use `>=` instead."
+                        raise errors.UserNotImplementedError.from_ctx(
+                            ctx,
+                            "`>` is not supported. Use `>=` instead.",
+                            traceback=self.get_traceback(),
                         )
                     op = GreaterOrEqual
                 case "<=":
@@ -1601,11 +2137,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         return self.visitSum(ctx.sum_())
 
     def visitSum(self, ctx: ap.SumContext) -> Numeric:
-        if ctx.ADD() or ctx.MINUS():
+        if ctx.PLUS() or ctx.MINUS():
             lh = self.visitSum(ctx.sum_())
             rh = self.visitTerm(ctx.term())
 
-            if ctx.ADD():
+            if ctx.PLUS():
                 return operator.add(lh, rh)
             else:
                 return operator.sub(lh, rh)
@@ -1694,14 +2230,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitQuantity(self, ctx: ap.QuantityContext) -> Quantity:
         """Yield a physical value from an implicit quantity context."""
-        raw: str = ctx.NUMBER().getText()
-        if raw.startswith("0x"):
-            value = int(raw, 16)
+        raw: Number = self.visitNumber(ctx.number())
+        if raw.base != 10:
+            value = int(raw.value, raw.base)
         else:
-            value = float(raw)
+            value = float(raw.value)
 
-        # Ignore the positive unary operator
-        if ctx.MINUS():
+        if raw.negative:
             value = -value
 
         if unit_ctx := ctx.name():
@@ -1718,7 +2253,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         nominal_qty = self.visitQuantity(ctx.quantity())
 
         tol_ctx: ap.Bilateral_toleranceContext = ctx.bilateral_tolerance()
-        tol_num = float(tol_ctx.NUMBER().getText())
+        raw_tol = self.visitNumber_signless(tol_ctx.number_signless())
+        if raw_tol.base != 10:
+            raise errors.UserSyntaxError.from_ctx(
+                tol_ctx,
+                "Tolerance must be a decimal number",
+                traceback=self.get_traceback(),
+            )
+        tol_num = float(raw_tol.value)
 
         # Handle proportional tolerances
         if tol_ctx.PERCENT():
@@ -1940,6 +2482,177 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def visitPass_stmt(self, ctx: ap.Pass_stmtContext):
         return NOTHING
+
+    def visitSlice(self, ctx: ap.SliceContext | None) -> slice:
+        """Parse slice components into a slice object."""
+        if ctx is None:
+            return slice(None)
+
+        start, stop, step = None, None, None
+
+        if (start_ctx := ctx.slice_start()) is not None:
+            start = self.visitNumber_hint_integer(start_ctx.number_hint_integer())
+
+        if (stop_ctx := ctx.slice_stop()) is not None:
+            stop = self.visitNumber_hint_integer(stop_ctx.number_hint_integer())
+
+        if (step_ctx := ctx.slice_step()) is not None:
+            step = self.visitNumber_hint_integer(step_ctx.number_hint_integer())
+
+        if step == 0:
+            raise errors.UserValueError.from_ctx(
+                ctx, "Slice step cannot be zero", traceback=self.get_traceback()
+            )
+
+        return slice(start, stop, step)
+
+    def visitList_literal_of_field_references(
+        self, ctx: ap.List_literal_of_field_referencesContext
+    ) -> list[L.Node]:
+        refs = [self.visitFieldReference(ref) for ref in ctx.field_reference()]
+        out = []
+        for ref in refs:
+            try:
+                out.append(self.resolve_node(self._current_node, ref))
+            except TypeError as e:
+                raise errors.UserTypeError.from_ctx(
+                    ctx,
+                    f"Invalid type ({complete_type_string(e.args[0])}) for "
+                    f"list literal: `{ref}`. Expected `Module` or `ModuleInterface`.",
+                    traceback=self.get_traceback(),
+                )
+        return out
+
+    def visitIterable_references(
+        self, ctx: ap.Iterable_referencesContext
+    ) -> Iterable[L.Node]:
+        if ref := ctx.field_reference():
+            iterable_ref = self.visitFieldReference(ref)
+            requested_slice = self.visitSlice(ctx.slice_())
+
+            try:
+                _iterable_node = self.resolve_node_field(
+                    self._current_node, iterable_ref
+                )
+            except AttributeError as ex:
+                raise errors.UserKeyError.from_ctx(
+                    ref,
+                    f"Cannot iterate over non-existing field `{iterable_ref}`:"
+                    f"{str(ex)}",
+                    traceback=self.get_traceback(),
+                ) from ex
+
+            # Prepare the iterable list
+            iterable_node: list[L.Node] | None = None
+            if isinstance(_iterable_node, list):
+                iterable_node = list(_iterable_node)
+            elif isinstance(_iterable_node, set):
+                # Convert set to list for deterministic order & slicing
+                iterable_node = sorted(list(_iterable_node), key=lambda n: n.get_name())
+            elif isinstance(_iterable_node, dict):
+                iterable_node = list(_iterable_node.values())
+
+            if not isinstance(iterable_node, list) or not all(
+                isinstance(item, L.Node) for item in iterable_node
+            ):
+                raise errors.UserTypeError.from_ctx(
+                    ctx.field_reference(),
+                    f"Cannot iterate over type `{complete_type_string(_iterable_node)}`"
+                    f". Expected `list[Node]`, `dict[str, Node]` or `set[Node]`"
+                    f"  (e.g., from `new X[N]`).",
+                    traceback=self.get_traceback(),
+                )
+        elif ref := ctx.list_literal_of_field_references():
+            iterable_node = self.visitList_literal_of_field_references(ref)
+            requested_slice = slice(None)
+        else:
+            raise errors.UserNotImplementedError.from_ctx(
+                ctx,
+                "Unsupported iterable reference",
+                traceback=self.get_traceback(),
+            )
+
+        # Apply slice
+        try:
+            final_iterable = iterable_node[requested_slice]
+        except ValueError as ex:
+            # e.g. slice step cannot be zero
+            raise errors.UserValueError.from_ctx(
+                ctx.slice_(),
+                f"Invalid slice parameters: {ex}",
+                traceback=self.get_traceback(),
+            ) from ex
+
+        return final_iterable
+
+    def visitFor_stmt(self, ctx: ap.For_stmtContext):
+        self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.FOR_LOOP)
+
+        # Handle for loops.
+        if self._in_for_loop:
+            raise errors.UserSyntaxError.from_ctx(
+                ctx,
+                "Nested for loops are not currently supported.",
+                traceback=self.get_traceback(),
+            )
+
+        self._in_for_loop = True
+        try:
+            loop_var_name = self.visitName(ctx.name())
+
+            iterable = self.visitIterable_references(ctx.iterable_references())
+            block_ctx = ctx.block()  # Define block_ctx here
+
+            # Check for variable name collisions before starting the loop
+            try:
+                self.resolve_node_property(self._current_node, loop_var_name)
+            except AttributeError:
+                pass
+            else:
+                raise errors.UserKeyError.from_ctx(
+                    ctx.name(),
+                    f"Loop variable '{loop_var_name}' conflicts with an existing"
+                    f" attribute or runtime variable.",
+                    traceback=self.get_traceback(),
+                )
+
+            # Loop and manage scope temporarily using runtime dict
+            try:
+                for item in iterable:
+                    self._current_node.runtime[loop_var_name] = item
+                    self.visitBlock(block_ctx)
+            finally:
+                # Ensure cleanup even if visitBlock raises an error
+                if loop_var_name in self._current_node.runtime:
+                    del self._current_node.runtime[loop_var_name]
+                # Note: We don't restore original_value because the initial check
+                #  ensures it was NOTHING.
+
+        finally:
+            self._in_for_loop = False
+
+        return NOTHING
+
+    def visitLiteral(self, ctx: ap.LiteralContext) -> Any:
+        if (string_ctx := ctx.string()) is not None:
+            return self.visitString(string_ctx)
+        elif (boolean_ctx := ctx.boolean_()) is not None:
+            return self.visitBoolean_(boolean_ctx)
+        else:
+            return self.visitNumber(ctx.number()).interpret()
+
+    def visitTemplate_arg(self, ctx: ap.Template_argContext) -> tuple[str, Any]:
+        return ctx.name().getText(), self.visitLiteral(ctx.literal())
+
+    def visitTemplate(self, ctx: ap.TemplateContext | None) -> dict[str, Any]:
+        if ctx is None:
+            return {}
+
+        kwargs = {
+            k: v for k, v in (self.visitTemplate_arg(arg) for arg in ctx.template_arg())
+        }
+
+        return kwargs
 
 
 bob = Bob()

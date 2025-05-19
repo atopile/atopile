@@ -24,7 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass, fields, is_dataclass
-from enum import Enum, StrEnum
+from datetime import datetime
+from enum import Enum, StrEnum, auto
 from functools import wraps
 from genericpath import commonprefix
 from importlib.metadata import Distribution
@@ -1966,13 +1967,6 @@ def has_instance_settable_attr(obj: object, attr: str) -> bool:
     return False
 
 
-AUTO_RECOMPILE = ConfigFlag(
-    "AUTO_RECOMPILE",
-    default=False,
-    descr="Automatically recompile source files if they have changed",
-)
-
-
 # Check if installed as editable
 def is_editable_install():
     distro = Distribution.from_name("atopile")
@@ -2359,3 +2353,124 @@ def compare_dataclasses[T](
             getattr(before, f.name), getattr(after, f.name), skip_keys=skip_keys
         ).items()
     }
+
+
+def complete_type_string(value: Any) -> str:
+    if isinstance(value, (list, set)):
+        inner = unique(
+            (complete_type_string(item) for item in value),
+            lambda x: x,
+        )
+        return f"{type(value).__name__}[{' | '.join(inner)}]"
+    elif isinstance(value, dict):
+        inner_value = unique(
+            (complete_type_string(item) for item in value.values()),
+            lambda x: x,
+        )
+        inner_key = unique(
+            (complete_type_string(item) for item in value.keys()),
+            lambda x: x,
+        )
+        return (
+            f"{type(value).__name__}["
+            f"{' | '.join(inner_key)}, "
+            f"{' | '.join(inner_value)}]"
+        )
+    elif isinstance(value, tuple):
+        inner = unique(
+            (complete_type_string(item) for item in value),
+            lambda x: x,
+        )
+        return f"{type(value).__name__}[{', '.join(inner)}]"
+    else:
+        return type(value).__name__
+
+
+def has_uncommitted_changes(files: Iterable[str | Path]) -> bool | None:
+    """Check if any of the given files have uncommitted changes."""
+    try:
+        from git import Repo
+
+        repo = Repo(search_parent_directories=True)
+        diff_index = repo.index.diff(None)  # Get uncommitted changes
+
+        # Convert all files to Path objects for consistent comparison
+        files = [Path(f).resolve() for f in files]
+        repo_root = Path(repo.working_dir)
+
+        # Check if any of the files have changes
+        for diff in diff_index:
+            touched_file = diff.a_path or diff.b_path
+            # m, c or d
+            assert touched_file is not None
+            touched_path = repo_root / touched_file
+            if touched_path in files:
+                return True
+
+        return False
+    # TODO bad
+    except Exception:
+        # If we can't check git status (not a git repo, etc), assume we don't
+        # have changes
+        return None
+
+
+def least_recently_modified_file(*paths: Path) -> tuple[Path, datetime] | None:
+    files = []
+    for path in paths:
+        if path.is_dir():
+            files.extend(path.rglob("**"))
+        elif path.is_file():
+            files.append(path)
+    if not files:
+        return None
+
+    files_with_dates = [
+        (f, datetime.fromtimestamp(max(f.stat().st_mtime, f.stat().st_ctime)))
+        for f in files
+    ]
+    return max(files_with_dates, key=lambda f: f[1])
+
+
+class FileChangedWatcher:
+    class CheckMethod(Enum):
+        FS = auto()
+        HASH = auto()
+
+    def __init__(self, path: Path, method: CheckMethod):
+        self.path = path
+        self.method = method
+
+        match method:
+            case FileChangedWatcher.CheckMethod.FS if path.is_file():
+                self.before = path.stat().st_mtime
+            case FileChangedWatcher.CheckMethod.HASH if path.is_file():
+                self.before = hashlib.sha256(
+                    path.read_bytes(), usedforsecurity=False
+                ).hexdigest()
+            case _:
+                self.before = None
+
+    def has_changed(self, reset: bool = False) -> bool:
+        changed = True
+        match self.method:
+            case FileChangedWatcher.CheckMethod.FS if self.path.is_file():
+                new_val = self.path.stat().st_mtime
+                if self.before is not None:
+                    assert isinstance(self.before, float)
+                    changed = new_val > self.before
+            case FileChangedWatcher.CheckMethod.HASH if self.path.is_file():
+                new_val = hashlib.sha256(
+                    self.path.read_bytes(), usedforsecurity=False
+                ).hexdigest()
+                if self.before is not None:
+                    assert isinstance(self.before, str)
+                    changed = new_val != self.before
+            case _:
+                new_val = None
+                changed = self.before is not None
+
+        if reset:
+            self.before = new_val
+
+        return changed
