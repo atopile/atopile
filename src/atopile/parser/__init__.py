@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 
 from faebryk.libs.util import (
+    global_lock,
     has_uncommitted_changes,
     is_editable_install,
     run_live,
@@ -36,20 +37,21 @@ def check_for_recompile():
         "AtoParser.g4",
     ]
 
-    try:
-        run_live(
-            [
-                "antlr4",
-                "-long-messages",
-                "-visitor",
-                "-no-listener",
-                "-Dlanguage=Python3",
-                *GRAMMAR_FILES,
-            ],
-            cwd=THIS_DIR,
-        )
-    except subprocess.CalledProcessError as e:
-        logger.error(f"ANTLR compilation failed:\n{e.stderr}")
+    with global_lock(THIS_DIR / "antlr.lock", timeout_s=10):
+        try:
+            run_live(
+                [
+                    "antlr4",
+                    "-long-messages",
+                    "-visitor",
+                    "-no-listener",
+                    "-Dlanguage=Python3",
+                    *GRAMMAR_FILES,
+                ],
+                cwd=THIS_DIR,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"ANTLR compilation failed:\n{e.stderr}")
 
 
 check_for_recompile()
