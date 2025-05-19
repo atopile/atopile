@@ -3,13 +3,12 @@
 
 import logging
 from enum import StrEnum
-from pathlib import Path
 
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import EnumDomain, EnumSet, Parameter
 from faebryk.core.solver.solver import Solver
-from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound, once
+from faebryk.libs.util import KeyErrorAmbiguous, KeyErrorNotFound
 
 logger = logging.getLogger(__name__)
 
@@ -110,16 +109,13 @@ class has_package(Module.TraitT.decless()):
 
         This must be done before the create_footprint_library is run
         """
+        # TODO the concept seems weird of standardizing footprints like this
+        # kinda in conflict with the idea of the lifecycle manager
+
         import faebryk.library._F as F
         from atopile.packages import KNOWN_PACKAGES_TO_FOOTPRINT
-        from faebryk.libs.kicad.fileformats_latest import C_kicad_footprint_file
 
         gf = GraphFunctions(app.get_graph())
-
-        # TODO: make this caching global. Shit takes time
-        @once
-        def _get_footprint(fp_path: Path) -> C_kicad_footprint_file:
-            return C_kicad_footprint_file.loads(fp_path)
 
         for node, pkg_t in gf.nodes_with_trait(cls):
             package = pkg_t.try_get_package(solver)
@@ -131,17 +127,18 @@ class has_package(Module.TraitT.decless()):
             if node.has_trait(F.has_footprint):
                 continue
 
-            if fp_path := KNOWN_PACKAGES_TO_FOOTPRINT.get(package):
-                if can_attach_t := node.try_get_trait(F.can_attach_to_footprint):
-                    # FIXME this function should use the lifecycle manager instead
-                    fp = _get_footprint(fp_path)
-                    kicad_fp = F.KicadFootprint.from_file(fp)
-                    kicad_fp.add(F.KicadFootprint.has_file(fp_path))
-                    can_attach_t.attach(kicad_fp)
-                else:
-                    # TODO: consider elevating this to an exception
-                    logger.warning(
-                        "%s has a package requirement but no can_attach_to_footprint"
-                        " trait",
-                        node,
-                    )
+            fp_path = KNOWN_PACKAGES_TO_FOOTPRINT.get(package)
+            if fp_path is None:
+                continue
+
+            can_attach_t = node.try_get_trait(F.can_attach_to_footprint)
+            if can_attach_t is None:
+                # TODO: consider elevating this to an exception
+                logger.warning(
+                    "%s has a package requirement but no can_attach_to_footprint trait",
+                    node,
+                )
+                continue
+
+            kicad_fp = F.KicadFootprint.from_path(fp_path)
+            can_attach_t.attach(kicad_fp)
