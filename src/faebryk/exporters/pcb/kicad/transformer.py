@@ -1793,7 +1793,7 @@ class PCB_Transformer:
                 if component is not component.get_most_special():
                     continue
 
-                pcb_fp, new_fp = lifecycle.pcb.update_footprint(
+                pcb_fp, new_fp = lifecycle.pcb.ingest_footprint(
                     self, component, logger, insert_point
                 )
                 if new_fp:

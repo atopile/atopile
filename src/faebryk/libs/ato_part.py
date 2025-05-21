@@ -16,6 +16,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_model_file,
 )
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
+from faebryk.libs.util import compare_dataclasses
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,9 @@ class AtoPart:
             self.fp.footprint.models[0].path = Path(
                 "${KIPRJMOD}"
             ) / self.model_path.relative_to(prjroot, walk_up=True)
+
+    def compare(self, other: Self) -> dict:
+        return compare_dataclasses(self, other, skip_keys=("path", "uuid"))
 
     def dump(self):
         self.path.mkdir(parents=True, exist_ok=True)

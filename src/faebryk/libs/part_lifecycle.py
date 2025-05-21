@@ -49,8 +49,8 @@ class PartLifecycle:
     ```
     EasyEDA API => easyeda2kicad => picker/lcsc.py
         -> build/cache/easyeda/parts/<id>/<id>.json => picker/lcsc.py
-        -> build/cache/easyeda/parts/<id>/*.kicad*|.step => libs/app/pcb.py
-        -> <component_lib>/footprints/atopile.pretty => transformer.py
+        -> build/cache/easyeda/parts/<id>/*.kicad*|.step => picker/lcsc.py
+        -> <component_lib>/parts/<mfr_pn>/*.kicad*|.step|.ato => transformer.py
         -> <layout_path>/<build>/<build>.kicad_pcb
     ```
 
@@ -140,7 +140,6 @@ class PartLifecycle:
             if fp_path.exists():
                 existing = EasyEDAFootprint.load(fp_path)
                 if diff := existing.compare(footprint):
-                    # TODO question user
                     logger.warning(
                         f"Updating cached footprint {part.footprint.base_name}:"
                         f" {indented_container(diff, recursive=True)}"
@@ -158,11 +157,9 @@ class PartLifecycle:
             # TODO not sure about name
             sym_name = part.symbol.kicad_symbol.name
             sym_path = self._get_sym_path(part.identifier, sym_name)
-            # TODO actually check for changes
             if sym_path.exists():
                 existing = EasyEDASymbol.load(sym_path)
                 if diff := existing.compare(part.symbol):
-                    # TODO question user
                     logger.warning(
                         f"Updating cached symbol {sym_name}:"
                         f" {indented_container(diff, recursive=True)}"
@@ -212,35 +209,61 @@ class PartLifecycle:
             assert not uri.is_relative_to("${KIPRJMOD}")
             uri = Path("${KIPRJMOD}") / uri
 
-            if lib_name not in fp_table.fp_lib_table.libs:
-                lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
-                    name=lib_name,
-                    type="KiCad",
-                    uri=uri,
-                    options="",
-                    descr=f"atopile: part lib: {lib_name}",
-                )
-                fp_table.fp_lib_table.libs[lib_name] = lib
-                # TODO move somewhere else
-                logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
-            else:
-                lib = fp_table.fp_lib_table.libs[lib_name]
+            if lib_name in fp_table.fp_lib_table.libs:
+                if fp_table.fp_lib_table.libs[lib_name].uri != uri:
+                    # TODO better exception
+                    raise Exception(
+                        f"Footprint library {lib_name} already exists at different"
+                        f" location: {fp_table.fp_lib_table.libs[lib_name].uri} != "
+                        f"{uri}. Manual ingestion required."
+                    )
+                return fp_table
+
+            lib = C_kicad_fp_lib_table_file.C_fp_lib_table.C_lib(
+                name=lib_name,
+                type="KiCad",
+                uri=uri,
+                options="",
+                descr=f"atopile: part lib: {lib_name}",
+            )
+            fp_table.fp_lib_table.libs[lib_name] = lib
+            # TODO move somewhere else
+            logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
 
             fp_table.dumps(fp_table_path)
             return fp_table
 
         def ingest_part(self, part: AtoPart) -> AtoPart:
             if part.path.exists():
-                # TODO actually ingest
-                robustly_rm_dir(part.path)
+                existing = AtoPart.load(part.path)
+                if diff := existing.compare(part):
+                    # TODO: this flow seems weird
+                    # if has_uncommitted_changes([part.path]) is not False and (
+                    #    not Gcfg.interactive
+                    #    or not questionary.confirm(
+                    #        f"Part `{part.mfn[0]} {part.mfn[1]}` has uncommitted "
+                    #        "changes, but has changed upstream. Overwrite?"
+                    #        "If no is chosen, old part will be used."
+                    #        f"Diff: {indented_container(diff, recursive=True)}",
+                    #        default=False,
+                    #    ).ask()
+                    # ):
+                    #    return existing
 
-            part.dump()
+                    logger.warning(
+                        f"Updating library part {part.identifier}:"
+                        f" {indented_container(diff, recursive=True)}"
+                    )
+                    robustly_rm_dir(part.path)
+                    part.dump()
+            else:
+                part.dump()
 
             self._insert_fp_lib(part.path.name)
 
             return part
 
-        def get_part(self, epart: EasyEDAPart) -> AtoPart:
+        def ingest_part_from_easyeda(self, epart: EasyEDAPart) -> AtoPart:
             out_path = self._get_part_path(epart)
             identifier = self._get_part_identifier(epart)
 
@@ -259,7 +282,7 @@ class PartLifecycle:
         def get_footprint(
             self, epart: EasyEDAPart
         ) -> tuple[Path, C_kicad_footprint_file]:
-            ato_part = self.get_part(epart)
+            ato_part = self.ingest_part_from_easyeda(epart)
             return ato_part.fp_path, ato_part.fp
 
         def get_footprint_from_identifier(
@@ -322,7 +345,7 @@ class PartLifecycle:
         def __init__(self) -> None:
             pass
 
-        def update_footprint(
+        def ingest_footprint(
             self,
             transformer: PCB_Transformer,
             component: Module,
@@ -332,6 +355,10 @@ class PartLifecycle:
             # TODO this is old code taken from PCB_Transformer
             # need to decouple some actions from here
             # e.g insert point is not really at the right place here
+
+            # TODO also implement the ingest logic correctly
+            # if the footprint is already on the pcb, we should run our typical
+            # resolution flow
 
             lifecycle = PartLifecycle.singleton()
 
