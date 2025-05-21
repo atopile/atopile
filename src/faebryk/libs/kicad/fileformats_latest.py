@@ -1,13 +1,15 @@
 import logging
+import re
 from base64 import b64decode, b64encode
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Self
 
 import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
+from more_itertools import first
 
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
@@ -27,7 +29,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
-from faebryk.libs.util import once
+from faebryk.libs.util import lazy_split, once
 
 logger = logging.getLogger(__name__)
 
@@ -1239,6 +1241,10 @@ class C_footprint:
     component_classes: list[str] | None = None
     models: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
 
+    @property
+    def base_name(self) -> str:
+        return self.name.split(":", 1)[-1]
+
 
 @dataclass
 class C_kicad_pcb_file(SEXP_File):
@@ -2089,7 +2095,7 @@ class C_kicad_fp_lib_table_file(SEXP_File):
         class C_lib:
             name: str
             type: str
-            uri: str
+            uri: Path
             options: str
             descr: str
 
@@ -2103,3 +2109,55 @@ class C_kicad_fp_lib_table_file(SEXP_File):
     @classmethod
     def skeleton(cls, version: int = 7) -> "C_kicad_fp_lib_table_file":
         return cls(cls.C_fp_lib_table(version=version, libs={}))
+
+
+@dataclass
+class C_kicad_model_file:
+    """
+    Wrapper around step file
+    """
+
+    # TODO: consider finding a step file lib
+
+    _raw: bytes
+
+    def __post_init__(self):
+        if not self._raw.startswith(b"ISO-10303-21"):
+            raise ValueError("Invalid STEP file format")
+
+    @property
+    def header(self) -> str:
+        # Extract header section between HEADER; and ENDSEC; using regex
+
+        # Read till DATA; token
+        non_data = first(lazy_split(self._raw, b"DATA;")).decode("utf-8")
+
+        pattern = r"HEADER;(.*?)ENDSEC;"
+        match = re.search(pattern, non_data, re.DOTALL)
+        if not match:
+            raise ValueError("No HEADER section found in STEP file")
+        return match.group(1)
+
+    @property
+    def filename(self) -> str:
+        # find line with "FILE_NAME"
+        # ghetto parse first arg
+        header = self.header
+        match = re.search(r"FILE_NAME.*?'(.*?)'\s*,", header, re.DOTALL)
+        if not match:
+            raise ValueError("No FILE_NAME section found in STEP file")
+        return match.group(1)
+
+    @classmethod
+    def loads(cls, path_or_content: Path | bytes) -> Self:
+        if isinstance(path_or_content, Path):
+            content = path_or_content.read_bytes()
+        else:
+            content = path_or_content
+
+        return cls(_raw=content)
+
+    def dumps(self, path: Path | None = None) -> bytes:
+        if path is not None:
+            path.write_bytes(self._raw)
+        return self._raw

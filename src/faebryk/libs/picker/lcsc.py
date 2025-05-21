@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -83,11 +84,38 @@ class EasyEDAAPIResponse:
         number: str
         unknown: CatchAll = None
 
+    @dataclass_json(undefined=Undefined.INCLUDE)
+    @dataclass
+    class _Symbol:
+        @dataclass_json(undefined=Undefined.INCLUDE)
+        @dataclass
+        class Header:
+            @dataclass_json(undefined=Undefined.INCLUDE)
+            @dataclass
+            class PartInfo:
+                manufacturer: str = field(
+                    metadata=dataclasses_json_config(field_name="Manufacturer")
+                )
+                partno: str = field(
+                    metadata=dataclasses_json_config(field_name="Manufacturer Part")
+                )
+                unknown: CatchAll = None
+
+            part_info: PartInfo = field(
+                metadata=dataclasses_json_config(field_name="c_para")
+            )
+            unknown: CatchAll = None
+
+        info: Header = field(metadata=dataclasses_json_config(field_name="head"))
+        unknown: CatchAll = None
+
     packageDetail: PackageDetail
     updated_at: datetime = field(
         metadata=dataclasses_json_config(decoder=_decode_easyeda_date)
     )
     lcsc: Lcsc
+    symbol: _Symbol = field(metadata=dataclasses_json_config(field_name="dataStr"))
+
     _atopile_queried_at: float | None = field(
         default=None,
         metadata=dataclasses_json_config(field_name="atopile_queried_at"),
@@ -97,6 +125,15 @@ class EasyEDAAPIResponse:
     @property
     def query_time(self) -> datetime:
         return datetime.fromtimestamp(not_none(self._atopile_queried_at))
+
+    @property
+    def mfn_pn(self) -> tuple[str, str]:
+        mfr = self.symbol.info.part_info.manufacturer
+        pn = self.symbol.info.part_info.partno
+        # remove chinese manufacturer name in parentheses
+        # "TI(德州仪器)" -> "TI"
+        mfr = re.sub(r"\([^\x00-\x7F]+\)", "", mfr)
+        return (mfr, pn)
 
     @classmethod
     def from_api_dict(cls, data: dict):
@@ -256,12 +293,14 @@ class EasyEDAPart:
     def __init__(
         self,
         lcsc_id: str,
+        mfn_pn: tuple[str, str],
         footprint: EasyEDAFootprint,
         symbol: EasyEDASymbol,
         model: EasyEDA3DModel | None = None,
         datasheet_url: str | None = None,
     ):
         self.lcsc_id = lcsc_id
+        self.mfn_pn = mfn_pn
         self.footprint = footprint
         self.symbol = symbol
         self.model = model
@@ -326,6 +365,7 @@ class EasyEDAPart:
 
         part = cls(
             lcsc_id=data.lcsc.number,
+            mfn_pn=data.mfn_pn,
             footprint=EasyEDAFootprint.from_api(easyeda_footprint, kicad_model_path),
             symbol=EasyEDASymbol.from_api(easyeda_symbol),
         )

@@ -2474,3 +2474,17 @@ class FileChangedWatcher:
             self.before = new_val
 
         return changed
+
+
+def lazy_split[T: str | bytes](string: T, delimiter: T) -> Iterable[T]:
+    """
+    Split a string into a list of strings, but only split when needed.
+    """
+
+    # TODO: type checking goes ham because of bytes
+
+    cur: T = string
+    while (i := cur.find(delimiter)) != -1:  # type: ignore
+        yield cur[:i]  # type: ignore
+        cur = cur[i + len(delimiter) :]  # type: ignore
+    yield cur
