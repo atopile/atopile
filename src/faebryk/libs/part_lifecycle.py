@@ -176,7 +176,6 @@ class PartLifecycle:
     class Library:
         @property
         def _PATH(self) -> Path:
-            # TODO change to parts later
             return Gcfg.project.paths.component_lib / "parts"
 
         def _get_part_identifier(self, part: EasyEDAPart) -> str:
