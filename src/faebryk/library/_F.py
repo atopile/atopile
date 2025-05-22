@@ -54,6 +54,7 @@ from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_atomic_part import is_atomic_part
+from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_not_pickable import is_not_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined

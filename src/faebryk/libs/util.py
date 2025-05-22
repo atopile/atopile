@@ -2060,19 +2060,29 @@ def indented_container[T](
     recursive: bool = False,
     use_repr: bool = True,
     mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
+    compress_large: int = 100,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
     _indent_prefix = "  "
     _indent = _indent_prefix * indent_level
     ind = "\n" + _indent
 
+    def compress(v: str) -> str:
+        if len(v) > compress_large:
+            return f"{v[:compress_large]}..."
+        return v
+
     def format_v(v: T) -> str:
         if not use_repr and isinstance(v, str):
-            return indent(v, prefix=_indent)
+            return compress(indent(v, prefix=_indent))
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
-            return repr(mapper(v)) if use_repr else str(mapper(v))
+            return compress(repr(mapper(v)) if use_repr else str(mapper(v)))
         return indented_container(
-            v, indent_level=indent_level + 1, recursive=recursive, mapper=mapper
+            v,
+            indent_level=indent_level + 1,
+            recursive=recursive,
+            mapper=mapper,
+            compress_large=compress_large,
         )
 
     inside = ind.join(f"{mapper(k)}: {format_v(v)}" for k, v in kvs)
