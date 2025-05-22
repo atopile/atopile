@@ -57,9 +57,9 @@ class _M24C08_FMN6TP(Module):
         )
 
     def __preinit__(self):
-        self.attach_to_footprint.attach(
-            F.SOIC(8, size_xy=(3.9 * P.mm, 4.9 * P.mm), pitch=1.27 * P.mm)
-        )
+        # self.attach_to_footprint.attach(
+        #    F.SOIC(8, size_xy=(3.9 * P.mm, 4.9 * P.mm), pitch=1.27 * P.mm)
+        # )
 
         self.power.voltage.constrain_subset(L.Range(1.7 * P.V, 5.5 * P.V))
 

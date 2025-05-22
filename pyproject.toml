@@ -26,7 +26,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "antlr4-python3-runtime==4.13.2",  # Strict version because the generated (but versioned) files must match
+    "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
     "atopile-easyeda2kicad>=0.9.5",
     "attrs>=23.2.0",
     "black>=24.4.2,<24.11.0",
@@ -61,6 +61,7 @@ dependencies = [
     "typer>=0.12,<0.16",
     "typing-extensions>=4.6.3,<5.0.0",
     "urllib3>=2.2.1",
+    "zstd>=1.5.6.7",
 ]
 
 [project.urls]
