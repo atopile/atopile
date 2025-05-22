@@ -103,6 +103,7 @@ PYMOD(m) {
         .def_prop_ro("edge_count", &Graph::edge_count)
         .def("node_projection", &Graph::node_projection)
         .def("nodes_by_names", &Graph::nodes_by_names)
+        .def("nodes_by_type", &Graph::nodes_by_type)
         .def("bfs_visit", &Graph::bfs_visit, "filter"_a, "start"_a,
              nb::rv_policy::reference)
         .def("__repr__", &Graph::repr);
