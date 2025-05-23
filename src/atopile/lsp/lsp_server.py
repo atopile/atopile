@@ -154,8 +154,9 @@ def _convert_exc_to_diagnostic(
         )
 
         if exc.origin_stop is not None:
-            stop_file_path, stop_line, stop_col = get_src_info_from_token(
-                exc.origin_stop
+            stop_line, stop_col = (
+                exc.origin_stop.line,
+                exc.origin_stop.column + len(exc.origin_stop.text),
             )
         else:
             # just extend to the next line
