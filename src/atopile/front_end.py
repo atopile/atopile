@@ -519,7 +519,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                         getattr(F, name), (L.Module, L.ModuleInterface, L.Trait)
                     ):
                         raise errors.UserKeyError.from_ctx(
-                            ctx, f"Unknown standard library module: '{name}'"
+                            reference,
+                            f"Unknown standard library module: '{name}'",
                         )
 
                     imports.append(
@@ -1770,7 +1771,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # TODO: @v0.4 remove this deprecated import form
             with (
                 downgrade(DeprecatedException, errors.UserNotImplementedError),
-                _attach_ctx_to_ex(ctx, self.get_traceback()),
+                _attach_ctx_to_ex(assignable_ctx, self.get_traceback()),
             ):
                 prop.fset(target, value)
         else:
