@@ -116,6 +116,17 @@ class Span:
             Position(str(file), end_line, end_col),
         )
 
+    @classmethod
+    def from_ctxs(cls, ctxs: Iterable[ParserRuleContext]) -> "Span":
+        start_ctx = next(filter(lambda x: x is not None, ctxs))
+        end_ctx = last(filter(lambda x: x is not None, ctxs))
+        file, start_line, start_col, _, _ = get_src_info_from_ctx(start_ctx)
+        _, _, _, end_line, end_col = get_src_info_from_ctx(end_ctx)
+        return cls(
+            Position(str(file), start_line, start_col),
+            Position(str(file), end_line, end_col),
+        )
+
     def contains(self, pos: Position) -> bool:
         return (
             (self.start.file == pos.file)
@@ -139,6 +150,9 @@ class from_dsl(Trait.decless()):
 
     def add_reference(self, ctx: ParserRuleContext) -> None:
         self.references.append(Span.from_ctx(ctx))
+
+    def add_composite_reference(self, *ctxs: ParserRuleContext) -> None:
+        self.references.append(Span.from_ctxs(ctxs))
 
     def set_definition(self, ctx: ap.BlockdefContext | type[L.Node]) -> None:
         self.definition_ctx = ctx
