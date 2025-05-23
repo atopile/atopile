@@ -228,14 +228,29 @@ def _build_document(uri: str, text: str) -> None:
             case ap.AtoParser.BlockdefContext():
                 try:
                     GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
-                except Exception as e:
-                    log_error(f"Error building {uri}:{ref}: {e}")
+                except Exception:
+                    import traceback
+
+                    log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
+
+                front_end.bob.reset()
+
+                try:
+                    GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
+                        front_end.bob.build_node(text, Path(uri), ref)
+                    )
+                except Exception:
+                    import traceback
+
+                    log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
+
             case _:  # Node or ImportPlaceholder
-                log_to_output(f"Building {uri}:{ref} (type: {type(ctx)})")
                 try:
                     GRAPHS[uri][ref] = front_end.bob.build_node(text, Path(uri), ref)
-                except Exception as e:
-                    log_error(f"Error building {uri}:{ref}: {e}")
+                except Exception:
+                    import traceback
+
+                    log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
 
 
 @dataclass

@@ -1011,6 +1011,15 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         finally:
             self._finish()
 
+    def reset(self):
+        self._scopes.clear()
+        self._python_classes.clear()
+        self._node_stack.clear()
+        self._traceback_stack.clear()
+        self._param_assignments.clear()
+        self._failed_nodes.clear()
+        self._in_for_loop = False
+
     def _is_reset(self) -> bool:
         """
         Make sure caches that aren't intended to be shared between builds are empty.
