@@ -777,9 +777,11 @@ class Node(CNode):
         for level in self.get_tree(
             types=Node, include_root=include_self
         ).iter_by_depth():
-            for child in level:
-                if child.has_trait(trait):
-                    yield child, child.get_trait(trait)
+            yield from (
+                (child, child.get_trait(trait))
+                for child in level
+                if child.has_trait(trait)
+            )
 
     def get_first_child_of_type[U: Node](self, child_type: type[U]) -> U:
         for level in self.get_tree(types=Node).iter_by_depth():
