@@ -442,6 +442,18 @@
 		"numbers": {
 			"patterns": [
 				{
+					"name": "constant.numeric.value.ato",
+					"match": "\\b0[xX][0-9a-fA-F]+\\b"
+				},
+				{
+					"name": "constant.numeric.value.ato",
+					"match": "\\b0[bB][01]+\\b"
+				},
+				{
+					"name": "constant.numeric.value.ato",
+					"match": "\\b0[oO][0-7]+\\b"
+				},
+				{
 					"name": "constant.numeric.physical.bilateral.percentage.ato",
 					"match": "\\b((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*([a-zA-Z%Ωµμ\\u00B0]+)?\\s*(\\+/-)\\s*((?:[+-]?)\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?)\\s*(%)",
 					"captures": {
@@ -737,17 +749,6 @@
 						},
 						"3": {
 							"name": "entity.name.function.constructor.ato"
-						}
-					}
-				},
-				{
-					"match": "\\b([a-zA-Z_][a-zA-Z_0-9]*)\\s*(\\()",
-					"captures": {
-						"1": {
-							"name": "entity.name.function.call.ato"
-						},
-						"2": {
-							"name": "punctuation.definition.arguments.begin.bracket.round.ato"
 						}
 					}
 				},

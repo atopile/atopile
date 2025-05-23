@@ -7,6 +7,7 @@ import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
+import { g_lsClient } from '../extension'
 
 let statusbarAtoAdd: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
@@ -55,6 +56,9 @@ async function _displayButtons() {
 
         statusbarAtoBuildTarget.text = build_strs[0];
         statusbarAtoBuildTarget.tooltip = 'ato: build target';
+        g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
+            buildTarget: _buildStrToBuild(build_strs[0]).entry,
+        });
     } else {
         statusbarAtoCreate.hide();
         statusbarAtoAdd.hide();
@@ -303,6 +307,9 @@ async function selectBuildTargetFlow() {
     }
 
     statusbarAtoBuildTarget.text = result;
+    g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
+        buildTarget: _buildStrToBuild(result).entry,
+    });
 }
 
 async function pcbnew() {

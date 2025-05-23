@@ -147,6 +147,9 @@ module DemoModule from AnotherBaseModule:
     # Integer
     int_val = 100
     neg_int_val = -50
+    hex_val = 0xF1
+    bin_val = 0b10
+    oct_val = 0o10
     # Float
     float_val = 3.14
     # Physical quantities
