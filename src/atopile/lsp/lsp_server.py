@@ -259,6 +259,7 @@ class DidChangeBuildTargetParams:
     buildTarget: str | None = field(default=None)
 
 
+# TODO: implement something useful
 @LSP_SERVER.feature("atopile/didChangeBuildTarget")
 def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None: ...
 
