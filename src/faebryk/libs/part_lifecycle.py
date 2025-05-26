@@ -10,6 +10,7 @@ from typing import Sequence
 import faebryk.library._F as F
 from atopile.cli.logging import ALERT
 from atopile.config import config as Gcfg
+from atopile.errors import UserValueError
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
@@ -234,22 +235,24 @@ class PartLifecycle:
             return fp_table
 
         def ingest_part(self, part: AtoPart) -> AtoPart:
-            if part.path.exists():
-                existing = AtoPart.load(part.path)
-                if diff := existing.compare(part):
-                    # TODO: this flow seems weird
-                    # if has_uncommitted_changes([part.path]) is not False and (
-                    #    not Gcfg.interactive
-                    #    or not questionary.confirm(
-                    #        f"Part `{part.mfn[0]} {part.mfn[1]}` has uncommitted "
-                    #        "changes, but has changed upstream. Overwrite?"
-                    #        "If no is chosen, old part will be used."
-                    #        f"Diff: {indented_container(diff, recursive=True)}",
-                    #        default=False,
-                    #    ).ask()
-                    # ):
-                    #    return existing
+            from faebryk.library.is_auto_generated import _FileManuallyModified
 
+            if part.path.exists():
+                try:
+                    existing = AtoPart.load(part.path)
+                except _FileManuallyModified as ex:
+                    raise UserValueError(
+                        f"Part `{part.path}` has been manually modified ({ex}). Please"
+                        " revert the changes or remove the is_auto_generated trait."
+                    ) from ex
+                if not existing.auto_generated:
+                    logger.debug(
+                        f"Part `{part.path}` is not purely auto-generated."
+                        "Not overwriting."
+                    )
+                    return existing
+
+                if diff := existing.compare(part):
                     logger.warning(
                         f"Updating library part {part.identifier}:"
                         f" {indented_container(diff, recursive=True)}"

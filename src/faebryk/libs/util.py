@@ -2352,6 +2352,7 @@ def compare_dataclasses[T](
                 f"[{i!r}]{k}": v
                 for i, (b, a) in zip_dicts_by_key(before, after).items()
                 for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+                if i not in skip_keys
             }
         return {"": _fmt(before, after)} if before != after else {}
 

@@ -9,14 +9,17 @@ Rules:
 import logging
 from dataclasses import dataclass, field
 from enum import auto
-from typing import Optional
+from typing import Optional, override
 
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
     C_effects,
+    C_property_base,
     C_pts,
+    C_wh,
     C_xy,
     C_xyr,
+    HasPropertiesMixin,
     gen_uuid,
 )
 from faebryk.libs.sexp.dataclass_sexp import SEXP_File, SymEnum, sexp_field
@@ -31,7 +34,7 @@ def uuid_field():
 
 
 @dataclass
-class C_property:
+class C_property(C_property_base):
     name: str = field(**sexp_field(positional=True))
     value: str = field(**sexp_field(positional=True))
     id: Optional[int] = None
@@ -99,7 +102,7 @@ class C_polyline:
 
 
 @dataclass
-class C_symbol:
+class C_symbol(HasPropertiesMixin):
     @dataclass
     class C_pin_names:
         offset: float
@@ -187,6 +190,23 @@ class C_symbol:
         default_factory=dict,
     )
     convert: Optional[int] = None
+
+    @override
+    def add_property(self, name: str, value: str):
+        self.propertys[name] = C_property(
+            name=name,
+            value=value,
+            at=C_xyr(x=0, y=0, r=0),
+            effects=C_effects(
+                font=C_effects.C_font(
+                    size=C_wh(w=0, h=0),
+                    thickness=None,
+                    unresolved_font_name=None,
+                ),
+                justifys=[],
+                hide=True,
+            ),
+        )
 
 
 @dataclass

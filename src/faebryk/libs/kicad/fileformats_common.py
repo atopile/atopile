@@ -1,7 +1,9 @@
 import logging
 import uuid
+from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import auto
+from hashlib import sha256
 from typing import Optional
 
 from dataclasses_json.undefined import CatchAll
@@ -10,6 +12,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SEXP_File,
     Symbol,
     SymEnum,
+    dump_single,
     netlist_type,
     sexp_field,
 )
@@ -22,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 # @kicad10
 KICAD_FP_VERSION = 20241229
+
+
+class PropertyNotSet(Exception):
+    pass
+
+
+class ChecksumMismatch(Exception):
+    pass
 
 
 class UUID(str):
@@ -210,3 +221,44 @@ def gen_uuid(mark: str = ""):
 
 def compare_without_uuid[T](before: T, after: T):
     return compare_dataclasses(before, after, skip_keys=("uuid",))
+
+
+@dataclass(kw_only=True)
+class C_property_base:
+    name: str
+    value: str
+
+
+class HasPropertiesMixin:
+    @abstractmethod
+    def add_property(self, name: str, value: str): ...
+
+    name: str
+    propertys: dict[str, C_property_base]
+
+    def get_property(self, name: str) -> str:
+        if name not in self.propertys:
+            raise PropertyNotSet(f"Property `{name}` not set")
+        return self.propertys[name].value
+
+    def _hash(self) -> str:
+        content = dump_single(self)
+        return sha256(content.encode("utf-8")).hexdigest()
+
+    def set_checksum(self):
+        if "checksum" in self.propertys:
+            del self.propertys["checksum"]
+
+        self.add_property("checksum", self._hash())
+
+    def verify_checksum(self):
+        checksum_stated = self.get_property("checksum")
+
+        del self.propertys["checksum"]
+        checksum_actual = self._hash()
+        self.add_property("checksum", checksum_stated)
+
+        if checksum_actual != checksum_stated:
+            raise ChecksumMismatch(
+                f"{type(self).__name__} `{self.name}` has a checksum mismatch."
+            )

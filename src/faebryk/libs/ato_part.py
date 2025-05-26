@@ -12,6 +12,8 @@ from typing import Self
 
 from more_itertools import first
 
+import faebryk.library._F as F
+from faebryk.libs.kicad.fileformats_common import ChecksumMismatch, PropertyNotSet
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_footprint_file,
     C_kicad_model_file,
@@ -31,6 +33,7 @@ class AtoPart:
             default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
         )
         source: str | None
+        checksum: str | None = None
 
     identifier: str
     path: Path
@@ -64,6 +67,9 @@ class AtoPart:
     def __post_init__(self):
         self.fp = deepcopy(self.fp)
         self.fp.footprint.name = f"{self.identifier}:{self.fp.footprint.base_name}"
+
+        self.symbol = deepcopy(self.symbol)
+
         if self.model:
             # TODO: do this the proper way
             from atopile.config import config as Gcfg
@@ -74,10 +80,23 @@ class AtoPart:
             ) / self.model_path.relative_to(prjroot, walk_up=True)
 
     def compare(self, other: Self) -> dict:
-        return compare_dataclasses(self, other, skip_keys=("path", "uuid", "date"))
+        return compare_dataclasses(
+            self,
+            other,
+            skip_keys=(
+                "path",
+                "uuid",
+                "date",
+                "checksum",
+            ),
+        )
 
     def dump(self):
         self.path.mkdir(parents=True, exist_ok=True)
+
+        # refresh checksums
+        self.fp.footprint.set_checksum()
+        first(self.symbol.kicad_symbol_lib.symbols.values()).set_checksum()
 
         self.fp.dumps(self.fp_path)
         self.symbol.dumps(self.sym_path)
@@ -92,6 +111,24 @@ class AtoPart:
             #    + indent(",\n".join(f'{k}="{v}"' for k, v in args.items()), " " * 4*2)
             #    + "    >"
             # )
+
+        # TODO use the pycodegen lib
+        ato_template = dedent(
+            "\n".join(
+                """
+            #pragma experiment("TRAITS")
+            import is_atomic_part
+            import is_auto_generated
+
+            component {identifier}:
+                trait is_atomic_part{atomic_args_str}
+
+                # This trait marks this file as auto-generated
+                # If you want to manually change it, remove the trait
+                trait is_auto_generated{auto_args_str}
+            """.splitlines()[1:]
+            )
+        )
 
         atomic_args = {
             "manufacturer": self.mfn[0],
@@ -111,34 +148,51 @@ class AtoPart:
                 else {}
             ),
             "date": self.auto_generated.date.isoformat(),
+            "checksum": F.is_auto_generated.CHECKSUM_PLACEHOLDER,
         }
 
-        # TODO use the pycodegen lib
-        ato = dedent(
-            "\n".join(
-                """
-            #pragma experiment("TRAITS")
-            import is_atomic_part
-            import is_auto_generated
-
-            component {identifier}:
-                trait is_atomic_part{atomic_args_str}
-
-                # This trait marks this file as auto-generated
-                # If you want to manually change it, remove the trait
-                trait is_auto_generated{auto_args_str}
-            """.splitlines()[1:]
-            )
-        ).format(
+        ato = ato_template.format(
             identifier=self.identifier,
             atomic_args_str=_format_template_args(atomic_args),
             auto_args_str=_format_template_args(auto_args),
         )
 
-        self.ato_path.write_text(dedent(ato))
+        ato = F.is_auto_generated.set_checksum(ato)
+
+        self.ato_path.write_text(ato)
 
         # TODO remove test
         self.load(self.path)
+
+    def verify_checksum(self, ato_file_contents: str):
+        from faebryk.library.is_auto_generated import _FileManuallyModified
+
+        if not self.auto_generated:
+            return
+        assert self.auto_generated.checksum is not None
+
+        # check ato
+        F.is_auto_generated.verify(self.auto_generated.checksum, ato_file_contents)
+
+        fp = self.fp.footprint
+        symbol = first(self.symbol.kicad_symbol_lib.symbols.values())
+
+        # check fp & symbol
+        for obj, t_name in ((fp, "Footprint"), (symbol, "Symbol")):
+            try:
+                obj.verify_checksum()
+            except PropertyNotSet:
+                raise _FileManuallyModified(
+                    f"{t_name} has no checksum."
+                    "But part is auto-generated. This is not allowed."
+                )
+            except ChecksumMismatch:
+                raise _FileManuallyModified(
+                    f"{t_name} has a checksum mismatch. "
+                    "But part is auto-generated. This is not allowed. "
+                )
+
+        # TODO verify model
 
     @classmethod
     def load(cls, path: Path) -> Self:
@@ -146,17 +200,17 @@ class AtoPart:
         Looks for ato manifest in the given directory.
         If found, loads the manifest and returns an AtoPart object.
         """
+
         # TODO consider using the parser
 
         ato_path = path / (path.name + ".ato")
         ato = ato_path.read_text("utf-8")
 
         def _parse_trait(trait: str, required: list[str]) -> dict:
-            args_match = re.search(rf"trait {trait}<(.+?)>", ato, re.DOTALL)
+            valid_ato = re.sub(r"#.*", "", ato)
+            args_match = re.search(rf"trait {trait}<(.+?)>", valid_ato, re.DOTALL)
             if not args_match:
-                raise ValueError(
-                    "Invalid ATO file: Could not find is_atomic_part trait"
-                )
+                raise ValueError(f"Invalid ATO file: Could not find {trait} trait")
             matches = [
                 # only strings supported
                 re.match(r'^(\w+)\s*=\s*"(.*?)"$', arg.strip())
@@ -174,9 +228,12 @@ class AtoPart:
         atomic_args = _parse_trait(
             "is_atomic_part", ["footprint", "symbol", "manufacturer", "partnumber"]
         )
-        auto_args = None
-        if "is_auto_generated" in ato:
-            auto_args = _parse_trait("is_auto_generated", ["system", "date"])
+        try:
+            auto_args = _parse_trait(
+                "is_auto_generated", ["system", "date", "checksum"]
+            )
+        except ValueError:
+            auto_args = None
 
         fp = C_kicad_footprint_file.loads(path / atomic_args["footprint"])
         symbol = C_kicad_sym_file.loads(path / atomic_args["symbol"])
@@ -193,9 +250,10 @@ class AtoPart:
                 system=auto_args["system"],
                 date=datetime.datetime.fromisoformat(auto_args["date"]),
                 source=auto_args["source"] if "source" in auto_args else None,
+                checksum=auto_args["checksum"],
             )
 
-        return cls(
+        out = cls(
             identifier=path.name,
             path=path,
             mfn=mfn_pn,
@@ -204,3 +262,7 @@ class AtoPart:
             model=model,
             auto_generated=auto_generated,
         )
+
+        out.verify_checksum(ato)
+
+        return out

@@ -5,7 +5,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
-from typing import Any, Optional, Self
+from typing import Any, Optional, Self, override
 
 import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
@@ -14,12 +14,14 @@ from more_itertools import first
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
     C_effects,
+    C_property_base,
     C_pts,
     C_stroke,
     C_wh,
     C_xy,
     C_xyr,
     C_xyz,
+    HasPropertiesMixin,
     gen_uuid,
 )
 from faebryk.libs.sexp.dataclass_sexp import (
@@ -1007,7 +1009,7 @@ class C_net:
 
 
 @dataclass(kw_only=True)
-class C_footprint:
+class C_footprint(HasPropertiesMixin):
     class E_attr(SymEnum):
         smd = auto()
         dnp = auto()
@@ -1018,7 +1020,7 @@ class C_footprint:
         allow_missing_courtyard = auto()
 
     @dataclass(kw_only=True)
-    class C_property:
+    class C_property(C_property_base):
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
@@ -1244,6 +1246,24 @@ class C_footprint:
     @property
     def base_name(self) -> str:
         return self.name.split(":", 1)[-1]
+
+    @override
+    def add_property(self, name: str, value: str):
+        self.propertys[name] = C_footprint.C_property(
+            name=name,
+            value=value,
+            at=C_xyr(x=0, y=0, r=0),
+            layer=C_text_layer(""),
+            effects=C_fp_text.C_fp_text_effects(
+                font=C_fp_text.C_fp_text_effects.C_font(
+                    size=C_wh(w=0, h=0),
+                    thickness=None,
+                    unresolved_font_name=None,
+                ),
+                justifys=[],
+                hide=True,
+            ),
+        )
 
 
 @dataclass
