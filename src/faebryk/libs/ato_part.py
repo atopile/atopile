@@ -7,12 +7,12 @@ import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from textwrap import dedent
 from typing import Self
 
 from more_itertools import first
 
 import faebryk.library._F as F
+from faebryk.libs.codegen.atocodegen import AtoCodeGen
 from faebryk.libs.kicad.fileformats_common import ChecksumMismatch, PropertyNotSet
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_footprint_file,
@@ -92,6 +92,8 @@ class AtoPart:
         )
 
     def dump(self):
+        assert self.auto_generated is not None
+
         self.path.mkdir(parents=True, exist_ok=True)
 
         # refresh checksums
@@ -103,59 +105,38 @@ class AtoPart:
         if self.model:
             self.model.dumps(self.model_path)
 
-        def _format_template_args(args: dict) -> str:
-            return "<" + ", ".join(f'{k}="{v}"' for k, v in args.items()) + ">"
-            # TODO parser doesnt support newline atm
-            # args_str = (
-            #    "<\n"
-            #    + indent(",\n".join(f'{k}="{v}"' for k, v in args.items()), " " * 4*2)
-            #    + "    >"
-            # )
+        ato_builder = AtoCodeGen.ComponentFile(self.identifier)
 
-        # TODO use the pycodegen lib
-        ato_template = dedent(
-            "\n".join(
-                """
-            #pragma experiment("TRAITS")
-            import is_atomic_part
-            import is_auto_generated
-
-            component {identifier}:
-                trait is_atomic_part{atomic_args_str}
-
-                # This trait marks this file as auto-generated
-                # If you want to manually change it, remove the trait
-                trait is_auto_generated{auto_args_str}
-            """.splitlines()[1:]
-            )
+        ato_builder.add_trait(
+            "is_atomic_part",
+            {
+                "manufacturer": self.mfn[0],
+                "partnumber": self.mfn[1],
+                "footprint": self.fp_path.name,
+                "symbol": self.sym_path.name,
+                **({"model": self.model_path.name} if self.model else {}),
+            },
         )
 
-        atomic_args = {
-            "manufacturer": self.mfn[0],
-            "partnumber": self.mfn[1],
-            "footprint": self.fp_path.name,
-            "symbol": self.sym_path.name,
-            **({"model": self.model_path.name} if self.model else {}),
-        }
-
-        assert self.auto_generated is not None
-
-        auto_args = {
-            "system": self.auto_generated.system,
-            **(
-                {"source": self.auto_generated.source}
-                if self.auto_generated.source
-                else {}
-            ),
-            "date": self.auto_generated.date.isoformat(),
-            "checksum": F.is_auto_generated.CHECKSUM_PLACEHOLDER,
-        }
-
-        ato = ato_template.format(
-            identifier=self.identifier,
-            atomic_args_str=_format_template_args(atomic_args),
-            auto_args_str=_format_template_args(auto_args),
+        ato_builder.add_comments(
+            "This trait marks this file as auto-generated",
+            "If you want to manually change it, remove the trait",
+            use_spacer=True,
         )
+        ato_builder.add_trait(
+            "is_auto_generated",
+            {
+                "system": self.auto_generated.system,
+                **(
+                    {"source": self.auto_generated.source}
+                    if self.auto_generated.source
+                    else {}
+                ),
+                "date": self.auto_generated.date.isoformat(),
+                "checksum": F.is_auto_generated.CHECKSUM_PLACEHOLDER,
+            },
+        )
+        ato = ato_builder.dump()
 
         ato = F.is_auto_generated.set_checksum(ato)
 

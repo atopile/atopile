@@ -14,6 +14,7 @@ from atopile.errors import UserValueError
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
+from faebryk.libs.codegen.pycodegen import sanitize_name
 from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats_common import C_xyr
 from faebryk.libs.kicad.fileformats_latest import (
@@ -31,7 +32,6 @@ from faebryk.libs.picker.lcsc import (
     EasyEDAPart,
     EasyEDASymbol,
 )
-from faebryk.libs.pycodegen import sanitize_name
 from faebryk.libs.util import (
     KeyErrorNotFound,
     find,

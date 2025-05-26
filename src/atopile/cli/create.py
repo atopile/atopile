@@ -23,6 +23,13 @@ from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import log_to_posthog
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.libs.codegen.pycodegen import (
+    fix_indent,
+    format_and_write,
+    gen_block,
+    gen_repeated_block,
+    sanitize_name,
+)
 from faebryk.libs.github import (
     GithubCLI,
     GithubCLINotFound,
@@ -33,13 +40,6 @@ from faebryk.libs.github import (
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
-from faebryk.libs.pycodegen import (
-    fix_indent,
-    format_and_write,
-    gen_block,
-    gen_repeated_block,
-    sanitize_name,
-)
 from faebryk.libs.util import groupby, try_or
 
 if TYPE_CHECKING:
@@ -596,9 +596,9 @@ def component(
     type_: Annotated[ComponentType | None, typer.Option("--type", "-t")] = None,
 ):
     """Create a new component."""
+    from faebryk.libs.codegen.pycodegen import sanitize_name
     from faebryk.libs.picker.api.models import Component
     from faebryk.libs.picker.api.picker_lib import client
-    from faebryk.libs.pycodegen import sanitize_name
 
     config.apply_options(None)
 
