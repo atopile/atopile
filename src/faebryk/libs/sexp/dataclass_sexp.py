@@ -572,6 +572,7 @@ def dumps(obj, path: PathLike | None = None) -> str:
     text = sexpdata.dumps(sexp)
     text = prettify_sexp_string(text)
     if path:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     return text
 

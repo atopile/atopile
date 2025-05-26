@@ -7,8 +7,11 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Sequence
 
+from more_itertools import first
+
 import faebryk.library._F as F
 from atopile.cli.logging import ALERT
+from atopile.config import BuildTargetConfig
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
 from faebryk.core.module import Module
@@ -182,9 +185,10 @@ class PartLifecycle:
         def _get_part_path(self, part: EasyEDAPart) -> Path:
             return self._PATH / self._get_part_identifier(part)
 
-        @property
-        def fp_table(self) -> tuple[Path, C_kicad_fp_lib_table_file]:
-            fp_table_path = Gcfg.build.paths.fp_lib_table
+        def fp_table(
+            self, build: BuildTargetConfig
+        ) -> tuple[Path, C_kicad_fp_lib_table_file]:
+            fp_table_path = build.paths.fp_lib_table
             if not fp_table_path.exists():
                 fp_table = C_kicad_fp_lib_table_file.skeleton()
             else:
@@ -192,18 +196,34 @@ class PartLifecycle:
 
             return fp_table_path, fp_table
 
+        @staticmethod
+        def _get_common_relative_path_to_builds(path: Path) -> Path:
+            # TODO move this to config
+            rel_paths = {
+                name: path.relative_to(build.paths.fp_lib_table.parent, walk_up=True)
+                for name, build in Gcfg.project.builds.items()
+            }
+            # TODO check this
+            if len(set(rel_paths.values())) != 1:
+                raise ValueError(
+                    "All builds must have the same common prefix path: "
+                    f"{indented_container(rel_paths)}"
+                )
+            return first(rel_paths.values())
+
         def _insert_fp_lib(self, lib_name: str):
-            fp_table_path, fp_table = self.fp_table
+            for build in Gcfg.project.builds.values():
+                fp_table_path, fp_table = self.fp_table(build)
+                self.__insert_fp_lib(lib_name, fp_table_path, fp_table)
 
-            prjroot = Gcfg.build.paths.fp_lib_table.parent
-
+        def __insert_fp_lib(
+            self,
+            lib_name: str,
+            fp_table_path: Path,
+            fp_table: C_kicad_fp_lib_table_file,
+        ):
             fppath = self._PATH / lib_name
-            fppath_rel = fppath.resolve().relative_to(
-                prjroot.resolve(),
-                # FIXME set to false, only needed here because fps are in build
-                # instead of in project dir
-                walk_up=True,
-            )
+            fppath_rel = self._get_common_relative_path_to_builds(fppath.resolve())
 
             uri = fppath_rel
             assert not uri.is_absolute()

@@ -3,8 +3,6 @@ import logging
 import re
 import sys
 import textwrap
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
@@ -15,22 +13,12 @@ import rich
 import typer
 from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
-from natsort import natsorted
 from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import log_to_posthog
-from faebryk.library.has_designator_prefix import has_designator_prefix
-from faebryk.libs.codegen.atocodegen import AtoCodeGen
-from faebryk.libs.codegen.pycodegen import (
-    fix_indent,
-    format_and_write,
-    gen_block,
-    gen_repeated_block,
-    sanitize_name,
-)
 from faebryk.libs.github import (
     GithubCLI,
     GithubCLINotFound,
@@ -38,11 +26,11 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
-from faebryk.libs.kicad.fileformats_sch import C_symbol
+from faebryk.libs.part_lifecycle import PartLifecycle
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
-from faebryk.libs.util import groupby, try_or
+from faebryk.libs.util import try_or
 
 if TYPE_CHECKING:
     import git
@@ -593,13 +581,8 @@ class ComponentType(StrEnum):
 @log_to_posthog("cli:create_component_end")
 def component(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
-    name: Annotated[str | None, typer.Option("--name", "-n")] = None,
-    filename: Annotated[str | None, typer.Option("--filename", "-f")] = None,
-    type_: Annotated[ComponentType | None, typer.Option("--type", "-t")] = None,
 ):
     """Create a new component."""
-    from faebryk.libs.codegen.pycodegen import sanitize_name
-    from faebryk.libs.picker.api.models import Component
     from faebryk.libs.picker.api.picker_lib import client
 
     config.apply_options(None)
@@ -673,78 +656,10 @@ def component(
     # We have a component -----------------------------------------------------
     assert component is not None
 
-    # TODO: templated ato components too
-    # if type_ is None:
-    #     type_ = ComponentType.fab
-    if type_ is None:
-        type_ = questionary.select(
-            "Select the component type", choices=list(ComponentType)
-        ).unsafe_ask()
-        assert type_ is not None
+    epart = download_easyeda_info(component.lcsc_display, get_model=True)
+    apart = PartLifecycle.singleton().library.ingest_part_from_easyeda(epart)
 
-    if name is None:
-        name = questionary.text(
-            "Enter the name of the component",
-            default=caseconverter.pascalcase(
-                sanitize_name(component.manufacturer_name + " " + component.part_number)
-            ),
-        ).unsafe_ask()
-
-    sanitized_name = sanitize_name(name)
-    if sanitized_name != name:
-        rich.print(f"Sanitized name: {sanitized_name}")
-
-    if type_ == ComponentType.ato:
-        extension = ".ato"
-    elif type_ == ComponentType.fab:
-        extension = ".py"
-    else:
-        raise ValueError(f"Invalid component type: {type_}")
-
-    out_path: Path | None = None
-    for _ in stuck_user_helper_generator:
-        if filename is None:
-            filename = questionary.text(
-                "Enter the filename of the component",
-                default=caseconverter.snakecase(name) + extension,
-            ).unsafe_ask()
-
-        assert filename is not None
-
-        filepath = Path(filename)
-        if filepath.is_absolute():
-            out_path = filepath.resolve()
-        else:
-            out_path = (config.project.paths.src / filename).resolve()
-
-        if out_path.exists():
-            rich.print(f"File {out_path} already exists")
-            filename = None
-            continue
-
-        if not out_path.parent.exists():
-            rich.print(
-                f"Directory {out_path.parent} does not exist. Creating it now..."
-            )
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        break
-
-    assert out_path is not None
-
-    if type_ == ComponentType.ato:
-        template = AtoTemplate(name=sanitized_name)
-        template.set_part(component)
-        out = template.dumps()
-        out_path.write_text(out, encoding="utf-8")
-        rich.print(f":sparkles: Created {out_path} !")
-
-    elif type_ == ComponentType.fab:
-        template = FabllTemplate(name=sanitized_name)
-        template.set_part(component)
-        out = template.dumps()
-        format_and_write(out, out_path)
-        rich.print(f":sparkles: Created {out_path} !")
+    rich.print(f":sparkles: Created {apart.identifier} at {apart.path} !")
 
 
 @create_app.callback(invoke_without_command=True)
@@ -767,273 +682,3 @@ def main(ctx: typer.Context):
 
 if __name__ == "__main__":
     create_app()  # pylint: disable=no-value-for-parameter
-
-
-@dataclass
-class CTX:
-    path: Path
-    pypath: str
-    overwrite: bool
-
-
-@dataclass
-class Template(ABC):
-    name: str
-    docstring: str = "TODO: Docstring describing your module"
-
-    def _process_part(self, part: Component):
-        """Common part processing logic used by child classes."""
-        name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
-        assert isinstance(name, str)
-        out = download_easyeda_info(part.lcsc_display, get_model=False)
-        return name, out
-
-    @abstractmethod
-    def set_part(self, part: Component): ...
-
-
-@dataclass
-class AtoTemplate(Template):
-    part: Component | None = None
-    symbol: C_symbol | None = None
-
-    def set_part(self, part: Component):
-        self.part = part
-        self.name, epart = self._process_part(part)
-        self.symbol = epart.symbol.kicad_symbol
-
-    def dumps(self) -> str:
-        # TODO: use part_lifecycle.py and thus ato_part.py
-        # all code here is duplicated
-
-        part = self.part
-        symbol = self.symbol
-        assert part
-        assert symbol
-
-        build = AtoCodeGen.ComponentFile(self.name, docstring=part.description)
-
-        build.add_trait(
-            "is_auto_generated",
-            system="ato_create",
-            source=f"easyeda:{part.lcsc_display.removeprefix('C')}",
-        )
-        build.add_trait(
-            "has_explicit_part",
-            "by_mfr",
-            mfr=part.manufacturer_name,
-            partno=part.part_number,
-        )
-
-        # Add datasheet if available
-        if part.datasheet_url:
-            build.add_trait("has_datasheet_defined", datasheet=part.datasheet_url)
-
-        # Add designator prefix from EasyEDA symbol
-        build.add_trait(
-            "has_designator_prefix", prefix=symbol.propertys["Reference"].value
-        )
-
-        build.add_comments("pins", use_spacer=True)
-
-        # Collect and sort pins first
-        unsorted_pins = []
-        for unit in symbol.symbols.values():
-            for pin in unit.pins:
-                pin_num = pin.number.number
-                pin_name = pin.name.name
-                if pin_name and pin_name not in ["NC", "nc"]:
-                    if re.match(r"^[0-9]+$", pin_name):
-                        pin_name = None
-                    else:
-                        pin_name = sanitize_name(pin_name)
-                    unsorted_pins.append((pin_name, pin_num))
-
-        # Sort pins by name using natsort
-        sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
-
-        defined_signals = set()
-
-        # Process sorted pins
-        for pin_name, pin_num in sorted_pins:
-            if pin_name is None:
-                build.add_stmt(AtoCodeGen.PinDeclaration(pin_num))
-            else:
-                build.add_stmt(
-                    AtoCodeGen.Connect(
-                        left=AtoCodeGen.Connect.Connectable(
-                            pin_name,
-                            declare="signal"
-                            if pin_name not in defined_signals
-                            else None,
-                        ),
-                        right=AtoCodeGen.Connect.Connectable(pin_num, declare="pin"),
-                    )
-                )
-                defined_signals.add(pin_name)
-
-        return build.dump()
-
-
-@dataclass
-class FabllTemplate(Template):
-    traits: list[str] = field(default_factory=list)
-    base: str = "Module"
-    imports: list[str] = field(default_factory=list)
-    nodes: list[str] = field(default_factory=list)
-
-    def set_part(self, part: Component):
-        # Get common processed data
-        self.name, epart = self._process_part(part)
-        symbol = epart.symbol.kicad_symbol
-
-        designator_prefix_str = symbol.propertys["Reference"].value
-        try:
-            prefix = has_designator_prefix.Prefix(designator_prefix_str)
-            designator_prefix = f"F.has_designator_prefix.Prefix.{prefix.name}"
-        except ValueError:
-            logger.warning(
-                f"Using non-standard designator prefix: {designator_prefix_str}"
-            )
-            designator_prefix = f"'{designator_prefix_str}'"
-
-        self.traits.append(
-            f"designator_prefix = L.f_field(F.has_designator_prefix)"
-            f"({designator_prefix})"
-        )
-
-        self.traits.append(
-            "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{part.lcsc_display}'}})"
-        )
-
-        self.imports.append(
-            "from faebryk.libs.picker.picker import DescriptiveProperties"
-        )
-        self.traits.append(
-            f"descriptive_properties = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{DescriptiveProperties.manufacturer: '{part.manufacturer_name}', "
-            f"DescriptiveProperties.partno: '{part.part_number}'}})"
-        )
-
-        if url := part.datasheet_url:
-            self.traits.append(
-                f"datasheet = L.f_field(F.has_datasheet_defined)('{url}')"
-            )
-
-        partdoc = part.description.replace("  ", "\n")
-        self.docstring = f"{self.docstring}\n\n{partdoc}"
-
-        # pins --------------------------------
-        no_name: list[str] = []
-        no_connection: list[str] = []
-        interface_names_by_pin_num: dict[str, str] = {}
-
-        for unit in symbol.symbols.values():
-            for pin in unit.pins:
-                pin_num = pin.number.number
-                pin_name = pin.name.name
-                if re.match(r"^[0-9]+$", pin_name):
-                    no_name.append(pin_num)
-                elif pin_name in ["NC", "nc"]:
-                    no_connection.append(pin_num)
-                else:
-                    pyname = sanitize_name(pin_name)
-                    interface_names_by_pin_num[pin_num] = pyname
-
-        self.nodes.append(
-            "#TODO: Change auto-generated interface types to actual high level types"
-        )
-
-        _interface_lines_by_min_pin_num = {}
-        for interface_name, _items in groupby(
-            interface_names_by_pin_num.items(), lambda x: x[1]
-        ).items():
-            pin_nums = [x[0] for x in _items]
-            line = f"{interface_name}: F.Electrical  # {'pin' if len(pin_nums) == 1 else 'pins'}: {', '.join(pin_nums)}"  # noqa: E501
-            _interface_lines_by_min_pin_num[min(pin_nums)] = line
-        self.nodes.extend(
-            line
-            for _, line in natsorted(
-                _interface_lines_by_min_pin_num.items(), key=lambda x: x[0]
-            )
-        )
-
-        if no_name:
-            self.nodes.append(f"unnamed = L.list_field({len(no_name)}, F.Electrical)")
-
-        pin_lines = (
-            [
-                f'"{pin_num}": self.{interface_name},'
-                for pin_num, interface_name in interface_names_by_pin_num.items()
-            ]
-            + [f'"{pin_num}": None,' for pin_num in no_connection]
-            + [f'"{pin_num}": self.unnamed[{i}],' for i, pin_num in enumerate(no_name)]
-        )
-        self.traits.append(
-            fix_indent(f"""
-            @L.rt_field
-            def attach_via_pinmap(self):
-                return F.can_attach_to_footprint_via_pinmap(
-                    {{
-                        {gen_repeated_block(natsorted(pin_lines))}
-                    }}
-                )
-        """)
-        )
-
-    def dumps(self) -> str:
-        always_import = [
-            "import faebryk.library._F as F  # noqa: F401",
-            f"from faebryk.core.{self.base.lower()} import {self.base}",
-            "from faebryk.libs.library import L  # noqa: F401",
-            "from faebryk.libs.units import P  # noqa: F401",
-        ]
-
-        self.imports = always_import + self.imports
-
-        out = fix_indent(f"""
-            # This file is part of the faebryk project
-            # SPDX-License-Identifier: MIT
-
-            import logging
-
-            {gen_repeated_block(self.imports)}
-
-            logger = logging.getLogger(__name__)
-
-            class {self.name}({self.base}):
-                \"\"\"
-                {gen_block(self.docstring)}
-                \"\"\"
-
-                # ----------------------------------------
-                #                modules
-                # ----------------------------------------
-
-                # ----------------------------------------
-                #              interfaces
-                # ----------------------------------------
-                {gen_repeated_block(self.nodes)}
-
-                # ----------------------------------------
-                #              parameters
-                # ----------------------------------------
-
-                # ----------------------------------------
-                #                traits
-                # ----------------------------------------
-                {gen_repeated_block(self.traits)}
-
-                def __preinit__(self):
-                    # ------------------------------------
-                    #           connections
-                    # ------------------------------------
-
-                    # ------------------------------------
-                    #          parametrization
-                    # ------------------------------------
-                    pass
-        """)
-
-        return out

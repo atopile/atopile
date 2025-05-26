@@ -75,13 +75,18 @@ class AtoPart:
         self.symbol = deepcopy(self.symbol)
 
         if self.model:
-            # TODO: do this the proper way
-            from atopile.config import config as Gcfg
+            from faebryk.libs.part_lifecycle import PartLifecycle
 
-            prjroot = Gcfg.build.paths.fp_lib_table.parent
-            self.fp.footprint.models[0].path = Path(
-                "${KIPRJMOD}"
-            ) / self.model_path.relative_to(prjroot, walk_up=True)
+            rel_path = PartLifecycle.Library._get_common_relative_path_to_builds(
+                self.model_path
+            )
+
+            if len(self.fp.footprint.models) != 1:
+                raise NotImplementedError(
+                    "Multiple models are not supported yet. "
+                    "Please report this issue to the maintainers."
+                )
+            self.fp.footprint.models[0].path = Path("${KIPRJMOD}") / rel_path
 
     def compare(self, other: Self) -> dict:
         return compare_dataclasses(
