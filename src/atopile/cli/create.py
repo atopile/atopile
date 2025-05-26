@@ -23,6 +23,7 @@ from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import log_to_posthog
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.libs.codegen.atocodegen import AtoCodeGen
 from faebryk.libs.codegen.pycodegen import (
     fix_indent,
     format_and_write,
@@ -37,6 +38,7 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
+from faebryk.libs.kicad.fileformats_sch import C_symbol
 from faebryk.libs.picker.api.api import ApiHTTPError, Component
 from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
 from faebryk.libs.picker.lcsc import download_easyeda_info
@@ -731,15 +733,15 @@ def component(
     assert out_path is not None
 
     if type_ == ComponentType.ato:
-        template = AtoTemplate(name=sanitized_name, base="Module")
-        template.add_part(component)
+        template = AtoTemplate(name=sanitized_name)
+        template.set_part(component)
         out = template.dumps()
         out_path.write_text(out, encoding="utf-8")
         rich.print(f":sparkles: Created {out_path} !")
 
     elif type_ == ComponentType.fab:
-        template = FabllTemplate(name=sanitized_name, base="Module")
-        template.add_part(component)
+        template = FabllTemplate(name=sanitized_name)
+        template.set_part(component)
         out = template.dumps()
         format_and_write(out, out_path)
         rich.print(f":sparkles: Created {out_path} !")
@@ -777,9 +779,6 @@ class CTX:
 @dataclass
 class Template(ABC):
     name: str
-    base: str
-    imports: list[str] = field(default_factory=list)
-    nodes: list[str] = field(default_factory=list)
     docstring: str = "TODO: Docstring describing your module"
 
     def _process_part(self, part: Component):
@@ -790,39 +789,52 @@ class Template(ABC):
         return name, out
 
     @abstractmethod
-    def add_part(self, part: Component): ...
+    def set_part(self, part: Component): ...
 
 
 @dataclass
 class AtoTemplate(Template):
-    attributes: list[str] = field(default_factory=list)
-    pins: list[str] = field(default_factory=list)
-    defined_signals: set[str] = field(default_factory=set)
+    part: Component | None = None
+    symbol: C_symbol | None = None
 
-    def add_part(self, part: Component):
-        # Get common processed data
+    def set_part(self, part: Component):
+        self.part = part
         self.name, epart = self._process_part(part)
-        symbol = epart.symbol.kicad_symbol
+        self.symbol = epart.symbol.kicad_symbol
 
-        # Set docstring with description
-        self.docstring = part.description
+    def dumps(self) -> str:
+        # TODO: use part_lifecycle.py and thus ato_part.py
+        # all code here is duplicated
 
-        # Add component metadata
-        self.attributes.extend(
-            [
-                f'lcsc_id = "{part.lcsc_display}"',
-                f'manufacturer = "{part.manufacturer_name}"',
-                f'mpn = "{part.part_number}"',
-            ]
+        part = self.part
+        symbol = self.symbol
+        assert part
+        assert symbol
+
+        build = AtoCodeGen.ComponentFile(self.name, docstring=part.description)
+
+        build.add_trait(
+            "is_auto_generated",
+            system="ato_create",
+            source=f"easyeda:{part.lcsc_display.removeprefix('C')}",
+        )
+        build.add_trait(
+            "has_explicit_part",
+            "by_mfr",
+            mfr=part.manufacturer_name,
+            partno=part.part_number,
         )
 
         # Add datasheet if available
         if part.datasheet_url:
-            self.attributes.append(f'datasheet_url = "{part.datasheet_url}"')
+            build.add_trait("has_datasheet_defined", datasheet=part.datasheet_url)
 
         # Add designator prefix from EasyEDA symbol
-        designator_prefix = symbol.propertys["Reference"].value
-        self.attributes.append(f'designator_prefix = "{designator_prefix}"')
+        build.add_trait(
+            "has_designator_prefix", prefix=symbol.propertys["Reference"].value
+        )
+
+        build.add_comments("pins", use_spacer=True)
 
         # Collect and sort pins first
         unsorted_pins = []
@@ -832,49 +844,45 @@ class AtoTemplate(Template):
                 pin_name = pin.name.name
                 if pin_name and pin_name not in ["NC", "nc"]:
                     if re.match(r"^[0-9]+$", pin_name):
-                        unsorted_pins.append((sanitize_name(pin_name), pin_num))
+                        pin_name = None
                     else:
-                        unsorted_pins.append((None, pin_num))
+                        pin_name = sanitize_name(pin_name)
+                    unsorted_pins.append((pin_name, pin_num))
 
         # Sort pins by name using natsort
         sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
 
+        defined_signals = set()
+
         # Process sorted pins
         for pin_name, pin_num in sorted_pins:
             if pin_name is None:
-                self.pins.append(f"pin {pin_num}")
-
-            elif pin_name in self.defined_signals:
-                self.pins.append(f"{pin_name} ~ pin {pin_num}")
-
+                build.add_stmt(AtoCodeGen.PinDeclaration(pin_num))
             else:
-                self.pins.append(f"signal {pin_name} ~ pin {pin_num}")
-                self.defined_signals.add(pin_name)
+                build.add_stmt(
+                    AtoCodeGen.Connect(
+                        left=AtoCodeGen.Connect.Connectable(
+                            pin_name,
+                            declare="signal"
+                            if pin_name not in defined_signals
+                            else None,
+                        ),
+                        right=AtoCodeGen.Connect.Connectable(pin_num, declare="pin"),
+                    )
+                )
+                defined_signals.add(pin_name)
 
-    def dumps(self) -> str:
-        output = f"component {self.name}:\n"
-        output += f'    """{self.name} component"""\n'
-
-        # Add attributes
-        for attr in self.attributes:
-            output += f"    {attr}\n"
-
-        # Add blank line after attributes
-        output += "\n"
-
-        if self.pins:
-            output += "    # pins\n"
-            for pin in self.pins:
-                output += f"    {pin}\n"
-
-        return output
+        return build.dump()
 
 
 @dataclass
 class FabllTemplate(Template):
     traits: list[str] = field(default_factory=list)
+    base: str = "Module"
+    imports: list[str] = field(default_factory=list)
+    nodes: list[str] = field(default_factory=list)
 
-    def add_part(self, part: Component):
+    def set_part(self, part: Component):
         # Get common processed data
         self.name, epart = self._process_part(part)
         symbol = epart.symbol.kicad_symbol

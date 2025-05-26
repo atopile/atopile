@@ -13,28 +13,26 @@ def _cleanup(s: str) -> str:
 def test_atogen_basic_part():
     cf = AtoCodeGen.ComponentFile("TI_TCA9548APWR")
 
-    atomic_args = {
-        "manufacturer": "TI",
-        "partnumber": "TCA9548APWR",
-        "footprint": "TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL.kicad_mod",
-        "symbol": "TCA9548APWR.kicad_sym",
-        "model": "TSSOP-24_L7.8-W4.4-H1.0-LS6.4-P0.65.step",
-    }
-
-    auto_args = {
-        "system": "ato_part",
-        "source": "easyeda:C130026",
-        "date": "2025-05-26T12:53:38.352371+00:00",
-        "checksum": "{CHECKSUM_PLACEHOLDER}",
-    }
-
-    cf.add_trait("is_atomic_part", atomic_args)
+    cf.add_trait(
+        "is_atomic_part",
+        manufacturer="TI",
+        partnumber="TCA9548APWR",
+        footprint="TSSOP-24_L7.8-W4.4-P0.65-LS6.4-BL.kicad_mod",
+        symbol="TCA9548APWR.kicad_sym",
+        model="TSSOP-24_L7.8-W4.4-H1.0-LS6.4-P0.65.step",
+    )
     cf.add_comments(
         "This trait marks this file as auto-generated",
         "If you want to manually change it, remove the trait",
         use_spacer=True,
     )
-    cf.add_trait("is_auto_generated", auto_args)
+    cf.add_trait(
+        "is_auto_generated",
+        system="ato_part",
+        source="easyeda:C130026",
+        date="2025-05-26T12:53:38.352371+00:00",
+        checksum="{CHECKSUM_PLACEHOLDER}",
+    )
     ato = cf.dump()
 
     assert ato == _cleanup(

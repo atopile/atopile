@@ -114,6 +114,7 @@ class EasyEDAAPIResponse:
         metadata=dataclasses_json_config(decoder=_decode_easyeda_date)
     )
     lcsc: Lcsc
+    description: str
     symbol: _Symbol = field(metadata=dataclasses_json_config(field_name="dataStr"))
 
     _atopile_queried_at: float | None = field(
@@ -293,6 +294,7 @@ class EasyEDAPart:
     def __init__(
         self,
         lcsc_id: str,
+        description: str,
         mfn_pn: tuple[str, str],
         footprint: EasyEDAFootprint,
         symbol: EasyEDASymbol,
@@ -300,6 +302,7 @@ class EasyEDAPart:
         datasheet_url: str | None = None,
     ):
         self.lcsc_id = lcsc_id
+        self.description = description
         self.mfn_pn = mfn_pn
         self.footprint = footprint
         self.symbol = symbol
@@ -365,6 +368,7 @@ class EasyEDAPart:
 
         part = cls(
             lcsc_id=data.lcsc.number,
+            description=data.description,
             mfn_pn=data.mfn_pn,
             footprint=EasyEDAFootprint.from_api(easyeda_footprint, kicad_model_path),
             symbol=EasyEDASymbol.from_api(easyeda_symbol),

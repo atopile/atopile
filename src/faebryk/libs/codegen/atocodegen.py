@@ -53,12 +53,42 @@ class AtoCodeGen:
     class Trait(Statement):
         name: str
         args: dict[str, str] = field(default_factory=dict)
+        constructor: str | None = None
 
         def dump(self) -> str:
             out = f"trait {self.name}"
+            if self.constructor:
+                out += f"::{self.constructor}"
             if self.args:
                 out += f"<{', '.join(f'{k}="{v}"' for k, v in self.args.items())}>"
             return out
+
+    @dataclass
+    class PinDeclaration(Statement):
+        name: str
+
+        def dump(self) -> str:
+            return f"pin {self.name}"
+
+    @dataclass
+    class Connect(Statement):
+        class Connectable:
+            def __init__(self, name: str, declare: str | None = None) -> None:
+                self.name = name
+                self.declare = declare
+
+            def dump(self) -> str:
+                out = _StrBuilder()
+                if self.declare:
+                    out.append(f"{self.declare} ")
+                out.append(self.name)
+                return out.dump()
+
+        left: Connectable
+        right: Connectable
+
+        def dump(self) -> str:
+            return f"{self.left.dump()} ~ {self.right.dump()}"
 
     class Spacer(Statement):
         def dump(self) -> str:
@@ -81,6 +111,7 @@ class AtoCodeGen:
         imports: list["AtoCodeGen.Import"] = field(default_factory=list)
         experiments: set["AtoCodeGen.Experiment"] = field(default_factory=set)
         stmts: list["AtoCodeGen.Statement"] = field(default_factory=list)
+        docstring: str | None = None
 
         def dump(self) -> str:
             if self.identifier is None:
@@ -99,6 +130,9 @@ class AtoCodeGen:
             out.spacer()
 
             out.append_line(f"component {self.identifier}:")
+            if self.docstring:
+                out.append_indented(f'"""{self.docstring}"""')
+                out.spacer()
 
             for stmt in self.stmts:
                 out.append_indented(stmt.dump())
@@ -116,15 +150,20 @@ class AtoCodeGen:
         def add_trait(
             self,
             name: str,
-            args: dict[str, str] | None = None,
+            constructor: str | None = None,
             auto_import: bool = True,
+            **args: str | None,
         ) -> "AtoCodeGen.Trait":
             self.enable_experiment(AtoCodeGen.Experiment.TRAITS)
 
             if auto_import:
                 self.imports.append(AtoCodeGen.Import(name))
 
-            trait = AtoCodeGen.Trait(name, args or {})
+            trait = AtoCodeGen.Trait(
+                name,
+                args={k: v for k, v in args.items() if v is not None},
+                constructor=constructor,
+            )
             self.add_stmt(trait)
             return trait
 

@@ -18,16 +18,16 @@ def test_ato_create_component(lcsc_id, description):
     components = client.fetch_part_by_lcsc(lcsc_id)
 
     # Create and populate template
-    template = AtoTemplate(name="test_component", base="Module")
-    template.add_part(components[0])
+    template = AtoTemplate(name="test_component")
+    template.set_part(components[0])
 
     # Generate the output
     output = template.dumps()
 
     # Basic assertions
-    assert f'lcsc_id = "C{lcsc_id}"' in output
-    assert "manufacturer =" in output
-    assert "mpn =" in output
+    assert f"{lcsc_id}" in output
+    assert "mfr=" in output
+    assert "partno=" in output
 
     tree = parse_text_as_file(output)
     assert tree is not None, "Failed to parse generated template"
@@ -49,7 +49,7 @@ def test_fabll_create_component(lcsc_id, description):
 
     # Create and populate template
     template = FabllTemplate(name="test_component", base="Module")
-    template.add_part(components[0])
+    template.set_part(components[0])
 
     # Generate the output
     output = template.dumps()
