@@ -270,6 +270,14 @@ class PartLifecycle:
             out_path = self._get_part_path(epart)
             identifier = self._get_part_identifier(epart)
 
+            # cache
+            # we assume that during runtime identical part ids are identical
+            # only used for performance atm
+            if not hasattr(self, "_cache_ingest_part_from_easyeda"):
+                self._cache_ingest_part_from_easyeda = dict[str, AtoPart]()
+            if identifier in self._cache_ingest_part_from_easyeda:
+                return self._cache_ingest_part_from_easyeda[identifier]
+
             ato_part = AtoPart(
                 identifier=identifier,
                 mfn=epart.mfn_pn,
@@ -283,7 +291,10 @@ class PartLifecycle:
                     source=f"easyeda:{epart.identifier}",
                 ),
             )
-            return self.ingest_part(ato_part)
+            out = self.ingest_part(ato_part)
+
+            self._cache_ingest_part_from_easyeda[identifier] = out
+            return out
 
         def get_footprint(
             self, epart: EasyEDAPart
