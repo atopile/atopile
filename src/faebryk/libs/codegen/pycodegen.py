@@ -24,6 +24,7 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
     sanitized = sanitized.replace(".", "_")
     sanitized = sanitized.replace(",", "_")
     sanitized = sanitized.replace("/", "_")
+    sanitized = sanitized.replace(" ", "_")
     if not expect_arithmetic:
         sanitized = sanitized.replace("-", "_")
 
