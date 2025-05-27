@@ -34,8 +34,6 @@ from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exce
 def init_atopile_config(working_dir: Path) -> None:
     from atopile.config import config
 
-    log(f"init_atopile_config: {working_dir}")
-
     config.apply_options(entry=None, working_dir=working_dir)
 
 
@@ -286,13 +284,6 @@ def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
-
-    messages = []
-    for root in GRAPHS.get(params.text_document.uri, {}).values():
-        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
-            messages.append(trait._describe())
-
-    log("\n".join(messages))
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
