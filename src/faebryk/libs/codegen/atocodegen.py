@@ -39,15 +39,28 @@ class AtoCodeGen:
     So for the second we stick with this boi.
     """
 
-    @dataclass
+    @dataclass(frozen=True, eq=True)
     class Import:
         name: str
         path: Path | None = None
 
     Experiment = _FeatureFlags.Feature
 
+    @dataclass(kw_only=True)
     class Statement:
-        def dump(self) -> str: ...
+        _commented: bool = False
+
+        def dump(self) -> str:
+            out = _StrBuilder()
+            if self._commented:
+                out.append("#")
+            out.append(self.dump_stmt())
+            return out.dump()
+
+        def dump_stmt(self) -> str: ...
+
+        def comment_out(self):
+            self._commented = True
 
     @dataclass
     class Trait(Statement):
@@ -55,7 +68,7 @@ class AtoCodeGen:
         args: dict[str, str] = field(default_factory=dict)
         constructor: str | None = None
 
-        def dump(self) -> str:
+        def dump_stmt(self) -> str:
             out = f"trait {self.name}"
             if self.constructor:
                 out += f"::{self.constructor}"
@@ -67,7 +80,7 @@ class AtoCodeGen:
     class PinDeclaration(Statement):
         name: str
 
-        def dump(self) -> str:
+        def dump_stmt(self) -> str:
             return f"pin {self.name}"
 
     @dataclass
@@ -87,7 +100,7 @@ class AtoCodeGen:
         left: Connectable
         right: Connectable
 
-        def dump(self) -> str:
+        def dump_stmt(self) -> str:
             return f"{self.left.dump()} ~ {self.right.dump()}"
 
     class Spacer(Statement):
@@ -98,7 +111,7 @@ class AtoCodeGen:
     class Comment(Statement):
         text: str
 
-        def dump(self) -> str:
+        def dump_stmt(self) -> str:
             return f"# {self.text}"
 
         @classmethod
@@ -108,7 +121,7 @@ class AtoCodeGen:
     @dataclass
     class ComponentFile:
         identifier: str | None = None
-        imports: list["AtoCodeGen.Import"] = field(default_factory=list)
+        imports: set["AtoCodeGen.Import"] = field(default_factory=set)
         experiments: set["AtoCodeGen.Experiment"] = field(default_factory=set)
         stmts: list["AtoCodeGen.Statement"] = field(default_factory=list)
         docstring: str | None = None
@@ -157,7 +170,7 @@ class AtoCodeGen:
             self.enable_experiment(AtoCodeGen.Experiment.TRAITS)
 
             if auto_import:
-                self.imports.append(AtoCodeGen.Import(name))
+                self.imports.add(AtoCodeGen.Import(name))
 
             trait = AtoCodeGen.Trait(
                 name,

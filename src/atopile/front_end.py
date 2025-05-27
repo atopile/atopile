@@ -971,7 +971,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             search_paths.insert(0, context.file_path.parent)
 
         if config.has_project:
-            search_paths += [config.project.paths.src, config.project.paths.modules]
+            search_paths += [
+                config.project.paths.src,
+                config.project.paths.modules,
+                config.project.paths.parts,
+            ]
 
         # Add the library directory to the search path too
         search_paths.append(Path(inspect.getfile(F)).parent)
