@@ -337,7 +337,7 @@ class BuildTargetPaths(BaseConfigModel):
 
             if len(layout_candidates) == 1:
                 return layout_candidates[0].resolve().absolute()
-            else:
+            elif len(layout_candidates) > 1:
                 raise UserException(
                     "Layout directories must contain only 1 layout,"
                     f" but {len(layout_candidates)} found in {layout_base}"
