@@ -549,10 +549,7 @@ def attach(
             return
 
         # footprint
-        fp = F.KicadFootprint([p.name for p in apart.fp.footprint.pads])
-        path, ki_fp = apart.fp_path, apart.fp
-        fp.add(F.KicadFootprint.has_file(path))
-        fp.add(F.KicadFootprint.has_kicad_identifier(ki_fp.footprint.name))
+        fp = F.KicadFootprint.from_path(apart.fp_path)
         component.get_trait(F.can_attach_to_footprint).attach(fp)
 
     if check_only:

@@ -118,14 +118,15 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
     ):
         return
 
-    if not all(
-        cmp.has_trait(t)
+    if missing := [
+        t.__name__
         for t in (
             F.has_descriptive_properties,
             F.has_designator,
         )
-    ):
-        logger.warning(f"Missing fields on component '{cmp}'")
+        if not cmp.has_trait(t)
+    ]:
+        logger.warning(f"Missing fields on component '{cmp}': {missing}")
         return
 
     properties = cmp.get_trait(F.has_descriptive_properties).get_properties()

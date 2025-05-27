@@ -71,6 +71,7 @@ class KicadFootprint(F.Footprint):
 
         pad_names = [pad.name for pad in fp_file.footprint.pads]
         self = cls(pad_names)
+        self.add(cls.has_kicad_identifier(fp_file.footprint.name))
         return self
 
     @classmethod
