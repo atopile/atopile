@@ -77,6 +77,9 @@ class AtoPart:
 
         self.symbol = deepcopy(self.symbol)
 
+        # TODO see todo below in dump
+        self.supplier = None
+
         if self.model:
             rel_path = Gcfg.project.get_relative_to_kicad_project(self.model_path)
 
@@ -180,17 +183,19 @@ class AtoPart:
             symbol=self.sym_path.name,
             model=self.model_path.name if self.model else None,
         )
-        mfr_trait = ato_builder.add_trait(
-            "has_explicit_part", "by_mfr", mfr=self.mfn[0], partno=self.mfn[1]
-        )
-        if self.supplier:
-            mfr_trait.comment_out()
-            ato_builder.add_trait(
-                "has_explicit_part",
-                "by_supplier",
-                supplier_id=self.supplier[0],
-                supplier_partno=self.supplier[1],
-            )
+
+        # TODO: has_explicit_part is really not the right trait here
+        # mfr_trait = ato_builder.add_trait(
+        #     "has_explicit_part", "by_mfr", mfr=self.mfn[0], partno=self.mfn[1]
+        # )
+        # if self.supplier:
+        #     mfr_trait.comment_out()
+        #     ato_builder.add_trait(
+        #         "has_explicit_part",
+        #         "by_supplier",
+        #         supplier_id=self.supplier[0],
+        #         supplier_partno=self.supplier[1],
+        #     )
 
         ato_builder.add_trait(
             "has_designator_prefix", prefix=symbol.propertys["Reference"].value
@@ -254,14 +259,17 @@ class AtoPart:
             if (t := ato.try_get_trait(F.has_datasheet_defined))
             else None
         )
-        has_explicit_part_trait = ato.try_get_trait(F.has_explicit_part)
-        if has_explicit_part_trait is not None:
-            supplier = (
-                has_explicit_part_trait.supplier_id,
-                has_explicit_part_trait.supplier_partno,
-            )
-            if None in supplier:
-                supplier = None
+
+        # TODO see above in dump
+        supplier = None
+        # has_explicit_part_trait = ato.try_get_trait(F.has_explicit_part)
+        # if has_explicit_part_trait is not None:
+        #    supplier = (
+        #        has_explicit_part_trait.supplier_id,
+        #        has_explicit_part_trait.supplier_partno,
+        #    )
+        #    if None in supplier:
+        #        supplier = None
 
         docstring = ato.parse_docstring()
 
