@@ -1253,7 +1253,7 @@ class C_footprint(HasPropertiesMixin):
             name=name,
             value=value,
             at=C_xyr(x=0, y=0, r=0),
-            layer=C_text_layer(""),
+            layer=C_text_layer("User.9"),
             effects=C_fp_text.C_fp_text_effects(
                 font=C_fp_text.C_fp_text_effects.C_font(
                     size=C_wh(w=0, h=0),

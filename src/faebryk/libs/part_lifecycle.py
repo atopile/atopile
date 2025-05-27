@@ -199,6 +199,14 @@ class PartLifecycle:
             fp_table_path = build.paths.fp_lib_table
             if not fp_table_path.exists():
                 fp_table = C_kicad_fp_lib_table_file.skeleton()
+                # load all parts existing parts into new table
+                for part_dir in Gcfg.project.paths.parts.iterdir():
+                    part_identifier = part_dir.name
+                    if not part_dir.is_dir():
+                        continue
+                    if not (part_dir / (part_identifier + ".ato")).is_file():
+                        continue
+                    self.__insert_fp_lib(part_identifier, fp_table_path, fp_table)
             else:
                 fp_table = C_kicad_fp_lib_table_file.loads(fp_table_path)
 
