@@ -226,30 +226,35 @@ def _build_document(uri: str, text: str) -> None:
         match ctx:
             case ap.AtoParser.BlockdefContext():
                 try:
+                    # try the single-node version first, in case that's all we can build
+                    GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
+                        front_end.bob.build_node(text, Path(uri), ref)
+                    )
+
                     GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
-                except Exception:
+                except* UserException as excs:
+                    msg = f"Error(s) building {uri}:{ref}:\n"
+                    for exc in iter_leaf_exceptions(excs):
+                        msg += f"  {exc.message}\n"
+                    log_error(msg)
+                except* Exception:
                     import traceback
 
                     log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
+                finally:
+                    front_end.bob.reset()
 
-                front_end.bob.reset()
-
+            case _:  # Node or ImportPlaceholder
                 try:
-                    GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
+                    GRAPHS[uri][TypeRef.from_one(name="__import__" + str(ref))] = (
                         front_end.bob.build_node(text, Path(uri), ref)
                     )
                 except Exception:
                     import traceback
 
                     log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
-
-            case _:  # Node or ImportPlaceholder
-                try:
-                    GRAPHS[uri][ref] = front_end.bob.build_node(text, Path(uri), ref)
-                except Exception:
-                    import traceback
-
-                    log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
+                finally:
+                    front_end.bob.reset()
 
 
 @dataclass
