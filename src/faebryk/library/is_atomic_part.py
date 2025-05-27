@@ -8,6 +8,7 @@ import faebryk.library._F as F  # noqa: F401
 from atopile.config import config as Gcfg
 from faebryk.core.module import Module
 from faebryk.libs.codegen.pycodegen import sanitize_name
+from faebryk.libs.util import once
 
 
 class is_atomic_part(Module.TraitT.decless()):
@@ -27,6 +28,7 @@ class is_atomic_part(Module.TraitT.decless()):
         self._model = model
 
     @property
+    @once
     def path(self) -> Path:
         # TODO remove duplication with part_lifecycle
         identifier = (
@@ -36,8 +38,11 @@ class is_atomic_part(Module.TraitT.decless()):
         return part_dir / identifier
 
     @property
-    def fp_path(self) -> Path:
-        return self.path / self._footprint
+    def fp_path(self) -> tuple[Path, str]:
+        """
+        returns path to footprint and library name
+        """
+        return self.path / self._footprint, self.path.name
 
     @override
     def on_obj_set(self):
@@ -45,7 +50,8 @@ class is_atomic_part(Module.TraitT.decless()):
 
         obj = self.get_obj(Module)
 
-        fp = F.KicadFootprint.from_path(self.fp_path)
+        fp_path, fp_lib = self.fp_path
+        fp = F.KicadFootprint.from_path(fp_path, lib_name=fp_lib)
         obj.get_trait(F.can_attach_to_footprint).attach(fp)
 
         # TODO symbol

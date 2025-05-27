@@ -1256,8 +1256,8 @@ class C_footprint(HasPropertiesMixin):
             layer=C_text_layer("User.9"),
             effects=C_fp_text.C_fp_text_effects(
                 font=C_fp_text.C_fp_text_effects.C_font(
-                    size=C_wh(w=0, h=0),
-                    thickness=None,
+                    size=C_wh(w=0.125, h=0.125),
+                    thickness=0.01875,
                     unresolved_font_name=None,
                 ),
                 justifys=[],
