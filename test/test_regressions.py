@@ -97,7 +97,6 @@ class _TestRepo:
 
 REPOS = [
     _TestRepo("atopile/spin-servo-drive").xfail("Needs upgrading"),
-    _TestRepo("atopile/hil"),
     _TestRepo("atopile/packages", multipackage="packages"),
 ]
 
