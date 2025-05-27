@@ -590,7 +590,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 # because they're pretty important and Wendy is well cached
                 with downgrade(errors.UserKeyError):
                     raise errors.UserKeyError.from_ctx(
-                        item_ctx,
+                        item_ref_ctx,
                         f"`{ref}` already declared. Shadowing original."
                         " In the future this may be an error",
                     )
