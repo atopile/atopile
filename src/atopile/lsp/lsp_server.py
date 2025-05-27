@@ -231,6 +231,8 @@ def _build_document(uri: str, text: str) -> None:
                         front_end.bob.build_node(text, Path(uri), ref)
                     )
 
+                    front_end.bob.reset()
+
                     GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
                 except* UserException as excs:
                     msg = f"Error(s) building {uri}:{ref}:\n"
