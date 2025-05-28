@@ -13,7 +13,6 @@ from atopile.front_end import Bob, _has_ato_cmp_attrs
 from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
@@ -298,6 +297,7 @@ def test_reserved_attrs(
             a = new {class_name}
             a.package = "{pkg_str}"
             a.mpn = "1234567890"
+            a.manufacturer = "Some Manufacturer"
         """
     )
 
@@ -308,9 +308,8 @@ def test_reserved_attrs(
 
     a = bob.resolve_node_shortcut(node, "a")
     assert a.get_trait(F.has_package_requirements)._size == pkg
-    assert a.get_trait(F.has_descriptive_properties).get_properties() == {
-        DescriptiveProperties.partno: "1234567890"
-    }
+    assert a.get_trait(F.has_explicit_part).mfr == "Some Manufacturer"
+    assert a.get_trait(F.has_explicit_part).partno == "1234567890"
 
 
 def test_import_ato(bob: Bob, tmp_path):
