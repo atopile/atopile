@@ -16,6 +16,7 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_esphome_config import has_esphome_config
@@ -122,6 +123,7 @@ from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.has_kicad_footprint_equal_ifs import has_kicad_footprint_equal_ifs
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.SurgeProtection import SurgeProtection
+from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
@@ -139,21 +141,18 @@ from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_foot
 from faebryk.library.Mounting_Hole import Mounting_Hole
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.has_explicit_part import has_explicit_part
-from faebryk.library.has_package import has_package
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.is_surge_protected import is_surge_protected
-from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
-from faebryk.library.Potentiometer import Potentiometer
-from faebryk.library.ResistorArray import ResistorArray
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.has_package_requirement import has_package_requirement
-from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
 from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
-from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.is_decoupled import is_decoupled
-from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
+from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
+from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
+from faebryk.library.Potentiometer import Potentiometer
+from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
 from faebryk.library.can_be_decoupled import can_be_decoupled
+from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.B0505S_1WR3 import B0505S_1WR3
 from faebryk.library.Battery import Battery

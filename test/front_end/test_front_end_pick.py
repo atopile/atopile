@@ -11,6 +11,7 @@ from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
+from faebryk.libs.smd import SMDSize
 
 
 @pytest.mark.usefixtures("setup_project_config")
@@ -38,7 +39,7 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
 
     r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Resistor)
-    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
+    assert r1.get_trait(F.has_package_requirements)._size == SMDSize.I0805
 
     pick_part_recursively(r1, DefaultSolver())
 
@@ -72,7 +73,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
 
     r1 = bob.resolve_field_shortcut(node, "r1")
     assert isinstance(r1, F.Capacitor)
-    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.C0402}
+    assert r1.get_trait(F.has_package_requirements)._size == SMDSize.I0402
 
     pick_part_recursively(r1, DefaultSolver())
 

@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,6 @@ class CH344Q_ReferenceDesign(Module):
         )
 
         for res in self.get_children(direct_only=True, types=F.Resistor):
-            res.add(F.has_package(F.has_package.Package.R0402))
+            res.add(F.has_package_requirements(size=SMDSize.I0402))
         for cap in self.get_children(direct_only=True, types=F.Capacitor):
-            cap.add(F.has_package(F.has_package.Package.C0402))
+            cap.add(F.has_package_requirements(size=SMDSize.I0402))

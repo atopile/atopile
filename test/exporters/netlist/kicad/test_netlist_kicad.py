@@ -20,6 +20,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_fields,
     C_kicad_netlist_file,
 )
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ def netlist_graph():
     # attach footprint & designator
     for i, r in enumerate([resistor1, resistor2]):
         r.get_trait(F.can_attach_to_footprint).attach(
-            F.SMDTwoPin(F.SMDTwoPin.Type._0805)
+            F.SMDTwoPin(SMDSize.I0805, F.SMDTwoPin.Type.Resistor)
         )
         r.add(
             F.has_designator(

@@ -15,6 +15,7 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
@@ -118,8 +119,8 @@ def test_multiple_new(bob: Bob):
 
     solver = DefaultSolver()
     assert (
-        resistors[0].get_trait(F.has_package).get_package(solver)
-        == F.has_package.Package.R0402
+        resistors[0].get_trait(F.has_package_requirements).get_sizes(solver)
+        == SMDSize.I0402
     )
 
     assert bob.resolve_node_shortcut(
@@ -228,7 +229,7 @@ def test_resistor(bob: Bob, repo_root: Path):
     assert isinstance(node, L.Module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
-    assert r1.get_trait(F.has_package)._enum_set == {F.has_package.Package.R0805}
+    assert r1.get_trait(F.has_package_requirements)._size == SMDSize.I0805
 
 
 def test_standard_library_import(bob: Bob):
@@ -257,18 +258,23 @@ def test_standard_library_import(bob: Bob):
 @pytest.mark.parametrize(
     "import_stmt,class_name,pkg_str,pkg",
     [
-        ("import Resistor", "Resistor", "R0402", F.has_package.Package.R0402),
+        (
+            "import Resistor",
+            "Resistor",
+            "R0402",
+            SMDSize.I0402,
+        ),
         (
             "from 'generics/resistors.ato' import Resistor",
             "Resistor",
             "0402",
-            F.has_package.Package.R0402,
+            SMDSize.I0402,
         ),
         (
             "from 'generics/capacitors.ato' import Capacitor",
             "Capacitor",
             "0402",
-            F.has_package.Package.C0402,
+            SMDSize.I0402,
         ),
     ],
 )
@@ -277,7 +283,7 @@ def test_reserved_attrs(
     import_stmt: str,
     class_name: str,
     pkg_str: str,
-    pkg: F.has_package.Package,
+    pkg: SMDSize,
     repo_root: Path,
 ):
     bob.search_paths.append(
@@ -301,7 +307,7 @@ def test_reserved_attrs(
     assert isinstance(node, L.Module)
 
     a = bob.resolve_node_shortcut(node, "a")
-    assert a.get_trait(F.has_package)._enum_set == {pkg}
+    assert a.get_trait(F.has_package_requirements)._size == pkg
     assert a.get_trait(F.has_descriptive_properties).get_properties() == {
         DescriptiveProperties.partno: "1234567890"
     }

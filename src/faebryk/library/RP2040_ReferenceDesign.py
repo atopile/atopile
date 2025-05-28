@@ -12,6 +12,7 @@ from faebryk.exporters.pcb.layout.heuristic_pulls import (
     LayoutHeuristicElectricalClosenessPullResistors,
 )
 from faebryk.libs.library import L  # noqa: F401
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -169,7 +170,7 @@ class RP2040_ReferenceDesign(Module):
             ),
         )
         for c in caps_100nF:
-            c.add(F.has_package(F.has_package.Package.C0201))
+            c.explicit(size=SMDSize.I0201)
 
         LayoutHeuristicElectricalClosenessPullResistors.add_to_all_suitable_modules(
             self

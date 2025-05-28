@@ -19,7 +19,6 @@ def _build(app: Module):
     load_designators(app.get_graph(), attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
-    F.has_package.standardize_footprints(app, solver)
     attach_random_designators(app.get_graph())
 
 

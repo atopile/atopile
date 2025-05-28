@@ -4,13 +4,11 @@
 import logging
 import sys
 from pathlib import Path
-from tempfile import mkdtemp
 from typing import TYPE_CHECKING
 
 import pytest
 
 import faebryk.library._F as F
-import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
@@ -22,6 +20,7 @@ from faebryk.libs.picker.api.picker_lib import (
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 from faebryk.libs.util import groupby
 
@@ -36,8 +35,6 @@ except ImportError:
     components_to_test = []
 
 logger = logging.getLogger(__name__)
-
-lcsc.LIB_FOLDER = Path(mkdtemp())
 
 
 def test_load_components():
@@ -74,7 +71,7 @@ def test_pick_module(case: "ComponentTestCase"):
         ).get_properties()
 
     if case.packages:
-        module.add(F.has_package(*case.packages))
+        module.add(F.has_package_requirements(size=EnumSet(*case.packages)))
 
     # pick
     solver = DefaultSolver()
@@ -272,7 +269,7 @@ def test_null_solver():
         cap: F.Capacitor
 
         def __preinit__(self):
-            self.cap.add(F.has_package(F.has_package.Package.C0805))
+            self.cap.add(F.has_package_requirements(size=SMDSize.I0805))
             self.cap.capacitance.constrain_subset(capacitance)
 
     app = App()
@@ -282,8 +279,7 @@ def test_null_solver():
 
     assert app.cap.has_trait(F.has_part_picked)
     assert (
-        app.cap.get_trait(F.has_package).get_package(solver)
-        == F.has_package.Package.C0805
+        app.cap.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
     )
     assert (
         (solver)

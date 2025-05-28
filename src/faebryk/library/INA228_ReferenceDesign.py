@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -109,5 +110,5 @@ class INA228_ReferenceDesign(Module):
         self.ina288.power.decoupled.decouple(owner=self).explicit(
             nominal_capacitance=100 * P.nF,
             tolerance=0.2,
-            footprint=F.has_package.Package.C0603,
+            size=SMDSize.I0603,
         )

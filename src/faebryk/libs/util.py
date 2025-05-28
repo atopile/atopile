@@ -370,7 +370,7 @@ def cast_assert(t, obj):
     Assert that obj is an instance of type t and return it with proper type hints.
     t can be either a single type or a tuple of types.
     """
-    assert isinstance(obj, t)
+    assert isinstance(obj, t), f"{obj=} is not an instance of {t}"
     return obj
 
 

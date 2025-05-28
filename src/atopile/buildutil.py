@@ -132,12 +132,6 @@ def build(app: Module) -> None:
             ) from ex
         save_parameters(G())
 
-    with LoggingStage("footprints", "Handling footprints"):
-        # Use standard footprints for known packages regardless of
-        # what's otherwise been specified.
-        # FIXME: this currently includes explicitly set footprints, but shouldn't
-        F.has_package.standardize_footprints(app, solver)
-
     with LoggingStage("nets", "Preparing nets"):
         attach_random_designators(G())
         nets = attach_nets(G())

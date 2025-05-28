@@ -135,7 +135,7 @@ class AtoCodeGen:
             for exp in self.experiments:
                 out.append_line(f'#pragma experiment("{exp.value}")')
 
-            for imp in self.imports:
+            for imp in sorted(self.imports, key=lambda x: x.name):
                 if imp.path:
                     out.append(f"from {imp.path} ")
                 out.append_line(f"import {imp.name}")

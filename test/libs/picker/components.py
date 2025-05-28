@@ -9,6 +9,7 @@ from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P, quantity
 
 logger = logging.getLogger(__name__)
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComponentTestCase:
     module: Module
-    packages: list[F.has_package.Package]
+    packages: list[SMDSize]
     descriptive_properties: dict[str, str] = field(default_factory=dict)
     override_test_name: str | None = None
 
@@ -80,7 +81,7 @@ resistors = [
                 r.max_voltage.constrain_ge(25 * P.V),
             )
         ),
-        packages=[F.has_package.Package.R0402],
+        packages=[SMDSize.I0402],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -92,7 +93,7 @@ resistors = [
                 r.max_voltage.constrain_ge(50 * P.V),
             )
         ),
-        packages=[F.has_package.Package.R0603],
+        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -102,7 +103,7 @@ resistors = [
                 ),
             )
         ),
-        packages=[F.has_package.Package.R0805],
+        packages=[SMDSize.I0805],
     ),
 ]
 
@@ -119,7 +120,7 @@ capacitors = [
                 ),
             )
         ),
-        packages=[F.has_package.Package.C0603],
+        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Capacitor().builder(
@@ -133,7 +134,7 @@ capacitors = [
                 ),
             )
         ),
-        packages=[F.has_package.Package.C0402],
+        packages=[SMDSize.I0402],
     ),
 ]
 
@@ -149,7 +150,7 @@ inductors = [
                 i.self_resonant_frequency.constrain_ge(100 * P.Mhertz),
             )
         ),
-        packages=[F.has_package.Package.L0603],
+        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Inductor().builder(
