@@ -48,7 +48,7 @@ from faebryk.libs.app.pcb import (
     check_net_names,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_descriptive_properties, save_parameters
+from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
 from faebryk.libs.exceptions import (
     accumulate,
     iter_leaf_exceptions,
@@ -122,7 +122,7 @@ def build(app: Module) -> None:
 
     with LoggingStage("picker", "Picking components") as stage:
         if config.build.keep_picked_parts:
-            load_descriptive_properties(G())
+            load_part_info_from_pcb(G())
         try:
             pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
@@ -130,7 +130,7 @@ def build(app: Module) -> None:
                 "Failed to pick parts for some modules",
                 [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
             ) from ex
-        save_parameters(G())
+        save_part_info_to_pcb(G())
 
     with LoggingStage("nets", "Preparing nets"):
         attach_random_designators(G())

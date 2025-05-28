@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -25,11 +24,8 @@ class CH342K(F.CH342):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "WCH(Jiangsu Qin Heng)",
-            DescriptiveProperties.partno: "CH342K",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        mfr="WCH(Jiangsu Qin Heng)", partno="CH342K"
     )
 
     @L.rt_field

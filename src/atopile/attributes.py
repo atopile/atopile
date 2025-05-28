@@ -11,9 +11,8 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
-from faebryk.core.trait import TraitImpl, TraitNotFound
+from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.util import md_list, not_none
 
@@ -111,7 +110,16 @@ class GlobalAttributes(L.Module):
     @lcsc_id.setter
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+        self.add(
+            F.has_explicit_part.by_supplier(supplier_partno=value, supplier_id="lcsc")
+        )
+
+    def check_mpn_complete(self):
+        mpn = getattr(self, "__shim_mpn__", None)
+        manufacturer = getattr(self, "__shim_manufacturer__", None)
+        if mpn is None or manufacturer is None:
+            return
+        self.add(F.has_explicit_part.by_mfr(mfr=manufacturer, partno=mpn))
 
     @property
     def manufacturer(self) -> str:
@@ -126,12 +134,8 @@ class GlobalAttributes(L.Module):
 
     @manufacturer.setter
     def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
+        setattr(self, "__shim_manufacturer__", value)
+        GlobalAttributes.check_mpn_complete(self)
 
     @property
     def mpn(self) -> str:
@@ -141,12 +145,7 @@ class GlobalAttributes(L.Module):
         For the picker to select the correct part from the manufacturer,
         this must be set.
         """
-        try:
-            return self.get_trait(F.has_descriptive_properties).get_properties()[
-                DescriptiveProperties.partno
-            ]
-        except (TraitNotFound, KeyError):
-            raise AttributeError(name="mpn", obj=self)
+        raise AttributeError("write-only")
 
     @mpn.setter
     def mpn(self, value: str):
@@ -157,18 +156,16 @@ class GlobalAttributes(L.Module):
                 f"`mpn = {value}` is deprecated. Use `exclude_from_bom = True` instead."
             )
 
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
         # TODO: @v0.4: remove this - mpn != lcsc id
         if re.match(r"C[0-9]+", value):
-            self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+            not_none(GlobalAttributes.lcsc_id.fset)(self, value)
 
             raise DeprecatedException(
                 "`mpn` is deprecated for assignment of LCSC IDs. Use `lcsc_id` instead."
             )
+
+        setattr(self, "__shim_mpn__", value)
+        GlobalAttributes.check_mpn_complete(self)
 
     @property
     def datasheet_url(self) -> str:

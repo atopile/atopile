@@ -974,7 +974,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             search_paths += [
                 config.project.paths.src,
                 config.project.paths.modules,
-                config.project.paths.parts,
             ]
 
         # Add the library directory to the search path too

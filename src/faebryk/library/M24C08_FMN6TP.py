@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -35,19 +34,12 @@ class _M24C08_FMN6TP(Module):
             }
         )
 
-    mfn_pn = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "STMicroelectronics",
-            DescriptiveProperties.partno: "M24C08-FMN6TP",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "STMicroelectronics", "M24C08-FMN6TP"
     )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
-    )
-
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://eu.mouser.com/datasheet/2/389/m24c08_r-1849629.pdf"
     )
 
     @L.rt_field

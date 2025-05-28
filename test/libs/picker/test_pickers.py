@@ -18,11 +18,12 @@ from faebryk.libs.picker.api.picker_lib import (
     check_and_attach_candidates,
     get_candidates,
 )
+from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
-from faebryk.libs.util import groupby
+from faebryk.libs.util import cast_assert, groupby
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -64,12 +65,6 @@ def _make_id(m: "ComponentTestCase"):
 def test_pick_module(case: "ComponentTestCase"):
     module = case.module
 
-    pre_pick_descriptive_properties = {}
-    if module.has_trait(F.has_descriptive_properties):
-        pre_pick_descriptive_properties = module.get_trait(
-            F.has_descriptive_properties
-        ).get_properties()
-
     if case.packages:
         module.add(F.has_package_requirements(size=EnumSet(*case.packages)))
 
@@ -77,19 +72,18 @@ def test_pick_module(case: "ComponentTestCase"):
     solver = DefaultSolver()
     pick_part_recursively(module, solver)
 
-    # Check descriptive properties
     assert module.has_trait(F.has_part_picked)
     part = module.get_trait(F.has_part_picked).get_part()
-    assert module.has_trait(F.has_descriptive_properties)
-    properties = module.get_trait(F.has_descriptive_properties).get_properties()
 
     # Sanity check
     assert part.partno
-    assert part.partno == properties["LCSC"]
 
     # Check LCSC & MFR
-    for prop, value in pre_pick_descriptive_properties.items():
-        assert properties.get(prop) == value
+    if case.lcsc_id:
+        assert cast_assert(PickedPartLCSC, part).lcsc_id == case.lcsc_id
+    elif case.mfr_mpn:
+        assert part.manufacturer == case.mfr_mpn[0]
+        assert part.partno == case.mfr_mpn[1]
 
     # Check parameters
     # params = module.get_children(types=Parameter, direct_only=True)

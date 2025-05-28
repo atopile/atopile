@@ -51,6 +51,11 @@ class is_atomic_part(Module.TraitT.decless()):
         obj = self.get_obj(Module)
 
         fp_path, fp_lib = self.fp_path
+
+        # FIXME :remove this hack just for the lsp
+        if not fp_path.exists():
+            return
+
         fp = F.KicadFootprint.from_path(fp_path, lib_name=fp_lib)
         obj.get_trait(F.can_attach_to_footprint).attach(fp)
 

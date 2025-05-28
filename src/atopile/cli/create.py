@@ -579,7 +579,7 @@ class ComponentType(StrEnum):
 
 @create_app.command()
 @log_to_posthog("cli:create_component_end")
-def component(
+def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
 ):
     """Create a new component."""
@@ -667,6 +667,13 @@ def component(
         raise errors.UserException(str(e)) from e
 
     rich.print(f":sparkles: Created {apart.identifier} at {apart.path} !")
+
+
+@create_app.command(deprecated=True)
+def component(
+    search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
+):
+    return part(search_term)
 
 
 @create_app.callback(invoke_without_command=True)

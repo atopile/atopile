@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -33,14 +32,8 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Winbond Elec",
-            DescriptiveProperties.partno: "W25Q128JVSIQ",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/1811142111_Winbond-Elec-W25Q128JVSIQ_C97521.pdf"
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Winbond Elec", "W25Q128JVSIQ"
     )
 
     @L.rt_field

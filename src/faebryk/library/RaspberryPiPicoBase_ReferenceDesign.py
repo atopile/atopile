@@ -7,7 +7,6 @@ import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P  # noqa: F401
@@ -44,7 +43,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
     class PICO_DebugHeader(Module):
         swd: F.SWD
 
-        lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C160389"})
+        explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C160389")
         designator_prefix = L.f_field(F.has_designator_prefix)(
             F.has_designator_prefix.Prefix.J
         )
@@ -154,12 +153,7 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             L.Range.from_center_rel(1 * P.kohm, 0.05)
         )
         self.clock_source.crystal.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.manufacturer.value: "Abracon LLC",
-                    DescriptiveProperties.partno: "ABM8-272-T3",
-                }
-            )
+            F.has_explicit_part.by_mfr("Abracon LLC", "ABM8-272-T3")
         )
 
         # Status LED
@@ -247,10 +241,8 @@ class RaspberryPiPicoBase_ReferenceDesign(Module):
             else:
                 r.add(F.has_package_requirements(size=SMDSize.I0402))
 
-        self.reset_button.add(F.has_descriptive_properties_defined({"LCSC": "C139797"}))
-        self.boot_selector.switch.add(
-            F.has_descriptive_properties_defined({"LCSC": "C139797"})
-        )
+        self.reset_button.add(F.has_explicit_part.by_supplier("C139797"))
+        self.boot_selector.switch.add(F.has_explicit_part.by_supplier("C139797"))
 
         # ----------------------------------------
         #              connections

@@ -7,7 +7,6 @@ from enum import Enum, auto
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once
 
@@ -186,11 +185,8 @@ class USB2514B(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Microchip Tech",
-            DescriptiveProperties.partno: "USB2514B-AEZC-TR",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Microchip Tech", "USB2514B-AEZC-TR"
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://ww1.microchip.com/downloads/aemDocuments/documents/UNG/ProductDocuments/DataSheets/USB251xB-xBi-Data-Sheet-DS00001692.pdf"

@@ -61,6 +61,7 @@ from faebryk.libs.util import (
     find,
     groupby,
     hash_string,
+    re_in,
     yield_missing,
 )
 
@@ -246,6 +247,20 @@ class PCB_Transformer:
                 self.bind_footprint(fp, node)
             else:
                 node.add(self.has_linked_kicad_footprint(fp, self))
+
+            fp_props = {
+                k: v
+                for k, v in fp.property_dict.items()
+                if re_in(k, PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB())
+            }
+            node_props = (
+                t.get_properties()
+                if (t := node.try_get_trait(F.has_descriptive_properties))
+                else {}
+            )
+            # node takes precedence over fp
+            merged = fp_props | node_props
+            node.add(F.has_descriptive_properties_defined(merged))
 
         for f_net, pcb_net in self.map_nets().items():
             self.bind_net(pcb_net, f_net)
@@ -1716,13 +1731,18 @@ class PCB_Transformer:
             hide=hide,
         )
 
-    INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB = {
-        "LCSC",
-        "Partnumber",
-        "Manufacturer",
-        "JLCPCB description",
-        "PARAM_.*",
-    }
+    @staticmethod
+    def INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB() -> list[str]:
+        """
+        Returns a list of properties that should be included from the PCB to the
+        footprint.
+        """
+        from faebryk.libs.app.picking import Properties
+
+        return [
+            *[p.value for p in Properties],
+            "JLCPCB description",
+        ]
 
     def apply_design(self, logger: logging.Logger = logger):
         """Apply the design to the pcb"""

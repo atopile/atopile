@@ -35,8 +35,8 @@ from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.picker.localpick import PickerOption
 from faebryk.libs.picker.picker import (
-    Part,
-    Supplier,
+    PickedPart,
+    PickSupplier,
 )
 from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 
@@ -555,19 +555,28 @@ def attach(
     if check_only:
         return
 
-    component.add(F.has_descriptive_properties_defined({"LCSC": partno}))
-
     # model done by kicad (in fp)
 
 
-class LCSC(Supplier):
+class PickSupplierLCSC(PickSupplier):
+    supplier_id: str = "lcsc"
+
     def attach(self, module: Module, part: PickerOption):
-        assert isinstance(part.part, LCSC_Part)
-        attach(component=module, partno=part.part.partno)
-        if part.info is not None:
-            module.add(F.has_descriptive_properties_defined(part.info))
+        assert isinstance(part.part, PickedPartLCSC)
+        attach(component=module, partno=part.part.lcsc_id)
 
 
-class LCSC_Part(Part):
-    def __init__(self, partno: str) -> None:
-        super().__init__(partno=partno, supplier=LCSC())
+@dataclass(frozen=True, kw_only=True)
+class PickedPartLCSC(PickedPart):
+    @dataclass(frozen=True)
+    class Info:
+        stock: int
+        price: float
+        description: str
+        basic: bool
+        preferred: bool
+
+    lcsc_id: str
+    info: Info | None = None
+
+    supplier: PickSupplierLCSC = field(default_factory=PickSupplierLCSC)

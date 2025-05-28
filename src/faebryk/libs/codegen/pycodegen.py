@@ -60,6 +60,7 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
         return "_"
 
     sanitized = re.sub(r"[^a-zA-Z_0-9]", handle_unknown_invalid_symbold, sanitized)
+    sanitized = re.sub(r"__+", "_", sanitized)
 
     if re.match("^[a-zA-Z_]", sanitized) is None:
         sanitized = "P" + sanitized

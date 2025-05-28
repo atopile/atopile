@@ -105,7 +105,7 @@ class RP2040_ReferenceDesign(Module):
             L.Range.from_center_rel(1 * P.kohm, 0.05)
         )
 
-        xtal.add(F.has_descriptive_properties_defined({"LCSC": "C20625731"}))
+        xtal.add(F.has_explicit_part.by_supplier("C20625731"))
         xtal.frequency.alias_is(12 * P.MHz)
         xtal.load_capacitance.alias_is(10 * P.pF)
 

@@ -121,7 +121,9 @@ def d_field[T](default_factory: Callable[[], T]) -> T:
 
 
 def f_field[T, **P](con: Callable[P, T]) -> Callable[P, T]:
-    assert isinstance(con, type)
+    # con is either type or classmethod (alternative constructor)
+    # TODO implement
+    assert isinstance(con, type) or True
 
     def _(*args: P.args, **kwargs: P.kwargs) -> Callable[[], T]:
         def __() -> T:

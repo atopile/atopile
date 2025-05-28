@@ -19,7 +19,7 @@ from faebryk.core.parameter import (
 )
 from faebryk.core.solver.solver import Solver
 from faebryk.core.solver.utils import Contradiction
-from faebryk.libs.picker.picker import DescriptiveProperties, Part, PickError
+from faebryk.libs.picker.picker import PickedPart, PickError
 from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class PickerOption:
-    part: Part
+    part: PickedPart
     params: dict[str, ParameterOperatable.SetLiteral] | None = None
     """
     Parameters that need to be matched for this option to be valid.
@@ -36,7 +36,7 @@ class PickerOption:
     """
     filter: Callable[[Module], bool] | None = None
     pinmap: dict[str, F.Electrical] | None = None
-    info: dict[str | DescriptiveProperties, str] | None = None
+    info: dict[str, str] | None = None
 
     def __hash__(self):
         return hash(self.part)
@@ -56,8 +56,8 @@ class PickErrorParams(PickError):
 
         message = (
             f"Could not find part for {module}"
-            f"\nwith params:\n{indent(module.pretty_params(solver), ' '*4)}"
-            f"\nin options:\n {indent(options_str, ' '*4)}"
+            f"\nwith params:\n{indent(module.pretty_params(solver), ' ' * 4)}"
+            f"\nin options:\n {indent(options_str, ' ' * 4)}"
         )
         super().__init__(message, module)
 

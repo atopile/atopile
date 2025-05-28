@@ -156,7 +156,7 @@ class AtoPart:
             self.model.dumps(self.model_path)
 
         ato_builder = AtoCodeGen.ComponentFile(
-            self.identifier, docstring=self.docstring
+            f"{self.identifier}_package", docstring=self.docstring
         )
         ato_builder.add_comments(
             "This trait marks this file as auto-generated",
@@ -181,16 +181,14 @@ class AtoPart:
             model=self.model_path.name if self.model else None,
         )
 
-        mfr_trait = ato_builder.add_trait(
-            "has_explicit_part", "by_mfr", mfr=self.mfn[0], partno=self.mfn[1]
-        )
         if self.supplier:
-            mfr_trait.comment_out()
             ato_builder.add_trait(
-                "has_explicit_part",
+                "has_part_picked",
                 "by_supplier",
                 supplier_id=self.supplier[0],
                 supplier_partno=self.supplier[1],
+                manufacturer=self.mfn[0],
+                partno=self.mfn[1],
             )
 
         ato_builder.add_trait(

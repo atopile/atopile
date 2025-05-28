@@ -4,7 +4,6 @@
 
 import faebryk.library._F as F
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 
 
 class TI_CD4011BE(F.CD4011):
@@ -33,9 +32,4 @@ class TI_CD4011BE(F.CD4011):
             }
         )
 
-    mfn_pn = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Texas Instruments",
-            DescriptiveProperties.partno: "CD4011BE",
-        },
-    )
+    mfn_pn = L.f_field(F.has_explicit_part.by_mfr)("Texas Instruments", "CD4011BE")

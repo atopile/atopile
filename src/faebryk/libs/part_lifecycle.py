@@ -471,7 +471,7 @@ class PartLifecycle:
                 for prop_name, prop_value in c_props_t.get_properties().items():
                     if re_in(
                         prop_name,
-                        PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB,
+                        PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB(),
                     ):
                         property_values[prop_name] = prop_value
 

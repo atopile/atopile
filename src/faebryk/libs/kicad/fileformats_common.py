@@ -241,6 +241,15 @@ class HasPropertiesMixin:
             raise PropertyNotSet(f"Property `{name}` not set")
         return self.propertys[name].value
 
+    def try_get_property(self, name: str) -> str | None:
+        if name not in self.propertys:
+            return None
+        return self.propertys[name].value
+
+    @property
+    def property_dict(self) -> dict[str, str]:
+        return {k: v.value for k, v in self.propertys.items()}
+
     def _hash(self) -> str:
         content = dump_single(self)
         return sha256(content.encode("utf-8")).hexdigest()
