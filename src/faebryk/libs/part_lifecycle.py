@@ -9,7 +9,7 @@ from typing import Sequence
 
 import faebryk.library._F as F
 from atopile.cli.logging import ALERT
-from atopile.config import BuildTargetConfig
+from atopile.config import BuildTargetConfig, UserConfigurationError
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
 from faebryk.core.module import Module
@@ -37,6 +37,7 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     find,
     indented_container,
+    md_list,
     once,
     re_in,
     robustly_rm_dir,
@@ -523,20 +524,25 @@ class PartLifecycle:
         self._delete_deprecated_cache()
 
     def _delete_deprecated_cache(self):
-        for path in (
-            Gcfg.project.paths.build / "cache" / "easyeda",
-            Gcfg.project.paths.component_lib / "footprints" / "lcsc.pretty",
-            Gcfg.project.paths.component_lib / "lcsc.3dshapes",
-        ):
+        cfg_paths = Gcfg.project.paths
+        build = Gcfg.project.paths.build
+
+        old_fps = cfg_paths.root / "elec" / "footprints"
+        old_ecache = build / "cache" / "easyeda"
+        old_kifps = build / "kicad" / "libs" / "footprints" / "lcsc.pretty"
+        old_ki3d = build / "kicad" / "libs" / "lcsc.3dshapes"
+
+        if old_fps.is_dir() and (fps := list(old_fps.rglob("*.kicad_mod"))):
+            raise UserConfigurationError(
+                "The `footprints` directory is deprecated and not empty. "
+                "Please transition your manual footprints to atomic parts."
+                f"\n{md_list(fps)}"
+            )
+
+        for path in [old_ecache, old_kifps, old_ki3d]:
             if path.exists():
                 logger.warning(f"Deleting deprecated cache {path}")
                 robustly_rm_dir(path)
-
-        # FIXME ask user
-        # fp_path = Gcfg.project.paths.component_lib / "footprints"
-        # if fp_path.exists():
-        #    logger.warning(f"Deleting deprecated library {fp_path}")
-        # robustly_rm_dir(fp_path)
 
     @classmethod
     @once

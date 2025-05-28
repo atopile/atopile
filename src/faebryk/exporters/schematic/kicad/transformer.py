@@ -215,7 +215,7 @@ class SchTransformer:
                 lib_path
             ).fp_lib_table.libs.values():
                 resolved_lib_dir = Path(
-                    (lib.uri)
+                    str(lib.uri)
                     .replace("${KIPRJMOD}", str(lib_path.parent))
                     .replace("${KICAD9_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
                 )

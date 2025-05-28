@@ -99,6 +99,7 @@ def test_pick_module(case: "ComponentTestCase"):
     # TODO check that part params are equal (alias_is) to module params
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_type_pick():
     module = F.Resistor()
 
@@ -111,6 +112,7 @@ def test_type_pick():
     assert module.has_trait(F.has_part_picked)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_no_pick():
     module = Module()
     module.add(F.has_part_removed())
@@ -121,6 +123,7 @@ def test_no_pick():
     assert module.get_trait(F.has_part_picked).removed
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_no_pick_inherit_override_none():
     class _CapInherit(F.Capacitor):
         pickable = None
@@ -134,6 +137,7 @@ def test_no_pick_inherit_override_none():
     assert not module.has_trait(F.has_part_picked)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_no_pick_inherit_remove():
     class _(F.Capacitor):
         no_pick: F.has_part_removed
@@ -148,6 +152,7 @@ def test_no_pick_inherit_remove():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_skip_self_pick():
+    # TODO: this test is not working
     class _CapInherit(F.Capacitor):
         pickable = None
         inner: F.Capacitor
@@ -177,6 +182,7 @@ def test_pick_led_by_colour():
     )
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_reject_diode_for_led():
     led = F.LED()
@@ -192,6 +198,7 @@ def test_reject_diode_for_led():
         check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_pick_error_group():
     root = L.Module()
 
@@ -214,6 +221,7 @@ def test_pick_error_group():
     assert isinstance(ex.value.exceptions[0], PickError)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_pick_dependency_simple():
     class App(Module):
         r1: F.Resistor
@@ -232,6 +240,7 @@ def test_pick_dependency_simple():
     pick_part_recursively(app, solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_1():
     rdiv = F.ResistorVoltageDivider()
@@ -242,6 +251,7 @@ def test_pick_dependency_advanced_1():
     pick_part_recursively(rdiv, solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_2():
     rdiv = F.ResistorVoltageDivider()
@@ -254,6 +264,7 @@ def test_pick_dependency_advanced_2():
     pick_part_recursively(rdiv, solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_null_solver():
     capacitance = L.Range.from_center_rel(10 * P.nF, 0.2)
 
@@ -281,6 +292,7 @@ def test_null_solver():
     )
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_voltage_divider_complex():
     class App(Module):

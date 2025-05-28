@@ -58,6 +58,7 @@ from atopile.version import (
     get_installed_atopile_version,
 )
 from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.test.testutil import in_test
 from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
@@ -220,12 +221,12 @@ class ProjectPaths(BaseConfigModel):
     modules: Path
     """Project modules directory (`.ato/modules` from the project root)"""
 
-    # TODO: remove, unused
-    footprints: Path | None
+    # TODO: remove, deprecated
+    footprints: Path | None = None
     """Deprecated: Project footprints directory"""
 
-    # TODO: remove, deprecated + used for transition
-    component_lib: Path
+    # TODO: remove, deprecated
+    component_lib: Path | None = None
     """Deprecated: Component library directory for builds"""
 
     def __init__(self, **data: Any):
@@ -237,10 +238,6 @@ class ProjectPaths(BaseConfigModel):
         data.setdefault("logs", data["build"] / "logs")
         data.setdefault("manifest", data["build"] / "manifest.json")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
-
-        # TODO deprecate
-        data.setdefault("component_lib", data["build"] / "kicad" / "libs")
-        data.setdefault("footprints", None)
 
         super().__init__(**data)
 
@@ -261,18 +258,17 @@ class ProjectPaths(BaseConfigModel):
 
     @model_validator(mode="before")
     def check_deprecated_fields(cls, data: dict[str, Any]) -> dict[str, Any]:
-        # TODO can't do this because needed for transition
-        # consider warning instead
-        # if "component_lib" in data:
-        #    raise UserConfigurationError(
-        #        "The 'component_lib' field in your ato.yaml is deprecated. "
-        #        "Use 'parts' instead."
-        #    )
+        if "component_lib" in data and data["component_lib"] is not None:
+            raise UserConfigurationError(
+                "The 'component_lib' field in your ato.yaml is deprecated. "
+                "Delete your component_lib and the entry in the ato.yaml. "
+                "Use 'parts' instead."
+            )
         if "footprints" in data and data["footprints"] is not None:
             raise UserConfigurationError(
                 "The 'footprints' field in your ato.yaml is deprecated. "
-                "It has no effect since v0.3.0. "
-                "You might be looking for `parts`. "
+                "If you are manually assigning hand-made footprints you "
+                "probably want to make atomic parts instead. "
                 "Please remove it."
             )
         return data
@@ -865,6 +861,14 @@ class ProjectConfig(BaseConfigModel):
         config.update_project_settings(_remove_dependency, {})
 
     def get_relative_to_kicad_project(self, path: Path) -> Path:
+        if not self.builds:
+            if in_test():
+                raise ValueError(
+                    "No builds found. Did you forget: "
+                    "`@pytest.mark.usefixtures('setup_project_config')`?"
+                )
+            raise UserConfigurationError("No builds found in project config")
+
         rel_paths = {
             name: path.relative_to(build.paths.kicad_project.parent, walk_up=True)
             for name, build in self.builds.items()

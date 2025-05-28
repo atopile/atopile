@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 
+import pytest
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
@@ -33,6 +35,7 @@ def test_bom_mounting_hole():
     assert bomline is None
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
     r = F.Resistor()
     r.resistance.constrain_subset(L.Range.from_center_rel(10 * P.kohm, 0.01))
@@ -43,6 +46,7 @@ def test_bom_picker_pick():
     assert bomline is not None
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_bom_explicit_pick():
     m = Module()
     m.add(F.can_attach_to_footprint_symmetrically())

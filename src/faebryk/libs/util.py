@@ -2169,6 +2169,10 @@ def try_relative_to(
         return target.relative_to(root, walk_up=walk_up)
     except FileNotFoundError:
         return target
+    except ValueError as e:
+        if "is not in the subpath of" in str(e):
+            return target
+        raise
 
 
 def repo_root() -> Path:
