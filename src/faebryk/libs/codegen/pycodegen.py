@@ -13,7 +13,7 @@ import black
 logger = logging.getLogger(__name__)
 
 
-def sanitize_name(raw, expect_arithmetic: bool = False):
+def sanitize_name(raw, expect_arithmetic: bool = False, warn_prefix: str | None = ""):
     sanitized = raw
     # braces
     sanitized = sanitized.replace("(", "")
@@ -52,11 +52,11 @@ def sanitize_name(raw, expect_arithmetic: bool = False):
 
     # rest
     def handle_unknown_invalid_symbold(match):
-        logger.warning(
-            'Replacing unknown invalid symbol "{}" in "{}" with _'.format(
-                match.group(0), raw
+        if warn_prefix is not None:
+            logger.warning(
+                f"{warn_prefix}: Replacing unknown invalid symbol"
+                f" `{match.group(0)}` in `{raw}` with `_`"
             )
-        )
         return "_"
 
     sanitized = re.sub(r"[^a-zA-Z_0-9]", handle_unknown_invalid_symbold, sanitized)

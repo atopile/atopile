@@ -3,6 +3,7 @@
 
 import logging
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Sequence
@@ -15,7 +16,6 @@ from atopile.errors import UserValueError
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
-from faebryk.libs.codegen.pycodegen import sanitize_name
 from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats_common import C_xyr
 from faebryk.libs.kicad.fileformats_latest import (
@@ -32,6 +32,7 @@ from faebryk.libs.picker.lcsc import (
     EasyEDAFootprint,
     EasyEDAPart,
     EasyEDASymbol,
+    PickedPartLCSC,
 )
 from faebryk.libs.util import (
     KeyErrorNotFound,
@@ -161,11 +162,12 @@ class PartLifecycle:
             else:
                 footprint.dump(fp_path)
 
-            model_path = self.get_model_path(part.identifier, part.model_name)
-            if part.model:
-                part.model.dump(model_path)
-            elif model_path.exists():
-                part.model = EasyEDA3DModel.load(model_path)
+            if part.model or part._pre_model:
+                model_path = self.get_model_path(part.identifier, part.model_name)
+                if part.model:
+                    part.model.dump(model_path)
+                elif model_path.exists():
+                    part.model = EasyEDA3DModel.load(model_path)
 
             # TODO not sure about name
             sym_name = part.symbol.kicad_symbol.name
@@ -189,7 +191,18 @@ class PartLifecycle:
             return Gcfg.project.paths.parts
 
         def _get_part_identifier(self, part: EasyEDAPart) -> str:
-            return sanitize_name("_".join(part.mfn_pn))
+            def _sanitize(x: str) -> str:
+                x = re.sub(r"[^a-zA-Z0-9_]", "_", x)
+                x = x.strip("_")
+                return x
+
+            sanitized = [_sanitize(x) for x in part.mfn_pn]
+            manufacturer, partno = sanitized
+            if not manufacturer:
+                manufacturer = "UNKNOWN"
+            assert partno
+
+            return f"{manufacturer}_{partno}"
 
         def _get_part_path(self, part: EasyEDAPart) -> Path:
             return self._PATH / self._get_part_identifier(part)
@@ -307,7 +320,11 @@ class PartLifecycle:
                 ),
                 datasheet=epart.datasheet_url,
                 docstring=epart.description,
-                supplier=("lcsc", epart.lcsc_id),
+                pick_part=PickedPartLCSC(
+                    manufacturer=epart.mfn_pn[0],
+                    partno=epart.mfn_pn[1],
+                    supplier_partno=epart.lcsc_id,
+                ),
             )
             out = self.ingest_part(ato_part)
 

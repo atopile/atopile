@@ -2503,3 +2503,14 @@ def lazy_split[T: str | bytes](string: T, delimiter: T) -> Iterable[T]:
         yield cur[:i]  # type: ignore
         cur = cur[i + len(delimiter) :]  # type: ignore
     yield cur
+
+
+def starts_or_ends_replace(
+    match: str, options: tuple[str, ...], *, prefix: str = "", suffix: str = ""
+) -> str:
+    for o in options:
+        if match.startswith(o):
+            return f"{prefix}{match[len(o) :]}{suffix}"
+        elif match.endswith(o):
+            return f"{prefix}{match[: -len(o)]}{suffix}"
+    return match

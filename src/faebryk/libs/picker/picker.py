@@ -57,6 +57,7 @@ class PickSupplier(ABC):
 class PickedPart:
     manufacturer: str
     partno: str
+    supplier_partno: str
     supplier: PickSupplier
 
 

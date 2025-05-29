@@ -807,9 +807,9 @@ def test_simple_pick():
         [
             PickerOption(
                 part=PickedPartLCSC(
-                    lcsc_id="C72043",
                     manufacturer="Everlight Elec",
                     partno="19-217/GHC-YR1S2/3T",
+                    supplier_partno="C72043",
                 ),
                 params={
                     "color": L.EnumSet(F.LED.Color.EMERALD),
@@ -841,9 +841,9 @@ def test_simple_negative_pick():
         [
             PickerOption(
                 part=PickedPartLCSC(
-                    lcsc_id="C72043",
                     manufacturer="Everlight Elec",
                     partno="19-217/GHC-YR1S2/3T",
+                    supplier_partno="C72043",
                 ),
                 params={
                     "color": L.EnumSet(F.LED.Color.EMERALD),
@@ -855,9 +855,9 @@ def test_simple_negative_pick():
             ),
             PickerOption(
                 part=PickedPartLCSC(
-                    lcsc_id="C72041",
                     manufacturer="Everlight Elec",
                     partno="19-217/BHC-ZL1M2RY/3T",
+                    supplier_partno="C72041",
                 ),
                 params={
                     "color": L.EnumSet(F.LED.Color.BLUE),

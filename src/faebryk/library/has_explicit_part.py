@@ -75,16 +75,27 @@ class has_explicit_part(Module.TraitT.decless()):
             obj.get_trait(F.can_attach_to_footprint).attach(fp)
 
     def _merge(self, overlay: "has_explicit_part"):
-        if overlay.mfr:
-            self.mfr = overlay.mfr
-        if overlay.partno:
-            self.partno = overlay.partno
-        if overlay.supplier_partno:
-            self.supplier_partno = overlay.supplier_partno
-        if overlay.pinmap:
-            self.pinmap = overlay.pinmap
-        if overlay.override_footprint:
-            self.override_footprint = overlay.override_footprint
+        attrs = [
+            "mfr",
+            "partno",
+            "supplier_id",
+            "supplier_partno",
+            "pinmap",
+            "override_footprint",
+        ]
+        changed = False
+        for attr in attrs:
+            if not hasattr(overlay, attr):
+                continue
+            v = getattr(overlay, attr)
+            if getattr(self, attr, None) == v:
+                continue
+            setattr(self, attr, v)
+            changed = True
+
+        if not changed:
+            return
+
         self.on_obj_set()
 
     @override

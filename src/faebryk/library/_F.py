@@ -35,6 +35,7 @@ from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
+from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
@@ -43,7 +44,6 @@ from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
-from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
@@ -76,10 +76,10 @@ from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_i
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
+from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain

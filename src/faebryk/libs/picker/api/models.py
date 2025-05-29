@@ -214,7 +214,7 @@ class Component:
                 PickedPartLCSC(
                     manufacturer=self.manufacturer_name,
                     partno=self.part_number,
-                    lcsc_id=self.lcsc_display,
+                    supplier_partno=self.lcsc_display,
                     info=PickedPartLCSC.Info(
                         stock=self.stock,
                         price=self.get_price(qty),

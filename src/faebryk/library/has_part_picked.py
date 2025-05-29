@@ -33,9 +33,9 @@ class has_part_picked(Module.TraitT.decless()):
             case "lcsc":
                 return cls(
                     PickedPartLCSC(
-                        lcsc_id=supplier_partno,
                         manufacturer=manufacturer,
                         partno=partno,
+                        supplier_partno=supplier_partno,
                     )
                 )
             case _:

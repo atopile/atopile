@@ -133,12 +133,13 @@ class EasyEDAAPIResponse:
 
     @property
     def mfn_pn(self) -> tuple[str, str]:
-        mfr = self._atopile_manufacturer or self.symbol.info.part_info.manufacturer
         pn = self.symbol.info.part_info.partno
+        mfr = self._atopile_manufacturer or self.symbol.info.part_info.manufacturer
+        if not self._atopile_manufacturer:
+            logger.warning(
+                f"No manufacturer for ({mfr} {pn}) {self.lcsc.number} found in backend."
+            )
         # remove chinese manufacturer name in parentheses
-        # check if whole thing chinese
-        if re.match(r"^[\u4e00-\u9fa5]+$", mfr):
-            mfr = "UNKNOWNCN"
         # "TI(德州仪器)" -> "TI"
         mfr = re.sub(r"\([^)]*\)", "", mfr)
         return (mfr, pn)
@@ -338,7 +339,11 @@ class EasyEDAPart:
         if lifecycle.easyeda2kicad.shall_refresh_model(self):
             logger.debug(f"Downloading model for {self.identifier}")
             model = EasyedaApi().get_step_3d_model(uuid=self._pre_model.uuid)
-            self.model = EasyEDA3DModel(model, self._pre_model.name)
+            # might happen sometimes, that even tho it's in the api, it's not available
+            if model is None:
+                self.model = None
+            else:
+                self.model = EasyEDA3DModel(model, self._pre_model.name)
         else:
             self.model = lifecycle.easyeda2kicad.load_model(self)
 
@@ -580,6 +585,12 @@ class PickSupplierLCSC(PickSupplier):
         assert isinstance(part.part, PickedPartLCSC)
         attach(component=module, partno=part.part.lcsc_id)
 
+    def __str__(self) -> str:
+        return f"{type(self).__name__}()"
+
+    def __eq__(self, other: object) -> bool:
+        return type(self) is type(other)
+
 
 @dataclass(frozen=True, kw_only=True)
 class PickedPartLCSC(PickedPart):
@@ -591,7 +602,9 @@ class PickedPartLCSC(PickedPart):
         basic: bool
         preferred: bool
 
-    lcsc_id: str
     info: Info | None = None
-
     supplier: PickSupplierLCSC = field(default_factory=PickSupplierLCSC)
+
+    @property
+    def lcsc_id(self) -> str:
+        return self.supplier_partno
