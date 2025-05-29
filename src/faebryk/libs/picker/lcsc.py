@@ -121,6 +121,10 @@ class EasyEDAAPIResponse:
         default=None,
         metadata=dataclasses_json_config(field_name="atopile_queried_at"),
     )
+    _atopile_manufacturer: str | None = field(
+        default=None,
+        metadata=dataclasses_json_config(field_name="atopile_manufacturer"),
+    )
     unknown: CatchAll = None
 
     @property
@@ -129,11 +133,14 @@ class EasyEDAAPIResponse:
 
     @property
     def mfn_pn(self) -> tuple[str, str]:
-        mfr = self.symbol.info.part_info.manufacturer
+        mfr = self._atopile_manufacturer or self.symbol.info.part_info.manufacturer
         pn = self.symbol.info.part_info.partno
         # remove chinese manufacturer name in parentheses
+        # check if whole thing chinese
+        if re.match(r"^[\u4e00-\u9fa5]+$", mfr):
+            mfr = "UNKNOWNCN"
         # "TI(德州仪器)" -> "TI"
-        mfr = re.sub(r"\([^\x00-\x7F]+\)", "", mfr)
+        mfr = re.sub(r"\([^)]*\)", "", mfr)
         return (mfr, pn)
 
     @classmethod
@@ -459,9 +466,17 @@ def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
         raise LCSC_NoDataException(
             lcsc_id, f"Failed to fetch data from EasyEDA API for part {lcsc_id}"
         )
-    return lifecycle.easyeda_api.ingest(
-        lcsc_id, EasyEDAAPIResponse.from_api_dict(cad_data)
-    )
+    response = EasyEDAAPIResponse.from_api_dict(cad_data)
+    # TODO: this is a hack
+    # get manufacturer from backend
+    from faebryk.libs.picker.api.api import get_api_client
+
+    if api_part := first(
+        get_api_client().fetch_part_by_lcsc(int(lcsc_id.removeprefix("C"))), None
+    ):
+        response._atopile_manufacturer = api_part.manufacturer_name
+
+    return lifecycle.easyeda_api.ingest(lcsc_id, response)
 
 
 def download_easyeda_info(lcsc_id: str, get_model: bool = True):
