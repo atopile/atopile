@@ -25,22 +25,18 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @L.rt_field
-    def has_pick(self):
-        return F.has_explicit_part.by_supplier("C97521", supplier_id="lcsc")
+
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C97521")
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
-    )
-    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
-        "Winbond Elec", "W25Q128JVSIQ"
     )
 
     @L.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
-                self.qspi.chip_select.line: ["CS#"],
+                self.qspi.chip_select.line: ["CS#", "~{CS}"],
                 self.qspi.data[0].line: ["DO"],
                 self.qspi.data[2].line: ["IO2"],
                 self.power.lv: ["GND"],
@@ -49,7 +45,7 @@ class Winbond_Elec_W25Q128JVSIQ(F.SPIFlash):
                 self.qspi.data[3].line: ["IO3"],
                 self.power.hv: ["VCC"],
             },
-            accept_prefix=False,
+            accept_prefix=True,
             case_sensitive=False,
         )
 

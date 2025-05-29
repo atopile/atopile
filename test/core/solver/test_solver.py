@@ -264,6 +264,7 @@ def test_solve_realworld_bigger():
 
 
 @pytest.mark.slow
+@pytest.mark.usefixtures("setup_project_config")
 def test_solve_realworld_biggest():
     class App(Module):
         led = L.f_field(F.LEDIndicator)(use_mosfet=False)
