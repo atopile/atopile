@@ -103,6 +103,10 @@ def export_glb(
         "grid_origin": True,
         "subst_models": True,
         "no_dnp": True,
+        "cut_vias_in_body": True,
+        "include_pads": True,
+        "include_soldermask": True,
+        "include_silkscreen": True,
         "output": str(glb_file.absolute()),
     }
 
