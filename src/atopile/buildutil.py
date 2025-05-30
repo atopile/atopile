@@ -317,10 +317,12 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
         export_step(
             tmp_layout,
             step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+            project_dir=config.build.paths.layout.parent,
         )
         export_glb(
             tmp_layout,
             glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+            project_dir=config.build.paths.layout.parent,
         )
         export_dxf(
             tmp_layout,

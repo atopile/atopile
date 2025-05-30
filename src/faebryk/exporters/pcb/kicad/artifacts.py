@@ -6,6 +6,7 @@ import subprocess
 import subprocess as sp
 import tempfile
 from pathlib import Path
+from typing import Optional
 from zipfile import ZipFile
 
 from kicadcliwrapper.generated.kicad_cli import kicad_cli as k
@@ -41,21 +42,27 @@ def githash_layout(layout: Path, out: Path) -> Path:
     return out
 
 
-def export_step(pcb_file: Path, step_file: Path) -> None:
+def export_step(
+    pcb_file: Path, step_file: Path, project_dir: Optional[Path] = None
+) -> None:
     """
     3D PCBA STEP file export using the kicad-cli
     """
 
+    # If project_dir is provided, set KIPRJMOD to ensure 3D model paths resolve
+    cmd_args = {
+        "INPUT_FILE": str(pcb_file),
+        "force": True,
+        "no_dnp": True,
+        "subst_models": True,
+        "output": str(step_file.absolute()),
+    }
+
+    if project_dir:
+        cmd_args["define_var"] = f"KIPRJMOD={project_dir.absolute()}"
+
     try:
-        _export(
-            k.pcb.export.step(
-                INPUT_FILE=str(pcb_file),
-                force=True,
-                no_dnp=True,
-                subst_models=True,
-                output=str(step_file.absolute()),
-            )
-        )
+        _export(k.pcb.export.step(**cmd_args))
     except sp.CalledProcessError as e:
         raise Exception("Failed to export step file") from e
 
@@ -80,24 +87,30 @@ def export_dxf(pcb_file: Path, dxf_file: Path) -> None:
         raise Exception("Failed to export dxf file") from e
 
 
-def export_glb(pcb_file: Path, glb_file: Path) -> None:
+def export_glb(
+    pcb_file: Path, glb_file: Path, project_dir: Optional[Path] = None
+) -> None:
     """
     3D PCBA GLB file export using the kicad-cli
     """
 
+    # If project_dir is provided, set KIPRJMOD to ensure 3D model paths resolve
+    cmd_args = {
+        "INPUT_FILE": str(pcb_file),
+        "force": True,
+        "include_tracks": True,
+        "include_zones": True,
+        "grid_origin": True,
+        "subst_models": True,
+        "no_dnp": True,
+        "output": str(glb_file.absolute()),
+    }
+
+    if project_dir:
+        cmd_args["define_var"] = f"KIPRJMOD={project_dir.absolute()}"
+
     try:
-        _export(
-            k.pcb.export.glb(
-                INPUT_FILE=str(pcb_file),
-                force=True,
-                include_tracks=True,
-                include_zones=True,
-                grid_origin=True,
-                subst_models=True,
-                no_dnp=True,
-                output=str(glb_file.absolute()),
-            )
-        )
+        _export(k.pcb.export.glb(**cmd_args))
     except sp.CalledProcessError as e:
         raise Exception("Failed to export glb file") from e
 
