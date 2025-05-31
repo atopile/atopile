@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pathspec
 import pathvalidate
+from git import Repo
 from ruamel.yaml import YAML
 
 import atopile.config
@@ -31,12 +32,16 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
         A list of Path objects for all non-excluded files
     """
     prjroot = cfg.paths.root
+    repo = Repo(search_parent_directories=True)
 
     # For gitignore patterns, we need to get all files and filter out the matched ones,
     # since gitignore patterns specify which files to exclude
     ignore_pattern_lines = [".git/"]
     for ignore_file in itertools.chain(
-        prjroot.glob("*.gitignore"), prjroot.glob("*.atoignore")
+        # TODO: only search directories between cwd and root
+        # TODO include other gitignore sources
+        Path(repo.working_tree_dir or prjroot).glob("*.gitignore"),
+        Path(repo.working_tree_dir or prjroot).glob("*.atoignore"),
     ):
         if not ignore_file.is_file():
             continue

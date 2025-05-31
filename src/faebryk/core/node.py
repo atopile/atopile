@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 import logging
 from abc import abstractmethod
+from collections.abc import Iterator
 from dataclasses import InitVar as dataclass_InitVar
 from itertools import chain
 from typing import (
@@ -771,6 +772,18 @@ class Node(CNode):
             if parent.has_trait(trait):
                 return parent, parent.get_trait(trait)
         raise KeyErrorNotFound(f"No parent with trait {trait} found")
+
+    def iter_children_with_trait[TR: Trait](
+        self, trait: type[TR], include_self: bool = True
+    ) -> Iterator[tuple["Node", TR]]:
+        for level in self.get_tree(
+            types=Node, include_root=include_self
+        ).iter_by_depth():
+            yield from (
+                (child, child.get_trait(trait))
+                for child in level
+                if child.has_trait(trait)
+            )
 
     def get_first_child_of_type[U: Node](self, child_type: type[U]) -> U:
         for level in self.get_tree(types=Node).iter_by_depth():
