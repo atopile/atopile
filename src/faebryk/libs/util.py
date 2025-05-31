@@ -2514,3 +2514,12 @@ def starts_or_ends_replace(
         elif match.endswith(o):
             return f"{prefix}{match[: -len(o)]}{suffix}"
     return match
+
+
+def sanitize_filepath_part(x: str) -> str:
+    """
+    Replaces invalid or awkward characters with underscores.
+    """
+    x = re.sub(r"[^a-zA-Z0-9_]", "_", x)
+    x = x.strip("_")
+    return x

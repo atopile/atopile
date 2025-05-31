@@ -3,7 +3,6 @@
 
 import logging
 import os
-import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Sequence
@@ -42,6 +41,7 @@ from faebryk.libs.util import (
     once,
     re_in,
     robustly_rm_dir,
+    sanitize_filepath_part,
 )
 
 logger = logging.getLogger(__name__)
@@ -191,12 +191,7 @@ class PartLifecycle:
             return Gcfg.project.paths.parts
 
         def _get_part_identifier(self, part: EasyEDAPart) -> str:
-            def _sanitize(x: str) -> str:
-                x = re.sub(r"[^a-zA-Z0-9_]", "_", x)
-                x = x.strip("_")
-                return x
-
-            sanitized = [_sanitize(x) for x in part.mfn_pn]
+            sanitized = [sanitize_filepath_part(x) for x in part.mfn_pn]
             manufacturer, partno = sanitized
             if not manufacturer:
                 manufacturer = "UNKNOWN"

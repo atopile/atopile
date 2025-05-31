@@ -6,8 +6,7 @@ from pathlib import Path
 import faebryk.library._F as F  # noqa: F401
 from atopile.config import config as Gcfg
 from faebryk.core.module import Module
-from faebryk.libs.codegen.pycodegen import sanitize_name
-from faebryk.libs.util import once
+from faebryk.libs.util import once, sanitize_filepath_part
 
 
 class is_atomic_part(Module.TraitT.decless()):
@@ -30,9 +29,10 @@ class is_atomic_part(Module.TraitT.decless()):
     @once
     def path(self) -> Path:
         # TODO remove duplication with part_lifecycle
-        identifier = (
-            f"{sanitize_name(self._manufacturer)}_{sanitize_name(self._partnumber)}"
-        )
+        manufacturer = sanitize_filepath_part(self._manufacturer)
+        partnumber = sanitize_filepath_part(self._partnumber)
+        identifier = f"{manufacturer}_{partnumber}"
+
         part_dir = Gcfg.project.paths.parts
         return part_dir / identifier
 
