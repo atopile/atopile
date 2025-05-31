@@ -1312,6 +1312,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
+        # Deferred to after node is fully initialised in order for all pins to be
+        # available for pinmap
+        if new_node.has_trait(F.is_atomic_part):
+            new_node.get_trait(F.is_atomic_part).attach()
+
     def _get_param(
         self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext
     ) -> Parameter:

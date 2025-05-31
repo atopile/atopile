@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: MIT
 
 from pathlib import Path
-from typing import override
 
 import faebryk.library._F as F  # noqa: F401
 from atopile.config import config as Gcfg
@@ -44,10 +43,7 @@ class is_atomic_part(Module.TraitT.decless()):
         """
         return self.path / self._footprint, self.path.name
 
-    @override
-    def on_obj_set(self):
-        super().on_obj_set()
-
+    def attach(self):
         obj = self.get_obj(Module)
 
         fp_path, fp_lib = self.fp_path
