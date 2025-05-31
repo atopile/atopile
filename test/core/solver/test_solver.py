@@ -53,7 +53,7 @@ from faebryk.core.solver.utils import (
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
 from faebryk.libs.library.L import DiscreteSet, Range, RangeWithGaps, Single
-from faebryk.libs.picker.lcsc import LCSC_Part
+from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.localpick import PickerOption, pick_module_by_params
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.sets.quantity_sets import (
@@ -62,7 +62,7 @@ from faebryk.libs.sets.quantity_sets import (
 )
 from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
 from faebryk.libs.units import P, Quantity, dimensionless, quantity
-from faebryk.libs.util import not_none, times
+from faebryk.libs.util import cast_assert, not_none, times
 
 logger = logging.getLogger(__name__)
 
@@ -264,6 +264,7 @@ def test_solve_realworld_bigger():
 
 
 @pytest.mark.slow
+@pytest.mark.usefixtures("setup_project_config")
 def test_solve_realworld_biggest():
     class App(Module):
         led = L.f_field(F.LEDIndicator)(use_mosfet=False)
@@ -806,7 +807,11 @@ def test_simple_pick():
         solver,
         [
             PickerOption(
-                part=LCSC_Part(partno="C72043"),
+                part=PickedPartLCSC(
+                    manufacturer="Everlight Elec",
+                    partno="19-217/GHC-YR1S2/3T",
+                    supplier_partno="C72043",
+                ),
                 params={
                     "color": L.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
@@ -819,9 +824,13 @@ def test_simple_pick():
     )
 
     assert led.has_trait(F.has_part_picked)
-    assert led.get_trait(F.has_part_picked).get_part().partno == "C72043"
+    assert (
+        cast_assert(PickedPartLCSC, led.get_trait(F.has_part_picked).get_part()).lcsc_id
+        == "C72043"
+    )
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_simple_negative_pick():
     led = F.LED()
     led.color.constrain_subset(L.EnumSet(F.LED.Color.RED, F.LED.Color.BLUE))
@@ -832,7 +841,11 @@ def test_simple_negative_pick():
         solver,
         [
             PickerOption(
-                part=LCSC_Part(partno="C72043"),
+                part=PickedPartLCSC(
+                    manufacturer="Everlight Elec",
+                    partno="19-217/GHC-YR1S2/3T",
+                    supplier_partno="C72043",
+                ),
                 params={
                     "color": L.EnumSet(F.LED.Color.EMERALD),
                     "max_brightness": 285 * P.mcandela,
@@ -842,7 +855,11 @@ def test_simple_negative_pick():
                 pinmap={"1": led.cathode, "2": led.anode},
             ),
             PickerOption(
-                part=LCSC_Part(partno="C72041"),
+                part=PickedPartLCSC(
+                    manufacturer="Everlight Elec",
+                    partno="19-217/BHC-ZL1M2RY/3T",
+                    supplier_partno="C72041",
+                ),
                 params={
                     "color": L.EnumSet(F.LED.Color.BLUE),
                     "max_brightness": 28.5 * P.mcandela,
@@ -855,7 +872,10 @@ def test_simple_negative_pick():
     )
 
     assert led.has_trait(F.has_part_picked)
-    assert led.get_trait(F.has_part_picked).get_part().partno == "C72041"
+    assert (
+        cast_assert(PickedPartLCSC, led.get_trait(F.has_part_picked).get_part()).lcsc_id
+        == "C72041"
+    )
 
 
 def test_jlcpcb_pick_resistor():

@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from copy import deepcopy
 from pathlib import Path
 
 from faebryk.libs.exceptions import UserResourceException, accumulate
@@ -35,9 +36,34 @@ KICAD_VERSION_NAMES = {
 }
 
 
-def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
+def kicad_footprint_file(path: Path | str) -> C_kicad_footprint_file:
+    if isinstance(path, Path):
+        _path = str(try_relative_to(path.resolve()))
+        content = path.read_text(encoding="utf-8")
+    else:
+        _path = "<direct string>"
+        content = path
+
+    # cache
+    # custom because don't care about origin & need to deepcopy
+    if not hasattr(_kicad_footprint_file, "cache"):
+        _kicad_footprint_file.cache = dict[str, C_kicad_footprint_file]()
+    if content in _kicad_footprint_file.cache:
+        return deepcopy(_kicad_footprint_file.cache[content])
+
+    fp = _kicad_footprint_file(content, origin=_path)
+
+    # cache
+    _kicad_footprint_file.cache[content] = fp
+
+    return deepcopy(fp)
+
+
+def _kicad_footprint_file(
+    path: str, origin: str | None = None
+) -> C_kicad_footprint_file:
     acc = accumulate(DecodeError, group_message="No decoders succeeded")
-    if path.read_text(encoding="utf-8").startswith("(module"):
+    if path.startswith("(module"):
         with acc.collect():
             return loads(path, C_kicad_footprint_file_v5).convert_to_new()
     else:
@@ -55,8 +81,7 @@ def kicad_footprint_file(path: Path) -> C_kicad_footprint_file:
 
     # Nothing succeeded in loading the file
     raise UserResourceException(
-        f"Footprint {try_relative_to(path.resolve())} is not"
-        " a valid KiCad footprint file",
+        f"Not a valid KiCad footprint file: origin={origin}",
         markdown=False,
     ) from acc.get_exception()
 

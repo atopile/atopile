@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once
 
@@ -65,15 +64,8 @@ class INA228(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.ti.com/lit/ds/symlink/ina228.pdf"
-    )
-
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Texas Instruments",
-            DescriptiveProperties.partno: "INA228AIDGSR",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Texas Instruments", "INA228AIDGSR"
     )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(

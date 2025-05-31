@@ -1183,7 +1183,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             search_paths.insert(0, context.file_path.parent)
 
         if config.has_project:
-            search_paths += [config.project.paths.src, config.project.paths.modules]
+            search_paths += [
+                config.project.paths.src,
+                config.project.paths.modules,
+            ]
 
         # Add the library directory to the search path too
         search_paths.append(Path(inspect.getfile(F)).parent)
@@ -1520,6 +1523,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 # "from xyz" super in the traceback too
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
+
+        # Deferred to after node is fully initialised in order for all pins to be
+        # available for pinmap
+        if new_node.has_trait(F.is_atomic_part):
+            new_node.get_trait(F.is_atomic_part).attach()
 
     def _get_param(
         self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext

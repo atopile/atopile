@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -31,15 +30,7 @@ class ElecSuper_PSM712_ES(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "ElecSuper",
-            DescriptiveProperties.partno: "PSM712-ES",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2209191800_ElecSuper-PSM712-ES_C5180294.pdf"
-    )
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)("ElecSuper", "PSM712-ES")
 
     @L.rt_field
     def pin_association_heuristic(self):

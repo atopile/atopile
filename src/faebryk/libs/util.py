@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import collections.abc
+import difflib
 import hashlib
 import importlib.util
 import inspect
@@ -22,7 +23,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from enum import Enum, StrEnum, auto
 from functools import wraps
@@ -31,6 +32,7 @@ from importlib.metadata import Distribution
 from itertools import chain, pairwise
 from json import JSONEncoder
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from textwrap import indent
 from types import ModuleType
 from typing import (
@@ -338,7 +340,7 @@ def Holder[T, P](_type: Type[T], _ptype: Type[P]) -> Type[_wrapper[T, P]]:
     return __wrapper[T, P]
 
 
-def not_none(x):
+def not_none[T](x: T | None) -> T:
     assert x is not None
     return x
 
@@ -368,7 +370,7 @@ def cast_assert(t, obj):
     Assert that obj is an instance of type t and return it with proper type hints.
     t can be either a single type or a tuple of types.
     """
-    assert isinstance(obj, t)
+    assert isinstance(obj, t), f"{obj=} is not an instance of {t}"
     return obj
 
 
@@ -2058,19 +2060,29 @@ def indented_container[T](
     recursive: bool = False,
     use_repr: bool = True,
     mapper: Callable[[T | str | int], T | str | int] = lambda x: x,
+    compress_large: int = 100,
 ) -> str:
     kvs = obj.items() if isinstance(obj, dict) else list(enumerate(obj))
     _indent_prefix = "  "
     _indent = _indent_prefix * indent_level
     ind = "\n" + _indent
 
+    def compress(v: str) -> str:
+        if len(v) > compress_large:
+            return f"{v[:compress_large]}..."
+        return v
+
     def format_v(v: T) -> str:
         if not use_repr and isinstance(v, str):
-            return indent(v, prefix=_indent)
+            return compress(indent(v, prefix=_indent))
         if not recursive or not isinstance(v, Iterable) or isinstance(v, str):
-            return repr(mapper(v)) if use_repr else str(mapper(v))
+            return compress(repr(mapper(v)) if use_repr else str(mapper(v)))
         return indented_container(
-            v, indent_level=indent_level + 1, recursive=recursive, mapper=mapper
+            v,
+            indent_level=indent_level + 1,
+            recursive=recursive,
+            mapper=mapper,
+            compress_large=compress_large,
         )
 
     inside = ind.join(f"{mapper(k)}: {format_v(v)}" for k, v in kvs)
@@ -2157,6 +2169,10 @@ def try_relative_to(
         return target.relative_to(root, walk_up=walk_up)
     except FileNotFoundError:
         return target
+    except ValueError as e:
+        if "is not in the subpath of" in str(e):
+            return target
+        raise
 
 
 def repo_root() -> Path:
@@ -2299,6 +2315,61 @@ def find_file(base_dir: Path, pattern: str):
             yield file
 
 
+def call_with_file_capture[T](func: Callable[[Path], T]) -> tuple[T, bytes]:
+    with NamedTemporaryFile("rb") as f:
+        path = Path(f.name)
+        return func(path), path.read_bytes()
+
+
+def diff(before: str, after: str) -> str:
+    """
+    diff two strings
+    """
+    return "\n".join(difflib.ndiff(before.splitlines(), after.splitlines()))
+
+
+def compare_dataclasses[T](
+    before: T, after: T, skip_keys: tuple[str, ...] = ()
+) -> dict[str, dict[str, Any]]:
+    """
+    check two dataclasses for equivalence (with some keys skipped)
+    """
+
+    def _fmt(b, a):
+        return {"before": b, "after": a}
+
+    if type(before) is not type(after) and not all(
+        isinstance(x, (int, float)) for x in (before, after)
+    ):
+        return {"": (before, after)}
+    if not is_dataclass(before):
+        if isinstance(before, list):
+            assert isinstance(after, list)
+            return {
+                f"[{i}]{k}": v
+                for i, (b, a) in enumerate(zip(before, after))
+                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+            }
+        if isinstance(before, dict):
+            assert isinstance(after, dict)
+            return {
+                f"[{i!r}]{k}": v
+                for i, (b, a) in zip_dicts_by_key(before, after).items()
+                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+                if i not in skip_keys
+            }
+        return {"": _fmt(before, after)} if before != after else {}
+
+    return {
+        f".{f.name}{k}": v
+        for f in fields(before)  # type: ignore
+        if f.name not in skip_keys
+        for k, v in compare_dataclasses(
+            getattr(before, f.name), getattr(after, f.name), skip_keys=skip_keys
+        ).items()
+    }
+
+
 def complete_type_string(value: Any) -> str:
     if isinstance(value, (list, set)):
         inner = unique(
@@ -2418,3 +2489,37 @@ class FileChangedWatcher:
             self.before = new_val
 
         return changed
+
+
+def lazy_split[T: str | bytes](string: T, delimiter: T) -> Iterable[T]:
+    """
+    Split a string into a list of strings, but only split when needed.
+    """
+
+    # TODO: type checking goes ham because of bytes
+
+    cur: T = string
+    while (i := cur.find(delimiter)) != -1:  # type: ignore
+        yield cur[:i]  # type: ignore
+        cur = cur[i + len(delimiter) :]  # type: ignore
+    yield cur
+
+
+def starts_or_ends_replace(
+    match: str, options: tuple[str, ...], *, prefix: str = "", suffix: str = ""
+) -> str:
+    for o in options:
+        if match.startswith(o):
+            return f"{prefix}{match[len(o) :]}{suffix}"
+        elif match.endswith(o):
+            return f"{prefix}{match[: -len(o)]}{suffix}"
+    return match
+
+
+def sanitize_filepath_part(x: str) -> str:
+    """
+    Replaces invalid or awkward characters with underscores.
+    """
+    x = re.sub(r"[^a-zA-Z0-9_]", "_", x)
+    x = x.strip("_")
+    return x

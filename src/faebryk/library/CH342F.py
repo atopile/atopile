@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.util import assert_once, times
 
 logger = logging.getLogger(__name__)
@@ -113,11 +112,8 @@ class CH342F(F.CH342):
             case_sensitive=False,
         )
 
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "WCH(Jiangsu Qin Heng)",
-            DescriptiveProperties.partno: "CH342F",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        mfr="WCH(Jiangsu Qin Heng)", partno="CH342F"
     )
 
     def __preinit__(self) -> None:

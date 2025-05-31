@@ -5,6 +5,8 @@ from typing import Self, override
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.node import Node
+from faebryk.core.trait import TraitImpl
 
 
 class has_explicit_part(Module.TraitT.decless()):
@@ -71,3 +73,33 @@ class has_explicit_part(Module.TraitT.decless()):
             fp, fp_kicad_id = self.override_footprint
             fp.add(F.KicadFootprint.has_kicad_identifier(fp_kicad_id))
             obj.get_trait(F.can_attach_to_footprint).attach(fp)
+
+    def _merge(self, overlay: "has_explicit_part"):
+        attrs = [
+            "mfr",
+            "partno",
+            "supplier_id",
+            "supplier_partno",
+            "pinmap",
+            "override_footprint",
+        ]
+        changed = False
+        for attr in attrs:
+            if not hasattr(overlay, attr):
+                continue
+            v = getattr(overlay, attr)
+            if getattr(self, attr, None) == v:
+                continue
+            setattr(self, attr, v)
+            changed = True
+
+        if not changed:
+            return
+
+        self.on_obj_set()
+
+    @override
+    def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
+        assert isinstance(old, has_explicit_part)
+        old._merge(self)
+        return False

@@ -4,7 +4,6 @@
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 
 
 class USB_Type_C_Receptacle_14_pin_Vertical(Module):
@@ -24,11 +23,8 @@ class USB_Type_C_Receptacle_14_pin_Vertical(Module):
     # diffpairs: p, n
     usb: F.USB2_0
 
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Jing Extension of the Electronic Co.",  # noqa: E501
-            DescriptiveProperties.partno: "918-418K2022Y40000",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Jing Extension of the Electronic Co.", "918-418K2022Y40000"
     )
 
     @L.rt_field

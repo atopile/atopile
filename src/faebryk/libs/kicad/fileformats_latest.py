@@ -1,21 +1,27 @@
 import logging
+import re
+from base64 import b64decode, b64encode
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Self, override
 
+import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
+from more_itertools import first
 
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
     C_effects,
+    C_property_base,
     C_pts,
     C_stroke,
     C_wh,
     C_xy,
     C_xyr,
     C_xyz,
+    HasPropertiesMixin,
     gen_uuid,
 )
 from faebryk.libs.sexp.dataclass_sexp import (
@@ -25,6 +31,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
+from faebryk.libs.util import lazy_split, once
 
 logger = logging.getLogger(__name__)
 
@@ -927,15 +934,64 @@ class C_dimension:
 
 @dataclass(kw_only=True)
 class C_embedded_file:
+    class C_type(SymEnum):
+        other = auto()
+        model = auto()
+        font = auto()
+        datasheet = auto()
+        worksheet = auto()
+
+    @dataclass
+    class C_data:
+        compressed: list[Symbol] = field(**sexp_field(positional=True))
+
+        @property
+        @once
+        def merged(self):
+            return "".join(str(v) for v in self.compressed)
+
+        @property
+        @once
+        def uncompressed(self) -> bytes:
+            assert self.merged.startswith("|") and self.merged.endswith("|")
+            return zstd.decompress(b64decode(self.merged[1:-1]))
+
+        @classmethod
+        def compress(cls, data: bytes):
+            # from kicad:common/embedded_files.cpp
+            b64 = b64encode(zstd.compress(data)).decode()
+            CHUNK_LEN = 76
+            # chunk string to 76 characters
+            chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
+            chunks[0] = "|" + chunks[0]
+            chunks[-1] = chunks[-1] + "|"
+            return cls(compressed=[Symbol(c) for c in chunks])
+
     name: str
-    data: str  # Base64 encoded data
-    md5: str | None = None  # MD5 hash of the file content
+    type: C_type
+    data: C_data | None = None
+    """
+    base64 encoded data
+    """
+    checksum: str | None = None  # MD5 hash of the file content
+
+    @staticmethod
+    def make_checksum(data: bytes) -> None:
+        # from kicad:libs/kimath/include/mmh3_hash.h
+        # FIXME
+        # import mmh3
+
+        # SEED = 0xABBA2345
+        # return mmh3.mmh3_x64_128_digest(data, SEED).hex().upper()
+        return None
 
 
 @dataclass
 class C_embedded_files:
-    are_fonts_embedded: bool = False
-    files: list[C_embedded_file] = field(default_factory=list)
+    # are_fonts_embedded: bool = False
+    files: dict[str, C_embedded_file] = field(
+        default_factory=dict, **sexp_field(multidict=True, key=lambda x: x.name)
+    )
 
 
 @dataclass(kw_only=True)
@@ -953,7 +1009,7 @@ class C_net:
 
 
 @dataclass(kw_only=True)
-class C_footprint:
+class C_footprint(HasPropertiesMixin):
     class E_attr(SymEnum):
         smd = auto()
         dnp = auto()
@@ -964,19 +1020,14 @@ class C_footprint:
         allow_missing_courtyard = auto()
 
     @dataclass(kw_only=True)
-    class C_property:
-        @dataclass(kw_only=True)
-        class C_footprint_property_effects(C_effects):
-            # driven by the outer hide in C_property
-            hide: bool | None = None
-
+    class C_property(C_property_base):
         name: str = field(**sexp_field(positional=True))
         value: str = field(**sexp_field(positional=True))
         at: C_xyr
         layer: C_text_layer
         hide: bool = False
         uuid: UUID = field(default_factory=gen_uuid)
-        effects: C_footprint_property_effects
+        effects: C_fp_text.C_fp_text_effects
 
     @dataclass
     class C_footprint_polygon(C_polygon):
@@ -1190,7 +1241,29 @@ class C_footprint:
     embedded_fonts: E_embedded_fonts | None = None
     embedded_files: C_embedded_files | None = None
     component_classes: list[str] | None = None
-    model: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
+    models: list[C_model] = field(**sexp_field(multidict=True), default_factory=list)
+
+    @property
+    def base_name(self) -> str:
+        return self.name.split(":", 1)[-1]
+
+    @override
+    def add_property(self, name: str, value: str):
+        self.propertys[name] = C_footprint.C_property(
+            name=name,
+            value=value,
+            at=C_xyr(x=0, y=0, r=0),
+            layer=C_text_layer("User.9"),
+            effects=C_fp_text.C_fp_text_effects(
+                font=C_fp_text.C_fp_text_effects.C_font(
+                    size=C_wh(w=0.125, h=0.125),
+                    thickness=0.01875,
+                    unresolved_font_name=None,
+                ),
+                justifys=[],
+                hide=True,
+            ),
+        )
 
 
 @dataclass
@@ -1866,12 +1939,12 @@ class C_kicad_pcb_file(SEXP_File):
 class C_kicad_footprint_file(SEXP_File):
     @dataclass(kw_only=True)
     class C_footprint_in_file(C_footprint):
-        descr: Optional[str] = None
-        tags: Optional[list[str]] = None
-        version: int = field(**sexp_field(), default=KICAD_PCB_VERSION)
-        generator: str
-        generator_version: str = ""
-        tedit: Optional[str] = None
+        descr: Optional[str] = field(default=None, **sexp_field(order=-1))
+        tags: Optional[list[str]] = field(default=None, **sexp_field(order=-1))
+        version: int = field(**sexp_field(order=-1), default=KICAD_PCB_VERSION)
+        generator: str = field(**sexp_field(order=-1), default="faebryk")
+        generator_version: str = field(**sexp_field(order=-1), default="latest")
+        tedit: Optional[str] = field(default=None, **sexp_field(order=-1))
         unknown: CatchAll = None
 
     footprint: C_footprint_in_file
@@ -2042,15 +2115,69 @@ class C_kicad_fp_lib_table_file(SEXP_File):
         class C_lib:
             name: str
             type: str
-            uri: str
+            uri: Path
             options: str
             descr: str
 
         version: int | None = field(default=None, **sexp_field())
-        libs: list[C_lib] = field(**sexp_field(multidict=True), default_factory=list)
+        libs: dict[str, C_lib] = field(
+            **sexp_field(multidict=True, key=lambda x: x.name), default_factory=dict
+        )
 
     fp_lib_table: C_fp_lib_table
 
     @classmethod
     def skeleton(cls, version: int = 7) -> "C_kicad_fp_lib_table_file":
-        return cls(cls.C_fp_lib_table(version=version, libs=[]))
+        return cls(cls.C_fp_lib_table(version=version, libs={}))
+
+
+@dataclass
+class C_kicad_model_file:
+    """
+    Wrapper around step file
+    """
+
+    # TODO: consider finding a step file lib
+
+    _raw: bytes
+
+    def __post_init__(self):
+        if not self._raw.startswith(b"ISO-10303-21"):
+            raise ValueError("Invalid STEP file format")
+
+    @property
+    def header(self) -> str:
+        # Extract header section between HEADER; and ENDSEC; using regex
+
+        # Read till DATA; token
+        non_data = first(lazy_split(self._raw, b"DATA;")).decode("utf-8")
+
+        pattern = r"HEADER;(.*?)ENDSEC;"
+        match = re.search(pattern, non_data, re.DOTALL)
+        if not match:
+            raise ValueError("No HEADER section found in STEP file")
+        return match.group(1)
+
+    @property
+    def filename(self) -> str:
+        # find line with "FILE_NAME"
+        # ghetto parse first arg
+        header = self.header
+        match = re.search(r"FILE_NAME.*?'(.*?)'\s*,", header, re.DOTALL)
+        if not match:
+            raise ValueError("No FILE_NAME section found in STEP file")
+        return match.group(1)
+
+    @classmethod
+    def loads(cls, path_or_content: Path | bytes) -> Self:
+        if isinstance(path_or_content, Path):
+            content = path_or_content.read_bytes()
+        else:
+            content = path_or_content
+
+        return cls(_raw=content)
+
+    def dumps(self, path: Path | None = None) -> bytes:
+        if path is not None:
+            path.write_bytes(self._raw)
+        return self._raw

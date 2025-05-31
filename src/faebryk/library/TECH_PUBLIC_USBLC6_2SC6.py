@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -25,16 +24,7 @@ class TECH_PUBLIC_USBLC6_2SC6(F.USB2_0_ESD_Protection):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C2827654"})
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "TECH PUBLIC",
-            DescriptiveProperties.partno: "USBLC6-2SC6",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.lcsc.com/datasheet/lcsc_datasheet_2108132230_TECH-PUBLIC-USBLC6-2SC6_C2827654.pdf"
-    )
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C2827654")
 
     @L.rt_field
     def pin_association_heuristic(self):

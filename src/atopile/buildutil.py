@@ -1,6 +1,5 @@
 import json
 import logging
-import shutil
 import tempfile
 import time
 from copy import deepcopy
@@ -12,7 +11,6 @@ from atopile import layout
 from atopile.cli.logging import LoggingStage
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
-from atopile.front_end import DeprecatedException
 from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
 from faebryk.core.pathfinder import MAX_PATHS
@@ -34,7 +32,6 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_step,
     githash_layout,
 )
-from faebryk.exporters.pcb.kicad.pcb import LibNotInTable, get_footprint
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
@@ -49,19 +46,13 @@ from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
     check_net_names,
-    create_footprint_library,
-    ensure_footprint_lib,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_descriptive_properties, save_parameters
+from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
 from faebryk.libs.exceptions import (
-    UserResourceException,
     accumulate,
-    downgrade,
     iter_leaf_exceptions,
-    iter_through_errors,
 )
-from faebryk.libs.kicad.fileformats_latest import C_kicad_fp_lib_table_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
 
@@ -124,10 +115,6 @@ def build(app: Module) -> None:
             exclude=excluded_checks,
         )
 
-        # Pre-pick project checks - things to look at before time is spend ---------
-        # Make sure the footprint libraries we're looking for exist
-        consolidate_footprints(app)
-
     with LoggingStage("load-pcb", "Loading PCB"):
         pcb.load_from_file(config.build.paths.layout)
         if config.build.keep_designators:
@@ -135,7 +122,7 @@ def build(app: Module) -> None:
 
     with LoggingStage("picker", "Picking components") as stage:
         if config.build.keep_picked_parts:
-            load_descriptive_properties(G())
+            load_part_info_from_pcb(G())
         try:
             pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
@@ -143,14 +130,7 @@ def build(app: Module) -> None:
                 "Failed to pick parts for some modules",
                 [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
             ) from ex
-        save_parameters(G())
-
-    with LoggingStage("footprints", "Handling footprints"):
-        # Use standard footprints for known packages regardless of
-        # what's otherwise been specified.
-        # FIXME: this currently includes explicitly set footprints, but shouldn't
-        F.has_package.standardize_footprints(app, solver)
-        create_footprint_library(app)
+        save_part_info_to_pcb(G())
 
     with LoggingStage("nets", "Preparing nets"):
         attach_random_designators(G())
@@ -175,7 +155,7 @@ def build(app: Module) -> None:
 
     with LoggingStage("update-pcb", "Updating PCB"):
         original_pcb = deepcopy(pcb.pcb_file)
-        pcb.transformer.apply_design(config.build.paths.fp_lib_table)
+        pcb.transformer.apply_design()
         pcb.transformer.check_unattached_fps()
 
         if transform_trait := app.try_get_trait(F.has_layout_transform):
@@ -337,10 +317,12 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
         export_step(
             tmp_layout,
             step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+            project_dir=config.build.paths.layout.parent,
         )
         export_glb(
             tmp_layout,
             glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+            project_dir=config.build.paths.layout.parent,
         )
         export_dxf(
             tmp_layout,
@@ -411,103 +393,3 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
     export_i2c_tree(
         app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
     )
-
-
-def consolidate_footprints(app: Module) -> None:
-    """
-    Consolidate all the project's footprints into a single directory.
-
-    TODO: @v0.4 remove this, it's a fallback for v0.2 designs
-    If there's an entry named "lib" pointing at "build/footprints/footprints.pretty"
-    then copy all footprints we can find there
-    """
-    fp_ids_to_check = []
-    for fp_t in app.get_children(False, types=(F.has_footprint)):
-        fp = fp_t.get_footprint()
-        if has_identifier_t := fp.try_get_trait(F.KicadFootprint.has_kicad_identifier):
-            fp_ids_to_check.append(has_identifier_t.kicad_identifier)
-
-    try:
-        fptable = C_kicad_fp_lib_table_file.loads(config.build.paths.fp_lib_table)
-    except FileNotFoundError:
-        fptable = C_kicad_fp_lib_table_file.skeleton()
-
-    # TODO: @windows might need to check backslashes
-    lib_in_fptable = any(
-        lib.name == "lib" and lib.uri.endswith("build/footprints/footprints.pretty")
-        for lib in fptable.fp_lib_table.libs
-    )
-    lib_prefix_on_ids = any(fp_id.startswith("lib:") for fp_id in fp_ids_to_check)
-    if not lib_in_fptable and not lib_prefix_on_ids:
-        # no "lib" entry pointing to the footprints dir, this project isn't broken
-        return
-    elif lib_prefix_on_ids and not lib_in_fptable:
-        # we need to add a lib entry pointing to the footprints dir
-        ensure_footprint_lib(
-            "lib",
-            config.project.paths.build / "footprints" / "footprints.pretty",
-            fptable,
-        )
-    elif lib_in_fptable and not lib_prefix_on_ids:
-        # We could probably just remove the lib entry
-        # but let's be conservative for now
-        logger.info(
-            "It seems like this project is using a legacy footprint consolidation "
-            "unnecessarily. You can likely remove the 'lib' entry from the "
-            "'fp-lib-table' file."
-        )
-
-    fp_target = config.project.paths.build / "footprints" / "footprints.pretty"
-    fp_target_step = config.project.paths.build / "footprints" / "footprints.3dshapes"
-    fp_target.mkdir(exist_ok=True, parents=True)
-
-    if not config.project.paths.root:
-        with downgrade(UserResourceException):
-            raise UserResourceException(
-                "No project root directory found. Cannot consolidate footprints."
-            )
-        return
-
-    for fp in config.project.paths.root.glob("**/*.kicad_mod"):
-        try:
-            shutil.copy(fp, fp_target)
-        except shutil.SameFileError:
-            logger.debug("Footprint '%s' already exists in the target directory", fp)
-
-    # Post-process all the footprints in the target directory
-    for fp in fp_target.glob("**/*.kicad_mod"):
-        with open(fp, "r+", encoding="utf-8") as file:
-            content = file.read()
-            content = content.replace("{build_dir}", str(fp_target_step))
-            file.seek(0)
-            file.write(content)
-            file.truncate()
-
-    # TODO: @v0.4 increase the level of this to WARNING
-    # when there's an alternative
-    with downgrade(DeprecatedException, to_level=logging.DEBUG):
-        raise DeprecatedException(
-            "This project uses a deprecated footprint consolidation mechanism."
-        )
-
-    # Finally, check that we have all the footprints we know we will need
-    try:
-        for err_collector, fp_id in iter_through_errors(fp_ids_to_check):
-            with err_collector():
-                get_footprint(fp_id, config.build.paths.fp_lib_table)
-    except* (FileNotFoundError, LibNotInTable) as ex:
-
-        def _make_user_resource_exception(e: Exception) -> UserResourceException:
-            if isinstance(e, FileNotFoundError):
-                return UserResourceException(
-                    f"Footprint library {e.filename} doesn't exist"
-                )
-            elif isinstance(e, LibNotInTable):
-                return UserResourceException(
-                    f"Footprint library {e.lib_id} not found in {e.lib_table_path}"
-                )
-            assert False, "How'd we get here?"
-
-        raise ex.derive(
-            [_make_user_resource_exception(e) for e in iter_leaf_exceptions(ex)]
-        ) from ex
