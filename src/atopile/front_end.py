@@ -4,6 +4,7 @@ Build faebryk core objects from ato DSL.
 
 import inspect
 import itertools
+import json
 import logging
 import operator
 import os
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import (
     Any,
     Iterable,
+    Literal,
     Sequence,
     Type,
     cast,
@@ -43,6 +45,7 @@ from atopile.datatypes import (
     is_int,
 )
 from atopile.parse import parser
+from atopile.parse_utils import get_src_info_from_ctx
 from atopile.parser.AtoParser import AtoParser as ap
 from atopile.parser.AtoParserVisitor import AtoParserVisitor
 from faebryk.core.node import FieldExistsError, NodeException
@@ -93,10 +96,159 @@ logger = logging.getLogger(__name__)
 Numeric = Parameter | Arithmetic | Quantity_Set
 
 
+@dataclass
+class Position:
+    file: str
+    line: int
+    col: int
+
+
+@dataclass
+class Span:
+    start: Position
+    end: Position
+
+    @classmethod
+    def from_ctx(cls, ctx: ParserRuleContext) -> "Span":
+        file, start_line, start_col, end_line, end_col = get_src_info_from_ctx(ctx)
+        return cls(
+            Position(str(file), start_line, start_col),
+            Position(str(file), end_line, end_col),
+        )
+
+    @classmethod
+    def from_ctxs(cls, ctxs: Iterable[ParserRuleContext]) -> "Span":
+        start_ctx = next(filter(lambda x: x is not None, ctxs))
+        end_ctx = last(filter(lambda x: x is not None, ctxs))
+        file, start_line, start_col, _, _ = get_src_info_from_ctx(start_ctx)
+        _, _, _, end_line, end_col = get_src_info_from_ctx(end_ctx)
+        return cls(
+            Position(str(file), start_line, start_col),
+            Position(str(file), end_line, end_col),
+        )
+
+    def contains(self, pos: Position) -> bool:
+        return (
+            (self.start.file == pos.file)
+            and self.start.line <= pos.line
+            and self.end.line >= pos.line
+            and self.start.col <= pos.col
+            and self.end.col >= pos.col
+        )
+
+
 class from_dsl(Trait.decless()):
-    def __init__(self, src_ctx: ParserRuleContext) -> None:
+    def __init__(
+        self,
+        src_ctx: ParserRuleContext,
+        definition_ctx: ap.BlockdefContext | type[L.Node] | None = None,
+    ) -> None:
         super().__init__()
         self.src_ctx = src_ctx
+        self.definition_ctx = definition_ctx
+        self.references: list[Span] = []
+
+    def add_reference(self, ctx: ParserRuleContext) -> None:
+        self.references.append(Span.from_ctx(ctx))
+
+    def add_composite_reference(self, *ctxs: ParserRuleContext) -> None:
+        self.references.append(Span.from_ctxs(ctxs))
+
+    def set_definition(self, ctx: ap.BlockdefContext | type[L.Node]) -> None:
+        self.definition_ctx = ctx
+
+    def query_references(self, file_path: str, line: int, col: int) -> Span | None:
+        # TODO: faster
+        for ref in self.references:
+            if ref.contains(Position(file_path, line, col)):
+                return ref
+        return None
+
+    def query_definition(
+        self, file_path: str, line: int, col: int
+    ) -> tuple[Span, Span, Span] | None:
+        if self.definition_ctx is None:
+            return None
+
+        origin_span = Span.from_ctx(self.src_ctx)
+        if origin_span.contains(Position(file_path, line, col)):
+            if isinstance(self.definition_ctx, ap.BlockdefContext):
+                target_span = Span.from_ctx(self.definition_ctx)
+                target_selection_span = Span.from_ctx(self.definition_ctx.name())
+            else:
+                target_path = inspect.getfile(self.definition_ctx)
+                target_lines = inspect.getsourcelines(self.definition_ctx)
+
+                target_start_line = target_lines[1]
+                target_end_line = target_start_line + len(target_lines[0]) - 1
+
+                target_span = Span(
+                    Position(target_path, target_start_line, 0),
+                    Position(target_path, target_end_line, 0),
+                )
+                target_selection_span = target_span
+
+            return origin_span, target_span, target_selection_span
+
+        return None
+
+    @property
+    def hover_text(self) -> str:
+        out = f"(node) {self.obj.get_full_name(types=True)}"
+
+        if (
+            self.definition_ctx is not None
+            and not isinstance(self.definition_ctx, ap.BlockdefContext)
+            and (doc := inspect.getdoc(self.definition_ctx)) is not None
+        ):
+            out += f"\n\n{doc}"
+
+        return out
+
+    def _describe(self) -> str:
+        def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
+            if isinstance(ctx, ParserRuleContext):
+                file, start_line, start_col, end_line, end_col = get_src_info_from_ctx(
+                    ctx
+                )
+                return f"{file}:{start_line}:{start_col} - {end_line}:{end_col}"
+            elif ctx is not None:
+                return f"{inspect.getfile(ctx)}:{inspect.getsourcelines(ctx)[1]}:0"
+
+        return json.dumps(
+            {
+                "hover_text": self.hover_text,
+                "source": _ctx_or_type_to_str(self.src_ctx),
+                "definition": _ctx_or_type_to_str(self.definition_ctx)
+                if self.definition_ctx is not None
+                else None,
+                "references": [
+                    (
+                        f"{ref.start.file}:{ref.start.line}:{ref.start.col} - "
+                        f"{ref.end.line}:{ref.end.col}"
+                    )
+                    for ref in self.references
+                ],
+            },
+            indent=2,
+        )
+
+
+class type_from_dsl(from_dsl):
+    def __init__(
+        self,
+        src_ctx: ParserRuleContext,
+        name: str,
+        category: Literal["module", "module interface", "trait", "unknown"],
+        definition_ctx: ap.BlockdefContext | type[L.Node] | None = None,
+    ) -> None:
+        super().__init__(src_ctx, definition_ctx)
+        self.name = name
+        self.category = category
+
+    @property
+    def hover_text(self) -> str:
+        return f"({self.category}) {self.name}"
 
 
 @dataclass
@@ -314,6 +466,12 @@ class Context:
     # Scope information
     scope_ctx: ap.BlockdefContext | ap.File_inputContext
     refs: dict[TypeRef, Type[L.Node] | ap.BlockdefContext | ImportPlaceholder]
+    ref_ctxs: dict[TypeRef, ParserRuleContext]
+
+
+ImportKeyOptMap = KeyOptMap[
+    tuple[Context.ImportPlaceholder, ap.Import_stmtContext, ap.Type_referenceContext]
+]
 
 
 class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Overriding base class makes sense here
@@ -329,9 +487,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
     Wendy also knows where to find the best building supplies.
     """
 
-    def visitImport_stmt(
-        self, ctx: ap.Import_stmtContext
-    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Import_stmtContext]]:
+    def visitImport_stmt(self, ctx: ap.Import_stmtContext) -> ImportKeyOptMap:
         if from_path := ctx.string():
             lazy_imports = [
                 Context.ImportPlaceholder(
@@ -342,7 +498,9 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 for reference in ctx.type_reference()
             ]
             return KeyOptMap(
-                KeyOptItem.from_kv(li.ref, (li, ctx)) for li in lazy_imports
+                KeyOptItem.from_kv(li.ref, (li, ctx, reference))
+                for reference in ctx.type_reference()
+                for li in lazy_imports
             )
 
         else:
@@ -361,16 +519,17 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                         getattr(F, name), (L.Module, L.ModuleInterface, L.Trait)
                     ):
                         raise errors.UserKeyError.from_ctx(
-                            ctx, f"Unknown standard library module: '{name}'"
+                            reference,
+                            f"Unknown standard library module: '{name}'",
                         )
 
-                    imports.append(KeyOptItem.from_kv(ref, (getattr(F, name), ctx)))
+                    imports.append(
+                        KeyOptItem.from_kv(ref, (getattr(F, name), ctx, reference))
+                    )
 
             return KeyOptMap(imports)
 
-    def visitDep_import_stmt(
-        self, ctx: ap.Dep_import_stmtContext
-    ) -> KeyOptMap[tuple[Context.ImportPlaceholder, ap.Dep_import_stmtContext]]:
+    def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> ImportKeyOptMap:
         lazy_import = Context.ImportPlaceholder(
             ref=self.visitTypeReference(ctx.type_reference()),
             from_path=self.visitString(ctx.string()),
@@ -386,22 +545,17 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 f" {ctx.type_reference().getText()}`"
                 " instead.",
             )
-        return KeyOptMap.from_kv(lazy_import.ref, (lazy_import, ctx))
+        return KeyOptMap.from_kv(
+            lazy_import.ref, (lazy_import, ctx, ctx.type_reference())
+        )
 
-    def visitBlockdef(
-        self, ctx: ap.BlockdefContext
-    ) -> KeyOptMap[tuple[ap.BlockdefContext, ap.BlockdefContext]]:
+    def visitBlockdef(self, ctx: ap.BlockdefContext) -> ImportKeyOptMap:
         ref = TypeRef.from_one(self.visitName(ctx.name()))
-        return KeyOptMap.from_kv(ref, (ctx, ctx))
+        return KeyOptMap.from_kv(ref, (ctx, ctx, ctx.name()))
 
     def visitSimple_stmt(
         self, ctx: ap.Simple_stmtContext | Any
-    ) -> (
-        KeyOptMap[
-            tuple[Context.ImportPlaceholder | ap.BlockdefContext, ParserRuleContext]
-        ]
-        | type[NOTHING]
-    ):
+    ) -> ImportKeyOptMap | type[NOTHING]:
         if ctx.import_stmt() or ctx.dep_import_stmt():
             return super().visitChildren(ctx)
         return NOTHING
@@ -427,8 +581,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
         cls, file_path: Path | None, ctx: ap.BlockdefContext | ap.File_inputContext
     ) -> Context:
         surveyor = cls()
-        context = Context(file_path=file_path, scope_ctx=ctx, refs={})
-        for ref, (item, item_ctx) in surveyor.visit(ctx):
+        context = Context(file_path=file_path, scope_ctx=ctx, refs={}, ref_ctxs={})
+        for ref, (item, item_ctx, item_ref_ctx) in surveyor.visit(ctx):
             assert isinstance(item_ctx, ParserRuleContext)
             if ref in context.refs:
                 # Downgrade the error in case we're shadowing things
@@ -436,7 +590,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 # because they're pretty important and Wendy is well cached
                 with downgrade(errors.UserKeyError):
                     raise errors.UserKeyError.from_ctx(
-                        item_ctx,
+                        item_ref_ctx,
                         f"`{ref}` already declared. Shadowing original."
                         " In the future this may be an error",
                     )
@@ -464,6 +618,8 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                 context.refs[ref] = shim_cls
             else:
                 context.refs[ref] = item
+
+            context.ref_ctxs[ref] = item_ref_ctx
 
         return context
 
@@ -733,6 +889,45 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         context = self.index_text(text, path)
         return self._build(context, ref)
 
+    def build_node(self, text: str, path: Path, ref: TypeRef) -> L.Node:
+        """Build a single node from a string and reference."""
+        context = self.index_text(text, path)
+
+        if ref not in context.refs:
+            raise errors.UserKeyError.from_ctx(
+                context.scope_ctx, f"No declaration of `{ref}` in {context.file_path}"
+            )
+        try:
+            class_ = self._get_referenced_class(context.scope_ctx, ref)
+
+            if isinstance(class_, Context.ImportPlaceholder):
+                raise NotImplementedError("ImportPlaceholder")
+
+            with self._init_node(class_) as node:
+                node.add(F.is_app_root())
+                match node:
+                    case L.Module():
+                        category = "module"
+                    case L.Trait():
+                        category = "trait"
+                    case L.ModuleInterface():
+                        category = "module interface"
+                    case _:
+                        category = "unknown"
+                from_dsl_ = node.add(
+                    type_from_dsl(
+                        context.ref_ctxs[ref],
+                        name=str(ref),
+                        category=category,
+                        definition_ctx=class_,
+                    )
+                )
+                from_dsl_.add_reference(context.ref_ctxs[ref])
+
+            return node
+        except* SkipPriorFailedException:
+            raise errors.UserException("Build failed")
+
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}
         with accumulate(errors.UserException) as accumulator:
@@ -802,11 +997,28 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             with self._traceback_stack.enter(class_.name()):
                 with self._init_node(class_) as node:
                     node.add(F.is_app_root())
+                    from_dsl_ = node.add(
+                        type_from_dsl(
+                            class_,
+                            name=class_.name().getText(),
+                            category="module",
+                        )
+                    )
+                    from_dsl_.add_reference(class_.name())
                 return node
         except* SkipPriorFailedException:
             raise errors.UserException("Build failed")
         finally:
             self._finish()
+
+    def reset(self):
+        self._scopes.clear()
+        self._python_classes.clear()
+        self._node_stack.clear()
+        self._traceback_stack.clear()
+        self._param_assignments.clear()
+        self._failed_nodes.clear()
+        self._in_for_loop = False
 
     def _is_reset(self) -> bool:
         """
@@ -1404,6 +1616,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         self,
         ctx: ap.Assign_stmtContext,
         assignable_ctx: ap.AssignableContext,
+        assigned_ctx: ap.Field_referenceContext,
         assigned_ref: FieldRef,
     ):
         if len(assigned_ref) > 1:
@@ -1421,7 +1634,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 traceback=self.get_traceback(),
             )
         new_stmt_ctx = assignable_ctx.new_stmt()
-        ref = self.visitTypeReference(new_stmt_ctx.type_reference())
+        type_ref_ctx = new_stmt_ctx.type_reference()
+        ref = self.visitTypeReference(type_ref_ctx)
 
         if new_stmt_ctx.template() is not None:
             self._ensure_feature_enabled(
@@ -1430,7 +1644,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         kwargs = self.visitTemplate(new_stmt_ctx.template())
 
-        def _add_node(obj: L.Node, node: L.Node, container_name: str | None = None):
+        def _add_node(
+            obj: L.Node,
+            node: L.Node,
+            container_name: str | None = None,
+            node_type: type[L.Node] | ap.BlockdefContext | None = None,
+        ):
             try:
                 obj.add(
                     node,
@@ -1443,7 +1662,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Field `{assigned_name}` already exists",
                     traceback=self.get_traceback(),
                 ) from e
-            node.add(from_dsl(ctx))
+            from_dsl_ = node.add(from_dsl(type_ref_ctx))
+            from_dsl_.add_reference(assigned_ctx)
+
+            if node_type is not None:
+                from_dsl_.set_definition(node_type)
 
         try:
             with self._traceback_stack.enter(new_stmt_ctx):
@@ -1473,16 +1696,22 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
                     setattr(self._current_node, assigned_name.name, list())
                     for _ in range(new_count):
-                        with self._init_node(
-                            self._get_referenced_class(ctx, ref), kwargs=kwargs
-                        ) as new_node:
-                            _add_node(self._current_node, new_node, assigned_name.name)
+                        node_type = self._get_referenced_class(ctx, ref)
+                        with self._init_node(node_type, kwargs=kwargs) as new_node:
+                            _add_node(
+                                self._current_node,
+                                node=new_node,
+                                container_name=assigned_name.name,
+                                node_type=node_type,
+                            )
                 else:
-                    with self._init_node(
-                        self._get_referenced_class(new_stmt_ctx.type_reference(), ref),
-                        kwargs=kwargs,
-                    ) as new_node:
-                        _add_node(self._current_node, new_node)
+                    node_type = self._get_referenced_class(
+                        new_stmt_ctx.type_reference(), ref
+                    )
+                    with self._init_node(node_type, kwargs=kwargs) as new_node:
+                        _add_node(
+                            self._current_node, node=new_node, node_type=node_type
+                        )
         except Exception:
             # Not a narrower exception because it's often an ExceptionGroup
             self._record_failed_node(self._current_node, assigned_name.name)
@@ -1551,7 +1780,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # TODO: @v0.4 remove this deprecated import form
             with (
                 downgrade(DeprecatedException, errors.UserNotImplementedError),
-                _attach_ctx_to_ex(ctx, self.get_traceback()),
+                _attach_ctx_to_ex(assignable_ctx, self.get_traceback()),
             ):
                 prop.fset(target, value)
         else:
@@ -1567,7 +1796,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
 
     def visitAssign_stmt(self, ctx: ap.Assign_stmtContext):
-        """Assignment values and create new instance of things."""
+        """Assign values and create new instances of things."""
         assignable_ctx = ctx.assignable()
         dec = ctx.field_reference_or_declaration()
         assigned_ref = self.visitFieldReference(
@@ -1579,6 +1808,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             self._assign_new_node(
                 ctx=ctx,
                 assignable_ctx=assignable_ctx,
+                assigned_ctx=dec,
                 assigned_ref=assigned_ref,
             )
         elif (
@@ -1822,7 +2052,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             return mif
         elif field_ref := ctx.field_reference():
             ref = self.visitFieldReference(field_ref)
-            node = self._get_referenced_node(ref, ctx)
+            node = self._get_referenced_node(ref, field_ref)
             if not isinstance(node, L.ModuleInterface) and not (
                 isinstance(node, L.Module) and node.has_trait(F.can_bridge)
             ):
@@ -1880,6 +2110,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         to_ref = self.visitTypeReference(ctx.type_reference())
         from_node = self._get_referenced_node(from_ref, ctx)
 
+        from_dsl_orig = from_node.try_get_trait(from_dsl)
+
         # Only Modules can be specialized (since they're the only
         # ones with specialization gifs).
         # TODO: consider duck-typing this
@@ -1893,6 +2125,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # TODO: consider extending this w/ the ability to specialize to an instance
         class_ = self._get_referenced_class(ctx, to_ref)
         with self._traceback_stack.enter(ctx):
+            # TOOD: update definition
             with self._init_node(class_) as specialized_node:
                 pass
 
@@ -1949,6 +2182,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             # TODO: skip further errors about this node w/ self._record_failed_node()
             raise
 
+        from_dsl_ = specialized_node.add(from_dsl(src_ctx=ctx.type_reference()))
+        if from_dsl_orig is not None:
+            from_dsl_.references.extend(from_dsl_orig.references)
+
+        from_dsl_.set_definition(class_)
+        from_dsl_.add_reference(ctx.field_reference())
+
         return NOTHING
 
     def visitBlockdef(self, ctx: ap.BlockdefContext):
@@ -1981,7 +2221,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
     def _get_trait_constructor(
         self, ctx: ap.Trait_stmtContext, ref: TypeRef, constructor_name: str | None
-    ) -> tuple[Callable, tuple[Type | None]]:
+    ) -> tuple[type[L.Trait], Callable, tuple[Type | None]]:
         try:
             trait_cls = self._get_referenced_class(ctx, ref)
         except errors.UserKeyError as ex:
@@ -2035,7 +2275,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             constructor = attr.__func__
             args = (trait_cls,)
 
-        return constructor, args
+        return trait_cls, constructor, args
 
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
         self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS)
@@ -2046,8 +2286,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if ctx.constructor() is not None
             else None
         )
-        trait_name = f"{ref}{f':{constructor_name}' if constructor_name else ''}"
-        constructor, args = self._get_trait_constructor(ctx, ref, constructor_name)
+        trait_name = f"{ref}{f'::{constructor_name}' if constructor_name else ''}"
+        trait_cls, constructor, args = self._get_trait_constructor(
+            ctx, ref, constructor_name
+        )
         kwargs = self.visitTemplate(ctx.template())
 
         try:
@@ -2060,6 +2302,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             ) from e
 
         self._current_node.add(trait)
+
+        from_dsl_ = trait.add(
+            type_from_dsl(
+                src_ctx=ctx.type_reference(),
+                name=str(ref),
+                definition_ctx=trait_cls,
+                category="trait",
+            )
+        )
+        from_dsl_.add_reference(ctx.type_reference())
 
         return NOTHING
 

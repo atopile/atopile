@@ -210,7 +210,7 @@ class GlobalAttributes(L.Module):
                 f"`{k}`" for k in F.has_package.Package.__members__.keys()
             )
             raise UserBadParameterError(
-                f"Invalid package: `{value}`. Valid packages are: {valid_packages}"
+                f"Invalid package: `{value}`. \n\nValid packages are: {valid_packages}"
             )
 
     @property
