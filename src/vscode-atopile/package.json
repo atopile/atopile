@@ -149,7 +149,7 @@
         "axios": "^1.9.0",
         "decompress": "^4.2.1",
         "fs-extra": "^11.2.0",
-        "ovsx": "^0.10.1",
+        "ovsx": "^0.10.2",
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
         "which": "^5.0.0"
