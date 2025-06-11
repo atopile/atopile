@@ -132,6 +132,10 @@
                 "extensions": [
                     ".ato"
                 ],
+                "icon": {
+                    "dark": "./ato_logo_256x256.png",
+                    "light": "./ato_logo_256x256.png"
+                },
                 "configuration": "./language-configuration.json"
             }
         ],
