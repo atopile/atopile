@@ -36,7 +36,7 @@ export function getExtensionManagedUvPath(context: ExtensionContext): string | n
 
 async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     // event based load
-    if (settings?.ato) {
+    if (settings?.ato && settings.ato !== "") {
         if (fs.existsSync(settings.ato)) {
             traceVerbose(`Using ato bin from settings: ${settings.ato}`);
             return {
@@ -100,7 +100,7 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     return null;
 }
 
-export async function getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
+export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Promise<AtoBinLocator | null> {
     // TODO: consider raising exceptions instead of return null pattern
     if (!settings) {
         settings = await getWorkspaceSettings(await getProjectRoot());
@@ -117,19 +117,24 @@ export async function getAtoBin(settings?: ISettings): Promise<AtoBinLocator | n
         const bin = atoBin.command[0];
         const args = [...atoBin.command.slice(1), 'self-check'];
 
+        const _timeout_ms = timeout_ms ?? 15_000;
+        const now = Date.now();
+
         // run with 30s timeout (uv pulling might take long)
-        const result = await execFileAsync(bin, args, {timeout: 30_000})
+        const result = await execFileAsync(bin, args, {timeout: _timeout_ms})
             .then(({stdout, stderr}) => ({ err: null, stderr: stderr, stdout: stdout }))
             .catch((err: any) => {
                 const command = `${bin} ${args.join(' ')}`;
-                let output = "";
-                if (err.stderr !== "" || err.stdout !== "" || err.exitCode !== undefined) {
-                    output = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`
+                const elapsed_ms = Date.now() - now;
+                const timed_out = elapsed_ms > _timeout_ms;
+                let details = "";
+                if (timed_out) {
+                    details = `Error: Timed out after ${elapsed_ms/1000}s`
                 }
-                else {
-                    output = "Error: Timed out"
+                else if (err.stderr !== "" || err.stdout !== "" || err.exitCode !== undefined) {
+                    details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`
                 }
-                traceError(`Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${output}`);
+                traceError(`Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${details}`);
                 return { err: err, stderr: err.stderr, stdout: err.stdout }
         });
 
