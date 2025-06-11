@@ -38,7 +38,7 @@ function _buildStrToBuild(build_str: string): Build {
 
 async function _displayButtons() {
     let builds: Build[] = [];
-    const atoBin = await _getAtoCommand();
+    const atoBin = await getAtoBin();
     // only display buttons if we have a valid ato command
     if (atoBin) {
         builds = getBuilds();
@@ -47,6 +47,7 @@ async function _displayButtons() {
     const build_strs = _buildsToStr(builds);
 
     if (builds.length !== 0) {
+        traceInfo(`Buttons: Showing, found ato command in ${atoBin?.source}`);
         statusbarAtoCreate.show();
         statusbarAtoAdd.show();
         statusbarAtoRemove.show();
@@ -60,6 +61,13 @@ async function _displayButtons() {
             buildTarget: _buildStrToBuild(build_strs[0]).entry,
         });
     } else {
+        if (atoBin) {
+            traceInfo(`Buttons: No builds found, hiding`);
+        }
+        else {
+            traceInfo("Buttons: No ato command found, hiding");
+        }
+
         statusbarAtoCreate.hide();
         statusbarAtoAdd.hide();
         statusbarAtoRemove.hide();
@@ -190,17 +198,39 @@ export function deactivate() {
     statusbarAtoRemove.dispose();
 }
 
-async function _getAtoCommand() {
+async function _runInTerminal(name: string, cwd: string, subcommand: string[], hideFromUser: boolean) {
     const atoBin = await getAtoBin();
     if (atoBin === null) {
-        return null;
+        traceError("Buttons: Can't run ato in terminal: ato not found.");
+        return;
     }
-    let out = atoBin.map((bin) => `"${bin}"`).join(' ');
+
+    let terminal = vscode.window.createTerminal({
+        name: `ato: ${name}`,
+        cwd: cwd,
+        hideFromUser: hideFromUser,
+    });
+    const in_powershell = os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
+
+    let atoAlias = atoBin.command.map((bin) => `"${bin}"`).join(' ');
+
     // if running in powershell, need to add & to the command
-    if (os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell')) {
-        out = '& ' + out;
+    if (in_powershell) {
+        atoAlias = '& ' + atoAlias;
     }
-    return out;
+
+    traceInfo(`Found ato for alias in ${atoBin.source}: ${atoAlias}`);
+
+    let alias = `alias ato=${atoAlias}`;
+    if (in_powershell) {
+        alias = `Set-Alias -Name ato -Value "${atoAlias}"`;
+    }
+
+
+    terminal.sendText(alias);
+    terminal.sendText(`ato ${subcommand.join(' ')}`);
+    terminal.show();
+    return terminal;
 }
 // Buttons handlers --------------------------------------------------------------------
 
@@ -209,88 +239,68 @@ async function atoBuild() {
     // save all dirty editors
     // vscode.workspace.saveAll();
 
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
-        return;
-    }
-
     // parse what build target to use
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
 
-    // create a terminal to work with
-    let buildTerminal = vscode.window.createTerminal({
-        name: `ato build ${build.name}`,
-        cwd: build.root || '${workspaceFolder}',
-        hideFromUser: false,
-    });
-
-    buildTerminal.sendText(atoBin + ' build --build ' + build.name);
-    buildTerminal.show();
+    await _runInTerminal(
+        `build ${build.name}`,
+        build.root || '${workspaceFolder}',
+        ['build', '--build', build.name],
+        false
+    );
 }
 
 async function atoCreate() {
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
+    let result = await window.showInputBox({
+        placeHolder: 'Part number',
+    });
+    result = result?.trim();
+    if (!result) {
         return;
     }
 
-    let createTerminal = vscode.window.createTerminal({
-        name: 'ato create',
-        cwd: '${workspaceFolder}',
-        hideFromUser: false,
-    });
-
-    createTerminal.sendText(atoBin + ' create');
-    createTerminal.show();
+    await _runInTerminal(
+        'create part',
+        '${workspaceFolder}',
+        ['create', 'part', '--search', result],
+        false
+    );
 }
 
 async function atoAddFlow() {
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
-        return;
-    }
-
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
-    // delete whitespace
     result = result?.trim();
 
-    // if we got a part, try to add it
-    if (result) {
-        let addTerminal = vscode.window.createTerminal({
-            name: 'ato add',
-            cwd: '${workspaceFolder}',
-            hideFromUser: false,
-        });
-
-        addTerminal.sendText(atoBin + ' add ' + result);
-        addTerminal.show();
+    if (!result) {
+        return;
     }
+
+    await _runInTerminal(
+        'add',
+        '${workspaceFolder}',
+        ['add', result],
+        false
+    );
 }
 
 async function atoRemoveFlow() {
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
-        return;
-    }
-
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
-    // delete whitespace
     result = result?.trim();
 
-    // if we got a part, try to remove it
-    if (result) {
-        let removeTerminal = vscode.window.createTerminal({
-            name: 'ato remove',
-            cwd: '${workspaceFolder}',
-            hideFromUser: false,
-        });
-        removeTerminal.sendText(atoBin + ' remove ' + result);
-        removeTerminal.show();
+    if (!result) {
+        return;
     }
+
+    await _runInTerminal(
+        'remove',
+        '${workspaceFolder}',
+        ['remove', result],
+        false
+    );
 }
 
 async function selectBuildTargetFlow() {

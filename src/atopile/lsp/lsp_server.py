@@ -375,10 +375,10 @@ def _get_severity(*_codes: list[str]) -> lsp.DiagnosticSeverity:
 @LSP_SERVER.feature(lsp.INITIALIZE)
 def initialize(params: lsp.InitializeParams) -> None:
     """LSP handler for initialize request."""
-    log_to_output(f"CWD Server: {os.getcwd()}")
+    log_to_output(f"CWD: {os.getcwd()}")
 
     paths = "\r\n   ".join(sys.path)
-    log_to_output(f"sys.path used to run Server:\r\n   {paths}")
+    log_to_output(f"sys.path used to run:\r\n   {paths}")
 
     if params.initialization_options is not None:
         GLOBAL_SETTINGS.update(
@@ -388,18 +388,16 @@ def initialize(params: lsp.InitializeParams) -> None:
         settings = params.initialization_options["settings"]
         _update_workspace_settings(settings)
         log_to_output(
-            f"Settings used to run Server:\r\n"
-            f"{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"
+            f"Settings used to run:{json.dumps(settings, indent=4, ensure_ascii=False)}"
         )
 
     log_to_output(
-        f"Global settings:\r\n"
-        f"{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+        f"Global settings:{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}"
     )
 
     log_to_output(
-        f"Workspace settings:\r\n"
-        f"{json.dumps(WORKSPACE_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+        f"Workspace settings:"
+        f"{json.dumps(WORKSPACE_SETTINGS, indent=4, ensure_ascii=False)}"
     )
 
     workspace_dir = Path(WORKSPACE_SETTINGS.get("workspaceFS", os.getcwd()))
@@ -712,7 +710,7 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
 def log_to_output(
     message: str, msg_type: lsp.MessageType = lsp.MessageType.Log
 ) -> None:
-    LSP_SERVER.show_message_log(message, msg_type)
+    LSP_SERVER.show_message_log("LSP: " + message, msg_type)
 
 
 def log_error(message: str) -> None:
