@@ -8,7 +8,7 @@ from typing import Callable, Optional
 
 import faebryk.library._F as F
 from atopile import layout
-from atopile.cli.logging import LoggingStage
+from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
 from atopile.errors import UserException, UserPickError
 from faebryk.core.cpp import set_max_paths

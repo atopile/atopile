@@ -9,7 +9,7 @@ from faebryk.libs.logging import FLOG_FMT
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
     # avoid exceptions raised during import
-    from atopile.cli.logging import logger
+    from atopile.cli.logging_ import logger
     from atopile.errors import _BaseBaseUserException
 
     # delayed import to improve startup time

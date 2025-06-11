@@ -16,13 +16,13 @@ from atopile.cli import (
     build,
     configure,
     create,
-    inspect,
+    inspect_,
     install,
     package,
     view,
     lsp,
 )
-from atopile.cli.logging import handler, logger
+from atopile.cli.logging_ import handler, logger
 from atopile.config import config
 from atopile.errors import UserException, UserNoProjectException
 from atopile.version import check_for_update
@@ -142,7 +142,7 @@ app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
 app.command()(configure.configure)
-app.command()(inspect.inspect)
+app.command()(inspect_.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
 app.add_typer(install.dependencies_app, name="dependencies", help="Manage dependencies")
