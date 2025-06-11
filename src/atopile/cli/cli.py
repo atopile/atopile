@@ -1,9 +1,20 @@
+import sys
+
+# fast-path for self-check
+# makes extension a lot faster
+if __name__ in ("__main__", "atopile.cli.cli"):
+    if len(sys.argv) == 2 and sys.argv[1] == "self-check":
+        from importlib.metadata import version as get_package_version
+
+        print(get_package_version("atopile"))
+        sys.exit(0)
+
+
 # excepthook must be installed before typer is imported
 import atopile.cli.excepthook  # noqa: F401, I001
 
 import json
 import logging
-import sys
 from enum import Enum
 from importlib.metadata import version as get_package_version
 from pathlib import Path

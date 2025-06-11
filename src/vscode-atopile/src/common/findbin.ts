@@ -108,15 +108,15 @@ export async function getAtoBin(settings?: ISettings): Promise<AtoBinLocator | n
     try {
         const execFileAsync = promisify(execFile);
 
-        const command = atoBin.command[0];
-        const args = [...atoBin.command.slice(1), '--version'];
+        const bin = atoBin.command[0];
+        const args = [...atoBin.command.slice(1), 'self-check'];
 
-        const result = await execFileAsync(command, args)
+        const result = await execFileAsync(bin, args)
             .then(() => ({ exitCode: 0 }))
             .catch((err: any) => ({ exitCode: err.code || 1 }));
 
         if (result.exitCode !== 0) {
-            traceError('Failed to run ato');
+            traceError(`findbin: Failed to run ato from ${atoBin.source} with command: ${bin} ${args.join(' ')}`);
             return null;
         }
     } catch (error) {
