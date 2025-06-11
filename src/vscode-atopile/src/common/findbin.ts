@@ -83,7 +83,10 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     if (g_uv_path_local) {
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
-            const from = settings?.from ?? UV_ATO_VERSION;
+            let from = UV_ATO_VERSION;
+            if (settings?.from && settings.from !== "") {
+                from = settings.from;
+            }
             traceVerbose(`Using local uv to run ato: ${uvBinLocal}`);
             traceVerbose(`Using from: ${from}`);
             return {
@@ -98,6 +101,7 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
 }
 
 export async function getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
+    // TODO: consider raising exceptions instead of return null pattern
     if (!settings) {
         settings = await getWorkspaceSettings(await getProjectRoot());
     }
@@ -113,12 +117,23 @@ export async function getAtoBin(settings?: ISettings): Promise<AtoBinLocator | n
         const bin = atoBin.command[0];
         const args = [...atoBin.command.slice(1), 'self-check'];
 
-        const result = await execFileAsync(bin, args)
-            .then(() => ({ exitCode: 0 }))
-            .catch((err: any) => ({ exitCode: err.code || 1 }));
+        // run with 30s timeout (uv pulling might take long)
+        const result = await execFileAsync(bin, args, {timeout: 30_000})
+            .then(({stdout, stderr}) => ({ err: null, stderr: stderr, stdout: stdout }))
+            .catch((err: any) => {
+                const command = `${bin} ${args.join(' ')}`;
+                let output = "";
+                if (err.stderr !== "" || err.stdout !== "" || err.exitCode !== undefined) {
+                    output = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`
+                }
+                else {
+                    output = "Error: Timed out"
+                }
+                traceError(`Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${output}`);
+                return { err: err, stderr: err.stderr, stdout: err.stdout }
+        });
 
-        if (result.exitCode !== 0) {
-            traceError(`findbin: Failed to run ato from ${atoBin.source} with command: ${bin} ${args.join(' ')}`);
+        if (result.err) {
             return null;
         }
     } catch (error) {
@@ -147,7 +162,7 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
             onDidChangeAtoBinInfoEvent.fire({ init: e.init });
         }),
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
-            if (e.affectsConfiguration(`atopile.ato`)) {
+            if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
             }
         }),
