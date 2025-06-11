@@ -83,9 +83,11 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     if (g_uv_path_local) {
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
+            const from = settings?.from ?? UV_ATO_VERSION;
             traceVerbose(`Using local uv to run ato: ${uvBinLocal}`);
+            traceVerbose(`Using from: ${from}`);
             return {
-                command: [uvBinLocal, 'tool', 'run', '--from', UV_ATO_VERSION, 'ato'],
+                command: [uvBinLocal, 'tool', 'run', '--from', from, 'ato'],
                 source: 'local-uv',
             };
         }

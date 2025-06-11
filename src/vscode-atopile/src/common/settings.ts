@@ -9,6 +9,7 @@ export interface ISettings {
     cwd: string;
     workspace: string;
     ato: string | undefined;
+    from: string | undefined;
 }
 
 export function getExtensionSettings(): Promise<ISettings[]> {
@@ -23,6 +24,7 @@ export async function getWorkspaceSettings(workspace: WorkspaceFolder): Promise<
         cwd: workspace.uri.fsPath,
         workspace: workspace.uri.toString(),
         ato: ato_config ? resolvePath(ato_config, workspace) : undefined,
+        from: config.get<string>(`from`),
     };
     return workspaceSetting;
 }

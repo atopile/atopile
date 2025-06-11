@@ -71,6 +71,11 @@
                     "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slow down server response time.",
                     "scope": "resource",
                     "type": "string"
+                },
+                "atopile.from": {
+                    "description": "When set to a uv source string, extension will use that. ATTENTION: Ignored if ato path is set. Example: 'atopile@0.9.0' or 'git+https://github.com/atopile/atopile.git@main'",
+                    "scope": "resource",
+                    "type": "string"
                 }
             }
         },

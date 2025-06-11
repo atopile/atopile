@@ -212,7 +212,7 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
     });
     const in_powershell = os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
 
-    let atoAlias = atoBin.command.map((bin) => `"${bin}"`).join(' ');
+    let atoAlias = atoBin.command.join(' ');
 
     // if running in powershell, need to add & to the command
     if (in_powershell) {
@@ -221,7 +221,7 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
 
     traceInfo(`Found ato for alias in ${atoBin.source}: ${atoAlias}`);
 
-    let alias = `alias ato=${atoAlias}`;
+    let alias = `alias ato="${atoAlias}"`;
     if (in_powershell) {
         alias = `Set-Alias -Name ato -Value "${atoAlias}"`;
     }
