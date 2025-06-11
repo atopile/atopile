@@ -36,7 +36,7 @@ function _setupLogging(context: vscode.ExtensionContext) {
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = _setupLogging(context);
 
-    traceInfo(`Activating atopile extension TEST`);
+    traceInfo(`Activating atopile extension`);
 
     // Setup Language Server
     const _reStartServer = async () => {
