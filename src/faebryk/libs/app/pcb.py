@@ -23,7 +23,6 @@ from faebryk.libs.util import (
     cast_assert,
     duplicates,
     groupby,
-    indented_container,
     md_list,
     not_none,
     once,
@@ -104,19 +103,14 @@ def open_pcb(pcb_path: os.PathLike):
             if process.info["cmdline"] and str(pcb_path) in process.info["cmdline"]:
                 raise RuntimeError(f"PCBnew is already running with {pcb_path}")
 
+    # remove python venvs so kicad uses system python
     clean_env = remove_venv_from_env()
+    # leave cwd (so direnv doesn't trigger)
     cwd = pcbnew.parent
-
-    # TODO remove
-    logger.info(
-        f"Opening {pcb_path} with {pcbnew} in {cwd}."
-        f" ENV: {indented_container(clean_env)}"
-    )
 
     subprocess.Popen(
         [str(pcbnew), str(pcb_path)],
         env=clean_env,
-        # leave cwd (so direnv doesn't trigger)
         cwd=cwd,
         stderr=subprocess.DEVNULL,
     )
