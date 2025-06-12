@@ -107,7 +107,8 @@ def open_pcb(pcb_path: os.PathLike):
     clean_env = remove_venv_from_env()
     cwd = pcbnew.parent
 
-    logger.debug(
+    # TODO remove
+    logger.info(
         f"Opening {pcb_path} with {pcbnew} in {cwd}."
         f" ENV: {indented_container(clean_env)}"
     )
