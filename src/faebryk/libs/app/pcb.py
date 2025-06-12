@@ -102,6 +102,8 @@ def open_pcb(pcb_path: os.PathLike):
     subprocess.Popen(
         [str(pcbnew), str(pcb_path)],
         env=remove_venv_from_env(),
+        # leave cwd (so direnv doesn't trigger)
+        cwd=Path(pcbnew).parent,
         stderr=subprocess.DEVNULL,
     )
 
