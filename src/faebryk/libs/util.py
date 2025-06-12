@@ -2213,13 +2213,30 @@ def remove_venv_from_env(base_env: dict[str, str] | None = None):
     # if "_OLD_VIRTUAL_PS1" in env:
     #     env["PS1"] = env.pop("_OLD_VIRTUAL_PS1")
 
+    def _is_venv(_path: str) -> bool:
+        path = Path(_path)
+        if not path.is_dir():
+            return False
+        if not any((path / p).exists() for p in ["python", "python.exe"]):
+            return False
+        if not any((path / p).exists() for p in ["activate", "activate.bat"]):
+            return False
+        return True
+
+    path = [p for p in env["PATH"].split(":") if not _is_venv(p)]
+
+    path = env["PATH"].split(":")
+
     # Remove virtual environment specific variables
     venv = env.pop("VIRTUAL_ENV", None)
     if venv is not None:
         # Remove venv from PATH
-        path = env["PATH"].split(":")
         path = [p for p in path if not p.startswith(venv)]
-        env["PATH"] = ":".join(path)
+
+    # Remove other venvs e.g uv
+    path = [p for p in path if not _is_venv(p)]
+
+    env["PATH"] = ":".join(path)
 
     venv_prompt = env.pop("VIRTUAL_ENV_PROMPT", None)
     if venv_prompt is not None:
