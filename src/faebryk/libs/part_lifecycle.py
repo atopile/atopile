@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Sequence
 
 import faebryk.library._F as F
-from atopile.cli.logging import ALERT
+from atopile.cli.logging_ import ALERT
 from atopile.config import BuildTargetConfig, UserConfigurationError
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError

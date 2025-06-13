@@ -1,9 +1,20 @@
+import sys
+
+# fast-path for self-check
+# makes extension a lot faster
+if __name__ in ("__main__", "atopile.cli.cli"):
+    if len(sys.argv) == 2 and sys.argv[1] == "self-check":
+        from importlib.metadata import version as get_package_version
+
+        print(get_package_version("atopile"))
+        sys.exit(0)
+
+
 # excepthook must be installed before typer is imported
 import atopile.cli.excepthook  # noqa: F401, I001
 
 import json
 import logging
-import sys
 from enum import Enum
 from importlib.metadata import version as get_package_version
 from pathlib import Path
@@ -16,13 +27,13 @@ from atopile.cli import (
     build,
     configure,
     create,
-    inspect,
+    inspect_,
     install,
     package,
     view,
     lsp,
 )
-from atopile.cli.logging import handler, logger
+from atopile.cli.logging_ import handler, logger
 from atopile.config import config
 from atopile.errors import UserException, UserNoProjectException
 from atopile.version import check_for_update
@@ -142,7 +153,7 @@ app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
 app.command()(configure.configure)
-app.command()(inspect.inspect)
+app.command()(inspect_.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
 app.add_typer(install.dependencies_app, name="dependencies", help="Manage dependencies")

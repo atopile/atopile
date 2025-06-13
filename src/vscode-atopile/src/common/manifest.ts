@@ -1,11 +1,12 @@
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
+import { traceInfo } from './log/logging';
 
 export interface Build {
     name: string;
     entry: string;
-    root: string | null;
+    root: string;
 }
 let builds: Build[] = [];
 
@@ -25,7 +26,8 @@ export function getBuilds() {
 
 export async function loadBuilds() {
     builds = [];
-    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.ato/**');
+    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
+
     for (const manifest of manifests) {
         try {
             const file = await vscode.workspace.fs.readFile(manifest);

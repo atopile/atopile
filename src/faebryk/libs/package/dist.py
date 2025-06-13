@@ -10,7 +10,6 @@ from pathlib import Path
 
 import pathspec
 import pathvalidate
-from git import Repo
 from ruamel.yaml import YAML
 
 import atopile.config
@@ -31,6 +30,8 @@ def _get_non_excluded_project_files(cfg: atopile.config.ProjectConfig) -> list[P
     Returns:
         A list of Path objects for all non-excluded files
     """
+    from git import Repo
+
     prjroot = cfg.paths.root
     repo = Repo(search_parent_directories=True)
 

@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from shutil import which
 
 import psutil
 
@@ -69,10 +70,13 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
 
 
 @once
-def find_pcbnew() -> os.PathLike:
+def find_pcbnew() -> Path:
     """Figure out what to call for the pcbnew CLI."""
     if sys.platform.startswith("linux"):
-        return Path("pcbnew")
+        path = which("pcbnew")
+        if path is None:
+            raise FileNotFoundError("Could not find pcbnew executable")
+        return Path(path)
 
     if sys.platform.startswith("darwin"):
         base = Path("/Applications/KiCad/")
@@ -99,9 +103,15 @@ def open_pcb(pcb_path: os.PathLike):
             if process.info["cmdline"] and str(pcb_path) in process.info["cmdline"]:
                 raise RuntimeError(f"PCBnew is already running with {pcb_path}")
 
+    # remove python venvs so kicad uses system python
+    clean_env = remove_venv_from_env()
+    # leave cwd (so direnv doesn't trigger)
+    cwd = pcbnew.parent
+
     subprocess.Popen(
         [str(pcbnew), str(pcb_path)],
-        env=remove_venv_from_env(),
+        env=clean_env,
+        cwd=cwd,
         stderr=subprocess.DEVNULL,
     )
 
