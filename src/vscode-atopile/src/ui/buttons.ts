@@ -239,7 +239,7 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
 
     let alias = `alias ato="${atoAlias}"`;
     if (in_powershell) {
-        alias = `Set-Alias -Name ato -Value "${atoAlias}"`;
+        alias = `Function ato { ${atoAlias} @args }`;
     }
 
 

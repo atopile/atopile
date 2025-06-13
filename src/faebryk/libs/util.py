@@ -2333,7 +2333,7 @@ def find_file(base_dir: Path, pattern: str):
 
 
 def call_with_file_capture[T](func: Callable[[Path], T]) -> tuple[T, bytes]:
-    with NamedTemporaryFile("rb") as f:
+    with NamedTemporaryFile("wb") as f:
         path = Path(f.name)
         return func(path), path.read_bytes()
 
