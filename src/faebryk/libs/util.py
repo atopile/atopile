@@ -1971,7 +1971,7 @@ def has_instance_settable_attr(obj: object, attr: str) -> bool:
 def is_editable_install():
     distro = Distribution.from_name("atopile")
 
-    if dist_info := distro.read_text("direct_url.json", encoding="utf-8"):
+    if dist_info := distro.read_text("direct_url.json"):
         return json.loads(dist_info).get("dir_info", {}).get("editable", False)
 
     return False
