@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
 import questionary
+import rich
 import typer
 from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
@@ -637,7 +638,9 @@ def part(
         component_table.add_column("Supplier ID")
         component_table.add_column("Stock")
 
-        for component in sorted(components, key=lambda c: c.stock, reverse=True):
+        components = sorted(components, key=lambda c: c.stock, reverse=True)
+
+        for component in components:
             component_table.add_row(
                 component.manufacturer_name,
                 component.part_number,
@@ -646,14 +649,15 @@ def part(
                 str(component.stock),
             )
 
-        rich_print_robust(component_table)
+        rich.print(component_table)
 
         if len(components) == 1 and accept_single:
             component = first(components)
         else:
             choices = [
                 {
-                    "name": f"{component.manufacturer_name} {component.part_number}",
+                    "name": f"{component.manufacturer_name} {component.part_number}"
+                    f" ({component.lcsc_display})",
                     "value": component,
                 }
                 for component in components

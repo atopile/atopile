@@ -228,7 +228,7 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
     });
     const in_powershell = os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
 
-    let atoAlias = atoBin.command.join(' ');
+    let atoAlias = atoBin.command.map((c) => `'${c}'`).join(' ');
 
     // if running in powershell, need to add & to the command
     if (in_powershell) {
@@ -244,7 +244,7 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
 
 
     terminal.sendText(alias);
-    terminal.sendText(`ato ${subcommand.join(' ')}`);
+    terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
     terminal.show();
     return terminal;
 }
