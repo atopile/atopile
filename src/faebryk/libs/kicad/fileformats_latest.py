@@ -2149,8 +2149,10 @@ class C_kicad_model_file:
     def header(self) -> str:
         # Extract header section between HEADER; and ENDSEC; using regex
 
-        # Read till DATA; token
-        non_data = first(lazy_split(self._raw, b"DATA;")).decode("utf-8")
+        # Read till DATA; token, replace any invalid UTF-8 characters that may occur
+        non_data = first(lazy_split(self._raw, b"DATA;")).decode(
+            "utf-8", errors="replace"
+        )
 
         pattern = r"HEADER;(.*?)ENDSEC;"
         match = re.search(pattern, non_data, re.DOTALL)
