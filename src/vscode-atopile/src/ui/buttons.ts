@@ -18,23 +18,37 @@ let statusbarAtoRemovePackage: vscode.StatusBarItem;
 let statusbarAtoCreateProject: vscode.StatusBarItem;
 
 function _buildsToStr(builds: Build[]): string[] {
-    const multiple_ws = new Set(builds.map((build) => build.root)).size > 1;
-    if (multiple_ws) {
-        return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
-    } else {
-        return builds.map((build) => `${build.name} | ${build.entry}`);
-    }
+    return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
+
+    // Makes more readable but annoying to parse
+    //const multiple_ws = new Set(builds.map((build) => build.root)).size > 1;
+    //if (multiple_ws) {
+    //    return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
+    //} else {
+    //    return builds.map((build) => `${build.name} | ${build.entry}`);
+    //}
 }
 
 function _buildStrToBuild(build_str: string): Build {
     const split = build_str.split(' | ');
-    if (split.length === 3) {
-        const [root, name, entry] = split;
-        return { root, name, entry };
-    } else {
-        const [name, entry] = split;
-        return { root: null, name, entry };
+
+    if (split.length !== 3) {
+        throw new Error(`Invalid build string: ${build_str}`);
     }
+
+    const [root, name, entry] = split;
+    return { root, name, entry };
+
+    // See above
+    //if (split.length === 3) {
+    //    const [root, name, entry] = split;
+    //    return { root, name, entry };
+    //} else {
+    //    const [name, entry] = split;
+    //    return { root: null, name, entry };
+    //}
+
+
 }
 
 async function _displayButtons() {
@@ -252,8 +266,7 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
 
 async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
-    const prj_dir = build.root || '${workspaceFolder}';
-    await _runInTerminal(name, prj_dir, subcommand, hideFromUser);
+    await _runInTerminal(name, build.root, subcommand, hideFromUser);
 }
 
 // Buttons handlers --------------------------------------------------------------------

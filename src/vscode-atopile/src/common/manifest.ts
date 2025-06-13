@@ -6,7 +6,7 @@ import { traceInfo } from './log/logging';
 export interface Build {
     name: string;
     entry: string;
-    root: string | null;
+    root: string;
 }
 let builds: Build[] = [];
 
