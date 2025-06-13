@@ -2333,9 +2333,11 @@ def find_file(base_dir: Path, pattern: str):
 
 
 def call_with_file_capture[T](func: Callable[[Path], T]) -> tuple[T, bytes]:
-    with NamedTemporaryFile("wb") as f:
+    with NamedTemporaryFile("wb", delete=False, delete_on_close=False) as f:
         path = Path(f.name)
-        return func(path), path.read_bytes()
+    out = func(path), path.read_bytes()
+    path.unlink()
+    return out
 
 
 def diff(before: str, after: str) -> str:
