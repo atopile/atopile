@@ -87,10 +87,15 @@
                 "command": "atopile.restart"
             },
             {
-                "command": "atopile.create",
-                "title": "Create a project / build target / component",
+                "command": "atopile.add_part",
+                "title": "Add part",
                 "category": "atopile",
                 "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.create_project",
+                "title": "Create project",
+                "category": "atopile"
             },
             {
                 "command": "atopile.build",
@@ -99,14 +104,14 @@
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.add",
-                "title": "Add a dependency",
+                "command": "atopile.add_package",
+                "title": "Add package dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.remove",
-                "title": "Remove a dependency",
+                "command": "atopile.remove_package",
+                "title": "Remove package dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },

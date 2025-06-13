@@ -13,6 +13,7 @@ import rich
 import typer
 from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
+from more_itertools import first
 from rich.table import Table
 
 from atopile import errors, version
@@ -579,6 +580,7 @@ class ComponentType(StrEnum):
 @log_to_posthog("cli:create_component_end")
 def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
+    accept_single: Annotated[bool, typer.Option("--accept-single", "-a")] = False,
 ):
     """Create a new component."""
     from faebryk.libs.picker.api.api import ApiHTTPError
@@ -607,8 +609,11 @@ def part(
             if lcsc_id:
                 components = client.fetch_part_by_lcsc(lcsc_id)
             else:
-                # TODO: remove this once we have a fuzzy search
-                mfr = questionary.text("Enter the manufacturer").unsafe_ask()
+                if ":" in search_term:
+                    mfr, search_term = search_term.split(":", 1)
+                else:
+                    # TODO: remove this once we have a fuzzy search
+                    mfr = questionary.text("Enter the manufacturer").unsafe_ask()
                 components = client.fetch_part_by_mfr(mfr, search_term)
         except ApiHTTPError as e:
             if e.response.status_code == 404:
@@ -625,27 +630,34 @@ def part(
         component_table.add_column("Part Number")
         component_table.add_column("Manufacturer")
         component_table.add_column("Description")
+        component_table.add_column("Supplier ID")
+        component_table.add_column("Stock")
 
-        for component in components:
+        for component in sorted(components, key=lambda c: c.stock, reverse=True):
             component_table.add_row(
                 component.manufacturer_name,
                 component.part_number,
                 component.description,
+                component.lcsc_display,
+                str(component.stock),
             )
 
         rich.print(component_table)
 
-        choices = [
-            {
-                "name": f"{component.manufacturer_name} {component.part_number}",
-                "value": component,
-            }
-            for component in components
-        ] + [{"name": "Search again...", "value": None}]
+        if len(components) == 1 and accept_single:
+            component = first(components)
+        else:
+            choices = [
+                {
+                    "name": f"{component.manufacturer_name} {component.part_number}",
+                    "value": component,
+                }
+                for component in components
+            ] + [{"name": "Search again...", "value": None}]
 
-        component = questionary.select(
-            "Select a component", choices=choices
-        ).unsafe_ask()
+            component = questionary.select(
+                "Select a component", choices=choices
+            ).unsafe_ask()
 
         if component is not None:
             break
