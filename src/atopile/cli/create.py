@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
 
 import caseconverter
 import questionary
-import rich
 import typer
 from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
@@ -27,6 +26,7 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
+from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.util import try_or
 
 if TYPE_CHECKING:
@@ -48,7 +48,7 @@ create_app = typer.Typer(
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
     """Print help text."""
-    rich.print("\n" + textwrap.dedent(text).strip() + "\n")
+    rich_print_robust("\n" + textwrap.dedent(text).strip() + "\n")
 
 
 def _stuck_user_helper() -> Iterator[bool]:
@@ -57,7 +57,7 @@ def _stuck_user_helper() -> Iterator[bool]:
     for i in itertools.count():
         if i >= threshold:
             if questionary.confirm("Are you trying to exit?").unsafe_ask():
-                rich.print("No worries! Try Ctrl+C next time!")
+                rich_print_robust("No worries! Try Ctrl+C next time!")
                 exit(0)
             threshold += 5
         yield True
@@ -90,7 +90,7 @@ def query_helper[T: str | Path | bool](
     validate_default: bool = True,
 ) -> T:
     """Query a user for input."""
-    rich.print(prompt)
+    rich_print_robust(prompt)
 
     # Check the default value
     if default is not None:
@@ -185,15 +185,15 @@ def query_helper[T: str | Path | bool](
 
         if (proposed_value := upgrader(value)) != value:
             if upgrader_msg:
-                rich.print(upgrader_msg.format(proposed_value=proposed_value))
+                rich_print_robust(upgrader_msg.format(proposed_value=proposed_value))
 
-            rich.print(f"Use [cyan]{proposed_value}[/] instead?")
+            rich_print_robust(f"Use [cyan]{proposed_value}[/] instead?")
             if questionary.confirm("").unsafe_ask():
                 value = proposed_value
 
         if not validator_func(value):
             if validation_failure_msg:
-                rich.print(validation_failure_msg.format(value=value))
+                rich_print_robust(validation_failure_msg.format(value=value))
             value = None
             continue
 
@@ -229,34 +229,36 @@ def setup_github(
             try:
                 url = gh_cli.get_repo_url(repo_id)
                 repo.create_remote("origin", url)
-                rich.print(f"Added remote origin: {url}")
+                rich_print_robust(f"Added remote origin: {url}")
                 # Try to push, but don't fail validation if it doesn't work
                 # (e.g. repo not empty, or other reasons)
                 try:
-                    rich.print(
+                    rich_print_robust(
                         f"Attempting to push initial commit to"
                         f" {repo.active_branch.name}..."
                     )
                     repo.git.push("-u", "origin", repo.active_branch.name)
-                    rich.print("[green]Pushed successfully![/]")
+                    rich_print_robust("[green]Pushed successfully![/]")
                 except git.GitCommandError as e:
-                    rich.print(
+                    rich_print_robust(
                         f"[yellow]Could not push to remote:[/yellow] {e.stderr.strip()}"
                     )
-                    rich.print("You may need to push manually.")
+                    rich_print_robust("You may need to push manually.")
                 return True
             except GithubRepoNotFound:
-                rich.print(f"[red]Repository {repo_id} not found on GitHub.[/]")
+                rich_print_robust(f"[red]Repository {repo_id} not found on GitHub.[/]")
                 return False
             except git.GitCommandError as e:
                 # This might happen if remote 'origin' already exists
-                rich.print(f"[red]Failed to add remote:[/red] {e.stderr.strip()}")
+                rich_print_robust(
+                    f"[red]Failed to add remote:[/red] {e.stderr.strip()}"
+                )
                 return False
             except KeyboardInterrupt:
-                rich.print("[red]Aborted.[/red]")
+                rich_print_robust("[red]Aborted.[/red]")
                 return False
             except Exception as e:
-                rich.print(f"[red]An unexpected error occurred:[/red] {e}")
+                rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
                 return False
 
         query_helper(
@@ -288,27 +290,29 @@ def setup_github(
                     add_remote=True,
                     path=project_path,
                 )
-                rich.print(
+                rich_print_robust(
                     f"[green]Successfully created repository {repo_url} and"
                     " pushed initial commit![/]"
                 )
                 return True
             except GithubRepoAlreadyExists:
-                rich.print(f"[red]Repository {repo_id} already exists on GitHub.[/]")
+                rich_print_robust(
+                    f"[red]Repository {repo_id} already exists on GitHub.[/]"
+                )
                 # We could offer to use it, but for now, let's just fail validation
                 return False
             except git.GitCommandError as e:
                 # This might happen if the push fails for some reason
-                rich.print(
+                rich_print_robust(
                     f"[red]Failed during git operation (e.g. push):[/red]"
                     f" {e.stderr.strip()}"
                 )
                 return False
             except KeyboardInterrupt:
-                rich.print("[red]Aborted.[/red]")
+                rich_print_robust("[red]Aborted.[/red]")
                 return False
             except Exception as e:
-                rich.print(f"[red]An unexpected error occurred:[/red] {e}")
+                rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
                 return False
 
         query_helper(
@@ -386,7 +390,7 @@ def project(
                 repo.git.commit(m="Initial commit")
             except git.GitCommandError as e:
                 if "Author identity unknown" in e.stderr:
-                    rich.print(
+                    rich_print_robust(
                         "[yellow]Warning: Author identity unknown. "
                         "Staged but not committed.[/yellow]"
                     )
@@ -407,11 +411,11 @@ def project(
             try:
                 setup_github(project_path, gh_cli, repo)
             except Exception:
-                rich.print("[red]Creating GitHub repo interrupted.[/red]")
+                rich_print_robust("[red]Creating GitHub repo interrupted.[/red]")
                 return
 
     # Wew! New repo created!
-    rich.print(
+    rich_print_robust(
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
         f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]"
     )
@@ -455,14 +459,14 @@ def build_target(
 
     def _check_build_target_name(value: str) -> bool:
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", value):
-            rich.print(
+            rich_print_robust(
                 "[red]Build-target names must start with a letter and"
                 " contain only letters, numbers, dashes and underscores.[/]"
             )
             return False
 
         if value in config.project.builds:
-            rich.print(f"[red]Build-target `{value}` already exists[/]")
+            rich_print_robust(f"[red]Build-target `{value}` already exists[/]")
             return False
 
         return True
@@ -498,17 +502,17 @@ def build_target(
 
     def _file_validator(f: Path) -> bool:
         if f.is_dir():
-            rich.print(f"{f} is a directory")
+            rich_print_robust(f"{f} is a directory")
             return False
 
         if f.suffix != ".ato":
-            rich.print(f"{f} must end in .ato")
+            rich_print_robust(f"{f} must end in .ato")
             return False
 
         try:
             f.relative_to(src_path)
         except ValueError:
-            rich.print(f"{f} is outside the project's src dir")
+            rich_print_robust(f"{f} is outside the project's src dir")
             return False
 
         return True
@@ -565,7 +569,7 @@ def build_target(
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(module_text, encoding="utf-8")
 
-    rich.print(
+    rich_print_robust(
         ":sparkles: Successfully created a new build configuration "
         f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
     )
@@ -622,7 +626,7 @@ def part(
                 raise
 
         if len(components) == 0:
-            rich.print(f'No components found for "{search_term}"')
+            rich_print_robust(f'No components found for "{search_term}"')
             search_term = None
             continue
 
@@ -642,7 +646,7 @@ def part(
                 str(component.stock),
             )
 
-        rich.print(component_table)
+        rich_print_robust(component_table)
 
         if len(components) == 1 and accept_single:
             component = first(components)
@@ -679,7 +683,7 @@ def part(
     except Exception as e:
         raise errors.UserException(str(e)) from e
 
-    rich.print(f":sparkles: Created {apart.identifier} at {apart.path} !")
+    rich_print_robust(f":sparkles: Created {apart.identifier} at {apart.path} !")
 
 
 @create_app.command(deprecated=True)

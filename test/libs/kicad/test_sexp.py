@@ -3,10 +3,10 @@
 
 import logging
 from dataclasses import dataclass, field
+from typing import Optional
 
 import pytest
 from dataclasses_json import CatchAll
-from git import Optional
 
 import faebryk.library._F as F  # noqa: F401  # This is required to prevent a circular import
 from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
