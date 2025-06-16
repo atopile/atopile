@@ -186,8 +186,12 @@ class Quantity_Interval(Quantity_Set):
         if isinstance(rel_tol, float):
             rel_tol = Number(rel_tol)
         return Quantity_Interval(
-            cast_assert(QuantityLikeR, center - center * rel_tol),
-            cast_assert(QuantityLikeR, center + center * rel_tol),
+            cast_assert(
+                QuantityLikeR, min(center - center * rel_tol, center + center * rel_tol)
+            ),
+            cast_assert(
+                QuantityLikeR, max(center + center * rel_tol, center - center * rel_tol)
+            ),
         )
 
     @staticmethod

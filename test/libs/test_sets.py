@@ -428,3 +428,7 @@ def test_round_digits(digits: int, expected: Quantity_Interval_Disjoint):
 )
 def test_rel_round(value: float | int, digits: int, expected: float | int):
     assert rel_round(value, digits) == expected
+
+def test_negative_interval_from_center():
+    x = Quantity_Interval.from_center_rel(-10, 0.1)
+    assert x == Quantity_Interval(-11, -9)
