@@ -5,7 +5,7 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.core.parameter import Numbers
+from faebryk.core.parameter import R
 from faebryk.libs.library import L
 from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.units import P
@@ -32,8 +32,8 @@ class ResistorVoltageDivider(Module):
     r_top: F.Resistor
 
     # Variables
-    v_in = L.p_field(units=P.V, domain=Numbers())
-    v_out = L.p_field(units=P.V, domain=Numbers())
+    v_in = L.p_field(units=P.V, domain=R.Domains.Numbers.REAL())
+    v_out = L.p_field(units=P.V, domain=R.Domains.Numbers.REAL())
     max_current = L.p_field(units=P.A)
     total_resistance = L.p_field(units=P.Ω)
     ratio = L.p_field(units=P.dimensionless, within=Quantity_Interval(0.0, 1.0))
