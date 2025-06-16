@@ -5,7 +5,9 @@ import logging
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.parameter import Numbers
 from faebryk.libs.library import L
+from faebryk.libs.sets.quantity_sets import Quantity_Interval
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -30,11 +32,11 @@ class ResistorVoltageDivider(Module):
     r_top: F.Resistor
 
     # Variables
-    v_in = L.p_field(units=P.V)
-    v_out = L.p_field(units=P.V)
+    v_in = L.p_field(units=P.V, domain=Numbers())
+    v_out = L.p_field(units=P.V, domain=Numbers())
     max_current = L.p_field(units=P.A)
     total_resistance = L.p_field(units=P.Ω)
-    ratio = L.p_field(units=P.dimensionless)
+    ratio = L.p_field(units=P.dimensionless, within=Quantity_Interval(0.0, 1.0))
 
     @L.rt_field
     def can_bridge(self):
@@ -60,10 +62,10 @@ class ResistorVoltageDivider(Module):
         v_in.alias_is(self.power.voltage)
 
         # Equations
-        r_top.alias_is((v_in / max_current) - r_bottom)
-        r_bottom.alias_is((v_in / max_current) - r_top)
-        r_top.alias_is((v_in - v_out) / max_current)
-        r_bottom.alias_is(v_out / max_current)
+        r_top.alias_is((abs(v_in) / max_current) - r_bottom)
+        r_bottom.alias_is((abs(v_in) / max_current) - r_top)
+        r_top.alias_is(abs(v_in - v_out) / max_current)
+        r_bottom.alias_is(abs(v_out) / max_current)
         r_bottom.alias_is(r_total * ratio)
         r_top.alias_is(r_total * (1 - ratio))
         r_bottom.alias_is(v_out * r_top / (v_in - v_out))
@@ -73,5 +75,5 @@ class ResistorVoltageDivider(Module):
         r_total.alias_is(r_top + r_bottom)
         v_out.alias_is(v_in * r_bottom / r_total)
         v_out.alias_is(v_in * ratio)
-        max_current.alias_is(v_in / r_total)
+        max_current.alias_is(abs(v_in) / r_total)
         ratio.alias_is(r_bottom / r_total)
