@@ -76,7 +76,7 @@ jobs:
       with:
         version: '0.5.5'
 
-    - uses: pypa/cibuildwheel@v2.23
+    - uses: pypa/cibuildwheel@v3.0
       env:
         CIBW_ARCHS_MACOS: x86_64 arm64
         CIBW_ARCHS_LINUX: x86_64 # aarch64
