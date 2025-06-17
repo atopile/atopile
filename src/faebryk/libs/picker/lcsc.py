@@ -372,11 +372,14 @@ class EasyEDAPart:
             download_raw_3d_model=False,
         ).output
 
-        model_name = easyeda_footprint.model_3d.name
-        model_path = lifecycle.easyeda2kicad.get_model_path(
-            data.lcsc.number, model_name
-        )
-        kicad_model_path = str(Gcfg.project.get_relative_to_kicad_project(model_path))
+        if easyeda_footprint.model_3d:
+            model_name = easyeda_footprint.model_3d.name
+            model_path = lifecycle.easyeda2kicad.get_model_path(
+                data.lcsc.number, model_name
+            )
+            kicad_model_path = str(Gcfg.project.get_relative_to_kicad_project(model_path))
+        else:
+            kicad_model_path = None
 
         part = cls(
             lcsc_id=data.lcsc.number,
