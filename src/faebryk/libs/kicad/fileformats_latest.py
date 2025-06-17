@@ -2149,8 +2149,19 @@ class C_kicad_model_file:
     def header(self) -> str:
         # Extract header section between HEADER; and ENDSEC; using regex
 
-        # Read till DATA; token
-        non_data = first(lazy_split(self._raw, b"DATA;")).decode("utf-8")
+        # ISO 10303-21:2016-03, section 5.2:
+        # The set of LATIN_CODEPOINT character is equivalent to the basic alphabet
+        # in the first and second editions of ISO 10303-21. The UTF-8 representation of
+        # code points U+0020 to U+007E is the same as the ISO/IEC 8859-1 characters
+        # G(02/00) to G(07/14) that defined the basic alphabet in earlier editions.
+        # Use of HIGH_CODEPOINT characters within the exchange structure can be avoided
+        # when compatibility with previous editions of ISO 10303-21 is desired.
+
+        # Read till DATA; token ignore any invalid UTF-8 characters that may occur
+        # Currently only used to extract filename, so not critical to drop characters
+        non_data = first(lazy_split(self._raw, b"DATA;")).decode(
+            "utf-8", errors="ignore"
+        )
 
         pattern = r"HEADER;(.*?)ENDSEC;"
         match = re.search(pattern, non_data, re.DOTALL)
