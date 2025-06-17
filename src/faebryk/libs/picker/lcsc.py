@@ -17,7 +17,6 @@ from dataclasses_json import (
 )
 from easyeda2kicad.easyeda.easyeda_api import EasyedaApi
 from easyeda2kicad.easyeda.easyeda_importer import (
-    Easyeda3dModelImporter,
     EasyedaFootprintImporter,
     EasyedaSymbolImporter,
 )
@@ -212,11 +211,15 @@ class EasyEDAFootprint:
         return out
 
     @classmethod
-    def from_api(cls, footprint: ee_footprint, model_path: str):
+    def from_api(cls, footprint: ee_footprint, model_path: str | None):
         exporter = ExporterFootprintKicad(footprint)
         _fix_3d_model_offsets(exporter)
+        if model_path is None:
+            # allows our ignored type annotation to work below
+            assert footprint.model_3d is None
+
         fp_raw = call_with_file_capture(
-            lambda path: exporter.export(str(path), model_path)
+            lambda path: exporter.export(str(path), model_path)  # type: ignore
         )[1]
         fp = kicad_footprint_file(fp_raw.decode("utf-8"))
         # workaround: remove wrl ending easyeda likes to add for no reason
@@ -367,16 +370,18 @@ class EasyEDAPart:
             easyeda_cp_cad_data=data.raw()
         ).get_symbol()
 
-        easyeda_model = Easyeda3dModelImporter(
-            easyeda_cp_cad_data=data.raw(),
-            download_raw_3d_model=False,
-        ).output
+        easyeda_model = easyeda_footprint.model_3d
 
-        model_name = easyeda_footprint.model_3d.name
-        model_path = lifecycle.easyeda2kicad.get_model_path(
-            data.lcsc.number, model_name
-        )
-        kicad_model_path = str(Gcfg.project.get_relative_to_kicad_project(model_path))
+        if easyeda_model is not None:
+            model_name = easyeda_model.name
+            model_path = lifecycle.easyeda2kicad.get_model_path(
+                data.lcsc.number, model_name
+            )
+            kicad_model_path = str(
+                Gcfg.project.get_relative_to_kicad_project(model_path)
+            )
+        else:
+            kicad_model_path = None
 
         part = cls(
             lcsc_id=data.lcsc.number,
@@ -388,7 +393,7 @@ class EasyEDAPart:
         part._pre_model = easyeda_model
         part._pre_datasheet = easyeda_symbol.info.datasheet
 
-        if download_model:
+        if download_model and part._pre_model is not None:
             part.load_model()
 
         return part
