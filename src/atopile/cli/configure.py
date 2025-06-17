@@ -8,12 +8,12 @@ from textwrap import dedent
 from typing import Optional
 
 import questionary
-import rich
 from attrs import asdict, define
 from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
 import atopile.version
+from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.paths import get_config_dir
 
 yaml = YAML()
@@ -72,7 +72,7 @@ def do_configure_if_needed() -> None:
         return
 
     if not CONFIGURED_FOR_PATH.exists():
-        rich.print(
+        rich_print_robust(
             dedent(
                 """
             Welcome! :partying_face:

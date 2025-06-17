@@ -6,10 +6,9 @@ from typing import TYPE_CHECKING, Annotated
 import typer
 from more_itertools import first
 
-from atopile.cli.logging import NOW, LoggingStage
+from atopile.cli.logging_ import NOW, LoggingStage
 from atopile.config import config
 from atopile.telemetry import log_to_posthog
-from faebryk.libs.app.pcb import open_pcb
 
 if TYPE_CHECKING:
     from faebryk.core.module import Module
@@ -102,6 +101,8 @@ def build(
         if len(selected_build_names) == 1:
             build = config.project.builds[first(selected_build_names)]
             try:
+                from faebryk.libs.app.pcb import open_pcb
+
                 open_pcb(build.paths.layout)
             except FileNotFoundError:
                 pass

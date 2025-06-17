@@ -5,7 +5,6 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 
 
 class CBM9002A_56ILG(Module):
@@ -43,14 +42,8 @@ class CBM9002A_56ILG(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://corebai.com/Data/corebai/upload/file/20240201/CBM9002A.pdf"
-    )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Corebai Microelectronics",
-            DescriptiveProperties.partno: "CBM9002A-56ILG",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Corebai Microelectronics", "CBM9002A-56ILG"
     )
 
     @L.rt_field

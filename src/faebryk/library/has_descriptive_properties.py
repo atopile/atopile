@@ -5,6 +5,10 @@ from faebryk.core.module import Module
 
 
 class has_descriptive_properties(Module.TraitT):
+    """
+    Attributes that will be written to PCB footprint
+    """
+
     def get_properties(self) -> dict[str, str]:
         raise NotImplementedError()
 

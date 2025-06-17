@@ -7,7 +7,6 @@ from typing import Literal
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module, ModuleException
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once  # noqa: F401
 
@@ -70,18 +69,9 @@ class WCHJiangsu_Qin_Heng_CH224K(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C970725"})
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C970725")
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
-    )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "WCH(Jiangsu Qin Heng)",
-            DescriptiveProperties.partno: "CH224K",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.lcsc.com/datasheet/lcsc_datasheet_2403131354_WCH-Jiangsu-Qin-Heng-CH224K_C970725.pdf"
     )
 
     @L.rt_field

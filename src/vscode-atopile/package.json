@@ -68,9 +68,15 @@
         "configuration": {
             "properties": {
                 "atopile.ato": {
-                    "description": "When set to a path to atopile binary, extension will use that. NOTE: Using this option may slow down server response time.",
+                    "description": "When set to a path to atopile binary, extension will use that.",
                     "scope": "resource",
                     "type": "string"
+                },
+                "atopile.from": {
+                    "description": "When set to a uv source string, extension will use that. ATTENTION: Ignored if ato path is set. Example: 'atopile@0.9.0' or 'git+https://github.com/atopile/atopile.git@main'",
+                    "scope": "resource",
+                    "type": "string",
+                    "default": "atopile"
                 }
             }
         },
@@ -81,10 +87,15 @@
                 "command": "atopile.restart"
             },
             {
-                "command": "atopile.create",
-                "title": "Create a project / build target / component",
+                "command": "atopile.add_part",
+                "title": "Add part",
                 "category": "atopile",
                 "when": "editorLangId == ato"
+            },
+            {
+                "command": "atopile.create_project",
+                "title": "Create project",
+                "category": "atopile"
             },
             {
                 "command": "atopile.build",
@@ -93,14 +104,14 @@
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.add",
-                "title": "Add a dependency",
+                "command": "atopile.add_package",
+                "title": "Add package dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
             {
-                "command": "atopile.remove",
-                "title": "Remove a dependency",
+                "command": "atopile.remove_package",
+                "title": "Remove package dependency",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
@@ -132,6 +143,10 @@
                 "extensions": [
                     ".ato"
                 ],
+                "icon": {
+                    "dark": "./ato_logo_256x256.png",
+                    "light": "./ato_logo_256x256.png"
+                },
                 "configuration": "./language-configuration.json"
             }
         ],

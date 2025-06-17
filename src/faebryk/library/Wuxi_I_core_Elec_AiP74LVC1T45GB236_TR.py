@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -34,14 +33,8 @@ class Wuxi_I_core_Elec_AiP74LVC1T45GB236_TR(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Wuxi I-core Elec",
-            DescriptiveProperties.partno: "AiP74LVC1T45GB236.TR",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2209151800_Wuxi-I-core-Elec-AiP74LVC1T45GB236-TR_C5162251.pdf"
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Wuxi I-core Elec", "AiP74LVC1T45GB236.TR"
     )
 
     @L.rt_field

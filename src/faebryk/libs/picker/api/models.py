@@ -14,9 +14,8 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
-from faebryk.libs.picker.lcsc import LCSC_Part
+from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import Serializable, SerializableJSONEncoder
 
@@ -211,21 +210,22 @@ class Component:
         lcsc_attach(module, self.lcsc_display)
 
         module.add(
-            F.has_descriptive_properties_defined(
-                {
-                    DescriptiveProperties.partno: self.part_number,
-                    DescriptiveProperties.manufacturer: self.manufacturer_name,
-                    DescriptiveProperties.datasheet: self.datasheet_url,
-                    "JLCPCB stock": str(self.stock),
-                    "JLCPCB price": f"{self.get_price(qty):.4f}",
-                    "JLCPCB description": self.description,
-                    "JLCPCB Basic": str(bool(self.is_basic)),
-                    "JLCPCB Preferred": str(bool(self.is_preferred)),
-                },
+            F.has_part_picked(
+                PickedPartLCSC(
+                    manufacturer=self.manufacturer_name,
+                    partno=self.part_number,
+                    supplier_partno=self.lcsc_display,
+                    info=PickedPartLCSC.Info(
+                        stock=self.stock,
+                        price=self.get_price(qty),
+                        description=self.description,
+                        basic=bool(self.is_basic),
+                        preferred=bool(self.is_preferred),
+                    ),
+                )
             )
         )
-
-        module.add(F.has_part_picked(LCSC_Part(self.lcsc_display)))
+        module.add(F.has_datasheet_defined(self.datasheet_url))
 
         missing_attrs = []
         # only for type picks
@@ -256,8 +256,8 @@ class Component:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 f"Attached component {self.lcsc_display} to module {module}: \n"
-                f"{indent(str(self.attributes), ' '*4)}\n--->\n"
-                f"{indent(module.pretty_params(), ' '*4)}"
+                f"{indent(str(self.attributes), ' ' * 4)}\n--->\n"
+                f"{indent(module.pretty_params(), ' ' * 4)}"
             )
 
     def __rich_repr__(self):

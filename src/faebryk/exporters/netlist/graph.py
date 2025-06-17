@@ -45,6 +45,7 @@ class can_represent_kicad_footprint(F.Footprint.TraitT.decless()):
             "footprint": fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
         }
 
+        # TODO not sure this is needed, also doing similar stuff elsewhere
         for c in [fp, self.component]:
             if c.has_trait(F.has_descriptive_properties):
                 properties.update(

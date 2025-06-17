@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import copy
 import json
 import logging
@@ -11,13 +12,18 @@ import os
 import pathlib
 import sys
 import traceback
+from dataclasses import dataclass, field
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
+from atopile.config import _find_project_dir
+from atopile.datatypes import TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
+from atopile.parser import AtoParser as ap
+from faebryk.core.node import Node
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 
 # **********************************************************
@@ -71,6 +77,8 @@ LSP_SERVER = server.LanguageServer(
     name=DISTRIBUTION_NAME,
     version=get_package_version(DISTRIBUTION_NAME),
     max_workers=MAX_WORKERS,
+    # we don't have incremental parsing yet
+    text_document_sync_kind=lsp.TextDocumentSyncKind.Full,
 )
 
 
@@ -116,9 +124,18 @@ def get_file_contents(uri: str) -> tuple[Path, str]:
     return file_path, source_text
 
 
+def log(msg: Any):
+    print(msg, file=sys.stderr)
+
+
 # **********************************************************
 # Linting features start here
 # **********************************************************
+
+GRAPHS: dict[str, dict[TypeRef, Node]] = {}
+ACTIVE_BUILD_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "ACTIVE_BUILD_TARGET", default=None
+)
 
 
 def _convert_exc_to_diagnostic(
@@ -135,8 +152,9 @@ def _convert_exc_to_diagnostic(
         )
 
         if exc.origin_stop is not None:
-            stop_file_path, stop_line, stop_col = get_src_info_from_token(
-                exc.origin_stop
+            stop_line, stop_col = (
+                exc.origin_stop.line,
+                exc.origin_stop.column + len(exc.origin_stop.text),
             )
         else:
             # just extend to the next line
@@ -168,6 +186,7 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
     Get static diagnostics for a given URI and identifier.
 
     TODO: caching
+    FIXME: combine with _build_document
     """
     file_path, source_text = get_file_contents(uri)
     exc_diagnostics = []
@@ -196,6 +215,60 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
     ]
 
 
+def _build_document(uri: str, text: str) -> None:
+    init_atopile_config(get_file(uri).parent)
+
+    context = front_end.bob.index_text(text, get_file(uri))
+
+    # TOOD: do something smarter here (only distinct trees?)
+    GRAPHS.setdefault(uri, {})
+    for ref, ctx in context.refs.items():
+        match ctx:
+            case ap.AtoParser.BlockdefContext():
+                try:
+                    # try the single-node version first, in case that's all we can build
+                    GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
+                        front_end.bob.build_node(text, Path(uri), ref)
+                    )
+
+                    front_end.bob.reset()
+
+                    GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
+                except* UserException as excs:
+                    msg = f"Error(s) building {uri}:{ref}:\n"
+                    for exc in iter_leaf_exceptions(excs):
+                        msg += f"  {exc.message}\n"
+                    log_error(msg)
+                except* Exception:
+                    import traceback
+
+                    log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
+                finally:
+                    front_end.bob.reset()
+
+            case _:  # Node or ImportPlaceholder
+                try:
+                    GRAPHS[uri][TypeRef.from_one(name="__import__" + str(ref))] = (
+                        front_end.bob.build_node(text, Path(uri), ref)
+                    )
+                except Exception:
+                    import traceback
+
+                    log_error(f"Error building {uri}:{ref}:\n{traceback.format_exc()}")
+                finally:
+                    front_end.bob.reset()
+
+
+@dataclass
+class DidChangeBuildTargetParams:
+    buildTarget: str | None = field(default=None)
+
+
+# TODO: implement something useful
+@LSP_SERVER.feature("atopile/didChangeBuildTarget")
+def on_did_change_build_target(params: DidChangeBuildTargetParams) -> None: ...
+
+
 @LSP_SERVER.feature(
     lsp.TEXT_DOCUMENT_DIAGNOSTIC,
     lsp.DiagnosticOptions(
@@ -214,6 +287,7 @@ def on_document_diagnostic(params: lsp.DocumentDiagnosticParams) -> None:
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_OPEN)
 def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     """Handle document open request."""
+    _build_document(params.text_document.uri, params.text_document.text)
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
@@ -222,6 +296,10 @@ def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """Handle document change request."""
+    _build_document(
+        params.text_document.uri,
+        LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
+    )
     # TODO: debounce
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
@@ -234,6 +312,50 @@ def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
+
+
+def _span_to_lsp_range(span: front_end.Span) -> lsp.Range:
+    return lsp.Range(
+        start=lsp.Position(line=span.start.line - 1, character=span.start.col),
+        end=lsp.Position(line=span.end.line - 1, character=span.end.col),
+    )
+
+
+def _query_params(params: lsp.HoverParams | lsp.DefinitionParams) -> dict[str, Any]:
+    return {
+        "file_path": f"file:{get_file(params.text_document.uri)}",
+        "line": params.position.line + 1,  # 0-indexed -> 1-indexed
+        "col": params.position.character,
+    }
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_HOVER)
+def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
+    """Handle document hover request."""
+    for root in GRAPHS.get(params.text_document.uri, {}).values():
+        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
+            if (span := trait.query_references(**_query_params(params))) is not None:
+                return lsp.Hover(
+                    contents=lsp.MarkupContent(
+                        kind=lsp.MarkupKind.Markdown, value=trait.hover_text
+                    ),
+                    range=_span_to_lsp_range(span),
+                )
+
+
+@LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
+def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | None:
+    """Handle document definition request."""
+    for root in GRAPHS.get(params.text_document.uri, {}).values():
+        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
+            if (spans := trait.query_definition(**_query_params(params))) is not None:
+                origin_span, target_span, target_selection_span = spans
+                return lsp.LocationLink(
+                    target_uri=target_span.start.file,
+                    target_range=_span_to_lsp_range(target_span),
+                    target_selection_range=_span_to_lsp_range(target_selection_span),
+                    origin_selection_range=_span_to_lsp_range(origin_span),
+                )
 
 
 # TODO: if you want to handle setting specific severity for your linter
@@ -253,10 +375,10 @@ def _get_severity(*_codes: list[str]) -> lsp.DiagnosticSeverity:
 @LSP_SERVER.feature(lsp.INITIALIZE)
 def initialize(params: lsp.InitializeParams) -> None:
     """LSP handler for initialize request."""
-    log_to_output(f"CWD Server: {os.getcwd()}")
+    log_to_output(f"CWD: {os.getcwd()}")
 
     paths = "\r\n   ".join(sys.path)
-    log_to_output(f"sys.path used to run Server:\r\n   {paths}")
+    log_to_output(f"sys.path used to run:\r\n   {paths}")
 
     if params.initialization_options is not None:
         GLOBAL_SETTINGS.update(
@@ -266,21 +388,22 @@ def initialize(params: lsp.InitializeParams) -> None:
         settings = params.initialization_options["settings"]
         _update_workspace_settings(settings)
         log_to_output(
-            f"Settings used to run Server:\r\n"
-            f"{json.dumps(settings, indent=4, ensure_ascii=False)}\r\n"
+            f"Settings used to run:{json.dumps(settings, indent=4, ensure_ascii=False)}"
         )
 
     log_to_output(
-        f"Global settings:\r\n"
-        f"{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+        f"Global settings:{json.dumps(GLOBAL_SETTINGS, indent=4, ensure_ascii=False)}"
     )
 
     log_to_output(
-        f"Workspace settings:\r\n"
-        f"{json.dumps(WORKSPACE_SETTINGS, indent=4, ensure_ascii=False)}\r\n"
+        f"Workspace settings:"
+        f"{json.dumps(WORKSPACE_SETTINGS, indent=4, ensure_ascii=False)}"
     )
 
-    working_dir = Path(WORKSPACE_SETTINGS.get("workspaceFS", os.getcwd()))
+    workspace_dir = Path(WORKSPACE_SETTINGS.get("workspaceFS", os.getcwd()))
+    project_dir = _find_project_dir(start=workspace_dir)
+    working_dir = project_dir or workspace_dir
+
     log_to_output(f"Initializing atopile config for `{working_dir}`")
     init_atopile_config(working_dir)
 
@@ -587,7 +710,7 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
 def log_to_output(
     message: str, msg_type: lsp.MessageType = lsp.MessageType.Log
 ) -> None:
-    LSP_SERVER.show_message_log(message, msg_type)
+    LSP_SERVER.show_message_log("LSP: " + message, msg_type)
 
 
 def log_error(message: str) -> None:

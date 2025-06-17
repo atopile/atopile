@@ -5,6 +5,7 @@ from faebryk.core.module import Module
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.exceptions import UserDesignCheckException
 from faebryk.libs.library import L
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
 
@@ -38,7 +39,7 @@ def test_i2c_requires_pulls():
                         "2": self.a.i2c.scl.line,
                     },
                 )
-            ).attach(F.SMDTwoPin(F.SMDTwoPin.Type._0402))
+            ).attach(F.SMDTwoPin(SMDSize.I0402, F.SMDTwoPin.Type.Resistor))
             self.b.add(
                 F.can_attach_to_footprint_via_pinmap(
                     {
@@ -46,7 +47,7 @@ def test_i2c_requires_pulls():
                         "2": self.b.i2c.scl.line,
                     },
                 )
-            ).attach(F.SMDTwoPin(F.SMDTwoPin.Type._0402))
+            ).attach(F.SMDTwoPin(SMDSize.I0402, F.SMDTwoPin.Type.Resistor))
 
     app2 = App2()
 

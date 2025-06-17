@@ -3,8 +3,6 @@ import logging
 import re
 import sys
 import textwrap
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
@@ -15,14 +13,13 @@ import rich
 import typer
 from cookiecutter.exceptions import OutputDirExistsException
 from cookiecutter.main import cookiecutter
-from natsort import natsorted
+from more_itertools import first
 from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import log_to_posthog
-from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.libs.github import (
     GithubCLI,
     GithubCLINotFound,
@@ -30,20 +27,13 @@ from faebryk.libs.github import (
     GithubRepoNotFound,
     GithubUserNotLoggedIn,
 )
-from faebryk.libs.picker.api.api import ApiHTTPError, Component
-from faebryk.libs.picker.api.picker_lib import _extract_numeric_id
-from faebryk.libs.picker.lcsc import download_easyeda_info
-from faebryk.libs.pycodegen import (
-    fix_indent,
-    format_and_write,
-    gen_block,
-    gen_repeated_block,
-    sanitize_name,
-)
-from faebryk.libs.util import groupby, try_or
+from faebryk.libs.logging import rich_print_robust
+from faebryk.libs.util import try_or
 
 if TYPE_CHECKING:
     import git
+
+    from faebryk.libs.picker.api.api import Component
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -59,7 +49,7 @@ create_app = typer.Typer(
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
     """Print help text."""
-    rich.print("\n" + textwrap.dedent(text).strip() + "\n")
+    rich_print_robust("\n" + textwrap.dedent(text).strip() + "\n")
 
 
 def _stuck_user_helper() -> Iterator[bool]:
@@ -68,7 +58,7 @@ def _stuck_user_helper() -> Iterator[bool]:
     for i in itertools.count():
         if i >= threshold:
             if questionary.confirm("Are you trying to exit?").unsafe_ask():
-                rich.print("No worries! Try Ctrl+C next time!")
+                rich_print_robust("No worries! Try Ctrl+C next time!")
                 exit(0)
             threshold += 5
         yield True
@@ -101,7 +91,7 @@ def query_helper[T: str | Path | bool](
     validate_default: bool = True,
 ) -> T:
     """Query a user for input."""
-    rich.print(prompt)
+    rich_print_robust(prompt)
 
     # Check the default value
     if default is not None:
@@ -196,15 +186,15 @@ def query_helper[T: str | Path | bool](
 
         if (proposed_value := upgrader(value)) != value:
             if upgrader_msg:
-                rich.print(upgrader_msg.format(proposed_value=proposed_value))
+                rich_print_robust(upgrader_msg.format(proposed_value=proposed_value))
 
-            rich.print(f"Use [cyan]{proposed_value}[/] instead?")
+            rich_print_robust(f"Use [cyan]{proposed_value}[/] instead?")
             if questionary.confirm("").unsafe_ask():
                 value = proposed_value
 
         if not validator_func(value):
             if validation_failure_msg:
-                rich.print(validation_failure_msg.format(value=value))
+                rich_print_robust(validation_failure_msg.format(value=value))
             value = None
             continue
 
@@ -240,34 +230,36 @@ def setup_github(
             try:
                 url = gh_cli.get_repo_url(repo_id)
                 repo.create_remote("origin", url)
-                rich.print(f"Added remote origin: {url}")
+                rich_print_robust(f"Added remote origin: {url}")
                 # Try to push, but don't fail validation if it doesn't work
                 # (e.g. repo not empty, or other reasons)
                 try:
-                    rich.print(
+                    rich_print_robust(
                         f"Attempting to push initial commit to"
                         f" {repo.active_branch.name}..."
                     )
                     repo.git.push("-u", "origin", repo.active_branch.name)
-                    rich.print("[green]Pushed successfully![/]")
+                    rich_print_robust("[green]Pushed successfully![/]")
                 except git.GitCommandError as e:
-                    rich.print(
+                    rich_print_robust(
                         f"[yellow]Could not push to remote:[/yellow] {e.stderr.strip()}"
                     )
-                    rich.print("You may need to push manually.")
+                    rich_print_robust("You may need to push manually.")
                 return True
             except GithubRepoNotFound:
-                rich.print(f"[red]Repository {repo_id} not found on GitHub.[/]")
+                rich_print_robust(f"[red]Repository {repo_id} not found on GitHub.[/]")
                 return False
             except git.GitCommandError as e:
                 # This might happen if remote 'origin' already exists
-                rich.print(f"[red]Failed to add remote:[/red] {e.stderr.strip()}")
+                rich_print_robust(
+                    f"[red]Failed to add remote:[/red] {e.stderr.strip()}"
+                )
                 return False
             except KeyboardInterrupt:
-                rich.print("[red]Aborted.[/red]")
+                rich_print_robust("[red]Aborted.[/red]")
                 return False
             except Exception as e:
-                rich.print(f"[red]An unexpected error occurred:[/red] {e}")
+                rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
                 return False
 
         query_helper(
@@ -299,27 +291,29 @@ def setup_github(
                     add_remote=True,
                     path=project_path,
                 )
-                rich.print(
+                rich_print_robust(
                     f"[green]Successfully created repository {repo_url} and"
                     " pushed initial commit![/]"
                 )
                 return True
             except GithubRepoAlreadyExists:
-                rich.print(f"[red]Repository {repo_id} already exists on GitHub.[/]")
+                rich_print_robust(
+                    f"[red]Repository {repo_id} already exists on GitHub.[/]"
+                )
                 # We could offer to use it, but for now, let's just fail validation
                 return False
             except git.GitCommandError as e:
                 # This might happen if the push fails for some reason
-                rich.print(
+                rich_print_robust(
                     f"[red]Failed during git operation (e.g. push):[/red]"
                     f" {e.stderr.strip()}"
                 )
                 return False
             except KeyboardInterrupt:
-                rich.print("[red]Aborted.[/red]")
+                rich_print_robust("[red]Aborted.[/red]")
                 return False
             except Exception as e:
-                rich.print(f"[red]An unexpected error occurred:[/red] {e}")
+                rich_print_robust(f"[red]An unexpected error occurred:[/red] {e}")
                 return False
 
         query_helper(
@@ -397,7 +391,7 @@ def project(
                 repo.git.commit(m="Initial commit")
             except git.GitCommandError as e:
                 if "Author identity unknown" in e.stderr:
-                    rich.print(
+                    rich_print_robust(
                         "[yellow]Warning: Author identity unknown. "
                         "Staged but not committed.[/yellow]"
                     )
@@ -418,11 +412,11 @@ def project(
             try:
                 setup_github(project_path, gh_cli, repo)
             except Exception:
-                rich.print("[red]Creating GitHub repo interrupted.[/red]")
+                rich_print_robust("[red]Creating GitHub repo interrupted.[/red]")
                 return
 
     # Wew! New repo created!
-    rich.print(
+    rich_print_robust(
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
         f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]"
     )
@@ -466,14 +460,14 @@ def build_target(
 
     def _check_build_target_name(value: str) -> bool:
         if not re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", value):
-            rich.print(
+            rich_print_robust(
                 "[red]Build-target names must start with a letter and"
                 " contain only letters, numbers, dashes and underscores.[/]"
             )
             return False
 
         if value in config.project.builds:
-            rich.print(f"[red]Build-target `{value}` already exists[/]")
+            rich_print_robust(f"[red]Build-target `{value}` already exists[/]")
             return False
 
         return True
@@ -509,17 +503,17 @@ def build_target(
 
     def _file_validator(f: Path) -> bool:
         if f.is_dir():
-            rich.print(f"{f} is a directory")
+            rich_print_robust(f"{f} is a directory")
             return False
 
         if f.suffix != ".ato":
-            rich.print(f"{f} must end in .ato")
+            rich_print_robust(f"{f} must end in .ato")
             return False
 
         try:
             f.relative_to(src_path)
         except ValueError:
-            rich.print(f"{f} is outside the project's src dir")
+            rich_print_robust(f"{f} is outside the project's src dir")
             return False
 
         return True
@@ -576,7 +570,7 @@ def build_target(
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(module_text, encoding="utf-8")
 
-    rich.print(
+    rich_print_robust(
         ":sparkles: Successfully created a new build configuration "
         f"[cyan]{build_target}[/] at [cyan]{file}[/]! :sparkles:"
     )
@@ -589,16 +583,14 @@ class ComponentType(StrEnum):
 
 @create_app.command()
 @log_to_posthog("cli:create_component_end")
-def component(
+def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
-    name: Annotated[str | None, typer.Option("--name", "-n")] = None,
-    filename: Annotated[str | None, typer.Option("--filename", "-f")] = None,
-    type_: Annotated[ComponentType | None, typer.Option("--type", "-t")] = None,
+    accept_single: Annotated[bool, typer.Option("--accept-single", "-a")] = False,
 ):
     """Create a new component."""
-    from faebryk.libs.picker.api.models import Component
-    from faebryk.libs.picker.api.picker_lib import client
-    from faebryk.libs.pycodegen import sanitize_name
+    from faebryk.libs.picker.api.api import ApiHTTPError
+    from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
+    from faebryk.libs.picker.lcsc import download_easyeda_info
 
     config.apply_options(None)
 
@@ -622,8 +614,11 @@ def component(
             if lcsc_id:
                 components = client.fetch_part_by_lcsc(lcsc_id)
             else:
-                # TODO: remove this once we have a fuzzy search
-                mfr = questionary.text("Enter the manufacturer").unsafe_ask()
+                if ":" in search_term:
+                    mfr, search_term = search_term.split(":", 1)
+                else:
+                    # TODO: remove this once we have a fuzzy search
+                    mfr = questionary.text("Enter the manufacturer").unsafe_ask()
                 components = client.fetch_part_by_mfr(mfr, search_term)
         except ApiHTTPError as e:
             if e.response.status_code == 404:
@@ -632,7 +627,7 @@ def component(
                 raise
 
         if len(components) == 0:
-            rich.print(f'No components found for "{search_term}"')
+            rich_print_robust(f'No components found for "{search_term}"')
             search_term = None
             continue
 
@@ -640,27 +635,37 @@ def component(
         component_table.add_column("Part Number")
         component_table.add_column("Manufacturer")
         component_table.add_column("Description")
+        component_table.add_column("Supplier ID")
+        component_table.add_column("Stock")
+
+        components = sorted(components, key=lambda c: c.stock, reverse=True)
 
         for component in components:
             component_table.add_row(
                 component.manufacturer_name,
                 component.part_number,
                 component.description,
+                component.lcsc_display,
+                str(component.stock),
             )
 
         rich.print(component_table)
 
-        choices = [
-            {
-                "name": f"{component.manufacturer_name} {component.part_number}",
-                "value": component,
-            }
-            for component in components
-        ] + [{"name": "Search again...", "value": None}]
+        if len(components) == 1 and accept_single:
+            component = first(components)
+        else:
+            choices = [
+                {
+                    "name": f"{component.manufacturer_name} {component.part_number}"
+                    f" ({component.lcsc_display})",
+                    "value": component,
+                }
+                for component in components
+            ] + [{"name": "Search again...", "value": None}]
 
-        component = questionary.select(
-            "Select a component", choices=choices
-        ).unsafe_ask()
+            component = questionary.select(
+                "Select a component", choices=choices
+            ).unsafe_ask()
 
         if component is not None:
             break
@@ -670,79 +675,26 @@ def component(
 
     # We have a component -----------------------------------------------------
     assert component is not None
+    from faebryk.libs.part_lifecycle import PartIsNotAutoGenerated, PartLifecycle
 
-    # TODO: templated ato components too
-    # if type_ is None:
-    #     type_ = ComponentType.fab
-    if type_ is None:
-        type_ = questionary.select(
-            "Select the component type", choices=list(ComponentType)
-        ).unsafe_ask()
-        assert type_ is not None
+    try:
+        epart = download_easyeda_info(component.lcsc_display, get_model=True)
+        apart = PartLifecycle.singleton().library.ingest_part_from_easyeda(epart)
+    except PartIsNotAutoGenerated as e:
+        raise errors.UserException(
+            f"Part `{e.part.path}` already exists and is manually modified."
+        ) from e
+    except Exception as e:
+        raise errors.UserException(str(e)) from e
 
-    if name is None:
-        name = questionary.text(
-            "Enter the name of the component",
-            default=caseconverter.pascalcase(
-                sanitize_name(component.manufacturer_name + " " + component.part_number)
-            ),
-        ).unsafe_ask()
+    rich_print_robust(f":sparkles: Created {apart.identifier} at {apart.path} !")
 
-    sanitized_name = sanitize_name(name)
-    if sanitized_name != name:
-        rich.print(f"Sanitized name: {sanitized_name}")
 
-    if type_ == ComponentType.ato:
-        extension = ".ato"
-    elif type_ == ComponentType.fab:
-        extension = ".py"
-    else:
-        raise ValueError(f"Invalid component type: {type_}")
-
-    out_path: Path | None = None
-    for _ in stuck_user_helper_generator:
-        if filename is None:
-            filename = questionary.text(
-                "Enter the filename of the component",
-                default=caseconverter.snakecase(name) + extension,
-            ).unsafe_ask()
-
-        assert filename is not None
-
-        filepath = Path(filename)
-        if filepath.is_absolute():
-            out_path = filepath.resolve()
-        else:
-            out_path = (config.project.paths.src / filename).resolve()
-
-        if out_path.exists():
-            rich.print(f"File {out_path} already exists")
-            filename = None
-            continue
-
-        if not out_path.parent.exists():
-            rich.print(
-                f"Directory {out_path.parent} does not exist. Creating it now..."
-            )
-            out_path.parent.mkdir(parents=True, exist_ok=True)
-
-        break
-
-    assert out_path is not None
-
-    if type_ == ComponentType.ato:
-        template = AtoTemplate(name=sanitized_name, base="Module")
-        template.add_part(component)
-        out = template.dumps()
-        out_path.write_text(out, encoding="utf-8")
-        rich.print(f":sparkles: Created {out_path} !")
-
-    elif type_ == ComponentType.fab:
-        template = FabllTemplate(name=sanitized_name, base="Module")
-        template.add_part(component)
-        out = template.dumps()
-        format_and_write(out, out_path)
-        rich.print(f":sparkles: Created {out_path} !")
+@create_app.command(deprecated=True)
+def component(
+    search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
+):
+    return part(search_term)
 
 
 @create_app.callback(invoke_without_command=True)
@@ -765,269 +717,3 @@ def main(ctx: typer.Context):
 
 if __name__ == "__main__":
     create_app()  # pylint: disable=no-value-for-parameter
-
-
-@dataclass
-class CTX:
-    path: Path
-    pypath: str
-    overwrite: bool
-
-
-@dataclass
-class Template(ABC):
-    name: str
-    base: str
-    imports: list[str] = field(default_factory=list)
-    nodes: list[str] = field(default_factory=list)
-    docstring: str = "TODO: Docstring describing your module"
-
-    def _process_part(self, part: Component):
-        """Common part processing logic used by child classes."""
-        name = sanitize_name(f"{part.manufacturer_name}_{part.part_number}")
-        assert isinstance(name, str)
-        _, _, _, _, easyeda_symbol, _ = download_easyeda_info(
-            part.lcsc_display, get_model=False
-        )
-        return name, easyeda_symbol
-
-    @abstractmethod
-    def add_part(self, part: Component): ...
-
-
-@dataclass
-class AtoTemplate(Template):
-    attributes: list[str] = field(default_factory=list)
-    pins: list[str] = field(default_factory=list)
-    defined_signals: set[str] = field(default_factory=set)
-
-    def add_part(self, part: Component):
-        # Get common processed data
-        self.name, easyeda_symbol = self._process_part(part)
-
-        # Set docstring with description
-        self.docstring = part.description
-
-        # Add component metadata
-        self.attributes.extend(
-            [
-                f'lcsc_id = "{part.lcsc_display}"',
-                f'manufacturer = "{part.manufacturer_name}"',
-                f'mpn = "{part.part_number}"',
-            ]
-        )
-
-        # Add datasheet if available
-        if part.datasheet_url:
-            self.attributes.append(f'datasheet_url = "{part.datasheet_url}"')
-
-        # Add designator prefix from EasyEDA symbol
-        designator_prefix = easyeda_symbol.info.prefix.replace("?", "")
-        self.attributes.append(f'designator_prefix = "{designator_prefix}"')
-
-        # Collect and sort pins first
-        unsorted_pins = []
-        if hasattr(easyeda_symbol, "units") and easyeda_symbol.units:
-            for unit in easyeda_symbol.units:
-                if hasattr(unit, "pins"):
-                    for pin in unit.pins:
-                        pin_num = pin.settings.spice_pin_number
-                        pin_name = pin.name.text
-                        if pin_name and pin_name not in ["NC", "nc"]:
-                            if re.match(r"^[0-9]+$", pin_name):
-                                unsorted_pins.append((None, pin_num))
-                            else:
-                                unsorted_pins.append((sanitize_name(pin_name), pin_num))
-
-        # Sort pins by name using natsort
-        sorted_pins = natsorted(unsorted_pins, key=lambda x: x[0])
-
-        # Process sorted pins
-        for pin_name, pin_num in sorted_pins:
-            if pin_name is None:
-                self.pins.append(f"pin {pin_num}")
-
-            elif pin_name in self.defined_signals:
-                self.pins.append(f"{pin_name} ~ pin {pin_num}")
-
-            else:
-                self.pins.append(f"signal {pin_name} ~ pin {pin_num}")
-                self.defined_signals.add(pin_name)
-
-    def dumps(self) -> str:
-        output = f"component {self.name}:\n"
-        output += f'    """{self.name} component"""\n'
-
-        # Add attributes
-        for attr in self.attributes:
-            output += f"    {attr}\n"
-
-        # Add blank line after attributes
-        output += "\n"
-
-        if self.pins:
-            output += "    # pins\n"
-            for pin in self.pins:
-                output += f"    {pin}\n"
-
-        return output
-
-
-@dataclass
-class FabllTemplate(Template):
-    traits: list[str] = field(default_factory=list)
-
-    def add_part(self, part: Component):
-        # Get common processed data
-        self.name, easyeda_symbol = self._process_part(part)
-
-        designator_prefix_str = easyeda_symbol.info.prefix.replace("?", "")
-        try:
-            prefix = has_designator_prefix.Prefix(designator_prefix_str)
-            designator_prefix = f"F.has_designator_prefix.Prefix.{prefix.name}"
-        except ValueError:
-            logger.warning(
-                f"Using non-standard designator prefix: {designator_prefix_str}"
-            )
-            designator_prefix = f"'{designator_prefix_str}'"
-
-        self.traits.append(
-            f"designator_prefix = L.f_field(F.has_designator_prefix)"
-            f"({designator_prefix})"
-        )
-
-        self.traits.append(
-            "lcsc_id = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{'LCSC': '{part.lcsc_display}'}})"
-        )
-
-        self.imports.append(
-            "from faebryk.libs.picker.picker import DescriptiveProperties"
-        )
-        self.traits.append(
-            f"descriptive_properties = L.f_field(F.has_descriptive_properties_defined)"
-            f"({{DescriptiveProperties.manufacturer: '{part.manufacturer_name}', "
-            f"DescriptiveProperties.partno: '{part.part_number}'}})"
-        )
-
-        if url := part.datasheet_url:
-            self.traits.append(
-                f"datasheet = L.f_field(F.has_datasheet_defined)('{url}')"
-            )
-
-        partdoc = part.description.replace("  ", "\n")
-        self.docstring = f"{self.docstring}\n\n{partdoc}"
-
-        # pins --------------------------------
-        no_name: list[str] = []
-        no_connection: list[str] = []
-        interface_names_by_pin_num: dict[str, str] = {}
-
-        for unit in easyeda_symbol.units:
-            for pin in unit.pins:
-                pin_num = pin.settings.spice_pin_number
-                pin_name = pin.name.text
-                if re.match(r"^[0-9]+$", pin_name):
-                    no_name.append(pin_num)
-                elif pin_name in ["NC", "nc"]:
-                    no_connection.append(pin_num)
-                else:
-                    pyname = sanitize_name(pin_name)
-                    interface_names_by_pin_num[pin_num] = pyname
-
-        self.nodes.append(
-            "#TODO: Change auto-generated interface types to actual high level types"
-        )
-
-        _interface_lines_by_min_pin_num = {}
-        for interface_name, _items in groupby(
-            interface_names_by_pin_num.items(), lambda x: x[1]
-        ).items():
-            pin_nums = [x[0] for x in _items]
-            line = f"{interface_name}: F.Electrical  # {'pin' if len(pin_nums) == 1 else 'pins'}: {', '.join(pin_nums)}"  # noqa: E501
-            _interface_lines_by_min_pin_num[min(pin_nums)] = line
-        self.nodes.extend(
-            line
-            for _, line in natsorted(
-                _interface_lines_by_min_pin_num.items(), key=lambda x: x[0]
-            )
-        )
-
-        if no_name:
-            self.nodes.append(f"unnamed = L.list_field({len(no_name)}, F.Electrical)")
-
-        pin_lines = (
-            [
-                f'"{pin_num}": self.{interface_name},'
-                for pin_num, interface_name in interface_names_by_pin_num.items()
-            ]
-            + [f'"{pin_num}": None,' for pin_num in no_connection]
-            + [f'"{pin_num}": self.unnamed[{i}],' for i, pin_num in enumerate(no_name)]
-        )
-        self.traits.append(
-            fix_indent(f"""
-            @L.rt_field
-            def attach_via_pinmap(self):
-                return F.can_attach_to_footprint_via_pinmap(
-                    {{
-                        {gen_repeated_block(natsorted(pin_lines))}
-                    }}
-                )
-        """)
-        )
-
-    def dumps(self) -> str:
-        always_import = [
-            "import faebryk.library._F as F  # noqa: F401",
-            f"from faebryk.core.{self.base.lower()} import {self.base}",
-            "from faebryk.libs.library import L  # noqa: F401",
-            "from faebryk.libs.units import P  # noqa: F401",
-        ]
-
-        self.imports = always_import + self.imports
-
-        out = fix_indent(f"""
-            # This file is part of the faebryk project
-            # SPDX-License-Identifier: MIT
-
-            import logging
-
-            {gen_repeated_block(self.imports)}
-
-            logger = logging.getLogger(__name__)
-
-            class {self.name}({self.base}):
-                \"\"\"
-                {gen_block(self.docstring)}
-                \"\"\"
-
-                # ----------------------------------------
-                #                modules
-                # ----------------------------------------
-
-                # ----------------------------------------
-                #              interfaces
-                # ----------------------------------------
-                {gen_repeated_block(self.nodes)}
-
-                # ----------------------------------------
-                #              parameters
-                # ----------------------------------------
-
-                # ----------------------------------------
-                #                traits
-                # ----------------------------------------
-                {gen_repeated_block(self.traits)}
-
-                def __preinit__(self):
-                    # ------------------------------------
-                    #           connections
-                    # ------------------------------------
-
-                    # ------------------------------------
-                    #          parametrization
-                    # ------------------------------------
-                    pass
-        """)
-
-        return out

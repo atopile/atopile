@@ -13,6 +13,8 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_fp_text,
     C_kicad_footprint_file,
 )
+from faebryk.libs.kicad.fileformats_sch import C_circle as C_symbol_Circle
+from faebryk.libs.kicad.fileformats_sch import C_symbol
 from faebryk.libs.kicad.fileformats_v5 import (
     C_circle_v5,
     C_line_v5,
@@ -135,10 +137,70 @@ class C_kicad_footprint_file_v6(SEXP_File):
                 fp_texts=[t.convert_to_new() for t in texts],
                 fp_poly=self.fp_poly,
                 pads=self.pads,
-                model=self.model,
+                models=self.models,
             )
 
     footprint: C_footprint_in_file
 
     def convert_to_new(self) -> C_kicad_footprint_file:
         return C_kicad_footprint_file(footprint=self.footprint.convert_to_new())
+
+
+@dataclass(kw_only=True)
+class C_symbol_Circle_v6(C_symbol_Circle):
+    radius: float
+    end: C_xy = field(default_factory=lambda: C_xy(0, 0))
+
+    def convert_to_new(self) -> C_symbol_Circle:
+        return C_symbol_Circle(
+            center=self.center,
+            # TODO does this work?
+            end=C_xy(self.center.x + self.radius, self.center.y),
+            stroke=self.stroke,
+            fill=self.fill,
+        )
+
+
+@dataclass(kw_only=True)
+class C_symbol_symbol_v6(C_symbol.C_symbol):
+    circles: list[C_symbol_Circle_v6] = field(
+        **sexp_field(multidict=True), default_factory=list
+    )
+
+    def convert_to_new(self) -> C_symbol.C_symbol:
+        return C_symbol.C_symbol(
+            name=self.name,
+            polylines=self.polylines,
+            circles=[circle.convert_to_new() for circle in self.circles],
+            rectangles=self.rectangles,
+            arcs=self.arcs,
+            pins=self.pins,
+        )
+
+
+@dataclass(kw_only=True)
+class C_symbol_v6(C_symbol):
+    symbols: dict[str, C_symbol_symbol_v6] = field(
+        **sexp_field(multidict=True, key=lambda x: x.name),
+        default_factory=dict,
+    )
+
+    def convert_to_new(self) -> C_symbol:
+        return C_symbol(
+            name=self.name,
+            power=self.power,
+            propertys=self.propertys,
+            pin_numbers=self.pin_numbers,
+            pin_names=self.pin_names,
+            in_bom=self.in_bom,
+            on_board=self.on_board,
+            symbols={
+                name: symbol.convert_to_new() for name, symbol in self.symbols.items()
+            },
+            convert=self.convert,
+        )
+
+
+@dataclass(kw_only=True)
+class C_symbol_in_file_v6(SEXP_File):
+    symbol: C_symbol_v6

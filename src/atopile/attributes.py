@@ -11,9 +11,10 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
-from faebryk.core.trait import TraitImpl, TraitNotFound
+from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
-from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.smd import SMDSize
+from faebryk.libs.util import md_list, not_none
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +110,16 @@ class GlobalAttributes(L.Module):
     @lcsc_id.setter
     def lcsc_id(self, value: str):
         # handles duplicates gracefully
-        self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+        self.add(
+            F.has_explicit_part.by_supplier(supplier_partno=value, supplier_id="lcsc")
+        )
+
+    def check_mpn_complete(self):
+        mpn = getattr(self, "__shim_mpn__", None)
+        manufacturer = getattr(self, "__shim_manufacturer__", None)
+        if mpn is None or manufacturer is None:
+            return
+        self.add(F.has_explicit_part.by_mfr(mfr=manufacturer, partno=mpn))
 
     @property
     def manufacturer(self) -> str:
@@ -124,12 +134,8 @@ class GlobalAttributes(L.Module):
 
     @manufacturer.setter
     def manufacturer(self, value: str):
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined(
-                {DescriptiveProperties.manufacturer: value}
-            )
-        )
+        setattr(self, "__shim_manufacturer__", value)
+        GlobalAttributes.check_mpn_complete(self)
 
     @property
     def mpn(self) -> str:
@@ -139,12 +145,7 @@ class GlobalAttributes(L.Module):
         For the picker to select the correct part from the manufacturer,
         this must be set.
         """
-        try:
-            return self.get_trait(F.has_descriptive_properties).get_properties()[
-                DescriptiveProperties.partno
-            ]
-        except (TraitNotFound, KeyError):
-            raise AttributeError(name="mpn", obj=self)
+        raise AttributeError("write-only")
 
     @mpn.setter
     def mpn(self, value: str):
@@ -155,18 +156,16 @@ class GlobalAttributes(L.Module):
                 f"`mpn = {value}` is deprecated. Use `exclude_from_bom = True` instead."
             )
 
-        # handles duplicates gracefully
-        self.add(
-            F.has_descriptive_properties_defined({DescriptiveProperties.partno: value})
-        )
-
         # TODO: @v0.4: remove this - mpn != lcsc id
         if re.match(r"C[0-9]+", value):
-            self.add(F.has_descriptive_properties_defined({"LCSC": value}))
+            not_none(GlobalAttributes.lcsc_id.fset)(self, value)
 
             raise DeprecatedException(
                 "`mpn` is deprecated for assignment of LCSC IDs. Use `lcsc_id` instead."
             )
+
+        setattr(self, "__shim_mpn__", value)
+        GlobalAttributes.check_mpn_complete(self)
 
     @property
     def datasheet_url(self) -> str:
@@ -203,15 +202,31 @@ class GlobalAttributes(L.Module):
 
     @package.setter
     def package(self, value: str):
-        try:
-            self.add(F.has_package(value))
-        except ValueError:
-            valid_packages = ", ".join(
-                f"`{k}`" for k in F.has_package.Package.__members__.keys()
-            )
+        GlobalAttributes._handle_package_size(self, value)
+
+    @staticmethod
+    def _handle_package_size(module: L.Module, value: str):
+        match module:
+            case F.Resistor():
+                value = re.sub(r"^R", "I", value)
+            case F.Capacitor():
+                value = re.sub(r"^C", "I", value)
+            case F.Inductor():
+                value = re.sub(r"^L", "I", value)
+            case _:
+                pass
+
+        # assume imperial
+        if re.match(r"^[0-9]+$", value):
+            value = f"I{value}"
+
+        if value not in {s.name for s in SMDSize}:
             raise UserBadParameterError(
-                f"Invalid package: `{value}`. Valid packages are: {valid_packages}"
+                f"Invalid package: `{value}`. Valid packages are:\n"
+                f"{md_list(s.name for s in SMDSize)}"
             )
+
+        module.add(F.has_package_requirements(size=SMDSize[value]))
 
     @property
     def footprint(self) -> str:
@@ -291,28 +306,6 @@ class GlobalAttributes(L.Module):
         self.add(F.requires_external_usage())
 
 
-def _handle_package_shim(module: L.Module, value: str, starts_with: str):
-    if (prefixed_value := f"{starts_with}{value}") in F.has_package.Package.__members__:
-        value = prefixed_value
-
-    try:
-        pkg = F.has_package.Package(value)
-    except ValueError:
-        valid_packages = ", ".join(
-            [
-                f"`{k}`"
-                for k in F.has_package.Package.__members__.keys()
-                if k.startswith(starts_with)
-            ]
-        )
-        raise UserBadParameterError(
-            f"Invalid package for {module.__class__.__name__}: `{value}`. "
-            f"Valid packages are: {valid_packages}"
-        )
-    else:
-        module.add(F.has_package(pkg))
-
-
 @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
 class Resistor(F.Resistor):
     """
@@ -340,7 +333,7 @@ class Resistor(F.Resistor):
 
         if value.startswith("R"):
             try:
-                self.package = value[1:]
+                GlobalAttributes._handle_package_size(self, value[1:])
             except UserBadParameterError:
                 pass
             else:
@@ -352,16 +345,7 @@ class Resistor(F.Resistor):
                 # Return here, to avoid additionally setting the footprint
                 return
 
-        GlobalAttributes.footprint.fset(self, value)
-
-    @property
-    def package(self):
-        """See `GlobalAttributes.package`"""
-        raise AttributeError("write-only")
-
-    @package.setter
-    def package(self, value: str):
-        _handle_package_shim(self, value, "R")
+        not_none(GlobalAttributes.footprint.fset)(self, value)
 
     @property
     def _1(self) -> F.Electrical:
@@ -395,15 +379,6 @@ class CommonCapacitor(F.Capacitor):
         self.capacitance.constrain_subset(value)
 
     @property
-    def package(self):
-        """See `GlobalAttributes.package`"""
-        raise AttributeError("write-only")
-
-    @package.setter
-    def package(self, value: str):
-        _handle_package_shim(self, value, "C")
-
-    @property
     def footprint(self):
         """See `GlobalAttributes.footprint`"""
         raise AttributeError("write-only")
@@ -414,7 +389,7 @@ class CommonCapacitor(F.Capacitor):
 
         if value.startswith("C"):
             try:
-                self.package = value[1:]
+                GlobalAttributes._handle_package_size(self, value[1:])
             except UserBadParameterError:
                 pass
             else:
@@ -426,7 +401,7 @@ class CommonCapacitor(F.Capacitor):
                 # Return here, to avoid additionally setting the footprint
                 return
 
-        GlobalAttributes.footprint.fset(self, value)
+        not_none(GlobalAttributes.footprint.fset)(self, value)
 
     @property
     def _1(self) -> F.Electrical:
@@ -501,15 +476,6 @@ class Inductor(F.Inductor):
         trait.pinmap["1"] = self.p1
         trait.pinmap["2"] = self.p2
         return trait
-
-    @property
-    def package(self):
-        """See `GlobalAttributes.package`"""
-        raise AttributeError("write-only")
-
-    @package.setter
-    def package(self, value: str):
-        _handle_package_shim(self, value, "L")
 
 
 @_register_shim("generics/leds.ato:LED", "import LED")

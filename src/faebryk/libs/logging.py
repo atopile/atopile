@@ -6,6 +6,7 @@ import logging
 import os
 import sys
 
+import rich
 from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
@@ -14,6 +15,17 @@ from rich.theme import Theme
 from rich.tree import Tree
 
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
+
+
+def rich_print_robust(message: str):
+    """
+    Hack for terminals that don't support unicode
+    There is probably a better way to do this, but this is a quick fix for now.
+    """
+    try:
+        rich.print(message)
+    except UnicodeEncodeError:
+        rich.print(message.encode("ascii", errors="ignore").decode("ascii"))
 
 
 def is_piped_to_file() -> bool:

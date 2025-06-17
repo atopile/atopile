@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -23,22 +22,14 @@ class Winbond_W25Q16JVUXIQ(F.SPIFlash):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Winbond",
-            DescriptiveProperties.partno: "W25Q16JVUXIQ",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.lcsc.com/datasheet/lcsc_datasheet_2205122030_Winbond-Elec-W25Q16JVUXIQ_C2843335.pdf"
-    )
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)("Winbond", "W25Q16JVUXIQ")
 
     @L.rt_field
     def pin_association_heuristic(self):
         return F.has_pin_association_heuristic_lookup_table(
             mapping={
                 self.qspi.clock.line: ["CLK"],
-                self.qspi.chip_select.line: ["CS#"],
+                self.qspi.chip_select.line: ["CS#", "~{CS}"],
                 self.qspi.data[0].line: ["DI(IO0)"],
                 self.qspi.data[1].line: ["DO(IO1)"],
                 self.power.lv: ["GND", "EP"],
@@ -46,7 +37,7 @@ class Winbond_W25Q16JVUXIQ(F.SPIFlash):
                 self.power.hv: ["VCC"],
                 self.qspi.data[2].line: ["WP#(IO2)"],
             },
-            accept_prefix=False,
+            accept_prefix=True,
             case_sensitive=False,
         )
 

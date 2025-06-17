@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once  # noqa: F401
 
@@ -33,18 +32,9 @@ class Analog_Devices_ADM2587EBRWZ(Module):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C12081"})
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C12081")
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
-    )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Analog Devices",
-            DescriptiveProperties.partno: "ADM2587EBRWZ-REEL7",
-        }
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.lcsc.com/datasheet/lcsc_datasheet_1809121646_Analog-Devices-ADM2587EBRWZ-REEL7_C12081.pdf"  # noqa: E501
     )
 
     @L.rt_field

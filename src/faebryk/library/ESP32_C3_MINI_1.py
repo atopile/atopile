@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -117,18 +116,12 @@ class _ESP32_C3_MINI_1(Module):
 
         return F.can_attach_to_footprint_via_pinmap(self.pinmap)
 
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Espressif Systems",
-            DescriptiveProperties.partno: "ESP32-C3-MINI-1U-H4",
-        }
+    explicit_part = L.f_field(F.has_explicit_part.by_mfr)(
+        "Espressif Systems", "ESP32-C3-MINI-1U-H4"
     )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
-    )
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://www.espressif.com/sites/default/files/documentation/esp32-c3-mini-1_datasheet_en.pdf"
     )
 
 

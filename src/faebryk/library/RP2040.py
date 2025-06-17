@@ -7,7 +7,6 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
@@ -169,12 +168,7 @@ class RP2040(Module):
         "https://datasheets.raspberrypi.com/rp2040/rp2040-datasheet.pdf"
     )
 
-    mfr = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Raspberry Pi",
-            DescriptiveProperties.partno: "RP2040",
-        }
-    )
+    mfr = L.f_field(F.has_explicit_part.by_mfr)("Raspberry Pi", "RP2040")
 
     @L.rt_field
     def attach_to_footprint(self):
