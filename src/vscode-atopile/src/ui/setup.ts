@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import { onDidChangeAtoBinInfoEvent, g_uv_path_local, getAtoBin } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { downloadReleaseAssetBin, PlatformArch } from '../common/github';
-import { client } from '../common/telemetry';
+import { captureEvent, deinitializeTelemetry, initializeTelemetry } from '../common/telemetry';
 
 /**
  * Check if ato bin is available (see findbin.ts)
@@ -114,6 +114,8 @@ async function installLocalAto(context: vscode.ExtensionContext) {
 
 export async function activate(context: vscode.ExtensionContext) {
     traceInfo('Activating setup');
+    initializeTelemetry(context);
+    captureEvent('vsce:startup');
 
     // Pass context to getAtoBin so it can be stored and used by getExtensionManagedUvPath
     let atoBin = await getAtoBin();
@@ -144,5 +146,5 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    client.shutdown();
+    deinitializeTelemetry();
 }
