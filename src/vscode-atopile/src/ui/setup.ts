@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { onDidChangeAtoBinInfoEvent, g_uv_path_local, getAtoBin } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { downloadReleaseAssetBin, PlatformArch } from '../common/github';
+import { client } from '../common/telemetry';
 
 /**
  * Check if ato bin is available (see findbin.ts)
@@ -134,7 +135,6 @@ export async function activate(context: vscode.ExtensionContext) {
     // For now force local ato without interaction
     // Only atopile developers need to configure manually
     const auto_install = true;
-    
 
     if (auto_install) {
         await installLocalAto(context);
@@ -143,4 +143,6 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 }
 
-export function deactivate() {}
+export function deactivate() {
+    client.shutdown();
+}
