@@ -7,6 +7,7 @@ import * as fs from "fs";
 import { randomUUID } from "crypto";
 import { parse, stringify } from 'yaml'
 import { traceError } from "./log/logging";
+import { getExtensionSettings } from "./settings";
 
 
 const client = new PostHog('phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt', {
@@ -15,6 +16,7 @@ const client = new PostHog('phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt', {
 
 let defaultProperties: Record<string, any> = {};
 let distinctId: string | undefined = undefined;
+let enabled: boolean = true;
 
 function getConfigDir(): string {
     switch (process.platform) {
@@ -32,7 +34,7 @@ function getConfigDir(): string {
     }
 }
 
-function getDistinctId() {
+function loadConfig() {
     const configDir = getConfigDir();
     const configFile = path.join(configDir, 'telemetry.yaml');
 
@@ -40,7 +42,9 @@ function getDistinctId() {
         const config = { telemetry: true, id: randomUUID() };
         fs.mkdirSync(configDir, { recursive: true });
         fs.writeFileSync(configFile, stringify(config));
-        return config.id;
+        distinctId = config.id;
+        enabled = config.telemetry;
+        return;
     }
 
     const config = parse(fs.readFileSync(configFile, 'utf8'));
@@ -54,7 +58,8 @@ function getDistinctId() {
         fs.writeFileSync(configFile, stringify(config));
     }
 
-    return config.id;
+    distinctId = config.id;
+    enabled = config.telemetry;
 }
 
 
@@ -75,15 +80,26 @@ export async function initializeTelemetry(context: vscode.ExtensionContext) {
         email: email,
     };
 
-    distinctId = getDistinctId();
+    loadConfig();
+
+    const settings = await getExtensionSettings();
+    for (const setting of settings) {
+        if (setting.telemetry === false) {
+            enabled = false;
+            break;
+        }
+    }
 }
 
 export function deinitializeTelemetry() {
     client.shutdown();
 }
 
-
 export async function captureEvent(event: string, properties: Record<string, any> = {}) {
+    if (!enabled) {
+        return;
+    }
+
     if (!distinctId) {
         traceError('Telemetry not yet initialized');
         return;

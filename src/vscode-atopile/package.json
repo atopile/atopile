@@ -77,6 +77,12 @@
                     "scope": "resource",
                     "type": "string",
                     "default": "atopile"
+                },
+                "atopile.telemetry": {
+                    "description": "Send telemetry data",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true
                 }
             }
         },
