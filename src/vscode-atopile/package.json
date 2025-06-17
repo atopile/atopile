@@ -29,7 +29,8 @@
         "Snippets"
     ],
     "extensionDependencies": [
-        "ms-python.python"
+        "ms-python.python",
+        "vscode.git"
     ],
     "capabilities": {
         "virtualWorkspaces": {
@@ -174,7 +175,8 @@
         "posthog-node": "^5.1.1",
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
-        "which": "^5.0.0"
+        "which": "^5.0.0",
+        "yaml": "^2.8.0"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",
