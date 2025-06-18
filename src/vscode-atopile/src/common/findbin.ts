@@ -36,7 +36,7 @@ export function getExtensionManagedUvPath(context: ExtensionContext): string | n
 
 async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     // event based load
-    if (settings?.ato && settings.ato !== "") {
+    if (settings?.ato && settings.ato !== '') {
         if (fs.existsSync(settings.ato)) {
             traceVerbose(`Using ato bin from settings: ${settings.ato}`);
             return {
@@ -84,13 +84,14 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
             let from = UV_ATO_VERSION;
-            if (settings?.from && settings.from !== "") {
+            if (settings?.from && settings.from !== '') {
                 from = settings.from;
             }
             traceVerbose(`Using local uv to run ato: ${uvBinLocal}`);
             traceVerbose(`Using from: ${from}`);
             return {
-                command: [uvBinLocal, 'tool', 'run', '--from', from, 'ato'],
+                // TODO don't hardcode python version lol
+                command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', from, 'ato'],
                 source: 'local-uv',
             };
         }
@@ -121,22 +122,23 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         const now = Date.now();
 
         // run with 30s timeout (uv pulling might take long)
-        const result = await execFileAsync(bin, args, {timeout: _timeout_ms})
-            .then(({stdout, stderr}) => ({ err: null, stderr: stderr, stdout: stdout }))
+        const result = await execFileAsync(bin, args, { timeout: _timeout_ms })
+            .then(({ stdout, stderr }) => ({ err: null, stderr: stderr, stdout: stdout }))
             .catch((err: any) => {
                 const command = `${bin} ${args.join(' ')}`;
                 const elapsed_ms = Date.now() - now;
                 const timed_out = elapsed_ms > _timeout_ms;
-                let details = "";
+                let details = '';
                 if (timed_out) {
-                    details = `Error: Timed out after ${elapsed_ms/1000}s`
+                    details = `Error: Timed out after ${elapsed_ms / 1000}s`;
+                } else if (err.stderr !== '' || err.stdout !== '' || err.exitCode !== undefined) {
+                    details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`;
                 }
-                else if (err.stderr !== "" || err.stdout !== "" || err.exitCode !== undefined) {
-                    details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`
-                }
-                traceError(`Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${details}`);
-                return { err: err, stderr: err.stderr, stdout: err.stdout }
-        });
+                traceError(
+                    `Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${details}`,
+                );
+                return { err: err, stderr: err.stderr, stdout: err.stdout };
+            });
 
         if (result.err) {
             return null;
