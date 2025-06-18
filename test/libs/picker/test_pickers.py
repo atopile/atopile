@@ -254,6 +254,7 @@ def test_pick_dependency_advanced_2():
     solver = DefaultSolver()
     pick_part_recursively(rdiv, solver)
 
+
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_div_negative():
