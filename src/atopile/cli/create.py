@@ -1,6 +1,7 @@
 import itertools
 import logging
 import re
+import subprocess
 import sys
 import textwrap
 from enum import StrEnum, auto
@@ -28,7 +29,7 @@ from faebryk.libs.github import (
     GithubUserNotLoggedIn,
 )
 from faebryk.libs.logging import rich_print_robust
-from faebryk.libs.util import try_or
+from faebryk.libs.util import get_code_bin_of_terminal, try_or
 
 if TYPE_CHECKING:
     import git
@@ -418,8 +419,14 @@ def project(
     # Wew! New repo created!
     rich_print_robust(
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
-        f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]"
     )
+
+    # check if running in vscode / cursor terminal
+    if code_bin := get_code_bin_of_terminal():
+        # open in vscode / cursor
+        subprocess.Popen([code_bin, project_path])
+    else:
+        rich_print_robust(f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]")
 
 
 @create_app.command("build-target")

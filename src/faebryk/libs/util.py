@@ -2542,3 +2542,17 @@ def sanitize_filepath_part(x: str) -> str:
     x = re.sub(r"[^a-zA-Z0-9_]", "_", x)
     x = x.strip("_")
     return x
+
+
+def get_code_bin_of_terminal() -> str | None:
+    if not os.environ.get("TERM_PROGRAM") == "vscode":
+        return None
+
+    options = ["code", "cursor"]
+
+    for option in options:
+        code_bin = shutil.which(option)
+        if code_bin:
+            return code_bin
+
+    return None

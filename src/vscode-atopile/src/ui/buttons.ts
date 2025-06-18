@@ -7,7 +7,7 @@ import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
-import { g_lsClient } from '../extension'
+import { g_lsClient } from '../extension';
 
 let statusbarAtoAddPackage: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
@@ -16,6 +16,7 @@ let statusbarAtoAddPart: vscode.StatusBarItem;
 let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
 let statusbarAtoRemovePackage: vscode.StatusBarItem;
 let statusbarAtoCreateProject: vscode.StatusBarItem;
+let statusbarAtoShell: vscode.StatusBarItem;
 
 function _buildsToStr(builds: Build[]): string[] {
     return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
@@ -47,8 +48,6 @@ function _buildStrToBuild(build_str: string): Build {
     //    const [name, entry] = split;
     //    return { root: null, name, entry };
     //}
-
-
 }
 
 async function _displayButtons() {
@@ -57,6 +56,11 @@ async function _displayButtons() {
     // only display buttons if we have a valid ato command
     if (atoBin) {
         builds = getBuilds();
+        statusbarAtoShell.show();
+        statusbarAtoCreateProject.show();
+    } else {
+        statusbarAtoShell.hide();
+        statusbarAtoCreateProject.hide();
     }
 
     const build_strs = _buildsToStr(builds);
@@ -64,7 +68,6 @@ async function _displayButtons() {
     if (builds.length !== 0) {
         traceInfo(`Buttons: Showing, found ato command in ${atoBin?.source}`);
         // TODO: not happy yet with the flow
-        //statusbarAtoCreateProject.show();
         statusbarAtoAddPart.show();
         statusbarAtoAddPackage.show();
         statusbarAtoRemovePackage.show();
@@ -80,12 +83,10 @@ async function _displayButtons() {
     } else {
         if (atoBin) {
             traceInfo(`Buttons: No builds found, hiding`);
-        }
-        else {
-            traceInfo("Buttons: No ato command found, hiding");
+        } else {
+            traceInfo('Buttons: No ato command found, hiding');
         }
 
-        statusbarAtoCreateProject.hide();
         statusbarAtoAddPart.hide();
         statusbarAtoAddPackage.hide();
         statusbarAtoRemovePackage.hide();
@@ -109,6 +110,12 @@ export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
         vscode.commands.registerCommand('atopile.add_part', () => {
             atoAddPart();
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.shell', () => {
+            atoShell();
         }),
     );
 
@@ -147,6 +154,12 @@ export async function activate(context: vscode.ExtensionContext) {
             atoChooseBuild();
         }),
     );
+
+    const commandAtoShell = 'atopile.shell';
+    statusbarAtoShell = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoShell.command = commandAtoShell;
+    statusbarAtoShell.text = `$(terminal)$(plus)`;
+    statusbarAtoShell.tooltip = 'ato: open a shell';
 
     const commandAtoCreateProject = 'atopile.create_project';
     statusbarAtoCreateProject = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
@@ -228,7 +241,7 @@ export function deactivate() {
     statusbarAtoRemovePackage.dispose();
 }
 
-async function _runInTerminal(name: string, cwd: string, subcommand: string[], hideFromUser: boolean) {
+async function _runInTerminal(name: string, cwd: string | undefined, subcommand: string[], hideFromUser: boolean) {
     const atoBin = await getAtoBin();
     if (atoBin === null) {
         traceError("Buttons: Can't run ato in terminal: ato not found.");
@@ -240,7 +253,8 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
         cwd: cwd,
         hideFromUser: hideFromUser,
     });
-    const in_powershell = os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
+    const in_powershell =
+        os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
 
     let atoAlias = atoBin.command.map((c) => `'${c}'`).join(' ');
 
@@ -256,13 +270,11 @@ async function _runInTerminal(name: string, cwd: string, subcommand: string[], h
         alias = `Function ato { ${atoAlias} @args }`;
     }
 
-
     terminal.sendText(alias);
     terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
     terminal.show();
     return terminal;
 }
-
 
 async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
@@ -270,6 +282,10 @@ async function _runInTerminalWithBuildTarget(name: string, subcommand: string[],
 }
 
 // Buttons handlers --------------------------------------------------------------------
+
+async function atoShell() {
+    await _runInTerminal('shell', undefined, ['--help'], false);
+}
 
 async function atoBuild() {
     // TODO: not sure that's very standard behavior
@@ -279,11 +295,7 @@ async function atoBuild() {
     // parse what build target to use
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
 
-    await _runInTerminalWithBuildTarget(
-        `build ${build.name}`,
-        ['build', '--build', build.name],
-        false
-    );
+    await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
 }
 
 async function atoAddPart() {
@@ -295,11 +307,10 @@ async function atoAddPart() {
         return;
     }
 
-
     await _runInTerminalWithBuildTarget(
         'create part',
         ['create', 'part', '--search', result, '--accept-single'],
-        false
+        false,
     );
 }
 
@@ -313,11 +324,7 @@ async function atoAddPackage() {
         return;
     }
 
-    await _runInTerminalWithBuildTarget(
-        'add',
-        ['add', result],
-        false
-    );
+    await _runInTerminalWithBuildTarget('add', ['add', result], false);
 }
 
 async function atoRemovePackage() {
@@ -330,19 +337,11 @@ async function atoRemovePackage() {
         return;
     }
 
-    await _runInTerminalWithBuildTarget(
-        'remove',
-        ['remove', result],
-        false
-    );
+    await _runInTerminalWithBuildTarget('remove', ['remove', result], false);
 }
 
 async function atoCreateProject() {
-    await _runInTerminalWithBuildTarget(
-        'create project',
-        ['create', 'project'],
-        false
-    );
+    await _runInTerminal('create project', undefined, ['create', 'project'], false);
 }
 
 async function atoChooseBuild() {
