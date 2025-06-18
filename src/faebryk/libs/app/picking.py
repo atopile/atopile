@@ -49,7 +49,7 @@ def load_part_info_from_pcb(G: Graph):
         fp_props = {k.value: v for k in part_props if (v := fp.try_get_property(k))}
         if fp_props.get(Properties.lcsc) == NO_LCSC_DISPLAY:
             del fp_props[Properties.lcsc]
-        props = node.get_trait(F.has_descriptive_properties_defined).get_properties()
+        props = node.get_trait(F.has_descriptive_properties).get_properties()
 
         # check if node has changed
         if any(props.get(k.value) != fp_props.get(k.value) for k in part_props):
@@ -64,7 +64,7 @@ def load_part_info_from_pcb(G: Graph):
             node.add(
                 F.has_part_picked(
                     PickedPartLCSC(
-                        lcsc_id=lcsc_id,
+                        supplier_partno=lcsc_id,
                         manufacturer=manufacturer,
                         partno=partno,
                     )
