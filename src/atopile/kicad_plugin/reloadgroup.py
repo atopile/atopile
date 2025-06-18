@@ -29,7 +29,7 @@ class ReloadGroup(pcbnew.ActionPlugin):
     @log_exceptions()
     def Run(self):
         board: pcbnew.BOARD = pcbnew.GetBoard()
-        board_path = board.GetFileName()
+        board_path = Path(board.GetFileName())
 
         groups = groups_by_name(board)
         log.debug(f"Named groups in boards: {groups}")

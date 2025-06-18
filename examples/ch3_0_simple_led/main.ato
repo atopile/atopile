@@ -1,14 +1,17 @@
 import Resistor, Capacitor
 
 module App:
-    r1 = new Resistor
-    r1.resistance = 10kohm +/- 20%
-    r1.package = "R0402"
+    other = new Other[2]
 
-    c1 = new Capacitor
-    c1.capacitance = 100nF +/- 20%
-    c1.package = "C0402"
 
-    r1.unnamed[0] ~ c1.unnamed[0]
-    r1.unnamed[1] ~ c1.unnamed[1]
-    
+module Other:
+    r3 = new Resistor
+    r3.resistance = 10kohm +/- 20%
+    r3.package = "R0402"
+
+    c3 = new Capacitor
+    c3.capacitance = 100nF +/- 20%
+    c3.package = "C0402"
+
+    r3.unnamed[0] ~ c3.unnamed[0]
+    r3.unnamed[1] ~ c3.unnamed[1]
