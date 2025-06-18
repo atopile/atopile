@@ -9,7 +9,7 @@ import { parse, stringify } from 'yaml'
 import { traceError } from "./log/logging";
 import { getExtensionSettings } from "./settings";
 
-
+// write-only API key, intended to be made public
 const client = new PostHog('phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt', {
     host: 'https://telemetry.atopileapi.com',
 });
