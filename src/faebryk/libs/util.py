@@ -1857,9 +1857,9 @@ def get_module_from_path(
     def _needle(m: ModuleType) -> bool:
         try:
             file = Path(getattr(m, "__file__"))
+            return sanitized_file_path.samefile(file)
         except Exception:
             return False
-        return sanitized_file_path.samefile(file)
 
     try:
         module = find(sys.modules.values(), _needle)
