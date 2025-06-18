@@ -117,8 +117,6 @@ async function installLocalAto(context: vscode.ExtensionContext) {
 
 export async function activate(context: vscode.ExtensionContext) {
     traceInfo('Activating setup');
-    initializeTelemetry(context);
-    captureEvent('vsce:startup');
 
     // Pass context to getAtoBin so it can be stored and used by getExtensionManagedUvPath
     let atoBin = await getAtoBin();
@@ -152,6 +150,4 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 }
 
-export function deactivate() {
-    deinitializeTelemetry();
-}
+export function deactivate() { }

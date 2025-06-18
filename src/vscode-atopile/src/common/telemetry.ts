@@ -62,11 +62,10 @@ function loadConfig() {
     enabled = config.telemetry;
 }
 
-
-function getEmail() {
+async function getEmail() {
     const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
     const git = gitExtension?.getAPI(1);
-    return git?.repositories[0].getConfig('user.email');
+    return await git?.repositories[0]?.getConfig('user.email');
 }
 
 export async function initializeTelemetry(context: vscode.ExtensionContext) {
