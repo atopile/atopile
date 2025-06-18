@@ -89,8 +89,8 @@ def load_part_info_from_pcb(G: Graph):
         if lcsc_id:
             lcsc_attach(node, lcsc_id)
 
-        if "datasheet" in fp_props:
-            node.add(F.has_datasheet_defined(fp_props["datasheet"]))
+        if "Datasheet" in fp_props:
+            node.add(F.has_datasheet_defined(fp_props["Datasheet"]))
 
         # Load saved parameters from descriptive properties
         for key, value in props.items():
