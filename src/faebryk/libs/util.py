@@ -2548,7 +2548,8 @@ def get_code_bin_of_terminal() -> str | None:
     if not os.environ.get("TERM_PROGRAM") == "vscode":
         return None
 
-    options = ["code", "cursor"]
+    # Try cursor, fallback to code
+    options = ["cursor", "code"]
 
     for option in options:
         code_bin = shutil.which(option)
