@@ -11,6 +11,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.picker.lcsc import PickedPartLCSC
+from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import KeyErrorNotFound
 
@@ -84,6 +85,12 @@ def load_part_info_from_pcb(G: Graph):
                     partno=partno,
                 )
             )
+
+        if lcsc_id:
+            lcsc_attach(node, lcsc_id)
+
+        if "Datasheet" in fp_props:
+            node.add(F.has_datasheet_defined(fp_props["Datasheet"]))
 
         # Load saved parameters from descriptive properties
         for key, value in props.items():
