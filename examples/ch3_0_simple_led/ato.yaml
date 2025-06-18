@@ -7,5 +7,3 @@ paths:
 builds:
   default:
     entry: main.ato:App
-  other:
-    entry: main.ato:Other
