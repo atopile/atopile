@@ -5,7 +5,7 @@ import logging
 import math
 from bisect import bisect
 from collections.abc import Generator
-from decimal import Decimal, getcontext
+from decimal import Decimal, InvalidOperation, getcontext
 from typing import Any, override
 
 from faebryk.libs.set_math import sine_on_interval
@@ -46,7 +46,15 @@ def float_round[T](value: T, digits: int = 0) -> T:
         return round(value, digits)  # type: ignore
     if value in [inf, -inf]:
         return value  # type: ignore
-    out = round(value, digits)
+
+    # for decimals, if the resulting number has too many digits, round raises an
+    # InvalidOperation. this is side-steppable if 'digits' is 0
+    try:
+        out = round(value, digits) if digits != 0 else round(value)
+    except InvalidOperation as e:
+        raise ValueError(
+            f"{value!r} is too big, increase decimal context precision if needed"
+        ) from e
     return type(value)(out)
 
 
