@@ -470,7 +470,7 @@ class LoggingStage(Advancable):
     def _create_log_dir(self) -> Path:
         from atopile.config import config
 
-        base_log_dir = Path(config.project.paths.logs) / NOW
+        base_log_dir = Path(config.project.paths.logs) / "archive" / NOW
 
         try:
             build_cfg = config.build
