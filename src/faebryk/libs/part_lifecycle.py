@@ -374,7 +374,7 @@ class PartLifecycle:
             lib_id, fp_name = identifier.split(":")
             try:
                 lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
-            except* LibNotInTable:
+            except* (LibNotInTable, FileNotFoundError):
                 from atopile.front_end import from_dsl  # TODO: F.is_from_dsl
 
                 if (
