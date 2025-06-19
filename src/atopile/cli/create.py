@@ -339,13 +339,16 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
     }
 
     if path is None:
-        path = query_helper(
-            ":rocket: Where should we create the project?",
-            type_=Path,
-            default=Path.cwd(),
-            pre_entered=path,
-            validator=lambda x: x.is_dir(),
-        )
+        if config.interactive:
+            path = query_helper(
+                ":rocket: Where should we create the project?",
+                type_=Path,
+                default=Path.cwd(),
+                pre_entered=path,
+                validator=lambda x: x.is_dir(),
+            )
+        else:
+            path = Path.cwd()
 
     logging.info("Running cookie-cutter on the template")
     try:
