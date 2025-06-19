@@ -779,6 +779,49 @@ If a module has the `can_bridge` trait you can use the sperm operator `~>` to br
 
 # Ato CLI
 
+## How to run
+
+Before running ato, first run
+`alias ato="'~/.cursor-server/data/User/globalStorage/atopile.atopile/uv-b
+in/uv' 'tool' 'run' '-p' '3.13' '--from' 'atopile' 'ato'"` in the terminal.
+
+## Commands
+
+```bash
+❯ ato --help
+
+ Usage: ato [OPTIONS] COMMAND [ARGS]...
+
+╭─ Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --non-interactive                      [env var: ATO_NON_INTERACTIVE, NONINTERACTIVE]                                                                                                                                   │
+│ --debug                                Wait to attach debugger on start                                                                                                                                                 │
+│ --verbose             -v      INTEGER  Increase verbosity [default: 0]                                                                                                                                                  │
+│ --version                                                                                                                                                                                                               │
+│ --semver                                                                                                                                                                                                                │
+│ --install-completion                   Install completion for the current shell.                                                                                                                                        │
+│ --show-completion                      Show completion for the current shell, to copy it or customize the installation.                                                                                                 │
+│ --help                                 Show this message and exit.                                                                                                                                                      │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Commands ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ build          Build the specified --target(s) or the targets specified by the build config.                                                                                                                            │
+│                Optionally specify a different entrypoint with the argument ENTRY.                                                                                                                                       │
+│                eg. `ato build --target my_target path/to/source.ato:module.path`                                                                                                                                        │
+│ configure      Configure the user's system for atopile development.                                                                                                                                                     │
+│ inspect        Utility to inspect what is connected to a component.                                                                                                                                                     │
+│                The context sets the boundary where something is considered connected.                                                                                                                                   │
+│                For example: `--inspect rp2040_micro --context rp2040_micro_ki`                                                                                                                                          │
+│ view           View a block diagram or schematic of your project.                                                                                                                                                       │
+│ validate       Check file for syntax errors and internal consistency                                                                                                                                                    │
+│ create         Create projects / build targets / components                                                                                                                                                             │
+│ dependencies   Manage dependencies                                                                                                                                                                                      │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Shortcuts ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ sync           Update the project's environment                                                                                                                                                                         │
+│ add            Add dependencies to the project                                                                                                                                                                          │
+│ remove         Remove dependencies from the project                                                                                                                                                                     │
+╰─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+
 ## Parts
 
 To add a part to the project you need to run `ato create part -s <LCSC_PART_NUMBER> --accept-single`.
@@ -806,7 +849,7 @@ module MyModule:
 ## Packages
 
 Packages can be found on the [ato registry](https://packages.atopile.io).
-To install a package you need to run `ato install <PACKAGE_NAME>`.
+To install a package you need to run `ato add <PACKAGE_NAME>`.
 e.g `ato install atopile/addressable-leds`
 And then can be imported with `from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805_EC20_driver`.
 And used like this:
