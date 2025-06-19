@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P
 from faebryk.libs.util import assert_once  # noqa: F401
 
@@ -29,11 +28,8 @@ class TPS2116(F.PowerMux):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Texas Instruments",
-            DescriptiveProperties.partno: "TPS2116DRLR",
-        }
+    descriptive_properties = L.f_field(F.has_explicit_part.by_mfr)(
+        "Texas Instruments", "TPS2116DRLR"
     )
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.ti.com/lit/ds/symlink/tps2116.pdf"

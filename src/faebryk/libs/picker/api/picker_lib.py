@@ -4,6 +4,7 @@
 import logging
 import re
 from dataclasses import fields
+from enum import StrEnum, auto
 from socket import gaierror
 
 import more_itertools
@@ -42,7 +43,8 @@ from faebryk.libs.picker.picker import (
     PickError,
     does_not_require_picker_check,
 )
-from faebryk.libs.sets.sets import P_Set
+from faebryk.libs.sets.sets import EnumSet, P_Set
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Tree,
@@ -88,6 +90,65 @@ TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
 }
 
 
+# TODO: backend should do this
+class BackendPackage(StrEnum):
+    # Capacitors
+    C0201 = auto()
+    C0402 = auto()
+    C0603 = auto()
+    C0805 = auto()
+    C1206 = auto()
+    C1210 = auto()
+    C1808 = auto()
+    C1812 = auto()
+    C1825 = auto()
+    C2220 = auto()
+    C2225 = auto()
+    C3640 = auto()
+    C01005 = auto()
+
+    # Resistors
+    R0201 = auto()
+    R0402 = auto()
+    R0603 = auto()
+    R0805 = auto()
+    R0815 = auto()
+    R1020 = auto()
+    R1206 = auto()
+    R1210 = auto()
+    R1218 = auto()
+    R1812 = auto()
+    R2010 = auto()
+    R2512 = auto()
+    R2816 = auto()
+    R4020 = auto()
+    R01005 = auto()
+
+    # Inductors
+    L0201 = auto()
+    L0402 = auto()
+    L0603 = auto()
+    L0805 = auto()
+    L1008 = auto()
+    L1206 = auto()
+    L1210 = auto()
+    L1806 = auto()
+    L1812 = auto()
+    L2010 = auto()
+    L2512 = auto()
+    L01005 = auto()
+
+    @classmethod
+    def from_smd_size(
+        cls, size: SMDSize, type: F.is_pickable_by_type.Type
+    ) -> "BackendPackage":
+        prefix = {
+            F.is_pickable_by_type.Type.Resistor: "R",
+            F.is_pickable_by_type.Type.Capacitor: "C",
+        }[type]
+        return cls[f"{prefix}{size.imperial.without_prefix}"]
+
+
 def _prepare_query(
     module: Module, solver: Solver
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
@@ -113,8 +174,14 @@ def _prepare_query(
         pick_type = trait.get_pick_type()
         params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
 
-        if pkg_t := module.try_get_trait(F.has_package):
-            package = pkg_t.package.get_last_known_deduced_superset(solver)
+        if pkg_t := module.try_get_trait(F.has_package_requirements):
+            package = pkg_t.get_sizes(solver)
+            package = EnumSet[BackendPackage](
+                *[
+                    BackendPackage.from_smd_size(SMDSize[s.name], pick_type)
+                    for s in package
+                ]
+            )
         else:
             package = None
 

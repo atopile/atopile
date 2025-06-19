@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 
 import requests
 from dataclasses_json.api import dataclass_json
-from github_oidc.client import get_actions_header
 from pydantic.networks import HttpUrl
 
 from atopile.config import config
@@ -290,6 +289,8 @@ class PackagesAPIClient:
         Currently, the only supported authentication method is Github Actions OIDC.
         """
         try:
+            from github_oidc.client import get_actions_header
+
             return get_actions_header(urlparse(self._cfg.api_url).netloc)
         except Exception as e:
             raise Errors.AuthenticationError(e) from e

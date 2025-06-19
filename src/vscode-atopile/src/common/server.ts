@@ -76,14 +76,12 @@ export async function startOrRestartServer(
 
     const ato_path = await getAtoBin(workspaceSetting);
     if (!ato_path) {
-        traceError(
-            `Server: ato binary not found. If you are sure ato is installed, set atopile.ato in your workspace settings.`,
-        );
+        traceError(`Server: ato not found. Make sure the extension is properly installed.`);
         return undefined;
     }
 
-    const newLSClient = await _runServer(ato_path, workspaceSetting, serverId, serverName, outputChannel);
-    traceInfo(`Server: Start requested.`);
+    const newLSClient = await _runServer(ato_path.command, workspaceSetting, serverId, serverName, outputChannel);
+    traceInfo(`Server: Start requested with ato from ${ato_path.source}.`);
     _disposables.push(
         newLSClient.onDidChangeState((e) => {
             traceVerbose(`Server State: ${e.newState}`);

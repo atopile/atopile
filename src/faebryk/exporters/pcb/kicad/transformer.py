@@ -9,7 +9,6 @@ from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
 from math import floor
-from pathlib import Path
 from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
 
 import numpy as np
@@ -248,6 +247,20 @@ class PCB_Transformer:
                 self.bind_footprint(fp, node)
             else:
                 node.add(self.has_linked_kicad_footprint(fp, self))
+
+            fp_props = {
+                k: v
+                for k, v in fp.property_dict.items()
+                if re_in(k, PCB_Transformer.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB())
+            }
+            node_props = (
+                t.get_properties()
+                if (t := node.try_get_trait(F.has_descriptive_properties))
+                else {}
+            )
+            # node takes precedence over fp
+            merged = fp_props | node_props
+            node.add(F.has_descriptive_properties_defined(merged))
 
         for f_net, pcb_net in self.map_nets().items():
             self.bind_net(pcb_net, f_net)
@@ -1713,136 +1726,31 @@ class PCB_Transformer:
             value=value,
             layer=C_text_layer(layer=layer),
             uuid=UUID(uuid),
-            effects=C_footprint.C_property.C_footprint_property_effects(font=self.font),
+            effects=C_fp_text.C_fp_text_effects(font=self.font),
             at=C_xyr(x=0, y=0, r=0),
             hide=hide,
         )
 
-    INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB = {
-        "LCSC",
-        "Partnumber",
-        "Manufacturer",
-        "JLCPCB description",
-        "PARAM_.*",
-    }
+    @staticmethod
+    def INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB() -> list[str]:
+        """
+        Returns a list of properties that should be included from the PCB to the
+        footprint.
+        """
+        from faebryk.libs.app.picking import Properties
 
-    def _update_footprint_from_node(
-        self,
-        component: Module,
-        fp_lib_path: Path,
-        logger: logging.Logger,
-        insert_point: C_xyr | None = None,
-    ) -> tuple[Footprint, bool]:
-        from faebryk.exporters.pcb.kicad.pcb import get_footprint
+        return [
+            *[p.value for p in Properties],
+            "JLCPCB description",
+        ]
 
-        f_fp = component.get_trait(F.has_footprint).get_footprint()
-
-        # At this point, all footprints MUST have a KiCAD identifier
-        fp_id = f_fp.get_trait(F.has_kicad_footprint).get_kicad_footprint()
-
-        # This is the component which is being stuck on the board
-        address = component.get_full_name()
-
-        # All modules MUST have a designator by this point
-        ref = component.get_trait(F.has_designator).get_designator()
-
-        ## Update existing footprint
-        if pcb_fp_t := f_fp.try_get_trait(self.has_linked_kicad_footprint):
-            pcb_fp = pcb_fp_t.get_fp()
-            if fp_id != pcb_fp.name:
-                # Copy the data structure so if we later mutate it we don't
-                # end up w/ those changes everywhere
-                lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
-                if existing_hash_prop := pcb_fp.propertys.get(self._FP_LIB_HASH):
-                    existing_hash = existing_hash_prop.value
-                else:
-                    existing_hash = None
-
-                # If the hash never existed, or it's changed then update the footprint
-                if existing_hash is None or existing_hash != self._hash_lib_fp(lib_fp):
-                    logger.info(
-                        f"Updating `{pcb_fp.name}`->`{fp_id}` on `{address}` ({ref})",
-                        extra={"markdown": True},
-                    )
-                    # We need to manually override the name because the
-                    # footprint's data could've ultimately come from anywhere
-                    lib_fp.name = fp_id
-                    self.update_footprint_from_lib(pcb_fp, lib_fp)
-                    self.bind_footprint(pcb_fp, component)
-            new_fp = False
-
-        ## Add new footprint
-        else:
-            # Components and footprints MUST have the same linking by this point
-            # This should be enforced through attach, and bind_footprint
-            assert not component.has_trait(self.has_linked_kicad_footprint)
-
-            logger.info(f"Adding `{fp_id}` as `{address}` ({ref})")
-            # Copy the data structure so if we later mutate it we don't
-            # end up w/ those changes everywhere
-            lib_fp = copy.deepcopy(get_footprint(fp_id, fp_lib_path))
-            # We need to manually override the name because the
-            # footprint's data could've ultimately come from anywhere
-            lib_fp.name = fp_id
-            pcb_fp = self.insert_footprint(lib_fp, insert_point)
-            self.bind_footprint(pcb_fp, component)
-            new_fp = True
-
-        def _get_prop_uuid(name: str) -> str | None:
-            if name in pcb_fp.propertys:
-                return pcb_fp.propertys[name].uuid
-            return None
-
-        ## Apply propertys, Reference and atopile_address
-        property_values = {}
-
-        # Take any descriptive properties defined on the component
-        if c_props_t := component.try_get_trait(F.has_descriptive_properties):
-            for prop_name, prop_value in c_props_t.get_properties().items():
-                if re_in(prop_name, self.INCLUDE_DESCRIPTIVE_PROPERTIES_FROM_PCB):
-                    property_values[prop_name] = prop_value
-
-        if c_props_t := component.try_get_trait(F.has_datasheet):
-            property_values["Datasheet"] = c_props_t.get_datasheet()
-
-        property_values["Reference"] = ref
-
-        if value_t := component.try_get_trait(F.has_simple_value_representation):
-            property_values["Value"] = value_t.get_value()
-        else:
-            property_values["Value"] = ""
-
-        property_values["atopile_address"] = component.get_full_name()
-
-        for prop_name, prop_value in property_values.items():
-            ### Get old property value, representing non-existent properties as None
-            ### If the property value has changed, update it
-            if prop := pcb_fp.propertys.get(prop_name):
-                if prop_value != prop.value:
-                    logger.info(
-                        f"Updating `{prop_name}`->`{prop_value}` on"
-                        f" `{address}` ({ref})",
-                        extra={"markdown": True},
-                    )
-                    pcb_fp.propertys[prop_name].value = prop_value
-
-            ### If it's a new property, add it
-            else:
-                logger.info(
-                    f"Adding `{prop_name}`=`{prop_value}` to `{address}` ({ref})",
-                    extra={"markdown": True},
-                )
-                pcb_fp.propertys[prop_name] = self._make_fp_property(
-                    property_name=prop_name,
-                    layer="User.9",
-                    value=prop_value,
-                    uuid=_get_prop_uuid(prop_name) or self.gen_uuid(mark=True),
-                )
-
-        return pcb_fp, new_fp
-
-    def apply_design(self, fp_lib_path: Path, logger: logging.Logger = logger):
+    def apply_design(self, logger: logging.Logger = logger):
         """Apply the design to the pcb"""
+        from faebryk.libs.part_lifecycle import PartLifecycle
+
+        lifecycle = PartLifecycle.singleton()
+
+        # Re-attach everything one more time
         # Re-attach everything one more time
         # We rely on this to reliably update the pcb
         self.attach()
@@ -1905,8 +1813,8 @@ class PCB_Transformer:
                 if component is not component.get_most_special():
                     continue
 
-                pcb_fp, new_fp = self._update_footprint_from_node(
-                    component, fp_lib_path, logger, insert_point
+                pcb_fp, new_fp = lifecycle.pcb.ingest_footprint(
+                    self, component, logger, insert_point
                 )
                 if new_fp:
                     insert_point = _incremented_point(

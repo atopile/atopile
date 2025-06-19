@@ -10,7 +10,7 @@ from pathlib import Path
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
-from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.picker.lcsc import PickedPartLCSC
 
 logger = logging.getLogger(__name__)
 
@@ -118,17 +118,18 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
     ):
         return
 
-    if not all(
-        cmp.has_trait(t)
+    if missing := [
+        t.__name__
         for t in (
-            F.has_descriptive_properties,
+            F.has_part_picked,
             F.has_designator,
         )
-    ):
-        logger.warning(f"Missing fields on component '{cmp}'")
+        if not cmp.has_trait(t)
+    ]:
+        logger.warning(f"Missing fields on component '{cmp}': {missing}")
         return
 
-    properties = cmp.get_trait(F.has_descriptive_properties).get_properties()
+    part = cmp.get_trait(F.has_part_picked).get_part()
     footprint = cmp.get_trait(F.has_footprint).get_footprint()
 
     value = (
@@ -142,19 +143,11 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
         logger.warning(f"Missing kicad footprint on component '{cmp}'")
         return
 
-    if "LCSC" not in properties:
+    if not isinstance(part, PickedPartLCSC):
         return
 
-    manufacturer = (
-        properties[DescriptiveProperties.manufacturer]
-        if DescriptiveProperties.manufacturer in properties
-        else ""
-    )
-    partnumber = (
-        properties[DescriptiveProperties.partno]
-        if DescriptiveProperties.partno in properties
-        else ""
-    )
+    manufacturer = part.manufacturer
+    partnumber = part.partno
 
     footprint_name = footprint.get_trait(
         F.has_kicad_footprint
@@ -167,5 +160,5 @@ def _get_bomline(cmp: Module) -> BOMLine | None:
         Value=value,
         Manufacturer=manufacturer,
         Partnumber=partnumber,
-        LCSC_Partnumber=properties["LCSC"],
+        LCSC_Partnumber=part.lcsc_id,
     )

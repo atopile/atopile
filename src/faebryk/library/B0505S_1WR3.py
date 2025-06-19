@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -35,10 +34,6 @@ class B0505S_1WR3(Module):
         F.has_designator_prefix.Prefix.U
     )
 
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2307211806_EVISUN-B0505S-1WR3_C7465178.pdf"
-    )
-
     @L.rt_field
     def can_attach_to_footprint(self):
         return F.can_attach_to_footprint_via_pinmap(
@@ -50,16 +45,7 @@ class B0505S_1WR3(Module):
             }
         )
 
-    @L.rt_field
-    def has_descriptive_properties_defined(self):
-        return F.has_descriptive_properties_defined(
-            {
-                DescriptiveProperties.manufacturer: "EVISUN",
-                DescriptiveProperties.partno: "B0505S-1WR3",
-            },
-        )
-
-    lcsc_part = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C7465178"})
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C7465178")
 
     def __preinit__(self):
         self.power_in.voltage.constrain_subset(L.Range(4.3 * P.V, 9 * P.V))

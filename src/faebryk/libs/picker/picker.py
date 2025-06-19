@@ -5,7 +5,6 @@ import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
-from enum import StrEnum
 from textwrap import indent
 from typing import TYPE_CHECKING, Iterable
 
@@ -47,21 +46,19 @@ NO_PROGRESS_BAR = ConfigFlag("NO_PROGRESS_BAR", default=False)
 logger = logging.getLogger(__name__)
 
 
-class DescriptiveProperties(StrEnum):
-    manufacturer = "Manufacturer"
-    partno = "Partnumber"
-    datasheet = "Datasheet"
+class PickSupplier(ABC):
+    supplier_id: str
 
-
-class Supplier(ABC):
     @abstractmethod
     def attach(self, module: Module, part: "PickerOption"): ...
 
 
 @dataclass(frozen=True)
-class Part:
+class PickedPart:
+    manufacturer: str
     partno: str
-    supplier: Supplier
+    supplier_partno: str
+    supplier: PickSupplier
 
 
 class PickError(Exception):

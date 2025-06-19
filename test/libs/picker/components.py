@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.brightness import TypicalLuminousIntensity
 from faebryk.libs.library import L
-from faebryk.libs.picker.picker import DescriptiveProperties
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P, quantity
 
 logger = logging.getLogger(__name__)
@@ -17,15 +17,16 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComponentTestCase:
     module: Module
-    packages: list[F.has_package.Package]
-    descriptive_properties: dict[str, str] = field(default_factory=dict)
+    packages: list[SMDSize]
+    lcsc_id: str | None = None
+    mfr_mpn: tuple[str, str] | None = None
     override_test_name: str | None = None
 
     def __post_init__(self):
-        if self.descriptive_properties:
-            self.module.add(
-                F.has_descriptive_properties_defined(self.descriptive_properties)
-            )
+        if self.lcsc_id:
+            self.module.add(F.has_explicit_part.by_supplier(self.lcsc_id))
+        elif self.mfr_mpn:
+            self.module.add(F.has_explicit_part.by_mfr(*self.mfr_mpn))
 
 
 mfr_parts = [
@@ -42,10 +43,7 @@ mfr_parts = [
             )
         ),
         packages=[],  # FIXME: re-add package requirement"SOT-23-5"
-        descriptive_properties={
-            DescriptiveProperties.partno: "LMV321IDBVR",
-            DescriptiveProperties.manufacturer: "Texas Instruments",
-        },
+        mfr_mpn=("Texas Instruments", "LMV321IDBVR"),
         override_test_name="MFR_TI_LMV321IDBVR",
     )
 ]
@@ -64,7 +62,7 @@ lcsc_id_parts = [
             )
         ),
         packages=[],  # FIXME: re-add package requirement"SOT-23-5"
-        descriptive_properties={"LCSC": "C7972"},
+        lcsc_id="C7972",
         override_test_name="LCSC_ID_C7972",
     )
 ]
@@ -80,7 +78,7 @@ resistors = [
                 r.max_voltage.constrain_ge(25 * P.V),
             )
         ),
-        packages=[F.has_package.Package.R0402],
+        packages=[SMDSize.I0402],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -92,7 +90,7 @@ resistors = [
                 r.max_voltage.constrain_ge(50 * P.V),
             )
         ),
-        packages=[F.has_package.Package.R0603],
+        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -102,7 +100,7 @@ resistors = [
                 ),
             )
         ),
-        packages=[F.has_package.Package.R0805],
+        packages=[SMDSize.I0805],
     ),
 ]
 
@@ -119,7 +117,7 @@ capacitors = [
                 ),
             )
         ),
-        packages=[F.has_package.Package.C0603],
+        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Capacitor().builder(
@@ -133,7 +131,7 @@ capacitors = [
                 ),
             )
         ),
-        packages=[F.has_package.Package.C0402],
+        packages=[SMDSize.I0402],
     ),
 ]
 
@@ -149,7 +147,7 @@ inductors = [
                 i.self_resonant_frequency.constrain_ge(100 * P.Mhertz),
             )
         ),
-        packages=[F.has_package.Package.L0603],
+        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Inductor().builder(

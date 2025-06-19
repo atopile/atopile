@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -30,16 +29,7 @@ class XT30PW2plus2(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.J
     )
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Changzhou Amass Elec",
-            DescriptiveProperties.partno: "XT30PW(2+2)-M.G.B",
-        }
-    )
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C19268030"})
-    datasheet = L.f_field(F.has_datasheet_defined)(
-        "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/2401121133_Changzhou-Amass-Elec-XT30-2-2PW-M-G-B_C19268030.pdf"
-    )
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C19268030")
 
     @L.rt_field
     def attach_via_pinmap(self):

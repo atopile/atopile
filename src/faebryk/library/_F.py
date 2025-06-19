@@ -16,6 +16,7 @@ This way we can add new modules without changing this file
 # flake8: noqa: E501
 
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_esphome_config import has_esphome_config
@@ -34,7 +35,8 @@ from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
-from faebryk.library.has_descriptive_properties import has_descriptive_properties
+from faebryk.library.has_part_picked import has_part_picked
+from faebryk.library.is_auto_generated import is_auto_generated
 from faebryk.library.is_app_root import is_app_root
 from faebryk.library.has_layout_transform import has_layout_transform
 from faebryk.library.has_solver import has_solver
@@ -42,7 +44,7 @@ from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
-from faebryk.library.has_part_picked import has_part_picked
+from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
 from faebryk.library.has_construction_dependency import has_construction_dependency
@@ -74,10 +76,11 @@ from faebryk.library.is_pickable_by_supplier_id import is_pickable_by_supplier_i
 from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
+from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.implements_design_check import implements_design_check
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
-from faebryk.library.has_part_removed import has_part_removed
+from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.has_simple_value_representation_based_on_params import has_simple_value_representation_based_on_params
 from faebryk.library.has_simple_value_representation_based_on_params_chain import has_simple_value_representation_based_on_params_chain
 from faebryk.library.has_simple_value_representation_defined import has_simple_value_representation_defined
@@ -90,7 +93,6 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_footprint_impl import has_footprint_impl
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.has_descriptive_properties_defined import has_descriptive_properties_defined
 from faebryk.library.Pad import Pad
 from faebryk.library.has_symbol_layout import has_symbol_layout
 from faebryk.library.PCB import PCB
@@ -121,6 +123,7 @@ from faebryk.library.has_equal_pins_in_ifs import has_equal_pins_in_ifs
 from faebryk.library.has_kicad_footprint_equal_ifs import has_kicad_footprint_equal_ifs
 from faebryk.library.KicadFootprint import KicadFootprint
 from faebryk.library.SurgeProtection import SurgeProtection
+from faebryk.library.Capacitor import Capacitor
 from faebryk.library.Crystal import Crystal
 from faebryk.library.Fuse import Fuse
 from faebryk.library.Inductor import Inductor
@@ -138,20 +141,18 @@ from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_foot
 from faebryk.library.Mounting_Hole import Mounting_Hole
 from faebryk.library.TestPoint import TestPoint
 from faebryk.library.has_explicit_part import has_explicit_part
-from faebryk.library.has_package import has_package
+from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.is_surge_protected import is_surge_protected
-from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
-from faebryk.library.Potentiometer import Potentiometer
-from faebryk.library.ResistorArray import ResistorArray
-from faebryk.library.Capacitor import Capacitor
-from faebryk.library.has_package_requirement import has_package_requirement
-from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
 from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
-from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.is_decoupled import is_decoupled
-from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
+from faebryk.library.Common_Mode_Filter import Common_Mode_Filter
+from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
+from faebryk.library.Potentiometer import Potentiometer
+from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
 from faebryk.library.can_be_decoupled import can_be_decoupled
+from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.ElectricPower import ElectricPower
 from faebryk.library.B0505S_1WR3 import B0505S_1WR3
 from faebryk.library.Battery import Battery

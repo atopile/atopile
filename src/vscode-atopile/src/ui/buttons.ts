@@ -7,58 +7,89 @@ import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
+import { g_lsClient } from '../extension';
 
-let statusbarAtoAdd: vscode.StatusBarItem;
+let statusbarAtoAddPackage: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
 let statusbarAtoBuildTarget: vscode.StatusBarItem;
-let statusbarAtoCreate: vscode.StatusBarItem;
+let statusbarAtoAddPart: vscode.StatusBarItem;
 let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
-let statusbarAtoRemove: vscode.StatusBarItem;
+let statusbarAtoRemovePackage: vscode.StatusBarItem;
+let statusbarAtoCreateProject: vscode.StatusBarItem;
+let statusbarAtoShell: vscode.StatusBarItem;
 
 function _buildsToStr(builds: Build[]): string[] {
-    const multiple_ws = new Set(builds.map((build) => build.root)).size > 1;
-    if (multiple_ws) {
-        return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
-    } else {
-        return builds.map((build) => `${build.name} | ${build.entry}`);
-    }
+    return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
+
+    // Makes more readable but annoying to parse
+    //const multiple_ws = new Set(builds.map((build) => build.root)).size > 1;
+    //if (multiple_ws) {
+    //    return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
+    //} else {
+    //    return builds.map((build) => `${build.name} | ${build.entry}`);
+    //}
 }
 
 function _buildStrToBuild(build_str: string): Build {
     const split = build_str.split(' | ');
-    if (split.length === 3) {
-        const [root, name, entry] = split;
-        return { root, name, entry };
-    } else {
-        const [name, entry] = split;
-        return { root: null, name, entry };
+
+    if (split.length !== 3) {
+        throw new Error(`Invalid build string: ${build_str}`);
     }
+
+    const [root, name, entry] = split;
+    return { root, name, entry };
+
+    // See above
+    //if (split.length === 3) {
+    //    const [root, name, entry] = split;
+    //    return { root, name, entry };
+    //} else {
+    //    const [name, entry] = split;
+    //    return { root: null, name, entry };
+    //}
 }
 
 async function _displayButtons() {
     let builds: Build[] = [];
-    const atoBin = await _getAtoCommand();
+    const atoBin = await getAtoBin();
     // only display buttons if we have a valid ato command
     if (atoBin) {
         builds = getBuilds();
+        statusbarAtoShell.show();
+        statusbarAtoCreateProject.show();
+    } else {
+        statusbarAtoShell.hide();
+        statusbarAtoCreateProject.hide();
     }
 
     const build_strs = _buildsToStr(builds);
 
     if (builds.length !== 0) {
-        statusbarAtoCreate.show();
-        statusbarAtoAdd.show();
-        statusbarAtoRemove.show();
+        traceInfo(`Buttons: Showing, found ato command in ${atoBin?.source}`);
+        // TODO: not happy yet with the flow
+        statusbarAtoAddPart.show();
+        statusbarAtoAddPackage.show();
+        statusbarAtoRemovePackage.show();
         statusbarAtoBuild.show();
         statusbarAtoLaunchKiCAD.show();
         statusbarAtoBuildTarget.show();
 
         statusbarAtoBuildTarget.text = build_strs[0];
         statusbarAtoBuildTarget.tooltip = 'ato: build target';
+        g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
+            buildTarget: _buildStrToBuild(build_strs[0]).entry,
+        });
     } else {
-        statusbarAtoCreate.hide();
-        statusbarAtoAdd.hide();
-        statusbarAtoRemove.hide();
+        if (atoBin) {
+            traceInfo(`Buttons: No builds found, hiding`);
+        } else {
+            traceInfo('Buttons: No ato command found, hiding');
+        }
+
+        statusbarAtoAddPart.hide();
+        statusbarAtoAddPackage.hide();
+        statusbarAtoRemovePackage.hide();
         statusbarAtoBuild.hide();
         statusbarAtoLaunchKiCAD.hide();
         statusbarAtoBuildTarget.hide();
@@ -77,8 +108,14 @@ export async function forceReloadButtons() {
 
 export async function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.create', () => {
-            atoCreate();
+        vscode.commands.registerCommand('atopile.add_part', () => {
+            atoAddPart();
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.shell', () => {
+            atoShell();
         }),
     );
 
@@ -89,48 +126,66 @@ export async function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.add', () => {
-            atoAddFlow();
+        vscode.commands.registerCommand('atopile.add_package', () => {
+            atoAddPackage();
         }),
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.remove', () => {
-            atoRemoveFlow();
+        vscode.commands.registerCommand('atopile.remove_package', () => {
+            atoRemovePackage();
+        }),
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.create_project', () => {
+            atoCreateProject();
         }),
     );
 
     context.subscriptions.push(
         vscode.commands.registerCommand('atopile.launch_kicad', () => {
-            pcbnew();
+            atoLaunchKicad();
         }),
     );
 
     context.subscriptions.push(
         vscode.commands.registerCommand('atopile.choose_build', () => {
-            selectBuildTargetFlow();
+            atoChooseBuild();
         }),
     );
 
-    const commandAtoCreate = 'atopile.create';
-    statusbarAtoCreate = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoCreate.command = commandAtoCreate;
-    statusbarAtoCreate.text = `$(new-file)`;
-    statusbarAtoCreate.tooltip = 'ato: create';
+    const commandAtoShell = 'atopile.shell';
+    statusbarAtoShell = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoShell.command = commandAtoShell;
+    statusbarAtoShell.text = `$(terminal)$(plus)`;
+    statusbarAtoShell.tooltip = 'ato: open a shell';
+
+    const commandAtoCreateProject = 'atopile.create_project';
+    statusbarAtoCreateProject = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoCreateProject.command = commandAtoCreateProject;
+    statusbarAtoCreateProject.text = `$(new-file)`;
+    statusbarAtoCreateProject.tooltip = 'ato: create project';
+
+    const commandAtoCreate = 'atopile.add_part';
+    statusbarAtoAddPart = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoAddPart.command = commandAtoCreate;
+    statusbarAtoAddPart.text = `$(file-binary)$(arrow-down)`;
+    statusbarAtoAddPart.tooltip = 'ato: add a part';
     // statusbarAtoCreate.color = "#F95015";
 
-    const commandAtoAdd = 'atopile.add';
-    statusbarAtoAdd = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoAdd.command = commandAtoAdd;
-    statusbarAtoAdd.text = `$(package)`;
-    statusbarAtoAdd.tooltip = 'ato: add a dependency';
+    const commandAtoAdd = 'atopile.add_package';
+    statusbarAtoAddPackage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoAddPackage.command = commandAtoAdd;
+    statusbarAtoAddPackage.text = `$(package)$(arrow-down)`;
+    statusbarAtoAddPackage.tooltip = 'ato: add a package dependency';
     // statusbarAtoInstall.color = "#F95015";
 
-    const commandAtoRemove = 'atopile.remove';
-    statusbarAtoRemove = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoRemove.command = commandAtoRemove;
-    statusbarAtoRemove.text = `$(trash)`;
-    statusbarAtoRemove.tooltip = 'ato: remove a dependency';
+    const commandAtoRemove = 'atopile.remove_package';
+    statusbarAtoRemovePackage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoRemovePackage.command = commandAtoRemove;
+    statusbarAtoRemovePackage.text = `$(package)$(close)`;
+    statusbarAtoRemovePackage.tooltip = 'ato: remove a package dependency';
     // statusbarAtoRemove.color = "#F95015";
 
     const commandAtoBuild = 'atopile.build';
@@ -178,118 +233,118 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    statusbarAtoAdd.dispose();
+    statusbarAtoAddPackage.dispose();
     statusbarAtoBuild.dispose();
     statusbarAtoBuildTarget.dispose();
-    statusbarAtoCreate.dispose();
+    statusbarAtoAddPart.dispose();
     statusbarAtoLaunchKiCAD.dispose();
-    statusbarAtoRemove.dispose();
+    statusbarAtoRemovePackage.dispose();
 }
 
-async function _getAtoCommand() {
+async function _runInTerminal(name: string, cwd: string | undefined, subcommand: string[], hideFromUser: boolean) {
     const atoBin = await getAtoBin();
     if (atoBin === null) {
-        return null;
+        traceError("Buttons: Can't run ato in terminal: ato not found.");
+        return;
     }
-    let out = atoBin.map((bin) => `"${bin}"`).join(' ');
+
+    let terminal = vscode.window.createTerminal({
+        name: `ato: ${name}`,
+        cwd: cwd,
+        hideFromUser: hideFromUser,
+    });
+    const in_powershell =
+        os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
+
+    let atoAlias = atoBin.command.map((c) => `'${c}'`).join(' ');
+
     // if running in powershell, need to add & to the command
-    if (os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell')) {
-        out = '& ' + out;
+    if (in_powershell) {
+        atoAlias = '& ' + atoAlias;
     }
-    return out;
+
+    traceInfo(`Found ato for alias in ${atoBin.source}: ${atoAlias}`);
+
+    let alias = `alias ato="${atoAlias}"`;
+    if (in_powershell) {
+        alias = `Function ato { ${atoAlias} @args }`;
+    }
+
+    terminal.sendText(alias);
+    terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
+    terminal.show();
+    return terminal;
 }
+
+async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
+    const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
+    await _runInTerminal(name, build.root, subcommand, hideFromUser);
+}
+
 // Buttons handlers --------------------------------------------------------------------
+
+async function atoShell() {
+    await _runInTerminal('shell', undefined, ['--help'], false);
+}
 
 async function atoBuild() {
     // TODO: not sure that's very standard behavior
     // save all dirty editors
     // vscode.workspace.saveAll();
 
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
-        return;
-    }
-
     // parse what build target to use
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
 
-    // create a terminal to work with
-    let buildTerminal = vscode.window.createTerminal({
-        name: `ato build ${build.name}`,
-        cwd: build.root || '${workspaceFolder}',
-        hideFromUser: false,
-    });
-
-    buildTerminal.sendText(atoBin + ' build --build ' + build.name);
-    buildTerminal.show();
+    await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
 }
 
-async function atoCreate() {
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
+async function atoAddPart() {
+    let result = await window.showInputBox({
+        placeHolder: 'Manufacturer:PartNumber or LCSC_ID',
+    });
+    result = result?.trim();
+    if (!result) {
         return;
     }
 
-    let createTerminal = vscode.window.createTerminal({
-        name: 'ato create',
-        cwd: '${workspaceFolder}',
-        hideFromUser: false,
-    });
-
-    createTerminal.sendText(atoBin + ' create');
-    createTerminal.show();
+    await _runInTerminalWithBuildTarget(
+        'create part',
+        ['create', 'part', '--search', result, '--accept-single'],
+        false,
+    );
 }
 
-async function atoAddFlow() {
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
-        return;
-    }
-
+async function atoAddPackage() {
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
-    // delete whitespace
     result = result?.trim();
 
-    // if we got a part, try to add it
-    if (result) {
-        let addTerminal = vscode.window.createTerminal({
-            name: 'ato add',
-            cwd: '${workspaceFolder}',
-            hideFromUser: false,
-        });
-
-        addTerminal.sendText(atoBin + ' add ' + result);
-        addTerminal.show();
-    }
-}
-
-async function atoRemoveFlow() {
-    const atoBin = await _getAtoCommand();
-    if (atoBin === null) {
+    if (!result) {
         return;
     }
 
+    await _runInTerminalWithBuildTarget('add', ['add', result], false);
+}
+
+async function atoRemovePackage() {
     let result = await window.showInputBox({
         placeHolder: 'Package name',
     });
-    // delete whitespace
     result = result?.trim();
 
-    // if we got a part, try to remove it
-    if (result) {
-        let removeTerminal = vscode.window.createTerminal({
-            name: 'ato remove',
-            cwd: '${workspaceFolder}',
-            hideFromUser: false,
-        });
-        removeTerminal.sendText(atoBin + ' remove ' + result);
-        removeTerminal.show();
+    if (!result) {
+        return;
     }
+
+    await _runInTerminalWithBuildTarget('remove', ['remove', result], false);
 }
 
-async function selectBuildTargetFlow() {
+async function atoCreateProject() {
+    await _runInTerminal('create project', undefined, ['create', 'project'], false);
+}
+
+async function atoChooseBuild() {
     // check if a new build was created
     await _reloadBuilds();
 
@@ -303,9 +358,12 @@ async function selectBuildTargetFlow() {
     }
 
     statusbarAtoBuildTarget.text = result;
+    g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
+        buildTarget: _buildStrToBuild(result).entry,
+    });
 }
 
-async function pcbnew() {
+async function atoLaunchKicad() {
     // get the build target name
     const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
 

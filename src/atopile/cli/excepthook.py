@@ -1,15 +1,13 @@
 import contextlib
 import sys
 
-import rich
-
-from atopile import telemetry
-from faebryk.libs.logging import FLOG_FMT
+from faebryk.libs.logging import FLOG_FMT, rich_print_robust
 
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
     # avoid exceptions raised during import
-    from atopile.cli.logging import logger
+    from atopile import telemetry
+    from atopile.cli.logging_ import logger
     from atopile.errors import _BaseBaseUserException
 
     # delayed import to improve startup time
@@ -54,7 +52,7 @@ def handle_exception(exc_type, exc_value, exc_traceback):
         with contextlib.suppress(Exception):
             telemetry.log_telemetry()
 
-        rich.print(
+        rich_print_robust(
             "\n\nUnfortunately errors ^^^ stopped the build. "
             "If you need a hand jump on [#9656ce]Discord[/]! [link=https://discord.gg/JY62WubxsP]https://discord.gg/JY62WubxsP[/] :wave:"  # noqa: E501  # pre-existing
         )

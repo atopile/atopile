@@ -10,7 +10,7 @@ import re
 
 import black
 
-from faebryk.libs.pycodegen import sanitize_name
+from faebryk.libs.codegen.pycodegen import sanitize_name
 from faebryk.libs.util import not_none
 
 logger = logging.getLogger(__name__)

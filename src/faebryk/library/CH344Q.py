@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 from faebryk.libs.util import assert_once
 
@@ -78,16 +77,8 @@ class CH344Q(F.CH344):
     # ----------------------------------------
     #                 traits
     # ----------------------------------------
-    @L.rt_field
-    def descriptive_properties(self):
-        return F.has_descriptive_properties_defined(
-            {
-                DescriptiveProperties.manufacturer: "WCH(Jiangsu Qin Heng)",
-                DescriptiveProperties.partno: "CH344Q",
-            },
-        )
 
-    lcsc_part = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C2988084"})
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C2988084")
 
     @L.rt_field
     def can_attach_to_footprint(self):

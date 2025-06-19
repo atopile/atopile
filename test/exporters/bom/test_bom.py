@@ -2,12 +2,13 @@
 # SPDX-License-Identifier: MIT
 
 
+import pytest
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.exporters.bom.jlcpcb import _get_bomline
 from faebryk.libs.app.designators import attach_random_designators, load_designators
-from faebryk.libs.app.pcb import create_footprint_library
 from faebryk.libs.iso_metric_screw_thread import Iso262_MetricScrewThreadSizes
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
@@ -18,8 +19,6 @@ def _build(app: Module):
     load_designators(app.get_graph(), attach=True)
     solver = DefaultSolver()
     pick_part_recursively(app, solver)
-    F.has_package.standardize_footprints(app, solver)
-    create_footprint_library(app, no_fp_lib=True)
     attach_random_designators(app.get_graph())
 
 
@@ -35,6 +34,7 @@ def test_bom_mounting_hole():
     assert bomline is None
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
     r = F.Resistor()
     r.resistance.constrain_subset(L.Range.from_center_rel(10 * P.kohm, 0.01))
@@ -45,6 +45,7 @@ def test_bom_picker_pick():
     assert bomline is not None
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_bom_explicit_pick():
     m = Module()
     m.add(F.can_attach_to_footprint_symmetrically())

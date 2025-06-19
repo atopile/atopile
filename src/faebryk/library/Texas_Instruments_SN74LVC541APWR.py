@@ -5,7 +5,6 @@ import logging
 
 import faebryk.library._F as F  # noqa: F401
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -19,13 +18,7 @@ class Texas_Instruments_SN74LVC541APWR(F.SNx4LVC541A):
     # ----------------------------------------
     #                traits
     # ----------------------------------------
-    lcsc_id = L.f_field(F.has_descriptive_properties_defined)({"LCSC": "C113281"})
-    descriptive_properties = L.f_field(F.has_descriptive_properties_defined)(
-        {
-            DescriptiveProperties.manufacturer: "Texas Instruments",
-            DescriptiveProperties.partno: "SN74LVC541APWR",
-        }
-    )
+    explicit_part = L.f_field(F.has_explicit_part.by_supplier)("C113281")
     datasheet = L.f_field(F.has_datasheet_defined)(
         "https://www.ti.com/lit/ds/symlink/sn74lvc541a.pdf"
     )

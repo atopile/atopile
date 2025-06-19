@@ -6,7 +6,6 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.module import Module
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.picker.picker import DescriptiveProperties
 from faebryk.libs.units import P  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -58,12 +57,7 @@ class SP3243E(Module):
 
     @L.rt_field
     def descriptive_properties(self):
-        return F.has_descriptive_properties_defined(
-            {
-                DescriptiveProperties.manufacturer: "MaxLinear",
-                DescriptiveProperties.partno: "SP3243EBEA-L/TR",
-            },
-        )
+        return F.has_explicit_part.by_mfr("MaxLinear", "SP3243EBEA-L/TR")
 
     @L.rt_field
     def pin_association_heuristic(self):

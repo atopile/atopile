@@ -20,6 +20,7 @@ from typing import (
     override,
 )
 
+from more_itertools import first
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -57,6 +58,8 @@ from atopile.version import (
     get_installed_atopile_version,
 )
 from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.test.testutil import in_test
+from faebryk.libs.util import indented_container
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -163,15 +166,26 @@ class GlobalConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data if self.yaml_data else {}
 
 
-def _find_project_config_file(start: Path) -> Path | None:
-    """Search parent directories, up to the root, for a project config file."""
+def _find_project_dir(start: Path) -> Path | None:
+    """
+    Search parent directories, up to the root, for a directory containing a project
+    config file.
+    """
     path = start
-    while not (path / PROJECT_CONFIG_FILENAME).exists():
+    while not (path / PROJECT_CONFIG_FILENAME).is_file():
         path = path.parent
         if path == path.parent:
             return None
 
-    return path.resolve().absolute() / PROJECT_CONFIG_FILENAME
+    return path.resolve().absolute()
+
+
+def _find_project_config_file(start: Path) -> Path | None:
+    """Search parent directories, up to the root, for a project config file."""
+    if (project_dir := _find_project_dir(start)) is not None:
+        return project_dir / PROJECT_CONFIG_FILENAME
+
+    return None
 
 
 class ProjectConfigSettingsSource(ConfigFileSettingsSource):
@@ -200,11 +214,11 @@ class ProjectPaths(BaseConfigModel):
     src: Path
     """Project source code directory"""
 
+    parts: Path
+    """Source code directory for parts"""
+
     layout: Path
     """Project layout directory where KiCAD projects are stored and searched for"""
-
-    footprints: Path
-    """Project footprints directory"""
 
     build: Path
     """Build artifact output directory"""
@@ -215,22 +229,27 @@ class ProjectPaths(BaseConfigModel):
     manifest: Path
     """Build manifest file"""
 
-    component_lib: Path
-    """Component library directory for builds"""
-
     modules: Path
     """Project modules directory (`.ato/modules` from the project root)"""
 
+    # TODO: remove, deprecated
+    footprints: Path | None = None
+    """Deprecated: Project footprints directory"""
+
+    # TODO: remove, deprecated
+    component_lib: Path | None = None
+    """Deprecated: Component library directory for builds"""
+
     def __init__(self, **data: Any):
         data.setdefault("root", _project_dir or Path.cwd())
-        data.setdefault("src", data["root"] / "elec" / "src")
+        data["src"] = Path(data.get("src", data["root"] / "elec" / "src"))
+        data.setdefault("parts", data["src"] / "parts")
         data.setdefault("layout", data["root"] / "elec" / "layout")
-        data.setdefault("footprints", data["root"] / "elec" / "footprints")
         data["build"] = Path(data.get("build", data["root"] / "build"))
         data.setdefault("logs", data["build"] / "logs")
         data.setdefault("manifest", data["build"] / "manifest.json")
-        data.setdefault("component_lib", data["build"] / "kicad" / "libs")
         data.setdefault("modules", data["root"] / ".ato" / "modules")
+
         super().__init__(**data)
 
     @model_validator(mode="after")
@@ -248,12 +267,26 @@ class ProjectPaths(BaseConfigModel):
                 )
         return model
 
+    @model_validator(mode="before")
+    def check_deprecated_fields(cls, data: dict[str, Any]) -> dict[str, Any]:
+        if "component_lib" in data and data["component_lib"] is not None:
+            raise UserConfigurationError(
+                "The 'component_lib' field in your ato.yaml is deprecated. "
+                "Delete your component_lib and the entry in the ato.yaml. "
+                "Use 'parts' instead."
+            )
+        if "footprints" in data and data["footprints"] is not None:
+            raise UserConfigurationError(
+                "The 'footprints' field in your ato.yaml is deprecated. "
+                "If you are manually assigning hand-made footprints you "
+                "probably want to make atomic parts instead. "
+                "Please remove it."
+            )
+        return data
+
     def ensure(self) -> None:
         self.build.mkdir(parents=True, exist_ok=True)
         self.layout.mkdir(parents=True, exist_ok=True)
-
-    def get_footprint_lib(self, lib_name: str) -> Path:
-        return self.component_lib / "footprints" / f"{lib_name}.pretty"
 
 
 class BuildTargetPaths(BaseConfigModel):
@@ -311,7 +344,7 @@ class BuildTargetPaths(BaseConfigModel):
 
             if len(layout_candidates) == 1:
                 return layout_candidates[0].resolve().absolute()
-            else:
+            elif len(layout_candidates) > 1:
                 raise UserException(
                     "Layout directories must contain only 1 layout,"
                     f" but {len(layout_candidates)} found in {layout_base}"
@@ -838,6 +871,27 @@ class ProjectConfig(BaseConfigModel):
 
         config.update_project_settings(_remove_dependency, {})
 
+    def get_relative_to_kicad_project(self, path: Path) -> Path:
+        if not self.builds:
+            if in_test():
+                raise ValueError(
+                    "No builds found. Did you forget: "
+                    "`@pytest.mark.usefixtures('setup_project_config')`?"
+                )
+            raise UserConfigurationError("No builds found in project config")
+
+        rel_paths = {
+            name: path.relative_to(build.paths.kicad_project.parent, walk_up=True)
+            for name, build in self.builds.items()
+        }
+        # TODO check this
+        if len(set(rel_paths.values())) != 1:
+            raise ValueError(
+                "All builds must have the same common prefix path: "
+                f"{indented_container(rel_paths)}"
+            )
+        return Path("${KIPRJMOD}") / first(rel_paths.values())
+
 
 class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
     """
@@ -1038,14 +1092,18 @@ class Config:
             )
 
         # don't trigger reload
-        self._project_dir = entry_arg_file_path.parent or Path.cwd()
+        self._project_dir = entry_arg_file_path.parent
+        root = self._project_dir
+        standalone_dir = root / f"standalone_{entry_arg_file_path.stem}"
         self._project = ProjectConfig.skeleton(
             entry=entry,
             paths=ProjectPaths(
-                root=self._project_dir,
-                src=self._project_dir,
-                layout=self._project_dir / "standalone",
-                footprints=self._project_dir / "standalone",
+                root=root,
+                src=root,
+                layout=standalone_dir / "layout",
+                build=standalone_dir / "build",
+                # TODO definitely need option to override this
+                parts=standalone_dir / "parts",
             ),
         )
 

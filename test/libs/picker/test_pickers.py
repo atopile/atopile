@@ -4,13 +4,11 @@
 import logging
 import sys
 from pathlib import Path
-from tempfile import mkdtemp
 from typing import TYPE_CHECKING
 
 import pytest
 
 import faebryk.library._F as F
-import faebryk.libs.picker.lcsc as lcsc
 from faebryk.core.module import Module
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.core.solver.nullsolver import NullSolver
@@ -20,10 +18,12 @@ from faebryk.libs.picker.api.picker_lib import (
     check_and_attach_candidates,
     get_candidates,
 )
+from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.sets.sets import EnumSet
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
-from faebryk.libs.util import groupby
+from faebryk.libs.util import cast_assert, groupby
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -36,8 +36,6 @@ except ImportError:
     components_to_test = []
 
 logger = logging.getLogger(__name__)
-
-lcsc.LIB_FOLDER = Path(mkdtemp())
 
 
 def test_load_components():
@@ -67,38 +65,32 @@ def _make_id(m: "ComponentTestCase"):
 def test_pick_module(case: "ComponentTestCase"):
     module = case.module
 
-    pre_pick_descriptive_properties = {}
-    if module.has_trait(F.has_descriptive_properties):
-        pre_pick_descriptive_properties = module.get_trait(
-            F.has_descriptive_properties
-        ).get_properties()
-
     if case.packages:
-        module.add(F.has_package(*case.packages))
+        module.add(F.has_package_requirements(size=EnumSet(*case.packages)))
 
     # pick
     solver = DefaultSolver()
     pick_part_recursively(module, solver)
 
-    # Check descriptive properties
     assert module.has_trait(F.has_part_picked)
     part = module.get_trait(F.has_part_picked).get_part()
-    assert module.has_trait(F.has_descriptive_properties)
-    properties = module.get_trait(F.has_descriptive_properties).get_properties()
 
     # Sanity check
     assert part.partno
-    assert part.partno == properties["LCSC"]
 
     # Check LCSC & MFR
-    for prop, value in pre_pick_descriptive_properties.items():
-        assert properties.get(prop) == value
+    if case.lcsc_id:
+        assert cast_assert(PickedPartLCSC, part).lcsc_id == case.lcsc_id
+    elif case.mfr_mpn:
+        assert part.manufacturer == case.mfr_mpn[0]
+        assert part.partno == case.mfr_mpn[1]
 
     # Check parameters
     # params = module.get_children(types=Parameter, direct_only=True)
     # TODO check that part params are equal (alias_is) to module params
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_type_pick():
     module = F.Resistor()
 
@@ -111,6 +103,7 @@ def test_type_pick():
     assert module.has_trait(F.has_part_picked)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_no_pick():
     module = Module()
     module.add(F.has_part_removed())
@@ -121,6 +114,7 @@ def test_no_pick():
     assert module.get_trait(F.has_part_picked).removed
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_no_pick_inherit_override_none():
     class _CapInherit(F.Capacitor):
         pickable = None
@@ -134,6 +128,7 @@ def test_no_pick_inherit_override_none():
     assert not module.has_trait(F.has_part_picked)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_no_pick_inherit_remove():
     class _(F.Capacitor):
         no_pick: F.has_part_removed
@@ -148,6 +143,7 @@ def test_no_pick_inherit_remove():
 
 @pytest.mark.usefixtures("setup_project_config")
 def test_skip_self_pick():
+    # TODO: this test is not working
     class _CapInherit(F.Capacitor):
         pickable = None
         inner: F.Capacitor
@@ -177,6 +173,7 @@ def test_pick_led_by_colour():
     )
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.xfail(reason="TODO: add support for diodes")
 def test_reject_diode_for_led():
     led = F.LED()
@@ -192,6 +189,7 @@ def test_reject_diode_for_led():
         check_and_attach_candidates([(led, c) for c in candidates[diode]], solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_pick_error_group():
     root = L.Module()
 
@@ -214,6 +212,7 @@ def test_pick_error_group():
     assert isinstance(ex.value.exceptions[0], PickError)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_pick_dependency_simple():
     class App(Module):
         r1: F.Resistor
@@ -232,6 +231,7 @@ def test_pick_dependency_simple():
     pick_part_recursively(app, solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_1():
     rdiv = F.ResistorVoltageDivider()
@@ -242,6 +242,7 @@ def test_pick_dependency_advanced_1():
     pick_part_recursively(rdiv, solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_2():
     rdiv = F.ResistorVoltageDivider()
@@ -254,6 +255,7 @@ def test_pick_dependency_advanced_2():
     pick_part_recursively(rdiv, solver)
 
 
+@pytest.mark.usefixtures("setup_project_config")
 def test_null_solver():
     capacitance = L.Range.from_center_rel(10 * P.nF, 0.2)
 
@@ -261,7 +263,7 @@ def test_null_solver():
         cap: F.Capacitor
 
         def __preinit__(self):
-            self.cap.add(F.has_package(F.has_package.Package.C0805))
+            self.cap.add(F.has_package_requirements(size=SMDSize.I0805))
             self.cap.capacitance.constrain_subset(capacitance)
 
     app = App()
@@ -271,8 +273,7 @@ def test_null_solver():
 
     assert app.cap.has_trait(F.has_part_picked)
     assert (
-        app.cap.get_trait(F.has_package).get_package(solver)
-        == F.has_package.Package.C0805
+        app.cap.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
     )
     assert (
         (solver)
@@ -281,6 +282,7 @@ def test_null_solver():
     )
 
 
+@pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_voltage_divider_complex():
     class App(Module):

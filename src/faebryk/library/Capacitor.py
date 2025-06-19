@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P, Quantity
 
 # FIXME: this has to go this way to avoid gen_F detecting a circular import
@@ -79,7 +80,7 @@ class Capacitor(Module):
         self,
         nominal_capacitance: Quantity | None = None,
         tolerance: float | None = None,
-        footprint: str | None = None,
+        size: SMDSize | None = None,
     ):
         if nominal_capacitance is not None:
             if tolerance is None:
@@ -87,8 +88,8 @@ class Capacitor(Module):
             capacitance = L.Range.from_center_rel(nominal_capacitance, tolerance)
             self.capacitance.constrain_subset(capacitance)
 
-        if footprint is not None:
-            self.add(F.has_package(footprint))
+        if size is not None:
+            self.add(F.has_package_requirements(size=size))
 
     # TODO: remove @https://github.com/atopile/atopile/issues/727
     @property

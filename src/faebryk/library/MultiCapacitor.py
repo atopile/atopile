@@ -6,6 +6,7 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.parameter import Add, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
+from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
 
@@ -67,10 +68,10 @@ class MultiCapacitor(F.Capacitor):
         self,
         nominal_capacitance: Quantity | None = None,
         tolerance: float | None = None,
-        footprint: str | None = None,
+        size: SMDSize | None = None,
     ):
         for c in self.capacitors:
-            c.explicit(nominal_capacitance, tolerance, footprint)
+            c.explicit(nominal_capacitance, tolerance, size=size)
 
     @classmethod
     def from_capacitors(cls, *capacitors: F.Capacitor):

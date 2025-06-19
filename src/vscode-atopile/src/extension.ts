@@ -10,7 +10,7 @@ import { createOutputChannel } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
 
-let g_lsClient: LanguageClient | undefined;
+export let g_lsClient: LanguageClient | undefined;
 
 function _setupLogging(context: vscode.ExtensionContext) {
     const outputChannel = createOutputChannel(SERVER_NAME);
@@ -35,6 +35,8 @@ function _setupLogging(context: vscode.ExtensionContext) {
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = _setupLogging(context);
+
+    traceInfo(`Activating atopile extension`);
 
     // Setup Language Server
     const _reStartServer = async () => {
