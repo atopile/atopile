@@ -4,9 +4,8 @@
 from pathlib import Path
 
 import faebryk.library._F as F  # noqa: F401
-from atopile.config import config as Gcfg
 from faebryk.core.module import Module
-from faebryk.libs.util import once, sanitize_filepath_part
+from faebryk.libs.util import once
 
 
 class is_atomic_part(Module.TraitT.decless()):
@@ -28,13 +27,21 @@ class is_atomic_part(Module.TraitT.decless()):
     @property
     @once
     def path(self) -> Path:
-        # TODO remove duplication with part_lifecycle
-        manufacturer = sanitize_filepath_part(self._manufacturer)
-        partnumber = sanitize_filepath_part(self._partnumber)
-        identifier = f"{manufacturer}_{partnumber}"
+        from atopile.front_end import from_dsl
 
-        part_dir = Gcfg.project.paths.parts
-        return part_dir / identifier
+        obj = self.get_obj(Module)
+
+        if (from_dsl_ := obj.try_get_trait(from_dsl)) is None:
+            raise ValueError(
+                "No source context found for module with is_atomic_part trait"
+            )
+
+        if from_dsl_.definition_file is None:
+            raise ValueError(
+                "No definition file found for module with is_atomic_part trait"
+            )
+
+        return from_dsl_.definition_file.parent
 
     @property
     def fp_path(self) -> tuple[Path, str]:

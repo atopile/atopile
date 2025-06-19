@@ -205,6 +205,18 @@ class from_dsl(Trait.decless()):
 
         return out
 
+    @property
+    @once
+    def definition_file(self) -> Path | None:
+        match self.definition_ctx:
+            case ap.BlockdefContext():
+                file, _, _, _, _ = get_src_info_from_ctx(self.definition_ctx)
+                return Path(file)
+            case L.Node:
+                return Path(inspect.getfile(self.definition_ctx))
+            case _:
+                return None
+
     def _describe(self) -> str:
         def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
             if isinstance(ctx, ParserRuleContext):
