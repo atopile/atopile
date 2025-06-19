@@ -639,8 +639,8 @@ def part(
             continue
 
         component_table = Table()
-        component_table.add_column("Part Number")
         component_table.add_column("Manufacturer")
+        component_table.add_column("Part Number")
         component_table.add_column("Description")
         component_table.add_column("Supplier ID")
         component_table.add_column("Stock")
