@@ -42,9 +42,9 @@ class Module(Node):
             specialer.get_most_special() for specialer in specialers
         )
 
-        assert len(specialest_next) == 1, (
-            f"Ambiguous specialest {specialest_next} for {self}"
-        )
+        assert (
+            len(specialest_next) == 1
+        ), f"Ambiguous specialest {specialest_next} for {self}"
         return next(iter(specialest_next))
 
     def get_children_modules[T: Module](
