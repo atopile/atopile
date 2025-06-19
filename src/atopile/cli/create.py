@@ -41,8 +41,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
-
 create_app = typer.Typer(
     rich_markup_mode="rich", help="Create projects / build targets / components"
 )
