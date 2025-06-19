@@ -12,6 +12,6 @@
     ],
     "project_slug": "{{ cookiecutter.project_name.lower().replace(' ', '_').replace('-', '_') }}",
     "description": "A brand new atopile project!",
-    "__ato_version": "0.3.0",
-    "__python_path": "python3"
+    "__ato_version": "{{ cookiecutter.__ato_version }}",
+    "__python_path": "{{ cookiecutter.__python_path }}"
 }
