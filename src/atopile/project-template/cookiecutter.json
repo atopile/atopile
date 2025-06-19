@@ -1,0 +1,17 @@
+{
+    "author_name": "Pepper Powderly",
+    "author_email": "pepper@atopile.io",
+    "project_name": "HiL Tester",
+    "license": [
+        "MIT license",
+        "BSD license",
+        "ISC license",
+        "Apache Software License 2.0",
+        "GNU General Public License v3",
+        "Not open source"
+    ],
+    "project_slug": "{{ cookiecutter.project_name.lower().replace(' ', '_').replace('-', '_') }}",
+    "description": "A brand new atopile project!",
+    "__ato_version": "0.3.0",
+    "__python_path": "python3"
+}
