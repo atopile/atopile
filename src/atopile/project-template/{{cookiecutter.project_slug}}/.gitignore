@@ -194,15 +194,3 @@ dmypy.json
 
 # Cython debug symbols
 cython_debug/
-
-# little OSx things
-.DS_Store
-
-# ruff linter
-.ruff_cache
-
-# ide
-.vscode/
-!.vscode/*.shared.json
-!.vscode/extensions.json
-.aider*
