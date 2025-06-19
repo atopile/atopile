@@ -11,7 +11,7 @@ jobs:
       - uses: atopile/setup-atopile@main
 
       - run: ato sync
-      - run: ato build
+      - run: ato build --frozen
         id: build
         continue-on-error: true
 
