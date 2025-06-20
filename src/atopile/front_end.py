@@ -205,6 +205,24 @@ class from_dsl(Trait.decless()):
 
         return out
 
+    @property
+    @once
+    def src_file(self) -> Path:
+        file, _, _, _, _ = get_src_info_from_ctx(self.src_ctx)
+        return Path(file)
+
+    @property
+    @once
+    def definition_file(self) -> Path | None:
+        match self.definition_ctx:
+            case ap.BlockdefContext():
+                file, _, _, _, _ = get_src_info_from_ctx(self.definition_ctx)
+                return Path(file)
+            case L.Node:
+                return Path(inspect.getfile(self.definition_ctx))
+            case _:
+                return None
+
     def _describe(self) -> str:
         def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
             if isinstance(ctx, ParserRuleContext):
@@ -1515,8 +1533,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if not new_node.has_trait(_has_ato_cmp_attrs):
                     new_node.add(_has_ato_cmp_attrs())
 
-        yield new_node
+            if not new_node.has_trait(from_dsl):
+                from_dsl_ = new_node.add(from_dsl(node_type))
+                from_dsl_.set_definition(node_type)
 
+        yield new_node
         with self._node_stack.enter(new_node):
             for super_ctx in promised_supers:
                 # TODO: this would be better if we had the
@@ -1670,10 +1691,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Field `{assigned_name}` already exists",
                     traceback=self.get_traceback(),
                 ) from e
+
             from_dsl_ = node.add(from_dsl(type_ref_ctx))
             from_dsl_.add_reference(assigned_ctx)
 
-            if node_type is not None:
+            if node_type is not None and isinstance(node_type, ap.BlockdefContext):
                 from_dsl_.set_definition(node_type)
 
         try:
