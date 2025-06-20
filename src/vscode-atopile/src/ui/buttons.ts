@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { window } from 'vscode';
 import * as os from 'os';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
-import { getAtoBin, onDidChangeAtoBinInfo } from '../common/findbin';
+import { getAtoAlias, getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
@@ -242,38 +242,12 @@ export function deactivate() {
 }
 
 async function _runInTerminal(name: string, cwd: string | undefined, subcommand: string[], hideFromUser: boolean) {
-    const atoBin = await getAtoBin();
-    if (atoBin === null) {
-        traceError("Buttons: Can't run ato in terminal: ato not found.");
+    try {
+        return await runAtoCommandInTerminal(name, cwd, subcommand, hideFromUser);
+    } catch (error) {
+        traceError(`Buttons: Error running ato in terminal: ${error}`);
         return;
     }
-
-    let terminal = vscode.window.createTerminal({
-        name: `ato: ${name}`,
-        cwd: cwd,
-        hideFromUser: hideFromUser,
-    });
-    const in_powershell =
-        os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
-
-    let atoAlias = atoBin.command.map((c) => `'${c}'`).join(' ');
-
-    // if running in powershell, need to add & to the command
-    if (in_powershell) {
-        atoAlias = '& ' + atoAlias;
-    }
-
-    traceInfo(`Found ato for alias in ${atoBin.source}: ${atoAlias}`);
-
-    let alias = `alias ato="${atoAlias}"`;
-    if (in_powershell) {
-        alias = `Function ato { ${atoAlias} @args }`;
-    }
-
-    terminal.sendText(alias);
-    terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
-    terminal.show();
-    return terminal;
 }
 
 async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
