@@ -7,6 +7,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
+from more_itertools import first
+
 import faebryk.library._F as F
 from atopile.errors import UserException
 from faebryk.core.graph import Graph, GraphFunctions
@@ -190,7 +192,11 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     names = FuncDict[F.Net, _NetName]()
 
     # Ignore nets with names already
-    unnamed_nets = [n for n in nets if not n.has_trait(F.has_overriden_name)]
+    unnamed_nets = {
+        n: sorted(n.get_connected_interfaces(), key=lambda m: m.get_full_name())
+        for n in nets
+        if not n.has_trait(F.has_overriden_name)
+    }
 
     # Capture already-named nets for conflict checking
     for net in nets:
@@ -207,13 +213,15 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # FIXME: the errors for this deserve vast improvement. Attaching an origin trait
     # to has_net_name is a start, but we need a generic way to raise those as
     # well-formed errors
-    for net in unnamed_nets:
+    for net, mifs in sorted(
+        unnamed_nets.items(), key=lambda it: str(first(it[1], None))
+    ):
         net_required_names: set[str] = set()
         net_suggested_names: list[tuple[str, int]] = []
         implicit_name_candidates: Mapping[str, float] = defaultdict(float)
         case_insensitive_map: Mapping[str, str] = {}
 
-        for mif in net.get_connected_interfaces():
+        for mif in mifs:
             # If there's net info, use it
             depth = len(mif.get_hierarchy())
 
