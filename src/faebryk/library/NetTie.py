@@ -41,7 +41,7 @@ class NetTie(Module):
                 f"Pin count [{self._pin_count}] is currently not supported for NetTie"
             )
 
-        fp = F.KicadFootprint(pin_names=[f"{i+1}" for i in range(self._pin_count)])
+        fp = F.KicadFootprint(pin_names=[f"{i + 1}" for i in range(self._pin_count)])
         fp.add(
             F.KicadFootprint.has_kicad_identifier(
                 f"NetTie:NetTie-{self._pin_count}_{self._pad_type}_Pad{width_mm}"
@@ -80,7 +80,7 @@ class NetTie(Module):
         # connect to footprint
         self.footprint.get_footprint().get_trait(F.can_attach_via_pinmap).attach(
             pinmap={
-                f"{i+1}": power.lv if self._connect_gnd else power.hv
+                f"{i + 1}": power.lv if self._connect_gnd else power.hv
                 for i, power in enumerate(self.power)
             }
         )

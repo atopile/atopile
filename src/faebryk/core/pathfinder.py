@@ -86,11 +86,13 @@ class Counters:
                     str(v.weak_in_cnt),
                     str(v.out_cnt),
                     # "x" if getattr(k, "discovery_filter", False) else "",
-                    f"{(1-v.out_cnt/v.in_cnt)*100:.1f} %" if v.in_cnt else "-",
+                    f"{(1 - v.out_cnt / v.in_cnt) * 100:.1f} %" if v.in_cnt else "-",
                     str(v.out_weaker),
                     str(v.out_stronger),
-                    f"{v.time_spent_s*1000:.2f} ms",
-                    f"{v.time_spent_s/v.in_cnt*1000*1000:.2f} us" if v.in_cnt else "-",
+                    f"{v.time_spent_s * 1000:.2f} ms",
+                    f"{v.time_spent_s / v.in_cnt * 1000 * 1000:.2f} us"
+                    if v.in_cnt
+                    else "-",
                 )
             table.add_section()
 
@@ -104,11 +106,13 @@ class Counters:
                 str(v.weak_in_cnt),
                 str(v.out_cnt),
                 # "x" if getattr(k, "discovery_filter", False) else "",
-                f"{(1-v.out_cnt/v.in_cnt)*100:.1f} %" if v.in_cnt else "-",
+                f"{(1 - v.out_cnt / v.in_cnt) * 100:.1f} %" if v.in_cnt else "-",
                 str(v.out_weaker),
                 str(v.out_stronger),
-                f"{v.time_spent_s*1000:.2f} ms",
-                f"{v.time_spent_s/v.in_cnt*1000*1000:.2f} us" if v.in_cnt else "-",
+                f"{v.time_spent_s * 1000:.2f} ms",
+                f"{v.time_spent_s / v.in_cnt * 1000 * 1000:.2f} us"
+                if v.in_cnt
+                else "-",
             )
         if INDIV_MEASURE:
             table.add_row(
@@ -120,8 +124,8 @@ class Counters:
                 "",
                 "",
                 "",
-                f"{sum(v.time_spent_s for _,v in individual)*1000:.2f} ms",
-                f"{sum(v.time_spent_s/v.in_cnt for _,v in individual if v.in_cnt)*1000*1000:.2f} us",  # noqa: E501
+                f"{sum(v.time_spent_s for _, v in individual) * 1000:.2f} ms",
+                f"{sum(v.time_spent_s / v.in_cnt for _, v in individual if v.in_cnt) * 1000 * 1000:.2f} us",  # noqa: E501
             )
 
         console = Console(record=True, width=120, file=io.StringIO())

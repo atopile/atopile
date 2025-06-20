@@ -1473,9 +1473,9 @@ def merge_dicts(*dicts: dict) -> dict:
         for k, v in d.items():
             if k in result:
                 if isinstance(v, list):
-                    assert isinstance(
-                        result[k], list
-                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    assert isinstance(result[k], list), (
+                        f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    )
                     result[k] += v
                 elif isinstance(v, dict):
                     assert isinstance(result[k], dict)

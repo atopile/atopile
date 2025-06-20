@@ -1047,9 +1047,9 @@ class Mutator:
 
         for op in new_operands:
             if isinstance(op, ParameterOperatable):
-                assert (
-                    op.get_graph() == new_expr.get_graph()
-                ), f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+                assert op.get_graph() == new_expr.get_graph(), (
+                    f"Graph mismatch: {op.get_graph()} != {new_expr.get_graph()}"
+                )
 
         return new_expr
 
@@ -1331,9 +1331,9 @@ class Mutator:
         return expr
 
     def remove(self, *po: ParameterOperatable):
-        assert not any(
-            p in self.transformations.mutated for p in po
-        ), "Object already in repr_map"
+        assert not any(p in self.transformations.mutated for p in po), (
+            "Object already in repr_map"
+        )
         root_pos = [p for p in po if p.get_parent() is not None]
         assert not root_pos, f"should never remove root parameters: {root_pos}"
         self.transformations.removed.update(po)
