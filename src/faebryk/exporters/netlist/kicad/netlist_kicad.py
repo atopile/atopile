@@ -58,9 +58,9 @@ def faebryk_netlist_to_kicad(fbrk_netlist: FBRKNetlist):
     pre_comp_names = {comp.name for comp in fbrk_netlist.comps}
     for net in fbrk_netlist.nets:
         for vertex in net.vertices:
-            assert (
-                vertex.component.name in pre_comp_names
-            ), f"Missing {vertex.component}"
+            assert vertex.component.name in pre_comp_names, (
+                f"Missing {vertex.component}"
+            )
 
     Net = NetlistFile.C_netlist.C_nets.C_net
     nets = [

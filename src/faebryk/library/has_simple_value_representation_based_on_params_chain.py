@@ -88,7 +88,7 @@ class has_simple_value_representation_based_on_params_chain(
                 center_str = to_si_str(center, unit, 2)
                 assert isinstance(tolerance, Quantity)
                 if self.tolerance and tolerance > 0:
-                    tolerance_str = f" ±{to_si_str(tolerance, "%", 0)}"
+                    tolerance_str = f" ±{to_si_str(tolerance, '%', 0)}"
                     return f"{center_str}{tolerance_str}"
                 return center_str
 

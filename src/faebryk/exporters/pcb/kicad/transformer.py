@@ -1018,9 +1018,9 @@ class PCB_Transformer:
         center_at: C_xyr,
         layer="F.SilkS",
     ):
-        assert layer.endswith(
-            "SilkS"
-        ), "JLCPCB serial number must be on silk screen layer"
+        assert layer.endswith("SilkS"), (
+            "JLCPCB serial number must be on silk screen layer"
+        )
         self.insert_text(
             "JLCJLCJLCJLC",
             at=center_at,
@@ -1329,9 +1329,9 @@ class PCB_Transformer:
 
         # create Edge.Cuts geometries
         for geo in geometry:
-            assert (
-                "Edge.Cuts" in geo.get_layers()
-            ), f"Geometry {geo} is not on Edge.Cuts layer"
+            assert "Edge.Cuts" in geo.get_layers(), (
+                f"Geometry {geo} is not on Edge.Cuts layer"
+            )
 
             self.insert_geo(geo)
 
