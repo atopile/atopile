@@ -25,6 +25,8 @@ class is_atomic_part(Module.TraitT.decless()):
         self._symbol = symbol
         self._model = model
 
+    lazy: F.is_lazy
+
     @property
     @once
     def path(self) -> Path:
@@ -43,7 +45,9 @@ class is_atomic_part(Module.TraitT.decless()):
         """
         return self.path / self._footprint, self.path.name
 
-    def attach(self):
+    def on_obj_set(self):
+        super().on_obj_set()
+
         obj = self.get_obj(Module)
 
         fp_path, fp_lib = self.fp_path

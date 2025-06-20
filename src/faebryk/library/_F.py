@@ -44,6 +44,7 @@ from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
+from faebryk.library.is_lazy import is_lazy
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
