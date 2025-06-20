@@ -207,6 +207,12 @@ class from_dsl(Trait.decless()):
 
     @property
     @once
+    def src_file(self) -> Path:
+        file, _, _, _, _ = get_src_info_from_ctx(self.src_ctx)
+        return Path(file)
+
+    @property
+    @once
     def definition_file(self) -> Path | None:
         match self.definition_ctx:
             case ap.BlockdefContext():

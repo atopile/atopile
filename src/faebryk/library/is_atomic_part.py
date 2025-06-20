@@ -29,19 +29,17 @@ class is_atomic_part(Module.TraitT.decless()):
     def path(self) -> Path:
         from atopile.front_end import from_dsl
 
-        obj = self.get_obj(Module)
-
-        if (from_dsl_ := obj.try_get_trait(from_dsl)) is None:
+        if (from_dsl_ := self.try_get_trait(from_dsl)) is None:
             raise ValueError(
                 "No source context found for module with is_atomic_part trait"
             )
 
-        if from_dsl_.definition_file is None:
+        if from_dsl_.src_file is None:
             raise ValueError(
-                "No definition file found for module with is_atomic_part trait"
+                "No source file found for module with is_atomic_part trait"
             )
 
-        return from_dsl_.definition_file.parent
+        return from_dsl_.src_file.parent
 
     @property
     def fp_path(self) -> tuple[Path, str]:

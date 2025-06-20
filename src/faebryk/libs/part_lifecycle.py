@@ -378,13 +378,15 @@ class PartLifecycle:
                 from atopile.front_end import from_dsl  # TODO: F.is_from_dsl
 
                 if (
-                    component.has_trait(F.is_atomic_part)
-                    and (from_dsl_ := component.try_get_trait(from_dsl)) is not None
-                    and from_dsl_.definition_file is not None
+                    (is_atomic_part_ := component.try_get_trait(F.is_atomic_part))
+                    is not None
+                    and (from_dsl_ := is_atomic_part_.try_get_trait(from_dsl))
+                    is not None
+                    and from_dsl_.src_file is not None
                 ):
                     # insert footprint on first use from dependency package
                     try:
-                        self._insert_fp_lib(lib_id, from_dsl_.definition_file.parent)
+                        self._insert_fp_lib(lib_id, from_dsl_.src_file.parent)
                     except FileNotFoundError:
                         raise
 
