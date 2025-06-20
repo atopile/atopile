@@ -63,6 +63,10 @@ class AtoPart:
         )
 
     @property
+    def module_name(self) -> str:
+        return f"{self.identifier}_package"
+
+    @property
     def ato_path(self) -> Path:
         return self.path / (self.path.name + ".ato")
 
@@ -168,7 +172,7 @@ class AtoPart:
             self.model.dumps(self.model_path)
 
         ato_builder = AtoCodeGen.ComponentFile(
-            f"{self.identifier}_package", docstring=self.docstring
+            self.module_name, docstring=self.docstring
         )
         ato_builder.add_comments(
             "This trait marks this file as auto-generated",
