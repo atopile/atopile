@@ -161,10 +161,11 @@ def check_net_names(graph: Graph):
     gf = GraphFunctions(graph)
     nets = gf.nodes_of_type(F.Net)
 
+    named_nets = {n for n in nets if n.has_trait(F.has_overriden_name)}
     net_name_collisions = {
         k: v
         for k, v in groupby(
-            nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
+            named_nets, lambda n: n.get_trait(F.has_overriden_name).get_name()
         ).items()
         if len(v) > 1
     }
