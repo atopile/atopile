@@ -187,10 +187,17 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     Generate good net names, assuming that we're passed all the nets in a design
     """
 
+    names = FuncDict[F.Net, _NetName]()
+
     # Ignore nets with names already
     unnamed_nets = [n for n in nets if not n.has_trait(F.has_overriden_name)]
 
-    names = FuncDict[F.Net, _NetName]()
+    # Capture already-named nets for conflict checking
+    for net in nets:
+        if net.has_trait(F.has_overriden_name):
+            names[net] = _NetName(
+                base_name=net.get_trait(F.has_overriden_name).get_name()
+            )
 
     # First generate candidate base names
     def _decay(depth: int) -> float:
