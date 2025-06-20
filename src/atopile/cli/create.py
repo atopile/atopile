@@ -695,7 +695,13 @@ def part(
     except Exception as e:
         raise errors.UserException(str(e)) from e
 
-    rich_print_robust(f":sparkles: Created {apart.identifier} at {apart.path} !")
+    rich_print_robust(
+        f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
+    )
+    path = apart.ato_path.relative_to(config.project.paths.root)
+    rich_print_robust(
+        f'```ato\nfrom "{path}" import {apart.module_name}\n```', markdown=True
+    )
 
 
 @create_app.command(deprecated=True)
