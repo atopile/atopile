@@ -3,11 +3,12 @@
 
 import logging
 from pathlib import Path
-from typing import cast
+from typing import Iterable, cast
 
 import atopile.config as config
 from atopile import errors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
+from faebryk.libs.exceptions import accumulate
 from faebryk.libs.package.dist import Dist, DistValidationError
 from faebryk.libs.util import (
     DAG,
@@ -20,6 +21,12 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class BrokenDependencyError(Exception):
+    def __init__(self, identifier: str, error: Exception):
+        self.identifier = identifier
+        self.error = error
 
 
 class ProjectDependency:
@@ -230,34 +237,54 @@ class ProjectDependencies:
         deps_to_process: list[tuple[ProjectDependency | None, ProjectDependency]] = [
             (None, dep) for dep in self.direct_deps
         ]
-        while deps_to_process:
-            to_add = []
-            for parent, dep in deps_to_process:
-                dups = all_deps.intersection({dep})
-                assert len(dups) <= 1
-                dup = dups.pop() if dups else None
-                if dup:
-                    if dup.spec != dep.spec:
-                        # TODO better error
-                        raise errors.UserException(
-                            f"Incompatible dependency specs in tree: {dep.spec}"
-                        )
-                    assert parent is not None, "Can't have duplicates in root"
-                    dag.add_edge(parent, dup)
-                    continue
 
-                dep.try_load()
-                if dep.cfg is None:
-                    dep.load_dist()
-                to_add.extend((dep, child) for child in dep.direct_dependencies)
-                all_deps.add(dep)
-                if parent is not None:
-                    dag.add_edge(parent, dep)
-                else:
-                    dag.add_or_get(dep)
+        try:
+            with accumulate(BrokenDependencyError) as acc:
+                with acc.collect():
+                    while deps_to_process:
+                        to_add = []
+                        for parent, dep in deps_to_process:
+                            try:
+                                dups = all_deps.intersection({dep})
+                                assert len(dups) <= 1
+                                dup = dups.pop() if dups else None
+                                if dup:
+                                    if dup.spec != dep.spec:
+                                        # TODO better error
+                                        raise errors.UserException(
+                                            f"Incompatible dependency specs in tree: "
+                                            f"{dep.spec}"
+                                        )
+                                    assert (
+                                        parent is not None
+                                    ), "Can't have duplicates in root"
+                                    dag.add_edge(parent, dup)
+                                    continue
 
-            deps_to_process.clear()
-            deps_to_process.extend(to_add)
+                                dep.try_load()
+                                if dep.cfg is None:
+                                    dep.load_dist()
+                                to_add.extend(
+                                    (dep, child) for child in dep.direct_dependencies
+                                )
+                                all_deps.add(dep)
+                                if parent is not None:
+                                    dag.add_edge(parent, dep)
+                                else:
+                                    dag.add_or_get(dep)
+                            except Exception as e:
+                                raise BrokenDependencyError(dep.identifier, e) from e
+
+                        deps_to_process.clear()
+                        deps_to_process.extend(to_add)
+        except* BrokenDependencyError as e:
+            error_list = [
+                f"{e.identifier}: {e.error}"
+                for e in cast(Iterable[BrokenDependencyError], e.exceptions)
+            ]
+            raise errors.UserException(
+                f"Broken dependencies:\n {md_list(error_list)}"
+            ) from e
 
         if dag.contains_cycles:
             # TODO better error
