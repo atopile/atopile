@@ -123,6 +123,7 @@ def build(app: Module) -> None:
     with LoggingStage("picker", "Picking components") as stage:
         if config.build.keep_picked_parts:
             load_part_info_from_pcb(G())
+            solver.simplify(G())
         try:
             pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
