@@ -41,8 +41,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
-
 create_app = typer.Typer(
     rich_markup_mode="rich", help="Create projects / build targets / components"
 )
@@ -329,32 +327,35 @@ def setup_github(
 
 @create_app.command()
 @log_to_posthog("cli:create_project_end")
-def project(
-    template: str = "https://github.com/atopile/project-template @ compiler-v0.4",
-):
+def project(path: Annotated[Path | None, typer.Option()] = None):
     """
     Create a new ato project.
     """
-    # TODO: add template options
-
-    template_ref, *template_branch = template.split("@")
-    template_ref = template_ref.strip()
-    if template_branch:
-        template_branch = template_branch[0].strip()
-    else:
-        template_branch = None
+    TEMPLATE_DIR = Path(__file__).parent.parent / "project-template"
 
     extra_context = {
         "__ato_version": version.get_installed_atopile_version(),
         "__python_path": sys.executable,
     }
 
+    if path is None:
+        if config.interactive:
+            path = query_helper(
+                ":rocket: Where should we create the project?",
+                type_=Path,
+                default=Path.cwd(),
+                pre_entered=path,
+                validator=lambda x: x.is_dir(),
+            )
+        else:
+            path = Path.cwd()
+
     logging.info("Running cookie-cutter on the template")
     try:
         project_path = Path(
             cookiecutter(
-                template_ref,
-                checkout=template_branch,
+                str(TEMPLATE_DIR),
+                output_dir=str(path),
                 no_input=not config.interactive,
                 extra_context=dict(
                     filter(lambda x: x[1] is not None, extra_context.items())
