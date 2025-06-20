@@ -22,6 +22,12 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
+class BrokenDependencyError(Exception):
+    def __init__(self, identifier: str, error: Exception):
+        self.identifier = identifier
+        self.error = error
+
+
 class ProjectDependency:
     def __init__(
         self,
@@ -230,34 +236,42 @@ class ProjectDependencies:
         deps_to_process: list[tuple[ProjectDependency | None, ProjectDependency]] = [
             (None, dep) for dep in self.direct_deps
         ]
+
+        acc_errors = []
         while deps_to_process:
             to_add = []
             for parent, dep in deps_to_process:
-                dups = all_deps.intersection({dep})
-                assert len(dups) <= 1
-                dup = dups.pop() if dups else None
-                if dup:
-                    if dup.spec != dep.spec:
-                        # TODO better error
-                        raise errors.UserException(
-                            f"Incompatible dependency specs in tree: {dep.spec}"
-                        )
-                    assert parent is not None, "Can't have duplicates in root"
-                    dag.add_edge(parent, dup)
-                    continue
+                try:
+                    dups = all_deps.intersection({dep})
+                    assert len(dups) <= 1
+                    dup = dups.pop() if dups else None
+                    if dup:
+                        if dup.spec != dep.spec:
+                            # TODO better error
+                            raise errors.UserException(
+                                f"Incompatible dependency specs in tree: {dep.spec}"
+                            )
+                        assert parent is not None, "Can't have duplicates in root"
+                        dag.add_edge(parent, dup)
+                        continue
 
-                dep.try_load()
-                if dep.cfg is None:
-                    dep.load_dist()
-                to_add.extend((dep, child) for child in dep.direct_dependencies)
-                all_deps.add(dep)
-                if parent is not None:
-                    dag.add_edge(parent, dep)
-                else:
-                    dag.add_or_get(dep)
+                    dep.try_load()
+                    if dep.cfg is None:
+                        dep.load_dist()
+                    to_add.extend((dep, child) for child in dep.direct_dependencies)
+                    all_deps.add(dep)
+                    if parent is not None:
+                        dag.add_edge(parent, dep)
+                    else:
+                        dag.add_or_get(dep)
+                except Exception as e:
+                    acc_errors.append(BrokenDependencyError(dep.identifier, e))
 
             deps_to_process.clear()
             deps_to_process.extend(to_add)
+        if acc_errors:
+            error_list = [f"{e.identifier}: {e.error!r}" for e in acc_errors]
+            raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
             # TODO better error
