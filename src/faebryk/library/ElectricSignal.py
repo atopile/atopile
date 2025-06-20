@@ -131,4 +131,8 @@ class ElectricSignal(F.Signal):
             super().on_obj_set()
 
             obj = self.get_obj(Module)
+
+            # TODO: This is definitely going to end badly
+            # doing side-effects during on_obj_set is a bad idea
+            # because it makes order of definition important
             ElectricSignal.connect_all_module_references(obj, gnd_only=self.gnd_only)
