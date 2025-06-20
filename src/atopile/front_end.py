@@ -60,7 +60,7 @@ from faebryk.core.parameter import (
     Min,
     Parameter,
 )
-from faebryk.core.trait import Trait
+from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import accumulate, downgrade, iter_through_errors
 from faebryk.libs.library.L import Range, Single
 from faebryk.libs.picker.picker import does_not_require_picker_check
@@ -1545,10 +1545,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
-        # Deferred to after node is fully initialised in order for all pins to be
-        # available for pinmap
-        if new_node.has_trait(F.is_atomic_part):
-            new_node.get_trait(F.is_atomic_part).attach()
+        # Deferred to after node is fully initialised
+        traits = new_node.get_children(direct_only=True, types=L.Trait)
+        for trait in traits:
+            if trait.has_trait(F.is_lazy):
+                assert TraitImpl.is_traitimpl(trait)
+                cast(TraitImpl, trait).on_obj_set()
 
     def _get_param(
         self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext

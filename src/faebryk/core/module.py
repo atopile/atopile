@@ -228,3 +228,12 @@ class Module(Node):
 
     def get_parameters(self) -> list[Parameter]:
         return list(self.get_children(types=Parameter, direct_only=True))
+
+    # TODO get rid of this abomination
+    @property
+    def reference_shim(self):
+        from faebryk.library.has_single_electric_reference import (
+            has_single_electric_reference,
+        )
+
+        return self.get_trait(has_single_electric_reference).get_reference()
