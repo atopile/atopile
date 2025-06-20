@@ -141,7 +141,9 @@ def build(app: Module) -> None:
         # and attached them to the design above, so they weren't even there to attach
         pcb.transformer.attach()
         if config.build.keep_net_names:
-            load_net_names(G())
+            loaded_nets = load_net_names(G())
+            nets |= loaded_nets
+
         attach_net_names(nets)
         check_net_names(G())
 
