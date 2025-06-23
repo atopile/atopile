@@ -204,8 +204,10 @@ def capture(
         return
 
     try:
-        start_time = time.time()
-        default_properties = TelemetryProperties(duration=time.time() - start_time)
+        start_time = time.perf_counter()
+        default_properties = TelemetryProperties(
+            duration=time.perf_counter() - start_time
+        )
         properties = {**asdict(default_properties), **(properties or {})}
     except Exception as e:
         log.debug("Failed to create telemetry properties: %s", e, exc_info=e)
