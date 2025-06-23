@@ -63,9 +63,14 @@ function loadConfig() {
 }
 
 async function getEmail() {
-    const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git')?.exports;
-    const git = gitExtension?.getAPI(1);
-    return await git?.repositories[0]?.getConfig('user.email');
+    try {
+        const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git');
+        const git = gitExtension?.exports.getAPI(1);
+        return await git?.repositories[0]?.getConfig('user.email');
+    } catch (error) {
+        traceError('Git extension not enabled', error);
+        return undefined;
+    }
 }
 
 export async function initializeTelemetry(context: vscode.ExtensionContext) {
