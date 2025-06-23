@@ -77,12 +77,15 @@ function getWebviewContent(webview: vscode.Webview, pcbUri: vscode.Uri): string 
         </head>
         <body>
             <div id="container">
-                <kicanvas-embed id="kv" src="${pcbWebUri}" controls="basic" zoom="objects"></kicanvas-embed>
+                <kicanvas-embed id="kv" src="${pcbWebUri}" controls="basic" zoom="objects" controlslist="nodownload"></kicanvas-embed>
             </div>
             <script type="module">
                 const kv = document.getElementById('kv');
                 console.log('KiCanvas embed element loaded', kv);
-                kv.addEventListener('load', () => console.log('KiCanvas loaded PCB'));
+                kv.addEventListener('load', () => {
+                    console.log('KiCanvas loaded PCB');
+
+                });
                 window.addEventListener('message', ev => {
                     if (ev.data?.type === 'updateSrc') {
                         console.log('Updating src to', ev.data.src);
