@@ -43,7 +43,8 @@
         "workspaceContains:*.ato",
         "workspaceContains:ato.yaml",
         "command:atopile.example",
-        "onStartupFinished"
+        "onStartupFinished",
+        "command:atopile.kicanvasPreview"
     ],
     "main": "./dist/extension.js",
     "scripts": {
@@ -135,6 +136,11 @@
             {
                 "command": "atopile.shell",
                 "title": "Open ato shell",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.kicanvasPreview",
+                "title": "Open KiCanvas PCB Preview",
                 "category": "atopile"
             }
         ],

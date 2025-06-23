@@ -18,6 +18,16 @@ let statusbarAtoRemovePackage: vscode.StatusBarItem;
 let statusbarAtoCreateProject: vscode.StatusBarItem;
 let statusbarAtoShell: vscode.StatusBarItem;
 
+export function getCurrentBuild(): Build | null {
+    const currentBuildStr = statusbarAtoBuildTarget.text;
+    try {
+        return _buildStrToBuild(currentBuildStr);
+    } catch (error) {
+        traceError(`Failed to get current build: ${error}`);
+        return null;
+    }
+}
+
 function _buildsToStr(builds: Build[]): string[] {
     return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
 
@@ -335,6 +345,9 @@ async function atoChooseBuild() {
     g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
         buildTarget: _buildStrToBuild(result).entry,
     });
+
+    // Refresh KiCanvas preview if open
+    vscode.commands.executeCommand('atopile.kicanvasPreviewRefresh');
 }
 
 async function atoLaunchKicad() {
