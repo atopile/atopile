@@ -189,6 +189,7 @@ _local
 # ANTLR generated files
 .antlr/
 **/.antlr/
+antlr.lock
 
 
 # Stray atopile artifacts

@@ -51,7 +51,7 @@ class DE9Connector(Module):
 
     @L.rt_field
     def can_attach_to_footprint(self):
-        pinmap = {f"{i+1}": ei for i, ei in enumerate(self.contact)}
+        pinmap = {f"{i + 1}": ei for i, ei in enumerate(self.contact)}
         pinmap.update({"10": self.shield})
         return F.can_attach_to_footprint_via_pinmap(pinmap)
 

@@ -10,6 +10,7 @@ import rich
 from rich.console import Console
 from rich.highlighter import RegexHighlighter
 from rich.logging import RichHandler
+from rich.markdown import Markdown
 from rich.table import Table
 from rich.theme import Theme
 from rich.tree import Tree
@@ -17,15 +18,16 @@ from rich.tree import Tree
 from faebryk.libs.util import ConfigFlag, ConfigFlagInt
 
 
-def rich_print_robust(message: str):
+def rich_print_robust(message: str, markdown: bool = False):
     """
     Hack for terminals that don't support unicode
     There is probably a better way to do this, but this is a quick fix for now.
     """
     try:
-        rich.print(message)
+        rich.print(Markdown(message) if markdown else message)
     except UnicodeEncodeError:
-        rich.print(message.encode("ascii", errors="ignore").decode("ascii"))
+        message = message.encode("ascii", errors="ignore").decode("ascii")
+        rich.print(Markdown(message) if markdown else message)
 
 
 def is_piped_to_file() -> bool:

@@ -138,6 +138,11 @@
                 "command": "atopile.example",
                 "title": "Open Example Project",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.shell",
+                "title": "Open ato shell",
+                "category": "atopile"
             }
         ],
         "languages": [

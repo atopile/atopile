@@ -2,11 +2,14 @@ import contextlib
 import json
 import logging
 from pathlib import Path
-from typing import Any, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Optional, Union
 
 import pcbnew  # type: ignore
 
 log = logging.getLogger(__name__)
+
+
+# ATTENTION: RUNS IN PYTHON3.8
 
 
 @contextlib.contextmanager
@@ -18,7 +21,26 @@ def log_exceptions():
         raise
 
 
-def get_prj_dir(path: Path) -> Path:
+# Copy of util.py:find
+def _find(haystack: Iterable, needle: Optional[Callable] = None) -> Dict[Any, Any]:
+    """Find a value in a dict by key."""
+    if needle is None:
+        needle = lambda x: x is not None  # noqa: E731
+    results = [x for x in haystack if needle(x)]
+    if len(results) > 1:
+        raise KeyError("Ambiguous")
+    if not results:
+        raise KeyError("Not found")
+    return results[0]
+
+
+# needed for windows
+def path_key(dict_: Dict[str, Any], path: Path) -> Any:
+    """Return the value in dict_ for the key that matches path."""
+    return _find(dict_.items(), lambda x: Path(x[0]) == path)[1]
+
+
+def get_prj_dir(path: Union[Path, str]) -> Path:
     """Return the atopile project directory."""
     path = Path(path)
     if (path / "ato.yaml").exists():
@@ -29,16 +51,18 @@ def get_prj_dir(path: Path) -> Path:
     raise FileNotFoundError("ato.yaml not found in any parent directory")
 
 
-def get_board_artifact_manifest(board_path: Path) -> dict:
+def get_board_artifact_manifest(board_path: Union[Path, str]) -> Dict[str, Any]:
     """Return a dict of the artifact manifest related to this board."""
     board_path = Path(board_path)
     manifest_path = get_prj_dir(board_path) / "build" / "manifest.json"
     with manifest_path.open("r", encoding="utf-8") as f:
         manifest = json.load(f)
-    return manifest.get("by-layout", {}).get(str(board_path), {})
+
+    layouts = manifest.get("by-layout", {})
+    return path_key(layouts, board_path)
 
 
-def groups_by_name(board: pcbnew.BOARD) -> dict[str, pcbnew.PCB_GROUP]:
+def groups_by_name(board: pcbnew.BOARD) -> Dict[str, pcbnew.PCB_GROUP]:
     """Return a dict of groups by name."""
     return {g.GetName(): g for g in board.Groups()}
 
@@ -49,7 +73,7 @@ def get_footprint_uuid(fp: pcbnew.FOOTPRINT) -> str:
     return path.split("/")[-1]
 
 
-def get_footprint_addr(fp: pcbnew.FOOTPRINT, uuid_map: dict[str, str]) -> Optional[str]:
+def get_footprint_addr(fp: pcbnew.FOOTPRINT, uuid_map: Dict[str, str]) -> Optional[str]:
     """Return the property "atopile_address" of a footprint."""
     field: pcbnew.PCB_FIELD = fp.GetFieldByName("atopile_address")
     if field:
@@ -65,8 +89,8 @@ def get_footprint_addr(fp: pcbnew.FOOTPRINT, uuid_map: dict[str, str]) -> Option
 
 
 def footprints_by_addr(
-    board: pcbnew.BOARD, uuid_map: dict[str, str]
-) -> dict[str, pcbnew.FOOTPRINT]:
+    board: pcbnew.BOARD, uuid_map: Dict[str, str]
+) -> Dict[str, pcbnew.FOOTPRINT]:
     """Return a dict of footprints by "atopile_address"."""
     return {
         addr: fp
@@ -75,7 +99,7 @@ def footprints_by_addr(
     }
 
 
-def get_layout_map(board_path: Path) -> dict[str, Any]:
+def get_layout_map(board_path: Union[Path, str]) -> Dict[str, Any]:
     """Return the layout map for the board."""
     board_path = Path(board_path)
     manifest = get_board_artifact_manifest(board_path)
@@ -83,7 +107,7 @@ def get_layout_map(board_path: Path) -> dict[str, Any]:
         return json.load(f)
 
 
-def flip_dict(d: dict) -> dict:
+def flip_dict(d: Dict[str, Any]) -> Dict[str, Any]:
     """Return a dict with keys and values swapped."""
     return {v: k for k, v in d.items()}
 
@@ -92,7 +116,7 @@ def sync_track(
     source_board: pcbnew.BOARD,
     track: pcbnew.PCB_TRACK,
     target_board: pcbnew.BOARD,
-    net_map: dict[str, str],
+    net_map: Dict[str, str],
 ) -> pcbnew.PCB_TRACK:
     """Sync a track to the target board and update its net from net_map."""
     new_track: pcbnew.PCB_TRACK = track.Duplicate().Cast()
@@ -123,8 +147,8 @@ def sync_track(
 def generate_net_map(
     source_board: pcbnew.BOARD,
     target_board: pcbnew.BOARD,
-    addr_map: dict[str, str],
-    uuid_map: dict[str, str],
+    addr_map: Dict[str, str],
+    uuid_map: Dict[str, str],
 ):
     """Generates a mapping from source net names to target net names based on matching
     addresses.

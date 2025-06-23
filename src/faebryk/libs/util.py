@@ -1473,9 +1473,9 @@ def merge_dicts(*dicts: dict) -> dict:
         for k, v in d.items():
             if k in result:
                 if isinstance(v, list):
-                    assert isinstance(
-                        result[k], list
-                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    assert isinstance(result[k], list), (
+                        f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    )
                     result[k] += v
                 elif isinstance(v, dict):
                     assert isinstance(result[k], dict)
@@ -1857,9 +1857,9 @@ def get_module_from_path(
     def _needle(m: ModuleType) -> bool:
         try:
             file = Path(getattr(m, "__file__"))
+            return sanitized_file_path.samefile(file)
         except Exception:
             return False
-        return sanitized_file_path.samefile(file)
 
     try:
         module = find(sys.modules.values(), _needle)
@@ -2542,3 +2542,18 @@ def sanitize_filepath_part(x: str) -> str:
     x = re.sub(r"[^a-zA-Z0-9_]", "_", x)
     x = x.strip("_")
     return x
+
+
+def get_code_bin_of_terminal() -> str | None:
+    if not os.environ.get("TERM_PROGRAM") == "vscode":
+        return None
+
+    # Try cursor, fallback to code
+    options = ["cursor", "code"]
+
+    for option in options:
+        code_bin = shutil.which(option)
+        if code_bin:
+            return code_bin
+
+    return None

@@ -1,4 +1,4 @@
-import { ConfigurationChangeEvent, Disposable, Event, EventEmitter, ExtensionContext } from 'vscode';
+import { ConfigurationChangeEvent, Disposable, Event, EventEmitter, ExtensionContext, env, window } from 'vscode';
 import { onDidChangePythonInterpreter, IInterpreterDetails, initializePython } from './python';
 import { onDidChangeConfiguration } from './vscodeapi';
 import * as fs from 'fs';
@@ -10,6 +10,7 @@ import { execFile } from 'child_process';
 import { promisify } from 'util';
 import * as which from 'which';
 import { getProjectRoot } from './utilities';
+import * as vscode from 'vscode';
 
 export interface AtoBinInfo {
     init: boolean;
@@ -36,7 +37,7 @@ export function getExtensionManagedUvPath(context: ExtensionContext): string | n
 
 async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
     // event based load
-    if (settings?.ato && settings.ato !== "") {
+    if (settings?.ato && settings.ato !== '') {
         if (fs.existsSync(settings.ato)) {
             traceVerbose(`Using ato bin from settings: ${settings.ato}`);
             return {
@@ -84,13 +85,14 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
         const uvBinLocal = await which(g_uv_path_local, { nothrow: true });
         if (uvBinLocal) {
             let from = UV_ATO_VERSION;
-            if (settings?.from && settings.from !== "") {
+            if (settings?.from && settings.from !== '') {
                 from = settings.from;
             }
             traceVerbose(`Using local uv to run ato: ${uvBinLocal}`);
             traceVerbose(`Using from: ${from}`);
             return {
-                command: [uvBinLocal, 'tool', 'run', '--from', from, 'ato'],
+                // TODO don't hardcode python version lol
+                command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', from, 'ato'],
                 source: 'local-uv',
             };
         }
@@ -121,22 +123,23 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
         const now = Date.now();
 
         // run with 30s timeout (uv pulling might take long)
-        const result = await execFileAsync(bin, args, {timeout: _timeout_ms})
-            .then(({stdout, stderr}) => ({ err: null, stderr: stderr, stdout: stdout }))
+        const result = await execFileAsync(bin, args, { timeout: _timeout_ms })
+            .then(({ stdout, stderr }) => ({ err: null, stderr: stderr, stdout: stdout }))
             .catch((err: any) => {
                 const command = `${bin} ${args.join(' ')}`;
                 const elapsed_ms = Date.now() - now;
                 const timed_out = elapsed_ms > _timeout_ms;
-                let details = "";
+                let details = '';
                 if (timed_out) {
-                    details = `Error: Timed out after ${elapsed_ms/1000}s`
+                    details = `Error: Timed out after ${elapsed_ms / 1000}s`;
+                } else if (err.stderr !== '' || err.stdout !== '' || err.exitCode !== undefined) {
+                    details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`;
                 }
-                else if (err.stderr !== "" || err.stdout !== "" || err.exitCode !== undefined) {
-                    details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`
-                }
-                traceError(`Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${details}`);
-                return { err: err, stderr: err.stderr, stdout: err.stdout }
-        });
+                traceError(
+                    `Error executing ato self-check for ato from ${atoBin.source}\ncommand: ${command}\n${details}`,
+                );
+                return { err: err, stderr: err.stderr, stdout: err.stdout };
+            });
 
         if (result.err) {
             return null;
@@ -147,6 +150,69 @@ export async function getAtoBin(settings?: ISettings, timeout_ms?: number): Prom
     }
 
     return atoBin;
+}
+
+export async function getAtoAlias(settings?: ISettings, timeout_ms?: number): Promise<string | null> {
+    const atoBin = await getAtoBin(settings, timeout_ms);
+    if (!atoBin) {
+        return null;
+    }
+
+    const in_powershell =
+        os.platform() === 'win32' && vscode.env.shell && vscode.env.shell.toLowerCase().includes('powershell');
+
+    let atoAlias = atoBin.command.map((c) => `'${c}'`).join(' ');
+
+    // if running in powershell, need to add & to the command
+    if (in_powershell) {
+        atoAlias = '& ' + atoAlias;
+    }
+
+    let alias = `alias ato="${atoAlias}"`;
+    if (in_powershell) {
+        alias = `Function ato { ${atoAlias} @args }`;
+    }
+
+    return alias;
+}
+
+export async function runAtoCommandInTerminal(
+    terminal_or_name: string | vscode.Terminal,
+    cwd: string | undefined,
+    subcommand: string[],
+    hideFromUser: boolean,
+): Promise<vscode.Terminal> {
+    const alias = await getAtoAlias();
+    if (alias === null) {
+        throw new Error('Ato bin not found');
+    }
+
+    let terminal: vscode.Terminal;
+    if (typeof terminal_or_name === 'string') {
+        terminal = vscode.window.createTerminal({
+            name: `ato: ${terminal_or_name}`,
+            cwd: cwd,
+            hideFromUser: hideFromUser,
+        });
+    } else {
+        terminal = terminal_or_name;
+    }
+
+    terminal.sendText(alias);
+    terminal.sendText(`ato ${subcommand.map((c) => `'${c}'`).join(' ')}`);
+    terminal.show();
+    return terminal;
+}
+
+/**
+ * Sets up ato alias in a newly created terminal
+ */
+async function setupAtoAliasInTerminal(terminal: any): Promise<void> {
+    let alias = await getAtoAlias();
+    if (alias === null) {
+        return;
+    }
+    terminal.sendText(alias);
 }
 
 export async function initAtoBin(context: ExtensionContext): Promise<void> {
@@ -169,6 +235,17 @@ export async function initAtoBin(context: ExtensionContext): Promise<void> {
         onDidChangeConfiguration(async (e: ConfigurationChangeEvent) => {
             if (e.affectsConfiguration(`atopile.ato`) || e.affectsConfiguration('atopile.from')) {
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
+            }
+        }),
+        // Set up ato alias when new terminals are created
+        window.onDidOpenTerminal(async (terminal) => {
+            traceVerbose(`Terminal created: ${terminal.name}, setting up ato alias`);
+            await setupAtoAliasInTerminal(terminal);
+        }),
+        // rerun alias in all terminals
+        onDidChangeAtoBinInfo(async (_: AtoBinInfo) => {
+            for (const terminal of vscode.window.terminals) {
+                await setupAtoAliasInTerminal(terminal);
             }
         }),
     );

@@ -44,6 +44,7 @@ from faebryk.library.can_bridge import can_bridge
 from faebryk.library.can_specialize import can_specialize
 from faebryk.library.has_datasheet import has_datasheet
 from faebryk.library.has_designator import has_designator
+from faebryk.library.is_lazy import is_lazy
 from faebryk.library.has_descriptive_properties import has_descriptive_properties
 from faebryk.library.has_simple_value_representation import has_simple_value_representation
 from faebryk.library.has_capacitance import has_capacitance
@@ -175,6 +176,7 @@ from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.Shenzhen_Kinghelm_Elec_KH_BNC75_3511 import Shenzhen_Kinghelm_Elec_KH_BNC75_3511
+from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.PANASONIC_AQY212EHAX import PANASONIC_AQY212EHAX
 from faebryk.library.PoweredLED import PoweredLED

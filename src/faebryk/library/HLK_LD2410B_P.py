@@ -29,9 +29,9 @@ class HLK_LD2410B_P(Module):
             assert len(uart_candidates) == 1, f"Expected 1 UART, got {uart_candidates}"
             uart = uart_candidates.pop()
             uart_cfg = uart.get_trait(F.has_esphome_config).get_config()["uart"][0]
-            assert (
-                uart_cfg["baud_rate"] == 256000
-            ), f"Baudrate not 256000 but {uart_cfg['baud_rate']}"
+            assert uart_cfg["baud_rate"] == 256000, (
+                f"Baudrate not 256000 but {uart_cfg['baud_rate']}"
+            )
 
             return {
                 "ld2410": {
