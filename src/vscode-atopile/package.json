@@ -140,7 +140,7 @@
             },
             {
                 "command": "atopile.kicanvasPreview",
-                "title": "Open KiCanvas PCB Preview",
+                "title": "Open Layout Preview",
                 "category": "atopile"
             }
         ],

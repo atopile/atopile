@@ -97,10 +97,9 @@ function getWebviewContent(webview: vscode.Webview, pcbUri: vscode.Uri): string 
         </html>`;
 }
 
-function watchFile(pcbPath: string, webview: vscode.Webview) {
+function watchFile(pcbPath: string) {
     disposeWatcher();
 
-    const uri = vscode.Uri.file(pcbPath);
     // Watch any .kicad_pcb inside the layout directory so edits or regenerations trigger reload
     fileWatcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(path.dirname(pcbPath), '*.kicad_pcb'),
@@ -159,7 +158,7 @@ async function openKiCanvasPreview() {
     if (!panel) {
         panel = vscode.window.createWebviewPanel(
             'kicanvasPreview',
-            'PCB Preview',
+            'Layout',
             vscode.ViewColumn.Beside,
             {
                 enableScripts: true,
@@ -178,7 +177,7 @@ async function openKiCanvasPreview() {
     traceInfo('Setting webview HTML');
     panel.webview.html = getWebviewContent(panel.webview, pcbUri);
     traceInfo('Webview HTML set, starting file watcher');
-    watchFile(pcbPath, panel.webview);
+    watchFile(pcbPath);
     traceInfo('KiCanvas preview should now be visible');
     } catch (err) {
         traceError(`Error opening KiCanvas preview: ${err}`);
@@ -208,7 +207,7 @@ function refreshKiCanvasPreview() {
     };
     panel.webview.html = getWebviewContent(panel.webview, pcbUri);
     // Update file watcher to new PCB path
-    watchFile(build.entry, panel.webview);
+    watchFile(build.entry);
     
 }
 
