@@ -17,6 +17,7 @@ let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
 let statusbarAtoRemovePackage: vscode.StatusBarItem;
 let statusbarAtoCreateProject: vscode.StatusBarItem;
 let statusbarAtoShell: vscode.StatusBarItem;
+let statusbarLayoutPreview: vscode.StatusBarItem;
 
 export function getCurrentBuild(): Build | null {
     const currentBuildStr = statusbarAtoBuildTarget.text;
@@ -83,6 +84,7 @@ async function _displayButtons() {
         statusbarAtoRemovePackage.show();
         statusbarAtoBuild.show();
         statusbarAtoLaunchKiCAD.show();
+        statusbarLayoutPreview.show();
         statusbarAtoBuildTarget.show();
 
         statusbarAtoBuildTarget.text = build_strs[0];
@@ -102,6 +104,7 @@ async function _displayButtons() {
         statusbarAtoRemovePackage.hide();
         statusbarAtoBuild.hide();
         statusbarAtoLaunchKiCAD.hide();
+        statusbarLayoutPreview.hide();
         statusbarAtoBuildTarget.hide();
     }
 }
@@ -212,6 +215,13 @@ export async function activate(context: vscode.ExtensionContext) {
     statusbarAtoLaunchKiCAD.tooltip = 'ato: Launch KiCAD';
     // statusbarAtoBuild.color = '#F95015';
 
+    // Layout preview button (KiCanvas)
+    const commandLayoutPreview = 'atopile.kicanvasPreview';
+    statusbarLayoutPreview = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarLayoutPreview.command = commandLayoutPreview;
+    statusbarLayoutPreview.text = `$(eye)`;
+    statusbarLayoutPreview.tooltip = 'ato: Layout preview';
+
     const commandAtoBuildTarget = 'atopile.choose_build';
     statusbarAtoBuildTarget = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusbarAtoBuildTarget.command = commandAtoBuildTarget;
@@ -249,6 +259,7 @@ export function deactivate() {
     statusbarAtoAddPart.dispose();
     statusbarAtoLaunchKiCAD.dispose();
     statusbarAtoRemovePackage.dispose();
+    statusbarLayoutPreview.dispose();
 }
 
 async function _runInTerminal(name: string, cwd: string | undefined, subcommand: string[], hideFromUser: boolean) {

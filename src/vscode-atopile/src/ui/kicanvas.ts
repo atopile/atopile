@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { glob } from 'glob';
+import * as fs from 'fs';
 import * as path from 'path';
+import * as fs from 'fs';
 import { traceError, traceInfo } from '../common/log/logging';
 import { getCurrentBuild } from './buttons';
 
@@ -40,7 +42,13 @@ async function findPcbPath(): Promise<string | undefined> {
     return picked;
 }
 
-function getWebviewContent(webview: vscode.Webview, pcbUri: vscode.Uri): string {
+function getWebviewContent(webview: vscode.Webview, pcbUri?: vscode.Uri): string {
+    if (!pcbUri) {
+        // Error view
+        return `<!DOCTYPE html><html><body style="font-family: sans-serif; padding:1rem; color:var(--vscode-foreground);">
+            <h3>Selected build does not have a valid PCB file.</h3>
+        </body></html>`;
+    }
     const scriptUri = webview.asWebviewUri(
         vscode.Uri.parse('https://kicanvas.org/kicanvas/kicanvas.js'),
     );
@@ -97,6 +105,39 @@ function getWebviewContent(webview: vscode.Webview, pcbUri: vscode.Uri): string 
         </html>`;
 }
 
+function getMissingLayoutContent(): string {
+    return /* html */ `
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>No Layout</title>
+            <style>
+                html, body {
+                    padding: 0;
+                    margin: 0;
+                    height: 100%;
+                    width: 100%;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background: var(--vscode-editor-background);
+                    color: var(--vscode-descriptionForeground);
+                    font-family: var(--vscode-font-family);
+                }
+                .msg {
+                    font-size: 0.9rem;
+                    opacity: 0.8;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="msg">Build target does not have a valid layout.</div>
+        </body>
+        </html>`;
+}
+
 function watchFile(pcbPath: string) {
     disposeWatcher();
 
@@ -119,9 +160,17 @@ function watchFile(pcbPath: string) {
                 ...panel.webview.options,
                 localResourceRoots: [vscode.Uri.file(path.dirname(build.entry))],
             };
-            // Append timestamp to bypass cache
-            const busted = newUri.with({ query: `t=${Date.now()}` });
-            panel.webview.html = getWebviewContent(panel.webview, busted);
+            let uriForView: vscode.Uri | undefined = undefined;
+            if (fs.existsSync(build.entry)) {
+                uriForView = newUri;
+            }
+            // Append timestamp if valid
+            if (uriForView) {
+                const busted = uriForView.with({ query: `t=${Date.now()}` });
+                panel.webview.html = getWebviewContent(panel.webview, busted);
+            } else {
+                panel.webview.html = getWebviewContent(panel.webview);
+            }
             // watcher already set for directory, no change needed
         }
     };
@@ -153,7 +202,13 @@ async function openKiCanvasPreview() {
         
 
         const pcbPath = build.entry;
-        const pcbUri = vscode.Uri.file(pcbPath);
+        let pcbUri: vscode.Uri | undefined = undefined;
+        if (pcbPath && fs.existsSync(pcbPath)) {
+            pcbUri = vscode.Uri.file(pcbPath);
+        }
+
+        // Determine if a valid PCB file is available
+        const hasPcb = !!pcbUri;
 
     if (!panel) {
         panel = vscode.window.createWebviewPanel(
@@ -175,9 +230,17 @@ async function openKiCanvasPreview() {
     }
 
     traceInfo('Setting webview HTML');
-    panel.webview.html = getWebviewContent(panel.webview, pcbUri);
-    traceInfo('Webview HTML set, starting file watcher');
-    watchFile(pcbPath);
+    if (hasPcb) {
+        panel.webview.html = getWebviewContent(panel.webview, pcbUri);
+    } else {
+        panel.webview.html = getMissingLayoutContent();
+    }
+    if (hasPcb) {
+        traceInfo('Webview HTML set, starting file watcher');
+        watchFile(pcbPath);
+    } else {
+        traceInfo('No valid PCB found; showing placeholder message instead.');
+    }
     traceInfo('KiCanvas preview should now be visible');
     } catch (err) {
         traceError(`Error opening KiCanvas preview: ${err}`);
@@ -187,8 +250,8 @@ async function openKiCanvasPreview() {
 
 function refreshKiCanvasPreview() {
     if (!panel) {
-        // No existing panel; open a new one
-        openKiCanvasPreview();
+        // No existing panel; nothing to refresh
+        traceInfo('KiCanvas refresh requested but no panel open; ignoring.');
         return;
     }
 
@@ -198,16 +261,26 @@ function refreshKiCanvasPreview() {
         return;
     }
 
-    const pcbUri = vscode.Uri.file(build.entry);
+    let pcbUri: vscode.Uri | undefined = undefined;
+    if (fs.existsSync(build.entry)) {
+        pcbUri = vscode.Uri.file(build.entry);
+    }
     const pcbDir = path.dirname(build.entry);
     traceInfo(`Rebuilding KiCanvas preview for ${build.entry}`);
     panel.webview.options = {
         ...panel.webview.options,
         localResourceRoots: [vscode.Uri.file(pcbDir)],
     };
-    panel.webview.html = getWebviewContent(panel.webview, pcbUri);
-    // Update file watcher to new PCB path
-    watchFile(build.entry);
+
+    if (fs.existsSync(build.entry)) {
+        panel.webview.html = getWebviewContent(panel.webview, pcbUri);
+        // Update file watcher to new PCB path
+        watchFile(build.entry);
+    } else {
+        panel.webview.html = getMissingLayoutContent();
+        traceInfo('No valid PCB found on refresh; showing placeholder message.');
+        disposeWatcher();
+    }
     
 }
 
