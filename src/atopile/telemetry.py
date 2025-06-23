@@ -174,6 +174,19 @@ class TelemetryProperties:
     )
 
 
+def capture_exception(exc: Exception, properties: dict | None = None) -> None:
+    try:
+        config = TelemetryConfig.load()
+    except Exception as e:
+        log.debug("Failed to load telemetry config: %s", e, exc_info=e)
+        return
+
+    try:
+        posthog.capture_exception(exc, config.id, properties)
+    except Exception as e:
+        log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
+
+
 @contextmanager
 def capture(
     event_start: str, event_end: str, properties: dict | None = None
