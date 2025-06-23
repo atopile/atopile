@@ -11,6 +11,7 @@ What we collect:
 - Git hash of current commit
 """
 
+import contextlib
 import hashlib
 import importlib.metadata
 import logging
@@ -93,20 +94,18 @@ class PropertyLoaders:
         """Get the git user email."""
         try:
             import git
-
-            try:
-                repo = git.Repo(search_parent_directories=True)
-                config_reader = repo.config_reader()
-                return cast_assert(str, config_reader.get_value("user", "email", None))
-            except (
-                git.InvalidGitRepositoryError,
-                git.NoSuchPathError,
-                ValueError,
-                AttributeError,
-            ):
-                return None
         except ImportError:
             return None
+
+        with contextlib.suppress(
+            git.InvalidGitRepositoryError,
+            git.NoSuchPathError,
+            ValueError,
+            AttributeError,
+        ):
+            repo = git.Repo(search_parent_directories=True)
+            config_reader = repo.config_reader()
+            return cast_assert(str, config_reader.get_value("user", "email", None))
 
     @once
     @staticmethod
@@ -114,19 +113,17 @@ class PropertyLoaders:
         """Get the current git commit hash."""
         try:
             import git
-
-            try:
-                repo = git.Repo(search_parent_directories=True)
-                return repo.head.commit.hexsha
-            except (
-                git.InvalidGitRepositoryError,
-                git.NoSuchPathError,
-                ValueError,
-                AttributeError,
-            ):
-                return None
         except ImportError:
             return None
+
+        with contextlib.suppress(
+            git.InvalidGitRepositoryError,
+            git.NoSuchPathError,
+            ValueError,
+            AttributeError,
+        ):
+            repo = git.Repo(search_parent_directories=True)
+            return repo.head.commit.hexsha
 
     @once
     @staticmethod
@@ -134,23 +131,24 @@ class PropertyLoaders:
         """Get the hashed project ID from the git URL of the project, if available."""
         try:
             import git
-
-            try:
-                repo = git.Repo(search_parent_directories=True)
-                if not repo.remotes:
-                    return None
-                git_url = repo.remotes.origin.url
-                if not git_url:
-                    return None
-            except (
-                git.InvalidGitRepositoryError,
-                git.NoSuchPathError,
-                ValueError,
-                AttributeError,
-            ):
-                return None
         except ImportError:
             # no git executable
+            return None
+
+        try:
+            repo = git.Repo(search_parent_directories=True)
+        except (
+            git.InvalidGitRepositoryError,
+            git.NoSuchPathError,
+            ValueError,
+            AttributeError,
+        ):
+            return None
+
+        if not repo.remotes:
+            return None
+
+        if (git_url := repo.remotes.origin.url) is None:
             return None
 
         project_url = _normalize_git_remote_url(git_url)
