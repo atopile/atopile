@@ -698,7 +698,7 @@ def part(
     rich_print_robust(
         f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
     )
-    path = apart.ato_path.relative_to(config.project.paths.root)
+    path = apart.ato_path.relative_to(config.project.paths.src)
     rich_print_robust(
         f'```ato\nfrom "{path}" import {apart.module_name}\n```', markdown=True
     )
