@@ -705,6 +705,11 @@ def part(
 
 
 @create_app.command(deprecated=True)
+@capture(
+    "cli:create_component_start",
+    "cli:create_component_end",
+    properties={"deprecated_command": True},
+)
 def component(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
 ):

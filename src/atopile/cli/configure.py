@@ -13,6 +13,7 @@ from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
 import atopile.version
+from atopile.telemetry import capture
 from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.paths import get_config_dir
 
@@ -55,6 +56,7 @@ def get_configured_for_version() -> atopile.version.Version:
     return atopile.version.clean_version(atopile.version.Version.parse(config.version))
 
 
+@capture("cli:configure_start", "cli:configure_end")
 def configure() -> None:
     """
     Configure the user's system for atopile development.
@@ -115,6 +117,7 @@ def do_configure() -> None:
     _save_config()
 
 
+@capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")
 def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
     # Find the path to kicad's plugin directory
