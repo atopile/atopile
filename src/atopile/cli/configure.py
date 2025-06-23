@@ -3,12 +3,11 @@ Configure the user's system for atopile development.
 """
 
 import logging
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from textwrap import dedent
-from typing import Optional
 
 import questionary
-from attrs import asdict, define
 from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
@@ -25,10 +24,10 @@ CONFIGURED_FOR_PATH = get_config_dir() / "configured_for.yaml"
 logger = logging.getLogger(__name__)
 
 
-@define
+@dataclass
 class Config:
-    version: Optional[str] = None
-    install_kicad_plugin: Optional[bool] = None
+    version: str | None = None
+    install_kicad_plugin: bool | None = None
 
 
 config = Config()
@@ -53,6 +52,9 @@ def _save_config() -> None:
 
 def get_configured_for_version() -> atopile.version.Version:
     """Return the version of atopile that the user's system is configured for."""
+    if config.version is None:
+        raise ValueError("No version configured")
+
     return atopile.version.clean_version(atopile.version.Version.parse(config.version))
 
 
