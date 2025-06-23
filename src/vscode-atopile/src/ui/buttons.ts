@@ -7,14 +7,8 @@ import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
-<<<<<<< HEAD
 import { g_lsClient } from '../extension'
 import { captureEvent } from '../common/telemetry';
-||||||| c7e31c3f
-import { g_lsClient } from '../extension'
-=======
-import { g_lsClient } from '../extension';
->>>>>>> main
 
 let statusbarAtoAddPackage: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
