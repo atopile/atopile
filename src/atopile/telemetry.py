@@ -138,7 +138,12 @@ def get_user_id() -> str:
             repo = git.Repo(search_parent_directories=True)
             config_reader = repo.config_reader()
             return cast_assert(str, config_reader.get_value("user", "email", "unknown"))
-        except (git.InvalidGitRepositoryError, git.NoSuchPathError, ValueError):
+        except (
+            git.InvalidGitRepositoryError,
+            git.NoSuchPathError,
+            ValueError,
+            AttributeError,
+        ):
             return "unknown"
     except ImportError:
         return "unknown"
@@ -152,7 +157,12 @@ def get_current_git_hash() -> Optional[str]:
         try:
             repo = git.Repo(search_parent_directories=True)
             return repo.head.commit.hexsha
-        except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        except (
+            git.InvalidGitRepositoryError,
+            git.NoSuchPathError,
+            ValueError,
+            AttributeError,
+        ):
             return None
     except ImportError:
         return None
@@ -190,7 +200,12 @@ def get_project_id() -> Optional[str]:
             git_url = repo.remotes.origin.url
             if not git_url:
                 return None
-        except (git.InvalidGitRepositoryError, git.NoSuchPathError, AttributeError):
+        except (
+            git.InvalidGitRepositoryError,
+            git.NoSuchPathError,
+            ValueError,
+            AttributeError,
+        ):
             return None
     except ImportError:
         # no git executable
