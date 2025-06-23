@@ -179,6 +179,9 @@ def capture_exception(exc: Exception, properties: dict | None = None) -> None:
         log.debug("Failed to load telemetry config: %s", e, exc_info=e)
         return
 
+    if config.telemetry is False:
+        return
+
     try:
         posthog.capture_exception(exc, config.id, properties)
     except Exception as e:
