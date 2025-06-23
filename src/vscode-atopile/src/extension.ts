@@ -48,6 +48,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }),
     );
 
+    const disposable = vscode.commands.registerCommand('atopileViewer.openWebPanel', () => {
+    const panel = vscode.window.createWebviewPanel(
+      'atopileWebview',
+      'Atopile Packages',
+      vscode.ViewColumn.One,
+      {
+        enableScripts: true
+      }
+    );
+
+    panel.webview.html = getWebviewContent();
+    });
+
     await initServer(context);
 
     ui.activate(context);
@@ -57,4 +70,32 @@ export async function deactivate(): Promise<void> {
     if (g_lsClient) {
         await g_lsClient.stop();
     }
+}
+
+function getWebviewContent(): string {
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Atopile Packages</title>
+      <style>
+        body, html {
+          margin: 0;
+          padding: 0;
+          height: 100%;
+          overflow: hidden;
+        }
+        iframe {
+          width: 100%;
+          height: 100%;
+          border: none;
+        }
+      </style>
+    </head>
+    <body>
+      <iframe src="https://packages.atopile.io/"></iframe>
+    </body>
+    </html>
+  `;
 }

@@ -59,6 +59,15 @@
         "test": "node ./out/test/runTest.js"
     },
     "contributes": {
+        "webviews": [
+            {
+                "id": "atopile.webview",
+                "name": "atopile Webview",
+                "resources": [
+                    "webview/**"
+                ]
+            }
+        ],
         "snippets": [
             {
                 "language": "ato",
@@ -136,7 +145,11 @@
                 "command": "atopile.shell",
                 "title": "Open ato shell",
                 "category": "atopile"
-            }
+            },
+            {
+                "command": "atopileViewer.openWebPanel",
+                "title": "Open Atopile Packages Web Panel"
+                }
         ],
         "languages": [
             {
