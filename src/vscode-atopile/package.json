@@ -29,7 +29,8 @@
         "Snippets"
     ],
     "extensionDependencies": [
-        "ms-python.python"
+        "ms-python.python",
+        "vscode.git"
     ],
     "capabilities": {
         "virtualWorkspaces": {
