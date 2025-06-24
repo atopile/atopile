@@ -8,6 +8,9 @@ import { randomUUID } from "crypto";
 import { parse, stringify } from 'yaml'
 import { traceError } from "./log/logging";
 import { getExtensionSettings } from "./settings";
+import { Extension } from "vscode";
+import { exec } from "child_process";
+import { promisify } from "util";
 
 // write-only API key, intended to be made public
 const client = new PostHog('phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt', {
@@ -62,15 +65,37 @@ function loadConfig() {
     enabled = config.telemetry;
 }
 
-async function getEmail() {
+async function isGitCliInstalled(): Promise<boolean> {
+    const command = process.platform === 'win32' ? 'where git' : 'which git';
     try {
-        const gitExtension = vscode.extensions.getExtension<GitExtension>('vscode.git');
-        const git = gitExtension?.exports.getAPI(1);
-        return await git?.repositories[0]?.getConfig('user.email');
+        await promisify(exec)(command);
+        return true;
+    } catch (error) {
+        traceError('Git CLI not found on system PATH.', error);
+        return false;
+    }
+}
+
+async function getGitExtension(): Promise<vscode.Extension<GitExtension> | undefined> {
+    if (!await isGitCliInstalled()) {
+        return undefined;
+    }
+
+    try {
+        return vscode.extensions.getExtension<GitExtension>('vscode.git');
     } catch (error) {
         traceError('Git extension not enabled', error);
         return undefined;
     }
+}
+
+async function getEmail() {
+    const gitExtension = await getGitExtension();
+    if (!gitExtension) {
+        return;
+    }
+    const git = gitExtension.exports.getAPI(1);
+    return await git?.repositories[0]?.getConfig('user.email');
 }
 
 export async function initializeTelemetry(context: vscode.ExtensionContext) {
