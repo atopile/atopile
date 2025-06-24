@@ -59,15 +59,6 @@
         "test": "node ./out/test/runTest.js"
     },
     "contributes": {
-        "webviews": [
-            {
-                "id": "atopile.webview",
-                "name": "atopile Webview",
-                "resources": [
-                    "webview/**"
-                ]
-            }
-        ],
         "snippets": [
             {
                 "language": "ato",
@@ -89,6 +80,42 @@
                 }
             }
         },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "atopile-explorer",
+                    "title": "atopile",
+                    "icon": "ato_logo_256x256.png"
+                },
+                {
+                    "id": "atopile-packages",
+                    "title": "Packages",
+                    "icon": "package"
+                }
+            ]
+        },
+        "views": {
+            "atopile-explorer": [
+                {
+                    "id": "atopile.project",
+                    "name": "Project",
+                    "contextualTitle": "atopile Project"
+                }
+            ],
+            "atopile-packages": [
+                {
+                    "id": "atopile.packages",
+                    "name": "Packages",
+                    "contextualTitle": "atopile Packages",
+                    "type": "webview"
+                }
+            ]
+        },
+        "activationEvents": [
+            "onView:atopile.project",
+            "onView:atopile.packages",
+            "onViewContainer:atopile-packages"
+        ],
         "commands": [
             {
                 "title": "Restart Server",
@@ -147,9 +174,10 @@
                 "category": "atopile"
             },
             {
-                "command": "atopileViewer.openWebPanel",
-                "title": "Open Atopile Packages Web Panel"
-                }
+                "command": "atopile.package_explorer",
+                "title": "Open package explorer",
+                "category": "atopile"
+            }
         ],
         "languages": [
             {

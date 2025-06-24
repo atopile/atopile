@@ -17,6 +17,7 @@ let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
 let statusbarAtoRemovePackage: vscode.StatusBarItem;
 let statusbarAtoCreateProject: vscode.StatusBarItem;
 let statusbarAtoShell: vscode.StatusBarItem;
+let statusbarAtoPackageExplorer: vscode.StatusBarItem;
 
 function _buildsToStr(builds: Build[]): string[] {
     return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
@@ -74,6 +75,7 @@ async function _displayButtons() {
         statusbarAtoBuild.show();
         statusbarAtoLaunchKiCAD.show();
         statusbarAtoBuildTarget.show();
+        statusbarAtoPackageExplorer.show();
 
         statusbarAtoBuildTarget.text = build_strs[0];
         statusbarAtoBuildTarget.tooltip = 'ato: build target';
@@ -93,6 +95,7 @@ async function _displayButtons() {
         statusbarAtoBuild.hide();
         statusbarAtoLaunchKiCAD.hide();
         statusbarAtoBuildTarget.hide();
+        statusbarAtoPackageExplorer.hide();
     }
 }
 
@@ -154,6 +157,11 @@ export async function activate(context: vscode.ExtensionContext) {
             atoChooseBuild();
         }),
     );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('atopile.package_explorer', () => {
+            atoPackageExplorer();
+        }),
+    );
 
     const commandAtoShell = 'atopile.shell';
     statusbarAtoShell = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
@@ -205,6 +213,12 @@ export async function activate(context: vscode.ExtensionContext) {
     const commandAtoBuildTarget = 'atopile.choose_build';
     statusbarAtoBuildTarget = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusbarAtoBuildTarget.command = commandAtoBuildTarget;
+    
+    const commandAtoPackageExplorer = 'atopile.package_explorer';
+    statusbarAtoPackageExplorer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+    statusbarAtoPackageExplorer.command = commandAtoPackageExplorer;
+    statusbarAtoPackageExplorer.text = `$(package)`;
+    statusbarAtoPackageExplorer.tooltip = 'ato: open packages explorer';
 
     await _reloadBuilds();
     context.subscriptions.push(
@@ -239,6 +253,7 @@ export function deactivate() {
     statusbarAtoAddPart.dispose();
     statusbarAtoLaunchKiCAD.dispose();
     statusbarAtoRemovePackage.dispose();
+    statusbarAtoPackageExplorer.dispose();
 }
 
 async function _runInTerminal(name: string, cwd: string | undefined, subcommand: string[], hideFromUser: boolean) {
@@ -363,5 +378,53 @@ async function atoLaunchKicad() {
     } catch (error) {
         traceError(`Error launching KiCad: ${error}`);
         vscode.window.showErrorMessage(`Error launching KiCad: ${error}`);
+    }
+}
+
+let packagesPanel: vscode.WebviewPanel | undefined;
+
+function _getPackagesHtml(): string {
+    return `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe src="https://packages.atopile.io/packages"></iframe>
+</body>
+</html>`;
+}
+
+async function atoPackageExplorer() {
+    try {
+        if (packagesPanel) {
+            packagesPanel.reveal();
+            return;
+        }
+        packagesPanel = vscode.window.createWebviewPanel(
+            'atopile.packages.panel',
+            'Packages',
+            vscode.ViewColumn.Active,
+            { enableScripts: true }
+        );
+        packagesPanel.webview.html = _getPackagesHtml();
+        packagesPanel.onDidDispose(() => { packagesPanel = undefined; });
+    } catch (error) {
+        traceError(`Error opening Package Explorer: ${error}`);
     }
 }
