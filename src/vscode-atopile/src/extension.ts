@@ -46,11 +46,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     context.subscriptions.push(
         onNeedsRestart(async () => {
             await _reStartServer();
-        })
+        }),
     );
-    
+
     await initServer(context);
-    await ui.activate(context);
+    ui.activate(context);
 }
 
 export async function deactivate(): Promise<void> {
