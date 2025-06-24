@@ -29,9 +29,6 @@ export async function findPcbUri(): Promise<vscode.Uri | undefined> {
     return undefined;
 }
 
-
-
-
 export class PcbManager {
     private watcher?: vscode.FileSystemWatcher;
     private currentPcbPath?: string;
@@ -40,7 +37,7 @@ export class PcbManager {
     getPcbForBuild(buildTarget?: any): vscode.Uri | undefined {
         const build = buildTarget || getCurrentBuild();
         traceInfo(`getPcbForBuild called with build: ${build?.entry || 'undefined'}`);
-        
+
         if (!build?.entry) {
             traceInfo('No build entry found');
             return undefined;
@@ -50,7 +47,7 @@ export class PcbManager {
             traceInfo(`PCB file exists at: ${build.entry}`);
             return vscode.Uri.file(build.entry);
         }
-        
+
         traceInfo(`PCB file does not exist at: ${build.entry}`);
         return undefined;
     }
@@ -74,12 +71,12 @@ export class PcbManager {
                 if (index >= 0) {
                     this.changeListeners.splice(index, 1);
                 }
-            }
+            },
         };
     }
 
     private notifyChange(uri: vscode.Uri) {
-        this.changeListeners.forEach(listener => listener(uri));
+        this.changeListeners.forEach((listener) => listener(uri));
     }
 
     private setupWatcher(pcbPath: string) {
@@ -112,9 +109,6 @@ export class PcbManager {
 
 export const pcbManager = new PcbManager();
 
-/**
- * Watch *.kicad_pcb files in the same directory as `pcbPath`. Returns the watcher so callers can dispose.
- */
 export function watchPcb(pcbPath: string, onChange: () => void): vscode.FileSystemWatcher {
     const watcher = vscode.workspace.createFileSystemWatcher(
         new vscode.RelativePattern(path.dirname(pcbPath), '*.kicad_pcb'),
