@@ -14,8 +14,9 @@ export class ProjectViewProvider implements vscode.TreeDataProvider<vscode.TreeI
     }
 
     async getChildren(_element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
-        // If no project is open, show the welcome view by returning no children.
-        if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+        // If the workspace contains an `ato.yaml`, do not show any buttons (let the project view take over).
+        const atoFiles = await vscode.workspace.findFiles('**/ato.yaml', undefined, 1);
+        if (atoFiles.length == 0) {
             return [];
         }
 

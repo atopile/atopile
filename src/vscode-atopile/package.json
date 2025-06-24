@@ -101,8 +101,7 @@
         "viewsWelcome": [
             {
                 "view": "atopile.project",
-                "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile).",
-                "when": "!workspaceHas:ato.yaml"
+                "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile)."
             }
         ],
         "commands": [
