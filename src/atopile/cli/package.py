@@ -7,6 +7,7 @@ from semver import Version
 import faebryk.libs.backend.packages.api as packages_api
 from atopile.config import config
 from atopile.errors import UserBadParameterError, UserException
+from atopile.telemetry import capture
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.artifacts import Artifacts
 from faebryk.libs.package.dist import Dist, DistValidationError
@@ -74,6 +75,7 @@ def _apply_version(specd_version: str) -> None:
 
 
 @package_app.command()
+@capture("cli:package_publish_start", "cli:package_publish_end")
 def publish(
     version: Annotated[
         str,

@@ -22,7 +22,7 @@ from typing import Annotated
 
 import typer
 
-from atopile import telemetry, version
+from atopile import version
 from atopile.cli import (
     build,
     configure,
@@ -141,9 +141,6 @@ def cli(
 
     if ctx.invoked_subcommand:
         check_for_update()
-
-        # Initialize telemetry
-        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
 
     if config.interactive and ctx.invoked_subcommand != "configure":
         configure.do_configure_if_needed()

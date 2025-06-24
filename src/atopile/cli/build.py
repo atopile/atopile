@@ -8,7 +8,7 @@ from more_itertools import first
 
 from atopile.cli.logging_ import NOW, LoggingStage
 from atopile.config import config
-from atopile.telemetry import log_to_posthog
+from atopile.telemetry import capture
 
 if TYPE_CHECKING:
     from faebryk.core.module import Module
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-@log_to_posthog("cli:build_end")
+@capture("cli:build_start", "cli:build_end")
 def build(
     entry: Annotated[str | None, typer.Argument()] = None,
     selected_builds: Annotated[
