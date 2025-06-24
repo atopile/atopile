@@ -9,24 +9,17 @@ let panel: vscode.WebviewPanel | undefined;
 let extensionPath: string; // set during activate
 
 function getKiCanvasScriptUri(webview: vscode.Webview): vscode.Uri {
-    // Use the bundled file placed in ui/resources relative to the compiled JS.
-    // First prefer the compiled media folder inside the extension's install path
-    const compiledPath = extensionPath
-        ? path.join(extensionPath, 'media', 'kicanvas', 'kicanvas.js')
-        : path.join(__dirname, '..', 'media', 'kicanvas', 'kicanvas.js');
-
-    if (fs.existsSync(compiledPath)) {
-        return webview.asWebviewUri(vscode.Uri.file(compiledPath));
+    const candidate = path.join(extensionPath ?? path.join(__dirname, '..'), 'resources', 'kicanvas', 'kicanvas.js');
+    if (fs.existsSync(candidate)) {
+        return webview.asWebviewUri(vscode.Uri.file(candidate));
     }
 
-    // Fallback to the source tree when running extension via F5 (development)
-    const sourcePath = path.join(__dirname, '..', 'src', 'media', 'kicanvas', 'kicanvas.js');
-    if (fs.existsSync(sourcePath)) {
-        return webview.asWebviewUri(vscode.Uri.file(sourcePath));
+    const dev = path.join(__dirname, '..', 'src', 'resources', 'kicanvas', 'kicanvas.js');
+    if (fs.existsSync(dev)) {
+        return webview.asWebviewUri(vscode.Uri.file(dev));
     }
 
-    const msg = 'kicanvas.js could not be found in media/kicanvas. Make sure it is included.';
-    throw new Error(msg);
+    throw new Error('kicanvas.js could not be found in resources/kicanvas. Make sure it is included.');
 }
 
 function buildWebviewHtml(webview: vscode.Webview, pcbUri?: vscode.Uri): string {
@@ -48,7 +41,7 @@ function buildWebviewHtml(webview: vscode.Webview, pcbUri?: vscode.Uri): string 
             <script type="module" src="${scriptUri}"></script>
             <style>
                 html, body {padding: 0; margin: 0; height: 100%; width: 100%; overflow: hidden;}
-                #container {height: 100%; width: 100%;}
+                                #container {height: 100%; width: 100%;}
                 kicanvas-embed {height: 100%; width: 100%; display: block;}
             </style>
         </head>
@@ -100,8 +93,8 @@ async function openKiCanvasPreview() {
     const pcbDir = path.dirname(build.entry);
     const resourceRoots = [
         vscode.Uri.file(pcbDir),
-        vscode.Uri.file(path.join(extensionPath || path.join(__dirname, '..'), 'media', 'kicanvas')),
-        vscode.Uri.file(path.join(__dirname, '..', 'src', 'media', 'kicanvas')),
+        vscode.Uri.file(path.join(extensionPath || path.join(__dirname, '..'), 'resources')),
+        vscode.Uri.file(path.join(__dirname, '..', 'src', 'resources', 'kicanvas')),
         ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
     ];
 
@@ -111,6 +104,12 @@ async function openKiCanvasPreview() {
             localResourceRoots: resourceRoots,
         });
 
+        // custom icon disabled
+        const iconSvg = path.join(extensionPath || path.join(__dirname, '..'), 'resources', 'icon.svg');
+        const iconPng = path.join(extensionPath || path.join(__dirname, '..'), 'resources', 'ato_logo_256x256.png');
+        const iconDevSvg = path.join(__dirname, '..', 'src', 'resources', 'icon.svg');
+        const iconDevPng = path.join(__dirname, '..', 'src', 'ato_logo_256x256.png');
+        let iconFile = iconSvg;
         panel.onDidDispose(() => {
             panel = undefined;
             pcbManager.disposeWatcher();

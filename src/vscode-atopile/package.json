@@ -47,9 +47,10 @@
     ],
     "main": "./dist/extension.js",
     "scripts": {
-        "vscode:prepublish": "npm run package",
+        "vscode:prepublish": "npm run prepare-resources && npm run package",
         "compile": "webpack",
         "watch": "webpack --watch",
+        "prepare-resources": "mkdir -p resources/kicanvas && cp src/resources/kicanvas/kicanvas.js resources/kicanvas/ && cp ato_logo_256x256.png resources/",
         "package": "webpack --mode production --devtool source-map --config ./webpack.config.js",
         "compile-tests": "tsc -p . --outDir out",
         "watch-tests": "tsc -p . -w --outDir out",
