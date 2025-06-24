@@ -8,6 +8,7 @@ import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
 import { g_lsClient } from '../extension';
+import { openPackageExplorer } from './packagexplorer';
 
 let statusbarAtoAddPackage: vscode.StatusBarItem;
 let statusbarAtoBuild: vscode.StatusBarItem;
@@ -18,9 +19,6 @@ let statusbarAtoRemovePackage: vscode.StatusBarItem;
 let statusbarAtoCreateProject: vscode.StatusBarItem;
 let statusbarAtoShell: vscode.StatusBarItem;
 let statusbarAtoPackageExplorer: vscode.StatusBarItem;
-
-// Store context for later use (e.g., when creating webview panels)
-let g_extensionContext: vscode.ExtensionContext;
 
 function _buildsToStr(builds: Build[]): string[] {
     return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
@@ -113,8 +111,6 @@ export async function forceReloadButtons() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    // cache for later
-    g_extensionContext = context;
     context.subscriptions.push(
         vscode.commands.registerCommand('atopile.add_part', () => {
             atoAddPart();
@@ -218,7 +214,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const commandAtoBuildTarget = 'atopile.choose_build';
     statusbarAtoBuildTarget = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusbarAtoBuildTarget.command = commandAtoBuildTarget;
-    
+
     const commandAtoPackageExplorer = 'atopile.package_explorer';
     statusbarAtoPackageExplorer = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusbarAtoPackageExplorer.command = commandAtoPackageExplorer;
@@ -386,55 +382,11 @@ async function atoLaunchKicad() {
     }
 }
 
-let packagesPanel: vscode.WebviewPanel | undefined;
-
-function _getPackagesHtml(): string {
-    return `<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-        }
-        iframe {
-            width: 100%;
-            height: 100%;
-            border: none;
-        }
-    </style>
-</head>
-<body>
-    <iframe src="https://packages.atopile.io"></iframe>
-</body>
-</html>`;
-}
-
 async function atoPackageExplorer() {
     try {
-        if (packagesPanel) {
-            packagesPanel.reveal();
-            return;
-        }
-        packagesPanel = vscode.window.createWebviewPanel(
-            'atopile.packages.panel',
-            'Packages',
-            vscode.ViewColumn.Active,
-            { enableScripts: true }
-        );
-        // Set panel HTML and icon
-        packagesPanel.webview.html = _getPackagesHtml();
-        if (g_extensionContext) {
-            const logoUri = vscode.Uri.joinPath(g_extensionContext.extensionUri, 'ato_logo_256x256.png');
-            packagesPanel.iconPath = logoUri;
-        }
-        packagesPanel.onDidDispose(() => { packagesPanel = undefined; });
+        await openPackageExplorer();
     } catch (error) {
         traceError(`Error opening Package Explorer: ${error}`);
+        vscode.window.showErrorMessage(`Error opening Package Explorer: ${error}`);
     }
 }

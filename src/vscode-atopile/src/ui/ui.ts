@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as setup from './setup';
 import * as buttons from './buttons';
 import * as example from './example';
-import * as projectViewer from './projectView';
+import * as projectViewer from './projectview';
 
 export async function activate(context: vscode.ExtensionContext) {
     await setup.activate(context);
