@@ -5,7 +5,6 @@ import { traceError, traceInfo } from '../common/log/logging';
 import { getCurrentBuild } from './buttons';
 import { pcbManager } from './pcb';
 
-
 let panel: vscode.WebviewPanel | undefined;
 let extensionPath: string; // set during activate
 
@@ -30,10 +29,7 @@ function getKiCanvasScriptUri(webview: vscode.Webview): vscode.Uri {
     throw new Error(msg);
 }
 
-function buildWebviewHtml(
-    webview: vscode.Webview,
-    pcbUri?: vscode.Uri,
-): string {
+function buildWebviewHtml(webview: vscode.Webview, pcbUri?: vscode.Uri): string {
     if (!pcbUri) {
         return missingLayoutHtml();
     }
@@ -95,40 +91,31 @@ function missingLayoutHtml(): string {
 }
 
 async function openKiCanvasPreview() {
-    traceInfo('openKiCanvasPreview() function called');
-    
     const build = getCurrentBuild();
     if (!build) {
         throw new Error('No current build found.');
     }
 
-    traceInfo(`Opening KiCanvas preview for build: ${build.entry}`);
-    
     const pcbUri = pcbManager.getPcbForBuild(build);
     const pcbDir = path.dirname(build.entry);
     const resourceRoots = [
         vscode.Uri.file(pcbDir),
         vscode.Uri.file(path.join(extensionPath || path.join(__dirname, '..'), 'media', 'kicanvas')),
         vscode.Uri.file(path.join(__dirname, '..', 'src', 'media', 'kicanvas')),
-        ...(vscode.workspace.workspaceFolders?.map(f => f.uri) ?? []),
+        ...(vscode.workspace.workspaceFolders?.map((f) => f.uri) ?? []),
     ];
-    
+
     if (!panel) {
-        panel = vscode.window.createWebviewPanel(
-            'kicanvasPreview',
-            'Layout',
-            vscode.ViewColumn.Beside,
-            {
-                enableScripts: true,
-                localResourceRoots: resourceRoots,
-            },
-        );
+        panel = vscode.window.createWebviewPanel('kicanvasPreview', 'Layout', vscode.ViewColumn.Beside, {
+            enableScripts: true,
+            localResourceRoots: resourceRoots,
+        });
 
         panel.onDidDispose(() => {
             panel = undefined;
             pcbManager.disposeWatcher();
         });
-        
+
         pcbManager.onPcbChanged((uri) => {
             if (panel && build) {
                 panel.webview.options = {
@@ -136,12 +123,10 @@ async function openKiCanvasPreview() {
                     localResourceRoots: resourceRoots,
                 };
                 const webviewUri = panel.webview.asWebviewUri(uri);
-                
-                traceInfo(`PCB file changed, using postMessage to update source: ${webviewUri.toString()}`);
-                
+
                 panel.webview.postMessage({
                     type: 'updateSrc',
-                    src: webviewUri.toString()
+                    src: webviewUri.toString(),
                 });
             }
         });
@@ -152,7 +137,7 @@ async function openKiCanvasPreview() {
     }
 
     panel.webview.html = buildWebviewHtml(panel.webview, pcbUri);
-    
+
     if (pcbUri) {
         pcbManager.setPcbPath(pcbUri.fsPath);
     }

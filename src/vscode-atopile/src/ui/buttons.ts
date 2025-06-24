@@ -77,7 +77,6 @@ async function _displayButtons() {
     const build_strs = _buildsToStr(builds);
 
     if (builds.length !== 0) {
-        traceInfo(`Buttons: Showing, found ato command in ${atoBin?.source}`);
         // TODO: not happy yet with the flow
         statusbarAtoAddPart.show();
         statusbarAtoAddPackage.show();
@@ -94,9 +93,7 @@ async function _displayButtons() {
         });
     } else {
         if (atoBin) {
-            traceInfo(`Buttons: No builds found, hiding`);
         } else {
-            traceInfo('Buttons: No ato command found, hiding');
         }
 
         statusbarAtoAddPart.hide();
@@ -357,7 +354,7 @@ async function atoChooseBuild() {
         buildTarget: _buildStrToBuild(result).entry,
     });
 
-    // Refresh KiCanvas preview if open
+    // Refresh KiCanvas preview
     vscode.commands.executeCommand('atopile.kicanvasPreviewRefresh');
 }
 
