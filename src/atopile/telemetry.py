@@ -15,6 +15,7 @@ import contextlib
 import hashlib
 import importlib.metadata
 import logging
+import os
 import time
 import uuid
 from collections.abc import Generator
@@ -158,6 +159,38 @@ class PropertyLoaders:
         # Hash the project ID to de-identify it
         return hashlib.sha256(project_url.encode()).hexdigest()
 
+    @once
+    @staticmethod
+    def ci_provider() -> str | None:
+        if os.getenv("GITHUB_ACTIONS"):
+            return "GitHub Actions"
+        elif os.getenv("TF_BUILD"):
+            return "Azure Pipelines"
+        elif os.getenv("CIRCLECI"):
+            return "Circle CI"
+        elif os.getenv("TRAVIS"):
+            return "Travis CI"
+        elif os.getenv("BUILDKITE"):
+            return "Buildkite"
+        elif os.getenv("CIRRUS_CI"):
+            return "Cirrus CI"
+        elif os.getenv("GITLAB_CI"):
+            return "GitLab CI"
+        elif os.getenv("TEAMCITY_VERSION"):
+            return "TeamCity"
+        elif os.getenv("CODEBUILD_BUILD_ID"):
+            return "CodeBuild"
+        elif os.getenv("HEROKU_TEST_RUN_ID"):
+            return "Heroku CI"
+        elif os.getenv("bamboo.buildKey"):
+            return "Bamboo"
+        elif os.getenv("BUILD_ID"):
+            return "Jenkins"  # could also be Hudson
+        elif os.getenv("CI"):
+            return "Other"
+
+        return None
+
 
 @dataclass
 class TelemetryProperties:
@@ -167,6 +200,7 @@ class TelemetryProperties:
         default_factory=PropertyLoaders.current_git_hash
     )
     project_id: str | None = field(default_factory=PropertyLoaders.project_id)
+    ci_provider: str | None = field(default_factory=PropertyLoaders.ci_provider)
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
