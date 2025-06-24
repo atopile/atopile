@@ -86,11 +86,6 @@
                     "id": "atopile-explorer",
                     "title": "atopile",
                     "icon": "ato_logo_256x256.png"
-                },
-                {
-                    "id": "atopile-packages",
-                    "title": "Packages",
-                    "icon": "package"
                 }
             ]
         },
@@ -101,19 +96,17 @@
                     "name": "Project",
                     "contextualTitle": "atopile Project"
                 }
-            ],
-            "atopile-packages": [
-                {
-                    "id": "atopile.packages",
-                    "name": "Packages",
-                    "contextualTitle": "atopile Packages",
-                    "type": "webview"
-                }
             ]
         },
+        "viewsWelcome": [
+            {
+                "view": "atopile.project",
+                "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile).",
+                "when": "!workspaceHas:ato.yaml"
+            }
+        ],
         "activationEvents": [
             "onView:atopile.project",
-            "onView:atopile.packages",
             "onViewContainer:atopile-packages"
         ],
         "commands": [

@@ -20,21 +20,30 @@ export class ProjectViewProvider implements vscode.TreeDataProvider<vscode.TreeI
         }
 
         const items: vscode.TreeItem[] = [];
-        
-        // Add button to open packages view
-        const openPackagesBtn = new vscode.TreeItem('Open Packages');
-        openPackagesBtn.command = {
-            command: 'atopile.package_explorer',
-            title: 'Open Package Explorer'
-        };
-        openPackagesBtn.iconPath = new vscode.ThemeIcon('package');
-        items.push(openPackagesBtn);
 
-        // TODO: Add your project tree items here
-        // Example:
-        // if (vscode.workspace.workspaceFolders) {
-        //     // Add project files and folders
-        // }
+        /**
+         * Helper to create a button-like TreeItem
+         */
+        const pushButton = (label: string, command: string, icon: string, tooltip?: string) => {
+            const item = new vscode.TreeItem(label);
+            item.command = { command, title: label };
+            item.iconPath = new vscode.ThemeIcon(icon);
+            if (tooltip) {
+                item.tooltip = tooltip;
+            }
+            items.push(item);
+        };
+
+        // Map of status-bar actions we mirror here
+        pushButton('ATO Shell', 'atopile.shell', 'terminal', 'Open ato shell');
+        pushButton('Create Project', 'atopile.create_project', 'new-file', 'Create new project');
+        pushButton('Add Part', 'atopile.add_part', 'file-binary', 'Add part to project');
+        pushButton('Add Package', 'atopile.add_package', 'package', 'Add package dependency');
+        pushButton('Remove Package', 'atopile.remove_package', 'trash', 'Remove package dependency');
+        pushButton('Build', 'atopile.build', 'play', 'Build project');
+        pushButton('Launch KiCad', 'atopile.launch_kicad', 'circuit-board', 'Open board in KiCad');
+        pushButton('Open Package Explorer', 'atopile.package_explorer', 'package', 'Open Package Explorer');
+        pushButton('Choose Build Target', 'atopile.choose_build', 'gear', 'Select active build target');
 
         return items;
     }
