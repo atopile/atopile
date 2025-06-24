@@ -42,7 +42,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     const _reStartServer = async () => {
         g_lsClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
     };
-    
     context.subscriptions.push(
         onNeedsRestart(async () => {
             await _reStartServer();
@@ -50,6 +49,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     );
 
     await initServer(context);
+
     ui.activate(context);
 }
 
