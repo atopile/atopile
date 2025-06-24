@@ -6,8 +6,9 @@ import { glob } from 'glob';
 
 export interface Build {
     name: string;
-    entry: string; // absolute path to .kicad_pcb file for this build
-    root: string; // workspace root this build belongs to
+    entry: string; // absolute path to .kicad_pcb file (may not exist yet)
+    root: string; // workspace root
+    layoutDir?: string; // optional relative path to directory containing layout
 }
 let builds: Build[] = [];
 
@@ -46,31 +47,15 @@ export async function loadBuilds() {
 
                     let pcbPath = buildCfg.entry;
 
-                    // Determine layout directory to search for PCB
-                    let layoutDir: string | undefined = undefined;
+                    // Determine layout directory (store but do not resolve PCB here)
+                    let layoutDir: string | undefined;
                     if (buildCfg.layout) {
                         layoutDir = buildCfg.layout;
                     } else if (data.paths?.layout) {
-                        // Use top-level layout path joined with build name
                         layoutDir = path.join(data.paths.layout, k);
                     }
 
-                    if (layoutDir) {
-                        const absLayoutDir = path.resolve(rootDir, layoutDir);
-                        // traceInfo(`Searching for .kicad_pcb in layout dir: ${absLayoutDir}`);
-                        const matches = await glob('*.kicad_pcb', {
-                            cwd: absLayoutDir,
-                            absolute: true,
-                        });
-                        if (matches.length > 0) {
-                            pcbPath = matches[0];
-                            // traceInfo(`Found .kicad_pcb in layout dir: ${pcbPath}`);
-                        } else {
-                            traceError(`No .kicad_pcb found in layout dir ${absLayoutDir} for build ${k}`);
-                        }
-                    }
-
-                    // Ensure pcbPath is absolute
+                    // Ensure entry path is absolute (may or may not exist yet)
                     if (!path.isAbsolute(pcbPath)) {
                         pcbPath = path.resolve(rootDir, pcbPath);
                     }
@@ -79,6 +64,7 @@ export async function loadBuilds() {
                         name: k,
                         entry: pcbPath,
                         root: rootDir,
+                        layoutDir,
                     });
                 } catch (err) {
                     traceError(`Error processing build config ${k}: ${err}`);

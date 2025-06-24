@@ -43,8 +43,7 @@
         "workspaceContains:*.ato",
         "workspaceContains:ato.yaml",
         "command:atopile.example",
-        "onStartupFinished",
-        "command:atopile.kicanvasPreview"
+        "onStartupFinished"
     ],
     "main": "./dist/extension.js",
     "scripts": {
@@ -139,7 +138,7 @@
                 "category": "atopile"
             },
             {
-                "command": "atopile.kicanvasPreview",
+                "command": "atopile.kicanvas_preview",
                 "title": "Open Layout Preview",
                 "category": "atopile"
             }

@@ -106,7 +106,7 @@ async function openKiCanvasPreview() {
     ];
 
     if (!panel) {
-        panel = vscode.window.createWebviewPanel('kicanvasPreview', 'Layout', vscode.ViewColumn.Beside, {
+        panel = vscode.window.createWebviewPanel('kicanvas_preview', 'Layout', vscode.ViewColumn.Beside, {
             enableScripts: true,
             localResourceRoots: resourceRoots,
         });
@@ -146,7 +146,7 @@ async function openKiCanvasPreview() {
 export async function activate(context: vscode.ExtensionContext) {
     extensionPath = context.extensionPath;
     context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.kicanvasPreview', async () => {
+        vscode.commands.registerCommand('atopile.kicanvas_preview', async () => {
             try {
                 await openKiCanvasPreview();
             } catch (err) {
@@ -154,7 +154,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 vscode.window.showErrorMessage(`Failed to open KiCanvas preview: ${err}`);
             }
         }),
-        vscode.commands.registerCommand('atopile.kicanvasPreviewRefresh', async () => {
+        vscode.commands.registerCommand('atopile.kicanvas_preview_refresh', async () => {
             // For backward compatibility, just delegate to the main preview command.
             await openKiCanvasPreview();
         }),

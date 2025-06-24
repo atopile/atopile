@@ -213,7 +213,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // statusbarAtoBuild.color = '#F95015';
 
     // Layout preview button (KiCanvas)
-    const commandLayoutPreview = 'atopile.kicanvasPreview';
+    const commandLayoutPreview = 'atopile.kicanvas_preview';
     statusbarLayoutPreview = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
     statusbarLayoutPreview.command = commandLayoutPreview;
     statusbarLayoutPreview.text = `$(eye)`;
@@ -355,7 +355,7 @@ async function atoChooseBuild() {
     });
 
     // Refresh KiCanvas preview
-    vscode.commands.executeCommand('atopile.kicanvasPreviewRefresh');
+    vscode.commands.executeCommand('atopile.kicanvas_preview_refresh');
 }
 
 async function atoLaunchKicad() {

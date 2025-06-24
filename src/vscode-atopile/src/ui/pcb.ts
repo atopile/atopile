@@ -48,7 +48,22 @@ export class PcbManager {
             return vscode.Uri.file(build.entry);
         }
 
-        traceInfo(`PCB file does not exist at: ${build.entry}`);
+        // Try resolving via layoutDir if provided
+        if (build.layoutDir) {
+            const absLayoutDir = path.resolve(build.root, build.layoutDir);
+            const matches = glob.sync('*.kicad_pcb', { cwd: absLayoutDir, absolute: true });
+            if (matches.length > 0) {
+                return vscode.Uri.file(matches[0]);
+            }
+        }
+        // Last resort: search project for a PCB matching build name
+        const searchBase = build.layoutDir ? path.resolve(build.root, build.layoutDir) : build.root;
+        const pattern = `**/${build.name}.kicad_pcb`;
+        const found = glob.sync(pattern, { cwd: searchBase, absolute: true });
+        if (found.length > 0) {
+            return vscode.Uri.file(found[0]);
+        }
+        traceInfo(`PCB file not found after fallback search for pattern ${pattern} in ${searchBase}`);
         return undefined;
     }
 
