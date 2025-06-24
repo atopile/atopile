@@ -105,10 +105,6 @@
                 "when": "!workspaceHas:ato.yaml"
             }
         ],
-        "activationEvents": [
-            "onView:atopile.project",
-            "onViewContainer:atopile-packages"
-        ],
         "commands": [
             {
                 "title": "Restart Server",

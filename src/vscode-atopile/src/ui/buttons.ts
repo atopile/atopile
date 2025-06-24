@@ -19,6 +19,9 @@ let statusbarAtoCreateProject: vscode.StatusBarItem;
 let statusbarAtoShell: vscode.StatusBarItem;
 let statusbarAtoPackageExplorer: vscode.StatusBarItem;
 
+// Store context for later use (e.g., when creating webview panels)
+let g_extensionContext: vscode.ExtensionContext;
+
 function _buildsToStr(builds: Build[]): string[] {
     return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
 
@@ -110,6 +113,8 @@ export async function forceReloadButtons() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
+    // cache for later
+    g_extensionContext = context;
     context.subscriptions.push(
         vscode.commands.registerCommand('atopile.add_part', () => {
             atoAddPart();
@@ -405,7 +410,7 @@ function _getPackagesHtml(): string {
     </style>
 </head>
 <body>
-    <iframe src="https://packages.atopile.io/packages"></iframe>
+    <iframe src="https://packages.atopile.io"></iframe>
 </body>
 </html>`;
 }
@@ -422,7 +427,12 @@ async function atoPackageExplorer() {
             vscode.ViewColumn.Active,
             { enableScripts: true }
         );
+        // Set panel HTML and icon
         packagesPanel.webview.html = _getPackagesHtml();
+        if (g_extensionContext) {
+            const logoUri = vscode.Uri.joinPath(g_extensionContext.extensionUri, 'ato_logo_256x256.png');
+            packagesPanel.iconPath = logoUri;
+        }
         packagesPanel.onDidDispose(() => { packagesPanel = undefined; });
     } catch (error) {
         traceError(`Error opening Package Explorer: ${error}`);
