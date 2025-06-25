@@ -13,6 +13,8 @@ import {
     workspace,
     WorkspaceConfiguration,
     WorkspaceFolder,
+    extensions,
+    Extension,
 } from 'vscode';
 
 export function createOutputChannel(name: string): LogOutputChannel {
@@ -52,3 +54,10 @@ export function resolvePath(s: string, workspace?: WorkspaceFolder) {
     return vscodeVariables(s);
 }
 
+export function getExtension(): Extension<unknown> {
+    const extension = extensions.getExtension('atopile.atopile');
+    if (!extension) {
+        throw new Error('atopile.atopile extension not found');
+    }
+    return extension;
+}

@@ -52,7 +52,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initServer(context);
 
     ui.activate(context);
-    logo.activate(context);
 }
 
 export async function deactivate(): Promise<void> {

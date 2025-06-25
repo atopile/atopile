@@ -9,6 +9,7 @@ export interface Build {
     root: string;
 }
 let builds: Build[] = [];
+let manifests: vscode.Uri[] = [];
 
 interface AtoYaml {
     atoVersion: string;
@@ -24,9 +25,13 @@ export function getBuilds() {
     return builds;
 }
 
+export function getManifests() {
+    return manifests;
+}
+
 export async function loadBuilds() {
     builds = [];
-    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
+    manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
 
     for (const manifest of manifests) {
         try {
