@@ -9,7 +9,6 @@ import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
-import * as logo from './common/logo';
 
 export let g_lsClient: LanguageClient | undefined;
 

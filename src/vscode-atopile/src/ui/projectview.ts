@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import { getButtons } from './buttons';
 import { getManifests } from '../common/manifest';
-import { traceInfo } from '../common/log/logging';
 
 export class ProjectViewProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
     private _onDidChangeTreeData = new vscode.EventEmitter<vscode.TreeItem | undefined | null | void>();

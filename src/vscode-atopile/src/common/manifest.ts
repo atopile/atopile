@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
-import { traceInfo } from './log/logging';
 
 export interface Build {
     name: string;

@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import { window } from 'vscode';
-import * as os from 'os';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
-import { getAtoAlias, getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
+import { getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
