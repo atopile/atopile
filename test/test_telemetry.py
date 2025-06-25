@@ -10,5 +10,7 @@ from atopile import telemetry
         ("git@github.com:atopile/atopile.git",),
     ],
 )
-def test_commonise_project_url(git_remote):
-    assert telemetry.commonise_project_url(git_remote) == "github.com/atopile/atopile"
+def test_normalize_git_remote_url(git_remote):
+    assert (
+        telemetry._normalize_git_remote_url(git_remote) == "github.com/atopile/atopile"
+    )

@@ -8,6 +8,7 @@ import { glob } from 'glob';
 import * as path from 'path';
 import { g_lsClient } from '../extension';
 import { openPackageExplorer } from './packagexplorer';
+import { captureEvent } from '../common/telemetry';
 
 let buttons: Button[] = [];
 let commands: Command[] = [];
@@ -252,6 +253,8 @@ async function atoBuild() {
     const build = getBuildTarget();
 
     await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
+
+    captureEvent('vsce:build_start'); // TODO: build properties?
 }
 
 async function atoAddPart() {
@@ -268,6 +271,10 @@ async function atoAddPart() {
         ['create', 'part', '--search', result, '--accept-single'],
         false,
     );
+
+    captureEvent('vsce:part_create', {
+        part: result,
+    });
 }
 
 async function atoAddPackage() {
@@ -281,6 +288,10 @@ async function atoAddPackage() {
     }
 
     await _runInTerminalWithBuildTarget('add', ['add', result], false);
+
+    captureEvent('vsce:package_add', {
+        package: result,
+    });
 }
 
 async function atoRemovePackage() {
@@ -294,10 +305,16 @@ async function atoRemovePackage() {
     }
 
     await _runInTerminalWithBuildTarget('remove', ['remove', result], false);
+
+    captureEvent('vsce:package_remove', {
+        package: result,
+    });
 }
 
 async function atoCreateProject() {
-    await _runInTerminal('create project', undefined, ['create', 'project'], false);
+    await _runInTerminalWithBuildTarget('create project', ['create', 'project'], false);
+
+    captureEvent('vsce:project_create');
 }
 
 async function atoChooseBuild() {
@@ -315,6 +332,10 @@ async function atoChooseBuild() {
 
     let build = _buildStrToBuild(result);
     setBuildTarget(build);
+
+    captureEvent('vsce:build_target_select', {
+        build_target: result,
+    });
 }
 
 async function atoLaunchKicad() {
@@ -330,19 +351,29 @@ async function atoLaunchKicad() {
     if (paths.length === 0) {
         traceError(`No pcb file found: ${pcb_name}`);
         vscode.window.showErrorMessage(`No pcb file found: ${pcb_name}. Did you build the project?`);
+        captureEvent('vsce:pcbnew_fail', {
+            error: 'no_pcb_file',
+        });
         return;
     }
     if (paths.length > 1) {
         vscode.window.showErrorMessage(`Bug: multiple pcb files found: ${paths.join(', ')}`);
+        captureEvent('vsce:pcbnew_fail', {
+            error: 'multiple_pcb_files',
+        });
         return;
     }
     const pcb_path = paths[0];
 
     try {
         await openPcb(pcb_path);
+        captureEvent('vsce:pcbnew_success');
     } catch (error) {
         traceError(`Error launching KiCad: ${error}`);
         vscode.window.showErrorMessage(`Error launching KiCad: ${error}`);
+        captureEvent('vsce:pcbnew_fail', {
+            error: 'unknown',
+        });
     }
 }
 

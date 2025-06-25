@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import { onDidChangeAtoBinInfoEvent, g_uv_path_local, getAtoBin } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { downloadReleaseAssetBin, PlatformArch } from '../common/github';
+import { captureEvent, deinitializeTelemetry, initializeTelemetry } from '../common/telemetry';
 
 /**
  * Check if ato bin is available (see findbin.ts)
@@ -94,16 +95,19 @@ async function installLocalAto(context: vscode.ExtensionContext) {
                 if (!atoBin) {
                     traceError('Failed to install atopile via uv');
                     vscode.window.showErrorMessage('Failed to install atopile via uv. Please check logs.');
+                    captureEvent('vsce:ato_install_failed')
                     return;
                 }
                 // show a message to the user
                 vscode.window.showInformationMessage(`Installed atopile via uv: ${atoBin.command.join(' ')}`);
+                captureEvent('vsce:ato_installed')
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
             } catch (error: any) {
                 traceError(`Failed to install uv: ${error.message}`);
                 vscode.window.showErrorMessage(
                     `Failed to install uv: ${error.message}. Please configure 'atopile.ato' manually or check logs.`,
                 );
+                captureEvent('vsce:uv_install_failed')
             } finally {
                 status.dispose();
             }
@@ -118,6 +122,10 @@ export async function activate(context: vscode.ExtensionContext) {
     let atoBin = await getAtoBin();
     if (atoBin) {
         traceInfo(`Setup: ato bin found in ${atoBin.source}, skipping setup.`);
+        captureEvent('vsce:ato_found', {
+            source: atoBin.source,
+            command: atoBin.command.join(' '),
+        });
         return;
     }
 
@@ -134,7 +142,6 @@ export async function activate(context: vscode.ExtensionContext) {
     // For now force local ato without interaction
     // Only atopile developers need to configure manually
     const auto_install = true;
-    
 
     if (auto_install) {
         await installLocalAto(context);
@@ -143,4 +150,4 @@ export async function activate(context: vscode.ExtensionContext) {
     }
 }
 
-export function deactivate() {}
+export function deactivate() { }

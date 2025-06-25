@@ -29,7 +29,8 @@
         "Snippets"
     ],
     "extensionDependencies": [
-        "ms-python.python"
+        "ms-python.python",
+        "vscode.git"
     ],
     "capabilities": {
         "virtualWorkspaces": {
@@ -77,6 +78,12 @@
                     "scope": "resource",
                     "type": "string",
                     "default": "atopile"
+                },
+                "atopile.telemetry": {
+                    "description": "Send telemetry data",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true
                 }
             }
         },
@@ -199,9 +206,11 @@
         "decompress": "^4.2.1",
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
+        "posthog-node": "^5.1.1",
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
-        "which": "^5.0.0"
+        "which": "^5.0.0",
+        "yaml": "^2.8.0"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",

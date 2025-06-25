@@ -9,6 +9,7 @@ import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
+import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -38,6 +39,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     traceInfo(`Activating atopile extension`);
 
+    await initializeTelemetry(context);
+    captureEvent('vsce:startup');
+
     // Setup Language Server
     const _reStartServer = async () => {
         g_lsClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
@@ -57,4 +61,6 @@ export async function deactivate(): Promise<void> {
     if (g_lsClient) {
         await g_lsClient.stop();
     }
+
+    deinitializeTelemetry();
 }

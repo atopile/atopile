@@ -16,7 +16,7 @@ import typer
 
 from atopile import errors
 from atopile.config import DependencySpec, config
-from atopile.telemetry import log_to_posthog
+from atopile.telemetry import capture
 from faebryk.libs.backend.packages import api
 from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
 from faebryk.libs.util import md_list
@@ -28,7 +28,9 @@ yaml = ruamel.yaml.YAML()
 dependencies_app = typer.Typer(rich_markup_mode="rich")
 
 
-@log_to_posthog("cli:install_end")
+@capture(
+    "cli:install_start", "cli:install_end", properties={"deprecated_command": True}
+)
 def install(
     to_install: Annotated[str | None, typer.Argument()] = None,
     jlcpcb: Annotated[
@@ -86,7 +88,7 @@ def install(
         return add([to_install], upgrade=upgrade, path=path)
 
 
-@log_to_posthog("cli:sync_end")
+@capture("cli:sync_start", "cli:sync_end")
 def sync(
     # TODO: only relevant when supporting version specs
     # upgrade: Annotated[
@@ -120,7 +122,7 @@ def sync(
     logger.info("[green]Done syncing![/] :call_me_hand:", extra={"markup": True})
 
 
-@log_to_posthog("cli:add_end")
+@capture("cli:add_start", "cli:add_end")
 def add(
     package: Annotated[
         list[str],
@@ -169,7 +171,7 @@ def add(
     )
 
 
-@log_to_posthog("cli:remove_end")
+@capture("cli:remove_start", "cli:remove_end")
 def remove(
     package: Annotated[list[str], typer.Argument(help="Name of package to remove")],
     path: Annotated[
@@ -192,7 +194,7 @@ def remove(
     )
 
 
-@log_to_posthog("cli:list_end")
+@capture("cli:list_start", "cli:list_end")
 def list():
     """
     List all dependencies in the project

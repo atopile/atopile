@@ -2,6 +2,7 @@ import * as cp from 'child_process';
 import { glob } from 'glob';
 import * as path from 'path';
 import { traceError, traceInfo, traceWarn } from './log/logging';
+import { captureEvent } from './telemetry';
 
 /**
  * Creates a new environment object with Python virtual environment-specific

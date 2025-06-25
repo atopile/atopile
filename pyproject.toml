@@ -28,7 +28,6 @@ classifiers = [
 dependencies = [
     "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
     "atopile-easyeda2kicad>=0.9.5",
-    "attrs>=23.2.0",
     "black>=24.4.2",
     "case-converter>=1.2.0",
     "cookiecutter>=2.6.0",
