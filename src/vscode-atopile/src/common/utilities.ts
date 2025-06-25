@@ -69,3 +69,70 @@ export async function getProjectRoot(): Promise<WorkspaceFolder> {
         return rootWorkspace;
     }
 }
+
+export function disambiguatePaths(iterable: Iterable<any>, path_key: (item: any) => string): Record<string, any> {
+    /**
+     * Disambiguate paths by attaching prefixes until unique
+     * Returns map of unique path to original object
+     *
+     * Examples:
+     * - ['/bla/foo/bar', '/bla/foo/baz'] => ['bar', 'baz']
+     * - ['/bla/foo/bar', '/bla/baz/bar'] => ['foo/bar', 'baz/bar']
+     * - ['/bla/foo/bar', '/baz/foo/bar'] => ['bla/foo/bar', 'baz/foo/bar']
+     * - ['/bla/foo/bar', '/bla/foo/bar'] => error
+     */
+    const items = Array.from(iterable);
+    const pathToItem = new Map<string, any>();
+
+    // Extract paths and check for duplicates
+    for (const item of items) {
+        const path = path_key(item);
+        if (pathToItem.has(path)) {
+            throw new Error(`Duplicate path found: ${path}`);
+        }
+        pathToItem.set(path, item);
+    }
+
+    const paths = Array.from(pathToItem.keys());
+
+    if (paths.length === 0) {
+        return {};
+    }
+
+    // Split paths into segments, filtering out empty segments
+    const pathSegments = paths.map((path) => path.split('/').filter((segment) => segment !== ''));
+
+    const result: Record<string, any> = {};
+
+    // For each path, find the minimal suffix that makes it unique
+    for (let i = 0; i < paths.length; i++) {
+        const currentPath = paths[i];
+        const currentSegments = pathSegments[i];
+
+        // Try different suffix lengths starting from 1
+        for (let suffixLength = 1; suffixLength <= currentSegments.length; suffixLength++) {
+            const suffix = currentSegments.slice(-suffixLength).join('/');
+
+            // Check if this suffix is unique among all other paths
+            let isUnique = true;
+            for (let j = 0; j < paths.length; j++) {
+                if (i === j) continue;
+
+                const otherSegments = pathSegments[j];
+                const otherSuffix = otherSegments.slice(-suffixLength).join('/');
+
+                if (suffix === otherSuffix) {
+                    isUnique = false;
+                    break;
+                }
+            }
+
+            if (isUnique) {
+                result[suffix] = pathToItem.get(currentPath);
+                break;
+            }
+        }
+    }
+
+    return result;
+}

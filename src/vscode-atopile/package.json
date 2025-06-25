@@ -172,6 +172,11 @@
                 "command": "atopile.package_explorer",
                 "title": "Open package explorer",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.kicanvas_preview",
+                "title": "Open Layout Preview",
+                "category": "atopile"
             }
         ],
         "languages": [

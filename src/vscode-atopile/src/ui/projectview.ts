@@ -36,7 +36,7 @@ export class ProjectViewProvider implements vscode.TreeDataProvider<vscode.TreeI
 }
 
 // Exported activate/deactivate so ui.ts can uniformly load modules
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
     const projectViewProvider = new ProjectViewProvider();
     context.subscriptions.push(vscode.window.registerTreeDataProvider('atopile.project', projectViewProvider));
 

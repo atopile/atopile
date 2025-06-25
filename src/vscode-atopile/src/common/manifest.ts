@@ -1,23 +1,41 @@
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
+import { traceError } from './log/logging';
 
 export interface Build {
     name: string;
     entry: string;
-    root: string;
+    pcb_path: string; // absolute path to .kicad_pcb file (may not exist yet)
+    root: string; // workspace root
 }
 let builds: Build[] = [];
 let manifests: vscode.Uri[] = [];
 
+export function eqBuilds(a: Build | undefined, b: Build | undefined) {
+    if ((a === undefined) !== (b === undefined)) {
+        return false;
+    }
+    if (a === undefined || b === undefined) {
+        return true;
+    }
+    return a.name == b.name && a.entry == b.entry && a.root == b.root;
+}
+
 interface AtoYaml {
-    atoVersion: string;
+    atoVersion?: string;
+    paths?: {
+        layout?: string; // relative path to root containing layout directories
+    };
     builds: {
         [key: string]: {
             entry: string;
+            paths?: {
+                layout?: string;
+            };
         };
     };
-    dependencies: string[];
+    dependencies?: string[];
 }
 
 export function getBuilds() {
@@ -38,12 +56,29 @@ export async function loadBuilds() {
             let fileStr = String.fromCharCode(...file);
             const data = yaml.load(fileStr) as AtoYaml;
 
+            const rootDir = path.dirname(manifest.fsPath);
+            const layoutSubDir = data.paths?.layout || 'elec/layout';
+
             for (const k in data.builds) {
-                builds.push({
-                    name: k,
-                    entry: data.builds[k].entry,
-                    root: path.dirname(manifest.fsPath),
-                });
+                try {
+                    const buildCfg: any = data.builds[k];
+
+                    let layoutPath = path.join(buildCfg.paths?.layout || layoutSubDir, k, k + '.kicad_pcb');
+
+                    // Ensure entry path is absolute (may or may not exist yet)
+                    if (!path.isAbsolute(layoutPath)) {
+                        layoutPath = path.resolve(rootDir, layoutPath);
+                    }
+
+                    builds.push({
+                        name: k,
+                        entry: buildCfg.entry,
+                        pcb_path: layoutPath,
+                        root: rootDir,
+                    });
+                } catch (err) {
+                    traceError(`Error processing build config ${k}: ${err}`);
+                }
             }
         } catch (error) {
             // do nothing

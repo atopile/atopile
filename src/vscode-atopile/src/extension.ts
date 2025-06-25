@@ -10,6 +10,8 @@ import { createOutputChannel } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
 import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
+import { onBuildTargetChanged } from './common/target';
+import { Build } from './common/manifest';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -50,11 +52,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         onNeedsRestart(async () => {
             await _reStartServer();
         }),
+        onBuildTargetChanged(async (target: Build | undefined) => {
+            if (g_lsClient) {
+                g_lsClient.sendNotification('atopile/didChangeBuildTarget', {
+                    buildTarget: target?.entry ?? '',
+                });
+            }
+        }),
     );
 
     await initServer(context);
 
-    ui.activate(context);
+    await ui.activate(context);
 }
 
 export async function deactivate(): Promise<void> {
