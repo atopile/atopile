@@ -6,10 +6,11 @@ import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
-import { g_lsClient } from '../extension';
 import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
+import { getBuildTarget, setBuildTarget } from '../common/target';
+import { disambiguagePaths } from '../common/utilities';
 
 let buttons: Button[] = [];
 let commands: Command[] = [];
@@ -99,52 +100,65 @@ let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCa
 let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
 let buttonKicanvasPreview = new Button('eye', cmdKicanvasPreview, 'Layout Preview', 'Open Layout Preview');
 let dropdownChooseBuild = new Button('gear', cmdChooseBuild, 'Choose Build Target', 'Select active build target');
+const NO_BUILD = '';
+// replace icon with empty text
+dropdownChooseBuild.setText(NO_BUILD);
 
 export function getButtons() {
     return buttons;
 }
 
-function setBuildTarget(build: Build) {
-    dropdownChooseBuild?.setText(_buildsToStr([build])[0]);
-    g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
-        buildTarget: build.entry,
-    });
+function _setBuildTarget(build: Build | undefined) {
+    let text = NO_BUILD;
+    if (build) {
+        text = _buildsToStr([build])[0];
+    }
+    dropdownChooseBuild?.setText(text);
+    setBuildTarget(build);
 }
 
-export function getBuildTarget(): Build {
-    return _buildStrToBuild(dropdownChooseBuild.statusbar_item.text);
+function _getBuildTarget(): Build {
+    const build = getBuildTarget();
+    if (!build) {
+        throw new Error('No build target selected');
+    }
+    return build;
 }
 
 function _buildsToStr(builds: Build[]): string[] {
-    return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
+    // disambiguate roots folder_names by attach prefixes till unique
+    const disambiguated = disambiguagePaths(builds, (build) => `${build.root}/${build.name}`);
 
-    // Makes more readable but annoying to parse
-    //const multiple_ws = new Set(builds.map((build) => build.root)).size > 1;
-    //if (multiple_ws) {
-    //    return builds.map((build) => `${build.root} | ${build.name} | ${build.entry}`);
-    //} else {
-    //    return builds.map((build) => `${build.name} | ${build.entry}`);
-    //}
-}
-
-function _buildStrToBuild(build_str: string): Build {
-    const split = build_str.split(' | ');
-
-    if (split.length !== 3) {
-        throw new Error(`Invalid build string: ${build_str}`);
+    function uniqueToStr(_path: string, build: Build): string {
+        const split = _path.split('/');
+        if (split.length === 1) {
+            return `${path.basename(build.root)} | ${build.name}`;
+        }
+        return `${path.join(...split.slice(0, -1))} | ${split[split.length - 1]}`;
     }
 
-    const [root, name, entry] = split;
-    return { root, name, entry };
+    return Object.entries(disambiguated).map(([path, build]) => `${uniqueToStr(path, build)}`);
+}
 
-    // See above
-    //if (split.length === 3) {
-    //    const [root, name, entry] = split;
-    //    return { root, name, entry };
-    //} else {
-    //    const [name, entry] = split;
-    //    return { root: null, name, entry };
-    //}
+function _buildStrToBuild(build_str: string): Build | undefined {
+    if (build_str === NO_BUILD) {
+        return undefined;
+    }
+
+    const split = build_str.split(' | ');
+    if (split.length !== 2) {
+        throw new Error(`Invalid build string: ${build_str}`);
+    }
+    const [disambiguated_root, name] = split;
+
+    const builds = getBuilds();
+    const build = builds.find(
+        (build) => (!disambiguated_root || build.root.endsWith(disambiguated_root)) && build.name === name,
+    );
+    if (!build) {
+        throw new Error(`Build not found: ${build_str}`);
+    }
+    return build;
 }
 
 async function _displayButtons() {
@@ -157,7 +171,6 @@ async function _displayButtons() {
 
     for (const button of buttons) {
         if (builds.length > 0) {
-            traceInfo(`Buttons: Showing ${button.description} because we have builds`);
             button.show();
         } else if (!button.show_on_no_targets) {
             button.hide();
@@ -172,9 +185,11 @@ async function _displayButtons() {
         }
     }
 
-    if (builds.length > 0) {
-        traceInfo(`Buttons: Showing, found ato command in ${atoBin?.source}`);
-        setBuildTarget(builds[0]);
+    if (builds.length > 0 && !_buildStrToBuild(dropdownChooseBuild.statusbar_item.text)) {
+        _setBuildTarget(builds[0]);
+    }
+    if (builds.length === 0) {
+        _setBuildTarget(undefined);
     }
 }
 
@@ -237,7 +252,8 @@ async function _runInTerminal(name: string, cwd: string | undefined, subcommand:
 }
 
 async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
-    const build = getBuildTarget();
+    const build = _getBuildTarget();
+
     await _runInTerminal(name, build.root, subcommand, hideFromUser);
 }
 
@@ -253,7 +269,7 @@ async function atoBuild() {
     // vscode.workspace.saveAll();
 
     // parse what build target to use
-    const build = getBuildTarget();
+    const build = _getBuildTarget();
 
     await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
 
@@ -334,19 +350,16 @@ async function atoChooseBuild() {
     }
 
     let build = _buildStrToBuild(result);
-    setBuildTarget(build);
+    _setBuildTarget(build);
 
     captureEvent('vsce:build_target_select', {
         build_target: result,
     });
-
-    // Refresh KiCanvas preview
-    vscode.commands.executeCommand('atopile.kicanvas_preview_refresh');
 }
 
 async function atoLaunchKicad() {
     // get the build target name
-    const build = getBuildTarget();
+    const build = _getBuildTarget();
 
     const pcb_name = build.name + '.kicad_pcb';
     const search_path = `**/${build.name}/${pcb_name}`;

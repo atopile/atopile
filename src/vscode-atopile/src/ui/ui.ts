@@ -4,6 +4,7 @@ import * as buttons from './buttons';
 import * as example from './example';
 import * as kicanvas from './kicanvas';
 import * as projectViewer from './projectview';
+import * as pcb from '../common/pcb';
 
 export async function activate(context: vscode.ExtensionContext) {
     await setup.activate(context);
@@ -11,6 +12,7 @@ export async function activate(context: vscode.ExtensionContext) {
     await example.activate(context);
     await kicanvas.activate(context);
     await projectViewer.activate(context);
+    await pcb.activate(context);
 }
 
 export function deactivate() {
@@ -19,4 +21,5 @@ export function deactivate() {
     example.deactivate();
     kicanvas.deactivate();
     projectViewer.deactivate();
+    pcb.deactivate();
 }

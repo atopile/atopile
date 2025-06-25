@@ -5,12 +5,22 @@ import { traceError } from './log/logging';
 
 export interface Build {
     name: string;
-    entry: string; // absolute path to .kicad_pcb file (may not exist yet)
+    entry: string;
+    pcb_path: string; // absolute path to .kicad_pcb file (may not exist yet)
     root: string; // workspace root
-    layoutDir?: string; // optional relative path to directory containing layout
 }
 let builds: Build[] = [];
 let manifests: vscode.Uri[] = [];
+
+export function eqBuilds(a: Build | undefined, b: Build | undefined) {
+    if ((a === undefined) !== (b === undefined)) {
+        return false;
+    }
+    if (a === undefined || b === undefined) {
+        return true;
+    }
+    return a.name == b.name && a.entry == b.entry && a.root == b.root;
+}
 
 interface AtoYaml {
     atoVersion?: string;
@@ -20,7 +30,9 @@ interface AtoYaml {
     builds: {
         [key: string]: {
             entry: string;
-            layout?: string; // optional override
+            paths?: {
+                layout?: string;
+            };
         };
     };
     dependencies?: string[];
@@ -44,31 +56,25 @@ export async function loadBuilds() {
             let fileStr = String.fromCharCode(...file);
             const data = yaml.load(fileStr) as AtoYaml;
 
+            const rootDir = path.dirname(manifest.fsPath);
+            const layoutSubDir = data.paths?.layout || 'elec/layout';
+
             for (const k in data.builds) {
                 try {
                     const buildCfg: any = data.builds[k];
-                    const rootDir = path.dirname(manifest.fsPath);
 
-                    let pcbPath = buildCfg.entry;
-
-                    // Determine layout directory (store but do not resolve PCB here)
-                    let layoutDir: string | undefined;
-                    if (buildCfg.layout) {
-                        layoutDir = buildCfg.layout;
-                    } else if (data.paths?.layout) {
-                        layoutDir = path.join(data.paths.layout, k);
-                    }
+                    let layoutPath = path.join(buildCfg.paths?.layout || layoutSubDir, k, k + '.kicad_pcb');
 
                     // Ensure entry path is absolute (may or may not exist yet)
-                    if (!path.isAbsolute(pcbPath)) {
-                        pcbPath = path.resolve(rootDir, pcbPath);
+                    if (!path.isAbsolute(layoutPath)) {
+                        layoutPath = path.resolve(rootDir, layoutPath);
                     }
 
                     builds.push({
                         name: k,
-                        entry: pcbPath,
+                        entry: buildCfg.entry,
+                        pcb_path: layoutPath,
                         root: rootDir,
-                        layoutDir,
                     });
                 } catch (err) {
                     traceError(`Error processing build config ${k}: ${err}`);

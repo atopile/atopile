@@ -3,7 +3,6 @@
 out/**
 node_modules/**
 src/**
-!src/resources/kicanvas/kicanvas.js
 .gitignore
 .yarnrc
 webpack.config.js
