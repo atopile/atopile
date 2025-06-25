@@ -88,6 +88,12 @@ export async function openKiCanvasPreview() {
         panel.onDidDispose(() => {
             panel = undefined;
         });
+
+        const icon = vscode.Uri.file(path.join(getResourcesPath(), 'pcb-icon-transparent.svg'));
+        panel.iconPath = {
+            light: icon,
+            dark: icon,
+        };
     }
 
     panel.webview.options = { ...panel.webview.options, localResourceRoots: resourceRoots };
