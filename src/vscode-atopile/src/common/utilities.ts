@@ -70,9 +70,9 @@ export async function getProjectRoot(): Promise<WorkspaceFolder> {
     }
 }
 
-export function disambiguagePaths(iterable: Iterable<any>, path_key: (item: any) => string): Record<string, any> {
+export function disambiguatePaths(iterable: Iterable<any>, path_key: (item: any) => string): Record<string, any> {
     /**
-     * Disambiguate paths by attaching prefixes till unique
+     * Disambiguate paths by attaching prefixes until unique
      * Returns map of unique path to original object
      *
      * Examples:

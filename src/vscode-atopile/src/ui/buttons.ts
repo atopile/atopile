@@ -10,7 +10,7 @@ import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
 import { getBuildTarget, setBuildTarget } from '../common/target';
-import { disambiguagePaths } from '../common/utilities';
+import { disambiguatePaths } from '../common/utilities';
 
 let buttons: Button[] = [];
 let commands: Command[] = [];
@@ -126,8 +126,8 @@ function _getBuildTarget(): Build {
 }
 
 function _buildsToStr(builds: Build[]): string[] {
-    // disambiguate roots folder_names by attach prefixes till unique
-    const disambiguated = disambiguagePaths(builds, (build) => `${build.root}/${build.name}`);
+    // disambiguate roots folder_names by attach prefixes until unique
+    const disambiguated = disambiguatePaths(builds, (build) => `${build.root}/${build.name}`);
 
     function uniqueToStr(_path: string, build: Build): string {
         const split = _path.split('/');
