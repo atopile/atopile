@@ -9,10 +9,6 @@ module App:
     c1.capacitance = 100nF +/- 20%
     c1.package = "C0402"
 
-    r3 = new Resistor
-    r3.resistance = 10kohm +/- 20%
-    r3.package = "R0402"
-
     r1.unnamed[0] ~ c1.unnamed[0]
     r1.unnamed[1] ~ c1.unnamed[1]
     
