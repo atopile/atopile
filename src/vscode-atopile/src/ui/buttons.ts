@@ -1,32 +1,118 @@
 import * as vscode from 'vscode';
 import { window } from 'vscode';
-import * as os from 'os';
 import { Build, getBuilds, loadBuilds } from '../common/manifest';
-import { getAtoAlias, getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
+import { getAtoBin, onDidChangeAtoBinInfo, runAtoCommandInTerminal } from '../common/findbin';
 import { traceError, traceInfo } from '../common/log/logging';
 import { openPcb } from '../common/kicad';
 import { glob } from 'glob';
 import * as path from 'path';
 import { g_lsClient } from '../extension';
+import { openPackageExplorer } from './packagexplorer';
+import { captureEvent } from '../common/telemetry';
+import * as kicanvas from './kicanvas';
 
-let statusbarAtoAddPackage: vscode.StatusBarItem;
-let statusbarAtoBuild: vscode.StatusBarItem;
-let statusbarAtoBuildTarget: vscode.StatusBarItem;
-let statusbarAtoAddPart: vscode.StatusBarItem;
-let statusbarAtoLaunchKiCAD: vscode.StatusBarItem;
-let statusbarAtoRemovePackage: vscode.StatusBarItem;
-let statusbarAtoCreateProject: vscode.StatusBarItem;
-let statusbarAtoShell: vscode.StatusBarItem;
-let statusbarLayoutPreview: vscode.StatusBarItem;
+let buttons: Button[] = [];
+let commands: Command[] = [];
 
-export function getCurrentBuild(): Build | null {
-    const currentBuildStr = statusbarAtoBuildTarget.text;
-    try {
-        return _buildStrToBuild(currentBuildStr);
-    } catch (error) {
-        traceError(`Failed to get current build: ${error}`);
-        return null;
+class Command {
+    handler: () => Promise<void>;
+    command_name: string;
+
+    constructor(handler: () => Promise<void>, command_name: string) {
+        this.handler = handler;
+        this.command_name = command_name;
+        commands.push(this);
     }
+
+    async init(context: vscode.ExtensionContext) {
+        context.subscriptions.push(vscode.commands.registerCommand(this.getCommandName(), this.handler));
+    }
+
+    getCommandName() {
+        return this.command_name;
+    }
+}
+class Button {
+    statusbar_item: vscode.StatusBarItem;
+    show_on_no_targets: boolean;
+    show_on_no_ato: boolean;
+    description: string;
+    tooltip: string;
+    icon: vscode.ThemeIcon;
+    command: Command;
+
+    constructor(
+        icon: string,
+        command: Command,
+        tooltip: string,
+        description: string,
+        show_on_no_ato: boolean = false,
+        show_on_no_target: boolean = false,
+    ) {
+        this.show_on_no_ato = show_on_no_ato;
+        this.show_on_no_targets = show_on_no_target;
+        this.description = description;
+        this.tooltip = tooltip;
+        this.icon = new vscode.ThemeIcon(icon);
+        this.command = command;
+
+        this.statusbar_item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
+        this.statusbar_item.tooltip = `ato: ${tooltip}`;
+        this.statusbar_item.command = command.getCommandName();
+        this.statusbar_item.text = `$(${icon})`;
+
+        buttons.push(this);
+    }
+
+    async setText(text: string) {
+        this.statusbar_item.text = text;
+    }
+
+    async hide() {
+        this.statusbar_item.hide();
+    }
+
+    async show() {
+        this.statusbar_item.show();
+    }
+}
+
+let cmdShell = new Command(atoShell, 'atopile.shell');
+let cmdCreateProject = new Command(atoCreateProject, 'atopile.create_project');
+let cmdAddPart = new Command(atoAddPart, 'atopile.add_part');
+let cmdAddPackage = new Command(atoAddPackage, 'atopile.add_package');
+let cmdRemovePackage = new Command(atoRemovePackage, 'atopile.remove_package');
+let cmdBuild = new Command(atoBuild, 'atopile.build');
+let cmdPackageExplorer = new Command(atoPackageExplorer, 'atopile.package_explorer');
+let cmdChooseBuild = new Command(atoChooseBuild, 'atopile.choose_build');
+let cmdLaunchKicad = new Command(atoLaunchKicad, 'atopile.launch_kicad');
+let cmdKicanvasPreview = new Command(atoKicanvasPreview, 'atopile.kicanvas_preview');
+
+let buttonShell = new Button('terminal', cmdShell, 'Shell', 'Open ato shell', true);
+let buttonCreateProject = new Button('new-file', cmdCreateProject, 'Create Project', 'Create new project', true);
+// Need project;
+let buttonAddPart = new Button('file-binary', cmdAddPart, 'Add Part', 'Add part to project');
+let buttonAddPackage = new Button('package', cmdAddPackage, 'Add Package', 'Add package dependency');
+let buttonRemovePackage = new Button('trash', cmdRemovePackage, 'Remove Package', 'Remove package dependency');
+let buttonBuild = new Button('play', cmdBuild, 'Build', 'Build project');
+let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCad', 'Open board in KiCad');
+let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
+let buttonKicanvasPreview = new Button('eye', cmdKicanvasPreview, 'Layout Preview', 'Open Layout Preview');
+let dropdownChooseBuild = new Button('gear', cmdChooseBuild, 'Choose Build Target', 'Select active build target');
+
+export function getButtons() {
+    return buttons;
+}
+
+function setBuildTarget(build: Build) {
+    dropdownChooseBuild?.setText(_buildsToStr([build])[0]);
+    g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
+        buildTarget: build.entry,
+    });
+}
+
+export function getBuildTarget(): Build {
+    return _buildStrToBuild(dropdownChooseBuild.statusbar_item.text);
 }
 
 function _buildsToStr(builds: Build[]): string[] {
@@ -67,42 +153,28 @@ async function _displayButtons() {
     // only display buttons if we have a valid ato command
     if (atoBin) {
         builds = getBuilds();
-        statusbarAtoShell.show();
-        statusbarAtoCreateProject.show();
-    } else {
-        statusbarAtoShell.hide();
-        statusbarAtoCreateProject.hide();
     }
 
-    const build_strs = _buildsToStr(builds);
-
-    if (builds.length !== 0) {
-        // TODO: not happy yet with the flow
-        statusbarAtoAddPart.show();
-        statusbarAtoAddPackage.show();
-        statusbarAtoRemovePackage.show();
-        statusbarAtoBuild.show();
-        statusbarAtoLaunchKiCAD.show();
-        statusbarLayoutPreview.show();
-        statusbarAtoBuildTarget.show();
-
-        statusbarAtoBuildTarget.text = build_strs[0];
-        statusbarAtoBuildTarget.tooltip = 'ato: build target';
-        g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
-            buildTarget: _buildStrToBuild(build_strs[0]).entry,
-        });
-    } else {
-        if (atoBin) {
+    for (const button of buttons) {
+        if (builds.length > 0) {
+            traceInfo(`Buttons: Showing ${button.description} because we have builds`);
+            button.show();
+        } else if (!button.show_on_no_targets) {
+            button.hide();
         } else {
+            if (atoBin) {
+                button.show();
+            } else if (!button.show_on_no_ato) {
+                button.hide();
+            } else {
+                button.show();
+            }
         }
+    }
 
-        statusbarAtoAddPart.hide();
-        statusbarAtoAddPackage.hide();
-        statusbarAtoRemovePackage.hide();
-        statusbarAtoBuild.hide();
-        statusbarAtoLaunchKiCAD.hide();
-        statusbarLayoutPreview.hide();
-        statusbarAtoBuildTarget.hide();
+    if (builds.length > 0) {
+        traceInfo(`Buttons: Showing, found ato command in ${atoBin?.source}`);
+        setBuildTarget(builds[0]);
     }
 }
 
@@ -117,113 +189,13 @@ export async function forceReloadButtons() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.add_part', () => {
-            atoAddPart();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.shell', () => {
-            atoShell();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.build', () => {
-            atoBuild();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.add_package', () => {
-            atoAddPackage();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.remove_package', () => {
-            atoRemovePackage();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.create_project', () => {
-            atoCreateProject();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.launch_kicad', () => {
-            atoLaunchKicad();
-        }),
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('atopile.choose_build', () => {
-            atoChooseBuild();
-        }),
-    );
-
-    const commandAtoShell = 'atopile.shell';
-    statusbarAtoShell = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoShell.command = commandAtoShell;
-    statusbarAtoShell.text = `$(terminal)$(plus)`;
-    statusbarAtoShell.tooltip = 'ato: open a shell';
-
-    const commandAtoCreateProject = 'atopile.create_project';
-    statusbarAtoCreateProject = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoCreateProject.command = commandAtoCreateProject;
-    statusbarAtoCreateProject.text = `$(new-file)`;
-    statusbarAtoCreateProject.tooltip = 'ato: create project';
-
-    const commandAtoCreate = 'atopile.add_part';
-    statusbarAtoAddPart = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoAddPart.command = commandAtoCreate;
-    statusbarAtoAddPart.text = `$(file-binary)$(arrow-down)`;
-    statusbarAtoAddPart.tooltip = 'ato: add a part';
-    // statusbarAtoCreate.color = "#F95015";
-
-    const commandAtoAdd = 'atopile.add_package';
-    statusbarAtoAddPackage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoAddPackage.command = commandAtoAdd;
-    statusbarAtoAddPackage.text = `$(package)$(arrow-down)`;
-    statusbarAtoAddPackage.tooltip = 'ato: add a package dependency';
-    // statusbarAtoInstall.color = "#F95015";
-
-    const commandAtoRemove = 'atopile.remove_package';
-    statusbarAtoRemovePackage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoRemovePackage.command = commandAtoRemove;
-    statusbarAtoRemovePackage.text = `$(package)$(close)`;
-    statusbarAtoRemovePackage.tooltip = 'ato: remove a package dependency';
-    // statusbarAtoRemove.color = "#F95015";
-
-    const commandAtoBuild = 'atopile.build';
-    statusbarAtoBuild = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoBuild.command = commandAtoBuild;
-    statusbarAtoBuild.text = `$(play)`;
-    statusbarAtoBuild.tooltip = 'ato: build';
-    // statusbarAtoBuild.color = '#F95015';
-
-    const commandAtoLaunchKiCAD = 'atopile.launch_kicad';
-    statusbarAtoLaunchKiCAD = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoLaunchKiCAD.command = commandAtoLaunchKiCAD;
-    statusbarAtoLaunchKiCAD.text = `$(circuit-board)`;
-    statusbarAtoLaunchKiCAD.tooltip = 'ato: Launch KiCAD';
-    // statusbarAtoBuild.color = '#F95015';
-
-    // Layout preview button (KiCanvas)
-    const commandLayoutPreview = 'atopile.kicanvas_preview';
-    statusbarLayoutPreview = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarLayoutPreview.command = commandLayoutPreview;
-    statusbarLayoutPreview.text = `$(eye)`;
-    statusbarLayoutPreview.tooltip = 'ato: Layout preview';
-
-    const commandAtoBuildTarget = 'atopile.choose_build';
-    statusbarAtoBuildTarget = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 0);
-    statusbarAtoBuildTarget.command = commandAtoBuildTarget;
+    // register command handlers and buttons
+    for (const command of commands) {
+        await command.init(context);
+    }
 
     await _reloadBuilds();
+
     context.subscriptions.push(
         onDidChangeAtoBinInfo(async () => {
             await _reloadBuilds();
@@ -250,13 +222,9 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-    statusbarAtoAddPackage.dispose();
-    statusbarAtoBuild.dispose();
-    statusbarAtoBuildTarget.dispose();
-    statusbarAtoAddPart.dispose();
-    statusbarAtoLaunchKiCAD.dispose();
-    statusbarAtoRemovePackage.dispose();
-    statusbarLayoutPreview.dispose();
+    for (const button of buttons) {
+        button.statusbar_item.dispose();
+    }
 }
 
 async function _runInTerminal(name: string, cwd: string | undefined, subcommand: string[], hideFromUser: boolean) {
@@ -269,7 +237,7 @@ async function _runInTerminal(name: string, cwd: string | undefined, subcommand:
 }
 
 async function _runInTerminalWithBuildTarget(name: string, subcommand: string[], hideFromUser: boolean) {
-    const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
+    const build = getBuildTarget();
     await _runInTerminal(name, build.root, subcommand, hideFromUser);
 }
 
@@ -285,9 +253,11 @@ async function atoBuild() {
     // vscode.workspace.saveAll();
 
     // parse what build target to use
-    const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
+    const build = getBuildTarget();
 
     await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
+
+    captureEvent('vsce:build_start'); // TODO: build properties?
 }
 
 async function atoAddPart() {
@@ -304,6 +274,10 @@ async function atoAddPart() {
         ['create', 'part', '--search', result, '--accept-single'],
         false,
     );
+
+    captureEvent('vsce:part_create', {
+        part: result,
+    });
 }
 
 async function atoAddPackage() {
@@ -317,6 +291,10 @@ async function atoAddPackage() {
     }
 
     await _runInTerminalWithBuildTarget('add', ['add', result], false);
+
+    captureEvent('vsce:package_add', {
+        package: result,
+    });
 }
 
 async function atoRemovePackage() {
@@ -330,10 +308,16 @@ async function atoRemovePackage() {
     }
 
     await _runInTerminalWithBuildTarget('remove', ['remove', result], false);
+
+    captureEvent('vsce:package_remove', {
+        package: result,
+    });
 }
 
 async function atoCreateProject() {
-    await _runInTerminal('create project', undefined, ['create', 'project'], false);
+    await _runInTerminalWithBuildTarget('create project', ['create', 'project'], false);
+
+    captureEvent('vsce:project_create');
 }
 
 async function atoChooseBuild() {
@@ -349,9 +333,11 @@ async function atoChooseBuild() {
         return;
     }
 
-    statusbarAtoBuildTarget.text = result;
-    g_lsClient?.sendNotification('atopile/didChangeBuildTarget', {
-        buildTarget: _buildStrToBuild(result).entry,
+    let build = _buildStrToBuild(result);
+    setBuildTarget(build);
+
+    captureEvent('vsce:build_target_select', {
+        build_target: result,
     });
 
     // Refresh KiCanvas preview
@@ -360,7 +346,7 @@ async function atoChooseBuild() {
 
 async function atoLaunchKicad() {
     // get the build target name
-    const build = _buildStrToBuild(statusbarAtoBuildTarget.text);
+    const build = getBuildTarget();
 
     const pcb_name = build.name + '.kicad_pcb';
     const search_path = `**/${build.name}/${pcb_name}`;
@@ -371,18 +357,41 @@ async function atoLaunchKicad() {
     if (paths.length === 0) {
         traceError(`No pcb file found: ${pcb_name}`);
         vscode.window.showErrorMessage(`No pcb file found: ${pcb_name}. Did you build the project?`);
+        captureEvent('vsce:pcbnew_fail', {
+            error: 'no_pcb_file',
+        });
         return;
     }
     if (paths.length > 1) {
         vscode.window.showErrorMessage(`Bug: multiple pcb files found: ${paths.join(', ')}`);
+        captureEvent('vsce:pcbnew_fail', {
+            error: 'multiple_pcb_files',
+        });
         return;
     }
     const pcb_path = paths[0];
 
     try {
         await openPcb(pcb_path);
+        captureEvent('vsce:pcbnew_success');
     } catch (error) {
         traceError(`Error launching KiCad: ${error}`);
         vscode.window.showErrorMessage(`Error launching KiCad: ${error}`);
+        captureEvent('vsce:pcbnew_fail', {
+            error: 'unknown',
+        });
     }
+}
+
+async function atoPackageExplorer() {
+    try {
+        await openPackageExplorer();
+    } catch (error) {
+        traceError(`Error opening Package Explorer: ${error}`);
+        vscode.window.showErrorMessage(`Error opening Package Explorer: ${error}`);
+    }
+}
+
+async function atoKicanvasPreview() {
+    await kicanvas.openKiCanvasPreview();
 }

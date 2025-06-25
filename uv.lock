@@ -119,7 +119,6 @@ source = { editable = "." }
 dependencies = [
     { name = "antlr4-python3-runtime" },
     { name = "atopile-easyeda2kicad" },
-    { name = "attrs" },
     { name = "black" },
     { name = "case-converter" },
     { name = "cookiecutter" },
@@ -188,7 +187,6 @@ dev = [
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
     { name = "atopile-easyeda2kicad", specifier = ">=0.9.5" },
-    { name = "attrs", specifier = ">=23.2.0" },
     { name = "black", specifier = ">=24.4.2" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },

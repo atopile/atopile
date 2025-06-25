@@ -20,7 +20,7 @@ from rich.table import Table
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
-from atopile.telemetry import log_to_posthog
+from atopile.telemetry import capture
 from faebryk.libs.github import (
     GithubCLI,
     GithubCLINotFound,
@@ -326,7 +326,7 @@ def setup_github(
 
 
 @create_app.command()
-@log_to_posthog("cli:create_project_end")
+@capture("cli:create_project_start", "cli:create_project_end")
 def project(path: Annotated[Path | None, typer.Option()] = None):
     """
     Create a new ato project.
@@ -431,7 +431,7 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
 
 
 @create_app.command("build-target")
-@log_to_posthog("cli:create_build_target_end")
+@capture("cli:create_build_target_start", "cli:create_build_target_end")
 def build_target(
     build_target: Annotated[str | None, typer.Option()] = None,
     file: Annotated[Path | None, typer.Option()] = None,
@@ -590,7 +590,7 @@ class ComponentType(StrEnum):
 
 
 @create_app.command()
-@log_to_posthog("cli:create_component_end")
+@capture("cli:create_component_start", "cli:create_component_end")
 def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
     accept_single: Annotated[bool, typer.Option("--accept-single", "-a")] = False,
@@ -698,13 +698,18 @@ def part(
     rich_print_robust(
         f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
     )
-    path = apart.ato_path.relative_to(config.project.paths.root)
+    path = apart.ato_path.relative_to(config.project.paths.src)
     rich_print_robust(
         f'```ato\nfrom "{path}" import {apart.module_name}\n```', markdown=True
     )
 
 
 @create_app.command(deprecated=True)
+@capture(
+    "cli:create_component_start",
+    "cli:create_component_end",
+    properties={"deprecated_command": True},
+)
 def component(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
 ):

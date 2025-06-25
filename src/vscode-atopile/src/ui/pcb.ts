@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { glob } from 'glob';
 import * as path from 'path';
 import * as fs from 'fs';
-import { getCurrentBuild } from './buttons';
+import { getBuildTarget } from './buttons';
 import { traceInfo } from '../common/log/logging';
 
 /**
@@ -35,7 +35,7 @@ export class PcbManager {
     private changeListeners: ((uri: vscode.Uri) => void)[] = [];
 
     getPcbForBuild(buildTarget?: any): vscode.Uri | undefined {
-        const build = buildTarget || getCurrentBuild();
+        const build = buildTarget || getBuildTarget();
         traceInfo(`getPcbForBuild called with build: ${build?.entry || 'undefined'}`);
 
         if (!build?.entry) {

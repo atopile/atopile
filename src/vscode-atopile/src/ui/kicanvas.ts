@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { traceError, traceInfo } from '../common/log/logging';
-import { getCurrentBuild } from './buttons';
+import { getBuildTarget } from './buttons';
 import { pcbManager } from './pcb';
 
 let panel: vscode.WebviewPanel | undefined;
@@ -83,8 +83,8 @@ function missingLayoutHtml(): string {
         </html>`;
 }
 
-async function openKiCanvasPreview() {
-    const build = getCurrentBuild();
+export async function openKiCanvasPreview() {
+    const build = getBuildTarget();
     if (!build) {
         throw new Error('No current build found.');
     }

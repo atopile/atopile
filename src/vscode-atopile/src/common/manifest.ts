@@ -1,8 +1,7 @@
 import * as vscode from 'vscode';
 import * as yaml from 'js-yaml';
 import * as path from 'path';
-import { traceInfo, traceError } from './log/logging';
-import { glob } from 'glob';
+import { traceError } from './log/logging';
 
 export interface Build {
     name: string;
@@ -11,6 +10,7 @@ export interface Build {
     layoutDir?: string; // optional relative path to directory containing layout
 }
 let builds: Build[] = [];
+let manifests: vscode.Uri[] = [];
 
 interface AtoYaml {
     atoVersion?: string;
@@ -30,9 +30,13 @@ export function getBuilds() {
     return builds;
 }
 
+export function getManifests() {
+    return manifests;
+}
+
 export async function loadBuilds() {
     builds = [];
-    const manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
+    manifests = await vscode.workspace.findFiles('**/ato.yaml', '**/.*/**');
 
     for (const manifest of manifests) {
         try {
