@@ -87,6 +87,30 @@
                 }
             }
         },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "atopile-explorer",
+                    "title": "atopile",
+                    "icon": "ato_logo_256x256.png"
+                }
+            ]
+        },
+        "views": {
+            "atopile-explorer": [
+                {
+                    "id": "atopile.project",
+                    "name": "Project",
+                    "contextualTitle": "atopile Project"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "atopile.project",
+                "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile)."
+            }
+        ],
         "commands": [
             {
                 "title": "Restart Server",
@@ -142,6 +166,11 @@
             {
                 "command": "atopile.shell",
                 "title": "Open ato shell",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.package_explorer",
+                "title": "Open package explorer",
                 "category": "atopile"
             }
         ],
