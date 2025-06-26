@@ -58,7 +58,7 @@ function _getKicanvasHTML(webview: vscode.Webview, pcb_path: string | undefined)
         </head>
         <body>
             <div id="container">
-                <kicanvas-embed id="kv" src="${pcbWebUri}" controls="basic" zoom="objects" controlslist="nodownload"></kicanvas-embed>
+                <kicanvas-embed id="kv" src="${pcbWebUri}" controls="full" zoom="objects" controlslist="nodownload"></kicanvas-embed>
             </div>
         </body>
         </html>`;
