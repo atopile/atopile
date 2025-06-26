@@ -7,6 +7,7 @@ export interface Build {
     name: string;
     entry: string;
     pcb_path: string; // absolute path to .kicad_pcb file (may not exist yet)
+    model_path: string; // absolute path to .glb file (pending build with relevant target active)
     root: string; // workspace root
 }
 let builds: Build[] = [];
@@ -64,6 +65,7 @@ export async function loadBuilds() {
                     const buildCfg: any = data.builds[k];
 
                     let layoutPath = path.join(buildCfg.paths?.layout || layoutSubDir, k, k + '.kicad_pcb');
+                    let modelPath = path.join(rootDir, 'build', 'builds', k, k + '.pcba.glb')
 
                     // Ensure entry path is absolute (may or may not exist yet)
                     if (!path.isAbsolute(layoutPath)) {
@@ -74,6 +76,7 @@ export async function loadBuilds() {
                         name: k,
                         entry: buildCfg.entry,
                         pcb_path: layoutPath,
+                        model_path: modelPath,
                         root: rootDir,
                     });
                 } catch (err) {

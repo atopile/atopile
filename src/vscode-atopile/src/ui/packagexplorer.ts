@@ -1,12 +1,24 @@
 import * as vscode from 'vscode';
 import { getLogoUri } from '../common/logo';
-
-let _packagesPanel: vscode.WebviewPanel | undefined;
+import { BaseWebview } from './webview-base';
 
 const packagesUrl = 'https://packages.atopile.io';
 
-function _getPackageExplorerHTML(): string {
-    return `<!DOCTYPE html>
+class PackageExplorerWebview extends BaseWebview {
+    private themeChangeDisposable?: vscode.Disposable;
+    private messageDisposable?: vscode.Disposable;
+
+    constructor() {
+        super({
+            id: 'atopile.packages.panel',
+            title: 'Packages',
+            column: vscode.ViewColumn.Active,
+            iconName: undefined, // Uses custom logo
+        });
+    }
+
+    protected getHtmlContent(_webview: vscode.Webview): string {
+        return `<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
@@ -48,67 +60,66 @@ function _getPackageExplorerHTML(): string {
     </script>
 </body>
 </html>`;
-}
+    }
 
-function _getVSCodeTheme(): string {
-    const theme = vscode.window.activeColorTheme;
-    // VSCode ColorThemeKind: Light = 1, Dark = 2, HighContrast = 3, HighContrastLight = 4
-    switch (theme.kind) {
-        case vscode.ColorThemeKind.Light:
-        case vscode.ColorThemeKind.HighContrastLight:
-            return 'light';
-        case vscode.ColorThemeKind.Dark:
-        case vscode.ColorThemeKind.HighContrast:
-        default:
-            return 'dark';
+    protected setupPanel(): void {
+        if (!this.panel) return;
+
+        // Set custom icon
+        this.panel.iconPath = getLogoUri();
+
+        // Send initial theme
+        this.sendThemeToWebview();
+
+        // Listen for theme changes
+        this.themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
+            console.log('VSCode theme changed');
+            this.sendThemeToWebview();
+        });
+
+        // Handle webview theme requests
+        this.messageDisposable = this.panel.webview.onDidReceiveMessage(message => {
+            console.log('Received message from webview:', message);
+            if (message.type === 'request-theme') {
+                this.sendThemeToWebview();
+            }
+        });
+    }
+
+    protected onDispose(): void {
+        this.themeChangeDisposable?.dispose();
+        this.messageDisposable?.dispose();
+    }
+
+    private sendThemeToWebview(): void {
+        if (!this.panel) return;
+
+        const theme = this.getVSCodeTheme();
+        this.panel.webview.postMessage({
+            type: 'vscode-theme',
+            theme: theme
+        });
+    }
+
+    private getVSCodeTheme(): string {
+        const theme = vscode.window.activeColorTheme;
+        switch (theme.kind) {
+            case vscode.ColorThemeKind.Light:
+            case vscode.ColorThemeKind.HighContrastLight:
+                return 'light';
+            case vscode.ColorThemeKind.Dark:
+            case vscode.ColorThemeKind.HighContrast:
+            default:
+                return 'dark';
+        }
     }
 }
 
-function _sendThemeToWebview(webview: vscode.Webview) {
-    const theme = _getVSCodeTheme();
-    webview.postMessage({
-        type: 'vscode-theme',
-        theme: theme
-    });
-}
+let packageExplorer: PackageExplorerWebview | undefined;
 
 export async function openPackageExplorer() {
-    if (_packagesPanel) {
-        _packagesPanel.reveal();
-        return;
+    if (!packageExplorer) {
+        packageExplorer = new PackageExplorerWebview();
     }
-
-    // create panel
-    _packagesPanel = vscode.window.createWebviewPanel('atopile.packages.panel', 'Packages', vscode.ViewColumn.Active, {
-        enableScripts: true,
-    });
-
-    _packagesPanel.webview.html = _getPackageExplorerHTML();
-    _packagesPanel.iconPath = getLogoUri();
-
-    // send initial theme
-    _sendThemeToWebview(_packagesPanel.webview);
-
-    // listen for theme changes
-    const themeChangeDisposable = vscode.window.onDidChangeActiveColorTheme(() => {
-        console.log('VSCode theme changed');
-        if (_packagesPanel) {
-            _sendThemeToWebview(_packagesPanel.webview);
-        }
-    });
-
-    // handle webview theme requests
-    const messageDisposable = _packagesPanel.webview.onDidReceiveMessage(message => {
-        console.log('Received message from webview:', message);
-        if (message.type === 'request-theme' && _packagesPanel) {
-            _sendThemeToWebview(_packagesPanel.webview);
-        }
-    });
-
-    // cleanup
-    _packagesPanel.onDidDispose(() => {
-        _packagesPanel = undefined;
-        themeChangeDisposable.dispose();
-        messageDisposable.dispose();
-    });
+    await packageExplorer.open();
 }

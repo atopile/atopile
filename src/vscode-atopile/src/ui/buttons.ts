@@ -9,6 +9,7 @@ import * as path from 'path';
 import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
+import * as modelviewer from './modelviewer';
 import { getBuildTarget, setBuildTarget } from '../common/target';
 import { disambiguatePaths } from '../common/utilities';
 
@@ -88,6 +89,7 @@ let cmdPackageExplorer = new Command(atoPackageExplorer, 'atopile.package_explor
 let cmdChooseBuild = new Command(atoChooseBuild, 'atopile.choose_build');
 let cmdLaunchKicad = new Command(atoLaunchKicad, 'atopile.launch_kicad');
 let cmdKicanvasPreview = new Command(atoKicanvasPreview, 'atopile.kicanvas_preview');
+let cmdModelViewerPreview = new Command(atoModelViewerPreview, 'atopile.modelviewer_preview');
 
 let buttonShell = new Button('terminal', cmdShell, 'Shell', 'Open ato shell', true);
 let buttonCreateProject = new Button('new-file', cmdCreateProject, 'Create Project', 'Create new project', true);
@@ -99,6 +101,7 @@ let buttonBuild = new Button('play', cmdBuild, 'Build', 'Build project');
 let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCad', 'Open board in KiCad');
 let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
 let buttonKicanvasPreview = new Button('eye', cmdKicanvasPreview, 'Layout Preview', 'Open Layout Preview');
+let buttonModelViewerPreview = new Button('symbol-constructor', cmdModelViewerPreview, '3D Preview', 'Open 3D Model Preview');
 let dropdownChooseBuild = new Button('gear', cmdChooseBuild, 'Choose Build Target', 'Select active build target');
 const NO_BUILD = '';
 // replace icon with empty text
@@ -407,4 +410,8 @@ async function atoPackageExplorer() {
 
 async function atoKicanvasPreview() {
     await kicanvas.openKiCanvasPreview();
+}
+
+async function atoModelViewerPreview() {
+    await modelviewer.openModelViewerPreview();
 }
