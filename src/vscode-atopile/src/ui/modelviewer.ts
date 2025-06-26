@@ -11,7 +11,7 @@ class ModelViewerWebview extends BaseWebview {
         super({
             id: 'modelviewer_preview',
             title: '3D Model',
-            // iconName: '3dmodel-icon-transparent.svg', // FIXME: add
+            iconName: 'cube-icon.svg',
         });
     }
 
