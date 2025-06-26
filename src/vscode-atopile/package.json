@@ -177,6 +177,11 @@
                 "command": "atopile.kicanvas_preview",
                 "title": "Open Layout Preview",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.model_viewer_preview",
+                "title": "Open 3D Model Preview",
+                "category": "atopile"
             }
         ],
         "languages": [
