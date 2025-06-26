@@ -33,7 +33,7 @@ class KiCanvasWebview extends BaseWebview {
             `,
             body: `
                 <div id="container">
-                    <kicanvas-embed id="kv" src="${pcbWebUri}" controls="basic" zoom="objects" controlslist="nodownload"></kicanvas-embed>
+                    <kicanvas-embed id="kv" src="${pcbWebUri}" controls="full" zoom="objects" controlslist="nodownload"></kicanvas-embed>
                 </div>
             `,
         });
