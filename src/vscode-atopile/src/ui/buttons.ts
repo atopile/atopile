@@ -101,7 +101,7 @@ let buttonBuild = new Button('play', cmdBuild, 'Build', 'Build project');
 let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCad', 'Open board in KiCad');
 let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
 let buttonKicanvasPreview = new Button('eye', cmdKicanvasPreview, 'Layout Preview', 'Open Layout Preview');
-let buttonModelViewerPreview = new Button('cube', cmdModelViewerPreview, '3D Preview', 'Open 3D Model Preview');
+let buttonModelViewerPreview = new Button('symbol-constructor', cmdModelViewerPreview, '3D Preview', 'Open 3D Model Preview');
 let dropdownChooseBuild = new Button('gear', cmdChooseBuild, 'Choose Build Target', 'Select active build target');
 const NO_BUILD = '';
 // replace icon with empty text
