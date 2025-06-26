@@ -299,6 +299,17 @@ def generate_bom(app: Module, solver: Solver) -> None:
     )
 
 
+@muster.register("3d-model", default=True)
+def generate_3d_model(app: Module, solver: Solver) -> None:
+    """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
+
+    export_glb(
+        config.build.paths.layout,
+        glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+        project_dir=config.build.paths.layout.parent,
+    )
+
+
 @muster.register("mfg-data", default=False)
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
@@ -320,11 +331,6 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
         export_step(
             tmp_layout,
             step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
-            project_dir=config.build.paths.layout.parent,
-        )
-        export_glb(
-            tmp_layout,
-            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
             project_dir=config.build.paths.layout.parent,
         )
         export_dxf(
