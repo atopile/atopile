@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import tempfile
@@ -244,11 +245,11 @@ def build(app: Module) -> None:
 
     @once
     def _check_kicad_cli() -> bool:
-        # with contextlib.suppress(Exception):
-        #     from kicadcliwrapper.generated.kicad_cli import kicad_cli
+        with contextlib.suppress(Exception):
+            from kicadcliwrapper.generated.kicad_cli import kicad_cli
 
-        #     kicad_cli(kicad_cli.version()).exec()
-        #     return True
+            kicad_cli(kicad_cli.version()).exec()
+            return True
 
         return False
 
