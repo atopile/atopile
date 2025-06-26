@@ -36,14 +36,11 @@ class ModelViewerWebview extends BaseWebview {
                     <model-viewer
                         id="mv"
                         src="${modelWebUri}"
-                        auto-rotate
                         camera-controls
                         tone-mapping="neutral"
                         exposure="1.2"
                         shadow-intensity="0.7"
                         shadow-softness="0.8"
-                        ar
-                        ar-modes="webxr scene-viewer quick-look"
                     ></model-viewer>
                 </div>
             `,
