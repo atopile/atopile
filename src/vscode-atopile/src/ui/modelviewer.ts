@@ -4,9 +4,7 @@ import * as fs from 'fs';
 import { onThreeDModelChanged, getCurrentThreeDModel } from '../common/3dmodel';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
-
-const modelViewerVersion = '4.1.0';
-const modelViewerUrl = `https://ajax.googleapis.com/ajax/libs/model-viewer/${modelViewerVersion}/model-viewer.min.js`;
+import { getResourcesPath } from '../common/resources';
 
 class ModelViewerWebview extends BaseWebview {
     constructor() {
@@ -23,11 +21,12 @@ class ModelViewerWebview extends BaseWebview {
             return this.getMissingResourceHtml('3D Model');
         }
 
+        const scriptUri = this.getModelViewerScriptUri(webview);
         const modelWebUri = this.getWebviewUri(webview, model.path);
 
         return buildHtml({
             title: '3D Model Preview',
-            scripts: [{ type: 'module', src: modelViewerUrl }],
+            scripts: [{ type: 'module', src: scriptUri.toString() }],
             styles: `
                 #container {height: 100%; width: 100%;}
                 model-viewer {height: 100%; width: 100%; display: block;}
@@ -58,6 +57,14 @@ class ModelViewerWebview extends BaseWebview {
             roots.push(vscode.Uri.file(path.dirname(model.path)));
         }
         return roots;
+    }
+
+    private getModelViewerScriptUri(webview: vscode.Webview): vscode.Uri {
+        const candidate = path.join(getResourcesPath(), 'model-viewer', 'model-viewer.min.js');
+        if (!fs.existsSync(candidate)) {
+            throw new Error(`model-viewer.min.js could not be found in ${candidate}. Make sure it is included.`);
+        }
+        return webview.asWebviewUri(vscode.Uri.file(candidate));
     }
 }
 
