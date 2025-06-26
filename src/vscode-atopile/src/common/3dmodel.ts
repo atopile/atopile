@@ -1,101 +1,55 @@
 import * as vscode from 'vscode';
-import { getBuildTarget, onBuildTargetChanged } from '../common/target';
-import { traceInfo } from './log/logging';
+import { getBuildTarget } from '../common/target';
 import { Build } from './manifest';
 import * as fs from 'fs';
+import { FileResource, FileResourceWatcher } from './file-resource-watcher';
 
-export const onThreeDModelChangedEvent = new vscode.EventEmitter<ThreeDModel | undefined>();
-export const onThreeDModelChanged: vscode.Event<ThreeDModel | undefined> = onThreeDModelChangedEvent.event;
-
-export interface ThreeDModel {
+export interface ThreeDModel extends FileResource {
     path: string;
     exists: boolean;
 }
 
-let watcher: vscode.FileSystemWatcher | undefined;
-let currentThreeDModel: ThreeDModel | undefined;
+class ThreeDModelWatcher extends FileResourceWatcher<ThreeDModel> {
+    constructor() {
+        super('3D Model');
+    }
 
-export function eqThreeDModel(a: ThreeDModel | undefined, b: ThreeDModel | undefined) {
-    if ((a === undefined) !== (b === undefined)) {
-        return false;
+    protected getResourceForBuild(build: Build | undefined): ThreeDModel | undefined {
+        if (!build?.entry) {
+            return undefined;
+        }
+
+        return { path: build.model_path, exists: fs.existsSync(build.model_path) };
     }
-    if (a === undefined || b === undefined) {
-        return true;
-    }
-    return a.path == b.path && a.exists == b.exists;
 }
 
+// Singleton instance
+const modelWatcher = new ThreeDModelWatcher();
+
+export const onThreeDModelChanged = modelWatcher.onChanged;
+export const onThreeDModelChangedEvent = { fire: (_: ThreeDModel | undefined) => { } }; // Deprecated
+
 export function getCurrentThreeDModel(): ThreeDModel | undefined {
-    const build = getBuildTarget();
-    if (!build) {
-        return undefined;
-    }
-    return getThreeDModelForBuild(build);
+    return modelWatcher.getCurrent();
 }
 
 export function getThreeDModelForBuild(buildTarget?: Build | undefined): ThreeDModel | undefined {
     const build = buildTarget || getBuildTarget();
-
-    if (!build?.entry) {
-        return undefined;
-    }
-
-    return { path: build.model_path, exists: fs.existsSync(build.model_path) };
-}
-
-function notifyChange(modelInfo: ThreeDModel | undefined) {
-    onThreeDModelChangedEvent.fire(modelInfo);
+    return modelWatcher['getResourceForBuild'](build);
 }
 
 export function setCurrentThreeDModel(model: ThreeDModel | undefined) {
-    if (eqThreeDModel(currentThreeDModel, model)) {
-        return;
-    }
-
-    currentThreeDModel = model;
-    setupWatcher(model);
-    notifyChange(model);
+    modelWatcher.setCurrent(model);
 }
 
-function setupWatcher(model: ThreeDModel | undefined) {
-    disposeWatcher();
-
-    if (!model) {
-        return;
-    }
-
-    watcher = vscode.workspace.createFileSystemWatcher(model.path);
-
-    const onChange = () => {
-        traceInfo(`3D Model watcher triggered for ${model.path}`);
-        notifyChange(model);
-    };
-
-    const onCreateDelete = () => {
-        setCurrentThreeDModel(getThreeDModelForBuild(getBuildTarget()));
-    };
-
-    watcher.onDidChange(onChange);
-    watcher.onDidCreate(onCreateDelete);
-    watcher.onDidDelete(onCreateDelete);
-}
-
-function disposeWatcher() {
-    if (watcher) {
-        watcher.dispose();
-        watcher = undefined;
-    }
+export function eqThreeDModel(a: ThreeDModel | undefined, b: ThreeDModel | undefined) {
+    return modelWatcher['equals'](a, b);
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-    context.subscriptions.push(
-        onBuildTargetChanged(async (target: Build | undefined) => {
-            setCurrentThreeDModel(getThreeDModelForBuild(target));
-        }),
-    );
-    setCurrentThreeDModel(getThreeDModelForBuild());
+    await modelWatcher.activate(context);
 }
 
 export function deactivate() {
-    disposeWatcher();
+    modelWatcher.deactivate();
 }
