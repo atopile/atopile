@@ -31,12 +31,41 @@ from faebryk.libs.util import cast_assert, once
 
 log = logging.getLogger(__name__)
 
-posthog = Posthog(
-    # write-only API key, intended to be made public
-    api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
-    host="https://telemetry.atopileapi.com",
-    sync_mode=True,
-)
+
+class _MockClient:
+    disabled = False
+
+    def capture_exception(
+        self,
+        exc: Exception,
+        distinct_id: uuid.UUID | None,
+        properties: dict | None = None,
+    ) -> None:
+        pass
+
+    def capture(
+        self,
+        distinct_id: uuid.UUID | None,
+        event: str,
+        properties: dict | None = None,
+    ) -> None:
+        pass
+
+
+def _get_posthog_client() -> Posthog | _MockClient:
+    try:
+        return Posthog(
+            # write-only API key, intended to be made public
+            project_api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
+            host="https://telemetry.atopileapi.com",
+            sync_mode=True,
+        )
+    except Exception as e:
+        log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
+        return _MockClient()
+
+
+client = _get_posthog_client()
 
 
 @dataclass
@@ -64,7 +93,7 @@ class TelemetryConfig:
 
         if config.telemetry is False:
             log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
-            posthog.disabled = True
+            client.disabled = True
 
         return config
 
@@ -217,7 +246,7 @@ def capture_exception(exc: Exception, properties: dict | None = None) -> None:
         return
 
     try:
-        posthog.capture_exception(exc, config.id, properties)
+        client.capture_exception(exc, config.id, properties)
     except Exception as e:
         log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
 
@@ -249,7 +278,7 @@ def capture(
         return
 
     try:
-        posthog.capture(distinct_id=config.id, event=event_start, properties=properties)
+        client.capture(distinct_id=config.id, event=event_start, properties=properties)
     except Exception as e:
         log.debug("Failed to send telemetry data (event start): %s", e, exc_info=e)
         yield
@@ -259,12 +288,12 @@ def capture(
         yield
     except Exception as e:
         try:
-            posthog.capture_exception(e, config.id, properties)
+            client.capture_exception(e, config.id, properties)
         except Exception as e:
             log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
         raise
 
     try:
-        posthog.capture(distinct_id=config.id, event=event_end, properties=properties)
+        client.capture(distinct_id=config.id, event=event_end, properties=properties)
     except Exception as e:
         log.debug("Failed to send telemetry data (event end): %s", e, exc_info=e)
