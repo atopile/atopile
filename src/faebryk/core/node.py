@@ -20,6 +20,7 @@ from typing import (
 
 from deprecated import deprecated
 from more_itertools import partition
+from ordered_set import OrderedSet
 
 from faebryk.core.cpp import Node as CNode
 from faebryk.core.graphinterface import (
@@ -664,10 +665,10 @@ class Node(CNode):
         include_root: bool = False,
         f_filter: Callable[[T], bool] | None = None,
         sort: bool = True,
-    ) -> set[T]:
+    ) -> OrderedSet[T]:
         return cast(
-            set[T],
-            set(
+            OrderedSet[T],
+            OrderedSet(
                 super().get_children(
                     direct_only=direct_only,
                     types=types if isinstance(types, tuple) else (types,),
