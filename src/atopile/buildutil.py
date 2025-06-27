@@ -12,7 +12,7 @@ import faebryk.library._F as F
 from atopile import layout
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
-from atopile.errors import UserException, UserPickError
+from atopile.errors import UserException, UserPickError, UserToolNotAvailableError
 from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
 from faebryk.core.pathfinder import MAX_PATHS
@@ -228,6 +228,8 @@ def build(app: Module) -> None:
         targets = [t for t in muster.targets.values()]
     else:
         targets = [muster.targets[t] for t in config.build.targets]
+        for target in targets:
+            target.implicit = False
 
     # Remove excluded targets
     targets = [t for t in targets if t.name not in config.build.exclude_targets]
@@ -260,11 +262,14 @@ def build(app: Module) -> None:
                 f"target-{target.name}", f"Building [green]'{target.name}'[/green]"
             ):
                 if target.requires_kicad and not _check_kicad_cli():
-                    logger.warning(
-                        f"Skipping target '{target.name}' because kicad-cli was not "
-                        "found",
-                    )
-                    continue
+                    if target.implicit:
+                        logger.warning(
+                            f"Skipping target '{target.name}' because kicad-cli was not"
+                            " found",
+                        )
+                        continue
+                    else:
+                        raise UserToolNotAvailableError("kicad-cli not found")
 
                 with accumulator.collect():
                     target(app, solver)
@@ -276,6 +281,7 @@ class MusterTarget:
     default: bool
     requires_kicad: bool
     func: Callable[[Module, Solver], None]
+    implicit: bool = True
 
     def __call__(self, app: Module, solver: Solver) -> None:
         return self.func(app, solver)

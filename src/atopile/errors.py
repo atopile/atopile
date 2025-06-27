@@ -383,3 +383,9 @@ class UserTraitError(UserException):
     """
     Raised when there's an error applying a trait.
     """
+
+
+class UserToolNotAvailableError(UserException):
+    """
+    Raised when kicad-cli is required but not found.
+    """
