@@ -80,12 +80,8 @@ def add_or_get_nets(*interfaces: F.Electrical):
     buses = ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
 
-    for bus_repr, connected_mifs in buses.items():
-        nets_on_bus = {
-            net
-            for mif in connected_mifs
-            if (net := F.Net.find_from_part_of_mif(mif)) is not None
-        }
+    for bus_repr in buses.keys():
+        nets_on_bus = F.Net.find_nets_for_mif(bus_repr)
 
         if not nets_on_bus:
             net = F.Net()
@@ -93,7 +89,17 @@ def add_or_get_nets(*interfaces: F.Electrical):
             nets_on_bus = {net}
 
         if len(nets_on_bus) > 1:
-            raise KeyErrorAmbiguous(list(nets_on_bus), "Multiple nets interconnected")
+            named_nets_on_bus = {
+                n for n in nets_on_bus if n.has_trait(F.has_overriden_name)
+            }
+            if not named_nets_on_bus:
+                nets_on_bus = {first(nets_on_bus)}
+            elif len(named_nets_on_bus) == 1:
+                nets_on_bus = named_nets_on_bus
+            else:
+                raise KeyErrorAmbiguous(
+                    list(named_nets_on_bus), "Multiple (named) nets interconnected"
+                )
 
         nets_out |= nets_on_bus
 
