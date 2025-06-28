@@ -1,9 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from hashlib import sha256
-
 from faebryk.core.module import Module
+from faebryk.libs.checksum import Checksum
 
 
 class _FileManuallyModified(Exception): ...
@@ -30,23 +29,16 @@ class is_auto_generated(Module.TraitT.decless()):
         """
 
     @staticmethod
-    def _checksum_algo(to_hash: str) -> str:
-        return sha256(to_hash.encode("utf-8")).hexdigest()
-
-    @staticmethod
     def verify(stated_checksum: str, file_contents: str):
-        actual_checksum = is_auto_generated._checksum_algo(
-            file_contents.replace(
-                stated_checksum, is_auto_generated.CHECKSUM_PLACEHOLDER
-            )
+        with_placeholder = file_contents.replace(
+            stated_checksum, is_auto_generated.CHECKSUM_PLACEHOLDER
         )
-
-        if actual_checksum != stated_checksum:
-            raise _FileManuallyModified(
-                f"Checksum mismatch {actual_checksum} != {stated_checksum}"
-            )
+        try:
+            Checksum.verify(stated_checksum, with_placeholder)
+        except Checksum.Mismatch as e:
+            raise _FileManuallyModified("File has been manually modified") from e
 
     @staticmethod
     def set_checksum(file_contents: str) -> str:
-        actual = is_auto_generated._checksum_algo(file_contents)
+        actual = Checksum.build(file_contents)
         return file_contents.replace(is_auto_generated.CHECKSUM_PLACEHOLDER, actual)
