@@ -14,6 +14,10 @@ from faebryk.exporters.pcb.layout.heuristic_pulls import (
 from faebryk.libs.library import L  # noqa: F401
 from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P  # noqa: F401
+from test.common.resources.fabll_modules.RP2040 import RP2040
+from test.common.resources.fabll_modules.Winbond_Elec_W25Q128JVSIQ import (
+    Winbond_Elec_W25Q128JVSIQ,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -60,10 +64,10 @@ class RP2040_ReferenceDesign(Module):
     # ----------------------------------------
 
     # function
-    rp2040: F.RP2040
+    rp2040: RP2040
     ldo: F.LDO
     clock_source: F.Crystal_Oscillator
-    flash: F.Winbond_Elec_W25Q128JVSIQ
+    flash: Winbond_Elec_W25Q128JVSIQ
 
     # IO
     usb: F.USB2_0
@@ -189,7 +193,7 @@ class RP2040_ReferenceDesign(Module):
             layout=LayoutTypeHierarchy(
                 layouts=[
                     LayoutTypeHierarchy.Level(
-                        mod_type=F.RP2040,
+                        mod_type=RP2040,
                         layout=LayoutAbsolute(
                             Point((0, 0, 0, L.NONE)),
                         ),

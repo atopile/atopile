@@ -24,6 +24,10 @@ from faebryk.libs.picker.picker import (
 from faebryk.libs.test.times import Times
 from faebryk.libs.units import P
 from faebryk.libs.util import ConfigFlagInt, indented_container
+from test.common.resources.fabll_modules.RP2040 import RP2040
+from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
+    RP2040_ReferenceDesign,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +41,7 @@ def _setup():
 
 
 class _RP2040_Basic(Module):
-    rp2040: F.RP2040
+    rp2040: RP2040
     ldo: F.LDO
     led: F.LED
 
@@ -48,7 +52,7 @@ class _RP2040_Basic(Module):
     "module_type",
     [
         _RP2040_Basic,
-        F.RP2040_ReferenceDesign,
+        RP2040_ReferenceDesign,
         lambda: F.MultiCapacitor(10),
     ],
 )

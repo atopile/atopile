@@ -8,6 +8,7 @@ from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
 from faebryk.libs.units import P
+from test.common.resources.fabll_modules.RP2040Pinmux import RP2040Pinmux
 
 logger = logging.getLogger(__name__)
 
@@ -155,7 +156,7 @@ class RP2040(Module):
 
     @L.rt_field
     def pinmux(self):
-        return F.RP2040Pinmux(self)
+        return RP2040Pinmux(self)
 
     @L.rt_field
     def decoupled(self):

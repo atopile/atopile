@@ -5,6 +5,12 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
+from test.common.resources.fabll_modules.USB2_0_ESD_Protection import (
+    USB2_0_ESD_Protection,
+)
+from test.common.resources.fabll_modules.USB_Type_C_Receptacle_14_pin_Vertical import (
+    USB_Type_C_Receptacle_14_pin_Vertical,
+)
 
 
 # TODO bad module
@@ -15,11 +21,11 @@ class USB_C_PSU_Vertical(Module):
 
     # components
 
-    usb_connector: F.USB_Type_C_Receptacle_14_pin_Vertical  # TODO: make generic
+    usb_connector: USB_Type_C_Receptacle_14_pin_Vertical  # TODO: make generic
     configuration_resistors = L.list_field(2, F.Resistor)
     gnd_resistor: F.Resistor
     gnd_capacitor: F.Capacitor
-    esd: F.USB2_0_ESD_Protection
+    esd: USB2_0_ESD_Protection
 
     def __preinit__(self):
         self.gnd_capacitor.capacitance.constrain_subset(
