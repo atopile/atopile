@@ -3,7 +3,9 @@ This example demonstrates how to use the Addressor component to automatically
 configure the address pins of an I2C client device based on a desired I2C address.
 """
 
-import Addressor3
+#pragma experiment("MODULE_TEMPLATING")
+
+import Addressor
 import I2C
 import ElectricPower
 import ElectricLogic
@@ -40,7 +42,7 @@ module I2CExampleDriver:
     """
 
     # addressor with 3 address lines
-    addressor = new Addressor3
+    addressor = new Addressor<address_bits=3>
     ic = new I2CExampleIC
     power = new ElectricPower
 
