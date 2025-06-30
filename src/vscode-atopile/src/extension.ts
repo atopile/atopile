@@ -12,6 +12,7 @@ import { SERVER_ID, SERVER_NAME } from './common/constants';
 import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
 import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
+import { openPackageExplorer } from './ui/packagexplorer';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -35,6 +36,25 @@ function _setupLogging(context: vscode.ExtensionContext) {
 
     return outputChannel;
 }
+
+class atopileUriHandler implements vscode.UriHandler {
+    handleUri(uri: vscode.Uri): vscode.ProviderResult<void> {
+        traceInfo(`handleUri: ${uri.toString()}`);
+        const path = uri.path
+
+        if (path === "/addPackage") {
+            traceInfo('addPackage');
+            // e.g. vscode://atopile.atopile/addPackage?packageIdentifier=atopile/esp32
+            const queryParams = uri.query.split("&");
+            const packageIdentifier = queryParams.find(param => param.startsWith("packageIdentifier="))?.split("=")[1];
+            if (packageIdentifier) {
+                traceInfo(`packageIdentifier: ${packageIdentifier}`);
+                openPackageExplorer('packages/' + packageIdentifier);
+            }
+        }
+    }
+}
+
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = _setupLogging(context);
@@ -64,6 +84,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initServer(context);
 
     await ui.activate(context);
+    context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
 }
 
 export async function deactivate(): Promise<void> {
