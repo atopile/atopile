@@ -23,7 +23,7 @@ class DifferentialPair(ModuleInterface):
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
+            F.ElectricSignal.connect_all_module_references(self)
         )
 
     def terminated(self) -> Self:
