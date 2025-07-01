@@ -11,7 +11,7 @@ from faebryk.libs.units import P  # noqa: F401
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from faebryk.library.RP2040 import RP2040
+    from test.common.resources.fabll_modules.RP2040 import RP2040
 
 
 class RP2040Pinmux(F.Pinmux):
