@@ -18,7 +18,13 @@ logger = logging.getLogger(__name__)
 
 @capture("cli:build_start", "cli:build_end")
 def build(
-    entry: Annotated[str | None, typer.Argument()] = None,
+    entry: Annotated[
+        str | None,
+        typer.Argument(
+            help="Path to the project directory or build target address"
+            "(<path_to.ato>:<module>)"
+        ),
+    ] = None,
     selected_builds: Annotated[
         list[str], typer.Option("--build", "-b", envvar="ATO_BUILD")
     ] = [],

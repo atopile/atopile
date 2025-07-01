@@ -136,3 +136,14 @@ export function disambiguatePaths(iterable: Iterable<any>, path_key: (item: any)
 
     return result;
 }
+
+export function dedent(input_string: string): string {
+    /**
+     * Determine common indentation of all lines
+     * Remove that indentation from all lines
+     * Return the dedented string
+     */
+    const lines = input_string.split('\n');
+    const min_indent = Math.min(...lines.map((line) => line.match(/^\s*/)?.[0]?.length ?? 0));
+    return lines.map((line) => line.slice(min_indent)).join('\n');
+}
