@@ -176,6 +176,7 @@ from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
 from faebryk.library.MultiSPI import MultiSPI
+from faebryk.library.PDM import PDM
 from faebryk.library.Pinmux import Pinmux
 from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
