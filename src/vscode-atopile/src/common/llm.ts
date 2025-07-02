@@ -1,41 +1,36 @@
 import { getAtoBin } from './findbin';
 import { loadResource } from './resources';
-import { install_mcp_server, install_rule } from './vscodeapi';
+import { getWorkspaceFolders, install_mcp_server, install_rule } from './vscodeapi';
 
-async function write_rules_into_workspace_root() {
-    install_rule('ato', {
-        description: 'Ato is a declarative DSL to design electronics (PCBs) with.',
-        globs: ['*.ato', 'ato.yaml'],
-        alwaysApply: true,
-        text: build_rules(),
-    });
-}
-
-async function setup_mcp_server() {
+export async function ask_for_installing_rules_and_mcp_server() {
     const ato_bin = await getAtoBin();
     if (!ato_bin) {
         return;
     }
 
-    install_mcp_server('atopile', {
-        command: ato_bin.command[0],
-        args: [...ato_bin.command.slice(1), 'mcp', 'start'],
-        env: {},
-    });
-}
+    const workspaces = getWorkspaceFolders();
+    // TODO filter workspaces with ato projects
 
-export async function ask_for_installing_rules_and_mcp_server() {
-    /**
-     * 1. Detect workspace roots
-     * 2. Check if ato projects in workspace (any .ato or ato.yaml exists)
-     * 3. Check if rules are installed in workspace root
-     * 4. If not, ask user if they want to install rules
-     * 5. If yes, install rules and mcp
-     */
+    //install_rule(
+    //    'ato',
+    //    {
+    //        description: 'ato is a declarative DSL to design electronics (PCBs) with.',
+    //        globs: ['*.ato', 'ato.yaml'],
+    //        alwaysApply: true,
+    //        text: build_rules(),
+    //    },
+    //    workspaces,
+    //);
 
-    // TODO check
-    await write_rules_into_workspace_root();
-    await setup_mcp_server();
+    install_mcp_server(
+        'atopile',
+        {
+            command: ato_bin.command[0],
+            args: [...ato_bin.command.slice(1), 'mcp', 'start'],
+            env: {},
+        },
+        workspaces,
+    );
 }
 
 function _read_template(file_name: string): string {

@@ -15,6 +15,7 @@ mcp = FastMCP("atopile", stateless_http=True)
 
 logger = logging.getLogger(__name__)
 # log to file
+# TODO dont forget to remove this
 handler = logging.FileHandler(Path(__file__).parent / "mcp.log")
 handler.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")

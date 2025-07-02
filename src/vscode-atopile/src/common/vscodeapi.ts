@@ -98,59 +98,144 @@ export interface LLM_Rule {
     alwaysApply: boolean;
     text: string;
 }
-
-export function install_rule(name: string, rule: LLM_Rule) {
-    /**
-     * 1. Determine workspace(s) root
-     * 2. Determine rules dirs
-     * 3. Check if rule exist (if yes override)
-     * 4. Write rule to rules dir
-     */
-    const TEMPLATE = `
-        ---
-        description: ${rule.description}
-        globs: ${rule.globs.join(', ')}
-        alwaysApply: ${rule.alwaysApply}
-        ---
-        ${rule.text}
-    `;
-    const rule_text = dedent(TEMPLATE);
-
-    // TODO write to workspace root
-    // TODO write to .cursorrules
-    // TODO write to .windsurfrules
-    // TODO write to .vscode/settings.json
-    const dirs: string[] = [];
-
-    for (const p of dirs) {
-        const out = path.join(p, `${name}.adc`);
-        fs.writeFileSync(out, rule_text);
-    }
-}
-
 export interface MCP_Config {
     command: string;
     args: string[];
     env: Record<string, string>;
 }
-export function install_mcp_server(name: string, config: MCP_Config) {
-    /**
-     * 1. Determine workspace(s) root
-     * 2. Determine mcp dirs
-     * 3. Load servers
-     * 4. Check if server exist (if yes override)
-     * 5. Write server to mcp dir
-     */
 
-    const current_mcp_config = getConfiguration('mcpServers');
-    const new_mcp_config = {
-        ...current_mcp_config,
-        [name]: config,
-    };
+interface LLM_Rule_Host {
+    get_rule_path(name: string): string;
+    build_rule(rule: LLM_Rule): string;
+}
 
-    setConfiguration('mcpServers', new_mcp_config);
+interface MCP_Host {
+    insert_mcp(name: string, mcp_config: MCP_Config, workspace_folder: WorkspaceFolder): void;
+}
 
-    // TODO write to .cursorrules
-    // TODO write to .windsurfrules
-    // TODO write to .vscode/settings.json
+class Cursor implements LLM_Rule_Host, MCP_Host {
+    get_rule_path(name: string): string {
+        return `\${workspaceFolder}.cursor/rules/${name}.mdc`;
+    }
+    build_rule(rule: LLM_Rule): string {
+        return dedent(
+            `
+            ---
+            description: ${rule.description}
+            globs: ${rule.globs.join(', ')}
+            alwaysApply: ${rule.alwaysApply}
+            ---
+            ${rule.text}
+        `,
+        );
+    }
+
+    get_mcp_path(_: string): string {
+        return `\${workspaceFolder}/.cursor/mcp.json`;
+    }
+
+    insert_mcp(name: string, mcp_config: MCP_Config, workspace_folder: WorkspaceFolder): void {
+        const config_path = resolvePath(this.get_mcp_path(name), workspace_folder);
+        if (!fs.existsSync(config_path)) {
+            fs.mkdirSync(path.dirname(config_path), { recursive: true });
+            fs.writeJsonSync(config_path, { mcpServers: {} });
+        }
+        // load .cursor/mcp.json
+        const config = fs.readJsonSync(config_path);
+
+        if (!config.mcpServers) {
+            config.mcpServers = {};
+        }
+
+        // add to mcp.json
+        config.mcpServers[name] = mcp_config;
+
+        // save .cursor/mcp.json
+        // write pretty json
+        fs.writeJsonSync(config_path, config, { spaces: 4 });
+    }
+}
+
+class Windsurf implements LLM_Rule_Host {
+    get_rule_path(name: string): string {
+        return `\${workspaceFolder}/.windsurf/rules/${name}.md`;
+    }
+
+    build_rule(rule: LLM_Rule): string {
+        return dedent(
+            `
+            ---
+            description: ${rule.description}
+            globs: ${rule.globs.join(', ')}
+            alwaysApply: ${rule.alwaysApply}
+            ---
+            ${rule.text}
+        `,
+        );
+    }
+
+    // MCP no support for http: https://docs.windsurf.com/windsurf/cascade/mcp
+}
+
+class Copilot implements LLM_Rule_Host {
+    get_rule_path(name: string): string {
+        return `\${workspaceFolder}/.github/instructions/${name}.instructions.md`;
+    }
+
+    build_rule(rule: LLM_Rule): string {
+        return dedent(
+            `
+            ---
+            description: ${rule.description}
+            applyTo: ${rule.globs.join(', ')}
+            ---
+            ${rule.text}
+        `,
+        );
+    }
+
+    // MCP is in preview atm: https://code.visualstudio.com/docs/copilot/chat/mcp-servers
+}
+
+const rule_hosts: Record<string, LLM_Rule_Host> = {
+    cursor: new Cursor(),
+    windsurf: new Windsurf(),
+    copilot: new Copilot(),
+};
+
+const mcp_hosts: Record<string, MCP_Host> = {
+    cursor: new Cursor(),
+};
+
+export function install_rule(
+    name: string,
+    rule: LLM_Rule,
+    workspaces: readonly WorkspaceFolder[] | undefined = undefined,
+) {
+    const workspace_folders = workspaces || getWorkspaceFolders();
+
+    for (const workspace of workspace_folders) {
+        for (const [_, host] of Object.entries(rule_hosts)) {
+            const rel_path = host.get_rule_path(name);
+            const full_path = resolvePath(rel_path, workspace);
+
+            const dir = path.dirname(full_path);
+            fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(full_path, host.build_rule(rule));
+        }
+    }
+}
+
+export function install_mcp_server(
+    name: string,
+    config: MCP_Config,
+    workspaces: readonly WorkspaceFolder[] | undefined = undefined,
+) {
+    const workspace_folders = workspaces || getWorkspaceFolders();
+
+    for (const workspace_folder of workspace_folders) {
+        for (const [_, host] of Object.entries(mcp_hosts)) {
+            host.insert_mcp(name, config, workspace_folder);
+        }
+    }
 }
