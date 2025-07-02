@@ -1,17 +1,17 @@
+import * as vscode from 'vscode';
 import { getAtoBin } from './findbin';
 import { traceInfo } from './log/logging';
 import { loadResource } from './resources';
 import { dedent, indent } from './utilities';
-import { getWorkspaceFolders, install_mcp_server, install_rule } from './vscodeapi';
+import { getAtopileWorkspaceFolders, install_mcp_server, install_rule } from './vscodeapi';
 
-export async function ask_for_installing_rules_and_mcp_server() {
+export async function llm_setup_rules_and_mcp_server() {
     const ato_bin = await getAtoBin();
     if (!ato_bin) {
         return;
     }
 
-    const workspaces = getWorkspaceFolders();
-    // TODO filter workspaces with ato projects
+    const workspaces = await getAtopileWorkspaceFolders();
 
     traceInfo('Installing ato rule');
     install_rule(
@@ -93,4 +93,24 @@ function build_rules() {
     `;
 
     return dedent(TEMPLATE);
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+    // on-startup
+    await llm_setup_rules_and_mcp_server();
+
+    context.subscriptions.push(
+        // on-command
+        vscode.commands.registerCommand('atopile.llm.setup', llm_setup_rules_and_mcp_server),
+        // if workspace folder added
+        vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+            await llm_setup_rules_and_mcp_server();
+        }),
+        // if ato.yaml created
+        vscode.workspace.onDidCreateFiles(async (e) => {
+            if (e.files.some((f) => f.fsPath.endsWith('ato.yaml'))) {
+                await llm_setup_rules_and_mcp_server();
+            }
+        }),
+    );
 }

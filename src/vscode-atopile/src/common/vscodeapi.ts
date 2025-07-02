@@ -49,6 +49,30 @@ export function getWorkspaceFolder(uri: Uri): WorkspaceFolder | undefined {
     return workspace.getWorkspaceFolder(uri);
 }
 
+export async function getWorkspaceFoldersWithFile(glob: string): Promise<readonly WorkspaceFolder[]> {
+    /**
+     * Find all files in open workspaces that match the filename
+     * Determine the workspace folder for each file
+     */
+
+    const files = await workspace.findFiles(glob, '**/.*/**');
+    const workspace_folders = new Set<WorkspaceFolder>();
+
+    for (const file of files) {
+        const folder = getWorkspaceFolder(file);
+        if (!folder) {
+            continue;
+        }
+        workspace_folders.add(folder);
+    }
+
+    return Array.from(workspace_folders);
+}
+
+export async function getAtopileWorkspaceFolders(): Promise<readonly WorkspaceFolder[]> {
+    return await getWorkspaceFoldersWithFile('ato.yaml');
+}
+
 const vscodeVariables = require('vscode-variables');
 
 export function resolvePath(s: string, workspace?: WorkspaceFolder) {

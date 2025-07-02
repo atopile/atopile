@@ -12,7 +12,7 @@ import { SERVER_ID, SERVER_NAME } from './common/constants';
 import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
 import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
-import { ask_for_installing_rules_and_mcp_server } from './common/llm';
+import * as llm from './common/llm';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -65,8 +65,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initServer(context);
 
     await ui.activate(context);
-
-    await ask_for_installing_rules_and_mcp_server();
+    await llm.activate(context);
 
     traceInfo(`Atopile extension activated in IDE: ${get_ide_type()}`);
 }
