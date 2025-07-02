@@ -26,7 +26,7 @@ export async function ask_for_installing_rules_and_mcp_server() {
         'atopile',
         {
             command: ato_bin.command[0],
-            args: [...ato_bin.command.slice(1), 'mcp', 'start'],
+            args: [...ato_bin.command.slice(1), 'mcp', 'start', '--no-http'],
             env: {},
         },
         workspaces,

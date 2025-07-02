@@ -14,7 +14,7 @@ mcp_app = typer.Typer(rich_markup_mode="rich")
 
 @mcp_app.command()
 # @capture("cli:mcp_start", "cli:mcp_end")
-def start():
+def start(http: bool = False):
     """Start the MCP server."""
     logger.info("Starting atopile MCP server...")
-    run_mcp()
+    run_mcp(http)

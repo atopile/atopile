@@ -42,9 +42,9 @@ class NodeInfoOverview(BaseModel):
     language: Language
 
 
-def run_mcp():
+def run_mcp(http: bool = False):
     logger.info("Starting atopile MCP server...")
-    mcp.run(transport="streamable-http")
+    mcp.run(transport="streamable-http" if http else "stdio")
 
 
 def _get_library_nodes(t: type[Node]) -> list[NodeInfoOverview]:
