@@ -9,8 +9,90 @@ export interface FileResource {
     exists: boolean;
 }
 
+enum FileEventType {
+    Change = 'change',
+    Create = 'create',
+    Delete = 'delete',
+    Unchanged = 'unchanged',
+}
+
+class FileWatcher implements vscode.Disposable {
+    private watcher: vscode.FileSystemWatcher;
+    private subscriptions: ((type: FileEventType) => void)[] = [];
+    private timer: NodeJS.Timeout;
+
+    constructor(
+        private file_path: string,
+        callback: ((type: FileEventType) => void) | undefined,
+    ) {
+        if (fs.existsSync(this.file_path)) {
+            this.last_mtime = fs.statSync(this.file_path).mtimeMs;
+        }
+        if (callback) {
+            this.subscriptions.push(callback);
+        }
+
+        this.watcher = vscode.workspace.createFileSystemWatcher(this.file_path);
+
+        this.watcher.onDidChange((_) => {
+            traceInfo(`vscode: ${this.file_path} changed`);
+            this.handle();
+        });
+        this.watcher.onDidCreate((_) => {
+            traceInfo(`vscode: ${this.file_path} created`);
+            this.handle();
+        });
+        this.watcher.onDidDelete((_) => {
+            traceInfo(`vscode: ${this.file_path} deleted`);
+            this.handle();
+        });
+
+        // setup timer to check if the file has been modified
+        this.timer = setInterval(() => {
+            this.handle();
+        }, 1000);
+    }
+
+    private last_mtime: number | undefined;
+    private checkForChangesAndSave(): FileEventType {
+        // TODO handle mTime missing
+        const mtime = fs.statSync(this.file_path).mtimeMs;
+        traceInfo(`${this.file_path} mtime: ${mtime}, last_mtime: ${this.last_mtime}`);
+        if (mtime === this.last_mtime) {
+            return FileEventType.Unchanged;
+        }
+        const existed_before = this.last_mtime !== undefined;
+        const exists_now = mtime !== undefined;
+        this.last_mtime = mtime;
+        if (existed_before && !exists_now) {
+            return FileEventType.Delete;
+        }
+        if (!existed_before && exists_now) {
+            return FileEventType.Create;
+        }
+        return FileEventType.Change;
+    }
+
+    private handle(): void {
+        const file_event = this.checkForChangesAndSave();
+        if (file_event === FileEventType.Unchanged) {
+            return;
+        }
+        this.subscriptions.forEach((callback) => callback(file_event));
+    }
+
+    public subscribe(callback: (type: FileEventType) => void): void {
+        this.subscriptions.push(callback);
+    }
+
+    public dispose(): void {
+        this.watcher.dispose();
+        clearInterval(this.timer);
+    }
+}
+
 export abstract class FileResourceWatcher<T extends FileResource> {
-    private watcher: vscode.FileSystemWatcher | undefined;
+    private watcher: FileWatcher | undefined;
     private current: T | undefined;
     private onChangedEvent: vscode.EventEmitter<T | undefined>;
     public readonly onChanged: vscode.Event<T | undefined>;
@@ -54,6 +136,10 @@ export abstract class FileResourceWatcher<T extends FileResource> {
         this.onChangedEvent.fire(resource);
     }
 
+    public forceNotify(): void {
+        this.notifyChange(this.current);
+    }
+
     private setupWatcher(resource: T | undefined): void {
         this.disposeWatcher();
 
@@ -61,20 +147,14 @@ export abstract class FileResourceWatcher<T extends FileResource> {
             return;
         }
 
-        this.watcher = vscode.workspace.createFileSystemWatcher(resource.path);
-
-        const onChange = () => {
-            traceInfo(`${this.resourceName} watcher triggered for ${resource.path}`);
-            this.notifyChange(resource);
-        };
-
-        const onCreateDelete = () => {
-            this.setCurrent(this.getResourceForBuild(getBuildTarget()));
-        };
-
-        this.watcher.onDidChange(onChange);
-        this.watcher.onDidCreate(onCreateDelete);
-        this.watcher.onDidDelete(onCreateDelete);
+        this.watcher = new FileWatcher(resource.path, (type) => {
+            traceInfo(`${this.resourceName} watcher triggered by ${type} for ${resource.path}`);
+            if (type === FileEventType.Change) {
+                this.notifyChange(resource);
+            } else {
+                this.setCurrent(this.getResourceForBuild(getBuildTarget()));
+            }
+        });
     }
 
     private disposeWatcher(): void {
