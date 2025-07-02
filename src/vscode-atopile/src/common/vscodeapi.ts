@@ -70,7 +70,7 @@ export async function getWorkspaceFoldersWithFile(glob: string): Promise<readonl
 }
 
 export async function getAtopileWorkspaceFolders(): Promise<readonly WorkspaceFolder[]> {
-    return await getWorkspaceFoldersWithFile('ato.yaml');
+    return await getWorkspaceFoldersWithFile('**/ato.yaml');
 }
 
 const vscodeVariables = require('vscode-variables');
