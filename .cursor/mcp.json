@@ -1,0 +1,13 @@
+{
+    "mcpServers": {
+        "atopile": {
+            "command": "/home/needspeed/workspace/atopile/.venv/bin/ato",
+            "args": [
+                "mcp",
+                "start",
+                "--no-http"
+            ],
+            "env": {}
+        }
+    }
+}
