@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { getLogoUri } from '../common/logo';
 import { BaseWebview } from './webview-base';
+import { traceInfo } from '../common/log/logging';
 
 const packagesUrl = 'https://packages.atopile.io';
 
@@ -17,7 +18,16 @@ class PackageExplorerWebview extends BaseWebview {
         });
     }
 
-    protected getHtmlContent(_webview: vscode.Webview): string {
+    private getPackagesUrl(path?: string): string {
+        if (path) {
+            traceInfo(`getPackagesUrl: ${packagesUrl}/${path}?embedded=true`);
+            return `${packagesUrl}/${path}?embedded=true`;
+        }
+        traceInfo(`getPackagesUrl: ${packagesUrl}?embedded=true`);
+        return `${packagesUrl}?embedded=true`;
+    }
+
+    protected getHtmlContent(_webview: vscode.Webview, path?: string): string {
         return `<!DOCTYPE html>
 <html>
 <head>
@@ -39,7 +49,7 @@ class PackageExplorerWebview extends BaseWebview {
     </style>
 </head>
 <body>
-    <iframe id="packages-iframe" src="${packagesUrl}?embedded=true"></iframe>
+    <iframe id="packages-iframe" src="${this.getPackagesUrl(path)}"></iframe>
     <script>
         const vscode = acquireVsCodeApi();
         const iframe = document.getElementById('packages-iframe');
@@ -117,9 +127,9 @@ class PackageExplorerWebview extends BaseWebview {
 
 let packageExplorer: PackageExplorerWebview | undefined;
 
-export async function openPackageExplorer() {
+export async function openPackageExplorer(packageIdentifier?: string) {
     if (!packageExplorer) {
         packageExplorer = new PackageExplorerWebview();
     }
-    await packageExplorer.open();
+    await packageExplorer.open(packageIdentifier);
 }

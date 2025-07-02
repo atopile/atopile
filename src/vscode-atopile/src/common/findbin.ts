@@ -92,6 +92,7 @@ async function _getAtoBin(settings?: ISettings): Promise<AtoBinLocator | null> {
             traceVerbose(`Using from: ${from}`);
             return {
                 // TODO don't hardcode python version lol
+                // @python3.14
                 command: [uvBinLocal, 'tool', 'run', '-p', '3.13', '--from', from, 'ato'],
                 source: 'local-uv',
             };
