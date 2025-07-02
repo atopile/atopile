@@ -72,6 +72,7 @@ from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_d
 from faebryk.library.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
 from faebryk.library.has_part_removed import has_part_removed
 from faebryk.library.implements_design_check import implements_design_check
+from faebryk.library.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.can_bridge_defined import can_bridge_defined
 from faebryk.library.has_datasheet_defined import has_datasheet_defined
 from faebryk.library.has_esphome_config_defined import has_esphome_config_defined
@@ -176,6 +177,7 @@ from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
 from faebryk.library.MultiSPI import MultiSPI
+from faebryk.library.PDM import PDM
 from faebryk.library.Pinmux import Pinmux
 from faebryk.library.RS232 import RS232
 from faebryk.library.SPI import SPI
