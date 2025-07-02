@@ -8,19 +8,33 @@ from pydantic import BaseModel
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
-from faebryk.libs.util import root_by_file
+from faebryk.libs.util import ConfigFlag, root_by_file
 
 mcp = FastMCP("atopile", stateless_http=True)
 
 
 logger = logging.getLogger(__name__)
-# log to file
-# TODO dont forget to remove this
-handler = logging.FileHandler(Path(__file__).parent / "mcp.log")
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+
+DEBUG = ConfigFlag("MCP_DEBUG", default=False)
+
+
+def _setup_debug(enable: bool = False):
+    """
+    Setup debug logging to file
+    """
+    if not enable:
+        return
+
+    handler = logging.FileHandler(Path(__file__).parent / "mcp.log")
+    handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+
+
+_setup_debug(enable=bool(DEBUG))
 
 
 class Language(StrEnum):
@@ -103,11 +117,6 @@ def _get_library_node(name: str, t: type[Node] = Node) -> NodeInfo:
     return NodeInfo(
         name=name, docstring=docstring, locator=locator, language=language, code=code
     )
-
-
-@mcp.tool()
-def get_version() -> str:
-    return "1.0.0"
 
 
 @mcp.tool()
