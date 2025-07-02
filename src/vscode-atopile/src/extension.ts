@@ -67,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await ui.activate(context);
     await llm.activate(context);
 
-    traceInfo(`Atopile extension activated in IDE: ${get_ide_type()}`);
+    traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
 }
 
 export async function deactivate(): Promise<void> {
