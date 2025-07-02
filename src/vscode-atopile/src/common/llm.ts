@@ -1,5 +1,7 @@
 import { getAtoBin } from './findbin';
+import { traceInfo } from './log/logging';
 import { loadResource } from './resources';
+import { dedent, indent } from './utilities';
 import { getWorkspaceFolders, install_mcp_server, install_rule } from './vscodeapi';
 
 export async function ask_for_installing_rules_and_mcp_server() {
@@ -11,17 +13,19 @@ export async function ask_for_installing_rules_and_mcp_server() {
     const workspaces = getWorkspaceFolders();
     // TODO filter workspaces with ato projects
 
-    //install_rule(
-    //    'ato',
-    //    {
-    //        description: 'ato is a declarative DSL to design electronics (PCBs) with.',
-    //        globs: ['*.ato', 'ato.yaml'],
-    //        alwaysApply: true,
-    //        text: build_rules(),
-    //    },
-    //    workspaces,
-    //);
+    traceInfo('Installing ato rule');
+    install_rule(
+        'ato',
+        {
+            description: 'ato is a declarative DSL to design electronics (PCBs) with.',
+            globs: ['*.ato', 'ato.yaml'],
+            alwaysApply: true,
+            text: build_rules(),
+        },
+        workspaces,
+    );
 
+    traceInfo('Installing atopile MCP server');
     install_mcp_server(
         'atopile',
         {
@@ -35,7 +39,9 @@ export async function ask_for_installing_rules_and_mcp_server() {
 
 function _read_template(file_name: string): string {
     const content = loadResource(`templates/rules/${file_name}`);
-    return content;
+    // indenting with 8 to bring to same level as first line
+    // where its being inserted
+    return indent(content, 8, true);
 }
 
 function _md(file_name: string): string {
@@ -43,7 +49,9 @@ function _md(file_name: string): string {
 }
 
 function _code(file_name: string, type: string): string {
-    return `\`\`\`${type}\n${_read_template(file_name)}\n\`\`\``;
+    // indenting with 8 to bring to same level as first line
+    // where its being inserted
+    return `\`\`\`${type}\n        ${_read_template(file_name)}\n        \`\`\``;
 }
 
 function _ato(file_name: string): string {
@@ -84,5 +92,5 @@ function build_rules() {
         ${_md('ato.md')}
     `;
 
-    return TEMPLATE;
+    return dedent(TEMPLATE);
 }

@@ -20,6 +20,7 @@ import {
 } from 'vscode';
 import { dedent } from './utilities';
 import path = require('path');
+import { traceInfo } from './log/logging';
 
 export function createOutputChannel(name: string): LogOutputChannel {
     return window.createOutputChannel(name, { log: true });
@@ -115,18 +116,21 @@ interface MCP_Host {
 
 class Cursor implements LLM_Rule_Host, MCP_Host {
     get_rule_path(name: string): string {
-        return `\${workspaceFolder}.cursor/rules/${name}.mdc`;
+        return `\${workspaceFolder}/.cursor/rules/${name}.mdc`;
     }
     build_rule(rule: LLM_Rule): string {
-        return dedent(
-            `
+        return (
+            dedent(
+                `
             ---
             description: ${rule.description}
             globs: ${rule.globs.join(', ')}
             alwaysApply: ${rule.alwaysApply}
             ---
-            ${rule.text}
         `,
+            ) +
+            '\n' +
+            rule.text
         );
     }
 
@@ -162,15 +166,18 @@ class Windsurf implements LLM_Rule_Host {
     }
 
     build_rule(rule: LLM_Rule): string {
-        return dedent(
-            `
+        return (
+            dedent(
+                `
             ---
             description: ${rule.description}
             globs: ${rule.globs.join(', ')}
             alwaysApply: ${rule.alwaysApply}
             ---
-            ${rule.text}
         `,
+            ) +
+            '\n' +
+            rule.text
         );
     }
 
@@ -183,14 +190,17 @@ class Copilot implements LLM_Rule_Host {
     }
 
     build_rule(rule: LLM_Rule): string {
-        return dedent(
-            `
+        return (
+            dedent(
+                `
             ---
             description: ${rule.description}
             applyTo: ${rule.globs.join(', ')}
             ---
-            ${rule.text}
         `,
+            ) +
+            '\n' +
+            rule.text
         );
     }
 
@@ -218,6 +228,7 @@ export function install_rule(
         for (const [_, host] of Object.entries(rule_hosts)) {
             const rel_path = host.get_rule_path(name);
             const full_path = resolvePath(rel_path, workspace);
+            traceInfo(`Installing rule ${name} to ${full_path}`);
 
             const dir = path.dirname(full_path);
             fs.mkdirSync(dir, { recursive: true });
