@@ -752,7 +752,7 @@ class ProjectConfig(BaseConfigModel):
     """A map of all the build targets (/ "builds") in this project."""
 
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    open_layout_on_build: bool | None = None
+    open_layout_on_build: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
 
     @classmethod
