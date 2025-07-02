@@ -21,7 +21,7 @@ def build(
     entry: Annotated[
         str | None,
         typer.Argument(
-            help="Path to the project directory or build target address"
+            help="Path to the project directory or build target address "
            '("path_to.ato:Module")'
         ),
     ] = None,
