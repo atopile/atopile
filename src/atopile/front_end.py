@@ -1796,11 +1796,37 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # Check if it's a property or attribute that can be set
         if has_instance_settable_attr(target, assigned_name.name):
-            try:
-                setattr(target, assigned_name.name, value)
-            except errors.UserException as e:
-                e.attach_origin_from_ctx(assignable_ctx)
-                raise
+            attr = getattr(target, assigned_name.name)
+            if (
+                isinstance(attr, Parameter)
+                # non-string enum values would need parser changes
+                and isinstance(value, str)
+                and isinstance(attr.domain, L.Domains.ENUM)
+            ):
+                try:
+                    value = attr.domain.enum_t[value]
+                except KeyError:
+                    expected_values = ", ".join(
+                        [
+                            f"`{member.name}`"
+                            for member in attr.domain.enum_t.__members__.values()
+                        ]
+                    )
+                    raise errors.UserValueError.from_ctx(
+                        assignable_ctx,
+                        f"Invalid value for `{attr.domain.enum_t.__qualname__}`. "
+                        f"Expected one of: {expected_values}.",
+                        traceback=self.get_traceback(),
+                    )
+
+                attr.constrain_subset(value)
+
+            else:
+                try:
+                    setattr(target, assigned_name.name, value)
+                except errors.UserException as e:
+                    e.attach_origin_from_ctx(assignable_ctx)
+                    raise
         elif (
             # If ModuleShims has a settable property, use it
             hasattr(GlobalAttributes, assigned_name.name)
