@@ -50,7 +50,6 @@ from atopile.errors import (
     UserException,
     UserFileNotFoundError,
     UserNoProjectException,
-    UserNotImplementedError,
 )
 from atopile.version import (
     DISTRIBUTION_NAME,
@@ -1168,7 +1167,6 @@ class Config:
         self,
         entry: str | None,
         standalone: bool = False,
-        option: Iterable[str] = (),
         target: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
         frozen: bool | None = None,
@@ -1195,15 +1193,6 @@ class Config:
         self.project.entry = entry
 
         logger.info("Using project %s", self.project_dir)
-
-        # add custom config overrides
-        if option:
-            raise UserNotImplementedError(
-                "Custom config overrides have been removed in a refactor. "
-                "It's planned to re-add them in a future release. "
-                "If this is a blocker for you, please raise an issue. "
-                "In the meantime, you can use the `ato.yaml` file to set these options."
-            )
 
         # if we set an entry-point, we now need to deal with that
         entry_addr_override = self._check_entry_arg_file_path(
