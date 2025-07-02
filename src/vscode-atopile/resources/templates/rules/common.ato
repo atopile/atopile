@@ -1,0 +1,27 @@
+interface Electrical:
+    pass
+
+interface ElectricPower:
+    hv = new Electrical
+    lv = new Electrical
+
+module Resistor:
+    resistance: ohm
+    max_power: W
+    max_voltage: V
+    unnamed = new Electrical[2]
+
+module Capacitor:
+    capacitance: F
+    max_voltage: V
+    unnamed = new Electrical[2]
+
+interface I2C:
+    scl = new ElectricLogic
+    sda = new ElectricLogic
+    frequency: Hz
+    address: dimensionless
+
+interface ElectricLogic:
+    line = new Electrical
+    reference = new ElectricPower
