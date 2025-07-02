@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { getBuildTarget, onBuildTargetChanged } from '../common/target';
-import { traceInfo } from './log/logging';
+import { traceVerbose, traceInfo } from './log/logging';
 import { Build } from './manifest';
 import * as fs from 'fs';
 
@@ -35,15 +35,15 @@ class FileWatcher implements vscode.Disposable {
         this.watcher = vscode.workspace.createFileSystemWatcher(this.file_path);
 
         this.watcher.onDidChange((_) => {
-            traceInfo(`vscode: ${this.file_path} changed`);
+            traceVerbose(`vscode: ${this.file_path} changed`);
             this.handle();
         });
         this.watcher.onDidCreate((_) => {
-            traceInfo(`vscode: ${this.file_path} created`);
+            traceVerbose(`vscode: ${this.file_path} created`);
             this.handle();
         });
         this.watcher.onDidDelete((_) => {
-            traceInfo(`vscode: ${this.file_path} deleted`);
+            traceVerbose(`vscode: ${this.file_path} deleted`);
             this.handle();
         });
 
@@ -57,10 +57,10 @@ class FileWatcher implements vscode.Disposable {
     private checkForChangesAndSave(): FileEventType {
         // TODO handle mTime missing
         const mtime = fs.statSync(this.file_path).mtimeMs;
-        traceInfo(`${this.file_path} mtime: ${mtime}, last_mtime: ${this.last_mtime}`);
         if (mtime === this.last_mtime) {
             return FileEventType.Unchanged;
         }
+        traceVerbose(`${this.file_path} mtime: ${mtime}, last_mtime: ${this.last_mtime}`);
         const existed_before = this.last_mtime !== undefined;
         const exists_now = mtime !== undefined;
         this.last_mtime = mtime;
@@ -147,6 +147,7 @@ export abstract class FileResourceWatcher<T extends FileResource> {
             return;
         }
 
+        traceInfo(`Setting up watcher for ${resource.path}`);
         this.watcher = new FileWatcher(resource.path, (type) => {
             traceInfo(`${this.resourceName} watcher triggered by ${type} for ${resource.path}`);
             if (type === FileEventType.Change) {
