@@ -313,3 +313,15 @@ def test_pick_voltage_divider_complex():
     #    if not m.has_trait(F.has_part_picked):
     #        continue
     #    print(m.get_full_name(), m.pretty_params(solver))
+
+
+@pytest.mark.usefixtures("setup_project_config")
+def test_pick_capacitor_temperature_coefficient():
+    # the picker backend must have access to the same enum definition for this to work
+    cap = F.Capacitor()
+    cap.temperature_coefficient.constrain_subset(F.Capacitor.TemperatureCoefficient.X7R)
+
+    solver = DefaultSolver()
+    pick_part_recursively(cap, solver)
+
+    assert cap.has_trait(F.has_part_picked)
