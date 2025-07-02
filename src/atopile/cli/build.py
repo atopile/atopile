@@ -25,9 +25,6 @@ def build(
     target: Annotated[
         list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
     ] = [],
-    option: Annotated[
-        list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
-    ] = [],
     frozen: Annotated[
         bool | None,
         typer.Option(
@@ -58,7 +55,6 @@ def build(
         entry=entry,
         selected_builds=selected_builds,
         target=target,
-        option=option,
         standalone=standalone,
         frozen=frozen,
         keep_picked_parts=keep_picked_parts,
