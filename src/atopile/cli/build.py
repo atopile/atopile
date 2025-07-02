@@ -22,7 +22,7 @@ def build(
         str | None,
         typer.Argument(
             help="Path to the project directory or build target address "
-           '("path_to.ato:Module")'
+            '("path_to.ato:Module")'
         ),
     ] = None,
     selected_builds: Annotated[
