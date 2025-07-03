@@ -57,7 +57,7 @@ async function rebuild3DModel() {
         return;
     }
     // check model newer than pcb
-    if (model && model.exists && fs.statSync(model.path).mtimeMs > fs.statSync(pcb.path).mtimeMs) {
+    if (model && model.exists && fs.statSync(model.path).mtimeMs >= fs.statSync(pcb.path).mtimeMs) {
         traceInfo(`3dmodel: rebuild3DModel: Model is up to date: ${model.path}`);
         return;
     }
