@@ -1,10 +1,9 @@
 from pathlib import Path
 
-# from atopile.mcp.util import mcp_decorate
+from atopile.mcp.util import mcp_decorate
 
 
-# TODO
-# @mcp_decorate()
+@mcp_decorate()
 def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> str:
     """
     Build an atopile project using the ato CLI.
@@ -24,8 +23,7 @@ def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> str:
     return f"Built project {absolute_project_dir} with target {target_name_from_yaml}"
 
 
-# TODO
-# @mcp_decorate()
+@mcp_decorate()
 def search_and_install_jlcpcb_part(lcsc_part_number: str) -> str:
     """
     Search for a part on JLCPCB and install it.
@@ -39,8 +37,7 @@ def search_and_install_jlcpcb_part(lcsc_part_number: str) -> str:
     return "Done"
 
 
-# TODO
-# @mcp_decorate()
+@mcp_decorate()
 def install_package(
     package_identifiers: list[str], project_path: Path | None = None
 ) -> str:

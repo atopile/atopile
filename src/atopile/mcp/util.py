@@ -57,8 +57,13 @@ def register_tools(mcp: FastMCP):
     for file in os.listdir(current_dir):
         if file == __file__:
             continue
+        if not file.endswith(".py"):
+            continue
         module_name = f"atopile.mcp.{file.replace('.py', '')}"
-        importlib.import_module(module_name)
+        try:
+            importlib.import_module(module_name)
+        except Exception as e:
+            logger.warning(f"Error importing module {module_name}: {e}")
 
     # Run mcp decorators
     for func, decorator in TOOLS.items():
