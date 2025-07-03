@@ -32,7 +32,7 @@ class has_pcb_routing_strategy_via_to_layer(F.has_pcb_routing_strategy.impl()):
         node = self.obj
         nets = get_internal_nets_of_node(node)
 
-        logger.debug(f"Routing {node} {'-'*40}")
+        logger.debug(f"Routing {node} {'-' * 40}")
 
         def get_route_for_net(net: F.Net, mifs) -> Route | None:
             net_name = net.get_trait(F.has_overriden_name).get_name()

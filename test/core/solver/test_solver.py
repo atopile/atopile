@@ -63,6 +63,11 @@ from faebryk.libs.sets.quantity_sets import (
 from faebryk.libs.sets.sets import BoolSet, EnumSet, as_lit
 from faebryk.libs.units import P, Quantity, dimensionless, quantity
 from faebryk.libs.util import cast_assert, not_none, times
+from test.common.resources.fabll_modules.RP2040 import RP2040
+from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
+    RP2040_ReferenceDesign,
+)
+from test.common.resources.fabll_modules.USB_C_PSU_Vertical import USB_C_PSU_Vertical
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +252,7 @@ def test_alias_classes():
 
 
 def test_solve_realworld():
-    app = F.RP2040()
+    app = RP2040()
     solver = DefaultSolver()
     solver.simplify_symbolically(app.get_graph())
     # TODO actually test something
@@ -255,7 +260,7 @@ def test_solve_realworld():
 
 @pytest.mark.slow
 def test_solve_realworld_bigger():
-    app = F.RP2040_ReferenceDesign()
+    app = RP2040_ReferenceDesign()
     F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
 
     solver = DefaultSolver()
@@ -268,8 +273,8 @@ def test_solve_realworld_bigger():
 def test_solve_realworld_biggest():
     class App(Module):
         led = L.f_field(F.LEDIndicator)(use_mosfet=False)
-        mcu: F.RP2040_ReferenceDesign
-        usb_power: F.USB_C_PSU_Vertical
+        mcu: RP2040_ReferenceDesign
+        usb_power: USB_C_PSU_Vertical
 
         def __preinit__(self):
             self.led.led.led.color.constrain_subset(F.LED.Color.YELLOW)

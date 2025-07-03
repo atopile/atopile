@@ -6,9 +6,13 @@ import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
 import { startOrRestartServer, initServer, onNeedsRestart } from './common/server';
 import { getLSClientTraceLevel } from './common/utilities';
-import { createOutputChannel } from './common/vscodeapi';
+import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
+import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
+import { onBuildTargetChanged } from './common/target';
+import { Build } from './common/manifest';
+import * as llm from './common/llm';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -38,6 +42,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     traceInfo(`Activating atopile extension`);
 
+    await initializeTelemetry(context);
+    captureEvent('vsce:startup');
+
     // Setup Language Server
     const _reStartServer = async () => {
         g_lsClient = await startOrRestartServer(SERVER_ID, SERVER_NAME, outputChannel, g_lsClient);
@@ -46,15 +53,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         onNeedsRestart(async () => {
             await _reStartServer();
         }),
+        onBuildTargetChanged(async (target: Build | undefined) => {
+            if (g_lsClient) {
+                g_lsClient.sendNotification('atopile/didChangeBuildTarget', {
+                    buildTarget: target?.entry ?? '',
+                });
+            }
+        }),
     );
 
     await initServer(context);
 
-    ui.activate(context);
+    await ui.activate(context);
+    await llm.activate(context);
+
+    traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
 }
 
 export async function deactivate(): Promise<void> {
     if (g_lsClient) {
         await g_lsClient.stop();
     }
+
+    deinitializeTelemetry();
 }

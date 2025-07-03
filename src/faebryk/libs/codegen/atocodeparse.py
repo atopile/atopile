@@ -9,6 +9,23 @@ from faebryk.core.trait import Trait
 
 logger = logging.getLogger(__name__)
 
+s = r"\s*"
+
+
+def p_group(pattern: str, name: str | None = None):
+    if not name:
+        return pattern
+    return rf"(?P<{name}>{pattern})"
+
+
+def p_string(name: str | None = None):
+    inner = p_group(r'([^"]*?)', name)
+    return rf'"{inner}"'
+
+
+def p_assignment(key_name: str | None = None, value_name: str | None = None):
+    return rf"{p_group(r'\w+', key_name)}{s}={s}{p_string(value_name)}{s}"
+
 
 class AtoCodeParse:
     """
@@ -39,17 +56,11 @@ class AtoCodeParse:
             )
             if not trait_match:
                 raise AtoCodeParse.TraitNotFound(f"Could not find {trait} trait")
-            arg_matches = [
-                # only strings supported
-                re.match(r'^(?P<k>\w+)\s*=\s*"(?P<v>.*?)"$', arg.strip())
-                for arg in (trait_match.group("args") or "")
-                .removeprefix("<")
-                .removesuffix(">")
-                .split(",")
-            ]
-            args = {
-                match.group("k"): match.group("v") for match in arg_matches if match
-            }
+            args_stmt = trait_match.group("args") or ""
+            m_args = re.finditer(
+                f"{p_assignment(key_name='k', value_name='v')}[,>]", args_stmt
+            )
+            args = {match.group("k"): match.group("v") for match in m_args if match}
 
             parsed_constructor = (
                 trait_match.group("constructor").removeprefix("::")

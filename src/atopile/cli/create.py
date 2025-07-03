@@ -20,7 +20,7 @@ from rich.table import Table
 from atopile import errors, version
 from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
-from atopile.telemetry import log_to_posthog
+from atopile.telemetry import capture
 from faebryk.libs.github import (
     GithubCLI,
     GithubCLINotFound,
@@ -40,8 +40,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
-PROJECT_TEMPLATE = "https://github.com/atopile/project-template"
 
 create_app = typer.Typer(
     rich_markup_mode="rich", help="Create projects / build targets / components"
@@ -328,33 +326,36 @@ def setup_github(
 
 
 @create_app.command()
-@log_to_posthog("cli:create_project_end")
-def project(
-    template: str = "https://github.com/atopile/project-template @ compiler-v0.4",
-):
+@capture("cli:create_project_start", "cli:create_project_end")
+def project(path: Annotated[Path | None, typer.Option()] = None):
     """
     Create a new ato project.
     """
-    # TODO: add template options
-
-    template_ref, *template_branch = template.split("@")
-    template_ref = template_ref.strip()
-    if template_branch:
-        template_branch = template_branch[0].strip()
-    else:
-        template_branch = None
+    TEMPLATE_DIR = Path(__file__).parent.parent / "project-template"
 
     extra_context = {
         "__ato_version": version.get_installed_atopile_version(),
         "__python_path": sys.executable,
     }
 
+    if path is None:
+        if config.interactive:
+            path = query_helper(
+                ":rocket: Where should we create the project?",
+                type_=Path,
+                default=Path.cwd(),
+                pre_entered=path,
+                validator=lambda x: x.is_dir(),
+            )
+        else:
+            path = Path.cwd()
+
     logging.info("Running cookie-cutter on the template")
     try:
         project_path = Path(
             cookiecutter(
-                template_ref,
-                checkout=template_branch,
+                str(TEMPLATE_DIR),
+                output_dir=str(path),
                 no_input=not config.interactive,
                 extra_context=dict(
                     filter(lambda x: x[1] is not None, extra_context.items())
@@ -430,7 +431,7 @@ def project(
 
 
 @create_app.command("build-target")
-@log_to_posthog("cli:create_build_target_end")
+@capture("cli:create_build_target_start", "cli:create_build_target_end")
 def build_target(
     build_target: Annotated[str | None, typer.Option()] = None,
     file: Annotated[Path | None, typer.Option()] = None,
@@ -589,7 +590,7 @@ class ComponentType(StrEnum):
 
 
 @create_app.command()
-@log_to_posthog("cli:create_component_end")
+@capture("cli:create_component_start", "cli:create_component_end")
 def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
     accept_single: Annotated[bool, typer.Option("--accept-single", "-a")] = False,
@@ -639,8 +640,8 @@ def part(
             continue
 
         component_table = Table()
-        component_table.add_column("Part Number")
         component_table.add_column("Manufacturer")
+        component_table.add_column("Part Number")
         component_table.add_column("Description")
         component_table.add_column("Supplier ID")
         component_table.add_column("Stock")
@@ -694,10 +695,21 @@ def part(
     except Exception as e:
         raise errors.UserException(str(e)) from e
 
-    rich_print_robust(f":sparkles: Created {apart.identifier} at {apart.path} !")
+    rich_print_robust(
+        f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
+    )
+    path = apart.ato_path.relative_to(config.project.paths.src)
+    rich_print_robust(
+        f'```ato\nfrom "{path}" import {apart.module_name}\n```', markdown=True
+    )
 
 
 @create_app.command(deprecated=True)
+@capture(
+    "cli:create_component_start",
+    "cli:create_component_end",
+    properties={"deprecated_command": True},
+)
 def component(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
 ):

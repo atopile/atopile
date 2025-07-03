@@ -46,7 +46,7 @@ class has_pcb_routing_strategy_greedy_direct_line(F.has_pcb_routing_strategy.imp
         node = self.obj
         nets = get_internal_nets_of_node(node)
 
-        logger.debug(f"Routing {node} {'-'*40}")
+        logger.debug(f"Routing {node} {'-' * 40}")
         # TODO avoid crossing pads
         # might make this very complex though
 

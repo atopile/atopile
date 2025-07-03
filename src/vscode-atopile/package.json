@@ -29,7 +29,8 @@
         "Snippets"
     ],
     "extensionDependencies": [
-        "ms-python.python"
+        "ms-python.python",
+        "vscode.git"
     ],
     "capabilities": {
         "virtualWorkspaces": {
@@ -77,9 +78,39 @@
                     "scope": "resource",
                     "type": "string",
                     "default": "atopile"
+                },
+                "atopile.telemetry": {
+                    "description": "Send telemetry data",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true
                 }
             }
         },
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "atopile-explorer",
+                    "title": "atopile",
+                    "icon": "ato_logo_256x256.png"
+                }
+            ]
+        },
+        "views": {
+            "atopile-explorer": [
+                {
+                    "id": "atopile.project",
+                    "name": "Project",
+                    "contextualTitle": "atopile Project"
+                }
+            ]
+        },
+        "viewsWelcome": [
+            {
+                "view": "atopile.project",
+                "contents": "You have not opened an atopile project.\n\n[Create New Project](command:atopile.create_project)\n\n[Open Existing Project](command:vscode.openFolder)\n\n[Open Example Projects](command:atopile.example)\n\nRead the [docs](https://docs.atopile.io) or checkout the [source code](https://github.com/atopile/atopile)."
+            }
+        ],
         "commands": [
             {
                 "title": "Restart Server",
@@ -136,6 +167,26 @@
                 "command": "atopile.shell",
                 "title": "Open ato shell",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.package_explorer",
+                "title": "Open package explorer",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.kicanvas_preview",
+                "title": "Open Layout Preview",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.model_viewer_preview",
+                "title": "Open 3D Model Preview",
+                "category": "atopile"
+            },
+            {
+                "command": "atopile.llm.setup",
+                "title": "Setup LLM rules & MCP",
+                "category": "atopile"
             }
         ],
         "languages": [
@@ -170,9 +221,11 @@
         "decompress": "^4.2.1",
         "fs-extra": "^11.2.0",
         "ovsx": "^0.10.1",
+        "posthog-node": "^5.1.1",
         "vscode-languageclient": "^9.0.1",
         "vscode-variables": "^1.0.1",
-        "which": "^5.0.0"
+        "which": "^5.0.0",
+        "yaml": "^2.8.0"
     },
     "devDependencies": {
         "@types/fs-extra": "^11.0.4",

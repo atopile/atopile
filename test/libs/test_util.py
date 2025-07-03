@@ -205,3 +205,16 @@ def test_dag():
 def test_complete_type_string():
     a = {"a": 1, 5: object(), "c": {"a": 1}}
     assert complete_type_string(a) == "dict[str | int, int | object | dict[str, int]]"
+
+
+def test_ordered_set():
+    from ordered_set import OrderedSet
+
+    s = OrderedSet([1, 4, 2, 3, 4])
+    assert s == {1: None, 4: None, 2: None, 3: None}
+    assert s == {1, 4, 2, 3}
+    assert list(s) == [1, 4, 2, 3]
+
+    x = s | {5, 7, 6}
+    assert x == {1, 4, 2, 3, 5, 6, 7}
+    assert list(x) == [1, 4, 2, 3, 5, 6, 7]

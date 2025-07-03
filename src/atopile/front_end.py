@@ -60,7 +60,7 @@ from faebryk.core.parameter import (
     Min,
     Parameter,
 )
-from faebryk.core.trait import Trait
+from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import accumulate, downgrade, iter_through_errors
 from faebryk.libs.library.L import Range, Single
 from faebryk.libs.picker.picker import does_not_require_picker_check
@@ -204,6 +204,24 @@ class from_dsl(Trait.decless()):
             out += f"\n\n{doc}"
 
         return out
+
+    @property
+    @once
+    def src_file(self) -> Path:
+        file, _, _, _, _ = get_src_info_from_ctx(self.src_ctx)
+        return Path(file)
+
+    @property
+    @once
+    def definition_file(self) -> Path | None:
+        match self.definition_ctx:
+            case ap.BlockdefContext():
+                file, _, _, _, _ = get_src_info_from_ctx(self.definition_ctx)
+                return Path(file)
+            case L.Node:
+                return Path(inspect.getfile(self.definition_ctx))
+            case _:
+                return None
 
     def _describe(self) -> str:
         def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
@@ -1515,8 +1533,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if not new_node.has_trait(_has_ato_cmp_attrs):
                     new_node.add(_has_ato_cmp_attrs())
 
-        yield new_node
+            if not new_node.has_trait(from_dsl):
+                from_dsl_ = new_node.add(from_dsl(node_type))
+                from_dsl_.set_definition(node_type)
 
+        yield new_node
         with self._node_stack.enter(new_node):
             for super_ctx in promised_supers:
                 # TODO: this would be better if we had the
@@ -1524,10 +1545,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 with self._traceback_stack.enter(super_ctx.name()):
                     self.visitBlock(super_ctx.block())
 
-        # Deferred to after node is fully initialised in order for all pins to be
-        # available for pinmap
-        if new_node.has_trait(F.is_atomic_part):
-            new_node.get_trait(F.is_atomic_part).attach()
+        # Deferred to after node is fully initialised
+        traits = new_node.get_children(direct_only=True, types=L.Trait)
+        for trait in traits:
+            if trait.has_trait(F.is_lazy):
+                assert TraitImpl.is_traitimpl(trait)
+                cast(TraitImpl, trait).on_obj_set()
 
     def _get_param(
         self, node: L.Node, ref: ReferencePartType, src_ctx: ParserRuleContext
@@ -1670,10 +1693,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"Field `{assigned_name}` already exists",
                     traceback=self.get_traceback(),
                 ) from e
+
             from_dsl_ = node.add(from_dsl(type_ref_ctx))
             from_dsl_.add_reference(assigned_ctx)
 
-            if node_type is not None:
+            if node_type is not None and isinstance(node_type, ap.BlockdefContext):
                 from_dsl_.set_definition(node_type)
 
         try:

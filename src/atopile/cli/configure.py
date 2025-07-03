@@ -3,16 +3,16 @@ Configure the user's system for atopile development.
 """
 
 import logging
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from textwrap import dedent
-from typing import Optional
 
 import questionary
-from attrs import asdict, define
 from ruamel.yaml import YAML, YAMLError
 
 import atopile.config
 import atopile.version
+from atopile.telemetry import capture
 from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.paths import get_config_dir
 
@@ -24,10 +24,10 @@ CONFIGURED_FOR_PATH = get_config_dir() / "configured_for.yaml"
 logger = logging.getLogger(__name__)
 
 
-@define
+@dataclass
 class Config:
-    version: Optional[str] = None
-    install_kicad_plugin: Optional[bool] = None
+    version: str | None = None
+    install_kicad_plugin: bool | None = None
 
 
 config = Config()
@@ -52,9 +52,13 @@ def _save_config() -> None:
 
 def get_configured_for_version() -> atopile.version.Version:
     """Return the version of atopile that the user's system is configured for."""
+    if config.version is None:
+        raise ValueError("No version configured")
+
     return atopile.version.clean_version(atopile.version.Version.parse(config.version))
 
 
+@capture("cli:configure_start", "cli:configure_end")
 def configure() -> None:
     """
     Configure the user's system for atopile development.
@@ -115,6 +119,7 @@ def do_configure() -> None:
     _save_config()
 
 
+@capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")
 def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
     # Find the path to kicad's plugin directory

@@ -5,6 +5,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { traceInfo } from '../common/log/logging';
 import * as buttons from './buttons';
+import { captureEvent } from '../common/telemetry';
 
 const REPO = 'atopile/atopile';
 const REF = null;
@@ -31,6 +32,8 @@ export async function example_flow() {
     // - use github.ts to download and extract the zip
     //
 
+    captureEvent('vsce:example_start');
+
     const examples: Example[] = [
         ...(await github.listDirectoriesInRepoSubfolder(REPO, REF, 'examples')).map((e) => ({
             name: e,
@@ -46,9 +49,15 @@ export async function example_flow() {
         },
     );
 
-    if (!example) {
+    if (example) {
+        captureEvent('vsce:example_select', {
+            example: example.label,
+        });
+    } else {
+        captureEvent('vsce:example_select_cancel');
         return;
     }
+
     const examplePath = examples.find((e) => e.name === example.label)?.path;
     if (!examplePath) {
         vscode.window.showErrorMessage('Invalid example selected');
@@ -112,6 +121,8 @@ export async function example_flow() {
                     vscode.window.showInformationMessage(
                         `Example project loaded into current workspace: ${workspaceRoot}`,
                     );
+
+                    captureEvent('vsce:example_success');
                 }
 
                 await buttons.forceReloadButtons();
@@ -119,6 +130,9 @@ export async function example_flow() {
                 console.error('Failed to setup example project:', error);
                 const message = error instanceof Error ? error.message : String(error);
                 vscode.window.showErrorMessage(`Failed to load example project: ${message}`);
+                captureEvent('vsce:example_fail', {
+                    error: message,
+                });
             }
         },
     );
