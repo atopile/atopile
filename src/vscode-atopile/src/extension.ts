@@ -6,12 +6,13 @@ import { LanguageClient } from 'vscode-languageclient/node';
 import { registerLogger, traceInfo, traceLog, traceVerbose } from './common/log/logging';
 import { startOrRestartServer, initServer, onNeedsRestart } from './common/server';
 import { getLSClientTraceLevel } from './common/utilities';
-import { createOutputChannel } from './common/vscodeapi';
+import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
 import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
 import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
+import * as llm from './common/llm';
 
 export let g_lsClient: LanguageClient | undefined;
 
@@ -64,6 +65,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await initServer(context);
 
     await ui.activate(context);
+    await llm.activate(context);
+
+    traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
 }
 
 export async function deactivate(): Promise<void> {

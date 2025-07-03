@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
 import { onPcbChanged, getCurrentPcb } from '../common/pcb';
-import { getResourcesPath } from '../common/resources';
+import { getAndCheckResource, getResourcesPath } from '../common/resources';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
 
@@ -49,11 +49,7 @@ class KiCanvasWebview extends BaseWebview {
     }
 
     private getKiCanvasScriptUri(webview: vscode.Webview): vscode.Uri {
-        const candidate = path.join(getResourcesPath(), 'kicanvas', 'kicanvas.js');
-        if (!fs.existsSync(candidate)) {
-            throw new Error(`kicanvas.js could not be found in ${candidate}. Make sure it is included.`);
-        }
-        return webview.asWebviewUri(vscode.Uri.file(candidate));
+        return webview.asWebviewUri(vscode.Uri.file(getAndCheckResource('kicanvas/kicanvas.js')));
     }
 }
 

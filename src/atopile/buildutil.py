@@ -339,7 +339,7 @@ def generate_bom(app: Module, solver: Solver) -> None:
     )
 
 
-@muster.register("3d-model", default=True, requires_kicad=True)
+@muster.register("3d-model", default=False, requires_kicad=True)
 def generate_3d_model(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
 

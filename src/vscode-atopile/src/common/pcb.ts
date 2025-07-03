@@ -4,10 +4,7 @@ import { Build } from './manifest';
 import * as fs from 'fs';
 import { FileResource, FileResourceWatcher } from './file-resource-watcher';
 
-interface PCB extends FileResource {
-    path: string;
-    exists: boolean;
-}
+interface PCB extends FileResource {}
 
 class PCBWatcher extends FileResourceWatcher<PCB> {
     constructor() {
@@ -27,7 +24,7 @@ class PCBWatcher extends FileResourceWatcher<PCB> {
 const pcbWatcher = new PCBWatcher();
 
 export const onPcbChanged = pcbWatcher.onChanged;
-export const onPcbChangedEvent = { fire: (_: PCB | undefined) => { } }; // Deprecated
+export const onPcbChangedEvent = { fire: (_: PCB | undefined) => {} }; // Deprecated
 
 export function getCurrentPcb(): PCB | undefined {
     return pcbWatcher.getCurrent();

@@ -182,6 +182,11 @@
                 "command": "atopile.model_viewer_preview",
                 "title": "Open 3D Model Preview",
                 "category": "atopile"
+            },
+            {
+                "command": "atopile.llm.setup",
+                "title": "Setup LLM rules & MCP",
+                "category": "atopile"
             }
         ],
         "languages": [

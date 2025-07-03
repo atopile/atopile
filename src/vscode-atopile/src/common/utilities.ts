@@ -136,3 +136,32 @@ export function disambiguatePaths(iterable: Iterable<any>, path_key: (item: any)
 
     return result;
 }
+
+export function dedent(input_string: string, remove_first_line: boolean = true): string {
+    /**
+     * Determine common indentation of all non-empty lines
+     * Remove that indentation from all lines
+     * Return the dedented string
+     */
+    const lines = input_string.split('\n');
+    if (remove_first_line && lines.length > 0 && lines[0].trim().length === 0) {
+        lines.shift();
+    }
+
+    const non_empty_lines = lines.filter((line) => line.trim().length > 0);
+
+    if (non_empty_lines.length === 0) {
+        return input_string;
+    }
+
+    const min_indent = Math.min(...non_empty_lines.map((line) => line.match(/^\s*/)?.[0]?.length ?? 0));
+
+    return lines.map((line) => line.slice(min_indent)).join('\n');
+}
+
+export function indent(input_string: string, indent: number, skip_first: boolean = true): string {
+    return input_string
+        .split('\n')
+        .map((line, index) => (index === 0 && skip_first ? line : ' '.repeat(indent) + line))
+        .join('\n');
+}

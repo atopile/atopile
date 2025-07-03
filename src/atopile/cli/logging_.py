@@ -429,6 +429,9 @@ class LoggingStage(Advancable):
         return f"{self.description}{problems_text}"
 
     def refresh(self) -> None:
+        if not hasattr(self, "_task_id"):
+            return
+
         self._progress.update(self._task_id, description=self._generate_description())
 
     def set_total(self, total: int | None) -> None:
