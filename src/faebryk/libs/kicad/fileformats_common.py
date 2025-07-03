@@ -3,11 +3,11 @@ import uuid
 from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import auto
-from hashlib import sha256
 from typing import Optional
 
 from dataclasses_json.undefined import CatchAll
 
+from faebryk.libs.checksum import Checksum
 from faebryk.libs.sexp.dataclass_sexp import (
     SEXP_File,
     Symbol,
@@ -28,10 +28,6 @@ KICAD_FP_VERSION = 20241229
 
 
 class PropertyNotSet(Exception):
-    pass
-
-
-class ChecksumMismatch(Exception):
     pass
 
 
@@ -250,24 +246,19 @@ class HasPropertiesMixin:
     def property_dict(self) -> dict[str, str]:
         return {k: v.value for k, v in self.propertys.items()}
 
-    def _hash(self) -> str:
-        content = dump_single(self)
-        return sha256(content.encode("utf-8")).hexdigest()
+    def _hashable(self) -> str:
+        return dump_single(self)
 
     def set_checksum(self):
         if "checksum" in self.propertys:
             del self.propertys["checksum"]
 
-        self.add_property("checksum", self._hash())
+        self.add_property("checksum", Checksum.build(self._hashable()))
 
     def verify_checksum(self):
         checksum_stated = self.get_property("checksum")
-
         del self.propertys["checksum"]
-        checksum_actual = self._hash()
+        hashable = self._hashable()
         self.add_property("checksum", checksum_stated)
 
-        if checksum_actual != checksum_stated:
-            raise ChecksumMismatch(
-                f"{type(self).__name__} `{self.name}` has a checksum mismatch."
-            )
+        Checksum.verify(checksum_stated, hashable)

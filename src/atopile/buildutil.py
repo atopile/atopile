@@ -1,16 +1,23 @@
+import contextlib
 import json
 import logging
 import tempfile
 import time
 from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 import faebryk.library._F as F
 from atopile import layout
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
-from atopile.errors import UserException, UserPickError
+from atopile.errors import (
+    UserException,
+    UserExportError,
+    UserPickError,
+    UserToolNotAvailableError,
+)
 from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
 from faebryk.core.pathfinder import MAX_PATHS
@@ -25,6 +32,7 @@ from faebryk.exporters.netlist.graph import (
 )
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
+    KicadCliExportError,
     export_dxf,
     export_gerber,
     export_glb,
@@ -54,7 +62,7 @@ from faebryk.libs.exceptions import (
     iter_leaf_exceptions,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous
+from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous, once
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +131,7 @@ def build(app: Module) -> None:
     with LoggingStage("picker", "Picking components") as stage:
         if config.build.keep_picked_parts:
             load_part_info_from_pcb(G())
+            solver.simplify(G())
         try:
             pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
@@ -141,7 +150,9 @@ def build(app: Module) -> None:
         # and attached them to the design above, so they weren't even there to attach
         pcb.transformer.attach()
         if config.build.keep_net_names:
-            load_net_names(G())
+            loaded_nets = load_net_names(G())
+            nets |= loaded_nets
+
         attach_net_names(nets)
         check_net_names(G())
 
@@ -218,18 +229,18 @@ def build(app: Module) -> None:
 
     # Figure out what targets to build
     if config.build.targets == ["__default__"]:
-        targets = muster.do_by_default
+        targets = [t for t in muster.targets.values() if t.default]
     elif config.build.targets == ["*"] or config.build.targets == ["all"]:
-        targets = list(muster.targets.keys())
+        targets = [t for t in muster.targets.values()]
     else:
-        targets = config.build.targets
+        targets = [muster.targets[t] for t in config.build.targets]
+        for target in targets:
+            target.implicit = False
 
-    # Remove targets we don't know about, or are excluded
-    excluded_targets = set(config.build.exclude_targets)
-    known_targets = set(muster.targets.keys())
-    targets = list(set(targets) - excluded_targets & known_targets)
+    # Remove excluded targets
+    targets = [t for t in targets if t.name not in config.build.exclude_targets]
 
-    if generate_manufacturing_data.__muster_name__ in targets:  # type: ignore
+    if any(t.name == generate_manufacturing_data.name for t in targets):
         with LoggingStage("checks-post-pcb", "Running post-pcb checks"):
             try:
                 check_design(
@@ -240,46 +251,78 @@ def build(app: Module) -> None:
             except F.PCB.requires_drc_check.DrcException as ex:
                 raise UserException(f"Detected DRC violations: \n{ex.pretty()}") from ex
 
+    @once
+    def _check_kicad_cli() -> bool:
+        with contextlib.suppress(Exception):
+            from kicadcliwrapper.generated.kicad_cli import kicad_cli
+
+            kicad_cli(kicad_cli.version()).exec()
+            return True
+
+        return False
+
     # Make the noise
-    built_targets = []
     with accumulate() as accumulator:
-        for target_name in targets:
+        for target in targets:
             with LoggingStage(
-                f"target-{target_name}", f"Building [green]'{target_name}'[/green]"
+                f"target-{target.name}", f"Building [green]'{target.name}'[/green]"
             ):
+                if target.requires_kicad and not _check_kicad_cli():
+                    if target.implicit:
+                        logger.warning(
+                            f"Skipping target '{target.name}' because kicad-cli was not"
+                            " found",
+                        )
+                        continue
+                    else:
+                        raise UserToolNotAvailableError("kicad-cli not found")
+
                 with accumulator.collect():
-                    muster.targets[target_name](app, solver)
-                built_targets.append(target_name)
+                    target(app, solver)
 
 
-TargetType = Callable[[Module, Solver], None]
+@dataclass
+class MusterTarget:
+    name: str
+    default: bool
+    requires_kicad: bool
+    func: Callable[[Module, Solver], None]
+    implicit: bool = True
+
+    def __call__(self, app: Module, solver: Solver) -> None:
+        return self.func(app, solver)
 
 
 class Muster:
     """A class to register targets to."""
 
-    def __init__(self, logger: Optional[logging.Logger] = None) -> None:
-        self.targets: dict[str, TargetType] = {}
-        self.do_by_default: list[str] = []
+    def __init__(self, logger: logging.Logger | None = None) -> None:
+        self.targets: dict[str, MusterTarget] = {}
         self.log = logger or logging.getLogger(__name__)
 
-    def add_target(
-        self, func: TargetType, name: Optional[str] = None, default: bool = True
-    ):
+    def add_target(self, target: MusterTarget) -> MusterTarget:
         """Register a function as a target."""
-        name = name or func.__name__
-        self.targets[name] = func
-        if default:
-            self.do_by_default.append(name)
-        return func
+        self.targets[target.name] = target
+        return target
 
-    def register(self, name: Optional[str] = None, default: bool = True):
+    def register(
+        self,
+        name: str | None = None,
+        default: bool = True,
+        requires_kicad: bool = False,
+    ) -> Callable[[Callable[[Module, Solver], None]], MusterTarget]:
         """Register a target under a given name."""
 
-        def decorator(func: TargetType):
-            self.add_target(func, name, default)
-            func.__muster_name__ = name or func.__name__  # type: ignore
-            return func
+        def decorator(func: Callable[[Module, Solver], None]) -> MusterTarget:
+            target_name = name or func.__name__
+            target = MusterTarget(
+                name=target_name,
+                default=default,
+                requires_kicad=requires_kicad,
+                func=func,
+            )
+            self.add_target(target)
+            return target
 
         return decorator
 
@@ -296,7 +339,21 @@ def generate_bom(app: Module, solver: Solver) -> None:
     )
 
 
-@muster.register("mfg-data", default=False)
+@muster.register("3d-model", default=False, requires_kicad=True)
+def generate_3d_model(app: Module, solver: Solver) -> None:
+    """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
+
+    try:
+        export_glb(
+            config.build.paths.layout,
+            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+            project_dir=config.build.paths.layout.parent,
+        )
+    except KicadCliExportError as e:
+        raise UserExportError(f"Failed to generate 3D model: {e}") from e
+
+
+@muster.register("mfg-data", default=False, requires_kicad=True)
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
     Generate manufacturing artifacts for the project.
@@ -314,28 +371,39 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
             Path(tmpdir) / config.build.paths.layout.name,
         )
 
-        export_step(
-            tmp_layout,
-            step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
-            project_dir=config.build.paths.layout.parent,
-        )
-        export_glb(
-            tmp_layout,
-            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
-            project_dir=config.build.paths.layout.parent,
-        )
-        export_dxf(
-            tmp_layout,
-            dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
-        )
+        try:
+            export_step(
+                tmp_layout,
+                step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+                project_dir=config.build.paths.layout.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate STEP file: {e}") from e
 
-        export_gerber(
-            tmp_layout,
-            gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
-        )
+        try:
+            export_dxf(
+                tmp_layout,
+                dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate DXF file: {e}") from e
+
+        try:
+            export_gerber(
+                tmp_layout,
+                gerber_zip_file=config.build.paths.output_base.with_suffix(
+                    ".gerber.zip"
+                ),
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate Gerber file: {e}") from e
 
         pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
-        export_pick_and_place(tmp_layout, pick_and_place_file=pnp_file)
+        try:
+            export_pick_and_place(tmp_layout, pick_and_place_file=pnp_file)
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate Pick and Place file: {e}") from e
+
         convert_kicad_pick_and_place_to_jlcpcb(
             pnp_file,
             config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),

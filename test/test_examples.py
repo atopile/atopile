@@ -73,4 +73,7 @@ def test_examples_build(
     assert "Build successful! 🚀" in stderr
     assert stderr.count("✓") >= 1
     assert stderr.count("✗") == 0
-    assert stderr.count("⚠") == 0
+
+    # expected warnings:
+    # - missing kicad-cli for '3d-model' target (in CI only)
+    assert stderr.count("⚠") in (0, 1)

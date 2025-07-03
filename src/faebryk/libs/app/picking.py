@@ -121,7 +121,9 @@ def save_part_info_to_pcb(G: Graph):
 
     for node, _ in nodes:
         if t := node.try_get_trait(F.has_part_picked):
-            part = t.get_part()
+            part = t.try_get_part()
+            if part is None:
+                continue
             if isinstance(part, PickedPartLCSC):
                 node.add(
                     F.has_descriptive_properties_defined(

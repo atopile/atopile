@@ -1473,9 +1473,9 @@ def merge_dicts(*dicts: dict) -> dict:
         for k, v in d.items():
             if k in result:
                 if isinstance(v, list):
-                    assert isinstance(
-                        result[k], list
-                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    assert isinstance(result[k], list), (
+                        f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    )
                     result[k] += v
                 elif isinstance(v, dict):
                     assert isinstance(result[k], dict)
@@ -2176,14 +2176,18 @@ def try_relative_to(
 
 
 def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / ".git").exists():
-        if parent := repo_root.parent:
-            repo_root = parent
+    return root_by_file(".git")
+
+
+def root_by_file(pattern: str, start: Path = Path(__file__)) -> Path:
+    root = start
+    while not (root / pattern).exists():
+        if parent := root.parent:
+            root = parent
         else:
-            raise FileNotFoundError("Could not find repo root")
+            raise FileNotFoundError("Could not find root")
     else:
-        return repo_root
+        return root
 
 
 def is_numeric_str(s: str) -> bool:

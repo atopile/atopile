@@ -53,7 +53,7 @@ def test_snappiness(benchmark):
 
 @pytest.mark.usefixtures("from_temp_dir")
 def test_create_project():
-    PROJECT_NAME = "hil_tester"
+    PROJECT_NAME = "My first ato project"
     process = subprocess.run(
         [sys.executable, "-m", "atopile", "create", "project"],
         capture_output=True,
@@ -68,9 +68,10 @@ def test_create_project():
             f"STDERR:\n{process.stderr}"
         )
     assert process.returncode == 0
-    assert f'Created new project "{PROJECT_NAME}"' in process.stdout
+    sanitized = PROJECT_NAME.lower().replace(" ", "_")
+    assert f'Created new project "{sanitized}"' in process.stdout
 
-    proj_dir = Path(PROJECT_NAME)
+    proj_dir = Path(sanitized)
     assert proj_dir.exists() and proj_dir.is_dir()
     assert (proj_dir / "main.ato").is_file()
     assert (proj_dir / "README.md").is_file()

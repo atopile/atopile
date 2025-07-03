@@ -130,7 +130,7 @@ def set_kicad_netlist_path_in_project(project_path: Path, netlist_path: Path):
     project.dumps(project_path)
 
 
-def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
+def load_net_names(graph: Graph, raise_duplicates: bool = True) -> set[F.Net]:
     """
     Load nets from attached footprints and attach them to the nodes.
     """
@@ -152,6 +152,8 @@ def load_net_names(graph: Graph, raise_duplicates: bool = True) -> None:
 
     for net, name in net_names.items():
         net.add(F.has_overriden_name_defined(name))
+
+    return set(net_names.keys())
 
 
 def check_net_names(graph: Graph):

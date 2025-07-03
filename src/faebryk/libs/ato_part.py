@@ -14,10 +14,11 @@ from natsort import natsorted
 
 import faebryk.library._F as F
 from atopile.config import config as Gcfg
+from faebryk.libs.checksum import Checksum
 from faebryk.libs.codegen.atocodegen import AtoCodeGen
 from faebryk.libs.codegen.atocodeparse import AtoCodeParse
 from faebryk.libs.codegen.pycodegen import sanitize_name
-from faebryk.libs.kicad.fileformats_common import ChecksumMismatch, PropertyNotSet
+from faebryk.libs.kicad.fileformats_common import PropertyNotSet
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_footprint_file,
     C_kicad_model_file,
@@ -61,6 +62,10 @@ class AtoPart:
             self.path
             / f"{first(self.symbol.kicad_symbol_lib.symbols.values()).name}.kicad_sym"
         )
+
+    @property
+    def module_name(self) -> str:
+        return f"{self.identifier}_package"
 
     @property
     def ato_path(self) -> Path:
@@ -168,7 +173,7 @@ class AtoPart:
             self.model.dumps(self.model_path)
 
         ato_builder = AtoCodeGen.ComponentFile(
-            f"{self.identifier}_package", docstring=self.docstring
+            self.module_name, docstring=self.docstring
         )
         ato_builder.add_comments(
             "This trait marks this file as auto-generated",
@@ -240,7 +245,7 @@ class AtoPart:
                     f"{t_name} has no checksum."
                     "But part is auto-generated. This is not allowed."
                 )
-            except ChecksumMismatch:
+            except Checksum.Mismatch:
                 raise _FileManuallyModified(
                     f"{t_name} has a checksum mismatch. "
                     "But part is auto-generated. This is not allowed. "

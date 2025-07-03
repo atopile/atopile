@@ -56,7 +56,7 @@ class LayoutTypeHierarchy(Layout):
                 )
             }
             logger.debug(
-                f"Level: {level.mod_type if level else None}," f" Children: {children}"
+                f"Level: {level.mod_type if level else None}, Children: {children}"
             )
 
             # No type match, search for children instead

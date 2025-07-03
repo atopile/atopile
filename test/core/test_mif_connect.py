@@ -23,6 +23,11 @@ from faebryk.libs.app.erc import (
 )
 from faebryk.libs.library import L
 from faebryk.libs.util import cast_assert, times
+from test.common.resources.fabll_modules.ButtonCell import ButtonCell
+from test.common.resources.fabll_modules.RP2040 import RP2040
+from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
+    RP2040_ReferenceDesign,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -994,7 +999,7 @@ def test_specialize_module():
     power = F.ElectricPower()
 
     battery.power.connect(power)
-    buttoncell = battery.specialize(F.ButtonCell())
+    buttoncell = battery.specialize(ButtonCell())
 
     assert buttoncell.power.is_connected_to(battery.power)
     assert power.is_connected_to(buttoncell.power)
@@ -1180,7 +1185,7 @@ def test_regression_rp2040_usb_diffpair_minimal():
 
 
 def test_regression_rp2040_usb_diffpair():
-    app = F.RP2040_ReferenceDesign()
+    app = RP2040_ReferenceDesign()
 
     terminated_usb = cast_assert(F.USB2_0_IF.Data, app.runtime["_terminated_usb_data"])
     rp_usb = app.rp2040.usb
@@ -1203,9 +1208,9 @@ def test_regression_rp2040_usb_diffpair():
 
 @pytest.mark.slow
 def test_regression_rp2040_usb_diffpair_full():
-    app = F.RP2040_ReferenceDesign()
-    rp2040_2 = F.RP2040()
-    rp2040_3 = F.RP2040()
+    app = RP2040_ReferenceDesign()
+    rp2040_2 = RP2040()
+    rp2040_3 = RP2040()
 
     # make graph bigger
     app.rp2040.i2c[0].connect(rp2040_2.i2c[0])
