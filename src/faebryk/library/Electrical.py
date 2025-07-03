@@ -6,6 +6,10 @@ from faebryk.core.node import Node
 
 
 class Electrical(ModuleInterface):
+    """
+    Electrical interface.
+    """
+
     # potential= L.p_field(units=P.dimensionless)
 
     def get_net(self):

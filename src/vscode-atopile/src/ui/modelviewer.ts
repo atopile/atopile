@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { onThreeDModelChanged, getCurrentThreeDModel } from '../common/3dmodel';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
-import { getResourcesPath } from '../common/resources';
+import { getAndCheckResource, getResourcesPath } from '../common/resources';
 
 class ModelViewerWebview extends BaseWebview {
     constructor() {
@@ -57,11 +57,7 @@ class ModelViewerWebview extends BaseWebview {
     }
 
     private getModelViewerScriptUri(webview: vscode.Webview): vscode.Uri {
-        const candidate = path.join(getResourcesPath(), 'model-viewer', 'model-viewer.min.js');
-        if (!fs.existsSync(candidate)) {
-            throw new Error(`model-viewer.min.js could not be found in ${candidate}. Make sure it is included.`);
-        }
-        return webview.asWebviewUri(vscode.Uri.file(candidate));
+        return webview.asWebviewUri(vscode.Uri.file(getAndCheckResource('model-viewer/model-viewer.min.js')));
     }
 }
 
