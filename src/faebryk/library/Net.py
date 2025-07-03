@@ -3,8 +3,11 @@
 
 import logging
 
+from more_itertools import first
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.util import KeyErrorAmbiguous, groupby
 
 logger = logging.getLogger(__name__)
 
@@ -60,3 +63,35 @@ class Net(Module):
         if isinstance(parent[0], cls):
             return parent[0]
         return None
+
+    @classmethod
+    def find_nets_for_mif(cls, mif: F.Electrical) -> set["Net"]:
+        """Return all nets that are connected to this mif"""
+        return {
+            net
+            for net_mif in mif.get_connected()
+            if (net := cls.find_from_part_of_mif(net_mif))
+        }
+
+    @classmethod
+    def find_named_net_for_mif(cls, mif: F.Electrical) -> "Net | None":
+        nets = cls.find_nets_for_mif(mif)
+        named_nets = groupby(
+            {n for n in nets if n.has_trait(F.has_overriden_name)},
+            lambda n: n.get_trait(F.has_overriden_name).get_name(),
+        )
+        if len(named_nets) > 1:
+            raise KeyErrorAmbiguous(
+                list(named_nets),
+                "Multiple nets with the same name connected to this mif",
+            )
+        if not named_nets:
+            return None
+        same_name_nets = first(named_nets.values())
+        if len(same_name_nets) > 1:
+            # TODO not sure whether this should be an error
+            raise KeyErrorAmbiguous(
+                same_name_nets,
+                "Multiple nets with the same name connected to this mif",
+            )
+        return first(same_name_nets)
