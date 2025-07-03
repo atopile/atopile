@@ -580,7 +580,12 @@ class LoggingStage(Advancable):
             root_logger.addHandler(file_handler)
 
             if level_name == "info":
-                self._info_log_path = log_file.relative_to(Path.cwd())
+                try:
+                    info_log_path = log_file.relative_to(Path.cwd())
+                except ValueError:
+                    info_log_path = log_file
+
+                self._info_log_path = info_log_path
 
     def _restore_logging(self) -> None:
         if not self._log_handler and not self._file_handlers:
