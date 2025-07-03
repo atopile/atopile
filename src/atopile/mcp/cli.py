@@ -1,6 +1,9 @@
+import logging
 from pathlib import Path
 
 from atopile.mcp.util import mcp_decorate
+
+logger = logging.getLogger(__name__)
 
 
 @mcp_decorate()
@@ -39,7 +42,9 @@ def search_and_install_jlcpcb_part(lcsc_part_number: str) -> str:
 
 @mcp_decorate()
 def install_package(
-    package_identifiers: list[str], project_path: Path | None = None
+    package_identifiers: list[str],
+    project_path: Path | None = None,
+    allow_upgrade: bool = False,
 ) -> str:
     """
     Install a package using the ato CLI.
@@ -47,7 +52,8 @@ def install_package(
 
     from atopile.cli.install import add
 
+    logger.info(f"CWD: {Path.cwd()}, path: {project_path}")
     # TODO capture log / stdout
-    add(package=package_identifiers, path=project_path)
+    add(package=package_identifiers, path=project_path, upgrade=allow_upgrade)
 
     return "Done"

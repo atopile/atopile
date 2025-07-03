@@ -1173,6 +1173,9 @@ class Config:
         working_dir: Path | None = None,
         **kwargs: Any,
     ) -> None:
+        if working_dir:
+            working_dir = Path(working_dir).expanduser().resolve().absolute()
+
         entry, entry_arg_file_path = self._get_entry_arg_file_path(entry, working_dir)
 
         if standalone:
