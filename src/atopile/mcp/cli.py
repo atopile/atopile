@@ -52,7 +52,6 @@ def install_package(
 
     from atopile.cli.install import add
 
-    logger.info(f"CWD: {Path.cwd()}, path: {project_path}")
     # TODO capture log / stdout
     add(package=package_identifiers, path=project_path, upgrade=allow_upgrade)
 
