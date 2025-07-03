@@ -13,11 +13,6 @@ dependencies:
   - type: registry
     identifier: atopile/ti-tlv75901
   - type: registry
-    identifier: atopile/ti-ina232
-  - type: registry
     identifier: atopile/usb-connectors
   - type: registry
-    identifier: atopile/addressable-leds
-  - type: registry
     identifier: atopile/esp32
-    release: 0.1.3
