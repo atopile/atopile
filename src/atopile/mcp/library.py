@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from atopile.mcp.util import (
@@ -10,6 +11,8 @@ from atopile.mcp.util import (
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+
+logger = logging.getLogger(__name__)
 
 
 def _get_library_nodes(
@@ -67,7 +70,7 @@ def _get_library_node(name: str, t: type[Node] = Node) -> NodeInfo:
 
     node = getattr(module, name)
     # get docstring
-    docstring = node.__doc__
+    docstring = node.__doc__ or ""
 
     language = Language.FABLL
     locator = _locator_from_file_path(path)
