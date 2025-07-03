@@ -655,7 +655,7 @@ class PackagesAPIClient:
 
         return Dist(filepath)
 
-    def packages(self, query: str) -> list[_Endpoints.Packages.Response]:
+    def packages(self, query: str) -> _Endpoints.Packages.Response:
         try:
             r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
         except Errors.PackagesApiHTTPError as e:
@@ -664,10 +664,10 @@ class PackagesAPIClient:
             raise
         return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
 
-    def packages_popular(self) -> list[_Endpoints.PackagesPopular.Response]:
+    def packages_popular(self) -> _Endpoints.PackagesPopular.Response:
         r = self._get(_Endpoints.PackagesPopular.url())
         return _Endpoints.PackagesPopular.Response.from_dict(r.json())  # type: ignore
 
-    def packages_recent(self) -> list[_Endpoints.PackagesRecent.Response]:
+    def packages_recent(self) -> _Endpoints.PackagesRecent.Response:
         r = self._get(_Endpoints.PackagesRecent.url())
         return _Endpoints.PackagesRecent.Response.from_dict(r.json())  # type: ignore

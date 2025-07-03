@@ -41,6 +41,10 @@ def run_mcp(http: bool = False, debug: bool = False):
 
 @mcp_decorate()
 def find_project_from_filepath(absolute_path_to_file: Path) -> Path:
+    """
+    Find the project root from an .ato file inside that project.
+    """
+
     path = absolute_path_to_file
     logger.info(f"Finding project from filepath: {path}")
     if not path.is_absolute():

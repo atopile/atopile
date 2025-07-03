@@ -78,6 +78,10 @@ def _get_library_node(name: str, t: type[Node] = Node) -> NodeInfo:
 
 @mcp_decorate()
 def inspect_library_module_or_interface(name: str) -> NodeInfo:
+    """
+    Inspect a standard library module or interface, returning information about its
+    name, docstring, locator, language, and code.
+    """
     return _get_library_node(name)
 
 
@@ -85,6 +89,9 @@ def inspect_library_module_or_interface(name: str) -> NodeInfo:
 def get_library_modules_or_interfaces(
     include_modules: bool = True, include_interfaces: bool = True
 ) -> list[NodeInfoOverview]:
+    """
+    List all atopile standard library modules and interfaces.
+    """
     types = tuple()
     if include_modules:
         types += (Module,)
