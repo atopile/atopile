@@ -1214,11 +1214,6 @@ class Config:
                     " builds:\n" + md_list(self.project.builds.keys())
                 )
 
-            if build_name not in self.project.builds:
-                raise UserBadParameterError(
-                    f"Build `{build_name}` not found in project config"
-                )
-
             if entry_addr_override is not None:
                 build_cfg.address = entry_addr_override
             if target:
