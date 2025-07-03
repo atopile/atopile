@@ -3,13 +3,16 @@
 
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
 import requests
+from dataclasses_json import DataClassJsonMixin
+from dataclasses_json import config as dataclasses_json_config
 from dataclasses_json.api import dataclass_json
 from pydantic.networks import HttpUrl
 
@@ -19,6 +22,9 @@ from faebryk.libs.package.dist import Dist
 from faebryk.libs.util import indented_container, once
 
 logger = logging.getLogger(__name__)
+
+
+_EXCLUDE_FROM_JSON = dataclasses_json_config(exclude=lambda _: True)
 
 
 class _Models:
@@ -77,26 +83,74 @@ class _Models:
         @dataclass_json
         @dataclass(frozen=True)
         class Response:
-            @dataclass_json
             @dataclass(frozen=True)
-            class Info:
-                # @dataclass_json
-                # @dataclass(frozen=True)
-                # class Dependencies:
-                #     @dataclass_json
-                #     @dataclass(frozen=True)
-                #     class Dependency:
-                #         identifier: str
-                #         version: str
+            class Info(DataClassJsonMixin):
+                @dataclass_json
+                @dataclass(frozen=True)
+                class Author:
+                    name: str
+                    email: str | None
 
-                #     requires: list[Dependency]
+                @dataclass_json
+                @dataclass(frozen=True)
+                class PackageStats:
+                    total_downloads: int | None
+                    this_week_downloads: int | None
+                    this_month_downloads: int | None
 
-                # dependencies: Dependencies
-                download_url: str
-                # requires_atopile: str
+                @dataclass_json
+                @dataclass(frozen=True)
+                class ReleaseHashes:
+                    sha256: str
+
+                @dataclass_json
+                @dataclass(frozen=True)
+                class PackageDependencies:
+                    @dataclass_json
+                    @dataclass(frozen=True)
+                    class DependencySpec:
+                        type: Literal["registry"]
+                        identifier: str
+                        release: str
+
+                    requires: list[DependencySpec]
+
+                @dataclass_json
+                @dataclass(frozen=True)
+                class Layouts:
+                    layouts: list[str]
+
+                created_at: datetime = field(
+                    metadata=dataclasses_json_config(decoder=datetime.fromisoformat)
+                )
+                released_at: datetime = field(
+                    metadata=dataclasses_json_config(decoder=datetime.fromisoformat)
+                )
+                key: str = field(metadata=_EXCLUDE_FROM_JSON)
+                identifier: str
+                version: str
+                repository: str
+                authors: list[Author]
+                license: str
+                summary: str
+                homepage: str | None
+                readme_url: str | None = field(metadata=_EXCLUDE_FROM_JSON)
+                url: str
+                stats: PackageStats
+                hashes: ReleaseHashes
                 filename: str
+                requires_atopile: str
+                size: int
+                download_url: str = field(metadata=_EXCLUDE_FROM_JSON)
+                builds: list[str] | None
+                dependencies: PackageDependencies
+                # artifacts: Artifacts
+                # layouts: Layouts | None
+                yanked_at: str | None
+                yanked_reason: str | None
 
             info: Info
+            readme: str | None
 
 
 class Errors:
