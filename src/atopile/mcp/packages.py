@@ -20,7 +20,7 @@ def inspect_package(
     Details are sourced from the package's latest release.
     """
     client = PackagesAPIClient()
-    package = client.package(identifier, version=version)
+    package = client.get_package(identifier, version=version)
 
     return package
 
@@ -32,7 +32,7 @@ def find_packages(query: str) -> list[PackageInfoVeryBrief]:
     with closest matches appearing first.
     """
     client = PackagesAPIClient()
-    packages = client.packages(query)
+    packages = client.query_packages(query)
 
     return [
         PackageInfoVeryBrief(

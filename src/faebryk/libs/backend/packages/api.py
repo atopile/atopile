@@ -122,13 +122,13 @@ class _Schemas:
 
     @dataclass_json
     @dataclass(frozen=True)
-    class HydratedPackage:
+    class Package:
         info: "_Schemas.PackageInfo"
         readme: str | None
 
     @dataclass_json
     @dataclass(frozen=True)
-    class HydratedPackageRelease:
+    class PackageRelease:
         info: "_Schemas.PackageReleaseInfo"
         readme: str | None
 
@@ -245,7 +245,7 @@ class _Endpoints:
             identifier: str
             version: str
 
-        Response = _Schemas.HydratedPackageRelease
+        Response = _Schemas.PackageRelease
 
     class Package:
         TYPE = _Type.GET
@@ -259,7 +259,7 @@ class _Endpoints:
         class Request:
             identifier: str
 
-        Response = _Schemas.HydratedPackage
+        Response = _Schemas.Package
 
     class Packages:
         TYPE = _Type.GET
@@ -267,38 +267,6 @@ class _Endpoints:
         @staticmethod
         def url(request: "_Endpoints.Packages.Request") -> str:
             return f"/v1/packages?query={request.query}"
-
-        @dataclass_json
-        @dataclass(frozen=True)
-        class Request:
-            query: str
-
-        Response = _Schemas.QueryResult
-
-    class PackagesPopular:
-        TYPE = _Type.GET
-
-        @staticmethod
-        def url() -> str:
-            return "/v1/packages/popular"
-
-        Response = _Schemas.QueryResult
-
-    class PackagesRecent:
-        TYPE = _Type.GET
-
-        @staticmethod
-        def url() -> str:
-            return "/v1/packages/recent"
-
-        Response = _Schemas.QueryResult
-
-    class PackagesAll:
-        TYPE = _Type.GET
-
-        @staticmethod
-        def url() -> str:
-            return "/v1/packages/all"
 
         @dataclass_json
         @dataclass(frozen=True)
@@ -365,7 +333,7 @@ class Errors:
             return f"{type(self).__name__}: {self.package_identifier}: {self.detail}"
 
         @classmethod
-        def from_http(
+        def from_http(  # type: ignore
             cls, error: "Errors.PackagesApiHTTPError", package_identifier: str
         ):
             return cls(error.error, error.detail, package_identifier)
@@ -384,7 +352,7 @@ class Errors:
             return f"{type(self).__name__}: {self.package_identifier}: {self.detail}"
 
         @classmethod
-        def from_http(
+        def from_http(  # type: ignore
             cls, error: "Errors.PackagesApiHTTPError", package_identifier: str
         ):
             return cls(error.error, error.detail, package_identifier)
@@ -408,7 +376,7 @@ class Errors:
             )
 
         @classmethod
-        def from_http(
+        def from_http(  # type: ignore
             cls,
             error: "Errors.PackagesApiHTTPError",
             package_identifier: str,
@@ -597,7 +565,7 @@ class PackagesAPIClient:
         response = _Endpoints.PublishUploadComplete.Response.from_dict(r.json())  # type: ignore
         return response
 
-    def package(
+    def get_package(
         self, identifier: str, version: str | None = None
     ) -> _Endpoints.PackageRelease.Response:
         """
@@ -639,10 +607,10 @@ class PackagesAPIClient:
             raise
         return response
 
-    def release_dist(
+    def get_release_dist(
         self, identifier: str, output_path: Path, version: str | None = None
     ) -> Dist:
-        release = self.package(identifier, version)
+        release = self.get_package(identifier, version)
         url = release.info.download_url
         filepath = output_path / release.info.filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -655,19 +623,6 @@ class PackagesAPIClient:
 
         return Dist(filepath)
 
-    def packages(self, query: str) -> _Endpoints.Packages.Response:
-        try:
-            r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
-        except Errors.PackagesApiHTTPError as e:
-            if e.code == 422:
-                raise Errors.InvalidPackageIdentifierError.from_http(e, query) from e
-            raise
+    def query_packages(self, query: str) -> _Endpoints.Packages.Response:
+        r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
         return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
-
-    def packages_popular(self) -> _Endpoints.PackagesPopular.Response:
-        r = self._get(_Endpoints.PackagesPopular.url())
-        return _Endpoints.PackagesPopular.Response.from_dict(r.json())  # type: ignore
-
-    def packages_recent(self) -> _Endpoints.PackagesRecent.Response:
-        r = self._get(_Endpoints.PackagesRecent.url())
-        return _Endpoints.PackagesRecent.Response.from_dict(r.json())  # type: ignore

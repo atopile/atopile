@@ -127,7 +127,7 @@ class ProjectDependency:
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
-            dist = api.release_dist(
+            dist = api.get_release_dist(
                 self.spec.identifier,
                 Path(temp_dir),
                 version=self.spec.release,
