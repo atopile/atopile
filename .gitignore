@@ -197,3 +197,6 @@ standalone/
 
 # need to ignore because absolute paths
 .cursor/mcp.json
+
+# examples
+.ato/

@@ -1,0 +1,23 @@
+requires-atopile: ^0.9.0
+
+paths:
+  src: .
+  layout: ./layouts
+
+builds:
+  esp32_minimal:
+    entry: esp32_minimal.ato:ESP32_MINIMAL
+dependencies:
+  - type: registry
+    identifier: atopile/buttons
+  - type: registry
+    identifier: atopile/ti-tlv75901
+  - type: registry
+    identifier: atopile/ti-ina232
+  - type: registry
+    identifier: atopile/usb-connectors
+  - type: registry
+    identifier: atopile/addressable-leds
+  - type: registry
+    identifier: atopile/esp32
+    release: 0.1.3
