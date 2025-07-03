@@ -58,7 +58,7 @@ from atopile.version import (
 )
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.test.testutil import in_test
-from faebryk.libs.util import indented_container
+from faebryk.libs.util import indented_container, md_list
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -1206,7 +1206,13 @@ class Config:
             self.selected_builds = list(selected_builds)
 
         for build_name in self.selected_builds:
-            build_cfg = self.project.builds[build_name]
+            try:
+                build_cfg = self.project.builds[build_name]
+            except KeyError:
+                raise UserBadParameterError(
+                    f"Build `{build_name}` not found in project config.\n\nAvailable"
+                    " builds:\n" + md_list(self.project.builds.keys())
+                )
 
             if build_name not in self.project.builds:
                 raise UserBadParameterError(
