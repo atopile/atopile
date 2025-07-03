@@ -1,12 +1,14 @@
 import logging
 from pathlib import Path
 
-from atopile.mcp.util import mcp_decorate
+from atopile.mcp.util import MCPTools
+
+cli_tools = MCPTools()
 
 logger = logging.getLogger(__name__)
 
 
-@mcp_decorate()
+@cli_tools.register()
 def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> str:
     """
     Build an atopile project using the ato CLI.
@@ -26,7 +28,7 @@ def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> str:
     return f"Built project {absolute_project_dir} with target {target_name_from_yaml}"
 
 
-@mcp_decorate()
+@cli_tools.register()
 def search_and_install_jlcpcb_part(lcsc_part_number: str) -> str:
     """
     Search for a part on JLCPCB and install it.
@@ -40,7 +42,7 @@ def search_and_install_jlcpcb_part(lcsc_part_number: str) -> str:
     return "Done"
 
 
-@mcp_decorate()
+@cli_tools.register()
 def install_package(
     package_identifiers: list[str],
     project_path: Path | None = None,

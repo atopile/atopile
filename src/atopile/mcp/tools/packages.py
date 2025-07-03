@@ -1,7 +1,9 @@
 from pydantic import BaseModel
 
-from atopile.mcp.util import mcp_decorate
+from atopile.mcp.util import MCPTools
 from faebryk.libs.backend.packages.api import PackagesAPIClient, _Endpoints
+
+packages_tools = MCPTools()
 
 
 class PackageInfoVeryBrief(BaseModel):
@@ -10,7 +12,7 @@ class PackageInfoVeryBrief(BaseModel):
     summary: str
 
 
-@mcp_decorate()
+@packages_tools.register()
 def inspect_package(
     identifier: str, version: str | None = None
 ) -> _Endpoints.PackageRelease.Response:
@@ -25,7 +27,7 @@ def inspect_package(
     return package
 
 
-@mcp_decorate()
+@packages_tools.register()
 def find_packages(query: str) -> list[PackageInfoVeryBrief]:
     """
     Search for atopile community packages by identifier or summary,

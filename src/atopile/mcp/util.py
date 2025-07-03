@@ -36,36 +36,20 @@ class NodeInfoOverview(BaseModel):
 
 MCP_DECORATOR = Callable[[FastMCP], Callable]
 
-TOOLS: dict[Callable, MCP_DECORATOR] = {}
 
+class MCPTools:
+    def __init__(self):
+        self._tools: dict[Callable, MCP_DECORATOR] = {}
 
-def mcp_decorate(decorator: MCP_DECORATOR = lambda mcp: mcp.tool()):
-    def decorator_wrapper(func):
-        TOOLS[func] = decorator
+    def register(self, decorator: MCP_DECORATOR = lambda mcp: mcp.tool()):
+        def decorator_wrapper(func: Callable):
+            self._tools[func] = decorator
 
-        return func
+            return func
 
-    return decorator_wrapper
+        return decorator_wrapper
 
-
-def register_tools(mcp: FastMCP):
-    # import all files in this directory except self and mcp_server.py
-    import importlib
-    import os
-
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    for file in os.listdir(current_dir):
-        if file == __file__:
-            continue
-        if not file.endswith(".py"):
-            continue
-        module_name = f"atopile.mcp.{file.replace('.py', '')}"
-        try:
-            importlib.import_module(module_name)
-        except Exception as e:
-            logger.warning(f"Error importing module {module_name}: {e}")
-
-    # Run mcp decorators
-    for func, decorator in TOOLS.items():
-        d = decorator(mcp)
-        d(func)
+    def install(self, mcp: FastMCP):
+        for func, decorator in self._tools.items():
+            d = decorator(mcp)
+            d(func)

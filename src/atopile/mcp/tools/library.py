@@ -3,16 +3,18 @@ from pathlib import Path
 
 from atopile.mcp.util import (
     Language,
+    MCPTools,
     NodeInfo,
     NodeInfoOverview,
     NodeType,
-    mcp_decorate,
 )
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 
 logger = logging.getLogger(__name__)
+
+library_tools = MCPTools()
 
 
 def _get_library_nodes(
@@ -79,7 +81,7 @@ def _get_library_node(name: str, t: type[Node] = Node) -> NodeInfo:
     )
 
 
-@mcp_decorate()
+@library_tools.register()
 def inspect_library_module_or_interface(name: str) -> NodeInfo:
     """
     Inspect a standard library module or interface, returning information about its
@@ -88,7 +90,7 @@ def inspect_library_module_or_interface(name: str) -> NodeInfo:
     return _get_library_node(name)
 
 
-@mcp_decorate()
+@library_tools.register()
 def get_library_modules_or_interfaces(
     include_modules: bool = True, include_interfaces: bool = True
 ) -> list[NodeInfoOverview]:

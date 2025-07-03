@@ -3,8 +3,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from atopile.mcp.util import mcp_decorate, register_tools
-from faebryk.libs.util import ConfigFlag, root_by_file
+from faebryk.libs.util import ConfigFlag
 
 mcp = FastMCP("atopile", stateless_http=True)
 
@@ -33,28 +32,17 @@ def _setup_debug(enable: bool = False):
 def run_mcp(http: bool = False, debug: bool = False):
     _setup_debug(enable=bool(DEBUG) or debug)
 
-    register_tools(mcp)
+    from atopile.mcp.tools import (
+        cli_tools,
+        library_tools,
+        packages_tools,
+        project_tools,
+    )
+
+    cli_tools.install(mcp)
+    library_tools.install(mcp)
+    packages_tools.install(mcp)
+    project_tools.install(mcp)
 
     logger.info("Starting atopile MCP server...")
     mcp.run(transport="streamable-http" if http else "stdio")
-
-
-@mcp_decorate()
-def find_project_from_filepath(absolute_path_to_file: Path) -> Path:
-    """
-    Find the project root from an .ato file inside that project.
-    """
-
-    path = absolute_path_to_file
-    logger.info(f"Finding project from filepath: {path}")
-    if not path.is_absolute():
-        raise ValueError("Path is not absolute")
-    if not path.exists():
-        raise ValueError(f"Path {path} does not exist")
-    if not path.is_file():
-        raise ValueError(f"Path {path} is not a file")
-
-    if path.suffix != ".ato":
-        raise ValueError("Path is not an ato file")
-
-    return root_by_file("ato.yaml", path.parent)
