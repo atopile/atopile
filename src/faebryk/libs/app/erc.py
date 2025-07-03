@@ -193,9 +193,9 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                 nets_on_bus = F.Net.find_nets_for_mif(net.part_of)
 
                 named_collisions = {
-                    neighor_net
-                    for neighor_net in nets_on_bus
-                    if neighor_net.has_trait(F.has_overriden_name)
+                    neighbor_net
+                    for neighbor_net in nets_on_bus
+                    if neighbor_net.has_trait(F.has_overriden_name)
                 }
 
                 if named_collisions:
