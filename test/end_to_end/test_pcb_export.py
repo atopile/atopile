@@ -52,7 +52,7 @@ module App:
 
 SIMPLE_APP_PCB_SUMMARY = PcbSummary(
     num_layers=29,
-    nets=["", "a-net", "a-net-1"],
+    nets=["", "a-net-0", "a-net-1"],
     footprints=["R1"],
 )
 
@@ -108,7 +108,7 @@ def test_pcb_file_addition(tmpdir: Path):
     assert p.returncode == 0
     assert "Creating new layout" not in stderr
     assert (
-        SIMPLE_APP_PCB_SUMMARY.add_net("b-net").add_net("b-net-1").add_footprint("R2")
+        SIMPLE_APP_PCB_SUMMARY.add_net("b-net-0").add_net("b-net-1").add_footprint("R2")
     ) == summarize_pcb_file(pcb_file)
 
 
@@ -124,7 +124,7 @@ def test_pcb_file_removal(tmpdir: Path):
     assert p.returncode == 0
     assert "Creating new layout" in stderr
     assert (
-        SIMPLE_APP_PCB_SUMMARY.add_net("b-net").add_net("b-net-1").add_footprint("R2")
+        SIMPLE_APP_PCB_SUMMARY.add_net("b-net-0").add_net("b-net-1").add_footprint("R2")
     ) == summarize_pcb_file(pcb_file)
 
     _, stderr, p = dump_and_run(SIMPLE_APP, [], working_dir=tmpdir)
