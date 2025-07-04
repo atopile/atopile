@@ -8,7 +8,6 @@ from pathlib import Path
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.exporters.pcb.routing.util import get_internal_nets_of_node
 
 logger = logging.getLogger(__name__)
 
@@ -47,15 +46,8 @@ def export_testpoints(
         library_name = footprint.name
 
         # Get single connected net name
-        nets = get_internal_nets_of_node(testpoint)
-        net_name = next(
-            (
-                net.get_trait(F.has_overriden_name).get_name()
-                for net, _ in nets.items()
-                if net
-            ),
-            "no-net",
-        )
+        net = F.Net.find_named_net_for_mif(testpoint.contact)
+        net_name = net.get_trait(F.has_overriden_name).get_name() if net else "no-net"
 
         testpoint_data[designator] = {
             "testpoint_name": full_name,

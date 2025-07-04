@@ -1042,6 +1042,9 @@ class Config:
         """Return an iterable of BuildContext objects for each build."""
         return (_build_context(self, name) for name in self.selected_builds)
 
+    def select_build(self, name: str) -> _GeneratorContextManager[None]:
+        return _build_context(self, name)
+
     @property
     def build(self) -> BuildTargetConfig:
         if current := self._current_build:
