@@ -43,6 +43,7 @@ from faebryk.libs.util import (
     indented_container,
     md_list,
     once,
+    path_replace,
     re_in,
     robustly_rm_dir,
     sanitize_filepath_part,
@@ -437,10 +438,10 @@ class PartLifecycle:
                 # ->
                 # "${KIPRJMOD}/../../.ato/modules/<package>/<layout_dir>/
                 #   ../parts/<part>/<model>"
-                m.path = Path(
-                    str(m.path).replace(
-                        "${KIPRJMOD}/..", "${KIPRJMOD}/" + str(rel_path)
-                    )
+                m.path = path_replace(
+                    m.path,
+                    Path("${KIPRJMOD}") / "..",
+                    Path("${KIPRJMOD}") / rel_path,
                 )
 
         def get_footprint_from_identifier(
