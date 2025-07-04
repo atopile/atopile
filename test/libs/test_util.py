@@ -4,6 +4,7 @@
 import time
 import unittest
 from itertools import combinations
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +14,9 @@ from faebryk.libs.util import (
     assert_once,
     complete_type_string,
     invert_dict,
+    list_match,
     once,
+    path_replace,
     times_out,
     zip_non_locked,
 )
@@ -218,3 +221,31 @@ def test_ordered_set():
     x = s | {5, 7, 6}
     assert x == {1, 4, 2, 3, 5, 6, 7}
     assert list(x) == [1, 4, 2, 3, 5, 6, 7]
+
+
+@pytest.mark.parametrize(
+    "base, match, expected",
+    [
+        ([1, 2, 3], [2, 3], [1]),
+        ([1, 2, 3], [2, 3, 4], []),
+        ([1, 2, 3], [1, 2, 3], [0]),
+        ([1, 2, 3], [1, 2, 3, 4], []),
+        ([1, 2, 3], [1, 2, 3, 4, 5], []),
+    ],
+)
+def test_list_match(base, match, expected):
+    assert list(list_match(base, match)) == expected
+
+
+@pytest.mark.parametrize(
+    "base, match, replacement, expected",
+    [
+        (Path("a/b/c"), Path("b"), Path("d"), Path("a/d/c")),
+        (Path("a/b/c"), Path("b/c"), Path("d"), Path("a/d")),
+        (Path("a/c/c"), Path("b/c"), Path("d"), Path("a/c/c")),
+        (Path("a/c/c"), Path("c"), Path("d"), Path("a/d/d")),
+        (Path("a/c/c/c/c"), Path("c/c"), Path("d"), Path("a/d/d")),
+    ],
+)
+def test_path_replace(base, match, replacement, expected):
+    assert path_replace(base, match, replacement) == expected
