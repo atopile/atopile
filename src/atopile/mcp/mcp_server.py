@@ -43,3 +43,6 @@ def run_mcp(http: bool = False, debug: bool = False):
     library_tools.install(mcp)
     packages_tools.install(mcp)
     project_tools.install(mcp)
+
+    logger.info("Starting atopile MCP server...")
+    mcp.run(transport="streamable-http" if http else "stdio")
