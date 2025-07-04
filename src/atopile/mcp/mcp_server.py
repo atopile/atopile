@@ -5,9 +5,12 @@ from pathlib import Path
 from mcp.server.fastmcp import FastMCP
 from pydantic import BaseModel
 
+from atopile import buildutil
+from atopile.cli.logging_ import capture_logs
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.libs.exceptions import log_user_errors
 from faebryk.libs.util import ConfigFlag, root_by_file
 
 mcp = FastMCP("atopile", stateless_http=True)
@@ -134,20 +137,46 @@ def get_library_modules() -> list[NodeInfoOverview]:
     return _get_library_nodes(Module)
 
 
+class BuildResult(BaseModel):
+    success: bool
+    project: str
+    target: str
+    logs: str
+
+
 @mcp.tool()
-def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> str:
-    from atopile.cli.build import build
+def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> BuildResult:
+    from atopile.build import init_app
+    from atopile.config import config
 
-    try:
-        build(
-            selected_builds=[target_name_from_yaml],
-            entry=absolute_project_dir,
-            open_layout=False,
+    config.apply_options(
+        entry=absolute_project_dir,
+        selected_builds=[target_name_from_yaml],
+    )
+
+    config.project.open_layout_on_build = False
+    config.interactive = False
+
+    with (
+        config.select_build(target_name_from_yaml),
+        capture_logs() as logs,
+        log_user_errors(),
+    ):
+        logger.info("Building target '%s'", config.build.name)
+
+        try:
+            app = init_app()
+            buildutil.build(app)
+            success = True
+        except Exception:
+            success = False
+
+        return BuildResult(
+            success=success,
+            project=absolute_project_dir,
+            target=target_name_from_yaml,
+            logs=logs.getvalue(),
         )
-    except Exception as e:
-        raise ValueError(f"Failed to build project: {e}")
-
-    return f"Built project {absolute_project_dir} with target {target_name_from_yaml}"
 
 
 @mcp.tool()

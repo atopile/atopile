@@ -1,6 +1,9 @@
+import io
 import logging
 import shutil
 from collections.abc import Iterable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -293,6 +296,25 @@ class LiveLogHandler(LogHandler):
                 self._logged_exceptions.add(hashable)
 
 
+class CaptureLogHandler(LogHandler):
+    def __init__(self, status: "LoggingStage", console: Console, *args, **kwargs):
+        super().__init__(*args, console=console, **kwargs)
+        self.status = status
+
+    def emit(self, record: logging.LogRecord) -> None:
+        hashable = self._get_hashable(record)
+        if hashable and hashable in self._logged_exceptions:
+            return
+
+        try:
+            super().emit(record)
+        except Exception:
+            self.handleError(record)
+        finally:
+            if hashable:
+                self._logged_exceptions.add(hashable)
+
+
 class IndentedProgress(Progress):
     def __init__(self, *args, indent: int = 20, **kwargs):
         self.indent = indent
@@ -347,6 +369,19 @@ class CompletableSpinnerColumn(SpinnerColumn):
         return text
 
 
+_log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
+
+
+@contextmanager
+def capture_logs():
+    log_sink = _log_sink_var.get()
+    _log_sink_var.set(io.StringIO())
+    _log_sink = _log_sink_var.get()
+    assert _log_sink is not None
+    yield _log_sink
+    _log_sink_var.set(log_sink)
+
+
 class LoggingStage(Advancable):
     _LOG_LEVELS = {
         logging.DEBUG: "debug",
@@ -367,6 +402,7 @@ class LoggingStage(Advancable):
         self._error_count = 0
         self._info_log_path = None
         self._log_handler = None
+        self._capture_log_handler = None
         self._file_handlers = []
         self._original_handlers = {}
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
@@ -506,12 +542,20 @@ class LoggingStage(Advancable):
         self._log_handler.setFormatter(_DEFAULT_FORMATTER)
         self._log_handler.setLevel(self._original_level)
 
+        if _log_sink_var.get() is not None:
+            capture_console = Console(file=_log_sink_var.get())
+            self._capture_log_handler = CaptureLogHandler(self, console=capture_console)
+            self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
+            self._capture_log_handler.setLevel(logging.INFO)
+
         log_dir = self._create_log_dir()
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
 
         root_logger.addHandler(self._log_handler)
+        if self._capture_log_handler is not None:
+            root_logger.addHandler(self._capture_log_handler)
 
         self._file_handlers = []
         self._file_handles = {}
@@ -536,7 +580,12 @@ class LoggingStage(Advancable):
             root_logger.addHandler(file_handler)
 
             if level_name == "info":
-                self._info_log_path = log_file.relative_to(Path.cwd())
+                try:
+                    info_log_path = log_file.relative_to(Path.cwd())
+                except ValueError:
+                    info_log_path = log_file
+
+                self._info_log_path = info_log_path
 
     def _restore_logging(self) -> None:
         if not self._log_handler and not self._file_handlers:
@@ -544,8 +593,12 @@ class LoggingStage(Advancable):
 
         root_logger = logging.getLogger()
         root_logger.setLevel(self._original_level)
+
         if self._log_handler in root_logger.handlers:
             root_logger.removeHandler(self._log_handler)
+
+        if self._capture_log_handler in root_logger.handlers:
+            root_logger.removeHandler(self._capture_log_handler)
 
         for file_handler in self._file_handlers:
             if file_handler in root_logger.handlers:
@@ -564,6 +617,7 @@ class LoggingStage(Advancable):
         self._original_handlers = {}
         self._original_level = logging.INFO
         self._log_handler = None
+        self._capture_log_handler = None
         self._file_handlers = []
 
 
