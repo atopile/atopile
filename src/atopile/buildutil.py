@@ -242,6 +242,7 @@ def build(app: Module) -> None:
 
     if any(t.name == generate_manufacturing_data.name for t in targets):
         with LoggingStage("checks-post-pcb", "Running post-pcb checks"):
+            pcb.add(F.PCB.requires_drc_check())
             try:
                 check_design(
                     G(),
