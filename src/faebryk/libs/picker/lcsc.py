@@ -42,7 +42,7 @@ from faebryk.libs.util import ConfigFlag, call_with_file_capture, not_none, once
 logger = logging.getLogger(__name__)
 
 CRAWL_DATASHEET = ConfigFlag(
-    "LCSC_DATASHEET", default=False, descr="Crawl for datasheet on LCSC"
+    "LCSC_DATASHEET", default=True, descr="Crawl for datasheet on LCSC"
 )
 
 WORKAROUND_SMD_3D_MODEL_FIX = True
@@ -396,6 +396,9 @@ class EasyEDAPart:
         if download_model and part._pre_model is not None:
             part.load_model()
 
+        if part._pre_datasheet is not None:
+            part.load_datasheet()
+
         return part
 
     def load_datasheet(self):
@@ -426,6 +429,7 @@ class EasyEDAPart:
         if match:
             pdfurl = match.group(1)
             logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
+            self.datasheet_url = pdfurl
             return pdfurl
         else:
             return None

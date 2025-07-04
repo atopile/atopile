@@ -1176,6 +1176,9 @@ class Config:
         working_dir: Path | None = None,
         **kwargs: Any,
     ) -> None:
+        if working_dir:
+            working_dir = Path(working_dir).expanduser().resolve().absolute()
+
         entry, entry_arg_file_path = self._get_entry_arg_file_path(entry, working_dir)
 
         if standalone:
@@ -1184,7 +1187,7 @@ class Config:
             if config_file_path := _find_project_config_file(entry_arg_file_path):
                 self.project_dir = config_file_path.parent
             elif entry is None:
-                raise UserNoProjectException()
+                raise UserNoProjectException(search_path=entry_arg_file_path)
 
             else:
                 raise UserBadParameterError(

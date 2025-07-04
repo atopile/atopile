@@ -77,6 +77,9 @@ class AtoPart:
             raise ValueError("Model is not set")
         return self.path / self.model.filename
 
+    def generate_import_statement(self, src_path: Path) -> str:
+        return f'from "{self.path.relative_to(src_path)}" import {self.module_name}'
+
     def __post_init__(self):
         self.fp = deepcopy(self.fp)
         self.fp.footprint.name = f"{self.identifier}:{self.fp.footprint.base_name}"
