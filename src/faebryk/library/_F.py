@@ -29,8 +29,8 @@ from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
 from faebryk.library.has_overriden_name import has_overriden_name
-from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_reference import has_reference
+from faebryk.library.has_linked_pad import has_linked_pad
 from faebryk.library.has_pcb_position import has_pcb_position
 from faebryk.library.has_part_picked import has_part_picked
 from faebryk.library.is_auto_generated import is_auto_generated
@@ -65,8 +65,8 @@ from faebryk.library.Logic import Logic
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
 from faebryk.library.Footprint import Footprint
 from faebryk.library.has_overriden_name_defined import has_overriden_name_defined
-from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.Symbol import Symbol
+from faebryk.library.has_linked_pad_defined import has_linked_pad_defined
 from faebryk.library.has_pcb_position_defined import has_pcb_position_defined
 from faebryk.library.has_pcb_position_defined_relative import has_pcb_position_defined_relative
 from faebryk.library.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
@@ -93,8 +93,8 @@ from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_footprint_impl import has_footprint_impl
 from faebryk.library.has_kicad_footprint import has_kicad_footprint
-from faebryk.library.Pad import Pad
 from faebryk.library.has_symbol_layout import has_symbol_layout
+from faebryk.library.Pad import Pad
 from faebryk.library.PCB import PCB
 from faebryk.library.requires_external_usage import requires_external_usage
 from faebryk.library.GDT import GDT
@@ -103,12 +103,12 @@ from faebryk.library.Diode import Diode
 from faebryk.library.MOSFET import MOSFET
 from faebryk.library.LogicGate import LogicGate
 from faebryk.library.has_footprint_defined import has_footprint_defined
+from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
 from faebryk.library.Net import Net
 from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_pinlist
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
-from faebryk.library.has_symbol_layout_defined import has_symbol_layout_defined
 from faebryk.library.TVS import TVS
 from faebryk.library.NFET import NFET
 from faebryk.library.PFET import PFET

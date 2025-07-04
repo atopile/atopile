@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_drc_report_file,
@@ -106,6 +107,9 @@ class PCB(Node):
                     )
                 return out
 
+            def __str__(self):
+                return self.pretty()
+
         design_check: F.implements_design_check
 
         @F.implements_design_check.register_post_pcb_check
@@ -129,6 +133,9 @@ class PCB(Node):
                 )
 
     class has_pcb(Module.TraitT.decless()):
+        class has_pcb_ref(F.has_reference.decless()):
+            reference: "PCB" = reference()
+
         def __init__(self, pcb: "PCB"):
             super().__init__()
             self.pcb = pcb
@@ -136,4 +143,6 @@ class PCB(Node):
         def on_obj_set(self):
             assert self.pcb.app is None
             self.pcb.app = self.get_obj(Module)
+            self.pcb.app.add(self.has_pcb_ref(self.pcb))
+
             return super().on_obj_set()

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from atopile import errors
-from atopile.cli.build import _init_python_app
+from atopile.build import _init_python_app
 from atopile.config import config
 
 PROJECT_DIR = Path("test/common/resources/test-project")
