@@ -92,12 +92,12 @@ def search_and_install_jlcpcb_part(
     from atopile.cli.create import part
     from atopile.config import config
 
-    config.apply_options(entry=None, working_dir=absolute_project_dir)
-
-    config.interactive = False
-
     try:
-        apart, component = part(search_term=lcsc_part_number, accept_single=True)
+        apart, component = part(
+            search_term=lcsc_part_number,
+            accept_single=True,
+            project_dir=absolute_project_dir,
+        )
     except Exception as e:
         return CreatePartError(
             success=False,

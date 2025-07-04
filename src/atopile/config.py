@@ -1187,7 +1187,7 @@ class Config:
             if config_file_path := _find_project_config_file(entry_arg_file_path):
                 self.project_dir = config_file_path.parent
             elif entry is None:
-                raise UserNoProjectException()
+                raise UserNoProjectException(search_path=entry_arg_file_path)
 
             else:
                 raise UserBadParameterError(

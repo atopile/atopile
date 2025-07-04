@@ -594,13 +594,14 @@ class ComponentType(StrEnum):
 def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
     accept_single: Annotated[bool, typer.Option("--accept-single", "-a")] = False,
+    project_dir: Annotated[Path | None, typer.Option("--project-dir", "-p")] = None,
 ):
     """Create a new component."""
     from faebryk.libs.picker.api.api import ApiHTTPError
     from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
     from faebryk.libs.picker.lcsc import download_easyeda_info
 
-    config.apply_options(None)
+    config.apply_options(None, working_dir=project_dir)
 
     # Find a component --------------------------------------------------------
 
