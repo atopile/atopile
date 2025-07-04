@@ -4,6 +4,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
 
 
 class has_single_electric_reference_shared(F.has_single_electric_reference.impl()):
@@ -16,6 +17,10 @@ class has_single_electric_reference_shared(F.has_single_electric_reference.impl(
     def on_obj_set(self):
         super().on_obj_set()
 
-        obj = self.get_obj(Module)
+        if not isinstance(self.obj, (Module, ModuleInterface)):
+            raise TypeError(
+                f"has_single_electric_reference_shared can only be used on "
+                f"modules or module interfaces, got {self.obj}"
+            )
 
-        F.ElectricSignal.connect_all_module_references(obj, gnd_only=self.gnd_only)
+        F.ElectricSignal.connect_all_module_references(self.obj, gnd_only=self.gnd_only)
