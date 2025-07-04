@@ -36,7 +36,8 @@ def build_project(
     from atopile.config import config
 
     config.apply_options(
-        entry=absolute_project_dir,
+        entry=None,
+        working_dir=absolute_project_dir,
         selected_builds=[target_name_from_yaml],
     )
 
@@ -120,8 +121,8 @@ def search_and_install_jlcpcb_part(
 
 @cli_tools.register()
 def install_package(
+    absolute_project_dir: str,
     package_identifiers: list[str],
-    project_path: Path | None = None,
     allow_upgrade: bool = False,
 ) -> str:
     """
@@ -131,6 +132,10 @@ def install_package(
     from atopile.cli.install import add
 
     # TODO capture log / stdout
-    add(package=package_identifiers, path=project_path, upgrade=allow_upgrade)
+    add(
+        package=package_identifiers,
+        path=Path(absolute_project_dir),
+        upgrade=allow_upgrade,
+    )
 
     return "Done"
