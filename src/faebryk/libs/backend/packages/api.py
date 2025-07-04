@@ -3,15 +3,17 @@
 
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime
+from enum import Enum, auto
 from importlib.metadata import version as get_package_version
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlparse
 
 import requests
+from dataclasses_json import config as dataclasses_json_config
 from dataclasses_json.api import dataclass_json
-from pydantic.networks import HttpUrl
 
 from atopile.config import config
 from faebryk.libs.package.artifacts import Artifacts
@@ -21,82 +23,277 @@ from faebryk.libs.util import indented_container, once
 logger = logging.getLogger(__name__)
 
 
-class _Models:
-    class Publish:
+_EXCLUDE_FROM_JSON = dataclasses_json_config(exclude=lambda _: True)
+
+
+class _Type(Enum):
+    GET = auto()
+    POST = auto()
+
+
+class _Schemas:
+    @dataclass_json
+    @dataclass(frozen=True)
+    class Author:
+        name: str
+        email: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageStats:
+        total_downloads: int | None
+        this_week_downloads: int | None
+        this_month_downloads: int | None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class FileHashes:
+        sha256: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class RegistryDependencySpec:
+        identifier: str
+        type: Literal["registry"] = "registry"
+        release: str | None = None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageDependencies:
+        requires: list["_Schemas.RegistryDependencySpec"]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class ArtifactInfo:
+        filename: str
+        url: str
+        size: int
+        hashes: "_Schemas.FileHashes"
+        build_name: str | None = None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class ArtifactsInfo:
+        artifacts: list["_Schemas.ArtifactInfo"]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class LayoutInfo:
+        build_name: str
+        url: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class LayoutsInfo:
+        layouts: list["_Schemas.LayoutInfo"]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageReleaseInfo:
+        created_at: datetime = field(
+            metadata=dataclasses_json_config(decoder=datetime.fromisoformat)
+        )
+        released_at: datetime = field(
+            metadata=dataclasses_json_config(decoder=datetime.fromisoformat)
+        )
+        key: str = field(metadata=_EXCLUDE_FROM_JSON)
+        identifier: str
+        version: str
+        repository: str
+        authors: list["_Schemas.Author"]
+        license: str
+        summary: str
+        homepage: str | None
+        readme_url: str | None = field(metadata=_EXCLUDE_FROM_JSON)
+        url: str
+        stats: "_Schemas.PackageStats"
+        hashes: "_Schemas.FileHashes"
+        filename: str
+        git_ref: str | None
+        requires_atopile: str
+        size: int
+        download_url: str = field(metadata=_EXCLUDE_FROM_JSON)
+        builds: list[str] | None
+        dependencies: "_Schemas.PackageDependencies"
+        artifacts: "_Schemas.ArtifactsInfo | None"
+        layouts: "_Schemas.LayoutsInfo | None"
+        yanked_at: str | None
+        yanked_reason: str | None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class Package:
+        info: "_Schemas.PackageInfo"
+        readme: str | None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageRelease:
+        info: "_Schemas.PackageReleaseInfo"
+        readme: str | None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageInfo:
+        created_at: datetime | str
+        released_at: datetime | str
+        key: str
+        identifier: str
+        version: str
+        repository: str
+        authors: list["_Schemas.Author"]
+        license: str
+        summary: str
+        homepage: str | None
+        readme_url: str | None
+        url: str
+        stats: "_Schemas.PackageStats"
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageInfoBrief:
+        identifier: str
+        version: str
+        summary: str
+        url: str
+        repository: str
+        homepage: str | None
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class QueryResult:
+        packages: list["_Schemas.PackageInfoBrief"]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PresignedUploadInfo:
+        url: str
+        fields: dict[str, str]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PublishRequest:
+        identifier: str
+        package_version: str
+        git_ref: str | None
+        package_size: int
+        artifacts_size: int | None
+        manifest: dict[str, Any]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PublishRequestResponse:
+        release_id: str
+        upload_info: "_Schemas.PresignedUploadInfo"
+        artifacts_upload_info: "_Schemas.PresignedUploadInfo"
+        status: Literal["ok"] = "ok"
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PublishCompletedResponse:
+        url: str
+        status: Literal["ok"] = "ok"
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class UploadCompleteRequest:
+        release_id: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class ValidationError:
+        loc: list[str | int]
+        msg: str
+        type: str
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class HTTPValidationError:
+        detail: list["_Schemas.ValidationError"]
+
+    @dataclass_json
+    @dataclass(frozen=True)
+    class PackageReleases:
+        releases: list["_Schemas.PackageReleaseInfo"]
+
+
+class _Endpoints:
+    class PackageReleases:
+        TYPE = _Type.GET
+
+        @staticmethod
+        def url(request: "_Endpoints.PackageReleases.Request") -> str:
+            return f"/v1/package/{request.identifier}/releases"
+
         @dataclass_json
         @dataclass(frozen=True)
         class Request:
             identifier: str
-            package_version: str
-            git_ref: str | None
-            package_size: int
-            artifacts_size: int | None
-            manifest: dict[str, Any]
-            """
-            contents of the `ato.yaml` file
-            """
 
-        @dataclass_json
-        @dataclass(frozen=True)
-        class Response:
-            @dataclass_json
-            @dataclass(frozen=True)
-            class Info:
-                url: HttpUrl
-                fields: dict[str, str]
+        Response = _Schemas.PackageReleases
 
-            status: Literal["ok"]
-            release_id: str
-            upload_info: Info
-            artifacts_upload_info: Info
+    class PackageRelease:
+        TYPE = _Type.GET
 
-    class PublishUploadComplete:
+        @staticmethod
+        def url(request: "_Endpoints.PackageRelease.Request") -> str:
+            return f"/v1/package/{request.identifier}/releases/{request.version}"
+
         @dataclass_json
         @dataclass(frozen=True)
         class Request:
-            release_id: str
+            identifier: str
+            version: str
 
-        @dataclass_json
-        @dataclass(frozen=True)
-        class Response:
-            status: Literal["ok"]
-            url: str
+        Response = _Schemas.PackageRelease
 
     class Package:
+        TYPE = _Type.GET
+
+        @staticmethod
+        def url(request: "_Endpoints.Package.Request") -> str:
+            return f"/v1/package/{request.identifier}"
+
         @dataclass_json
         @dataclass(frozen=True)
-        class Response:
-            @dataclass_json
-            @dataclass(frozen=True)
-            class Info:
-                version: str
+        class Request:
+            identifier: str
 
-            info: Info
+        Response = _Schemas.Package
 
-    class Release:
+    class Packages:
+        TYPE = _Type.GET
+
+        @staticmethod
+        def url(request: "_Endpoints.Packages.Request") -> str:
+            return f"/v1/packages?query={request.query}"
+
         @dataclass_json
         @dataclass(frozen=True)
-        class Response:
-            @dataclass_json
-            @dataclass(frozen=True)
-            class Info:
-                # @dataclass_json
-                # @dataclass(frozen=True)
-                # class Dependencies:
-                #     @dataclass_json
-                #     @dataclass(frozen=True)
-                #     class Dependency:
-                #         identifier: str
-                #         version: str
+        class Request:
+            query: str
 
-                #     requires: list[Dependency]
+        Response = _Schemas.QueryResult
 
-                # dependencies: Dependencies
-                download_url: str
-                # requires_atopile: str
-                filename: str
+    class Publish:
+        TYPE = _Type.POST
 
-            info: Info
+        @staticmethod
+        def url() -> str:
+            return "/v1/publish"
+
+        Request = _Schemas.PublishRequest
+        Response = _Schemas.PublishRequestResponse
+
+    class PublishUploadComplete:
+        TYPE = _Type.POST
+
+        @staticmethod
+        def url() -> str:
+            return "/v1/publish/upload-complete"
+
+        Request = _Schemas.UploadCompleteRequest
+        Response = _Schemas.PublishCompletedResponse
 
 
 class Errors:
@@ -136,7 +333,7 @@ class Errors:
             return f"{type(self).__name__}: {self.package_identifier}: {self.detail}"
 
         @classmethod
-        def from_http(
+        def from_http(  # type: ignore
             cls, error: "Errors.PackagesApiHTTPError", package_identifier: str
         ):
             return cls(error.error, error.detail, package_identifier)
@@ -155,7 +352,7 @@ class Errors:
             return f"{type(self).__name__}: {self.package_identifier}: {self.detail}"
 
         @classmethod
-        def from_http(
+        def from_http(  # type: ignore
             cls, error: "Errors.PackagesApiHTTPError", package_identifier: str
         ):
             return cls(error.error, error.detail, package_identifier)
@@ -179,7 +376,7 @@ class Errors:
             )
 
         @classmethod
-        def from_http(
+        def from_http(  # type: ignore
             cls,
             error: "Errors.PackagesApiHTTPError",
             package_identifier: str,
@@ -303,7 +500,7 @@ class PackagesAPIClient:
         dist: Dist,
         artifacts: Artifacts | None,
         skip_auth: bool = False,
-    ) -> _Models.PublishUploadComplete.Response:
+    ) -> _Endpoints.PublishUploadComplete.Response:
         """
         Publish a package to the package registry.
 
@@ -312,8 +509,8 @@ class PackagesAPIClient:
         ## Request upload
         try:
             r = self._post(
-                "/v1/publish",
-                data=_Models.Publish.Request(
+                _Endpoints.Publish.url(),
+                data=_Endpoints.Publish.Request(
                     identifier=identifier,
                     package_version=version,
                     git_ref=git_ref,
@@ -328,7 +525,7 @@ class PackagesAPIClient:
                 raise Errors.ReleaseAlreadyExistsError.from_http(e) from e
             raise
 
-        response = _Models.Publish.Response.from_dict(r.json())  # type: ignore
+        response = _Endpoints.Publish.Response.from_dict(r.json())  # type: ignore
 
         ## Upload the package
         try:
@@ -356,8 +553,8 @@ class PackagesAPIClient:
         ## Confirm upload
         try:
             r = self._post(
-                "/v1/publish/upload-complete",
-                data=_Models.PublishUploadComplete.Request(
+                _Endpoints.PublishUploadComplete.url(),
+                data=_Endpoints.PublishUploadComplete.Request(
                     release_id=response.release_id,
                 ).to_dict(),  # type: ignore
                 authenticate=not skip_auth,
@@ -365,18 +562,20 @@ class PackagesAPIClient:
         except Errors.PackagesApiHTTPError:
             raise
 
-        response = _Models.PublishUploadComplete.Response.from_dict(r.json())  # type: ignore
+        response = _Endpoints.PublishUploadComplete.Response.from_dict(r.json())  # type: ignore
         return response
 
-    def package(
+    def get_package(
         self, identifier: str, version: str | None = None
-    ) -> _Models.Release.Response:
+    ) -> _Endpoints.PackageRelease.Response:
         """
         Get a package from the package registry.
         """
         if version is None:
             try:
-                r = self._get(f"/v1/package/{identifier}")
+                r = self._get(
+                    _Endpoints.Package.url(_Endpoints.Package.Request(identifier))
+                )
             except Errors.PackagesApiHTTPError as e:
                 if e.code == 404:
                     raise Errors.PackageNotFoundError.from_http(e, identifier) from e
@@ -385,12 +584,16 @@ class PackagesAPIClient:
                         e, identifier
                     ) from e
                 raise
-            response = _Models.Package.Response.from_dict(r.json())  # type: ignore
-            assert isinstance(response, _Models.Package.Response)
+            response = _Endpoints.Package.Response.from_dict(r.json())  # type: ignore
+            assert isinstance(response, _Endpoints.Package.Response)
             version = response.info.version
 
         try:
-            r = self._get(f"/v1/package/{identifier}/releases/{version}")
+            r = self._get(
+                _Endpoints.PackageRelease.url(
+                    _Endpoints.PackageRelease.Request(identifier, version)
+                )
+            )
         except Errors.PackagesApiHTTPError as e:
             if e.code == 404:
                 raise Errors.ReleaseNotFoundError.from_http(
@@ -398,16 +601,16 @@ class PackagesAPIClient:
                 ) from e
             raise
         try:
-            response = _Models.Release.Response.from_dict(r.json())  # type: ignore
+            response = _Endpoints.PackageRelease.Response.from_dict(r.json())  # type: ignore
         except Exception:
             logger.error(indented_container(r.json(), recursive=True))
             raise
         return response
 
-    def release_dist(
+    def get_release_dist(
         self, identifier: str, output_path: Path, version: str | None = None
     ) -> Dist:
-        release = self.package(identifier, version)
+        release = self.get_package(identifier, version)
         url = release.info.download_url
         filepath = output_path / release.info.filename
         filepath.parent.mkdir(parents=True, exist_ok=True)
@@ -419,3 +622,7 @@ class PackagesAPIClient:
                     f.write(chunk)
 
         return Dist(filepath)
+
+    def query_packages(self, query: str) -> _Endpoints.Packages.Response:
+        r = self._get(_Endpoints.Packages.url(_Endpoints.Packages.Request(query)))
+        return _Endpoints.Packages.Response.from_dict(r.json())  # type: ignore
