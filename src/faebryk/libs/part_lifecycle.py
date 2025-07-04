@@ -452,6 +452,8 @@ class PartLifecycle:
             try:
                 fp = kicad_footprint_file(fp_path)
 
+                # TODO: associate source project with component, so all that's needed
+                # here is to substitute ${KIPRJMOD} + rel_path for ${KIPRJMOD}
                 if ".ato" in fp_path.parts:
                     self._fix_package_footprint_model(fp, fp_path)
 
