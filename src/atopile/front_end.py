@@ -1796,9 +1796,14 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # Check if it's a property or attribute that can be set
         if has_instance_settable_attr(target, assigned_name.name):
-            attr = getattr(target, assigned_name.name)
+            try:
+                attr = getattr(target, assigned_name.name)
+            except AttributeError:
+                attr = None
+
             if (
-                isinstance(attr, Parameter)
+                attr is not None
+                and isinstance(attr, Parameter)
                 # non-string enum values would need parser changes
                 and isinstance(value, str)
                 and isinstance(attr.domain, L.Domains.ENUM)
