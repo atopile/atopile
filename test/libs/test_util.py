@@ -226,15 +226,15 @@ def test_ordered_set():
 @pytest.mark.parametrize(
     "base, match, expected",
     [
-        ([1, 2, 3], [2, 3], 1),
-        ([1, 2, 3], [2, 3, 4], None),
-        ([1, 2, 3], [1, 2, 3], 0),
-        ([1, 2, 3], [1, 2, 3, 4], None),
-        ([1, 2, 3], [1, 2, 3, 4, 5], None),
+        ([1, 2, 3], [2, 3], [1]),
+        ([1, 2, 3], [2, 3, 4], []),
+        ([1, 2, 3], [1, 2, 3], [0]),
+        ([1, 2, 3], [1, 2, 3, 4], []),
+        ([1, 2, 3], [1, 2, 3, 4, 5], []),
     ],
 )
 def test_list_match(base, match, expected):
-    assert list_match(base, match) == expected
+    assert list(list_match(base, match)) == expected
 
 
 @pytest.mark.parametrize(
