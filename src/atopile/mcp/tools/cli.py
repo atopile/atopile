@@ -119,23 +119,42 @@ def search_and_install_jlcpcb_part(
     )
 
 
+class InstallPackageResult(Result):
+    installed_packages: list[str]
+
+
+class InstallPackageError(ErrorResult):
+    pass
+
+
 @cli_tools.register()
 def install_package(
     absolute_project_dir: str,
     package_identifiers: list[str],
     allow_upgrade: bool = False,
-) -> str:
+) -> InstallPackageResult | InstallPackageError:
     """
     Install a package using the ato CLI.
     """
 
     from atopile.cli.install import add
 
-    # TODO capture log / stdout
-    add(
-        package=package_identifiers,
-        path=Path(absolute_project_dir),
-        upgrade=allow_upgrade,
-    )
+    try:
+        add(
+            package=package_identifiers,
+            path=Path(absolute_project_dir),
+            upgrade=allow_upgrade,
+        )
+    except Exception as e:
+        return InstallPackageError(
+            success=False,
+            project_dir=str(absolute_project_dir),
+            error=e.__class__.__name__,
+            error_message=str(e),
+        )
 
-    return "Done"
+    return InstallPackageResult(
+        success=True,
+        project_dir=str(absolute_project_dir),
+        installed_packages=package_identifiers,
+    )
