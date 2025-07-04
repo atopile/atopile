@@ -635,9 +635,14 @@ def part(
                 raise
 
         if len(components) == 0:
-            rich_print_robust(f'No components found for "{search_term}"')
-            search_term = None
-            continue
+            if config.interactive:
+                rich_print_robust(f'No components found for "{search_term}"')
+                search_term = None
+                continue
+            else:
+                raise errors.UserBadParameterError(
+                    f"No matching components found for '{search_term}'"
+                )
 
         component_table = Table()
         component_table.add_column("Manufacturer")
@@ -698,10 +703,12 @@ def part(
     rich_print_robust(
         f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
     )
-    path = apart.ato_path.relative_to(config.project.paths.src)
     rich_print_robust(
-        f'```ato\nfrom "{path}" import {apart.module_name}\n```', markdown=True
+        f"```ato\n{apart.generate_import_statement(config.project.paths.src)}\n```",
+        markdown=True,
     )
+
+    return apart, component
 
 
 @create_app.command(deprecated=True)

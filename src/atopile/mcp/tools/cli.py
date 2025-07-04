@@ -13,15 +13,25 @@ cli_tools = MCPTools()
 logger = logging.getLogger(__name__)
 
 
-class BuildResult(BaseModel):
+class Result(BaseModel):
     success: bool
-    project: str
+    project_dir: str
+
+
+class ErrorResult(Result):
+    error: str
+    error_message: str
+
+
+class BuildResult(Result):
     target: str
     logs: str
 
 
 @cli_tools.register()
-def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> BuildResult:
+def build_project(
+    absolute_project_dir: Path, target_name_from_yaml: str
+) -> BuildResult:
     from atopile.build import init_app
     from atopile.config import config
 
@@ -49,24 +59,63 @@ def build_project(absolute_project_dir: str, target_name_from_yaml: str) -> Buil
 
         return BuildResult(
             success=success,
-            project=absolute_project_dir,
+            project_dir=str(absolute_project_dir),
             target=target_name_from_yaml,
             logs=logs.getvalue(),
         )
 
 
+class CreatePartResult(Result):
+    manufacturer: str
+    part_number: str
+    description: str
+    supplier_id: str
+    stock: int
+    path: str
+    import_statement: str
+
+
+class CreatePartError(ErrorResult):
+    error: str
+    error_message: str
+
+
 @cli_tools.register()
-def search_and_install_jlcpcb_part(lcsc_part_number: str) -> str:
+def search_and_install_jlcpcb_part(
+    absolute_project_dir: Path, lcsc_part_number: str
+) -> CreatePartResult | CreatePartError:
     """
     Search for a part on JLCPCB and install it.
     """
 
     from atopile.cli.create import part
+    from atopile.config import config
 
-    # TODO capture log / stdout
-    part(search_term=lcsc_part_number, accept_single=True)
+    config.apply_options(entry=None, working_dir=absolute_project_dir)
 
-    return "Done"
+    config.interactive = False
+
+    try:
+        apart, component = part(search_term=lcsc_part_number, accept_single=True)
+    except Exception as e:
+        return CreatePartError(
+            success=False,
+            project_dir=str(absolute_project_dir),
+            error=e.__class__.__name__,
+            error_message=str(e),
+        )
+
+    return CreatePartResult(
+        success=True,
+        project_dir=str(absolute_project_dir),
+        manufacturer=component.manufacturer_name,
+        part_number=component.part_number,
+        description=component.description,
+        supplier_id=component.lcsc_display,
+        stock=component.stock,
+        path=str(apart.path),
+        import_statement=apart.generate_import_statement(config.project.paths.src),
+    )
 
 
 @cli_tools.register()
