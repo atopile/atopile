@@ -22,6 +22,20 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
+def _log_add_package(identifier: str, version: str):
+    logger.info(
+        f"[green]+[/] {identifier}@{version}",
+        extra={"markup": True},
+    )
+
+
+def _log_remove_package(identifier: str, version: str):
+    logger.info(
+        f"[red]-[/] {identifier}@{version}",
+        extra={"markup": True},
+    )
+
+
 class BrokenDependencyError(Exception):
     def __init__(self, identifier: str, error: Exception):
         self.identifier = identifier
@@ -176,6 +190,8 @@ class ProjectDependencies:
         }
         self.dag = self.resolve_dependencies()
 
+        self.sync_versions()
+
         if install_missing:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
@@ -195,6 +211,7 @@ class ProjectDependencies:
     def install_missing_dependencies(self):
         for dep in self.not_installed_dependencies:
             assert dep.dist is not None
+            _log_add_package(dep.identifier, dep.dist.version)
             dep.dist.install(dep.target_path)
 
     def clean_unmanaged_directories(self):
@@ -219,12 +236,14 @@ class ProjectDependencies:
         dep_dir_prefixes = {Path(*dep_dir.parts[:2]) for dep_dir in dep_dirs}
 
         unmanaged_dirs = local_dep_dirs - dep_dir_prefixes
-        if not unmanaged_dirs:
-            return
-        logger.warning(
-            f"Removing unmanaged module directories: {unmanaged_dirs}",
-        )
+
         for unmanaged_dir in unmanaged_dirs:
+            dep_cfg = config.ProjectConfig.from_path(module_dir / unmanaged_dir)
+            if dep_cfg is None or dep_cfg.package is None:
+                logger.warning(f"Removing unmanaged module directory: {unmanaged_dir}")
+            else:
+                _log_remove_package(dep_cfg.package.identifier, dep_cfg.package.version)
+
             robustly_rm_dir(module_dir / unmanaged_dir)
 
     def resolve_dependencies(self):
@@ -426,3 +445,32 @@ class ProjectDependencies:
         # reload and clean orphaned packages
         self.reload()
         self.clean_unmanaged_directories()
+
+    def sync_versions(self):
+        """
+        Ensure that installed dependency versions match the manifest
+        """
+        for dep in self.all_deps:
+            if dep.spec.type != "registry":
+                # TODO
+                continue
+
+            if dep.cfg is None or dep.cfg.package is None:
+                # TODO: MalformedPacakgeError?
+                continue
+
+            spec = cast(config.RegistryDependencySpec, dep.spec)
+            installed_version = dep.cfg.package.version
+            desired_version = spec.release
+
+            if installed_version != desired_version:
+                dep.load_dist()
+                assert dep.dist is not None
+
+                target_path = dep.target_path
+                if target_path.exists():
+                    _log_remove_package(dep.identifier, installed_version)
+                    robustly_rm_dir(target_path)
+
+                _log_add_package(dep.identifier, dep.dist.version)
+                dep.dist.install(target_path)
