@@ -117,7 +117,7 @@ def sync(
     ) as e:
         raise errors.UserException(f"Error syncing dependencies: {e}") from e
 
-    logger.info("[green]Done syncing![/] :call_me_hand:", extra={"markup": True})
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 @capture("cli:add_start", "cli:add_end")
