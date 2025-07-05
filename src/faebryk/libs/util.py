@@ -2561,3 +2561,34 @@ def get_code_bin_of_terminal() -> str | None:
             return code_bin
 
     return None
+
+
+def list_match[T](base: list[T], match: list[T]) -> Generator[int, None, None]:
+    for i in range(len(base)):
+        if base[i : i + len(match)] == match:
+            yield i
+
+
+def sublist_replace[T](base: list[T], match: list[T], replacement: list[T]) -> list[T]:
+    out: list[T] = []
+    buffer: list[T] = []
+
+    for i in base:
+        buffer.append(i)
+        if len(buffer) > len(match):
+            out.append(buffer.pop(0))
+        if buffer == match:
+            out.extend(replacement)
+            buffer = []
+    out.extend(buffer)
+    return out
+
+
+def path_replace(base: Path, match: Path, replacement: Path) -> Path:
+    return Path(
+        *sublist_replace(
+            list(base.parts),
+            list(match.parts),
+            list(replacement.parts),
+        ),
+    )

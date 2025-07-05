@@ -1705,3 +1705,25 @@ def test_reserved_keywords_as_identifiers(name: str, template: str):
 
     with pytest.raises(errors.UserSyntaxError):
         parse_text_as_file(template.format(name=name))
+
+
+def test_assign_to_enum_param(bob: Bob):
+    text = dedent(
+        """
+        import Capacitor
+
+        module App:
+            cap = new Capacitor
+            cap.temperature_coefficient = "X7R"
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    cap = bob.resolve_field_shortcut(node, "cap")
+    assert isinstance(cap, F.Capacitor)
+    assert cap.temperature_coefficient.try_get_literal_subset() == P_Set.from_value(
+        F.Capacitor.TemperatureCoefficient.X7R
+    )

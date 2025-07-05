@@ -594,13 +594,14 @@ class ComponentType(StrEnum):
 def part(
     search_term: Annotated[str | None, typer.Option("--search", "-s")] = None,
     accept_single: Annotated[bool, typer.Option("--accept-single", "-a")] = False,
+    project_dir: Annotated[Path | None, typer.Option("--project-dir", "-p")] = None,
 ):
     """Create a new component."""
     from faebryk.libs.picker.api.api import ApiHTTPError
     from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
     from faebryk.libs.picker.lcsc import download_easyeda_info
 
-    config.apply_options(None)
+    config.apply_options(None, working_dir=project_dir)
 
     # Find a component --------------------------------------------------------
 
@@ -635,9 +636,14 @@ def part(
                 raise
 
         if len(components) == 0:
-            rich_print_robust(f'No components found for "{search_term}"')
-            search_term = None
-            continue
+            if config.interactive:
+                rich_print_robust(f'No components found for "{search_term}"')
+                search_term = None
+                continue
+            else:
+                raise errors.UserBadParameterError(
+                    f"No matching components found for '{search_term}'"
+                )
 
         component_table = Table()
         component_table.add_column("Manufacturer")
@@ -698,10 +704,12 @@ def part(
     rich_print_robust(
         f":sparkles: Created {apart.identifier} at {apart.path} ! Import with:\n"
     )
-    path = apart.ato_path.relative_to(config.project.paths.src)
     rich_print_robust(
-        f'```ato\nfrom "{path}" import {apart.module_name}\n```', markdown=True
+        f"```ato\n{apart.generate_import_statement(config.project.paths.src)}\n```",
+        markdown=True,
     )
+
+    return apart, component
 
 
 @create_app.command(deprecated=True)

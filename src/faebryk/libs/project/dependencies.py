@@ -127,7 +127,7 @@ class ProjectDependency:
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
-            dist = api.release_dist(
+            dist = api.get_release_dist(
                 self.spec.identifier,
                 Path(temp_dir),
                 version=self.spec.release,
@@ -309,14 +309,14 @@ class ProjectDependencies:
                 if existing_dep not in self.direct_deps:
                     raise errors.UserException(
                         f"Cannot install {identifier} as it is already installed "
-                        f"with a different version: {existing_dep.spec.release}"
-                        f"from a transitive dependency"
+                        f"with a different version from a transitive dependency: "
+                        f"{existing_dep.spec.release}"
                     )
                 if not upgrade:
                     raise errors.UserException(
                         f"Cannot install {identifier} as it is already installed "
-                        f"with a different version: {existing_dep.spec.release}"
-                        f"Use --upgrade to install anyway"
+                        f"with a different version: {existing_dep.spec.release}. "
+                        f"Use --upgrade to install anyway."
                     )
             if isinstance(
                 existing_dep.spec,
@@ -324,8 +324,8 @@ class ProjectDependencies:
             ):
                 if not upgrade:
                     raise errors.UserException(
-                        f"Cannot install {identifier} as it is already installed "
-                        f"Use --upgrade to install anyway"
+                        f"Cannot install {identifier} as it is already installed. "
+                        f"Use --upgrade to install anyway."
                     )
 
         target_path = dep.target_path

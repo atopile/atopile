@@ -130,7 +130,9 @@ class _NetName:
         Prefixes and suffixes are joined with a "-" if they exist.
         """
         return "-".join(
-            str(n) for n in [self.prefix, self.base_name or "net", self.suffix] if n
+            str(n)
+            for n in [self.prefix, self.base_name or "net", self.suffix]
+            if n is not None
         )
 
 
@@ -203,6 +205,19 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
         for n in nets
         if not n.has_trait(F.has_overriden_name)
     }
+    # sort nets by
+    # 1. name of first connected interface (remove hex)
+    # 2. number of connected interfaces
+
+    def stable_node_name(m: ModuleInterface) -> str:
+        return ".".join([p_name for p, p_name in m.get_hierarchy() if p.get_parent()])
+
+    unnamed_nets = dict(
+        sorted(
+            unnamed_nets.items(),
+            key=lambda it: [stable_node_name(m) for m in it[1]],
+        )
+    )
 
     # Capture already-named nets for conflict checking
     for net in nets:
@@ -219,9 +234,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # FIXME: the errors for this deserve vast improvement. Attaching an origin trait
     # to has_net_name is a start, but we need a generic way to raise those as
     # well-formed errors
-    for net, mifs in sorted(
-        unnamed_nets.items(), key=lambda it: str(first(it[1], None))
-    ):
+    for net, mifs in unnamed_nets.items():
         net_required_names: set[str] = set()
         net_suggested_names: list[tuple[str, int]] = []
         implicit_name_candidates: Mapping[str, float] = defaultdict(float)

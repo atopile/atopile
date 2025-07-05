@@ -9,7 +9,12 @@ from typing import Sequence
 
 import faebryk.library._F as F
 from atopile.cli.logging_ import ALERT
-from atopile.config import BuildTargetConfig, UserConfigurationError
+from atopile.config import (
+    BuildTargetConfig,
+    ProjectConfig,
+    UserConfigurationError,
+    _find_project_config_file,
+)
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
 from faebryk.core.module import Module
@@ -24,7 +29,6 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_pcb_file,
 )
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
-from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
     EasyEDAAPIResponse,
@@ -39,6 +43,7 @@ from faebryk.libs.util import (
     indented_container,
     md_list,
     once,
+    path_replace,
     re_in,
     robustly_rm_dir,
     sanitize_filepath_part,
@@ -335,11 +340,10 @@ class PartLifecycle:
             self._cache_ingest_part_from_easyeda[identifier] = out
             return out
 
-        def get_footprint_from_identifier(
+        def get_part_from_footprint_identifier(
             self, identifier: str, component: Module
-        ) -> tuple[Path, C_kicad_footprint_file]:
+        ) -> Path:
             # TODO this is old code, avoid reading fp-lib-table
-
             fp_lib_path = Gcfg.build.paths.fp_lib_table
 
             class LibNotInTable(Exception):
@@ -375,9 +379,9 @@ class PartLifecycle:
 
                 raise ValueError("No footprint libraries provided")
 
-            lib_id, fp_name = identifier.split(":")
+            lib_id, _ = identifier.split(":")
             try:
-                lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
+                lib = _find_footprint([fp_lib_path], lib_id)
             except* (LibNotInTable, FileNotFoundError):
                 from atopile.front_end import from_dsl  # TODO: F.is_from_dsl
 
@@ -394,19 +398,67 @@ class PartLifecycle:
                     except FileNotFoundError:
                         raise
 
-                    lib = _find_footprint([fp_lib_path, GLOBAL_FP_LIB_PATH], lib_id)
+                    lib = _find_footprint([fp_lib_path], lib_id)
                 else:
                     raise
 
-            dir_path = Path(
-                str(lib.uri)
-                .replace("${KIPRJMOD}", str(Gcfg.build.paths.fp_lib_table.parent))
-                .replace("${KICAD9_FOOTPRINT_DIR}", str(GLOBAL_FP_DIR_PATH))
+            part_path = Path(
+                str(lib.uri).replace(
+                    "${KIPRJMOD}", str(Gcfg.build.paths.fp_lib_table.parent)
+                )
             )
 
-            path = dir_path / f"{fp_name}.kicad_mod"
+            return part_path
+
+        @staticmethod
+        def _get_project_from_part_path(part_path: Path) -> Path | None:
+            # TODO: hate this
+            manifest_path = _find_project_config_file(part_path)
+            if manifest_path is None:
+                return None
+            return manifest_path.parent
+
+        def _fix_package_footprint_model(
+            self, fp: C_kicad_footprint_file, fp_path: Path
+        ):
+            layout_path = Gcfg.build.paths.layout.parent
+            project_path = self._get_project_from_part_path(fp_path)
+            if project_path is None:
+                raise ValueError(f"No project path found for {fp_path}")
+            package_project_config = ProjectConfig.from_path(project_path)
+            if not package_project_config:
+                raise ValueError(
+                    f"No project config found for {fp_path} at {project_path}"
+                )
+            inner_layout_path = package_project_config.paths.layout
+            rel_path = inner_layout_path.relative_to(layout_path, walk_up=True)
+            for m in fp.footprint.models:
+                # "${KIPRJMOD}/
+                #   ../../parts/<part>/<model>"
+                # ->
+                # "${KIPRJMOD}/../../.ato/modules/<package>/<layout_dir>/
+                #   ../parts/<part>/<model>"
+                m.path = path_replace(
+                    m.path,
+                    Path("${KIPRJMOD}") / "..",
+                    Path("${KIPRJMOD}") / rel_path,
+                )
+
+        def get_footprint_from_identifier(
+            self, identifier: str, component: Module
+        ) -> tuple[Path, C_kicad_footprint_file]:
+            lib_id, fp_name = identifier.split(":")
+            part_path = self.get_part_from_footprint_identifier(identifier, component)
+            fp_path = part_path / f"{fp_name}.kicad_mod"
             try:
-                return path, kicad_footprint_file(path)
+                fp = kicad_footprint_file(fp_path)
+
+                # TODO: associate source project with component, so all that's needed
+                # here is to substitute ${KIPRJMOD} + rel_path for ${KIPRJMOD}
+                if ".ato" in fp_path.parts:
+                    self._fix_package_footprint_model(fp, fp_path)
+
+                return fp_path, fp
             except FileNotFoundError as ex:
                 raise UserResourceException(
                     f"Footprint `{fp_name}` doesn't exist in library `{lib_id}`"
