@@ -208,12 +208,14 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # sort nets by
     # 1. name of first connected interface (remove hex)
     # 2. number of connected interfaces
+
+    def stable_node_name(m: ModuleInterface) -> str:
+        return ".".join([p_name for p, p_name in m.get_hierarchy() if p.get_parent()])
+
     unnamed_nets = dict(
         sorted(
             unnamed_nets.items(),
-            key=lambda it: [
-                re.sub(r"^\*[0-9A-F]+\.", "", m.get_full_name()) for m in it[1]
-            ],
+            key=lambda it: [stable_node_name(m) for m in it[1]],
         )
     )
 
