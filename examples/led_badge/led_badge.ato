@@ -79,11 +79,8 @@ module LED_BADGE:
     i2s_bus.sd  ~ micro.esp32_module.gpio[5]
     i2s_bus ~ mic.i2s
 
-    # LED Data (use GPIO6 which is otherwise unused in this design)
+    # LED Data
     led_grid.data_in ~ micro.esp32_module.gpio[6]
-
-    # Configure Buck-Boost output voltage
-    buck_boost.v_out = 3.3V +/- 3%
 
 module SK6805EC20_strip10:
     """
