@@ -450,27 +450,41 @@ class ProjectDependencies:
         """
         Ensure that installed dependency versions match the manifest
         """
+
+        def _sync_dep(dep: ProjectDependency, installed_version: str):
+            dep.load_dist()
+            assert dep.dist is not None
+
+            target_path = dep.target_path
+            if target_path.exists():
+                _log_remove_package(dep.identifier, installed_version)
+                robustly_rm_dir(target_path)
+
+            _log_add_package(dep.identifier, dep.dist.version)
+            dep.dist.install(target_path)
+
         for dep in self.all_deps:
-            if dep.spec.type != "registry":
-                # TODO
-                continue
+            match dep.spec.type:
+                case "registry":
+                    if dep.cfg is None or dep.cfg.package is None:
+                        raise errors.UserException(
+                            f"Malformed package for {dep.identifier}"
+                        )
 
-            if dep.cfg is None or dep.cfg.package is None:
-                # TODO: MalformedPacakgeError?
-                continue
+                    spec = cast(config.RegistryDependencySpec, dep.spec)
+                    installed_version = dep.cfg.package.version
+                    desired_version = spec.release
 
-            spec = cast(config.RegistryDependencySpec, dep.spec)
-            installed_version = dep.cfg.package.version
-            desired_version = spec.release
+                    if installed_version != desired_version:
+                        _sync_dep(dep, installed_version)
 
-            if installed_version != desired_version:
-                dep.load_dist()
-                assert dep.dist is not None
-
-                target_path = dep.target_path
-                if target_path.exists():
-                    _log_remove_package(dep.identifier, installed_version)
-                    robustly_rm_dir(target_path)
-
-                _log_add_package(dep.identifier, dep.dist.version)
-                dep.dist.install(target_path)
+                case "file" | "git":
+                    logger.warning(
+                        f"Ignoring possible changes to {dep.identifier} "
+                        f"({dep.spec.type} dependency)"
+                    )
+                    continue
+                case _:
+                    raise NotImplementedError(
+                        f"Syncing versions for {dep.spec.type} not implemented"
+                    )
