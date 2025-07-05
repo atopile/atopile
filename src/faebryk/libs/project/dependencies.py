@@ -7,6 +7,7 @@ from typing import cast
 
 import atopile.config as config
 from atopile import errors
+from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist, DistValidationError
 from faebryk.libs.util import (
@@ -110,9 +111,8 @@ class ProjectDependency:
             if isinstance(self.spec, config.FileDependencySpec):
                 path = self.spec.path
                 if not path.exists():
-                    raise FileNotFoundError(
-                        f"Local dependency path {path} does not exist for"
-                        f" {self.spec.identifier}"
+                    raise errors.UserFileNotFoundError(
+                        f"Local dependency path {path} does not exist", markdown=False
                     )
             else:
                 repo_cache = Path(temp_dir) / ".git_repo.cache"
@@ -141,11 +141,16 @@ class ProjectDependency:
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
-            dist = api.get_release_dist(
-                self.spec.identifier,
-                Path(temp_dir),
-                version=self.spec.release,
-            )
+            try:
+                dist = api.get_release_dist(
+                    self.spec.identifier,
+                    Path(temp_dir),
+                    version=self.spec.release,
+                )
+            except ApiErrors.ReleaseNotFoundError as e:
+                raise errors.UserException(
+                    f"Release not found: {self.spec.identifier}@{self.spec.release}"
+                ) from e
             self.spec.release = dist.version
         else:
             raise NotImplementedError(f"Loading dist for {self.spec} not implemented")
@@ -289,7 +294,7 @@ class ProjectDependencies:
             deps_to_process.clear()
             deps_to_process.extend(to_add)
         if acc_errors:
-            error_list = [f"{e.identifier}: {e.error!r}" for e in acc_errors]
+            error_list = [f"{e.identifier}: {e.error.message}" for e in acc_errors]
             raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
