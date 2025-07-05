@@ -1,0 +1,85 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+import ElectricPower
+import I2C
+import Resistor
+import DifferentialPair
+import Capacitor
+
+from "atopile/esp32/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver, ESP32_C3_MINI_1_model
+from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
+from "atopile/buttons/buttons.ato" import ButtonPullup
+from "atopile/buttons/buttons.ato" import VerticalButton
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
+from "atopile/nxp-pn5321/nxp-pn5321.ato" import NXP_PN5321_driver
+from "atopile/addressable-leds/sk6805-side.ato" import SK6805Side_driver
+from "parts/Neurotech_NFCAntenna/Neurotech_NFCAntenna.ato" import Neurotech_NFCAntenna_package
+
+module Antenna_model:
+    package = new Neurotech_NFCAntenna_package
+    input = new DifferentialPair
+
+    input.n.line ~ package.1
+    input.p.line ~ package.2
+
+module App:
+    # internal interfaces
+    power_3v3 = new ElectricPower
+    power_vbus = new ElectricPower
+
+    # micro-controller
+    microcontroller = new ESP32_C3_MINI_1_driver
+    microcontroller.esp32_module -> ESP32_C3_MINI_1_model
+    microcontroller.power ~ power_3v3
+
+    # USB
+    usb_c = new USBCConn
+    usb_c.usb2.usb_if ~ microcontroller.esp32_module.usb_if
+    usb_c.usb2.usb_if.buspower ~ power_vbus
+
+    # power
+    ldo_3V3 = new TLV75901_driver
+    power_vbus ~> ldo_3V3 ~> power_3v3
+    power_3v3 ~> microcontroller.power
+    
+    # unisolated I2C with pullups
+    i2c = new I2C
+    pullups = new Resistor[2]
+    for pullup in pullups:
+        pullup.package = "R0402"
+        pullup.resistance = 10kohm +/- 10%
+    i2c.scl.line ~> pullups[0] ~> i2c.scl.reference.hv
+    i2c.sda.line ~> pullups[1] ~> i2c.sda.reference.hv
+    i2c.scl ~ microcontroller.esp32_module.gpio[4]
+    i2c.sda ~ microcontroller.esp32_module.gpio[5]
+
+    # NFC reader
+    nfc_reader = new NXP_PN5321_driver
+    nfc_reader.power_3v3 ~ power_3v3
+    nfc_reader.i2c ~ i2c
+    nfc_reader.reset ~ microcontroller.esp32_module.gpio[6]
+    nfc_reader.interrupt ~ microcontroller.esp32_module.gpio[7]
+
+    # NFC antenna
+    antenna = new Antenna_model
+    nfc_reader.antenna_output ~ antenna.input
+
+    # LEDs
+    leds = new SK6805Side_driver[10]
+    for led in leds:
+        led.power ~ power_3v3
+    microcontroller.esp32_module.gpio[21] ~> leds[0] ~> leds[1] ~> leds[2] ~> leds[3] ~> leds[4] ~> leds[5] ~> leds[6] ~> leds[7] ~> leds[8] ~> leds[9]
+
+    # buttons
+    buttons = new ButtonPullup[2]
+    debounce_capacitor = new Capacitor[2]
+    for capacitor in debounce_capacitor:
+        capacitor.package = "C0402"
+        capacitor.capacitance = 100nF +/- 30%
+    for button in buttons:
+        button.button.button -> VerticalButton
+    buttons[0].button.button.input ~> debounce_capacitor[0] ~> buttons[0].button.button.output
+    buttons[1].button.button.input ~> debounce_capacitor[1] ~> buttons[1].button.button.output
+    
+    buttons[0].output ~ microcontroller.esp32_module.gpio[3]
+    buttons[1].output ~ microcontroller.esp32_module.gpio[20]

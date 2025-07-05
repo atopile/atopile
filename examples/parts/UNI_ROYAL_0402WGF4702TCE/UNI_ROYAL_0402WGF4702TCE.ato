@@ -1,4 +1,5 @@
 #pragma experiment("TRAITS")
+import has_datasheet_defined
 import has_designator_prefix
 import has_part_picked
 import is_atomic_part
@@ -9,11 +10,12 @@ component UNI_ROYAL_0402WGF4702TCE_package:
 
     # This trait marks this file as auto-generated
     # If you want to manually change it, remove the trait
-    trait is_auto_generated<system="ato_part", source="easyeda:C25792", date="2025-07-02T21:23:34.707881+00:00", checksum="d68073b222ea06a7d04181359a96c1b570db764b4dbf42fd1aa6ad4563a50fd8">
+    trait is_auto_generated<system="ato_part", source="easyeda:C25792", date="2025-07-05T00:59:53.061615+00:00", checksum="71622b61852c5a8928c73a4dd89600efd56d7154a8ec3700bf4701c66b883f2e">
 
     trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0402WGF4702TCE", footprint="R0402.kicad_mod", symbol="0402WGF4702TCE.kicad_sym", model="R0402_L1.0-W0.5-H0.4.step">
     trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C25792", manufacturer="UNI-ROYAL", partno="0402WGF4702TCE">
     trait has_designator_prefix<prefix="R">
+    trait has_datasheet_defined<datasheet="https://lcsc.com/datasheet/lcsc_datasheet_2411221126_UNI-ROYAL-Uniroyal-Elec-0402WGF4702TCE_C25792.pdf">
 
     # pins
     pin 2

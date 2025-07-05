@@ -98,6 +98,8 @@ module App:
     current_sensor = new Texas_Instruments_INA232x_driver
     current_sensor.power ~ power_isolated
     current_sensor.i2c ~ i2c_isolated
+    current_sensor.max_current = 3A
+    current_sensor.i2c.address = 0x48
 
     # input connectors
     input_connectors = new DualBananaConnectors_driver
