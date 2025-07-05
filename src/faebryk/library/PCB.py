@@ -71,12 +71,12 @@ class PCB(Node):
                 self.unconnected = unconnected
                 self.units = units
                 super().__init__(
-                    f"{type(self).__name__} ("
-                    f"{len(self.shorts)} shorts,"
-                    f"{len(self.unconnected)} unconnected"
-                    f")",
-                    # TODO
-                    nodes=[pcb],
+                    (
+                        f"{type(self).__name__} "
+                        f"({len(self.shorts)} shorts, "
+                        f"{len(self.unconnected)} unconnected)"
+                    ),
+                    nodes=[],
                 )
 
             def pretty_violation(self, violation: Violation):
