@@ -210,4 +210,11 @@
         (options "")
         (descr "atopile: part lib: MOLEX_532610271")
     )
+    (lib
+        (name "YAGEO_RC0402FR_071K8L")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/YAGEO_RC0402FR_071K8L")
+        (options "")
+        (descr "atopile: part lib: YAGEO_RC0402FR_071K8L")
+    )
 )

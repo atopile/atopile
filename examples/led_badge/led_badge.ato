@@ -6,7 +6,8 @@
 import ElectricPower
 import Resistor
 import ElectricLogic
-import I2C, I2S
+import I2C
+import I2S
 import can_bridge_by_name
 
 # Package imports from https://packages.atopile.io/
@@ -31,18 +32,16 @@ module LED_BADGE:
     - Accelerometer
     """
     micro = new ESP32_C3_MINI_1_driver
-    mic   = new TDK_InvenSense_ICS_43434_driver
-    imu   = new ST_LSM6DS3_driver
+    micro.esp32_module -> ESP32_C3_MINI_1_model
+    microphone = new TDK_InvenSense_ICS_43434_driver
+    imu = new ST_LSM6DS3_driver
     usb_c = new USBCConn
     buck_boost = new TPS63020DSJR
     charger = new BQ25185_driver
     battery = new LP402535_Example
-    charger.charge_current = battery.battery.capacity / 2h +/- 10%
-    # Select battery voltage automatically via charger 4.2V
     led_grid = new SK6805EC20_grid100x100
 
-    # Select package for ESP
-    micro.esp32_module -> ESP32_C3_MINI_1_model
+    charger.charge_current = battery.battery.capacity / 2h +/- 10%
 
     # Power
     power_3v3 = new ElectricPower
@@ -62,7 +61,7 @@ module LED_BADGE:
 
     # Connect 3.3 V rail to loads
     power_3v3 ~ micro.power
-    power_3v3 ~ mic.power
+    power_3v3 ~ microphone.power
     power_3v3 ~ imu.power_core
     power_3v3 ~ imu.power_io
     power_3v3 ~ led_grid.power
@@ -77,10 +76,21 @@ module LED_BADGE:
     i2s_bus.sck ~ micro.esp32_module.gpio[3]
     i2s_bus.ws  ~ micro.esp32_module.gpio[4]
     i2s_bus.sd  ~ micro.esp32_module.gpio[5]
-    i2s_bus ~ mic.i2s
+    i2s_bus ~ microphone.i2s
 
     # LED Data
     led_grid.data_in ~ micro.esp32_module.gpio[6]
+
+    # Net naming
+    micro.esp32_module.gpio[6].line.override_net_name = "led_data"
+    i2s_bus.ws.line.override_net_name = "i2s_ws"
+    i2s_bus.sck.line.override_net_name = "i2s_sck"
+    i2s_bus.sd.line.override_net_name = "i2s_sd"
+    i2c_bus.scl.line.override_net_name = "i2c_scl"
+    i2c_bus.sda.line.override_net_name = "i2c_sda"
+    power_3v3.hv.override_net_name = "power_3v3"
+    power_3v3.lv.override_net_name = "gnd"
+
 
 module SK6805EC20_strip10:
     """
