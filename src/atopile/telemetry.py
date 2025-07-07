@@ -222,7 +222,7 @@ class PropertyLoaders:
 
 @dataclass
 class TelemetryProperties:
-    duration: float
+    duration: float | None = None
     email: str | None = field(default_factory=PropertyLoaders.email)
     current_git_hash: str | None = field(
         default_factory=PropertyLoaders.current_git_hash
@@ -232,6 +232,14 @@ class TelemetryProperties:
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
+
+    def __init__(self) -> None:
+        self._start_time = time.perf_counter()
+
+    def prepare(self, properties: dict | None = None) -> dict:
+        now = time.perf_counter()
+        self.duration = now - (self._start_time or now)
+        return {**asdict(self), **(properties or {})}
 
 
 def capture_exception(exc: Exception, properties: dict | None = None) -> None:
@@ -266,11 +274,7 @@ def capture(
         return
 
     try:
-        start_time = time.perf_counter()
-        default_properties = TelemetryProperties(
-            duration=time.perf_counter() - start_time
-        )
-        properties = {**asdict(default_properties), **(properties or {})}
+        default_properties = TelemetryProperties()
     except Exception as e:
         log.debug("Failed to create telemetry properties: %s", e, exc_info=e)
         yield
@@ -280,7 +284,7 @@ def capture(
         client.capture(
             distinct_id=config.id,
             event=event_start,
-            properties=properties,
+            properties=default_properties.prepare(properties),
         )
     except Exception as e:
         log.debug("Failed to send telemetry data (event start): %s", e, exc_info=e)
@@ -294,7 +298,7 @@ def capture(
             client.capture_exception(
                 e,
                 distinct_id=config.id,
-                properties=properties,
+                properties=default_properties.prepare(properties),
             )
         except Exception as e:
             log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
