@@ -21,9 +21,10 @@ import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Unpack
 
 from posthog import Posthog
+from posthog.args import OptionalCaptureArgs
 from ruamel.yaml import YAML
 
 from faebryk.libs.paths import get_config_dir
@@ -37,17 +38,15 @@ class _MockClient:
 
     def capture_exception(
         self,
-        exc: Exception,
-        distinct_id: uuid.UUID | None,
-        properties: dict | None = None,
+        exception: Exception,
+        **kwargs: Unpack[OptionalCaptureArgs],
     ) -> None:
         pass
 
     def capture(
         self,
-        distinct_id: uuid.UUID | None,
         event: str,
-        properties: dict | None = None,
+        **kwargs: Unpack[OptionalCaptureArgs],
     ) -> None:
         pass
 
@@ -246,7 +245,7 @@ def capture_exception(exc: Exception, properties: dict | None = None) -> None:
         return
 
     try:
-        client.capture_exception(exc, config.id, properties)
+        client.capture_exception(exc, distinct_id=config.id, properties=properties)
     except Exception as e:
         log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
 
@@ -278,7 +277,11 @@ def capture(
         return
 
     try:
-        client.capture(distinct_id=config.id, event=event_start, properties=properties)
+        client.capture(
+            distinct_id=config.id,
+            event=event_start,
+            properties=properties,
+        )
     except Exception as e:
         log.debug("Failed to send telemetry data (event start): %s", e, exc_info=e)
         yield
@@ -288,12 +291,20 @@ def capture(
         yield
     except Exception as e:
         try:
-            client.capture_exception(e, config.id, properties)
+            client.capture_exception(
+                e,
+                distinct_id=config.id,
+                properties=properties,
+            )
         except Exception as e:
             log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
         raise
 
     try:
-        client.capture(distinct_id=config.id, event=event_end, properties=properties)
+        client.capture(
+            distinct_id=config.id,
+            event=event_end,
+            properties=default_properties.prepare(properties),
+        )
     except Exception as e:
         log.debug("Failed to send telemetry data (event end): %s", e, exc_info=e)
