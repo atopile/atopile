@@ -19,6 +19,7 @@ from "atopile/ti-iso1640x/parts/TEXAS_INSTRUMENTS_ISO1640BDR/TEXAS_INSTRUMENTS_I
 from "atopile/ylptech-byyxx/ylptech-byyxx.ato" import BYYXXS_2WR2
 from "atopile/ylptech-byyxx/ylptech-byyxx.ato" import _B2405_package
 from "atopile/batteries/eemb_battery_lp402535.ato" import LP402535_Example
+from "atopile/logos/logos.ato" import atopile_logo_8x8mm
 
 module App:
     # internal interfaces
@@ -28,6 +29,9 @@ module App:
     power_sys = new ElectricPower
     power_isolated = new ElectricPower
 
+    # atopile logo
+    atopile_logo = new atopile_logo_8x8mm
+    
     # micro-controller
     mcu_module = new ESP32_C3_MINI_1_driver
     mcu_module.power ~ power_3v3

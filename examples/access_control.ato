@@ -14,6 +14,7 @@ from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
 from "atopile/nxp-pn5321/nxp-pn5321.ato" import NXP_PN5321_driver
 from "atopile/addressable-leds/sk6805-side.ato" import SK6805Side_driver
 from "parts/Neurotech_NFCAntenna/Neurotech_NFCAntenna.ato" import Neurotech_NFCAntenna_package
+from "atopile/logos/logos.ato" import atopile_logo_8x8mm
 
 module Antenna_model:
     package = new Neurotech_NFCAntenna_package
@@ -26,6 +27,9 @@ module App:
     # internal interfaces
     power_3v3 = new ElectricPower
     power_vbus = new ElectricPower
+    
+    # atopile logo
+    atopile_logo = new atopile_logo_8x8mm
 
     # micro-controller
     mcu_module = new ESP32_C3_MINI_1_driver
