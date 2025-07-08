@@ -51,6 +51,7 @@ class _MockClient:
         pass
 
 
+@once
 def _get_posthog_client() -> Posthog | _MockClient:
     try:
         return Posthog(
@@ -233,7 +234,7 @@ class TelemetryProperties:
         default_factory=lambda: importlib.metadata.version("atopile")
     )
 
-    def __init__(self) -> None:
+    def __post_init__(self) -> None:
         self._start_time = time.perf_counter()
 
     def prepare(self, properties: dict | None = None) -> dict:
@@ -251,6 +252,9 @@ def capture_exception(exc: Exception, properties: dict | None = None) -> None:
 
     if config.telemetry is False:
         return
+
+    default_properties = TelemetryProperties()
+    properties = default_properties.prepare(properties)
 
     try:
         client.capture_exception(exc, distinct_id=config.id, properties=properties)
@@ -273,12 +277,7 @@ def capture(
         yield
         return
 
-    try:
-        default_properties = TelemetryProperties()
-    except Exception as e:
-        log.debug("Failed to create telemetry properties: %s", e, exc_info=e)
-        yield
-        return
+    default_properties = TelemetryProperties()
 
     try:
         client.capture(
