@@ -22,6 +22,7 @@ from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import capture
 from faebryk.libs.github import (
+    GITHUB_USERNAME_REGEX,
     GithubCLI,
     GithubCLINotFound,
     GithubRepoAlreadyExists,
@@ -316,6 +317,8 @@ def setup_github(
 
 
 def _create_git_repo(project_path: Path) -> "git.Repo":
+    import git
+
     logging.info("Initializing git repo")
     repo = git.Repo.init(project_path)
     repo.git.add(A=True, f=True)
@@ -417,13 +420,7 @@ class _TemplateValues:
 
         @staticmethod
         def validator(value: str) -> bool:
-            return (
-                re.match(
-                    r"^[a-zA-Z0-9](?:[a-zA-Z0-9]|(-[a-zA-Z0-9])){0,38}$",
-                    value,
-                )
-                is not None
-            )
+            return re.match(GITHUB_USERNAME_REGEX, value) is not None
 
 
 class _Template:
@@ -496,6 +493,7 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
                         GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn)
                     )
                 )
+                is not None
                 and query_helper(
                     "Host this project on GitHub? :octopus::cat:",
                     bool,
