@@ -1211,9 +1211,19 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return search_paths
 
-    def _import_item(
-        self, context: Context, item: Context.ImportPlaceholder
-    ) -> Type[L.Node] | ap.BlockdefContext:
+    def _find_import_path(self, context: Context, item: Context.ImportPlaceholder):
+        # allow importing <src path>/file.suffix as either:
+        # from "file.suffix" import X
+        # or
+        # from "<owner>/<package>/file.suffix" import X
+
+        if (
+            pkg_cfg := config.project.package
+        ) is not None and item.from_path.startswith(pkg_cfg.identifier):
+            item.from_path = item.from_path.replace(
+                pkg_cfg.identifier, str(config.project.paths.src), count=1
+            )
+
         # Build up search paths to check for the import in
         # Iterate though them, checking if any contains the thing we're looking for
         search_paths = self._get_search_paths(context)
@@ -1226,7 +1236,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 item.original_ctx, f"Unable to resolve import `{item.from_path}`"
             )
 
-        from_path = self._sanitise_path(candidate_from_path)
+        return self._sanitise_path(candidate_from_path)
+
+    def _import_item(
+        self, context: Context, item: Context.ImportPlaceholder
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        from_path = self._find_import_path(context, item)
+
         if from_path.suffix == ".py":
             try:
                 node = import_from_path(from_path)
