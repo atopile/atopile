@@ -103,8 +103,10 @@ class UserDesignCheckException(UserException):
     @classmethod
     def from_nodes(cls, message: str, nodes: Sequence["Node"]) -> Self:
         nodes = sorted(nodes, key=lambda n: str(n))
-        nodes_fmt = md_list(f"`{node}`" for node in nodes)
-        msg = f"{message}\n\nFor nodes: \n{nodes_fmt}"
+        msg = message
+        if nodes:
+            nodes_fmt = md_list(f"`{node}`" for node in nodes)
+            msg += f"{msg}\n\nFor nodes: \n{nodes_fmt}"
         return cls(msg)
 
 
