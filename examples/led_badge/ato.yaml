@@ -27,7 +27,7 @@ dependencies:
     identifier: atopile/st-lsm6ds3
   - type: registry
     identifier: atopile/esp32
-    release: 0.2.1`
+    release: 0.2.0
   - type: registry
     identifier: atopile/ti-tps563201
   - type: registry
