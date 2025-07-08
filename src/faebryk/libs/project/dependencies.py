@@ -468,20 +468,21 @@ class ProjectDependencies:
             _log_add_package(dep.identifier, dep.dist.version)
             dep.dist.install(target_path)
 
-        for dep in self.all_deps:
+        dirty = False
+        for dep in self.direct_deps:
             match dep.spec.type:
                 case "registry":
                     if dep.cfg is None or dep.cfg.package is None:
-                        raise errors.UserException(
-                            f"Malformed package for {dep.identifier}"
-                        )
+                        installed_version = "<unknown>"
+                    else:
+                        installed_version = dep.cfg.package.version
 
                     spec = cast(config.RegistryDependencySpec, dep.spec)
-                    installed_version = dep.cfg.package.version
                     desired_version = spec.release
 
                     if installed_version != desired_version:
                         _sync_dep(dep, installed_version)
+                        dirty = True
 
                 case "file" | "git":
                     logger.warning(
@@ -493,3 +494,7 @@ class ProjectDependencies:
                     raise NotImplementedError(
                         f"Syncing versions for {dep.spec.type} not implemented"
                     )
+
+        if dirty:
+            self.reload()
+            self.clean_unmanaged_directories()
