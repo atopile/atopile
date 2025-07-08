@@ -1,3 +1,3 @@
-# atopile project template
+# atopile package template
 
-To use project-template use `ato create project`, which will setup the project for you. Project setup instructions are here: https://atopile.io/
+Run `ato create package` to instantiate a package using this template.

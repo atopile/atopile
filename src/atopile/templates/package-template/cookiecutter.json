@@ -1,7 +1,8 @@
 {
   "author_name": "Pepper Powderly",
   "author_email": "pepper@atopile.io",
-  "project_name": "My first ato project",
+  "project_name": "My first ato package",
+  "package_owner": "<your-github-username>",
   "license": [
     "MIT license",
     "BSD license",
