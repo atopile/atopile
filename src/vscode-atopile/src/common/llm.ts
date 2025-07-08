@@ -90,6 +90,17 @@ function build_rules() {
         - \`inspect_library_module_or_interface\` to inspect the code
 
         ${_md('ato.md')}
+
+        # Creating a package
+
+        ${_md('create_package.md')}
+
+        # Vibe coding a project
+        
+        If the user gives you high level description of the project, use the following guide:
+
+        ${_md('vibe_electronics.md')}
+
     `;
 
     return dedent(TEMPLATE);
