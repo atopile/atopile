@@ -99,7 +99,7 @@ function build_rules() {
         
         If the user gives you high level description of the project, use the following guide:
 
-        ${_md('vibe_coding.md')}
+        ${_md('vibe_electronics.md')}
 
     `;
 
