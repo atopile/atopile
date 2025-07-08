@@ -30,3 +30,10 @@ def test_capture_event():
         pass
 
     test_capture_event()
+
+
+def test_capture_exception():
+    try:
+        raise Exception("test_exception")
+    except Exception as e:
+        telemetry.capture_exception(e, {"test_property": "test_value"})
