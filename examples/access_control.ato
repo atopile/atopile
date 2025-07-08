@@ -6,7 +6,7 @@ import Resistor
 import DifferentialPair
 import Capacitor
 
-from "atopile/esp32/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver, ESP32_C3_MINI_1_model
+from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
 from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
 from "atopile/buttons/buttons.ato" import ButtonPullup
 from "atopile/buttons/buttons.ato" import VerticalButton
@@ -28,19 +28,18 @@ module App:
     power_vbus = new ElectricPower
 
     # micro-controller
-    microcontroller = new ESP32_C3_MINI_1_driver
-    microcontroller.esp32_module -> ESP32_C3_MINI_1_model
-    microcontroller.power ~ power_3v3
+    mcu_module = new ESP32_C3_MINI_1_driver
+    mcu_module.power ~ power_3v3
 
     # USB
     usb_c = new USBCConn
-    usb_c.usb2.usb_if ~ microcontroller.esp32_module.usb_if
+    usb_c.usb2.usb_if ~ mcu_module.esp32_module.usb_if
     usb_c.usb2.usb_if.buspower ~ power_vbus
 
     # power
     ldo_3V3 = new TLV75901_driver
     power_vbus ~> ldo_3V3 ~> power_3v3
-    power_3v3 ~> microcontroller.power
+    power_3v3 ~> mcu_module.power
     
     # unisolated I2C with pullups
     i2c = new I2C
@@ -50,15 +49,16 @@ module App:
         pullup.resistance = 10kohm +/- 10%
     i2c.scl.line ~> pullups[0] ~> i2c.scl.reference.hv
     i2c.sda.line ~> pullups[1] ~> i2c.sda.reference.hv
-    i2c.scl ~ microcontroller.esp32_module.gpio[4]
-    i2c.sda ~ microcontroller.esp32_module.gpio[5]
+    #i2c.scl ~ mcu_module.esp32_module.gpio[4]
+    #i2c.sda ~ mcu_module.esp32_module.gpio[5]
+    i2c ~ mcu_module.esp32_module.i2c # gpio 5 = sda ,6 = scl
 
     # NFC reader
     nfc_reader = new NXP_PN5321_driver
     nfc_reader.power_3v3 ~ power_3v3
     nfc_reader.i2c ~ i2c
-    nfc_reader.reset ~ microcontroller.esp32_module.gpio[6]
-    nfc_reader.interrupt ~ microcontroller.esp32_module.gpio[7]
+    nfc_reader.reset ~ mcu_module.esp32_module.gpio[6]
+    nfc_reader.interrupt ~ mcu_module.esp32_module.gpio[7]
 
     # NFC antenna
     antenna = new Antenna_model
@@ -68,7 +68,7 @@ module App:
     leds = new SK6805Side_driver[10]
     for led in leds:
         led.power ~ power_3v3
-    microcontroller.esp32_module.gpio[21] ~> leds[0] ~> leds[1] ~> leds[2] ~> leds[3] ~> leds[4] ~> leds[5] ~> leds[6] ~> leds[7] ~> leds[8] ~> leds[9]
+    mcu_module.esp32_module.gpio[21] ~> leds[0] ~> leds[1] ~> leds[2] ~> leds[3] ~> leds[4] ~> leds[5] ~> leds[6] ~> leds[7] ~> leds[8] ~> leds[9]
 
     # buttons
     buttons = new ButtonPullup[2]
@@ -81,5 +81,5 @@ module App:
     buttons[0].button.button.input ~> debounce_capacitor[0] ~> buttons[0].button.button.output
     buttons[1].button.button.input ~> debounce_capacitor[1] ~> buttons[1].button.button.output
     
-    buttons[0].output ~ microcontroller.esp32_module.gpio[3]
-    buttons[1].output ~ microcontroller.esp32_module.gpio[20]
+    buttons[0].output ~ mcu_module.esp32_module.gpio[3]
+    buttons[1].output ~ mcu_module.esp32_module.gpio[20]

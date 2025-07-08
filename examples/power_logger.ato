@@ -5,15 +5,14 @@ import I2C
 import Resistor
 import SPI
 
-from "atopile/esp32/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver, ESP32_C3_MINI_1_model
+from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
 from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
 from "atopile/buttons/buttons.ato" import ButtonPullup
 from "atopile/buttons/buttons.ato" import HorizontalButton
 from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
 from "ruben-iteng/connectors/banana_connectors.ato" import DualBananaConnectors_driver
 from "atopile/ti-bq25185/ti-bq25185.ato" import BQ25185_driver
-from "atopile/sd-card-slots/sd-card-slots.ato" import MicroSDCardAssemblyWithRemovableSPI
-from "atopile/sd-card-slots/parts/Korean_Hroparts_Elec_TF_01A/Korean_Hroparts_Elec_TF_01A_driver.ato" import Korean_Hroparts_Elec_TF_01A_model
+from "atopile/sd-card/sd-card-slots.ato" import MicroSDCardAssemblyWithRemovableSPI
 from "atopile/ti-ina232/ti-ina232.ato" import Texas_Instruments_INA232x_driver
 from "atopile/ti-iso1640x/ti-iso1640.ato" import Texas_Instruments_ISO1640_driver
 from "atopile/ti-iso1640x/parts/TEXAS_INSTRUMENTS_ISO1640BDR/TEXAS_INSTRUMENTS_ISO1640BDR.ato" import TEXAS_INSTRUMENTS_ISO1640BDR_package
@@ -30,26 +29,23 @@ module App:
     power_isolated = new ElectricPower
 
     # micro-controller
-    microcontroller = new ESP32_C3_MINI_1_driver
-    microcontroller.esp32_module -> ESP32_C3_MINI_1_model
-    microcontroller.power ~ power_3v3
+    mcu_module = new ESP32_C3_MINI_1_driver
+    mcu_module.power ~ power_3v3
     spi = new SPI
-    spi.sclk ~ microcontroller.esp32_module.gpio[5]
-    spi.mosi ~ microcontroller.esp32_module.gpio[6]
-    spi.miso ~ microcontroller.esp32_module.gpio[4]
+    spi.sclk ~ mcu_module.esp32_module.gpio[5]
+    spi.mosi ~ mcu_module.esp32_module.gpio[6]
+    spi.miso ~ mcu_module.esp32_module.gpio[4]
 
     # micro-sd card
     micro_sd_card = new MicroSDCardAssemblyWithRemovableSPI
     micro_sd_card.power ~ power_3v3
     micro_sd_card.spi ~ spi
-    micro_sd_card.card_detect ~ microcontroller.esp32_module.gpio[10]
-
-    # specialize packages
-    micro_sd_card.receptacle -> Korean_Hroparts_Elec_TF_01A_model
+    micro_sd_card.card_detect ~ mcu_module.esp32_module.gpio[10]
+    micro_sd_card.spi_cs ~ mcu_module.esp32_module.gpio[1]
 
     # USB
     usb_c = new USBCConn
-    usb_c.usb2.usb_if ~ microcontroller.esp32_module.usb_if
+    usb_c.usb2.usb_if ~ mcu_module.esp32_module.usb_if
     usb_c.usb2.usb_if.buspower ~ power_vbus
 
     # power
@@ -58,11 +54,11 @@ module App:
     battery = new LP402535_Example
     power_vbus ~> battery_management ~> power_battery
     battery_management.power_sys ~> ldo_3V3 ~> power_sys
-    power_sys ~> microcontroller.power
+    power_sys ~> mcu_module.power
     battery.power_battery ~ power_battery
 
-    battery_management.status[1] ~ microcontroller.esp32_module.gpio[3]
-    battery_management.status[0] ~ microcontroller.esp32_module.gpio[11]
+    battery_management.status[1] ~ mcu_module.esp32_module.gpio[3]
+    battery_management.status[0] ~ mcu_module.esp32_module.gpio[11]
 
     # unisolated I2C with pullups
     i2c = new I2C
@@ -72,8 +68,8 @@ module App:
         pullup.resistance = 10kohm +/- 10%
     i2c.scl.line ~> pullups[0] ~> i2c.scl.reference.hv
     i2c.sda.line ~> pullups[1] ~> i2c.sda.reference.hv
-    i2c.scl ~ microcontroller.esp32_module.gpio[0]
-    i2c.sda ~ microcontroller.esp32_module.gpio[1]
+    i2c.scl ~ mcu_module.esp32_module.gpio[0]
+    i2c.sda ~ mcu_module.esp32_module.gpio[1]
 
     # isolated I2C with pullups
     i2c_isolated = new I2C
@@ -111,5 +107,5 @@ module App:
     for button in buttons:
         button.button.button -> HorizontalButton
     
-    buttons[0].output ~ microcontroller.esp32_module.gpio[21]
-    buttons[1].output ~ microcontroller.esp32_module.gpio[7]
+    buttons[0].output ~ mcu_module.esp32_module.gpio[21]
+    buttons[1].output ~ mcu_module.esp32_module.gpio[7]

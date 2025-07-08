@@ -1,4 +1,4 @@
-requires-atopile: ^0.3.0
+requires-atopile: ^0.10.8
 
 paths:
   src: ./
@@ -18,10 +18,10 @@ builds:
 dependencies:
   - type: registry
     identifier: atopile/usb-connectors
-    release: 0.2.0
+    release: 0.2.2
   - type: registry
     identifier: atopile/addressable-leds
-    release: 0.2.5
+    release: 0.2.6
   - type: registry
     identifier: ruben-iteng/connectors
     release: 0.2.3
@@ -29,8 +29,8 @@ dependencies:
     identifier: atopile/ti-bq25185
     release: 0.1.0
   - type: registry
-    identifier: atopile/sd-card-slots
-    release: 0.1.4
+    identifier: atopile/sd-card
+    release: 0.1.6
   - type: registry
     identifier: atopile/ti-iso1640x
     release: 0.1.2
@@ -39,10 +39,10 @@ dependencies:
     release: 0.1.2
   - type: registry
     identifier: atopile/batteries
-    release: 0.1.0
-  - type: registry
-    identifier: atopile/esp32
     release: 0.2.0
   - type: registry
+    identifier: atopile/espressif-esp32-c3
+    release: 0.1.0
+  - type: registry
     identifier: atopile/nxp-pn5321
-    release: 0.1.2
+    release: 0.1.3
