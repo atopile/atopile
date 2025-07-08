@@ -62,6 +62,15 @@ def _stuck_user_helper() -> Iterator[bool]:
         yield True
 
 
+def _open_in_editor_or_print_path(path: Path):
+    # check if running in vscode / cursor terminal
+    if code_bin := get_code_bin_of_terminal():
+        # open in vscode / cursor
+        subprocess.Popen([code_bin, path])
+    else:
+        rich_print_robust(f" \n[cyan]cd {path.relative_to(Path.cwd())}[/cyan]")
+
+
 stuck_user_helper_generator = _stuck_user_helper()
 
 
@@ -479,22 +488,20 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
         if should_create_git_repo:
             git_repo = _create_git_repo(project_path)
 
-            # check if gh binary is available
-            gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
-
-            create_github_repo = (
+            if (
                 config.interactive
-                and gh_cli
                 and git_repo
+                and (
+                    gh_cli := try_or(
+                        GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn)
+                    )
+                )
                 and query_helper(
                     "Host this project on GitHub? :octopus::cat:",
                     bool,
                     default=False,
                 )
-            )
-
-            # Github repo
-            if create_github_repo:
+            ):
                 try:
                     setup_github(project_path, gh_cli, git_repo)
                 except Exception:
@@ -506,12 +513,7 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
     )
 
-    # check if running in vscode / cursor terminal
-    if code_bin := get_code_bin_of_terminal():
-        # open in vscode / cursor
-        subprocess.Popen([code_bin, project_path])
-    else:
-        rich_print_robust(f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]")
+    _open_in_editor_or_print_path(project_path)
 
 
 @create_app.command()
@@ -554,11 +556,7 @@ def package(
         f':sparkles: [green]Created new package "{package_path.name}"![/] :sparkles:'
     )
 
-    # Open the package in VS Code / Cursor if available -----------------------------
-    if code_bin := get_code_bin_of_terminal():
-        subprocess.Popen([code_bin, package_path])
-    else:
-        rich_print_robust(f" \n[cyan]cd {package_path.relative_to(Path.cwd())}[/cyan]")
+    _open_in_editor_or_print_path(package_path)
 
 
 @create_app.command("build-target")
