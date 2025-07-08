@@ -350,7 +350,11 @@ class PartLifecycle:
                 def __init__(
                     self, *args: object, lib_id: str, lib_table_path: Path
                 ) -> None:
-                    super().__init__(*args)
+                    super().__init__(
+                        f"Footprint library {lib_id} not found in table "
+                        f"{lib_table_path}",
+                        *args,
+                    )
                     self.lib_id = lib_id
                     self.lib_table_path = lib_table_path
 

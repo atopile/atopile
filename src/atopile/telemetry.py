@@ -21,9 +21,10 @@ import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Unpack
 
 from posthog import Posthog
+from posthog.args import OptionalCaptureArgs
 from ruamel.yaml import YAML
 
 from faebryk.libs.paths import get_config_dir
@@ -37,17 +38,15 @@ class _MockClient:
 
     def capture_exception(
         self,
-        exc: Exception,
-        distinct_id: uuid.UUID | None,
-        properties: dict | None = None,
+        exception: Exception,
+        **kwargs: Unpack[OptionalCaptureArgs],
     ) -> None:
         pass
 
     def capture(
         self,
-        distinct_id: uuid.UUID | None,
         event: str,
-        properties: dict | None = None,
+        **kwargs: Unpack[OptionalCaptureArgs],
     ) -> None:
         pass
 
@@ -223,7 +222,7 @@ class PropertyLoaders:
 
 @dataclass
 class TelemetryProperties:
-    duration: float
+    duration: float | None = None
     email: str | None = field(default_factory=PropertyLoaders.email)
     current_git_hash: str | None = field(
         default_factory=PropertyLoaders.current_git_hash
@@ -233,6 +232,14 @@ class TelemetryProperties:
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
+
+    def __init__(self) -> None:
+        self._start_time = time.perf_counter()
+
+    def prepare(self, properties: dict | None = None) -> dict:
+        now = time.perf_counter()
+        self.duration = now - (self._start_time or now)
+        return {**asdict(self), **(properties or {})}
 
 
 def capture_exception(exc: Exception, properties: dict | None = None) -> None:
@@ -246,7 +253,7 @@ def capture_exception(exc: Exception, properties: dict | None = None) -> None:
         return
 
     try:
-        client.capture_exception(exc, config.id, properties)
+        client.capture_exception(exc, distinct_id=config.id, properties=properties)
     except Exception as e:
         log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
 
@@ -267,18 +274,18 @@ def capture(
         return
 
     try:
-        start_time = time.perf_counter()
-        default_properties = TelemetryProperties(
-            duration=time.perf_counter() - start_time
-        )
-        properties = {**asdict(default_properties), **(properties or {})}
+        default_properties = TelemetryProperties()
     except Exception as e:
         log.debug("Failed to create telemetry properties: %s", e, exc_info=e)
         yield
         return
 
     try:
-        client.capture(distinct_id=config.id, event=event_start, properties=properties)
+        client.capture(
+            distinct_id=config.id,
+            event=event_start,
+            properties=default_properties.prepare(properties),
+        )
     except Exception as e:
         log.debug("Failed to send telemetry data (event start): %s", e, exc_info=e)
         yield
@@ -288,12 +295,20 @@ def capture(
         yield
     except Exception as e:
         try:
-            client.capture_exception(e, config.id, properties)
+            client.capture_exception(
+                e,
+                distinct_id=config.id,
+                properties=default_properties.prepare(properties),
+            )
         except Exception as e:
             log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
         raise
 
     try:
-        client.capture(distinct_id=config.id, event=event_end, properties=properties)
+        client.capture(
+            distinct_id=config.id,
+            event=event_end,
+            properties=default_properties.prepare(properties),
+        )
     except Exception as e:
         log.debug("Failed to send telemetry data (event end): %s", e, exc_info=e)

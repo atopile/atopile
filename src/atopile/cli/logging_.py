@@ -525,7 +525,13 @@ class LoggingStage(Advancable):
                 latest_link.unlink()
             else:
                 shutil.rmtree(latest_link)
-        latest_link.symlink_to(base_log_dir, target_is_directory=True)
+        try:
+            latest_link.symlink_to(base_log_dir, target_is_directory=True)
+        except OSError:
+            # If we can't symlink, just don't symlink
+            # Logs are still written to the dated directory
+            # Seems to happen on Windows if 'Developer Mode' is not enabled
+            pass
 
         return log_dir
 
