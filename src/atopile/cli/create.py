@@ -12,7 +12,7 @@ import caseconverter
 import questionary
 import rich
 import typer
-from cookiecutter.exceptions import OutputDirExistsException
+from cookiecutter.exceptions import FailedHookException, OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from more_itertools import first
 from rich.table import Table
@@ -44,6 +44,11 @@ logger.setLevel(logging.INFO)
 create_app = typer.Typer(
     rich_markup_mode="rich", help="Create projects / build targets / components"
 )
+
+# ---------------------------------------------------------------------------
+#
+# Utility functions & helpers below
+# ---------------------------------------------------------------------------
 
 
 def help(text: str) -> None:  # pylint: disable=redefined-builtin
@@ -331,7 +336,7 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
     """
     Create a new ato project.
     """
-    TEMPLATE_DIR = Path(__file__).parent.parent / "project-template"
+    TEMPLATE_DIR = Path(__file__).parent.parent / "templates/project-template"
 
     extra_context = {
         "__ato_version": version.get_installed_atopile_version(),
@@ -428,6 +433,133 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
         subprocess.Popen([code_bin, project_path])
     else:
         rich_print_robust(f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]")
+
+
+@create_app.command()
+@capture("cli:create_package_start", "cli:create_package_end")
+def package(
+    path: Annotated[Path | None, typer.Option()] = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Name of the package (snake_case)"),
+    ] = None,
+):
+    """Create a new ato *package*."""
+
+    TEMPLATE_DIR = Path(__file__).parent.parent / "templates/package-template"
+
+    def _validate_pkg_name(value: str) -> bool:
+        return re.match(r"^[a-zA-Z][a-zA-Z0-9_]*$", value) is not None
+
+    package_name = query_helper(
+        ":rocket: What's the [cyan]package name[/]?",
+        type_=str,
+        upgrader=caseconverter.snakecase,
+        upgrader_msg="We recommend snake_case for package names.",
+        validator=_validate_pkg_name,
+        validation_failure_msg=(
+            "Package names must start with a letter and contain only "
+            "letters, numbers and underscores."
+        ),
+        pre_entered=name,
+        default=name,
+    )
+
+    package_slug = caseconverter.snakecase(package_name)
+    entry_name = caseconverter.pascalcase(package_name)
+
+    extra_context = {
+        "project_name": package_name,
+        "project_slug": package_slug,
+        "entry_name": entry_name,
+        "__ato_version": version.get_installed_atopile_version(),
+        "__python_path": sys.executable,
+    }
+
+    # Determine the output directory -------------------------------------------------
+    if path is None:
+        if config.interactive:
+            path = query_helper(
+                ":rocket: Where should we create the *package*?",
+                type_=Path,
+                default=Path.cwd(),
+                pre_entered=path,
+                validator=lambda x: x.is_dir(),
+            )
+        else:
+            path = Path.cwd()
+
+    # Create package with cookie-cutter ---------------------------------------------
+    logging.info("Running cookie-cutter on the package template")
+    try:
+        package_path = Path(
+            cookiecutter(
+                str(TEMPLATE_DIR),
+                output_dir=str(path),
+                no_input=not config.interactive,
+                extra_context=dict(
+                    filter(lambda x: x[1] is not None, extra_context.items())
+                ),
+            )
+        )
+    except OutputDirExistsException as e:
+        # Directory already exists – surface as friendly user error
+        raise errors.UserException(
+            "Directory already exists. Please choose a different name."
+        ) from e
+    except FailedHookException as e:
+        # Validation inside the cookie-cutter template failed (most likely a bad
+        # value such as an invalid `project_slug`).  Convert to a friendly
+        # message so users aren’t greeted with a huge traceback.
+        raise errors.UserException(
+            (
+                "Package creation failed during template validation. "
+                "Please check your answers – for example, ‘project_slug’ must be "
+                "a valid Python identifier (letters, numbers, underscores) and "
+                "cannot start with a number.\n\n"
+                f"Details: {e}"
+            )
+        ) from e
+
+    # Rename default main.ato to <package_slug>.ato ---------------------------------
+    generated_src_dir = package_path / package_slug
+    try:
+        old_file = generated_src_dir / "main.ato"
+        new_file = generated_src_dir / f"{package_slug}.ato"
+
+        if old_file.exists():
+            old_file.rename(new_file)
+
+        # Update the module declaration inside the renamed file
+        if new_file.exists():
+            text = new_file.read_text(encoding="utf-8")
+            import re as _re
+
+            text = _re.sub(r"module\s+\w+\s*:", f"module {entry_name}:", text, count=1)
+            new_file.write_text(text, encoding="utf-8")
+
+        # Patch ato.yaml default entry path to new filename
+        ato_yaml = package_path / "ato.yaml"
+        if ato_yaml.exists():
+            content = ato_yaml.read_text(encoding="utf-8")
+            content = content.replace("main.ato", f"{package_slug}.ato")
+            ato_yaml.write_text(content, encoding="utf-8")
+    except Exception as e:  # noqa: BLE001
+        # Don't fail the whole flow for a simple rename – warn the user instead.
+        rich_print_robust(
+            f"[yellow]Warning:[/] Could not rename main.ato -> {package_slug}.ato: {e}"
+        )
+
+    # DONE! -------------------------------------------------------------------------
+    rich_print_robust(
+        f':sparkles: [green]Created new package "{package_path.name}"![/] :sparkles:'
+    )
+
+    # Open the package in VS Code / Cursor if available -----------------------------
+    if code_bin := get_code_bin_of_terminal():
+        subprocess.Popen([code_bin, package_path])
+    else:
+        rich_print_robust(f" \n[cyan]cd {package_path.relative_to(Path.cwd())}[/cyan]")
 
 
 @create_app.command("build-target")
