@@ -15,5 +15,14 @@
   "entry_name": "{{ cookiecutter.project_name.title().replace(' ', '').replace('_', '').replace('-', '') }}",
   "description": "A brand new atopile project!",
   "__ato_version": "{{ cookiecutter.__ato_version }}",
-  "__python_path": "{{ cookiecutter.__python_path }}"
+  "__python_path": "{{ cookiecutter.__python_path }}",
+  "__prompts__": {
+    "author_name": "Primary author's name",
+    "author_email": "Primary author's email",
+    "project_name": "Package name",
+    "package_owner": "Package owner (should match GitHub username)",
+    "project_slug": "Package slug (used for file names)",
+    "entry_name": "Entry name",
+    "description": "Brief description"
+  }
 }
