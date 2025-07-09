@@ -4,9 +4,8 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from atopile import buildutil
-from atopile.cli.logging_ import capture_logs
+from atopile.cli.logging_ import capture_logs, log_exceptions
 from atopile.mcp.util import MCPTools
-from faebryk.libs.exceptions import log_user_errors
 
 cli_tools = MCPTools()
 
@@ -44,26 +43,24 @@ def build_project(
     config.project.open_layout_on_build = False
     config.interactive = False
 
-    with (
-        config.select_build(target_name_from_yaml),
-        capture_logs() as logs,
-        log_user_errors(),
-    ):
+    success = True
+
+    with config.select_build(target_name_from_yaml), capture_logs() as logs:
         logger.info("Building target '%s'", config.build.name)
 
         try:
-            app = init_app()
-            buildutil.build(app)
-            success = True
+            with log_exceptions(logs):
+                app = init_app()
+                buildutil.build(app)
         except Exception:
             success = False
 
-        return BuildResult(
-            success=success,
-            project_dir=str(absolute_project_dir),
-            target=target_name_from_yaml,
-            logs=logs.getvalue(),
-        )
+    return BuildResult(
+        success=success,
+        project_dir=str(absolute_project_dir),
+        target=target_name_from_yaml,
+        logs=logs.getvalue(),
+    )
 
 
 class CreatePartResult(Result):

@@ -943,8 +943,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 from_dsl_.add_reference(context.ref_ctxs[ref])
 
             return node
-        except* SkipPriorFailedException:
-            raise errors.UserException("Build failed")
+        except* SkipPriorFailedException as e:
+            raise errors.UserException("Build failed") from e
 
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}
