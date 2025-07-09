@@ -1,0 +1,58 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+#pragma experiment("MODULE_TEMPLATING")
+
+import I2C, ElectricPower, Capacitor, Addressor, Resistor
+from "parts/Sensirion_SHT31_DIS_B2_5kS/Sensirion_SHT31_DIS_B2_5kS.ato" import Sensirion_SHT31_DIS_B2_5kS_package
+
+module Sensirion_SHT31:
+    """Driver for Sensirion SHT31-DIS-B2.5kS temperature & humidity sensor (I²C).
+
+    Exposes:
+      * i2c   – I²C bus interface (7-bit addr 0x44 / 0x45)
+      * power – Single-rail supply (2.4 V – 5.5 V)
+    """
+
+    # External interfaces
+    i2c = new I2C
+    power = new ElectricPower
+
+    # constraints
+    assert power.voltage within 2.4V to 5.5V
+
+    # I2C
+    addressor = new Addressor<address_bits=1>
+    assert addressor.address is i2c.address
+    assert addressor.base is 0x44
+    assert i2c.address is addressor.address
+    addressor.address_lines[0].reference ~ power
+
+    # Part instance
+    package = new Sensirion_SHT31_DIS_B2_5kS_package
+
+    # Connections
+    # Power rails
+    power.hv ~ package.VDD
+    power.lv ~ package.VSS
+    power.lv ~ package.EPAD  # Thermal/ground pad
+
+    # I²C lines
+    i2c.scl.line ~ package.SCL
+    i2c.sda.line ~ package.SDA
+    i2c.scl.reference ~ power
+    i2c.sda.reference ~ power
+
+    # Address pin
+    addressor.address_lines[0].line ~ package.ADDR
+
+    # Reset pin – pulled high (disabled) by default
+    package.NRESET ~ power.hv
+
+    # Unused R pin tied to ground (per datasheet recommendation)
+    package.R ~ power.lv
+
+    # Decoupling capacitor
+    decap = new Capacitor
+    decap.capacitance = 100nF +/- 20%
+    decap.package = "0402"
+    power.hv ~> decap ~> power.lv

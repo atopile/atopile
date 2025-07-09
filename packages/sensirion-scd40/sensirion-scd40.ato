@@ -1,0 +1,66 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+#pragma experiment("MODULE_TEMPLATING")
+import I2C, ElectricPower, Capacitor
+from "parts/Sensirion_SCD40_D_R2/Sensirion_SCD40_D_R2.ato" import Sensirion_SCD40_D_R2_package
+
+module Sensirion_SCD40:
+    """Driver for Sensirion SCD40 CO₂ sensor (I²C).
+
+    Exposes:
+      * i2c – I²C bus interface
+      * power – Single-rail power supply (1.65 V to 3.6 V)
+    """
+
+    # --- Interfaces ---
+    i2c = new I2C
+    power = new ElectricPower
+
+    # I²C default 7-bit address per datasheet (0x62)
+    i2c.address = 0x62
+
+    # --- Part instance ---
+    package = new Sensirion_SCD40_D_R2_package
+
+    # --- Connections ---
+    # Power: connect both VDD and VDDH to the same rail, GND to return
+    power.hv ~ package.VDD
+    power.hv ~ package.VDDH
+    power.lv ~ package.GND
+
+    # I²C lines
+    i2c.scl.line ~ package.SCL
+    i2c.sda.line ~ package.SDA
+    # Reference (pull-ups) connect to sensor supply
+    # Tie I²C reference to the same power interface
+    i2c.scl.reference ~ power
+    i2c.sda.reference ~ power
+
+    # --- Electrical constraints ---
+    assert power.voltage within 1.65V to 3.6V
+
+    # --- Decoupling ---
+    decoupling = new Capacitor[2]
+    for cap in decoupling:
+        cap.capacitance = 100nF +/- 20%
+        cap.package = "0402"
+        power.hv ~> cap ~> power.lv
+
+
+module Example:
+    """Minimal example wiring the SCD40 sensor."""
+
+    # Local rails & bus
+    pwr = new ElectricPower
+    bus = new I2C
+
+    sensor = new Sensirion_SCD40
+
+    # Tie together
+    pwr ~ sensor.power
+    bus ~ sensor.i2c 
+
+# Compatibility alias for legacy name
+module SCD40_driver from Sensirion_SCD40:
+    """Alias for backward compatibility: use Sensirion_SCD40 instead."""
+    pass 

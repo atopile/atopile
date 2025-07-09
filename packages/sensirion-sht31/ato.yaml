@@ -1,0 +1,21 @@
+requires-atopile: "^0.9.0"
+
+paths:
+  src: "."
+  layout: ./layouts
+
+builds:
+  default:
+    entry: sensirion-sht31.ato:Sensirion_SHT31
+  usage:
+    entry: usage.ato:Usage
+
+package:
+  identifier: atopile/sensirion-sht31
+  repository: https://github.com/atopile/packages
+  version: "0.1.0"
+  authors:
+    - name: atopile
+      email: hi@atopile.io
+  summary: Sensirion SHT31 Temperature and Humidity Sensor
+  license: MIT

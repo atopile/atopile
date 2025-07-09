@@ -1,0 +1,69 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+import ElectricPower
+import I2C
+import ElectricLogic
+import Capacitor
+
+from "parts/Analog_Devices_ADXL375BCCZ_RL7/Analog_Devices_ADXL375BCCZ_RL7.ato" import Analog_Devices_ADXL375BCCZ_RL7_package
+
+
+module ADXL375_driver:
+    """Driver for Analog Devices ADXL375 ±200 g 3-axis accelerometer (I²C).
+
+    Exposes:
+      * i2c           – I²C bus interface (default address 0x53)
+      * power_vs      – Analog supply (VS)
+      * power_vddio   – Digital I/O supply (VDDIO)
+      * int1, int2    – Interrupt outputs (active high)
+    """
+    # Power rails
+    power_vs = new ElectricPower  # Analog supply (VS)
+    power_vddio = new ElectricPower  # Digital IO supply (VDD I/O)
+
+    # Digital interfaces
+    i2c = new I2C
+    # ALTADDRESS pin is hard-wired low → I²C default address 0x53
+    int1 = new ElectricLogic
+    int2 = new ElectricLogic
+
+    # The accelerometer IC
+    ic = new Analog_Devices_ADXL375BCCZ_RL7_package
+
+    # Power connections
+    power_vs.hv ~ ic.VS
+    power_vs.lv ~ ic.GND
+    power_vs.required = True
+
+    power_vddio.hv ~ ic.VDDI_O
+    power_vddio.lv ~ power_vs.lv
+    power_vddio.required = True
+
+    # I2C connections
+    i2c.scl.line ~ ic.SCL_SCLK
+    i2c.sda.line ~ ic.SDA_SDI_SDIO
+    i2c.scl.reference ~ power_vddio
+    i2c.sda.reference ~ power_vddio
+
+    # Chip select must be high in I²C mode
+    ic.nCS ~ power_vddio.hv
+
+    ic.SDO_ALTADDRESS ~ power_vddio.lv
+
+    # Interrupt outputs
+    int1.line ~ ic.INT1
+    int2.line ~ ic.INT2
+    int1.reference ~ power_vddio
+    int2.reference ~ power_vddio
+
+    # Decoupling capacitors
+    vs_cap = new Capacitor
+    vs_cap.capacitance = 100nF +/- 20%
+    vs_cap.package = "0402"
+    power_vs.hv ~> vs_cap ~> power_vs.lv
+
+    vddio_cap = new Capacitor
+    vddio_cap.capacitance = 100nF +/- 20%
+    vddio_cap.package = "0402"
+    power_vddio.hv ~> vddio_cap ~> power_vddio.lv 

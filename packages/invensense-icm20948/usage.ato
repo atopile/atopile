@@ -1,0 +1,31 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+
+import ElectricPower
+import I2C
+import Resistor
+
+from "icm20948.ato" import Invensense_ICM20948
+
+module Usage:
+    """Minimal wiring example for the Invensense ICM-20948 IMU."""
+
+    # Instantiate sensor and shared resources
+    imu = new Invensense_ICM20948
+    power = new ElectricPower
+    i2c = new I2C
+
+    # I²C pull-up resistors (10 kΩ typical)
+    pullups = new Resistor[2]
+    for pu in pullups:
+        pu.resistance = 10kohm +/- 20%
+        pu.package = "R0402"
+
+    # Pull-ups to the rail
+    i2c.scl.line ~> pullups[0] ~> power.vcc
+    i2c.sda.line ~> pullups[1] ~> power.vcc
+
+    # Connect sensor interfaces
+    imu.power_core ~ power
+    imu.power_io   ~ power
+    imu.i2c        ~ i2c 

@@ -1,0 +1,28 @@
+import ElectricPower
+import I2C
+
+from "adxl375.ato" import ADXL375_driver
+
+module MCU:
+    """Host MCU providing I²C bus and power rail."""
+
+    power = new ElectricPower
+    i2c = new I2C
+
+
+module Usage:
+    """Minimal example wiring the ADXL375 accelerometer to an MCU."""
+
+    # MCU & sensor
+    mcu = new MCU
+    accel = new ADXL375_driver
+
+    # Shared 3V3 rail
+    pwr = new ElectricPower
+    pwr.voltage = 3.3V
+    pwr ~ mcu.power
+    pwr ~ accel.power_vs
+    pwr ~ accel.power_vddio
+
+    # I²C connection
+    mcu.i2c ~ accel.i2c 

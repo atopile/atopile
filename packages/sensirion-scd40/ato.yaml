@@ -1,0 +1,21 @@
+requires-atopile: "^0.9.0"
+
+paths:
+  src: "."
+  layout: ./layouts
+
+builds:
+  default:
+    entry: sensirion-scd40.ato:Sensirion_SCD40
+  usage:
+    entry: usage.ato:Usage
+
+package:
+  identifier: atopile/sensirion-scd40
+  repository: https://github.com/atopile/packages
+  version: "0.1.0"
+  authors:
+    - name: atopile
+      email: hi@atopile.io
+  summary: Sensirion SCD40 CO₂ Sensor
+  license: MIT

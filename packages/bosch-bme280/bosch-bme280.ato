@@ -1,0 +1,89 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+
+import ElectricPower
+import I2C
+import Capacitor
+import Addressor
+import Resistor
+
+from "parts/Bosch_Sensortec_BME280/Bosch_Sensortec_BME280.ato" import Bosch_Sensortec_BME280_package
+
+module Bosch_BME280:
+    """Driver for Bosch BME280 temperature, humidity & pressure sensor (I²C).
+
+    Exposes:
+      * i2c        – I²C bus interface (7-bit addr 0x76 / 0x77)
+      * power_core – Core supply rail (1.71 V – 3.6 V)
+      * power_io   – Digital I/O supply rail (1.2 V – 3.6 V)
+    """
+
+    # --- Package ---
+    package = new Bosch_Sensortec_BME280_package
+
+    # --- Power rails ---
+    power_core = new ElectricPower  # Connects to VDD (sensor core)
+    power_core.vcc ~ package.VDD
+    power_core.gnd ~ package.GND
+    assert power_core.voltage within 1.71V to 3.6V
+    power_core.required = True
+
+    power_io = new ElectricPower  # Connects to VDDIO (digital I/O)
+    power_io.vcc ~ package.VDDIO
+    power_io.gnd ~ power_core.gnd  # Share grounds
+    assert power_io.voltage within 1.2V to 3.6V
+    power_io.required = True
+
+    # --- I²C bus ---
+    i2c = new I2C
+    i2c.scl.line ~ package.SCK
+    i2c.sda.line ~ package.SDI
+    i2c.required = True
+    i2c.scl.reference ~ power_io
+    i2c.sda.reference ~ power_io
+
+    # --- Address selection via SDO pin ---
+    addressor = new Addressor<address_bits=1>
+    addressor.address_lines[0].line ~ package.SDO
+    addressor.address_lines[0].reference ~ power_io
+    assert addressor.base is 0x76
+    assert addressor.address is i2c.address
+
+    # --- Chip-select pin: tie high to enable I²C mode ---
+    csb_pullup = new Resistor
+    csb_pullup.resistance = 10kohm +/- 20%
+    csb_pullup.package = "0402"
+    power_io.vcc ~> csb_pullup ~> package.CSB
+
+    # --- Decoupling capacitors ---
+    decoupling_caps = new Capacitor[2]
+    for cap in decoupling_caps:
+        cap.capacitance = 100nF +/- 20%
+        cap.package = "0402"
+
+    power_core.vcc ~> decoupling_caps[0] ~> power_core.gnd
+    power_io.vcc ~> decoupling_caps[1] ~> power_core.gnd
+
+
+module Example:
+    """Simple usage example wiring the BME280 to shared power / I²C"""
+    sensor = new Bosch_BME280
+
+    # shared rails
+    power = new ElectricPower
+    i2c = new I2C
+
+    # Pull-ups for the I²C bus (10 kΩ typical)
+    pullups = new Resistor[2]
+    for pu in pullups:
+        pu.resistance = 10kohm +/- 20%
+        pu.package = "0402"
+
+    i2c.scl.line ~> pullups[0] ~> power.vcc
+    i2c.sda.line ~> pullups[1] ~> power.vcc
+
+    # connect sensor
+    sensor.power_core ~ power
+    sensor.power_io ~ power
+    sensor.i2c ~ i2c

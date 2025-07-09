@@ -1,0 +1,17 @@
+(fp_lib_table
+    (version 7)
+    (lib
+        (name "Analog_Devices_ADXL375BCCZ_RL7")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/Analog_Devices_ADXL375BCCZ_RL7")
+        (options "")
+        (descr "atopile: part lib: Analog_Devices_ADXL375BCCZ_RL7")
+    )
+    (lib
+        (name "Samsung_Electro_Mechanics_CL05B104KO5NNNC")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05B104KO5NNNC")
+        (options "")
+        (descr "atopile: part lib: Samsung_Electro_Mechanics_CL05B104KO5NNNC")
+    )
+)

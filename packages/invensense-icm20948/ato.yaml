@@ -1,0 +1,21 @@
+requires-atopile: "^0.9.0"
+
+paths:
+  src: "."
+  layout: ./layouts
+
+builds:
+  default:
+    entry: icm20948.ato:Invensense_ICM20948
+  usage:
+    entry: usage.ato:Usage
+
+package:
+  identifier: atopile/invensense-icm20948
+  repository: https://github.com/atopile/packages
+  version: "0.1.0"
+  authors:
+    - name: atopile
+      email: hi@atopile.io
+  summary: TDK InvenSense ICM-20948 9-axis IMU
+  license: MIT

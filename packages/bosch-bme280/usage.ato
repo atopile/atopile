@@ -1,0 +1,26 @@
+import ElectricPower
+import I2C
+
+from "atopile/bosch-bme280/bosch-bme280.ato" import Bosch_BME280
+
+module MCU:
+    """Example MCU interfacing with the BME280 sensor."""
+    power = new ElectricPower
+    i2c = new I2C
+
+module Usage:
+    """Minimal example wiring the Bosch BME280 sensor with a generic MCU."""
+
+    # Instances
+    mcu = new MCU
+    sensor = new Bosch_BME280
+
+    # Shared 3V3 rail
+    pwr = new ElectricPower
+    pwr.voltage = 3.3V
+    pwr ~ mcu.power
+    pwr ~ sensor.power_core
+    pwr ~ sensor.power_io
+
+    # I²C bus wiring
+    mcu.i2c ~ sensor.i2c 

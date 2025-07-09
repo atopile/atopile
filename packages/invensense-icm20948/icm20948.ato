@@ -1,0 +1,64 @@
+#pragma experiment("MODULE_TEMPLATING")
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+
+import ElectricPower
+import I2C
+import Capacitor
+import Resistor
+import Addressor
+
+from "parts/TDK_INVENSENSE_ICM_20948/TDK_INVENSENSE_ICM_20948.ato" import TDK_INVENSENSE_ICM_20948_package
+
+module Invensense_ICM20948:
+    """TDK InvenSense ICM-20948 9-axis IMU (I²C).
+
+    Exposes:
+      * i2c        – I²C bus interface
+      * power_core – Core supply (1.71 V – 3.6 V)
+      * power_io   – Digital I/O supply (1.2 V – 3.6 V)
+    """
+
+    # --- Package ---
+    package = new TDK_INVENSENSE_ICM_20948_package
+
+    # --- Power rails ---
+    power_core = new ElectricPower  # VDD – internal core supply
+    power_core.vcc ~ package.VDD
+    power_core.gnd ~ package.GND
+    assert power_core.voltage within 1.71V to 3.6V
+    power_core.required = True
+
+    power_io = new ElectricPower  # VDDIO – digital I/O supply
+    power_io.vcc ~ package.VDDIO
+    power_io.gnd ~ power_core.gnd
+    assert power_io.voltage within 1.2V to 3.6V
+    power_io.required = True
+
+    # --- I²C bus ---
+    i2c = new I2C
+    i2c.scl.line ~ package.SCL_SCLK
+    i2c.sda.line ~ package.SDA_SDI
+    i2c.required = True
+
+    # --- I²C address selection (SDO/AD0 pin) ---
+    addressor = new Addressor<address_bits=1>
+    addressor.address_lines[0].line ~ package.SDO_AD0
+    addressor.address_lines[0].reference ~ power_io
+    assert addressor.base is 0x68
+    assert addressor.address is i2c.address
+
+    # --- Chip select pin (nCS) – tie high to enable I²C mode ---
+    cs_pullup = new Resistor
+    cs_pullup.resistance = 10kohm +/- 20%
+    cs_pullup.package = "R0402"
+    power_io.vcc ~> cs_pullup ~> package.nCS
+
+    # --- Decoupling capacitors ---
+    decoupling_caps = new Capacitor[2]
+    for cap in decoupling_caps:
+        cap.capacitance = 100nF +/- 20%
+        cap.package = "C0402"
+
+    power_core.vcc ~> decoupling_caps[0] ~> power_core.gnd
+    power_io.vcc ~> decoupling_caps[1] ~> power_core.gnd 

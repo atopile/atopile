@@ -1,0 +1,21 @@
+requires-atopile: "^0.9.0"
+
+paths:
+  src: ./
+  layout: ./layouts
+
+builds:
+  default:
+    entry: bosch-bme280.ato:Bosch_BME280
+  usage:
+    entry: usage.ato:Usage
+
+package:
+  identifier: atopile/bosch-bme280
+  repository: https://github.com/atopile/packages
+  version: "0.1.0"
+  authors:
+    - name: atopile
+      email: hi@atopile.io
+  summary: Bosch BME280 Temperature, Humidity & Pressure Sensor
+  license: MIT

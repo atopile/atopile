@@ -1,0 +1,27 @@
+import ElectricPower
+import I2C
+
+from "atopile/sensirion-sht31/sht31.ato" import SHT31_driver
+
+module MCU:
+    """MCU for the SHT31 sensor."""
+
+    power = new ElectricPower
+    i2c = new I2C
+
+
+module Usage:
+    """Minimal example wiring the SHT31 sensor with an ESP32 MCU."""
+
+    # MCU & sensor
+    mcu = new MCU
+    sensor = new SHT31_driver
+
+    # Shared 3V3 rail
+    pwr = new ElectricPower
+    pwr.voltage = 3.3V
+    pwr ~ mcu.power
+    pwr ~ sensor.power
+
+    # I²C connection: use ESP32 bus 0
+    mcu.i2c ~ sensor.i2c
