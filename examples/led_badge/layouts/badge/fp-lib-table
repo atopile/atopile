@@ -154,4 +154,11 @@
         (options "")
         (descr "atopile: part lib: kinghelm_KH_TYPE_C_16P")
     )
+    (lib
+        (name "atopile_Logo_8x8mm")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../.ato/modules/atopile/logos/parts/atopile_Logo_8x8mm")
+        (options "")
+        (descr "atopile: part lib: atopile_Logo_8x8mm")
+    )
 )

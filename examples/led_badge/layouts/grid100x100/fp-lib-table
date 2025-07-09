@@ -217,4 +217,11 @@
         (options "")
         (descr "atopile: part lib: YAGEO_RC0402FR_071K8L")
     )
+    (lib
+        (name "atopile_Logo_8x8mm")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../.ato/modules/atopile/logos/parts/atopile_Logo_8x8mm")
+        (options "")
+        (descr "atopile: part lib: atopile_Logo_8x8mm")
+    )
 )
