@@ -1,0 +1,6 @@
+"""Example usage of the {{cookiecutter.project_name}} package."""
+
+from "{{cookiecutter.project_slug}}.ato" import {{cookiecutter.entry_name}}
+
+module Example:
+    blah = new {{cookiecutter.entry_name}}

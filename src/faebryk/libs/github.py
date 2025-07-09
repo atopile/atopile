@@ -6,6 +6,9 @@ import re
 import subprocess
 from pathlib import Path
 
+GITHUB_USERNAME_REGEX_PART = r"[a-zA-Z0-9](?:[a-zA-Z0-9]|(-[a-zA-Z0-9])){0,38}"
+GITHUB_USERNAME_REGEX = rf"^{GITHUB_USERNAME_REGEX_PART}$"
+
 
 class GithubException(Exception):
     pass
@@ -76,7 +79,11 @@ class GithubCLI:
         users = [
             match.group(1)
             for line in logged_in
-            if (match := re.match(r"^.*account\s+(\w+)\s+.*$", line))
+            if (
+                match := re.match(
+                    rf"^.*account\s+({GITHUB_USERNAME_REGEX_PART})\s+.*$", line
+                )
+            )
         ]
         if not users:
             raise GithubUserNotLoggedIn()
