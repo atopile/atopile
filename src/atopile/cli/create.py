@@ -1,3 +1,4 @@
+import contextlib
 import itertools
 import logging
 import re
@@ -413,10 +414,20 @@ class _TemplateValues:
 
         @override
         def get_default(self, value: str | None = None) -> str:
-            try:
+            if in_git_repo(Path.cwd()):
+                with contextlib.suppress(Exception):
+                    import git
+
+                    if match := re.match(
+                        r"^.*github\.com[/:]([^/]+)",
+                        git.Repo(Path.cwd()).remotes.origin.url,
+                    ):
+                        return match.group(1)
+
+            with contextlib.suppress(Exception):
                 return GithubCLI().get_usernames()[0]
-            except Exception:
-                return ""
+
+            return ""
 
         @staticmethod
         def validator(value: str) -> bool:
