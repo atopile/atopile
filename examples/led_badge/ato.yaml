@@ -26,8 +26,8 @@ dependencies:
   - type: registry
     identifier: atopile/st-lsm6ds3
   - type: registry
-    identifier: atopile/esp32
-    release: 0.2.0
+    identifier: atopile/espressif-esp32-c3
+    release: 0.1.2
   - type: registry
     identifier: atopile/ti-tps563201
   - type: registry

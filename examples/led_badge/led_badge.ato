@@ -14,8 +14,8 @@ import can_bridge_by_name
 from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
 from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020DSJR
 from "atopile/ti-bq25185/ti-bq25185.ato" import BQ25185_driver
-from "atopile/batteries/eemb_battery_lp402535.ato" import LP402535_Example
-from "atopile/esp32/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver, ESP32_C3_MINI_1_model
+from "atopile/batteries/eemb_battery_lp402535.ato" import EMB_BATTERY_LP402535_Example
+from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
 from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805EC20_driver
 from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434_driver
 from "atopile/st-lsm6ds3/st-lsm6ds3.ato" import ST_LSM6DS3_driver
@@ -32,16 +32,15 @@ module LED_BADGE:
     - Accelerometer
     """
     micro = new ESP32_C3_MINI_1_driver
-    micro.esp32_module -> ESP32_C3_MINI_1_model
     microphone = new TDK_InvenSense_ICS_43434_driver
     imu = new ST_LSM6DS3_driver
     usb_c = new USBCConn
     buck_boost = new TPS63020DSJR
     charger = new BQ25185_driver
-    battery = new LP402535_Example
+    battery = new EMB_BATTERY_LP402535_Example
     led_grid = new SK6805EC20_grid100x100
 
-    charger.charge_current = battery.battery.capacity / 2h +/- 10%
+    charger.charge_current = battery.battery.model.capacity / 2h +/- 10%
 
     # Power
     power_3v3 = new ElectricPower
@@ -50,12 +49,18 @@ module LED_BADGE:
     usb_c.usb2.usb_if.buspower ~> charger ~> battery.power_battery
     charger.power_sys ~> buck_boost ~> power_3v3
 
+    # Buck boost enable
+    buck_boost_en_pullup = new Resistor
+    buck_boost_en_pullup.resistance = 10kohm +/- 1%
+    buck_boost_en_pullup.package = "R0402"
+    buck_boost.ic.EN ~> buck_boost_en_pullup ~> usb_c.usb2.usb_if.buspower.vcc
+
     # Configure Power
     usb_c.usb2.usb_if.buspower.voltage = 5V +/- 5%
     charger.input_current_limit = 500mA
     buck_boost.v_out = 3.3V +/- 5%
-    battery.battery.capacity = 300mAh
-    assert battery.battery.voltage is 3V to 4.2V
+    battery.battery.model.capacity = 300mAh
+    assert battery.battery.model.voltage is 3V to 4.2V
     assert charger.battery_voltage_limit_high is 4.2V
     assert charger.battery_voltage_limit_low is 3.0V
 
@@ -68,21 +73,31 @@ module LED_BADGE:
 
     # I2C for IMU
     i2c_bus = new I2C
-    micro.esp32_module.esp32.i2c ~ i2c_bus
     i2c_bus ~ imu.i2c
+    micro.i2c ~ i2c_bus
+    # micro.esp32_c3.i2c.scl ~ micro.esp32_c3.esp32.gpio[6]
+    # micro.esp32_c3.i2c.sda ~ micro.esp32_c3.esp32.gpio[7]
+    # I2C pull-up resistors
+    pullup_resistors = new Resistor[2]
+    for res in pullup_resistors:
+        res.resistance = 4.7kohm +/- 1%
+        res.package = "R0402"
+    micro.i2c.sda.line ~> pullup_resistors[0] ~> power_3v3.vcc
+    micro.i2c.scl.line ~> pullup_resistors[1] ~> power_3v3.vcc
 
     # I2S for microphone (mapped via GPIOs 3/4/5)
     i2s_bus = new I2S
-    i2s_bus.sck ~ micro.esp32_module.gpio[3]
-    i2s_bus.ws  ~ micro.esp32_module.gpio[4]
-    i2s_bus.sd  ~ micro.esp32_module.gpio[5]
+    i2s_bus ~ micro.i2s
+    # i2s_bus.sck ~ micro.esp32_c3.esp32.gpio[3]
+    # i2s_bus.ws  ~ micro.esp32_c3.esp32.gpio[4]
+    # i2s_bus.sd  ~ micro.esp32_c3.esp32.gpio[5]
     i2s_bus ~ microphone.i2s
 
     # LED Data
-    led_grid.data_in ~ micro.esp32_module.gpio[6]
+    led_grid.data_in ~ micro.gpio[8]
 
     # Net naming
-    micro.esp32_module.gpio[6].line.override_net_name = "led_data"
+    micro.gpio[8].line.override_net_name = "led_data"
     i2s_bus.ws.line.override_net_name = "i2s_ws"
     i2s_bus.sck.line.override_net_name = "i2s_sck"
     i2s_bus.sd.line.override_net_name = "i2s_sd"
@@ -90,6 +105,9 @@ module LED_BADGE:
     i2c_bus.sda.line.override_net_name = "i2c_sda"
     power_3v3.hv.override_net_name = "power_3v3"
     power_3v3.lv.override_net_name = "gnd"
+    charger.power_sys.hv.override_net_name = "power_sys"
+    charger.power_batt.hv.override_net_name = "power_batt"
+    usb_c.usb2.usb_if.buspower.hv.override_net_name = "usb_power"
 
 
 module SK6805EC20_strip10:
