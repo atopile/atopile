@@ -161,4 +161,18 @@
         (options "")
         (descr "atopile: part lib: atopile_Logo_8x8mm")
     )
+    (lib
+        (name "YAGEO_RC0402FR_0718KL")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/YAGEO_RC0402FR_0718KL")
+        (options "")
+        (descr "atopile: part lib: YAGEO_RC0402FR_0718KL")
+    )
+    (lib
+        (name "atopile_Logo_25x6mm")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../.ato/modules/atopile/logos/parts/atopile_Logo_25x6mm")
+        (options "")
+        (descr "atopile: part lib: atopile_Logo_25x6mm")
+    )
 )

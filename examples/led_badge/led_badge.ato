@@ -19,7 +19,7 @@ from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_drive
 from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805EC20_driver
 from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434_driver
 from "atopile/st-lsm6ds3/st-lsm6ds3.ato" import ST_LSM6DS3_driver
-from "atopile/logos/logos.ato" import atopile_logo_8x8mm
+from "atopile/logos/logos.ato" import atopile_logo_25x6mm
 
 module LED_BADGE:
     """
@@ -40,7 +40,7 @@ module LED_BADGE:
     charger = new BQ25185_driver
     battery = new EMB_BATTERY_LP402535_Example
     led_grid = new SK6805EC20_grid100x100
-    atopile_logo = new atopile_logo_8x8mm
+    atopile_logo = new atopile_logo_25x6mm
 
     charger.charge_current = battery.battery.model.capacity / 2h +/- 10%
 

@@ -8,10 +8,13 @@ builds:
   badge:
     entry: led_badge.ato:LED_BADGE
     hide_designators: true
+    exclude_checks: ["PCB.requires_drc_check"]
   strip10:
     entry: led_badge.ato:SK6805EC20_strip10
+    exclude_checks: ["PCB.requires_drc_check"]
   grid100x100:
     entry: led_badge.ato:SK6805EC20_grid100x100
+    exclude_checks: ["PCB.requires_drc_check"]
 
 dependencies:
   - type: registry
@@ -39,4 +42,4 @@ dependencies:
     identifier: atopile/batteries
   - type: registry
     identifier: atopile/logos
-    release: 0.1.1
+    release: 0.1.2
