@@ -216,9 +216,10 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
 
 
 def _build_document(uri: str, text: str) -> None:
-    init_atopile_config(get_file(uri).parent)
+    file_path = get_file(uri)
+    init_atopile_config(file_path.parent)
 
-    context = front_end.bob.index_text(text, get_file(uri))
+    context = front_end.bob.index_text(text, file_path)
 
     # TOOD: do something smarter here (only distinct trees?)
     GRAPHS.setdefault(uri, {})
@@ -228,12 +229,12 @@ def _build_document(uri: str, text: str) -> None:
                 try:
                     # try the single-node version first, in case that's all we can build
                     GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
-                        front_end.bob.build_node(text, Path(uri), ref)
+                        front_end.bob.build_node(text, file_path, ref)
                     )
 
                     front_end.bob.reset()
 
-                    GRAPHS[uri][ref] = front_end.bob.build_text(text, Path(uri), ref)
+                    GRAPHS[uri][ref] = front_end.bob.build_text(text, file_path, ref)
                 except* UserException as excs:
                     msg = f"Error(s) building {uri}:{ref}:\n"
                     for exc in iter_leaf_exceptions(excs):
@@ -249,8 +250,12 @@ def _build_document(uri: str, text: str) -> None:
             case _:  # Node or ImportPlaceholder
                 try:
                     GRAPHS[uri][TypeRef.from_one(name="__import__" + str(ref))] = (
-                        front_end.bob.build_node(text, Path(uri), ref)
+                        front_end.bob.build_node(text, file_path, ref)
                     )
+                except TypeError as ex:
+                    if "missing" not in str(ex):
+                        raise
+                    pass
                 except Exception:
                     import traceback
 

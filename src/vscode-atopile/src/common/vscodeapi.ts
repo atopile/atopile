@@ -180,6 +180,44 @@ class Cursor implements LLM_Rule_Host, MCP_Host {
 
         // save .cursor/mcp.json
         // write pretty json
+        traceInfo(`Writing Cursor mcp.json to ${config_path}`);
+        fs.writeJsonSync(config_path, config, { spaces: 4 });
+    }
+}
+
+class ClaudeCode implements LLM_Rule_Host, MCP_Host {
+    get_rule_path(_: string): string {
+        return `\${workspaceFolder}/CLAUDE.md`;
+    }
+
+    build_rule(rule: LLM_Rule): string {
+        return '# CLAUDE.md' + '\n\n' + rule.text;
+    }
+
+    get_mcp_path(_: string): string {
+        return `\${workspaceFolder}/.mcp.json`;
+    }
+
+    insert_mcp(name: string, mcp_config: MCP_Config, workspace_folder: WorkspaceFolder): void {
+        const config_path = resolvePath(this.get_mcp_path(name), workspace_folder);
+        if (!fs.existsSync(config_path)) {
+            fs.mkdirSync(path.dirname(config_path), { recursive: true });
+            fs.writeJsonSync(config_path, { mcpServers: {} });
+        }
+
+        // load .mcp.json
+        const config = fs.readJsonSync(config_path);
+
+        if (!config.mcpServers) {
+            config.mcpServers = {};
+        }
+
+        // add to mcp.json
+        config.mcpServers[name] = mcp_config;
+
+        // save .mcp.json
+        // write pretty json
+        traceInfo(`Writing Claude .mcp.json to ${config_path}`);
         fs.writeJsonSync(config_path, config, { spaces: 4 });
     }
 }
@@ -235,10 +273,12 @@ const rule_hosts: Record<string, LLM_Rule_Host> = {
     cursor: new Cursor(),
     windsurf: new Windsurf(),
     copilot: new Copilot(),
+    claude: new ClaudeCode(),
 };
 
 const mcp_hosts: Record<string, MCP_Host> = {
     cursor: new Cursor(),
+    claude: new ClaudeCode(),
 };
 
 export function install_rule(
