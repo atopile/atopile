@@ -28,11 +28,15 @@ class Inductor(Module):
         tolerance_guess=10 * P.percent,
     )
     saturation_current = L.p_field(units=P.A)
-    self_resonant_frequency = L.p_field(
+    self_resonance_frequency = L.p_field(
         units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
+    )
+    quality_factor = L.p_field(
+        units=P.dimensionless,
+        soft_set=L.Range(1, 300),
     )
 
     @L.rt_field
@@ -44,7 +48,8 @@ class Inductor(Module):
                 "max_current": self.max_current,
                 "dc_resistance": self.dc_resistance,
                 "saturation_current": self.saturation_current,
-                "self_resonant_frequency": self.self_resonant_frequency,
+                "self_resonance_frequency": self.self_resonance_frequency,
+                "quality_factor": self.quality_factor,
             },
         )
 
