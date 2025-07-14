@@ -34,10 +34,6 @@ class Inductor(Module):
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
-    quality_factor = L.p_field(
-        units=P.dimensionless,
-        soft_set=L.Range(1, 300),
-    )
 
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
@@ -49,7 +45,6 @@ class Inductor(Module):
                 "dc_resistance": self.dc_resistance,
                 "saturation_current": self.saturation_current,
                 "self_resonance_frequency": self.self_resonance_frequency,
-                "quality_factor": self.quality_factor,
             },
         )
 

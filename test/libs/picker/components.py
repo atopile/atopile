@@ -156,7 +156,6 @@ inductors = [
                 i.max_current.constrain_ge(0.06 * P.A),
                 i.dc_resistance.constrain_le(10.7 * P.ohm),
                 i.self_resonance_frequency.constrain_ge(17 * P.Mhertz),
-                i.quality_factor.constrain_ge(10),
             )
         ),
         packages=[SMDSize.I0805],
