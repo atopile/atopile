@@ -1,15 +1,33 @@
 import Regulator, ResistorVoltageDivider
 
 module AdjustableRegulator from Regulator:
-    feedback_div = new ResistorVoltageDivider
-    v_ref: voltage
-    i_q: current
-    v_in: voltage
-    v_out: voltage
+    """
+    Adjustable regulator with feedback divider.
+    """
+    input_voltage: voltage
+    """
+    Voltage of power_in
+    """
+    output_voltage: voltage
+    """
+    Voltage of power_out
+    """
+    reference_voltage: voltage
+    """
+    Reference voltage of the regulator IC
+    """
+    feedback_divider = new ResistorVoltageDivider
+    """
+    Resistor divider from output voltage used as feedback signal to be compared against reference voltage
 
-    assert feedback_div.v_in is v_out
-    assert feedback_div.v_out is v_ref
-    assert feedback_div.max_current is i_q
+    To manage current draw of divider, constrain max_current, r_total, r_bottom or r_top
+    """
+
+    assert feedback_divider.input_voltage is output_voltage
+    assert feedback_divider.output_voltage is reference_voltage
+    assert feedback_divider.max_current
+    assert input_voltage is power_in.voltage
+    assert output_voltage is power_out.voltage
 
 module Buck from AdjustableRegulator:
     pass
