@@ -1,0 +1,276 @@
+(footprint "NFCAntenna"
+	(layer "F.Cu")
+	(descr "")
+	(version 20241229)
+	(generator "pcbnew")
+	(generator_version "9.0")
+	(property "Reference" "REF**"
+		(at 0 -4 0)
+		(layer "F.SilkS")
+		(uuid "6417d335-6fd7-4a88-a3a7-e928a37bb428")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Value" "Neurotech_NFCAntenna"
+		(at 0 4 0)
+		(layer "F.Fab")
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba3820")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "f7f50bda-43ea-4521-bae8-f5786d766844")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "d533d595-00e7-42a4-8178-f7d390ae6ee1")
+		(effects
+			(font
+				(size 1.27 1.27)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr board_only)
+	(fp_line
+		(start -1 -1)
+		(end 33 -1)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba9999")
+	)
+	(fp_line
+		(start -1 20)
+		(end -1 -1)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba6666")
+	)
+	(fp_line
+		(start 33 -1)
+		(end 33 20)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba8888")
+	)
+	(fp_line
+		(start 33 20)
+		(end -1 20)
+		(stroke
+			(width 0.15)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba7777")
+	)
+	(pad "1" thru_hole circle
+		(at 0.25 18.75)
+		(size 0.5 0.5)
+		(drill 0.25)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba5555")
+	)
+	(pad "1" smd custom
+		(at 0.25 18.75)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_line
+				(start 0 0)
+				(end 0 -18.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 0 -18.5)
+				(end 31.5 -18.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 31.5 -18.5)
+				(end 31.5 0)
+				(width 0.5)
+			)
+			(gr_line
+				(start 31.5 0)
+				(end 1 0)
+				(width 0.5)
+			)
+			(gr_line
+				(start 1 0)
+				(end 1 -17.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 1 -17.5)
+				(end 30.5 -17.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 30.5 -17.5)
+				(end 30.5 -1)
+				(width 0.5)
+			)
+			(gr_line
+				(start 30.5 -1)
+				(end 2 -1)
+				(width 0.5)
+			)
+			(gr_line
+				(start 2 -1)
+				(end 2 -16.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 2 -16.5)
+				(end 29.5 -16.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 29.5 -16.5)
+				(end 29.5 -2)
+				(width 0.5)
+			)
+			(gr_line
+				(start 29.5 -2)
+				(end 3 -2)
+				(width 0.5)
+			)
+			(gr_line
+				(start 3 -2)
+				(end 3 -15.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 3 -15.5)
+				(end 28.5 -15.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 28.5 -15.5)
+				(end 28.5 -3)
+				(width 0.5)
+			)
+			(gr_line
+				(start 28.5 -3)
+				(end 4 -3)
+				(width 0.5)
+			)
+			(gr_line
+				(start 4 -3)
+				(end 4 -14.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 4 -14.5)
+				(end 27.5 -14.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 27.5 -14.5)
+				(end 27.5 -4)
+				(width 0.5)
+			)
+			(gr_line
+				(start 27.5 -4)
+				(end 5 -4)
+				(width 0.5)
+			)
+			(gr_line
+				(start 5 -4)
+				(end 5 -13.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 5 -13.5)
+				(end 26.5 -13.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 26.5 -13.5)
+				(end 26.5 -5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 26.5 -5)
+				(end 6 -5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 6 -5)
+				(end 6 -12.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 6 -12.5)
+				(end 25.5 -12.5)
+				(width 0.5)
+			)
+			(gr_line
+				(start 25.5 -12.5)
+				(end 25.5 -6)
+				(width 0.5)
+			)
+		)
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba4444")
+	)
+	(pad "2" thru_hole circle
+		(at 7.25 12.75)
+		(size 0.5 0.5)
+		(drill 0.25)
+		(layers "*.Cu" "*.Mask")
+		(remove_unused_layers no)
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba3333")
+	)
+	(pad "2" smd custom
+		(at 7.25 12.75)
+		(size 0.5 0.5)
+		(layers "F.Cu")
+		(zone_connect 0)
+		(options
+			(clearance outline)
+			(anchor circle)
+		)
+		(primitives
+			(gr_line
+				(start 0 0)
+				(end 18.5 0)
+				(width 0.5)
+			)
+		)
+		(uuid "08afb80a-fb6c-4923-a282-81d174ba2222")
+	)
+	(embedded_fonts no)
+)

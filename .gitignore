@@ -17,7 +17,6 @@ eggs/
 .eggs/
 lib/
 lib64/
-parts/
 sdist/
 var/
 wheels/
@@ -197,3 +196,4 @@ standalone/
 
 # need to ignore because absolute paths
 .cursor/mcp.json
+.ato/

@@ -1,0 +1,36 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+import ElectricPower
+from "atopile/esp32/esp32_c3.ato" import ESP32_C3_WROOM
+from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
+from "atopile/buttons/buttons.ato" import ButtonPullup, HorizontalButton
+from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805EC20_driver
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
+
+module App:
+    esp32_c3 = new ESP32_C3_WROOM
+    usb_c = new USBCConn
+    buttons = new ButtonPullup[6]
+    leds = new SK6805EC20_driver[6]
+    ldo_3V3 = new TLV75901_driver
+    power_3v3 = new ElectricPower
+    power_vbus = new ElectricPower
+
+    usb_c.usb2.usb_if.buspower ~ power_vbus
+    power_vbus ~> ldo_3V3 ~> esp32_c3.power
+
+    usb_c.usb2 ~ esp32_c3.usb2
+    
+    for button in buttons:
+        button.button.button -> HorizontalButton
+    
+    buttons[0].output ~ esp32_c3.gpios[3]
+    buttons[1].output ~ esp32_c3.gpios[4]
+    buttons[2].output ~ esp32_c3.gpios[5]
+    buttons[3].output ~ esp32_c3.gpios[6]
+    buttons[4].output ~ esp32_c3.gpios[7]
+    buttons[5].output ~ esp32_c3.gpios[8]
+
+    #for led in leds:
+    #    led.power ~ power_vbus
+    #esp32_c3.gpios[10] ~> leds[0] ~> leds[1] ~> leds[2] ~> leds[3] ~> leds[4] ~> leds[5]

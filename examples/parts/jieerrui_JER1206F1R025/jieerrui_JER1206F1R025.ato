@@ -1,0 +1,18 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component jieerrui_JER1206F1R025_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C46634441", date="2025-07-04T22:25:50.614984+00:00", checksum="842b838b9cfe6d36556c1c5aa3e4e11bdd718fcbf60a723425cffe39490613fd">
+
+    trait is_atomic_part<manufacturer="jieerrui", partnumber="JER1206F1R025", footprint="R1206.kicad_mod", symbol="JER1206F1R025.kicad_sym", model="R1206_L3.2-W1.6-H0.6.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C46634441", manufacturer="jieerrui", partno="JER1206F1R025">
+    trait has_designator_prefix<prefix="R">
+
+    # pins
+    pin 2
+    pin 1
