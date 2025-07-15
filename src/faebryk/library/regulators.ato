@@ -2,7 +2,7 @@ import Regulator, ResistorVoltageDivider
 
 module AdjustableRegulator from Regulator:
     """
-    Adjustable regulator with feedback divider.
+    Adjustable regulator with resistor divider feedback compared to .
     """
     input_voltage: voltage
     """
@@ -20,12 +20,12 @@ module AdjustableRegulator from Regulator:
     """
     Resistor divider from output voltage used as feedback signal to be compared against reference voltage
 
-    To manage current draw of divider, constrain max_current, r_total, r_bottom or r_top
+    To manage current draw of divider, constrain any one of max_current, r_total, r_bottom or r_top
     """
 
-    assert feedback_divider.input_voltage is output_voltage
-    assert feedback_divider.output_voltage is reference_voltage
-    assert feedback_divider.max_current
+    assert feedback_divider.v_in is output_voltage
+    assert feedback_divider.v_out is reference_voltage
+    assert feedback_divider.max_current within 10uA to 1mA #TODO: remove defualt and make required
     assert input_voltage is power_in.voltage
     assert output_voltage is power_out.voltage
 
