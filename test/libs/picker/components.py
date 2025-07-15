@@ -142,7 +142,7 @@ inductors = [
                 i.inductance.constrain_subset(L.Range.from_center(10 * P.uH, 2 * P.uH)),
                 i.max_current.constrain_ge(0.05 * P.A),
                 i.dc_resistance.constrain_le(1.17 * P.ohm),
-                i.self_resonance_frequency.constrain_ge(30 * P.Mhertz),
+                i.self_resonant_frequency.constrain_ge(30 * P.Mhertz),
             )
         ),
         packages=[SMDSize.I0603],
@@ -155,7 +155,7 @@ inductors = [
                 ),
                 i.max_current.constrain_ge(0.06 * P.A),
                 i.dc_resistance.constrain_le(10.7 * P.ohm),
-                i.self_resonance_frequency.constrain_ge(17 * P.Mhertz),
+                i.self_resonant_frequency.constrain_ge(17 * P.Mhertz),
             )
         ),
         packages=[SMDSize.I0805],
