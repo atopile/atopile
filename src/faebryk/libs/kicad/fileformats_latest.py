@@ -217,6 +217,535 @@ class C_kicad_drc_report_file(JSON_File):
 
 @dataclass_json(undefined=Undefined.INCLUDE)
 @dataclass
+class C_kicad_dru_file(JSON_File):
+    # https://docs.kicad.org/8.0/en/pcbnew/pcbnew.html#custom-design-rules
+
+    @dataclass
+    class C_commented_rule:
+        @dataclass
+        class C_comment:
+            text: str
+
+            def __post_init__(self):
+                if not self.text.startswith("#"):
+                    self.text = "# " + self.text.strip()
+
+        @dataclass
+        class C_rule:
+            class E_severity(SymEnum):
+                error = auto()
+                warning = auto()
+                ignore = auto()
+                exclusion = auto()
+
+            @dataclass
+            class C_object_property:
+                class C_common:
+                    # Layer ...
+                    # Locked ...
+                    pass
+
+                class C_connected:
+                    pass
+
+                class C_footprint:
+                    pass
+
+                class C_pad:
+                    pass
+
+                class C_track_arc:
+                    pass
+
+                class C_via:
+                    pass
+
+                class C_tuning:
+                    pass
+
+                class C_zone_area:
+                    pass
+
+                class C_graphic_shape:
+                    pass
+
+                class C_text:
+                    # Bold ...
+                    # Height ...
+                    pass
+
+            @dataclass
+            class C_expression:
+                class C_operator(StrEnum):
+                    EQUAL = "=="
+                    NOT_EQUAL = "!="
+                    GREATER_THAN = ">"
+                    GREATER_THAN_OR_EQUAL = ">="
+                    LESS_THAN = "<"
+                    LESS_THAN_OR_EQUAL = "<="
+                    AND = "&&"
+                    OR = "||"
+                    NOT = "!"
+
+                class C_unit(StrEnum):
+                    MM = "mm"
+                    INCH = "in"  # or "
+                    MILS = "mil"  # or th
+                    DEG = "deg"
+                    RAD = "rad"
+                    NONE = ""
+
+                class C_function:
+                    # enclosedByArea ...
+                    # existsOnLayer ...
+                    pass
+
+                # TODO: implement expressions/functions
+                expression: str
+
+            @dataclass
+            class C_constraint:
+                @dataclass
+                class AnnularWidth:
+                    """
+                    Checks the width of annular rings on vias and pads.
+
+                    Arguments:
+                        min/opt/max: Minimum, optimal, and maximum annular width.
+
+                    Checks the width of annular rings on vias and pads.
+                    """
+
+                    min: Optional[float]
+                    opt: Optional[float]
+                    max: Optional[float]
+
+                @dataclass
+                class Assertion:
+                    """
+                    Checks that the boolean expression is true. If the expression
+                    is false, a DRC error will be created.
+
+                    Arguments:
+                        boolean expression: The expression can use any of the
+                        properties listed in the Object Properties section.
+                    """
+
+                    expression: str
+
+                @dataclass
+                class Clearance:
+                    """
+                    Specifies the electrical clearance between copper objects of
+                    different nets.
+
+                    Arguments:
+                        min: Minimum clearance.
+
+                    To allow copper objects to overlap (collide), create a clearance
+                    constraint with the min value less than zero (for example, -1).
+                    (See physical_clearance if you wish to specify clearance between
+                    objects regardless of net.)
+                    """
+
+                    min: float
+
+                @dataclass
+                class ConnectionWidth:
+                    """Checks the width of connections between pads and zones.
+
+                    Arguments:
+                        min: Minimum connection width.
+
+                    An error will be generated for each pad connection that is narrower
+                    than the min value.
+                    """
+
+                    min: float
+
+                @dataclass
+                class CourtyardClearance:
+                    """Checks the clearance between footprint courtyards and generates
+                    an error if any two courtyards are closer than the min distance.
+
+                    Arguments:
+                        min: Minimum courtyard clearance.
+
+                    If a footprint does not have a courtyard shape, no errors will be
+                    generated from this constraint. To allow courtyard objects to
+                    overlap (collide), create a courtyard_clearance constraint with the
+                    min value less than zero (for example, -1).
+                    """
+
+                    min: float
+
+                @dataclass
+                class DiffPairGap:
+                    """Checks the gap between coupled tracks in a differential pair.
+
+                    Arguments:
+                        min/opt/max: Minimum, optimal, and maximum gap.
+
+                    Coupled tracks are segments that are parallel to each other.
+                    Differential pair gap is not tested on uncoupled portions of a
+                    differential pair (for example, the fanout from a component).
+                    """
+
+                    min: float | None = None
+                    opt: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class DiffPairUncoupled:
+                    """Checks the distance that a differential pair track is routed
+                    uncoupled from the other polarity track in the pair.
+
+                    Arguments:
+                        max: Maximum uncoupled distance.
+
+                    For example, where the pair fans out from a component, or becomes
+                    uncoupled to pass around another object such as a via.
+                    """
+
+                    max: float
+
+                @dataclass
+                class Disallow:
+                    """Specify one or more object types to disallow, separated by spaces
+
+                    Arguments:
+                        track, via, micro_via, buried_via, pad, zone, text, graphic,
+                        hole, footprint
+
+                    If an object of this type matches the rule condition, a DRC error
+                    will be created. This constraint is essentially the same as a
+                    keepout rule area, but can be used to create more specific keepout
+                    restrictions.
+                    """
+
+                    object_types: list[str]
+
+                @dataclass
+                class EdgeClearance:
+                    """Checks the clearance between objects and the board edge.
+
+                    Arguments:
+                        min/opt/max: Minimum, optimal, and maximum edge clearance.
+
+                    This can also be thought of as the 'milling tolerance' as the board
+                    edge will include all graphical items on the Edge.Cuts layer as well
+                    as any oval pad holes. (See physical_hole_clearance for the drilling
+                    tolerance.) To allow objects to overlap (collide) with the board
+                    edge, create an edge_clearance constraint with the min value less
+                    than zero (for example, -1).
+                    """
+
+                    min: float | None = None
+                    opt: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class HoleClearance:
+                    """Checks the clearance between a drilled hole in a pad or via and
+                    copper objects on
+                    a different net.
+
+                    Arguments:
+                        min: Minimum clearance.
+
+                    The clearance is measured from the diameter of the hole, not its
+                    center.
+                    """
+
+                    min: float
+
+                @dataclass
+                class HoleSize:
+                    """Checks the size (diameter) of a drilled hole in a pad or via.
+
+                    Arguments:
+                        min/max: Minimum and maximum hole size.
+
+                    For oval holes, the smaller (minor) diameter will be tested against
+                    the min value (if specified) and the larger (major) diameter will be
+                    tested against the max value (if specified).
+                    """
+
+                    min: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class HoleToHole:
+                    """Checks the clearance between mechanically-drilled holes in pads
+                    and vias.
+
+                    Arguments:
+                        min: Minimum clearance.
+
+                    The clearance is measured between the diameters of the holes, not
+                    between their centers. This constraint is solely for the protection
+                    of drill bits. The clearance between laser-drilled (microvias) and
+                    other non-mechanically-drilled holes is not checked, nor is the
+                    clearance between milled (oval-shaped) and other
+                    non-mechanically-drilled holes.
+                    """
+
+                    min: float
+
+                @dataclass
+                class Length:
+                    """Checks the total routed length for the nets that match the rule
+                    condition.
+
+                    Arguments:
+                        min/max: Minimum and maximum length.
+
+                    Generates an error for each net that is below the min value (if
+                    specified) or above the max value (if specified) of the constraint.
+                    This constraint also sets a target length that is used by the length
+                    tuning tool for any nets that match the rule condition.
+                    """
+
+                    min: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class MinResolvedSpokes:
+                    """Checks the total number of connections (spokes) to a pad.
+
+                    Arguments:
+                        0, 1, 2, 3, 4: Number of spokes.
+
+                    An error will be raised for each pad that has fewer than the
+                    specified number of spokes.
+                    """
+
+                    spokes: int  # 0, 1, 2, 3, 4
+
+                @dataclass
+                class PhysicalClearance:
+                    """Checks the clearance between two objects on a given layer
+                    (including non-copper layers).
+
+                    Arguments:
+                        min: Minimum clearance.
+
+                    While this can perform more general-purpose checks than clearance,
+                    it is much slower. Use clearance where possible.
+                    """
+
+                    min: float
+
+                @dataclass
+                class PhysicalHoleClearance:
+                    """Checks the clearance between a drilled hole in a pad or via and
+                    another object, regardless of net.
+
+                    Arguments:
+                        min: Minimum clearance.
+
+                    The clearance is measured from the diameter of the hole, not its
+                    center. This can also be thought of as the 'drilling tolerance' as
+                    it only includes round holes (see edge_clearance for the milling
+                    tolerance).
+                    """
+
+                    min: float
+
+                @dataclass
+                class SilkClearance:
+                    """Checks the clearance between objects on silkscreen layers and
+                    other objects.
+
+                    Arguments:
+                        min/opt/max: Minimum, optimal, and maximum silkscreen clearance.
+
+                    To allow silkscreen objects to overlap (collide) with other objects,
+                    create a silk_clearance constraint with the min value less than zero
+                    (for example, -1).
+                    """
+
+                    min: float | None = None
+                    opt: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class Skew:
+                    """Checks the total skew for the nets that match the rule condition.
+
+                    Arguments:
+                        min/opt/max: Minimum, optimal, and maximum skew.
+
+                    The difference between the length of each net and the average of all
+                    the lengths of each net that is matched by the rule. If the
+                    difference between that average and the length of any one net is
+                    above the constraint max value, an error will be generated.
+                    This constraint also sets a target skew that is used by the skew
+                    tuning tool for any nets that match the rule condition. The target
+                    skew is the opt value, if specified, or the min value if not.
+                    If neither min nor opt is specified, the target skew is 0.
+                    """
+
+                    min: float | None = None
+                    opt: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class TextHeight:
+                    """Checks the height of text, including text boxes.
+
+                    Arguments:
+                        min/max: Minimum and maximum text height.
+
+                    An error will be generated for each text item that has a height
+                    below the min value (if specified) or above the max value
+                    (if specified).
+                    """
+
+                    min: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class TextThickness:
+                    """Checks the thickness of text, including text boxes.
+
+                    Arguments:
+                        min/max: Minimum and maximum text thickness.
+
+                    An error will be generated for each text item that has a thickness
+                    below the min value (if specified) or above the max value
+                    (if specified).
+                    """
+
+                    min: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class ThermalReliefGap:
+                    """Specifies the width of the gap between a pad and a zone with a
+                    thermal-relief connection.
+
+                    Arguments:
+                        min: Minimum gap width.
+                    """
+
+                    min: float
+
+                @dataclass
+                class ThermalSpokeWidth:
+                    """Specifies the width of the spokes connecting a pad to a zone with
+                    a thermal-relief connection.
+
+                    Arguments:
+                        opt: Optimal spoke width.
+                    """
+
+                    opt: float
+
+                @dataclass
+                class TrackWidth:
+                    """Checks the width of track and arc segments.
+
+                    Arguments:
+                        min/opt/max: Minimum, optimal, and maximum track width.
+
+                    An error will be generated for each segment that has a width below
+                    the min value (if specified) or above the max value (if specified).
+                    """
+
+                    min: float | None = None
+                    opt: float | None = None
+                    max: float | None = None
+
+                @dataclass
+                class ViaCount:
+                    """Counts the number of vias on every net matched by the rule
+                    condition.
+
+                    Arguments:
+                        min/max: Minimum and maximum via count.
+
+                    An error will be generated for each net that has fewer vias than the
+                    min value (if specified) or more than the max value (if specified).
+                    """
+
+                    min: int | None = None
+                    max: int | None = None
+
+                @dataclass
+                class ViaDiameter:
+                    """Checks the diameter of vias.
+
+                    Arguments:
+                        min/max: Minimum and maximum via diameter.
+
+                    An error will be generated for each via that has a diameter below
+                    the min value (if specified) or above the max value (if specified).
+                    """
+
+                    min: float | None = None
+                    max: float | None = None
+
+                class ZoneConnection(StrEnum):
+                    """Specifies the connection to be made between a zone and a pad.
+
+                    Arguments:
+                        solid, thermal_reliefs, none: Connection type.
+                    """
+
+                    solid = "solid"
+                    thermal_reliefs = "thermal_reliefs"
+                    none = "none"
+
+                constraint = (
+                    AnnularWidth
+                    | Assertion
+                    | Clearance
+                    | ConnectionWidth
+                    | CourtyardClearance
+                    | DiffPairGap
+                    | DiffPairUncoupled
+                    | Disallow
+                    | EdgeClearance
+                    | HoleClearance
+                    | HoleSize
+                    | HoleToHole
+                    | Length
+                    | MinResolvedSpokes
+                    | PhysicalClearance
+                    | PhysicalHoleClearance
+                    | SilkClearance
+                    | Skew
+                    | TextHeight
+                    | TextThickness
+                    | ThermalReliefGap
+                    | ThermalSpokeWidth
+                    | TrackWidth
+                    | ViaCount
+                    | ViaDiameter
+                    | ZoneConnection
+                )
+
+            name: str = field(**sexp_field(positional=True))
+            severity: Optional[E_severity] = None
+            layer: Optional[str] = (
+                None  # TODO: make this a layer object instead of a string
+            )
+            condition: Optional[C_expression] = None
+            constraints: list[C_constraint] = field(default_factory=list)
+
+        # comment: Optional[C_comment] = field(**sexp_field(positional=True))
+        # TODO: this is just a string prefixed with #, not really a sexp field?
+        rule: C_rule
+
+    version: int = 1
+    rules: list[C_commented_rule] = field(
+        **sexp_field(positional=True), default_factory=list
+    )
+
+
+@dataclass_json(undefined=Undefined.INCLUDE)
+@dataclass
 class C_kicad_project_file(JSON_File):
     """
     Generated with ChatGPT by giving it the test.kicad_pro
