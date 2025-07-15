@@ -145,6 +145,7 @@ class BackendPackage(StrEnum):
         prefix = {
             F.is_pickable_by_type.Type.Resistor: "R",
             F.is_pickable_by_type.Type.Capacitor: "C",
+            F.is_pickable_by_type.Type.Inductor: "L",
         }[type]
         return cls[f"{prefix}{size.imperial.without_prefix}"]
 
