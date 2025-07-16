@@ -5,6 +5,8 @@ from enum import Enum, auto
 
 
 class SMDSize(Enum):
+    class UnableToConvert(Exception): ...
+
     I01005 = auto()
     I0201 = auto()
     I0402 = auto()
@@ -176,14 +178,25 @@ class SMDSize(Enum):
     def imperial(self) -> "SMDSize":
         if self.name.startswith("I"):
             return self
-        return self.table(to_metric=False)[self]
+
+        try:
+            return self.table(to_metric=False)[self]
+        except KeyError:
+            raise self.UnableToConvert(f"Unable to convert {self} to imperial")
 
     @property
     def metric(self) -> "SMDSize":
         if self.name.startswith("M"):
             return self
-        return self.table(to_metric=True)[self]
+
+        try:
+            return self.table(to_metric=True)[self]
+        except KeyError:
+            raise self.UnableToConvert(f"Unable to convert {self} to metric")
 
     @property
     def without_prefix(self) -> "str":
-        return self.name[1:]
+        name = self.name
+        for prefix in ["I", "M"]:
+            name = name.removeprefix(prefix)
+        return name
