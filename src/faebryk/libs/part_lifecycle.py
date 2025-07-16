@@ -215,14 +215,20 @@ class PartLifecycle:
         ) -> tuple[Path, C_kicad_fp_lib_table_file]:
             fp_table_path = build.paths.fp_lib_table
 
-            old_fp_table = C_kicad_fp_lib_table_file.loads(fp_table_path)
-            for lib in old_fp_table.fp_lib_table.libs.values():
-                if not lib.descr.startswith(MANAGED_LIB_PREFIX):
-                    logger.warning(f"Removing unmanaged footprint library `{lib.name}`")
+            try:
+                old_fp_table = C_kicad_fp_lib_table_file.loads(fp_table_path)
+                for lib in old_fp_table.fp_lib_table.libs.values():
+                    if not lib.descr.startswith(MANAGED_LIB_PREFIX):
+                        logger.warning(
+                            f"Removing unmanaged footprint library `{lib.name}`"
+                        )
+            except FileNotFoundError:
+                # just generate if missing (e.g. on first run)
+                pass
 
             # recreate table to ensure sync
             fp_table = C_kicad_fp_lib_table_file.skeleton()
-            # load all parts existing parts into new table
+            # load all existing parts into new table
             for part_dir in sorted(
                 Gcfg.project.paths.parts.iterdir(), key=lambda x: x.name
             ):
@@ -231,20 +237,19 @@ class PartLifecycle:
                     continue
                 if not (part_dir / (part_identifier + ".ato")).is_file():
                     continue
-                self.__insert_fp_lib(part_identifier, fp_table_path, fp_table)
-            fp_table.dumps(fp_table_path)
+                self.__insert_fp_lib(part_identifier, fp_table)
 
             return fp_table_path, fp_table
 
         def _insert_fp_lib(self, lib_name: str, fppath: Path | None = None):
             for build in Gcfg.project.builds.values():
                 fp_table_path, fp_table = self.fp_table(build)
-                self.__insert_fp_lib(lib_name, fp_table_path, fp_table, fppath)
+                self.__insert_fp_lib(lib_name, fp_table, fppath)
+                fp_table.dumps(fp_table_path)
 
         def __insert_fp_lib(
             self,
             lib_name: str,
-            fp_table_path: Path,
             fp_table: C_kicad_fp_lib_table_file,
             fppath: Path | None = None,
         ):
@@ -278,7 +283,6 @@ class PartLifecycle:
                 logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
                 self._printed_alert = True
 
-            fp_table.dumps(fp_table_path)
             return fp_table
 
         def ingest_part(self, part: AtoPart) -> AtoPart:
