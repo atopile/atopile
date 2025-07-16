@@ -103,7 +103,21 @@ class AtoPart:
             self.fp.footprint.models[0].path = rel_path
 
     def compare(self, other: Self) -> dict:
-        return compare_dataclasses(
+        def _filter_datasheet_downgrades(diff: dict) -> dict:
+            """
+            EasyEDA ingestion only sometimes returns a datasheet. In the case where we
+            did have one previously, filter that update out of the diff so we don't
+            then remove it from the part definition.
+            """
+
+            if (datasheet := diff.get(".datasheet")) is not None:
+                before, after = datasheet
+                if before is not None and after is None:
+                    del diff[".datasheet"]
+
+            return diff
+
+        diff = compare_dataclasses(
             self,
             other,
             skip_keys=(
@@ -113,6 +127,10 @@ class AtoPart:
                 "checksum",
             ),
         )
+
+        diff = _filter_datasheet_downgrades(diff)
+
+        return diff
 
     def _dump_pins(self, build: AtoCodeGen.ComponentFile):
         symbol = first(self.symbol.kicad_symbol_lib.symbols.values())
