@@ -256,6 +256,9 @@ class AtoPart:
 
             except Checksum.Mismatch:
                 if FBRK_OVERRIDE_CHECKSUM_MISMATCH:
+                    # must now write the new value to handle updating the checksum
+                    # mechanism
+                    obj.set_checksum()
                     return
                 raise _FileManuallyModified(
                     f"{t_name} has a checksum mismatch for auto-generated part"
