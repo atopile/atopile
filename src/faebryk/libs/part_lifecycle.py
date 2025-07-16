@@ -223,7 +223,7 @@ class PartLifecycle:
             # recreate table to ensure sync
             fp_table = C_kicad_fp_lib_table_file.skeleton()
             # load all parts existing parts into new table
-            for part_dir in Gcfg.project.paths.parts.iterdir():
+            for part_dir in sorted(Gcfg.project.paths.parts.iterdir()):
                 part_identifier = part_dir.name
                 if not part_dir.is_dir():
                     continue
