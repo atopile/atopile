@@ -269,15 +269,17 @@ class AtoPart:
                 obj.verify_checksum()
             except PropertyNotSet:
                 raise _FileManuallyModified(
-                    f"{t_name} has no checksum."
-                    "But part is auto-generated. This is not allowed."
+                    f"{t_name} has no checksum for auto-generated part"
                 )
+
             except Checksum.Mismatch:
                 if FBRK_OVERRIDE_CHECKSUM_MISMATCH:
+                    # must now write the new value to handle updating the checksum
+                    # mechanism
+                    obj.set_checksum()
                     return
                 raise _FileManuallyModified(
-                    f"{t_name} has a checksum mismatch. "
-                    "But part is auto-generated. This is not allowed. "
+                    f"{t_name} has a checksum mismatch for auto-generated part"
                 )
 
         # TODO verify model
