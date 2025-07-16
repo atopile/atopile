@@ -25,9 +25,14 @@ from faebryk.libs.kicad.fileformats_latest import (
 )
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.picker.picker import PickedPart
-from faebryk.libs.util import compare_dataclasses, starts_or_ends_replace
+from faebryk.libs.util import ConfigFlag, compare_dataclasses, starts_or_ends_replace
 
 logger = logging.getLogger(__name__)
+
+FBRK_OVERRIDE_CHECKSUM_MISMATCH = ConfigFlag(
+    "PART_OVERRIDE_CHECKSUM_MISMATCH",
+    default=True,  # TODO set to false
+)
 
 
 @dataclass(kw_only=True)
@@ -250,6 +255,8 @@ class AtoPart:
                     "But part is auto-generated. This is not allowed."
                 )
             except Checksum.Mismatch:
+                if FBRK_OVERRIDE_CHECKSUM_MISMATCH:
+                    return
                 raise _FileManuallyModified(
                     f"{t_name} has a checksum mismatch. "
                     "But part is auto-generated. This is not allowed. "
