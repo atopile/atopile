@@ -6,7 +6,7 @@ import logging
 import re
 from copy import deepcopy
 from dataclasses import dataclass, field
-from pathlib import Path, PosixPath
+from pathlib import Path
 from typing import Self
 
 from more_itertools import first
@@ -78,7 +78,7 @@ class AtoPart:
         return self.path / self.model.filename
 
     def generate_import_statement(self, src_path: Path) -> str:
-        import_path = PosixPath(self.ato_path).relative_to(src_path)
+        import_path = self.ato_path.relative_to(src_path)
         return f'from "{import_path}" import {self.module_name}'
 
     def __post_init__(self):
