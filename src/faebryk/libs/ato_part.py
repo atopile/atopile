@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 FBRK_OVERRIDE_CHECKSUM_MISMATCH = ConfigFlag(
     "PART_OVERRIDE_CHECKSUM_MISMATCH",
-    default=True,  # TODO set to false
+    default=False,
 )
 
 
