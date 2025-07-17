@@ -2179,6 +2179,28 @@ def repo_root() -> Path:
     return root_by_file(".git")
 
 
+def in_git_repo(path: Path) -> bool:
+    """Check if a path is in a git repository."""
+    import git
+
+    try:
+        git.Repo(path)
+    except git.InvalidGitRepositoryError:
+        return False
+    return True
+
+
+def test_for_git_executable() -> bool:
+    try:
+        import git  # noqa: F401
+    except ImportError as e:
+        # catch no git executable
+        if "executable" not in e.msg:
+            raise
+        return False
+    return True
+
+
 def root_by_file(pattern: str, start: Path = Path(__file__)) -> Path:
     root = start
     while not (root / pattern).exists():

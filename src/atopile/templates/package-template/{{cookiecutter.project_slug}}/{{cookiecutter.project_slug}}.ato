@@ -1,0 +1,2 @@
+module {{cookiecutter.entry_name}}:
+    pass
