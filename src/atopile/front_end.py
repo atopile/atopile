@@ -148,6 +148,10 @@ class from_dsl(Trait.decless()):
         self.definition_ctx = definition_ctx
         self.references: list[Span] = []
 
+        # just a failsafe
+        if str(self.src_file.parent).startswith("file:"):
+            raise ValueError(f"src_file: {self.src_file}")
+
     def add_reference(self, ctx: ParserRuleContext) -> None:
         self.references.append(Span.from_ctx(ctx))
 
@@ -943,8 +947,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 from_dsl_.add_reference(context.ref_ctxs[ref])
 
             return node
-        except* SkipPriorFailedException:
-            raise errors.UserException("Build failed")
+        except* SkipPriorFailedException as e:
+            raise errors.UserException("Build failed") from e
 
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}
@@ -2119,7 +2123,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 )
 
-        head.connect_via(bridgeables, *([tail] if tail else []))
+        try:
+            head.connect_via(bridgeables, *([tail] if tail else []))
+        except NodeException as ex:
+            raise errors.UserNodeException.from_node_exception(
+                ex, ctx, self.get_traceback()
+            )
 
         return NOTHING
 

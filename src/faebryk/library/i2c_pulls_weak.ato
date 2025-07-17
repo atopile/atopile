@@ -1,0 +1,29 @@
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+
+import I2C
+import Resistor
+
+module i2c_pulls_weak:
+    """
+    Weak I2C pull-up resistors, that can be used on i2c devices.
+    """
+
+    # --- External interfaces ---
+    i2c = new I2C
+    """
+    I2C bus interface
+    """
+    i2c.required = True
+
+    # --- Internal interfaces ---
+    pullups = new Resistor[2]
+    """
+    I2C pull-up resistors
+    """
+    for pullup in pullups:
+        pullup.resistance = 10kohm +/- 1%
+        pullup.package = "0402"
+
+    i2c.scl.line ~> pullups[0] ~> i2c.scl.reference.hv
+    i2c.sda.line ~> pullups[1] ~> i2c.sda.reference.hv

@@ -11,6 +11,12 @@ from faebryk.libs.library import L
 
 
 class ElectricLogic(F.ElectricSignal):
+    """
+    ElectricLogic is a class that represents a logic signal.
+    Logic signals only have two states: high and low.
+    For more states / continuous signals check ElectricSignal.
+    """
+
     class has_pulls(F.Logic.TraitT):
         @abstractmethod
         def get_pulls(self) -> tuple[F.Resistor | None, F.Resistor | None]: ...

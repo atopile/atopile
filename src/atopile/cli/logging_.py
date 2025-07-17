@@ -382,6 +382,23 @@ def capture_logs():
     _log_sink_var.set(log_sink)
 
 
+@contextmanager
+def log_exceptions(log_sink: io.StringIO):
+    from atopile.cli.excepthook import _handle_exception
+
+    exc_log_console = Console(file=log_sink)
+    exc_log_handler = LogHandler(console=exc_log_console)
+    logger.addHandler(exc_log_handler)
+
+    try:
+        yield
+    except Exception as e:
+        _handle_exception(type(e), e, e.__traceback__)
+        raise e
+    finally:
+        logger.removeHandler(exc_log_handler)
+
+
 class LoggingStage(Advancable):
     _LOG_LEVELS = {
         logging.DEBUG: "debug",
