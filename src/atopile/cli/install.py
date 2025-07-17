@@ -220,15 +220,18 @@ dependencies_app.command()(list)
 
 
 def check_missing_deps_or_offer_to_install():
-    deps = ProjectDependencies()
+    deps = ProjectDependencies(sync_versions=False)
     if deps.not_installed_dependencies:
         interactive = config.interactive
+
+        if not interactive:
+            logger.info("Installing missing dependencies")
+            deps.install_missing_dependencies()
+            return
+
         logger.warning("It appears some dependencies are missing.")
 
-        if (
-            interactive
-            and questionary.confirm("Install missing dependencies now?").unsafe_ask()
-        ):
+        if questionary.confirm("Install missing dependencies now?").unsafe_ask():
             # Install project dependencies, without upgrading
             deps.install_missing_dependencies()
         else:
