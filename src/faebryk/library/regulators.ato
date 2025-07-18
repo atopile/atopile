@@ -25,7 +25,7 @@ module AdjustableRegulator from Regulator:
 
     assert feedback_divider.v_in is output_voltage
     assert feedback_divider.v_out is reference_voltage
-    assert feedback_divider.max_current within 10uA to 1mA #TODO: remove defualt and make required
+    assert feedback_divider.max_current within 10uA to 1mA #TODO: remove default and make required
     assert input_voltage is power_in.voltage
     assert output_voltage is power_out.voltage
 
