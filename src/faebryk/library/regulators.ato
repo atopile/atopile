@@ -29,6 +29,8 @@ module AdjustableRegulator from Regulator:
     assert input_voltage is power_in.voltage
     assert output_voltage is power_out.voltage
 
+    power_out ~ feedback_divider.power
+
 module Buck from AdjustableRegulator:
     pass
 
