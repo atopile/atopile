@@ -25,9 +25,14 @@ from faebryk.libs.kicad.fileformats_latest import (
 )
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.picker.picker import PickedPart
-from faebryk.libs.util import compare_dataclasses, starts_or_ends_replace
+from faebryk.libs.util import ConfigFlag, compare_dataclasses, starts_or_ends_replace
 
 logger = logging.getLogger(__name__)
+
+FBRK_OVERRIDE_CHECKSUM_MISMATCH = ConfigFlag(
+    "PART_OVERRIDE_CHECKSUM_MISMATCH",
+    default=False,
+)
 
 
 @dataclass(kw_only=True)
@@ -76,6 +81,10 @@ class AtoPart:
         if not self.model:
             raise ValueError("Model is not set")
         return self.path / self.model.filename
+
+    def generate_import_statement(self, src_path: Path) -> str:
+        import_path = self.ato_path.relative_to(src_path)
+        return f'from "{import_path}" import {self.module_name}'
 
     def __post_init__(self):
         self.fp = deepcopy(self.fp)
@@ -242,13 +251,17 @@ class AtoPart:
                 obj.verify_checksum()
             except PropertyNotSet:
                 raise _FileManuallyModified(
-                    f"{t_name} has no checksum."
-                    "But part is auto-generated. This is not allowed."
+                    f"{t_name} has no checksum for auto-generated part"
                 )
+
             except Checksum.Mismatch:
+                if FBRK_OVERRIDE_CHECKSUM_MISMATCH:
+                    # must now write the new value to handle updating the checksum
+                    # mechanism
+                    obj.set_checksum()
+                    return
                 raise _FileManuallyModified(
-                    f"{t_name} has a checksum mismatch. "
-                    "But part is auto-generated. This is not allowed. "
+                    f"{t_name} has a checksum mismatch for auto-generated part"
                 )
 
         # TODO verify model

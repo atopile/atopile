@@ -148,6 +148,10 @@ class from_dsl(Trait.decless()):
         self.definition_ctx = definition_ctx
         self.references: list[Span] = []
 
+        # just a failsafe
+        if str(self.src_file.parent).startswith("file:"):
+            raise ValueError(f"src_file: {self.src_file}")
+
     def add_reference(self, ctx: ParserRuleContext) -> None:
         self.references.append(Span.from_ctx(ctx))
 
@@ -943,8 +947,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 from_dsl_.add_reference(context.ref_ctxs[ref])
 
             return node
-        except* SkipPriorFailedException:
-            raise errors.UserException("Build failed")
+        except* SkipPriorFailedException as e:
+            raise errors.UserException("Build failed") from e
 
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}
@@ -1211,9 +1215,19 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return search_paths
 
-    def _import_item(
-        self, context: Context, item: Context.ImportPlaceholder
-    ) -> Type[L.Node] | ap.BlockdefContext:
+    def _find_import_path(self, context: Context, item: Context.ImportPlaceholder):
+        # allow importing <src path>/file.suffix as either:
+        # from "file.suffix" import X
+        # or
+        # from "<owner>/<package>/file.suffix" import X
+
+        if (
+            pkg_cfg := config.project.package
+        ) is not None and item.from_path.startswith(pkg_cfg.identifier):
+            item.from_path = item.from_path.replace(
+                pkg_cfg.identifier, str(config.project.paths.src), count=1
+            )
+
         # Build up search paths to check for the import in
         # Iterate though them, checking if any contains the thing we're looking for
         search_paths = self._get_search_paths(context)
@@ -1226,7 +1240,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 item.original_ctx, f"Unable to resolve import `{item.from_path}`"
             )
 
-        from_path = self._sanitise_path(candidate_from_path)
+        return self._sanitise_path(candidate_from_path)
+
+    def _import_item(
+        self, context: Context, item: Context.ImportPlaceholder
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        from_path = self._find_import_path(context, item)
+
         if from_path.suffix == ".py":
             try:
                 node = import_from_path(from_path)
@@ -1797,10 +1817,41 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # Check if it's a property or attribute that can be set
         if has_instance_settable_attr(target, assigned_name.name):
             try:
-                setattr(target, assigned_name.name, value)
-            except errors.UserException as e:
-                e.attach_origin_from_ctx(assignable_ctx)
-                raise
+                attr = getattr(target, assigned_name.name)
+            except AttributeError:
+                attr = None
+
+            if (
+                attr is not None
+                and isinstance(attr, Parameter)
+                # non-string enum values would need parser changes
+                and isinstance(value, str)
+                and isinstance(attr.domain, L.Domains.ENUM)
+            ):
+                try:
+                    value = attr.domain.enum_t[value]
+                except KeyError:
+                    expected_values = ", ".join(
+                        [
+                            f"`{member.name}`"
+                            for member in attr.domain.enum_t.__members__.values()
+                        ]
+                    )
+                    raise errors.UserValueError.from_ctx(
+                        assignable_ctx,
+                        f"Invalid value for `{attr.domain.enum_t.__qualname__}`. "
+                        f"Expected one of: {expected_values}.",
+                        traceback=self.get_traceback(),
+                    )
+
+                attr.constrain_subset(value)
+
+            else:
+                try:
+                    setattr(target, assigned_name.name, value)
+                except errors.UserException as e:
+                    e.attach_origin_from_ctx(assignable_ctx)
+                    raise
         elif (
             # If ModuleShims has a settable property, use it
             hasattr(GlobalAttributes, assigned_name.name)
@@ -2072,7 +2123,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 )
 
-        head.connect_via(bridgeables, *([tail] if tail else []))
+        try:
+            head.connect_via(bridgeables, *([tail] if tail else []))
+        except NodeException as ex:
+            raise errors.UserNodeException.from_node_exception(
+                ex, ctx, self.get_traceback()
+            )
 
         return NOTHING
 

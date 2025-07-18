@@ -106,9 +106,7 @@ def sync(
     Update the project's environment
     """
 
-    config.apply_options(None)
-    if path:
-        config.project_dir = path
+    config.apply_options(None, working_dir=path)
 
     try:
         ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
@@ -119,7 +117,7 @@ def sync(
     ) as e:
         raise errors.UserException(f"Error syncing dependencies: {e}") from e
 
-    logger.info("[green]Done syncing![/] :call_me_hand:", extra={"markup": True})
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 @capture("cli:add_start", "cli:add_end")
@@ -150,9 +148,7 @@ def add(
     if not package:
         raise errors.UserException("No package identifier provided")
 
-    config.apply_options(None)
-    if path:
-        config.project_dir = path
+    config.apply_options(None, working_dir=path)
 
     deps = ProjectDependencies(install_missing=True, clean_unmanaged_dirs=True)
     try:
@@ -182,9 +178,7 @@ def remove(
     Remove dependencies from the project
     """
 
-    config.apply_options(None)
-    if path:
-        config.project_dir = path
+    config.apply_options(None, working_dir=path)
 
     deps = ProjectDependencies()
     deps.remove_dependencies(*package)

@@ -349,9 +349,12 @@ class UserNoProjectException(UserException):
         msg: str = (
             "Could not find the project directory, are you within an ato project?"
         ),
+        search_path: Path | None = None,
         *args,
         **kwargs,
     ):
+        if search_path:
+            msg += f"\n\nSearch path: {search_path}"
         super().__init__(msg, *args, **kwargs)
 
 
@@ -388,4 +391,10 @@ class UserTraitError(UserException):
 class UserToolNotAvailableError(UserException):
     """
     Raised when kicad-cli is required but not found.
+    """
+
+
+class UserExportError(UserException):
+    """
+    Raised when there's an error exporting a file via the KiCad CLI.
     """

@@ -194,3 +194,6 @@ antlr.lock
 
 # Stray atopile artifacts
 standalone/
+
+# need to ignore because absolute paths
+.cursor/mcp.json

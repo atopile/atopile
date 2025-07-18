@@ -32,6 +32,7 @@ from atopile.cli import (
     package,
     view,
     lsp,
+    mcp,
 )
 from atopile.cli.logging_ import handler, logger
 from atopile.config import config
@@ -158,6 +159,7 @@ app.command(rich_help_panel="Shortcuts")(install.sync)
 app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
+app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
 
 
 @app.command(hidden=True)

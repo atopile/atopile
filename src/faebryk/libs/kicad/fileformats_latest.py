@@ -31,9 +31,11 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
-from faebryk.libs.util import lazy_split, once
+from faebryk.libs.util import ConfigFlag, lazy_split, once
 
 logger = logging.getLogger(__name__)
+
+RICH_PRINT = ConfigFlag("FF_RICH_PRINT")
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
@@ -672,6 +674,9 @@ class C_kicad_project_file(JSON_File):
     text_variables: dict = field(default_factory=dict)
     unknown: CatchAll = None
 
+    def __rich_repr__(self):
+        yield "**kwargs", "..."
+
 
 @dataclass
 class C_text_layer:
@@ -1264,6 +1269,10 @@ class C_footprint(HasPropertiesMixin):
                 hide=True,
             ),
         )
+
+    def __rich_repr__(self):
+        yield "name", self.name
+        yield "**kwargs", "..."
 
 
 @dataclass
@@ -1918,6 +1927,9 @@ class C_kicad_pcb_file(SEXP_File):
         # )
         unknown: CatchAll = None
 
+        def __rich_repr__(self):
+            yield "**kwargs", "..."
+
     kicad_pcb: C_kicad_pcb
 
     @staticmethod
@@ -2192,3 +2204,10 @@ class C_kicad_model_file:
         if path is not None:
             path.write_bytes(self._raw)
         return self._raw
+
+
+if RICH_PRINT:
+    # TODO ugly
+    del C_kicad_pcb_file.C_kicad_pcb.__rich_repr__
+    del C_kicad_project_file.__rich_repr__
+    del C_footprint.__rich_repr__

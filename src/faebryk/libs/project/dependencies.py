@@ -7,6 +7,7 @@ from typing import cast
 
 import atopile.config as config
 from atopile import errors
+from faebryk.libs.backend.packages.api import Errors as ApiErrors
 from faebryk.libs.backend.packages.api import PackagesAPIClient
 from faebryk.libs.package.dist import Dist, DistValidationError
 from faebryk.libs.util import (
@@ -20,6 +21,20 @@ from faebryk.libs.util import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _log_add_package(identifier: str, version: str):
+    logger.info(
+        f"[green]+[/] {identifier}@{version}",
+        extra={"markup": True},
+    )
+
+
+def _log_remove_package(identifier: str, version: str):
+    logger.info(
+        f"[red]-[/] {identifier}@{version}",
+        extra={"markup": True},
+    )
 
 
 class BrokenDependencyError(Exception):
@@ -96,9 +111,8 @@ class ProjectDependency:
             if isinstance(self.spec, config.FileDependencySpec):
                 path = self.spec.path
                 if not path.exists():
-                    raise FileNotFoundError(
-                        f"Local dependency path {path} does not exist for"
-                        f" {self.spec.identifier}"
+                    raise errors.UserFileNotFoundError(
+                        f"Local dependency path {path} does not exist", markdown=False
                     )
             else:
                 repo_cache = Path(temp_dir) / ".git_repo.cache"
@@ -127,11 +141,16 @@ class ProjectDependency:
 
         elif isinstance(self.spec, config.RegistryDependencySpec):
             api = PackagesAPIClient()
-            dist = api.release_dist(
-                self.spec.identifier,
-                Path(temp_dir),
-                version=self.spec.release,
-            )
+            try:
+                dist = api.get_release_dist(
+                    self.spec.identifier,
+                    Path(temp_dir),
+                    version=self.spec.release,
+                )
+            except ApiErrors.ReleaseNotFoundError as e:
+                raise errors.UserException(
+                    f"Release not found: {self.spec.identifier}@{self.spec.release}"
+                ) from e
             self.spec.release = dist.version
         else:
             raise NotImplementedError(f"Loading dist for {self.spec} not implemented")
@@ -176,6 +195,8 @@ class ProjectDependencies:
         }
         self.dag = self.resolve_dependencies()
 
+        self.sync_versions()
+
         if install_missing:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
@@ -195,6 +216,7 @@ class ProjectDependencies:
     def install_missing_dependencies(self):
         for dep in self.not_installed_dependencies:
             assert dep.dist is not None
+            _log_add_package(dep.identifier, dep.dist.version)
             dep.dist.install(dep.target_path)
 
     def clean_unmanaged_directories(self):
@@ -219,12 +241,14 @@ class ProjectDependencies:
         dep_dir_prefixes = {Path(*dep_dir.parts[:2]) for dep_dir in dep_dirs}
 
         unmanaged_dirs = local_dep_dirs - dep_dir_prefixes
-        if not unmanaged_dirs:
-            return
-        logger.warning(
-            f"Removing unmanaged module directories: {unmanaged_dirs}",
-        )
+
         for unmanaged_dir in unmanaged_dirs:
+            dep_cfg = config.ProjectConfig.from_path(module_dir / unmanaged_dir)
+            if dep_cfg is None or dep_cfg.package is None:
+                logger.warning(f"Removing unmanaged module directory: {unmanaged_dir}")
+            else:
+                _log_remove_package(dep_cfg.package.identifier, dep_cfg.package.version)
+
             robustly_rm_dir(module_dir / unmanaged_dir)
 
     def resolve_dependencies(self):
@@ -270,7 +294,7 @@ class ProjectDependencies:
             deps_to_process.clear()
             deps_to_process.extend(to_add)
         if acc_errors:
-            error_list = [f"{e.identifier}: {e.error!r}" for e in acc_errors]
+            error_list = [f"{e.identifier}: {e.error.message}" for e in acc_errors]
             raise errors.UserException(f"Broken dependencies:\n {md_list(error_list)}")
 
         if dag.contains_cycles:
@@ -309,14 +333,14 @@ class ProjectDependencies:
                 if existing_dep not in self.direct_deps:
                     raise errors.UserException(
                         f"Cannot install {identifier} as it is already installed "
-                        f"with a different version: {existing_dep.spec.release}"
-                        f"from a transitive dependency"
+                        f"with a different version from a transitive dependency: "
+                        f"{existing_dep.spec.release}"
                     )
                 if not upgrade:
                     raise errors.UserException(
                         f"Cannot install {identifier} as it is already installed "
-                        f"with a different version: {existing_dep.spec.release}"
-                        f"Use --upgrade to install anyway"
+                        f"with a different version: {existing_dep.spec.release}. "
+                        f"Use --upgrade to install anyway."
                     )
             if isinstance(
                 existing_dep.spec,
@@ -324,8 +348,8 @@ class ProjectDependencies:
             ):
                 if not upgrade:
                     raise errors.UserException(
-                        f"Cannot install {identifier} as it is already installed "
-                        f"Use --upgrade to install anyway"
+                        f"Cannot install {identifier} as it is already installed. "
+                        f"Use --upgrade to install anyway."
                     )
 
         target_path = dep.target_path
@@ -426,3 +450,51 @@ class ProjectDependencies:
         # reload and clean orphaned packages
         self.reload()
         self.clean_unmanaged_directories()
+
+    def sync_versions(self):
+        """
+        Ensure that installed dependency versions match the manifest
+        """
+
+        def _sync_dep(dep: ProjectDependency, installed_version: str):
+            dep.load_dist()
+            assert dep.dist is not None
+
+            target_path = dep.target_path
+            if target_path.exists():
+                _log_remove_package(dep.identifier, installed_version)
+                robustly_rm_dir(target_path)
+
+            _log_add_package(dep.identifier, dep.dist.version)
+            dep.dist.install(target_path)
+
+        dirty = False
+        for dep in self.direct_deps:
+            match dep.spec.type:
+                case "registry":
+                    if dep.cfg is None or dep.cfg.package is None:
+                        installed_version = "<unknown>"
+                    else:
+                        installed_version = dep.cfg.package.version
+
+                    spec = cast(config.RegistryDependencySpec, dep.spec)
+                    desired_version = spec.release
+
+                    if installed_version != desired_version:
+                        _sync_dep(dep, installed_version)
+                        dirty = True
+
+                case "file" | "git":
+                    logger.warning(
+                        f"Ignoring possible changes to {dep.identifier} "
+                        f"({dep.spec.type} dependency)"
+                    )
+                    continue
+                case _:
+                    raise NotImplementedError(
+                        f"Syncing versions for {dep.spec.type} not implemented"
+                    )
+
+        if dirty:
+            self.reload()
+            self.clean_unmanaged_directories()

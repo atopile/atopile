@@ -12,7 +12,12 @@ import faebryk.library._F as F
 from atopile import layout
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
-from atopile.errors import UserException, UserPickError, UserToolNotAvailableError
+from atopile.errors import (
+    UserException,
+    UserExportError,
+    UserPickError,
+    UserToolNotAvailableError,
+)
 from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
 from faebryk.core.pathfinder import MAX_PATHS
@@ -27,6 +32,7 @@ from faebryk.exporters.netlist.graph import (
 )
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
+    KicadCliExportError,
     export_dxf,
     export_gerber,
     export_glb,
@@ -236,6 +242,7 @@ def build(app: Module) -> None:
 
     if any(t.name == generate_manufacturing_data.name for t in targets):
         with LoggingStage("checks-post-pcb", "Running post-pcb checks"):
+            pcb.add(F.PCB.requires_drc_check())
             try:
                 check_design(
                     G(),
@@ -333,15 +340,18 @@ def generate_bom(app: Module, solver: Solver) -> None:
     )
 
 
-@muster.register("3d-model", default=True, requires_kicad=True)
+@muster.register("3d-model", default=False, requires_kicad=True)
 def generate_3d_model(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
 
-    export_glb(
-        config.build.paths.layout,
-        glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
-        project_dir=config.build.paths.layout.parent,
-    )
+    try:
+        export_glb(
+            config.build.paths.layout,
+            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+            project_dir=config.build.paths.layout.parent,
+        )
+    except KicadCliExportError as e:
+        raise UserExportError(f"Failed to generate 3D model: {e}") from e
 
 
 @muster.register("mfg-data", default=False, requires_kicad=True)
@@ -362,23 +372,39 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
             Path(tmpdir) / config.build.paths.layout.name,
         )
 
-        export_step(
-            tmp_layout,
-            step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
-            project_dir=config.build.paths.layout.parent,
-        )
-        export_dxf(
-            tmp_layout,
-            dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
-        )
+        try:
+            export_step(
+                tmp_layout,
+                step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+                project_dir=config.build.paths.layout.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate STEP file: {e}") from e
 
-        export_gerber(
-            tmp_layout,
-            gerber_zip_file=config.build.paths.output_base.with_suffix(".gerber.zip"),
-        )
+        try:
+            export_dxf(
+                tmp_layout,
+                dxf_file=config.build.paths.output_base.with_suffix(".pcba.dxf"),
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate DXF file: {e}") from e
+
+        try:
+            export_gerber(
+                tmp_layout,
+                gerber_zip_file=config.build.paths.output_base.with_suffix(
+                    ".gerber.zip"
+                ),
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate Gerber file: {e}") from e
 
         pnp_file = config.build.paths.output_base.with_suffix(".pick_and_place.csv")
-        export_pick_and_place(tmp_layout, pick_and_place_file=pnp_file)
+        try:
+            export_pick_and_place(tmp_layout, pick_and_place_file=pnp_file)
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate Pick and Place file: {e}") from e
+
         convert_kicad_pick_and_place_to_jlcpcb(
             pnp_file,
             config.build.paths.output_base.with_suffix(".jlcpcb_pick_and_place.csv"),

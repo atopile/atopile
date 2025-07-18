@@ -246,8 +246,13 @@ class HasPropertiesMixin:
     def property_dict(self) -> dict[str, str]:
         return {k: v.value for k, v in self.propertys.items()}
 
-    def _hashable(self) -> str:
-        return dump_single(self)
+    def _hashable(self, remove_uuid: bool = True) -> str:
+        import re
+
+        out = dump_single(self)
+        if remove_uuid:
+            out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
+        return out
 
     def set_checksum(self):
         if "checksum" in self.propertys:
@@ -261,4 +266,8 @@ class HasPropertiesMixin:
         hashable = self._hashable()
         self.add_property("checksum", checksum_stated)
 
-        Checksum.verify(checksum_stated, hashable)
+        try:
+            Checksum.verify(checksum_stated, hashable)
+        except Checksum.Mismatch:
+            # legacy
+            Checksum.verify(checksum_stated, self._hashable(remove_uuid=False))
