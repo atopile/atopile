@@ -250,7 +250,12 @@ class HasPropertiesMixin:
 
     def _hashable(self, remove_uuid: bool = True) -> str:
         copy = deepcopy(self)
-        del copy.propertys["checksum"]
+
+        try:
+            del copy.propertys["checksum"]
+        except KeyError:
+            pass
+
         out = dump_single(copy)
 
         if remove_uuid:
