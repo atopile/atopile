@@ -21,6 +21,14 @@ def log_exceptions():
         raise
 
 
+class KeyErrorNotFound(KeyError):
+    pass
+
+
+class KeyErrorAmbiguous(KeyError):
+    pass
+
+
 # Copy of util.py:find
 def _find(haystack: Iterable, needle: Optional[Callable] = None) -> Dict[Any, Any]:
     """Find a value in a dict by key."""
@@ -28,16 +36,19 @@ def _find(haystack: Iterable, needle: Optional[Callable] = None) -> Dict[Any, An
         needle = lambda x: x is not None  # noqa: E731
     results = [x for x in haystack if needle(x)]
     if len(results) > 1:
-        raise KeyError("Ambiguous")
+        raise KeyErrorAmbiguous()
     if not results:
-        raise KeyError("Not found")
+        raise KeyErrorNotFound()
     return results[0]
 
 
 # needed for windows
 def path_key(dict_: Dict[str, Any], path: Path) -> Any:
     """Return the value in dict_ for the key that matches path."""
-    return _find(dict_.items(), lambda x: Path(x[0]) == path)[1]
+    return _find(
+        dict_.items(),
+        lambda x: Path(x[0]).resolve().absolute() == path.resolve().absolute(),
+    )[1]
 
 
 def get_prj_dir(path: Union[Path, str]) -> Path:
@@ -59,7 +70,14 @@ def get_board_artifact_manifest(board_path: Union[Path, str]) -> Dict[str, Any]:
         manifest = json.load(f)
 
     layouts = manifest.get("by-layout", {})
-    return path_key(layouts, board_path)
+    try:
+        return path_key(layouts, board_path)
+    except KeyErrorNotFound:
+        raise FileNotFoundError(f"No layout found for {board_path} in {manifest_path}")
+    except KeyErrorAmbiguous:
+        raise FileNotFoundError(
+            f"Multiple layouts found for {board_path} in {manifest_path}"
+        )
 
 
 def groups_by_name(board: pcbnew.BOARD) -> Dict[str, pcbnew.PCB_GROUP]:
