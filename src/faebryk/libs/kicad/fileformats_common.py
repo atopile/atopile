@@ -1,6 +1,7 @@
 import logging
 import uuid
 from abc import abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
@@ -249,7 +250,10 @@ class HasPropertiesMixin:
     def _hashable(self, remove_uuid: bool = True) -> str:
         import re
 
-        out = dump_single(self)
+        copy = deepcopy(self)
+        del copy.propertys["checksum"]
+
+        out = dump_single(copy)
         if remove_uuid:
             out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
         return out
@@ -262,7 +266,6 @@ class HasPropertiesMixin:
 
     def verify_checksum(self):
         checksum_stated = self.get_property("checksum")
-        del self.propertys["checksum"]
         hashable = self._hashable()
         self.add_property("checksum", checksum_stated)
 
