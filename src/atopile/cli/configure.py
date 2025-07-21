@@ -158,24 +158,27 @@ def install_kicad_plugin() -> None:
     ]
 
     existing_paths = [
-        rp
+        plugins_path
         for p in kicad_config_search_path
         if (rp := Path(p).expanduser().resolve()).exists()
+        for plugins_path in rp.glob("*/scripting/plugins")
     ]
 
     if not existing_paths:
         existing_paths = list(
-            Path("~").expanduser().resolve().glob("**/kicad", case_sensitive=False)
+            Path("~")
+            .expanduser()
+            .resolve()
+            .glob("**/kicad/*/scripting/plugins", case_sensitive=False)
         )
 
     no_plugin_found = True
     for sp in existing_paths:
-        for p in sp.glob("*/scripting/plugins"):
-            try:
-                _write_plugin(p)
-            except FileNotFoundError:
-                continue
-            no_plugin_found = False
+        try:
+            _write_plugin(sp)
+        except FileNotFoundError:
+            continue
+        no_plugin_found = False
 
     if no_plugin_found:
         logger.warning("KiCAD config path not found. Couldn't install plugin!")
