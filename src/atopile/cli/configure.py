@@ -151,17 +151,31 @@ def install_kicad_plugin() -> None:
         with plugin_loader_path.open("w", encoding="utf-8") as f:
             f.write(plugin_loader_content)
 
-    kicad_config_search_path = ["~/Documents/KiCad/", "~/.local/share/kicad/"]
+    kicad_config_search_path = [
+        "~/Documents/KiCad/",
+        "~/OneDrive/Documents/KiCad/",
+        "~/.local/share/kicad/",
+    ]
+
+    existing_paths = [
+        rp
+        for p in kicad_config_search_path
+        if (rp := Path(p).expanduser().resolve()).exists()
+    ]
+
+    if not existing_paths:
+        existing_paths = list(
+            Path("~").expanduser().resolve().glob("**/kicad", case_sensitive=False)
+        )
+
     no_plugin_found = True
-    for sp in kicad_config_search_path:
-        config_path = Path(sp).expanduser().resolve()
-        if config_path.exists():
-            for p in config_path.glob("*/scripting/plugins"):
-                try:
-                    _write_plugin(p)
-                except FileNotFoundError:
-                    _write_plugin(p)
-                no_plugin_found = False
+    for sp in existing_paths:
+        for p in sp.glob("*/scripting/plugins"):
+            try:
+                _write_plugin(p)
+            except FileNotFoundError:
+                continue
+            no_plugin_found = False
 
     if no_plugin_found:
         logger.warning("KiCAD config path not found. Couldn't install plugin!")
