@@ -183,6 +183,7 @@ class ProjectDependencies:
     def __init__(
         self,
         pcfg: config.ProjectConfig | None = None,
+        sync_versions: bool = True,
         install_missing: bool = False,
         clean_unmanaged_dirs: bool = False,
     ):
@@ -195,8 +196,8 @@ class ProjectDependencies:
         }
         self.dag = self.resolve_dependencies()
 
-        self.sync_versions()
-
+        if sync_versions:
+            self.sync_versions()
         if install_missing:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
