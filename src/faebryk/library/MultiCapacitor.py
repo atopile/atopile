@@ -26,7 +26,7 @@ class MultiCapacitor(F.Capacitor):
     #                 traits
     # ----------------------------------------
 
-    def __init__(self, count: int):
+    def __init__(self, count: int = 2):
         super().__init__()
         self._count = count
 
