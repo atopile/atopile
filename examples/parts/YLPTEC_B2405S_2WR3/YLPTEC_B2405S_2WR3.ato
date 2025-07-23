@@ -1,0 +1,20 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component YLPTEC_B2405S_2WR3_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C5369484", date="2025-07-03T20:49:08.681498+00:00", checksum="a3b640a72f8bed57d8d82c1b294f4549bc7b7f7cb512c723eb0217c7386b5a56">
+
+    trait is_atomic_part<manufacturer="YLPTEC", partnumber="B2405S-2WR3", footprint="PWRM-TH_BXXXXS-2WR3.kicad_mod", symbol="B2405S-2WR3_C5369484.kicad_sym", model="PWRM-TH_BXXXXS-2WR3.STEP">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C5369484", manufacturer="YLPTEC", partno="B2405S-2WR3">
+    trait has_designator_prefix<prefix="U">
+
+    # pins
+    signal GND ~ pin 2
+    signal P0V ~ pin 4
+    signal VOpos ~ pin 6
+    signal Vin ~ pin 1

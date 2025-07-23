@@ -1,0 +1,25 @@
+#pragma experiment("TRAITS")
+import has_datasheet_defined
+import has_designator_prefix
+import is_atomic_part
+
+component Neurotech_NFCAntenna_package:
+    """
+    NFC antenna generated with https://neurotech-hub.github.io/KiCad-Antenna-Generator/
+    9 turns
+    conductor width: 0.5mm
+    conductor spacing: 0.5mm
+    drill size: 0.25mm
+    antenna lenght: 10mm
+    antenna width: 10mm
+    style: straight lines
+    rectangular
+    """
+
+    trait is_atomic_part<manufacturer="Neurotech", partnumber="NFCAntenna", footprint="NFCAntenna.kicad_mod", symbol="NFCAntenna.kicad_sym">
+    trait has_designator_prefix<prefix="ANT">
+    trait has_datasheet_defined<datasheet="https://neurotech-hub.github.io/KiCad-Antenna-Generator/">
+
+    # pins
+    pin 1
+    pin 2

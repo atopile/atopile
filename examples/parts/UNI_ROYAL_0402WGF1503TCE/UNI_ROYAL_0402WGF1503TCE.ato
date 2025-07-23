@@ -1,0 +1,22 @@
+#pragma experiment("TRAITS")
+import has_datasheet_defined
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component UNI_ROYAL_0402WGF1503TCE_package:
+    """150KΩ (1503) ±1%"""
+
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C25755", date="2025-07-05T00:59:53.600522+00:00", checksum="dfb391c7bfe6c7ede32ea2eeff73e7a2afc36fe5f2bab6363acf560efa1040d2">
+
+    trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0402WGF1503TCE", footprint="R0402.kicad_mod", symbol="0402WGF1503TCE.kicad_sym", model="R0402_L1.0-W0.5-H0.4.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C25755", manufacturer="UNI-ROYAL", partno="0402WGF1503TCE">
+    trait has_designator_prefix<prefix="R">
+    trait has_datasheet_defined<datasheet="https://lcsc.com/datasheet/lcsc_datasheet_2411221126_UNI-ROYAL-Uniroyal-Elec-0402WGF1503TCE_C25755.pdf">
+
+    # pins
+    pin 2
+    pin 1

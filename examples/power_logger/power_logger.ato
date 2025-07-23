@@ -1,0 +1,115 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+import ElectricPower
+import I2C
+import Resistor
+import SPI
+
+from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
+from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
+from "atopile/buttons/buttons.ato" import ButtonPullup
+from "atopile/buttons/buttons.ato" import HorizontalButton
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
+from "ruben-iteng/connectors/banana_connectors.ato" import DualBananaConnectors_driver
+from "atopile/ti-bq25185/ti-bq25185.ato" import BQ25185_driver
+from "atopile/sd-card/sd-card-slots.ato" import MicroSDCardAssemblyWithRemovableSPI
+from "atopile/ti-ina232/ti-ina232.ato" import Texas_Instruments_INA232x_driver
+from "atopile/ti-iso1640x/ti-iso1640.ato" import Texas_Instruments_ISO1640_driver
+from "atopile/ti-iso1640x/parts/TEXAS_INSTRUMENTS_ISO1640BDR/TEXAS_INSTRUMENTS_ISO1640BDR.ato" import TEXAS_INSTRUMENTS_ISO1640BDR_package
+from "atopile/ylptech-byyxx/ylptech-byyxx.ato" import BYYXXS_2WR2
+from "atopile/ylptech-byyxx/ylptech-byyxx.ato" import _B2405_package
+from "atopile/batteries/eemb_battery_lp402535.ato" import LP402535_Example
+from "atopile/logos/logos.ato" import atopile_logo_8x8mm
+
+module App:
+    # internal interfaces
+    power_3v3 = new ElectricPower
+    power_vbus = new ElectricPower
+    power_battery = new ElectricPower
+    power_sys = new ElectricPower
+    power_isolated = new ElectricPower
+
+    # atopile logo
+    atopile_logo = new atopile_logo_8x8mm
+    
+    # micro-controller
+    mcu_module = new ESP32_C3_MINI_1_driver
+    mcu_module.power ~ power_3v3
+    spi = new SPI
+    spi.sclk ~ mcu_module.esp32_module.gpio[5]
+    spi.mosi ~ mcu_module.esp32_module.gpio[6]
+    spi.miso ~ mcu_module.esp32_module.gpio[4]
+
+    # micro-sd card
+    micro_sd_card = new MicroSDCardAssemblyWithRemovableSPI
+    micro_sd_card.power ~ power_3v3
+    micro_sd_card.spi ~ spi
+    micro_sd_card.card_detect ~ mcu_module.esp32_module.gpio[10]
+    micro_sd_card.spi_cs ~ mcu_module.esp32_module.gpio[1]
+
+    # USB
+    usb_c = new USBCConn
+    usb_c.usb2.usb_if ~ mcu_module.esp32_module.usb_if
+    usb_c.usb2.usb_if.buspower ~ power_vbus
+
+    # power
+    ldo_3V3 = new TLV75901_driver
+    battery_management = new BQ25185_driver
+    battery = new LP402535_Example
+    power_vbus ~> battery_management ~> power_battery
+    battery_management.power_sys ~> ldo_3V3 ~> power_sys
+    power_sys ~> mcu_module.power
+    battery.power_battery ~ power_battery
+
+    battery_management.status[1] ~ mcu_module.esp32_module.gpio[3]
+    battery_management.status[0] ~ mcu_module.esp32_module.gpio[11]
+
+    # unisolated I2C with pullups
+    i2c = new I2C
+    pullups = new Resistor[2]
+    for pullup in pullups:
+        pullup.package = "R0402"
+        pullup.resistance = 10kohm +/- 10%
+    i2c.scl.line ~> pullups[0] ~> i2c.scl.reference.hv
+    i2c.sda.line ~> pullups[1] ~> i2c.sda.reference.hv
+    i2c.scl ~ mcu_module.esp32_module.gpio[0]
+    i2c.sda ~ mcu_module.esp32_module.gpio[1]
+
+    # isolated I2C with pullups
+    i2c_isolated = new I2C
+    pullups_isolated = new Resistor[2]
+    for pullup in pullups_isolated:
+        pullup.package = "R0402"
+        pullup.resistance = 10kohm +/- 10%
+    i2c_isolated.scl.line ~> pullups_isolated[0] ~> i2c_isolated.scl.reference.hv
+    i2c_isolated.sda.line ~> pullups_isolated[1] ~> i2c_isolated.sda.reference.hv
+    i2c_isolator = new Texas_Instruments_ISO1640_driver
+    i2c_isolator.package -> TEXAS_INSTRUMENTS_ISO1640BDR_package
+    i2c_isolator.power_rails[0] ~ power_3v3
+    i2c_isolator.power_rails[1] ~ power_isolated
+    i2c ~> i2c_isolator ~> i2c_isolated
+
+    # isolated dcdc
+    dcdc_isolated = new BYYXXS_2WR2
+    dcdc_isolated.package -> _B2405_package
+    power_sys ~> dcdc_isolated ~> power_isolated
+
+    # current sensor
+    current_sensor = new Texas_Instruments_INA232x_driver
+    current_sensor.power ~ power_isolated
+    current_sensor.i2c ~ i2c_isolated
+    current_sensor.max_current = 3A
+    current_sensor.i2c.address = 0x48
+
+    # input connectors
+    input_connectors = new DualBananaConnectors_driver
+    output_connectors = new DualBananaConnectors_driver
+    input_connectors.power ~> current_sensor ~> output_connectors.power
+
+    # buttons
+    buttons = new ButtonPullup[2]
+    for button in buttons:
+        button.button.button -> HorizontalButton
+    
+    buttons[0].output ~ mcu_module.esp32_module.gpio[21]
+    buttons[1].output ~ mcu_module.esp32_module.gpio[7]

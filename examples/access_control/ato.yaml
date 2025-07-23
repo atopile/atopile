@@ -5,12 +5,6 @@ paths:
   layout: ./layout
 
 builds:
-  ato:
-    entry: ch1_1_ato.ato:App
-
-  power_logger:
-    entry: power_logger.ato:App
-    hide_designators: true
   access_control:
     entry: access_control.ato:App
     hide_designators: true
