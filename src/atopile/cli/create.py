@@ -374,6 +374,7 @@ class _TemplateValues:
 
     class ProjectPath(_Value[Path]):
         prompt = ":rocket: Where should we create the project?"
+        validation_failure_msg = "Path does not exist or is not a directory"
 
         @override
         def get_default(self) -> Path:
