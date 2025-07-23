@@ -13,6 +13,18 @@ logger = logging.getLogger(__name__)
 
 
 class Mounting_Hole(Module):
+    """
+    A mounting hole module represents a physical hole in a PCB, optionally with a pad.
+
+    The hole diameter is specified using ISO 262 metric screw thread sizes.
+    Different pad types are available:
+    - NoPad: Just a hole
+    - Pad: Standard pad around the hole
+    - Pad_TopBottom: Pad on both top and bottom layers
+    - Pad_TopOnly: Pad only on top layer
+    - Pad_Via: Plated through-hole pad
+    """
+
     class PadType(StrEnum):
         NoPad = ""
         Pad = "Pad"
@@ -46,7 +58,11 @@ class Mounting_Hole(Module):
         )
         return F.has_footprint_defined(fp)
 
-    def __init__(self, diameter: Iso262_MetricScrewThreadSizes, pad_type: PadType):
+    def __init__(
+        self,
+        diameter: Iso262_MetricScrewThreadSizes = Iso262_MetricScrewThreadSizes.M4,
+        pad_type: PadType = PadType.NoPad,
+    ):
         super().__init__()
         self._diameter = diameter
         self._pad_type = pad_type
@@ -57,3 +73,9 @@ class Mounting_Hole(Module):
             self.footprint.get_footprint().get_trait(F.can_attach_via_pinmap).attach(
                 pinmap={"1": self.contact}
             )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        """
+            Example usage:
+            """
+    )

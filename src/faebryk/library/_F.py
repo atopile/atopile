@@ -28,6 +28,7 @@ from faebryk.library.has_single_electric_reference import has_single_electric_re
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
+from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_reference import has_reference
 from faebryk.library.has_linked_pad import has_linked_pad
