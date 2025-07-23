@@ -11,9 +11,9 @@ from faebryk.libs.util import times
 class SOIC(F.Footprint):
     def __init__(
         self,
-        pin_cnt: int,
-        size_xy: tuple[Quantity, Quantity],
-        pitch: Quantity,
+        pin_cnt: int = 8,
+        size_xy: tuple[Quantity, Quantity] = (3.9 * P.mm, 3.9 * P.mm),
+        pitch: Quantity = 1.27 * P.mm,
     ) -> None:
         super().__init__()
         self._pin_cnt = pin_cnt
