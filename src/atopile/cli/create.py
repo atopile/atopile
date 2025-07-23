@@ -1,18 +1,19 @@
+import contextlib
 import itertools
 import logging
 import re
 import subprocess
 import sys
-import textwrap
+from abc import ABC, abstractmethod
 from enum import StrEnum, auto
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast
+from typing import TYPE_CHECKING, Annotated, Any, Callable, Iterator, cast, override
 
 import caseconverter
 import questionary
 import rich
 import typer
-from cookiecutter.exceptions import OutputDirExistsException
+from cookiecutter.exceptions import FailedHookException, OutputDirExistsException
 from cookiecutter.main import cookiecutter
 from more_itertools import first
 from rich.table import Table
@@ -22,6 +23,7 @@ from atopile.address import AddrStr
 from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import capture
 from faebryk.libs.github import (
+    GITHUB_USERNAME_REGEX,
     GithubCLI,
     GithubCLINotFound,
     GithubRepoAlreadyExists,
@@ -29,14 +31,18 @@ from faebryk.libs.github import (
     GithubUserNotLoggedIn,
 )
 from faebryk.libs.logging import rich_print_robust
-from faebryk.libs.util import get_code_bin_of_terminal, try_or
+from faebryk.libs.util import (
+    get_code_bin_of_terminal,
+    in_git_repo,
+    test_for_git_executable,
+    try_or,
+)
 
 if TYPE_CHECKING:
     import git
 
     from faebryk.libs.picker.api.api import Component
 
-# Set up logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -44,11 +50,6 @@ logger.setLevel(logging.INFO)
 create_app = typer.Typer(
     rich_markup_mode="rich", help="Create projects / build targets / components"
 )
-
-
-def help(text: str) -> None:  # pylint: disable=redefined-builtin
-    """Print help text."""
-    rich_print_robust("\n" + textwrap.dedent(text).strip() + "\n")
 
 
 def _stuck_user_helper() -> Iterator[bool]:
@@ -63,18 +64,16 @@ def _stuck_user_helper() -> Iterator[bool]:
         yield True
 
 
+def _open_in_editor_or_print_path(path: Path):
+    # check if running in vscode / cursor terminal
+    if code_bin := get_code_bin_of_terminal():
+        # open in vscode / cursor
+        subprocess.Popen([code_bin, path])
+    else:
+        rich_print_robust(f" \n[cyan]cd {path.relative_to(Path.cwd())}[/cyan]")
+
+
 stuck_user_helper_generator = _stuck_user_helper()
-
-
-def _in_git_repo(path: Path) -> bool:
-    """Check if the current directory is in a git repo."""
-    import git
-
-    try:
-        git.Repo(path)
-    except git.InvalidGitRepositoryError:
-        return False
-    return True
 
 
 def query_helper[T: str | Path | bool](
@@ -97,38 +96,31 @@ def query_helper[T: str | Path | bool](
         if not isinstance(default, type_):
             raise ValueError(f"Default value {default} is not of type {type_}")
 
-    # Make a querier
-    if type_ is str:
+    match type_():
+        case str():
 
-        def querier() -> str:  # type: ignore
-            return questionary.text(
-                "",
-                default=str(default or ""),
-            ).unsafe_ask()
-
-    elif type_ is Path:
-
-        def querier() -> Path:  # type: ignore
-            return Path(
-                questionary.path(
+            def querier() -> str:  # type: ignore
+                return questionary.text(
                     "",
                     default=str(default or ""),
                 ).unsafe_ask()
-            )
+        case Path():
 
-    elif type_ is bool:
-        assert default is None or isinstance(default, bool)
-        if default is None:
-            default = True  # type: ignore
+            def querier() -> Path:  # type: ignore
+                return Path(
+                    questionary.path(
+                        "",
+                        default=str(default or ""),
+                    ).unsafe_ask()
+                )
 
-        def querier() -> bool:
-            return questionary.confirm(
-                "",
-                default=default,  # type: ignore
-            ).unsafe_ask()
+        case bool():
 
-    else:
-        raise ValueError(f"Unsupported query type: `{type_}`")
+            def querier() -> bool:  # type: ignore
+                return questionary.confirm(
+                    "",
+                    default=default,  # type: ignore
+                ).unsafe_ask()
 
     # Ensure a validator
     # Default the validator to a regex match if it's a str
@@ -325,109 +317,256 @@ def setup_github(
         )
 
 
+def _create_git_repo(project_path: Path) -> "git.Repo":
+    import git
+
+    logging.info("Initializing git repo")
+    repo = git.Repo.init(project_path)
+    repo.git.add(A=True, f=True)
+    try:
+        repo.git.commit(m="Initial commit")
+    except git.GitCommandError as e:
+        if "Author identity unknown" in e.stderr:
+            rich_print_robust(
+                "[yellow]Warning: Author identity unknown. "
+                "Staged but not committed.[/yellow]"
+            )
+        else:
+            raise
+    return repo
+
+
+class _TemplateValues:
+    class _Value[T](ABC):
+        prompt: str
+        upgrader_msg: str | None = None
+        validation_failure_msg: str | None = None
+
+        @abstractmethod
+        def get_default(self) -> T: ...
+
+        def upgrader(self, value: T) -> T:
+            return value
+
+        def query(self, value: T | None = None) -> T:
+            if value is not None:
+                return value
+
+            if not config.interactive:
+                return self.get_default()
+
+            default = self.get_default()
+
+            return query_helper(
+                self.prompt,
+                type_=type(default),
+                upgrader=self.upgrader,
+                upgrader_msg=self.upgrader_msg,
+                default=default,
+                pre_entered=value,
+                validator=self.validator,
+                validation_failure_msg=self.validation_failure_msg,
+            )
+
+        @staticmethod
+        @abstractmethod
+        def validator(value: T) -> bool: ...
+
+    class ProjectPath(_Value[Path]):
+        prompt = ":rocket: Where should we create the project?"
+        validation_failure_msg = "Path does not exist or is not a directory"
+
+        @override
+        def get_default(self) -> Path:
+            return Path.cwd()
+
+        @staticmethod
+        def validator(value: Path) -> bool:
+            return value.is_dir()
+
+    class PackageName(_Value[str]):
+        prompt = ":rocket: What's the [cyan]package name[/]?"
+
+        @override
+        def upgrader(self, value: str) -> str:
+            return caseconverter.kebabcase(value)
+
+        upgrader_msg = "We recommend kebab-case for package names."
+        validation_failure_msg = (
+            "Package names must start with a letter and contain only letters, "
+            "numbers, dashes and underscores."
+        )
+
+        @override
+        def get_default(self, value: str | None = None) -> str:
+            return ""
+
+        @staticmethod
+        def validator(value: str) -> bool:
+            return re.match(r"^[a-zA-Z][a-zA-Z0-9_-]*$", value) is not None
+
+    class PackageOwner(_Value[str]):
+        prompt = (
+            ":rocket: What's the [cyan]package owner[/]? "
+            "This should match your GitHub username."
+        )
+
+        validation_failure_msg = "Invalid GitHub username."
+
+        @override
+        def get_default(self, value: str | None = None) -> str:
+            if in_git_repo(Path.cwd()):
+                with contextlib.suppress(Exception):
+                    import git
+
+                    if match := re.match(
+                        r"^.*github\.com[/:]([^/]+)",
+                        git.Repo(Path.cwd()).remotes.origin.url,
+                    ):
+                        return match.group(1)
+
+            with contextlib.suppress(Exception):
+                return GithubCLI().get_usernames()[0]
+
+            return ""
+
+        @staticmethod
+        def validator(value: str) -> bool:
+            return re.match(GITHUB_USERNAME_REGEX, value) is not None
+
+
+class _Template:
+    template_dir: Path
+
+    def __init__(self, extra_context: dict[str, Any]):
+        self.extra_context = extra_context
+
+    def run(self, output_dir: Path) -> Path:
+        try:
+            project_path = Path(
+                cookiecutter(
+                    str(self.template_dir),
+                    output_dir=str(output_dir),
+                    no_input=not config.interactive,
+                    extra_context=dict(
+                        filter(lambda x: x[1] is not None, self.extra_context.items())
+                    ),
+                )
+            )
+        except OutputDirExistsException as e:
+            raise errors.UserException(
+                "Directory already exists. Please choose a different name."
+            ) from e
+        except FailedHookException as e:
+            raise errors.UserException(
+                f"Creation failed during template validation. Details: {e}"
+            ) from e
+
+        return project_path
+
+
+class _ProjectTemplate(_Template):
+    template_dir = Path(__file__).parent.parent / "templates/project-template"
+
+
+class _PackageTemplate(_Template):
+    template_dir = Path(__file__).parent.parent / "templates/package-template"
+
+
 @create_app.command()
 @capture("cli:create_project_start", "cli:create_project_end")
 def project(path: Annotated[Path | None, typer.Option()] = None):
     """
     Create a new ato project.
     """
-    TEMPLATE_DIR = Path(__file__).parent.parent / "project-template"
 
-    extra_context = {
-        "__ato_version": version.get_installed_atopile_version(),
-        "__python_path": sys.executable,
-    }
+    template = _ProjectTemplate(
+        extra_context={
+            "__ato_version": version.get_installed_atopile_version(),
+            "__python_path": sys.executable,
+        }
+    )
 
-    if path is None:
-        if config.interactive:
-            path = query_helper(
-                ":rocket: Where should we create the project?",
-                type_=Path,
-                default=Path.cwd(),
-                pre_entered=path,
-                validator=lambda x: x.is_dir(),
-            )
-        else:
-            path = Path.cwd()
+    output_dir = _TemplateValues.ProjectPath().query(path)
 
-    logging.info("Running cookie-cutter on the template")
-    try:
-        project_path = Path(
-            cookiecutter(
-                str(TEMPLATE_DIR),
-                output_dir=str(path),
-                no_input=not config.interactive,
-                extra_context=dict(
-                    filter(lambda x: x[1] is not None, extra_context.items())
-                ),
-            )
-        )
-    except OutputDirExistsException as e:
-        raise errors.UserException(
-            "Directory already exists. Please choose a different name."
-        ) from e
+    project_path = template.run(output_dir=output_dir)
 
-    try:
-        import git
+    if test_for_git_executable():
+        should_create_git_repo = not in_git_repo(project_path)
 
-        no_git = False
-    except ImportError as e:
-        # catch no git executable
-        if "executable" not in e.msg:
-            raise
-        no_git = True
+        if should_create_git_repo:
+            git_repo = _create_git_repo(project_path)
 
-    if not no_git:
-        # check if already in a git repo
-        create_git_repo = not _in_git_repo(project_path)
-
-        # check if gh binary is available
-        gh_cli = try_or(GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn))
-
-        # git repo
-        if create_git_repo:
-            logging.info("Initializing git repo")
-            repo = git.Repo.init(project_path)
-            repo.git.add(A=True, f=True)
-            try:
-                repo.git.commit(m="Initial commit")
-            except git.GitCommandError as e:
-                if "Author identity unknown" in e.stderr:
-                    rich_print_robust(
-                        "[yellow]Warning: Author identity unknown. "
-                        "Staged but not committed.[/yellow]"
+            if (
+                config.interactive
+                and git_repo
+                and (
+                    gh_cli := try_or(
+                        GithubCLI, catch=(GithubCLINotFound, GithubUserNotLoggedIn)
                     )
-                else:
-                    raise
-
-        create_github_repo = False
-        if config.interactive and gh_cli and create_git_repo:
-            create_github_repo = query_helper(
-                "Host this project on GitHub? :octopus::cat:",
-                bool,
-                default=False,
-            )
-
-        # Github repo
-        if create_github_repo:
-            assert gh_cli is not None
-            try:
-                setup_github(project_path, gh_cli, repo)
-            except Exception:
-                rich_print_robust("[red]Creating GitHub repo interrupted.[/red]")
-                return
+                )
+                is not None
+                and query_helper(
+                    "Host this project on GitHub? :octopus::cat:",
+                    bool,
+                    default=False,
+                )
+            ):
+                try:
+                    setup_github(project_path, gh_cli, git_repo)
+                except Exception:
+                    rich_print_robust("[red]Creating GitHub repo interrupted.[/red]")
+                    return
 
     # Wew! New repo created!
     rich_print_robust(
         f':sparkles: [green]Created new project "{project_path.name}"![/] :sparkles:'
     )
 
-    # check if running in vscode / cursor terminal
-    if code_bin := get_code_bin_of_terminal():
-        # open in vscode / cursor
-        subprocess.Popen([code_bin, project_path])
-    else:
-        rich_print_robust(f" \n[cyan]cd {project_path.relative_to(Path.cwd())}[/cyan]")
+    _open_in_editor_or_print_path(project_path)
+
+
+@create_app.command()
+@capture("cli:create_package_start", "cli:create_package_end")
+def package(
+    path: Annotated[Path | None, typer.Option()] = None,
+    name: Annotated[
+        str | None,
+        typer.Option("--name", "-n", help="Name of the package (kebab-case)"),
+    ] = None,
+    owner: Annotated[
+        str | None,
+        typer.Option(
+            "--owner", "-o", help="Owner of the package (should match GitHub username)"
+        ),
+    ] = None,
+):
+    """Create a new ato *package*."""
+
+    package_name = _TemplateValues.PackageName().query(name)
+    output_dir = _TemplateValues.ProjectPath().query(path)
+    package_owner = _TemplateValues.PackageOwner().query(owner)
+
+    package_slug = caseconverter.snakecase(package_name)
+    entry_name = caseconverter.pascalcase(package_name)
+
+    template = _PackageTemplate(
+        extra_context={
+            "project_name": package_name,
+            "project_slug": package_slug,
+            "entry_name": entry_name,
+            "package_owner": package_owner,
+            "__ato_version": version.get_installed_atopile_version(),
+            "__python_path": sys.executable,
+        }
+    )
+    package_path = template.run(output_dir=output_dir)
+
+    rich_print_robust(
+        f':sparkles: [green]Created new package "{package_path.name}"![/] :sparkles:'
+    )
+
+    _open_in_editor_or_print_path(package_path)
 
 
 @create_app.command("build-target")
