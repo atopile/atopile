@@ -256,6 +256,19 @@ def test_pick_dependency_advanced_2():
 
 
 @pytest.mark.usefixtures("setup_project_config")
+@pytest.mark.slow
+def test_pick_dependency_div_negative():
+    rdiv = F.ResistorVoltageDivider()
+
+    rdiv.v_in.alias_is(L.Range(-10 * P.V, -9 * P.V))
+    rdiv.v_out.constrain_subset(L.Range(-3.2 * P.V, -3 * P.V))
+    rdiv.max_current.constrain_subset(L.Range(1 * P.mA, 3 * P.mA))
+
+    solver = DefaultSolver()
+    pick_part_recursively(rdiv, solver)
+
+
+@pytest.mark.usefixtures("setup_project_config")
 def test_null_solver():
     capacitance = L.Range.from_center_rel(10 * P.nF, 0.2)
 
