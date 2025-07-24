@@ -57,6 +57,7 @@ from atopile.version import (
     get_installed_atopile_version,
 )
 from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.paths import get_config_dir
 from faebryk.libs.test.testutil import in_test
 from faebryk.libs.util import indented_container, md_list
 
@@ -150,15 +151,7 @@ class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
 class GlobalConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
-        """Find the global config file in the user's home directory."""
-
-        # note deliberate use of ~/.config on all platforms
-        # (rather than e.g. platformdirs)
-        config_dir = (
-            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-            / APPLICATION_NAME
-        )
-        config_file = config_dir / GLOBAL_CONFIG_FILENAME
+        config_file = get_config_dir() / GLOBAL_CONFIG_FILENAME
         return config_file if config_file.exists() else None
 
     def get_data(self) -> dict[str, Any]:
