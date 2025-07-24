@@ -151,7 +151,7 @@ class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
 class GlobalConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
-        config_file = get_config_dir()
+        config_file = get_config_dir() / GLOBAL_CONFIG_FILENAME
         return config_file if config_file.exists() else None
 
     def get_data(self) -> dict[str, Any]:
