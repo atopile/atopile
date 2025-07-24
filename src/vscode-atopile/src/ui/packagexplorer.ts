@@ -7,8 +7,7 @@ import { getBuildTarget, onBuildTargetChanged } from '../common/target';
 import { getPackageDependency } from '../common/manifest';
 import * as path from 'path';
 
-// const packagesUrl = 'https://packages.atopile.io';
-const packagesUrl = 'https://web-8289-30dc3103-1rxtcco6.onporter.run/';
+const packagesUrl = 'https://packages.atopile.io';
 
 class PackageExplorerWebview extends BaseWebview {
     private themeChangeDisposable?: vscode.Disposable;
@@ -236,7 +235,7 @@ class PackageExplorerWebview extends BaseWebview {
 
         const build = getBuildTarget();
         const projectName = build ? path.basename(build.root) : 'No Project';
-        
+
         this.panel.webview.postMessage({
             type: 'project-name',
             projectName: projectName
@@ -270,7 +269,7 @@ class PackageExplorerWebview extends BaseWebview {
     private subscribeToPackage(packageId: string): void {
         // Replace existing subscription
         this.subscribedPackage = packageId;
-        
+
         // Send immediate status update
         this.sendPackageStatus(packageId);
     }
