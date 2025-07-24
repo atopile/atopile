@@ -62,18 +62,18 @@ class PackageExplorerWebview extends BaseWebview {
         const iframe = document.getElementById('packages-iframe');
 
         // forward messages from VSCode to iframe
+        const downwardEventTypes = ['vscode-theme', 'project-name', 'package-status'];
         window.addEventListener('message', (event) => {
-            if (event.data.type === 'vscode-theme' || event.data.type === 'project-name' || event.data.type === 'package-status') {
+            if (downwardEventTypes.includes(event.data.type)) {
                 iframe.contentWindow.postMessage(event.data, '*');
             }
         });
 
         // forward messages from iframe to VSCode
+        const upwardEventTypes = ['request-theme', 'install-package', 'update-package', 'uninstall-package', 'request-project-name', 'subscribe-package'];
         window.addEventListener('message', (event) => {
-            if (event.source === iframe.contentWindow) {
-                if (event.data.type === 'request-theme' || event.data.type === 'install-package' || event.data.type === 'update-package' || event.data.type === 'uninstall-package' || event.data.type === 'request-project-name' || event.data.type === 'subscribe-package') {
-                    vscode.postMessage(event.data);
-                }
+            if (event.source === iframe.contentWindow && upwardEventTypes.includes(event.data.type)) {
+                vscode.postMessage(event.data);
             }
         });
     </script>
@@ -99,18 +99,25 @@ class PackageExplorerWebview extends BaseWebview {
         // Handle webview theme requests
         this.messageDisposable = this.panel.webview.onDidReceiveMessage(async message => {
             console.log('Received message from webview:', message);
-            if (message.type === 'request-theme') {
-                this.sendThemeToWebview();
-            } else if (message.type === 'install-package') {
-                await this.handlePackageInstall(message.packageId);
-            } else if (message.type === 'update-package') {
-                await this.handlePackageUpdate(message.packageId);
-            } else if (message.type === 'uninstall-package') {
-                await this.handlePackageUninstall(message.packageId);
-            } else if (message.type === 'request-project-name') {
-                this.sendProjectNameToWebview();
-            } else if (message.type === 'subscribe-package') {
-                this.subscribeToPackage(message.packageId);
+            switch (message.type) {
+                case 'request-theme':
+                    this.sendThemeToWebview();
+                    break;
+                case 'install-package':
+                    await this.handleAddPackage(message.packageId);
+                    break;
+                case 'update-package':
+                    await this.handleUpdatePackage(message.packageId);
+                    break;
+                case 'uninstall-package':
+                    await this.handleRemovePackage(message.packageId);
+                    break;
+                case 'request-project-name':
+                    this.sendProjectNameToWebview();
+                    break;
+                case 'subscribe-package':
+                    this.subscribeToPackage(message.packageId);
+                    break;
             }
         });
 
@@ -161,7 +168,7 @@ class PackageExplorerWebview extends BaseWebview {
         }
     }
 
-    private async handlePackageInstall(packageId: string): Promise<void> {
+    private async _handleManagePackage(command: string, packageId: string, statusMessage: string, errorMessage: string): Promise<void> {
         if (!packageId) {
             vscode.window.showErrorMessage('No package identifier provided');
             return;
@@ -174,60 +181,25 @@ class PackageExplorerWebview extends BaseWebview {
         }
 
         try {
-            // not hidden from user so CLI-generated import statement is visible
-            const terminal = await runAtoCommandInTerminal('add', build.root, ['add', packageId], false);
+            const terminal = await runAtoCommandInTerminal(command, build.root, [command, packageId], false);
             if (terminal) {
-                vscode.window.showInformationMessage(`Adding package: ${packageId}`);
+                vscode.window.showInformationMessage(statusMessage);
             }
         } catch (error) {
-            traceInfo(`Failed to install package: ${error}`);
+            traceInfo(errorMessage);
         }
     }
 
-    private async handlePackageUpdate(packageId: string): Promise<void> {
-        if (!packageId) {
-            vscode.window.showErrorMessage('No package identifier provided');
-            return;
-        }
-
-        const build = getBuildTarget();
-        if (!build) {
-            vscode.window.showErrorMessage('No build target selected. Please select a build target first.');
-            return;
-        }
-
-        try {
-            // not hidden from user so CLI-generated output is visible
-            const terminal = await runAtoCommandInTerminal('add', build.root, ['add', '--upgrade', packageId], false);
-            if (terminal) {
-                vscode.window.showInformationMessage(`Updating package: ${packageId}`);
-            }
-        } catch (error) {
-            traceInfo(`Failed to update package: ${error}`);
-        }
+    private async handleAddPackage(packageId: string): Promise<void> {
+        await this._handleManagePackage('add', packageId, `Adding package: ${packageId}`, `Failed to add package: ${packageId}`);
     }
 
-    private async handlePackageUninstall(packageId: string): Promise<void> {
-        if (!packageId) {
-            vscode.window.showErrorMessage('No package identifier provided');
-            return;
-        }
+    private async handleUpdatePackage(packageId: string): Promise<void> {
+        await this._handleManagePackage('update', packageId, `Updating package: ${packageId}`, `Failed to update package: ${packageId}`);
+    }
 
-        const build = getBuildTarget();
-        if (!build) {
-            vscode.window.showErrorMessage('No build target selected. Please select a build target first.');
-            return;
-        }
-
-        try {
-            // not hidden from user so they can see the removal
-            const terminal = await runAtoCommandInTerminal('remove', build.root, ['remove', packageId], false);
-            if (terminal) {
-                vscode.window.showInformationMessage(`Removing package: ${packageId}`);
-            }
-        } catch (error) {
-            traceInfo(`Failed to remove package: ${error}`);
-        }
+    private async handleRemovePackage(packageId: string): Promise<void> {
+        await this._handleManagePackage('remove', packageId, `Removing package: ${packageId}`, `Failed to remove package: ${packageId}`);
     }
 
     private sendProjectNameToWebview(): void {
