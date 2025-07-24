@@ -151,9 +151,11 @@ def generate_module_map(app: Module) -> None:
             _descend()
 
         except KeyErrorAmbiguous as e:
+            mod_name = module_instance.get_full_name()
             raise errors.UserNotImplementedError(
-                "There are multiple build configurations for this module.\n"
-                "We don't currently support multiple layouts for the same module."
+                f"There are multiple possible layouts for '{mod_name}'.\n"
+                "This can happen when you have subclasses with their own configs.\n"
+                "We don't currently support multiple layouts for the same module.\n"
                 "Show the issue some love to get it done: https://github.com/atopile/atopile/issues/399"
             ) from e
 
