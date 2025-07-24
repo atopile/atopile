@@ -11,7 +11,7 @@ class CAN_TTL(ModuleInterface):
     rx: F.ElectricLogic
     tx: F.ElectricLogic
 
-    baud = L.p_field(units=P.baud)
+    speed = L.p_field(units=P.bps)
 
     @L.rt_field
     def single_electric_reference(self):
@@ -20,4 +20,4 @@ class CAN_TTL(ModuleInterface):
         )
 
     def __preinit__(self) -> None:
-        self.baud.add(F.is_bus_parameter())
+        self.speed.add(F.is_bus_parameter())
