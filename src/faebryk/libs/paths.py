@@ -7,11 +7,18 @@ from pathlib import Path
 
 import platformdirs
 
+from faebryk.libs.util import once
 
+
+@once
 def get_config_dir() -> Path:
+    out = None
     try:
         out = Path(platformdirs.user_config_dir("atopile"))
     except Exception:
+        pass
+
+    if not out or sys.platform == "darwin":
         out = Path.home() / ".config" / "atopile"
 
     # handle legacy
