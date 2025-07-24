@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -19,7 +20,9 @@ def get_config_dir() -> Path:
         pass
 
     if not out or sys.platform == "darwin":
-        out = Path.home() / ".config" / "atopile"
+        out = (
+            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "atopile"
+        )
 
     # handle legacy
     if sys.platform in ["linux", "darwin"]:
