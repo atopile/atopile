@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from . import pullgroup, pushgroup, reloadgroup  # noqa: F401
+from . import pullgroup  # noqa: F401
 
 LOG_FILE = (Path(__file__).parent / "log.log").expanduser().absolute()
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
