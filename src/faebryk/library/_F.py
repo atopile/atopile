@@ -17,12 +17,12 @@ This way we can add new modules without changing this file
 
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix import has_designator_prefix
+from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.can_be_surge_protected import can_be_surge_protected
 from faebryk.library.has_net_name import has_net_name
-from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.Signal import Signal
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.is_optional_defined import is_optional_defined
@@ -168,8 +168,10 @@ from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
 from faebryk.library.requires_pulls import requires_pulls
 from faebryk.library.PoweredLED import PoweredLED
+from faebryk.library.CAN import CAN
 from faebryk.library.RS485HalfDuplex import RS485HalfDuplex
 from faebryk.library.Addressor import Addressor
+from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.EnablePin import EnablePin
 from faebryk.library.Ethernet import Ethernet
