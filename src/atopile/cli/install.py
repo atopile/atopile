@@ -10,7 +10,6 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-import questionary
 import ruamel.yaml
 import typer
 

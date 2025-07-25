@@ -53,7 +53,6 @@ def build(
     from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.project.dependencies import ProjectDependencies
 
-
     config.apply_options(
         entry=entry,
         selected_builds=selected_builds,
@@ -69,7 +68,6 @@ def build(
     if deps.not_installed_dependencies:
         logger.info("Installing missing dependencies")
         deps.install_missing_dependencies()
-
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout
