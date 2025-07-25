@@ -70,7 +70,7 @@ class PackageExplorerWebview extends BaseWebview {
         });
 
         // forward messages from iframe to VSCode
-        const upwardEventTypes = ['request-theme', 'install-package', 'update-package', 'uninstall-package', 'request-project-name', 'subscribe-package'];
+        const upwardEventTypes = ['request-theme', 'install-package', 'upgrade-package', 'uninstall-package', 'request-project-name', 'subscribe-package'];
         window.addEventListener('message', (event) => {
             if (event.source === iframe.contentWindow && upwardEventTypes.includes(event.data.type)) {
                 vscode.postMessage(event.data);
@@ -106,8 +106,8 @@ class PackageExplorerWebview extends BaseWebview {
                 case 'install-package':
                     await this.handleAddPackage(message.packageId);
                     break;
-                case 'update-package':
-                    await this.handleUpdatePackage(message.packageId);
+                case 'upgrade-package':
+                    await this.handleUpgradePackage(message.packageId);
                     break;
                 case 'uninstall-package':
                     await this.handleRemovePackage(message.packageId);
@@ -168,7 +168,7 @@ class PackageExplorerWebview extends BaseWebview {
         }
     }
 
-    private async _handleManagePackage(command: string, packageId: string, statusMessage: string, errorMessage: string): Promise<void> {
+    private async _handleManagePackage(command: string, args: string[], packageId: string, statusMessage: string, errorMessage: string): Promise<void> {
         if (!packageId) {
             vscode.window.showErrorMessage('No package identifier provided');
             return;
@@ -181,7 +181,7 @@ class PackageExplorerWebview extends BaseWebview {
         }
 
         try {
-            const terminal = await runAtoCommandInTerminal(command, build.root, [command, packageId], false);
+            const terminal = await runAtoCommandInTerminal(command, build.root, [command, ...args, packageId], false);
             if (terminal) {
                 vscode.window.showInformationMessage(statusMessage);
             }
@@ -191,15 +191,15 @@ class PackageExplorerWebview extends BaseWebview {
     }
 
     private async handleAddPackage(packageId: string): Promise<void> {
-        await this._handleManagePackage('add', packageId, `Adding package: ${packageId}`, `Failed to add package: ${packageId}`);
+        await this._handleManagePackage('add', [], packageId, `Adding package: ${packageId}`, `Failed to add package: ${packageId}`);
     }
 
-    private async handleUpdatePackage(packageId: string): Promise<void> {
-        await this._handleManagePackage('update', packageId, `Updating package: ${packageId}`, `Failed to update package: ${packageId}`);
+    private async handleUpgradePackage(packageId: string): Promise<void> {
+        await this._handleManagePackage('add', ['--upgrade'], packageId, `Upgrading package: ${packageId}`, `Failed to upgrade package: ${packageId}`);
     }
 
     private async handleRemovePackage(packageId: string): Promise<void> {
-        await this._handleManagePackage('remove', packageId, `Removing package: ${packageId}`, `Failed to remove package: ${packageId}`);
+        await this._handleManagePackage('remove', [], packageId, `Removing package: ${packageId}`, `Failed to remove package: ${packageId}`);
     }
 
     private sendProjectNameToWebview(): void {
