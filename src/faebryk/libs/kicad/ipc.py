@@ -93,6 +93,7 @@ class PCBnew:
             return
 
         self.board.revert()
+        # Saving to use kicad formatting on disk
         self.board.save()
 
     @classmethod
