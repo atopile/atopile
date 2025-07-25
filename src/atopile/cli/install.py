@@ -215,27 +215,3 @@ dependencies_app.command()(add)
 dependencies_app.command()(remove)
 dependencies_app.command()(sync)
 dependencies_app.command()(list)
-
-# --------------------------------------------------------------------------------------
-
-
-def check_missing_deps_or_offer_to_install():
-    deps = ProjectDependencies(sync_versions=False)
-    if deps.not_installed_dependencies:
-        interactive = config.interactive
-
-        if not interactive:
-            logger.info("Installing missing dependencies")
-            deps.install_missing_dependencies()
-            return
-
-        logger.warning("It appears some dependencies are missing.")
-
-        if questionary.confirm("Install missing dependencies now?").unsafe_ask():
-            # Install project dependencies, without upgrading
-            deps.install_missing_dependencies()
-        else:
-            logger.warning(
-                "Run `ato sync` to install them.",
-                extra={"markdown": True},
-            )
