@@ -9,10 +9,10 @@ from textwrap import dedent
 from ruamel.yaml import YAML
 
 from atopile.telemetry import capture
-from faebryk.libs.app.pcb import find_pcbnew
+from faebryk.libs.kicad.ipc import enable_plugin_api
+from faebryk.libs.kicad.paths import get_plugin_paths
 from faebryk.libs.logging import rich_print_robust
 from faebryk.libs.paths import get_config_dir
-from faebryk.libs.util import try_or
 
 yaml = YAML()
 
@@ -45,6 +45,7 @@ def configure() -> None:
 
 def setup() -> None:
     install_kicad_plugin()
+    enable_plugin_api()
 
 
 @capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")
@@ -78,37 +79,11 @@ def install_kicad_plugin() -> None:
             logger.info("Writing plugin loader to %s", plugin_loader_path)
         plugin_loader_path.write_text(plugin_loader, encoding="utf-8")
 
-    kicad_config_search_path = [
-        "~/Documents/KiCad/",
-        "~/OneDrive/Documents/KiCad/",
-        "~/.local/share/kicad/",
-    ]
-
-    plugin_paths_existing = [
-        plugins_path
-        for p in kicad_config_search_path
-        if (rp := Path(p).expanduser().resolve()).exists()
-        for plugins_path in rp.glob("*/scripting/plugins")
-    ]
-
-    # if pcbnew installed, search deeper for plugin dir
-    if not plugin_paths_existing and try_or(
-        find_pcbnew, False, catch=FileNotFoundError
-    ):
-        plugin_paths_existing = list(
-            Path("~")
-            .expanduser()
-            .resolve()
-            .glob("**/kicad/*/scripting/plugins", case_sensitive=False)
-        )
-
-    no_plugin_found = True
-    for plugin_dir in plugin_paths_existing:
-        try:
-            _write_plugin(plugin_dir)
-        except FileNotFoundError:
-            continue
-        no_plugin_found = False
-
-    if no_plugin_found:
+    try:
+        plugin_paths = get_plugin_paths()
+    except FileNotFoundError:
         logger.warning("KiCAD config path not found. Couldn't install plugin!")
+        return
+
+    for plugin_dir in plugin_paths:
+        _write_plugin(plugin_dir)
