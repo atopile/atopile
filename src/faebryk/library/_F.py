@@ -109,6 +109,7 @@ from faebryk.library.can_attach_via_pinmap_pinlist import can_attach_via_pinmap_
 from faebryk.library.has_equal_pins import has_equal_pins
 from faebryk.library.has_kicad_manual_footprint import has_kicad_manual_footprint
 from faebryk.library.has_pcb_routing_strategy_greedy_direct_line import has_pcb_routing_strategy_greedy_direct_line
+from faebryk.library.TestPoint import TestPoint
 from faebryk.library.TVS import TVS
 from faebryk.library.NFET import NFET
 from faebryk.library.PFET import PFET
@@ -134,7 +135,6 @@ from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.Mounting_Hole import Mounting_Hole
-from faebryk.library.TestPoint import TestPoint
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.is_surge_protected import is_surge_protected
