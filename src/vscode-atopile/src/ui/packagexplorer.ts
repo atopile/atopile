@@ -206,12 +206,14 @@ class PackageExplorerWebview extends BaseWebview {
         if (!this.panel) return;
 
         const build = getBuildTarget();
-        const projectName = build ? path.basename(build.root) : 'No Project';
 
-        this.panel.webview.postMessage({
-            type: 'project-name',
-            projectName: projectName
-        });
+        if (build) {
+            const projectName = path.basename(build.root);
+            this.panel.webview.postMessage({
+                type: 'project-name',
+                projectName: projectName
+            });
+        }
     }
 
     private setupManifestWatcher(): void {
