@@ -3,9 +3,7 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
-from shutil import which
 
 import psutil
 
@@ -19,13 +17,13 @@ from faebryk.libs.exceptions import UserResourceException, downgrade
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_project_file,
 )
+from faebryk.libs.kicad.paths import find_pcbnew
 from faebryk.libs.util import (
     cast_assert,
     duplicates,
     groupby,
     md_list,
     not_none,
-    once,
     remove_venv_from_env,
 )
 
@@ -67,29 +65,6 @@ def apply_routing(app: Module, transformer: PCB_Transformer):
         routes = strategy.calculate(transformer)
         for route in routes:
             apply_route_in_pcb(route, transformer)
-
-
-@once
-def find_pcbnew() -> Path:
-    """Figure out what to call for the pcbnew CLI."""
-    if sys.platform.startswith("linux"):
-        path = which("pcbnew")
-        if path is None:
-            raise FileNotFoundError("Could not find pcbnew executable")
-        return Path(path)
-
-    if sys.platform.startswith("darwin"):
-        base = Path("/Applications/KiCad/")
-    elif sys.platform.startswith("win"):
-        base = Path(not_none(os.getenv("ProgramFiles"))) / "KiCad"
-    else:
-        raise NotImplementedError(f"Unsupported platform: {sys.platform}")
-
-    if path := list(base.glob("**/pcbnew")):
-        # TODO: find the best version
-        return path[0]
-
-    raise FileNotFoundError("Could not find pcbnew executable")
 
 
 def open_pcb(pcb_path: os.PathLike):

@@ -36,6 +36,7 @@ dependencies = [
     "fastapi-github-oidc>=0.2.1",
     "freetype-py>=2.4",
     "gitpython>=3.1.41",
+    "kicad-python",
     "kicadcliwrapper>=1.1.1",
     "matplotlib>=3.7.1",
     "mcp[cli]>=1.10.1",

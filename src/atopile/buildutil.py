@@ -180,6 +180,13 @@ def build(app: Module) -> None:
         if config.build.hide_designators:
             pcb.transformer.hide_all_designators()
 
+        # Backup layout
+        backup_file = config.build.paths.output_base.with_suffix(
+            f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
+        )
+        logger.info(f"Backing up layout to {backup_file}")
+        backup_file.write_bytes(config.build.paths.layout.read_bytes())
+
         if pcb.pcb_file == original_pcb:
             if config.build.frozen:
                 logger.info("No changes to layout. Passed --frozen check.")
@@ -217,13 +224,6 @@ def build(app: Module) -> None:
                 # No markdown=False here because we have both a command and paths
             )
         else:
-            backup_file = config.build.paths.output_base.with_suffix(
-                f".{time.strftime('%Y%m%d-%H%M%S')}.kicad_pcb"
-            )
-            logger.info(f"Backing up layout to {backup_file}")
-            with config.build.paths.layout.open("rb") as f:
-                backup_file.write_bytes(f.read())
-
             logger.info(f"Updating layout {config.build.paths.layout}")
             pcb.pcb_file.dumps(config.build.paths.layout)
 
