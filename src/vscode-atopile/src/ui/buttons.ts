@@ -91,8 +91,8 @@ let cmdLaunchKicad = new Command(atoLaunchKicad, 'atopile.launch_kicad');
 let cmdKicanvasPreview = new Command(atoKicanvasPreview, 'atopile.kicanvas_preview');
 let cmdModelViewerPreview = new Command(atoModelViewerPreview, 'atopile.modelviewer_preview');
 
-let buttonShell = new Button('terminal', cmdShell, 'Shell', 'Open ato shell', true);
-let buttonCreateProject = new Button('new-file', cmdCreateProject, 'Create Project', 'Create new project', true);
+let buttonShell = new Button('terminal', cmdShell, 'Shell', 'Open ato shell', true, true);
+let buttonCreateProject = new Button('new-file', cmdCreateProject, 'Create Project', 'Create new project', true, true);
 // Need project;
 let buttonAddPart = new Button('file-binary', cmdAddPart, 'Add Part', 'Add part to project');
 let buttonAddPackage = new Button('package', cmdAddPackage, 'Add Package', 'Add package dependency');
@@ -344,7 +344,7 @@ async function atoRemovePackage() {
 }
 
 async function atoCreateProject() {
-    await _runInTerminalWithBuildTarget('create project', ['create', 'project'], false);
+    await _runInTerminal('create project', undefined, ['create', 'project'], false);
 
     captureEvent('vsce:project_create');
 }
