@@ -171,7 +171,7 @@ class ProjectDependency:
         self.cfg = config.ProjectConfig.from_path(self.target_path)
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}(spec={self.spec},path={self.target_path})"
+        return f"{type(self).__name__}(spec={self.spec}, path={self.target_path})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -328,6 +328,8 @@ class ProjectDependencies:
             lambda d: not_none(d).identifier == identifier,
             default=None,
         )
+
+        existing_dep.spec = config.DependencySpec.from_str(str(dep.spec))
 
         if existing_dep is not None:
             if type(existing_dep.spec) is not type(dep.spec):
