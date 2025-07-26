@@ -114,29 +114,9 @@ Access these commands via the Command Palette (Ctrl+Shift+P):
 | `atopile: Open Layout Preview`       | View PCB layout                 |
 | `atopile: Open 3D Model Preview`     | View 3D rendering               |
 | `atopile: Package Explorer`          | Browse available packages       |
+| `atopile: Restart Server`            | Restart language server         |
+| `atopile: Setup LLM rules & MCP`     | Configure AI assistance         |
 
-## ⚙️ Configuration
-
-Configure the extension in VS Code settings:
-
-```json
-{
-    // Path to atopile binary (optional)
-    "atopile.ato": "/path/to/ato",
-
-    // Atopile version or source (when binary not specified)
-    "atopile.from": "atopile@0.9.0",
-
-    // Enable telemetry data collection
-    "atopile.telemetry": true
-}
-```
-
-### Configuration Options
-
-- **`atopile.ato`**: Specify custom atopile binary path
-- **`atopile.from`**: Set version or source (e.g., `"atopile@0.9.0"` or `"git+https://github.com/atopile/atopile.git@main"`)
-- **`atopile.telemetry`**: Enable/disable anonymous usage statistics
 
 ## 🎯 Workspace Features
 
