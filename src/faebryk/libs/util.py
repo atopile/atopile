@@ -2614,3 +2614,43 @@ def path_replace(base: Path, match: Path, replacement: Path) -> Path:
             list(replacement.parts),
         ),
     )
+
+
+def sort_dataclass(obj: Any, sort_key: Callable[[Any], Any], prefix: str = "") -> Any:
+    for f in fields(obj):
+        val = getattr(obj, f.name)
+        if isinstance(val, list):
+            s = sorted(val, key=sort_key)
+            setattr(obj, f.name, s)
+            for v in s:
+                if is_dataclass(v):
+                    sort_dataclass(v, sort_key, prefix=f"{prefix}.{f.name}")
+        elif isinstance(val, dict):
+            s = dict(sorted(val.items(), key=lambda x: sort_key(x[1])))
+            setattr(obj, f.name, s)
+            for v in s.values():
+                if is_dataclass(v):
+                    sort_dataclass(v, sort_key, prefix=f"{prefix}.{f.name}")
+        elif is_dataclass(val):
+            sort_dataclass(val, sort_key, prefix=f"{prefix}.{f.name}")
+    return obj
+
+
+def round_dataclass(obj: Any, precision: int = 0) -> Any:
+    if isinstance(obj, (float, int)):
+        return round(obj, precision)
+
+    if not is_dataclass(obj):
+        return obj
+
+    for f in fields(obj):
+        val = getattr(obj, f.name)
+        if isinstance(val, float):
+            setattr(obj, f.name, round(val, precision))
+        elif isinstance(val, list):
+            val = [round_dataclass(v, precision) for v in val]
+        elif isinstance(val, dict):
+            val = {k: round_dataclass(v, precision) for k, v in val.items()}
+        elif is_dataclass(val):
+            round_dataclass(val, precision)
+    return obj
