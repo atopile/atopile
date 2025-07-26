@@ -1,14 +1,20 @@
 import logging
-import re
+from datetime import datetime
 from pathlib import Path
 
 from kipy import KiCad
 from kipy.errors import ApiError, ConnectionError
 
 from faebryk.libs.kicad.fileformat_config import C_kicad_config_common
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.kicad.paths import get_config_common, get_ipc_socket_path
-from faebryk.libs.sexp.util import prettify_sexp_string
-from faebryk.libs.util import once, try_or
+from faebryk.libs.util import (
+    compare_dataclasses,
+    once,
+    round_dataclass,
+    sort_dataclass,
+    try_or,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +75,21 @@ class PCBnew:
         )
 
     def has_pending_changes(self, reference: Path | None = None) -> bool:
+        # This is hard
+        return True
+
         def _cleanup(raw: str):
-            out = raw
-            # workaround for kicad memory not representing the same state as disk
-            out = re.sub(r"\(version \d+\)", "", out)
-            out = re.sub(r"\(generator .*\)", "", out)
-            out = re.sub(r"\(generator_version .*\)", "", out)
-            return prettify_sexp_string(out)
+            out = C_kicad_pcb_file.loads(raw)
+            for fp in out.kicad_pcb.footprints:
+                fp.unknown = None
+
+            out = round_dataclass(
+                sort_dataclass(
+                    out, sort_key=lambda x: getattr(x, "uuid", None) or str(x)
+                ),
+                6,
+            )
+            return out
 
         reference = reference or self.path
 
@@ -84,17 +98,30 @@ class PCBnew:
         )
         memorystate = _cleanup(self.board.get_as_string())
 
-        return diskstate != memorystate
+        diff = compare_dataclasses(
+            diskstate,
+            memorystate,
+            skip_keys=("uuid",),
+        )
+        return bool(diff)
 
-    def reload(self, force: bool = False, reference: Path | None = None):
-        if not force and self.has_pending_changes(reference):
-            logger.warning(f"PCB `{self.path}` has unsaved changes, skipping reload")
-
-            return
+    def reload(self, backup_path: Path | None = None):
+        if backup_path:
+            now = datetime.now().strftime("%Y%m%d_%H%M%S")
+            client_id = (
+                Path(self.client._client._socket_path)
+                .name.removeprefix("api")
+                .removeprefix("-")
+                .removesuffix(".sock")
+            ) or "0"
+            path = backup_path.with_suffix(f".pcbnew-{client_id}.{now}.kicad_pcb")
+            logger.warning(
+                f"Overwriting {self.path} in open PCBnew instance. "
+                f"Saving current state to {path}."
+            )
+            self.board.save_as(str(path), overwrite=True, include_project=False)
 
         self.board.revert()
-        # Saving to use kicad formatting on disk
-        self.board.save()
 
     @classmethod
     def from_client(cls, client: KiCad):
@@ -108,11 +135,11 @@ class PCBnew:
         return self.path == pcb_path.expanduser().resolve().absolute()
 
 
-def reload_pcb(pcb_path: Path, reference: Path | None = None):
+def reload_pcb(pcb_path: Path, backup_path: Path | None = None):
     clients = _get_pcbnew_clients()
     matching = [pcbnew for pcbnew in clients if pcbnew.matches(pcb_path)]
     reloaded_pcb_news = []
     for pcbnew in matching:
-        pcbnew.reload(reference=reference)
+        pcbnew.reload(backup_path=backup_path)
         reloaded_pcb_news.append(pcbnew)
     return reloaded_pcb_news
