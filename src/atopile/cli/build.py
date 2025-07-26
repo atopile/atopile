@@ -4,7 +4,6 @@ import logging
 from typing import Annotated
 
 import typer
-from more_itertools import first
 
 from atopile.cli.logging_ import NOW
 from atopile.config import config
@@ -90,12 +89,6 @@ def build(
     for build_name in selected_build_names:
         build = config.project.builds[build_name]
 
-        base = build.paths.output_base
-        backup = first(
-            sorted(base.parent.glob(f"{base.name}.*.kicad_pcb"), reverse=True),
-            None,
-        )
-
         opened = False
         if config.should_open_layout_on_build():
             try:
@@ -109,6 +102,6 @@ def build(
 
         if not opened:
             try:
-                reload_pcb(build.paths.layout, reference=backup)
+                reload_pcb(build.paths.layout, backup_path=build.paths.output_base)
             except Exception as e:
                 logger.warning(f"{e}\nReload pcb manually in KiCAD")
