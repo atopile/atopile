@@ -36,7 +36,11 @@ interface AtoYaml {
             };
         };
     };
-    dependencies?: string[];
+    dependencies?: Array<{
+        type?: string;
+        identifier: string;
+        release?: string;
+    }>;
 }
 
 export function getBuilds() {
@@ -88,4 +92,41 @@ export async function loadBuilds() {
         }
     }
     return builds;
+}
+
+export async function getManifestData(manifestPath: vscode.Uri): Promise<AtoYaml | null> {
+    try {
+        const file = await vscode.workspace.fs.readFile(manifestPath);
+        let fileStr = String.fromCharCode(...file);
+        const data = yaml.load(fileStr) as AtoYaml;
+        return data;
+    } catch (error) {
+        return null;
+    }
+}
+
+export interface PackageDependency {
+    installed: boolean;
+    version?: string;
+}
+
+export async function getPackageDependency(manifestPath: vscode.Uri, packageId: string): Promise<PackageDependency> {
+    const data = await getManifestData(manifestPath);
+    
+    if (!data) {
+        return { installed: false };
+    }
+
+    const dependencies = data.dependencies || [];
+    
+    for (const dep of dependencies) {
+        if (dep.identifier === packageId) {
+            return {
+                installed: true,
+                version: dep.release
+            };
+        }
+    }
+
+    return { installed: false };
 }
