@@ -13,6 +13,25 @@ from faebryk.libs.util import once
 
 @once
 def get_config_dir() -> Path:
+    def _cleanup_legacy_dir(legacy_path: Path, out: Path) -> None:
+        known_files = [
+            "config.yaml",
+            "configured_for.yaml",
+            "telemetry.yaml",
+        ]
+
+        for file in known_files:
+            if (legacy_path / file).exists():
+                if not (out / file).exists():
+                    shutil.move(legacy_path / file, out / file)
+                else:
+                    (legacy_path / file).unlink()
+
+        try:
+            legacy_path.rmdir()
+        except OSError:
+            pass
+
     out = None
     try:
         out = Path(platformdirs.user_config_dir("atopile"))
@@ -26,14 +45,9 @@ def get_config_dir() -> Path:
 
     # handle legacy
     if sys.platform in ["linux", "darwin"]:
-        legacy_path = Path.home() / "atopile"
-        if legacy_path.exists():
-            if out.exists():
-                # remove old
-                shutil.rmtree(legacy_path)
-            else:
-                # move old to new
-                shutil.move(legacy_path, out)
+        # chronological order
+        for legacy_path in [Path.home() / ".atopile", Path.home() / "atopile"]:
+            _cleanup_legacy_dir(legacy_path, out)
 
     return out
 
