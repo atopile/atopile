@@ -30,11 +30,9 @@ def _log_add_package(identifier: str, version: str):
     )
 
 
-def _log_remove_package(identifier: str, version: str):
-    logger.info(
-        f"[red]-[/] {identifier}@{version}",
-        extra={"markup": True},
-    )
+def _log_remove_package(identifier: str, version: str | None):
+    dep_str = f"{identifier}@{version}" if version else identifier
+    logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
 
 
 class BrokenDependencyError(Exception):
@@ -173,13 +171,15 @@ class ProjectDependency:
         self.cfg = config.ProjectConfig.from_path(self.target_path)
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}(spec={self.spec},path={self.target_path})"
+        return f"{type(self).__name__}(spec={self.spec}, path={self.target_path})"
 
     def __repr__(self) -> str:
         return str(self)
 
 
 class ProjectDependencies:
+    gcfg: config.Config | None = None
+
     def __init__(
         self,
         pcfg: config.ProjectConfig | None = None,
@@ -188,7 +188,12 @@ class ProjectDependencies:
         clean_unmanaged_dirs: bool = False,
     ):
         if pcfg is None:
-            pcfg = config.config.project
+            if self.gcfg is None:
+                pcfg = config.config.project
+                self.gcfg = config.config
+            else:
+                pcfg = self.gcfg.project
+
         self.pcfg = pcfg
 
         self.direct_deps = {
@@ -208,6 +213,10 @@ class ProjectDependencies:
         return self.dag.values
 
     def reload(self):
+        if self.gcfg is not None:
+            self.gcfg.reload()
+            self.pcfg = self.gcfg.project
+
         self.__init__(pcfg=self.pcfg)
 
     @property
@@ -320,6 +329,8 @@ class ProjectDependencies:
             default=None,
         )
 
+        existing_dep.spec = config.DependencySpec.from_str(str(dep.spec))
+
         if existing_dep is not None:
             if type(existing_dep.spec) is not type(dep.spec):
                 raise errors.UserException(
@@ -360,9 +371,9 @@ class ProjectDependencies:
         dep.load_dist()
         assert dep.dist is not None
 
-        logger.info(f"Installing {identifier} to {target_path}")
         dep.dist.install(target_path)
         dep.add_to_manifest()
+        _log_add_package(dep.identifier, dep.dist.version)
 
     def add_dependencies(self, *specs: config.DependencySpec, upgrade: bool = False):
         # Load specs and fetch dists if needed
@@ -435,14 +446,9 @@ class ProjectDependencies:
                 extra={"markdown": True},
             )
 
-        if uninstall:
-            logger.info(
-                f"Uninstalling and removing:"
-                f"\n{md_list([dep.identifier for dep in uninstall])}",
-                extra={"markdown": True},
-            )
         for dep in to_remove_deps:
             dep.remove_from_manifest()
+            _log_remove_package(dep.identifier, dep.dist.version if dep.dist else None)
 
         for dep in uninstall:
             if dep.target_path.exists():
