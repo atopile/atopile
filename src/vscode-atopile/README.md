@@ -114,8 +114,6 @@ Access these commands via the Command Palette (Ctrl+Shift+P):
 | `atopile: Open Layout Preview`       | View PCB layout                 |
 | `atopile: Open 3D Model Preview`     | View 3D rendering               |
 | `atopile: Package Explorer`          | Browse available packages       |
-| `atopile: Restart Server`            | Restart language server         |
-| `atopile: Setup LLM rules & MCP`     | Configure AI assistance         |
 
 ## ⚙️ Configuration
 
@@ -180,7 +178,7 @@ If you encounter problems with syntax highlighting or IntelliSense:
 - **Documentation**: [docs.atopile.io](https://docs.atopile.io)
 - **Package Registry**: [packages.atopile.io](https://packages.atopile.io)
 - **GitHub Repository**: [github.com/atopile/atopile](https://github.com/atopile/atopile)
-- **Community**: Join our [Discord](https://discord.gg/atopile) or [discussions](https://github.com/atopile/atopile/discussions)
+- **Community**: Join our [Discord]((https://discord.gg/CRe5xaDBr3]https://discord.gg/CRe5xaDBr3)) or [discussions](https://github.com/atopile/atopile/discussions)
 
 ## 🤝 Contributing
 
