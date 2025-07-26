@@ -26,7 +26,7 @@ def get_config_dir() -> Path:
 
     # handle legacy
     if sys.platform in ["linux", "darwin"]:
-        legacy_path = Path.home() / "atopile"
+        legacy_path = Path.home() / ".atopile"
         if legacy_path.exists():
             if out.exists():
                 # remove old
