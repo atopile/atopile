@@ -31,7 +31,11 @@ function getConfigDir(): string {
         case 'linux':
         case 'darwin':
         default:
-            return path.join(os.homedir(), 'atopile');
+            const xdg = process.env.XDG_CONFIG_HOME;
+            if (xdg) {
+                return path.join(xdg, 'atopile');
+            }
+            return path.join(os.homedir(), '.config', 'atopile');
     }
 }
 
