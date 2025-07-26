@@ -180,6 +180,8 @@ class ProjectDependency:
 
 
 class ProjectDependencies:
+    gcfg: config.Config | None = None
+
     def __init__(
         self,
         pcfg: config.ProjectConfig | None = None,
@@ -188,7 +190,12 @@ class ProjectDependencies:
         clean_unmanaged_dirs: bool = False,
     ):
         if pcfg is None:
-            pcfg = config.config.project
+            if self.gcfg is None:
+                pcfg = config.config.project
+                self.gcfg = config.config
+            else:
+                pcfg = self.gcfg.project
+
         self.pcfg = pcfg
 
         self.direct_deps = {
@@ -208,6 +215,10 @@ class ProjectDependencies:
         return self.dag.values
 
     def reload(self):
+        if self.gcfg is not None:
+            self.gcfg.reload()
+            self.pcfg = self.gcfg.project
+
         self.__init__(pcfg=self.pcfg)
 
     @property
