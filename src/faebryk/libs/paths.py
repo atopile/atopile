@@ -26,14 +26,23 @@ def get_config_dir() -> Path:
 
     # handle legacy
     if sys.platform in ["linux", "darwin"]:
-        legacy_path = Path.home() / ".atopile"
-        if legacy_path.exists():
-            if out.exists():
-                # remove old
-                shutil.rmtree(legacy_path)
-            else:
-                # move old to new
-                shutil.move(legacy_path, out)
+        known_files = [
+            "config.yaml",
+            "configured_for.yaml",
+            "telemetry.yaml",
+        ]
+
+        # chronological order
+        for legacy_path in [Path.home() / ".atopile", Path.home() / "atopile"]:
+            if legacy_path.exists() and all(
+                file in known_files for file in legacy_path.iterdir()
+            ):
+                if out.exists():
+                    # remove old
+                    shutil.rmtree(legacy_path)
+                else:
+                    # move old to new
+                    shutil.move(legacy_path, out)
 
     return out
 
