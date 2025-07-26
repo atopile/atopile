@@ -30,11 +30,9 @@ def _log_add_package(identifier: str, version: str):
     )
 
 
-def _log_remove_package(identifier: str, version: str):
-    logger.info(
-        f"[red]-[/] {identifier}@{version}",
-        extra={"markup": True},
-    )
+def _log_remove_package(identifier: str, version: str | None):
+    dep_str = f"{identifier}@{version}" if version else identifier
+    logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
 
 
 class BrokenDependencyError(Exception):
@@ -371,9 +369,9 @@ class ProjectDependencies:
         dep.load_dist()
         assert dep.dist is not None
 
-        logger.info(f"Installing {identifier} to {target_path}")
         dep.dist.install(target_path)
         dep.add_to_manifest()
+        _log_add_package(dep.identifier, dep.dist.version)
 
     def add_dependencies(self, *specs: config.DependencySpec, upgrade: bool = False):
         # Load specs and fetch dists if needed
@@ -446,14 +444,9 @@ class ProjectDependencies:
                 extra={"markdown": True},
             )
 
-        if uninstall:
-            logger.info(
-                f"Uninstalling and removing:"
-                f"\n{md_list([dep.identifier for dep in uninstall])}",
-                extra={"markdown": True},
-            )
         for dep in to_remove_deps:
             dep.remove_from_manifest()
+            _log_remove_package(dep.identifier, dep.dist.version if dep.dist else None)
 
         for dep in uninstall:
             if dep.target_path.exists():

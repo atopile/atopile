@@ -162,9 +162,7 @@ def add(
     ) as e:
         raise errors.UserException(f"Error adding dependencies: {e}") from e
 
-    logger.info(
-        "[green]Done adding dependencies![/] :call_me_hand:", extra={"markup": True}
-    )
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 @capture("cli:remove_start", "cli:remove_end")
@@ -183,9 +181,7 @@ def remove(
     deps = ProjectDependencies()
     deps.remove_dependencies(*package)
 
-    logger.info(
-        "[green]Done removing dependencies![/] :call_me_hand:", extra={"markup": True}
-    )
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 @capture("cli:list_start", "cli:list_end")
