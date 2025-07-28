@@ -297,7 +297,7 @@ async function atoExport() {
 
     await _runInTerminalWithBuildTarget(`export ${build.name}`, ['build', '--build', build.name, '-t', 'all'], false);
 
-    captureEvent('vsce:export_start'); // TODO: export properties?
+    captureEvent('vsce:export_start');
 }
 
 async function atoAddPart() {
