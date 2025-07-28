@@ -1,0 +1,32 @@
+"""
+This example shows how to reuse a layout from a sub-module in the top-level module.
+1. Build the example with `ato build`
+2. Open the top layout in KiCAD.
+3. Press Ctrl-A to select all footprints.
+4. Click the atopile pull group button in the top right corner in KiCAD.
+5. Now you should have pre-routed/laid out footprints in the top layout.
+"""
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+import Resistor
+
+
+module Top:
+    sub_chains = new Sub[3]
+
+    sub_chains[0].r_chain[2] ~> sub_chains[1].r_chain[0]
+    sub_chains[1].r_chain[2] ~> sub_chains[2].r_chain[0]
+    sub_chains[2].r_chain[2] ~> sub_chains[0].r_chain[0]
+
+module Sub:
+    """
+    This will be our layout that we will do by hand and then reuse in the top module.
+    The layout itself is done in KiCAD.
+    """
+
+    r_chain = new Resistor[3]
+    for r in r_chain:
+        r.resistance = 1kohm +/- 20%
+        r.package = "R0402"
+
+    r_chain[0] ~> r_chain[1] ~> r_chain[2]

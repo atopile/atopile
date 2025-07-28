@@ -1,0 +1,13 @@
+requires-atopile: ^0.10.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  top:
+    entry: layout_reuse.ato:Top
+
+  sub:
+    entry: layout_reuse.ato:Sub
+
