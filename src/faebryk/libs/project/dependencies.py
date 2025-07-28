@@ -329,9 +329,8 @@ class ProjectDependencies:
             default=None,
         )
 
-        existing_dep.spec = config.DependencySpec.from_str(str(dep.spec))
-
         if existing_dep is not None:
+            existing_dep.spec = config.DependencySpec.from_str(str(dep.spec))
             if type(existing_dep.spec) is not type(dep.spec):
                 raise errors.UserException(
                     f"Cannot install {identifier} as it is already installed "
