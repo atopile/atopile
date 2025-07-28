@@ -135,6 +135,7 @@ from faebryk.library.QFN import QFN
 from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
+from faebryk.library.Mounting_Hole import Mounting_Hole
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.is_surge_protected import is_surge_protected
