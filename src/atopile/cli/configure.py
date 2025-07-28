@@ -44,8 +44,15 @@ def configure() -> None:
 
 
 def setup() -> None:
-    install_kicad_plugin()
-    enable_plugin_api()
+    try:
+        install_kicad_plugin()
+    except Exception as e:
+        logger.warning(f"Couldn't install plugin: {e}")
+
+    try:
+        enable_plugin_api()
+    except Exception as e:
+        logger.warning(f"Couldn't enable plugin api: {e}")
 
 
 @capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")
@@ -82,8 +89,7 @@ def install_kicad_plugin() -> None:
     try:
         plugin_paths = get_plugin_paths()
     except FileNotFoundError:
-        logger.warning("KiCAD config path not found. Couldn't install plugin!")
-        return
+        raise Exception("KiCAD config path not found. Couldn't install plugin!")
 
     for plugin_dir in plugin_paths:
         _write_plugin(plugin_dir)
