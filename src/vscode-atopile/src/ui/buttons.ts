@@ -90,6 +90,7 @@ let cmdChooseBuild = new Command(atoChooseBuild, 'atopile.choose_build');
 let cmdLaunchKicad = new Command(atoLaunchKicad, 'atopile.launch_kicad');
 let cmdKicanvasPreview = new Command(atoKicanvasPreview, 'atopile.kicanvas_preview');
 let cmdModelViewerPreview = new Command(atoModelViewerPreview, 'atopile.modelviewer_preview');
+let cmdExport = new Command(atoExport, 'atopile.export');
 
 let buttonShell = new Button('terminal', cmdShell, 'Shell', 'Open ato shell', true, true);
 let buttonCreateProject = new Button('new-file', cmdCreateProject, 'Create Project', 'Create new project', true, true);
@@ -98,6 +99,7 @@ let buttonAddPart = new Button('file-binary', cmdAddPart, 'Add Part', 'Add part 
 let buttonAddPackage = new Button('package', cmdAddPackage, 'Add Package', 'Add package dependency');
 let buttonRemovePackage = new Button('trash', cmdRemovePackage, 'Remove Package', 'Remove package dependency');
 let buttonBuild = new Button('play', cmdBuild, 'Build', 'Build project');
+let buttonExport = new Button('file-zip', cmdExport, 'Generate Manufacturing Data', 'Generate manufacturing data for the build');
 let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCad', 'Open board in KiCad');
 let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
 let buttonKicanvasPreview = new Button('eye', cmdKicanvasPreview, 'Layout Preview', 'Open Layout Preview');
@@ -287,6 +289,15 @@ async function atoBuild() {
     await _runInTerminalWithBuildTarget(`build ${build.name}`, ['build', '--build', build.name], false);
 
     captureEvent('vsce:build_start'); // TODO: build properties?
+}
+
+async function atoExport() {
+    // parse what build target to use
+    const build = _getBuildTarget();
+
+    await _runInTerminalWithBuildTarget(`export ${build.name}`, ['build', '--build', build.name, '-t', 'all'], false);
+
+    captureEvent('vsce:build_start', {'targets': ['all']});
 }
 
 async function atoAddPart() {
