@@ -136,7 +136,7 @@
             },
             {
                 "command": "atopile.export",
-                "title": "Export All Artifacts",
+                "title": "Generate Manufacturing Data",
                 "category": "atopile",
                 "when": "editorLangId == ato"
             },
