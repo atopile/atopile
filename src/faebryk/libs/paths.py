@@ -43,6 +43,8 @@ def get_config_dir() -> Path:
             Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "atopile"
         )
 
+    out.mkdir(parents=True, exist_ok=True)
+
     # handle legacy
     if sys.platform in ["linux", "darwin"]:
         # chronological order
