@@ -103,13 +103,11 @@ def get_config_common():
 
 def get_plugin_paths():
     kicad_config_search_path = [
-        # windows
+        # windows / macos
         Path(platformdirs.user_documents_dir()) / "KiCad",
         "~/OneDrive/Documents/KiCad/",
         # linux
         platformdirs.user_data_dir("kicad"),
-        # macos
-        ".local/share/kicad/",
     ]
 
     plugin_paths_existing = [
@@ -141,4 +139,8 @@ def get_plugin_paths():
 
 
 def get_ipc_socket_path():
-    return Path(gettempdir()) / "kicad"
+    # windows / linux
+    if sys.platform.startswith("win"):
+        return Path(gettempdir()) / "kicad"
+    # macos / linux
+    return Path("/tmp") / "kicad"

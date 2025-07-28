@@ -5,6 +5,7 @@ from pathlib import Path
 from kipy import KiCad
 from kipy.errors import ApiError, ConnectionError
 
+from atopile.cli.logging_ import ALERT
 from faebryk.libs.kicad.fileformat_config import C_kicad_config_common
 from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.kicad.paths import get_config_common, get_ipc_socket_path
@@ -53,6 +54,11 @@ def _get_all_clients():
 def _get_pcbnew_clients():
     clients = _get_all_clients()
     return [pcbnew for client in clients if (pcbnew := PCBnew.from_client(client))]
+
+
+def _get_pcbnew_client_for_path(pcb_path: Path):
+    clients = _get_pcbnew_clients()
+    return [pcbnew for pcbnew in clients if pcbnew.matches(pcb_path)]
 
 
 class PCBnew:
@@ -115,9 +121,9 @@ class PCBnew:
                 .removesuffix(".sock")
             ) or "0"
             path = backup_path.with_suffix(f".pcbnew-{client_id}.{now}.kicad_pcb")
-            logger.warning(
-                f"Overwriting {self.path} in open PCBnew instance. "
-                f"Saving current state to {path}."
+            logger.log(
+                ALERT,
+                f"Backing up unsaved pcb changes to {path}.",
             )
             self.board.save_as(str(path), overwrite=True, include_project=False)
 
@@ -135,11 +141,13 @@ class PCBnew:
         return self.path == pcb_path.expanduser().resolve().absolute()
 
 
+def opened_in_pcbnew(pcb_path: Path | None) -> bool:
+    if not pcb_path:
+        return bool(_get_pcbnew_clients())
+    return bool(_get_pcbnew_client_for_path(pcb_path))
+
+
 def reload_pcb(pcb_path: Path, backup_path: Path | None = None):
-    clients = _get_pcbnew_clients()
-    matching = [pcbnew for pcbnew in clients if pcbnew.matches(pcb_path)]
-    reloaded_pcb_news = []
-    for pcbnew in matching:
-        pcbnew.reload(backup_path=backup_path)
-        reloaded_pcb_news.append(pcbnew)
-    return reloaded_pcb_news
+    clients = _get_pcbnew_client_for_path(pcb_path)
+    for client in clients:
+        client.reload(backup_path=backup_path)
