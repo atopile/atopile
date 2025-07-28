@@ -135,6 +135,12 @@
                 "when": "editorLangId == ato"
             },
             {
+                "command": "atopile.export",
+                "title": "Export All Artifacts",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
                 "command": "atopile.add_package",
                 "title": "Add package dependency",
                 "category": "atopile",
