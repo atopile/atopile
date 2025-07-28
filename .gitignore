@@ -197,3 +197,14 @@ standalone/
 
 # need to ignore because absolute paths
 .cursor/mcp.json
+
+# MCP and project-specific files
+.mcp.json
+CLAUDE.md
+
+# Example project build and IDE directories
+examples/**/.ato/
+examples/**/.cursor/
+examples/**/.github/
+examples/**/.windsurf/
+examples/**/.west/
