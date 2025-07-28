@@ -1,0 +1,27 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+import ElectricPower
+import LED
+import Resistor
+
+module App:
+    # virtual power supply
+    power = new ElectricPower
+
+    # automatically picked parts from LCSC
+    current_limiting_resistors = new Resistor[2]
+    for resistor in current_limiting_resistors:
+        resistor.resistance = 10kohm +/- 20%
+        resistor.package = "R0402"
+
+    leds = new LED[2]
+    # Manual pick with supplier id (LCSC)
+    leds[0].lcsc_id = "C2286"
+    # Manual pick with manufacturer and part number
+    leds[1].manufacturer = "Hubei KENTO Elec"
+    leds[1].mpn = "KT-0603R"
+
+
+    power.hv ~> current_limiting_resistors[0] ~> leds[0] ~> power.lv  
+    power.hv ~> current_limiting_resistors[1] ~> leds[1] ~> power.lv
+

@@ -1,4 +1,4 @@
-requires-atopile: ^0.7.0
+requires-atopile: ^0.10.0
 
 paths:
   src: ./
@@ -6,4 +6,5 @@ paths:
 
 builds:
   default:
-    entry: main.ato:App
+    entry: quickstart.ato:App
+
