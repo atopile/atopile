@@ -49,27 +49,3 @@ class FilterElectricalRC(F.Filter):
 
         # Set the max voltage of the capacitor to min 1.5 times the output voltage
         self.capacitor.max_voltage.constrain_ge(self.out.reference.voltage * 1.5)
-
-    @L.rt_field
-    def single_electric_reference(self):
-        return F.has_single_electric_reference_defined(
-            F.ElectricLogic.connect_all_module_references(self)
-        )
-
-    @L.rt_field
-    def can_bridge(self):
-        return F.can_bridge_defined(self.in_.line, self.out.line)
-
-    @classmethod
-    def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
-        # TODO: Remove hardcoded when normal equations solve faster
-        out = cls(_hardcoded=True)
-        cutoff_frequency = 1 / (
-            Quantity_Interval_Disjoint.from_value(resistance * capacitance)
-            * 2
-            * math.pi
-        )
-        out.resistor.resistance.constrain_subset(resistance)
-        out.capacitor.capacitance.constrain_subset(capacitance)
-        out.cutoff_frequency.constrain_subset(cutoff_frequency)
-        return out
