@@ -123,7 +123,7 @@ class PCBnew:
             path = backup_path.with_suffix(f".pcbnew-{client_id}.{now}.kicad_pcb")
             logger.log(
                 ALERT,
-                f"Backing up unsaved pcb changes to {path}.",
+                f"Backing up unsaved pcb changes to {path}",
             )
             self.board.save_as(str(path), overwrite=True, include_project=False)
 
