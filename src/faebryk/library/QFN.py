@@ -15,7 +15,10 @@ class QFN(F.Footprint):
         exposed_thermal_pad_cnt: int = 1,
         size_xy: tuple[Quantity, Quantity] = (1.0 * P.mm, 1.0 * P.mm),
         pitch: Quantity = 0.5 * P.mm,
-        exposed_thermal_pad_dimensions: tuple[Quantity, Quantity] = (0.25 * P.mm, 0.25 * P.mm),
+        exposed_thermal_pad_dimensions: tuple[Quantity, Quantity] = (
+            0.25 * P.mm,
+            0.25 * P.mm,
+        ),
         has_thermal_vias: bool = False,
     ) -> None:
         super().__init__()
