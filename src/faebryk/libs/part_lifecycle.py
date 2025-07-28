@@ -29,6 +29,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_pcb_file,
 )
 from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
+from faebryk.libs.kicad.ipc import opened_in_pcbnew
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
     EasyEDAAPIResponse,
@@ -280,8 +281,11 @@ class PartLifecycle:
             fp_table.fp_lib_table.libs[lib_name] = lib
             # TODO move somewhere else
             if not getattr(self, "_printed_alert", False):
-                logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
-                self._printed_alert = True
+                # check if any running pcbnew instances
+                # TODO: actually pass pcb
+                if opened_in_pcbnew(pcb_path=None):
+                    logger.log(ALERT, "pcbnew restart required (updated fp-lib-table)")
+                    self._printed_alert = True
 
             return fp_table
 
