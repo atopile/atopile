@@ -58,11 +58,21 @@ def setup() -> None:
 @capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")
 def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
+    # Get the current Python interpreter path
+    import sys
+
+    python_path = sys.executable
+
     # Find the path to kicad's plugin directory
     plugin_loader = dedent(f"""
         plugin_path = r"{Path(__file__).parent.parent}"
+        atopile_python = r"{python_path}"
         import sys
+        import os
         import importlib
+
+        # Store the Python interpreter path for subprocess calls
+        os.environ["ATOPILE_PYTHON"] = atopile_python
 
         if plugin_path not in sys.path:
             sys.path.append(plugin_path)

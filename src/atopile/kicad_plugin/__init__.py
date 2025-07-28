@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
 
-from . import pullgroup  # noqa: F401
-
 LOG_FILE = (Path(__file__).parent / "log.log").expanduser().absolute()
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -12,3 +10,7 @@ file_handler = logging.FileHandler(str(LOG_FILE), "w", "utf-8")
 file_handler.setFormatter(formatter)
 log.addHandler(file_handler)
 log.setLevel(logging.DEBUG)
+
+from . import pullgroup  # noqa: E402, F401
+
+log.info("Kicad atopile plugin loaded")

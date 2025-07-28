@@ -29,6 +29,7 @@ from atopile.cli import (
     create,
     inspect_,
     install,
+    layout_sync,
     package,
     view,
     lsp,
@@ -159,6 +160,7 @@ app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
 app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
+app.command()(layout_sync.layout_sync)
 
 
 @app.command(hidden=True)
