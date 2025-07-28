@@ -33,9 +33,9 @@ export abstract class BaseWebview {
         this.panel = undefined;
     }
 
-    protected abstract getHtmlContent(webview: vscode.Webview): string;
+    protected abstract getHtmlContent(webview: vscode.Webview, path?: string): string;
 
-    public async open(): Promise<void> {
+    public async open(urlPath?: string): Promise<void> {
         const localResourceRoots = this.getLocalResourceRoots();
 
         if (!this.panel) {
@@ -66,7 +66,7 @@ export abstract class BaseWebview {
         }
 
         this.panel.webview.options = { ...this.panel.webview.options, localResourceRoots };
-        this.panel.webview.html = this.getHtmlContent(this.panel.webview);
+        this.panel.webview.html = this.getHtmlContent(this.panel.webview, urlPath);
         this.panel.reveal();
     }
 
