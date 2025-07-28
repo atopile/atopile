@@ -963,6 +963,9 @@ class Config:
         yield "selected_builds", self._selected_builds
         yield "project_dir", self._project_dir
 
+    def reload(self):
+        self._project = _try_construct_config(ProjectSettings)
+
     @property
     def project(self) -> ProjectSettings | ProjectConfig:
         if self._project is None:
