@@ -113,6 +113,7 @@ Access these commands via the Command Palette (Ctrl+Shift+P):
 | `atopile: Launch KiCAD`              | Open PCB in KiCAD editor        |
 | `atopile: Open Layout Preview`       | View PCB layout                 |
 | `atopile: Open 3D Model Preview`     | View 3D rendering               |
+| `atopile: Generate Manufacturing Data` | Generate manufacturing data   |
 | `atopile: Package Explorer`          | Browse available packages       |
 | `atopile: Restart Server`            | Restart language server         |
 | `atopile: Setup LLM rules & MCP`     | Configure AI assistance         |
