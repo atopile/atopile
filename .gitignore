@@ -197,3 +197,8 @@ standalone/
 
 # need to ignore because absolute paths
 .cursor/mcp.json
+
+# vsce writes this all the time
+# might want to make a CLAUDE.md for the repo at some point
+.mcp.json
+CLAUDE.md

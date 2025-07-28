@@ -76,6 +76,7 @@ def sync():
         # FIXME: nested groups are not yet supported
         if group_data["nested_groups"]:
             raise NotImplementedError("Nested groups are not yet supported")
+    pcbnew.Refresh()
 
 
 class PullGroup(pcbnew.ActionPlugin):
@@ -107,9 +108,16 @@ class PullGroup(pcbnew.ActionPlugin):
         log.info(f"Combined addr_map: {combined_addr_map}")
         log.info(f"Combined uuid_to_addr_map: {combined_uuid_map}")
 
-        selected_groups = [g for g in target_board.Groups() if g.IsSelected()]
-
         sync()
+
+        selected_groups = [
+            g
+            for g in target_board.Groups()
+            if g.IsSelected()
+            or
+            # add all groups where all parts of the group are selected
+            all(item.IsSelected() for item in g.GetItems())
+        ]
 
         # Pull Selected Groups
         for g in selected_groups:
