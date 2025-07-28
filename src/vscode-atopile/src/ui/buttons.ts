@@ -99,7 +99,7 @@ let buttonAddPart = new Button('file-binary', cmdAddPart, 'Add Part', 'Add part 
 let buttonAddPackage = new Button('package', cmdAddPackage, 'Add Package', 'Add package dependency');
 let buttonRemovePackage = new Button('trash', cmdRemovePackage, 'Remove Package', 'Remove package dependency');
 let buttonBuild = new Button('play', cmdBuild, 'Build', 'Build project');
-let buttonExport = new Button('export', cmdExport, 'Generate Manufacturing Data', 'Generate manufacturing data for the build');
+let buttonExport = new Button('file-zip', cmdExport, 'Generate Manufacturing Data', 'Generate manufacturing data for the build');
 let buttonLaunchKicad = new Button('circuit-board', cmdLaunchKicad, 'Launch KiCad', 'Open board in KiCad');
 let buttonPackageExplorer = new Button('symbol-misc', cmdPackageExplorer, 'Package Explorer', 'Open Package Explorer');
 let buttonKicanvasPreview = new Button('eye', cmdKicanvasPreview, 'Layout Preview', 'Open Layout Preview');
@@ -297,7 +297,7 @@ async function atoExport() {
 
     await _runInTerminalWithBuildTarget(`export ${build.name}`, ['build', '--build', build.name, '-t', 'all'], false);
 
-    captureEvent('vsce:export_start');
+    captureEvent('vsce:build_start', {'targets': ['all']});
 }
 
 async function atoAddPart() {
