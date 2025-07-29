@@ -2654,3 +2654,13 @@ def round_dataclass(obj: Any, precision: int = 0) -> Any:
         elif is_dataclass(val):
             round_dataclass(val, precision)
     return obj
+
+
+def match_iterables[T, U](
+    *iterables: Iterable[T], key: Callable[[T], U] = lambda x: x
+) -> dict[U, Iterable[T]]:
+    multi_dicts = [groupby(iterable, key) for iterable in iterables]
+    if not all(len(vs) == 1 for d in multi_dicts for vs in d.values()):
+        raise ValueError("All iterables must have unique keys")
+    dicts = [{k: vs[0] for k, vs in d.items()} for d in multi_dicts]
+    return zip_dicts_by_key(*dicts)  # type: ignore

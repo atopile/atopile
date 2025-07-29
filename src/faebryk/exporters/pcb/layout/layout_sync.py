@@ -8,12 +8,24 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from atopile.config import config as gcfg
-from faebryk.libs.kicad.fileformats_common import gen_uuid
+from faebryk.exporters.pcb.kicad.transformer import (
+    PCB_Transformer,
+    get_all_geo_containers,
+    get_all_geos,
+)
+from faebryk.libs.kicad.fileformats_common import C_xy, gen_uuid
 from faebryk.libs.kicad.fileformats_latest import (
     C_group,
     C_kicad_pcb_file,
+    C_net,
 )
-from faebryk.libs.util import find
+from faebryk.libs.util import (
+    KeyErrorNotFound,
+    find,
+    find_or,
+    not_none,
+    once,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +49,6 @@ class LayoutSync:
 
     def __init__(self, pcb_path: Path):
         self.pcb_path = pcb_path
-        self.pcb: PCB | None = None
         self.layout_maps: dict[str, LayoutMap] = {}
 
         manifest = gcfg.project.paths.manifest
@@ -46,12 +57,13 @@ class LayoutSync:
 
         logger.info(f"Loading layout maps from {manifest}")
         self._load_layout_maps(manifest)
+        self._old_groups: dict[str, C_group] = {}
 
-    def load_pcb(self) -> PCB:
+    @property
+    @once
+    def pcb(self) -> PCB:
         """Load the PCB file."""
-        if self.pcb is None:
-            self.pcb = C_kicad_pcb_file.loads(self.pcb_path).kicad_pcb
-        return self.pcb
+        return C_kicad_pcb_file.loads(self.pcb_path).kicad_pcb
 
     def _load_layout_maps(self, manifest_path: Path) -> dict[str, LayoutMap]:
         """Load layout maps from the manifest."""
@@ -81,41 +93,22 @@ class LayoutSync:
 
         return self.layout_maps
 
-    def get_footprint_addr(self, fp: Footprint) -> str | None:
+    def _get_footprint_addr(self, fp: Footprint) -> str | None:
         """Get the address of a footprint."""
-        # First try the property
-        out = fp.propertys.get("atopile_address")
-        if out:
-            return out.value
-
-        # Fallback to UUID mapping (legacy support)
-        if hasattr(fp, "uuid") and fp.uuid:
-            for layout_map in self.layout_maps.values():
-                if fp.uuid in layout_map.uuid_to_addr_map:
-                    return layout_map.uuid_to_addr_map[fp.uuid]
-
+        prop = fp.propertys.get("atopile_address")
+        if prop:
+            return prop.value
         return None
-
-    def get_footprints_by_addr(self) -> dict[str, Footprint]:
-        """Get all footprints indexed by their address."""
-        pcb = self.load_pcb()
-        result = {}
-        for fp in pcb.footprints:
-            addr = self.get_footprint_addr(fp)
-            if addr:
-                result[addr] = fp
-        return result
-
-    def get_groups_by_name(self) -> dict[str, C_group]:
-        """Get all groups indexed by their name."""
-        pcb = self.load_pcb()
-        return {g.name: g for g in pcb.groups if g.name}
 
     def sync_groups(self):
         """Synchronize groups based on the layout map."""
-        pcb = self.load_pcb()
-        groups = self.get_groups_by_name()
-        footprints = self.get_footprints_by_addr()
+        self._old_groups = {g.name: copy.deepcopy(g) for g in self.pcb.groups}
+        groups = {g.name: g for g in self.pcb.groups if g.name}
+        footprints = {
+            addr: fp
+            for fp in self.pcb.footprints
+            if (addr := self._get_footprint_addr(fp))
+        }
 
         for group_name, layout_map in self.layout_maps.items():
             logger.debug(f"Updating group {group_name}")
@@ -127,7 +120,7 @@ class LayoutSync:
                     uuid=gen_uuid(group_name),
                     members=[],
                 )
-                pcb.groups.append(group)
+                self.pcb.groups.append(group)
                 groups[group_name] = group
             else:
                 group = groups[group_name]
@@ -141,7 +134,7 @@ class LayoutSync:
             # Update members list
             group.members = list(expected_members)
 
-    def generate_net_map(
+    def _generate_net_map(
         self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
     ) -> dict[str, str]:
         """Generate mapping from source net names to target net names."""
@@ -151,13 +144,13 @@ class LayoutSync:
         # Get footprints by address for both boards
         source_fps: dict[str, PCB.C_pcb_footprint] = {}
         for fp in source_pcb.footprints:
-            addr = self.get_footprint_addr(fp)
+            addr = self._get_footprint_addr(fp)
             if addr:
                 source_fps[addr] = fp
 
         target_fps: dict[str, PCB.C_pcb_footprint] = {}
         for fp in target_pcb.footprints:
-            addr = self.get_footprint_addr(fp)
+            addr = self._get_footprint_addr(fp)
             if addr:
                 target_fps[addr] = fp
 
@@ -215,204 +208,209 @@ class LayoutSync:
 
         return net_map
 
-    def sync_footprints(
-        self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
+    def _sync_footprints(
+        self,
+        sub_pcb: PCB,
+        top_pcb: PCB,
+        addr_map: dict[str, str],
+        net_map: dict[str, str],
+        offset: C_xy,
     ):
         """Sync footprint positions from source to target."""
         # Get footprints by address
-        source_fps: dict[str, PCB.C_pcb_footprint] = {}
-        for fp in source_pcb.footprints:
-            addr = self.get_footprint_addr(fp)
-            if addr:
-                source_fps[addr] = fp
+        sub_fps: dict[str, PCB.C_pcb_footprint] = {
+            addr: fp
+            for fp in sub_pcb.footprints
+            if (addr := self._get_footprint_addr(fp))
+        }
 
-        target_fps: dict[str, PCB.C_pcb_footprint] = {}
-        for fp in target_pcb.footprints:
-            addr = self.get_footprint_addr(fp)
-            if addr:
-                target_fps[addr] = fp
+        top_fps: dict[str, PCB.C_pcb_footprint] = {
+            addr: fp
+            for fp in top_pcb.footprints
+            if (addr := self._get_footprint_addr(fp))
+        }
 
         # Sync positions
         for src_addr, tgt_addr in addr_map.items():
-            if src_addr not in source_fps or tgt_addr not in target_fps:
+            if src_addr not in sub_fps or tgt_addr not in top_fps:
                 continue
 
-            src_fp = source_fps[src_addr]
-            tgt_fp = target_fps[tgt_addr]
+            sub_fp = sub_fps[src_addr]
+            top_fp = top_fps[tgt_addr]
 
-            # Copy position and orientation
-            tgt_fp.at = src_fp.at
-            tgt_fp.layer = src_fp.layer
+            PCB_Transformer.move_fp(top_fp, sub_fp.at + offset, sub_fp.layer)
 
-            # Sync reference designator position
-            if src_fp.fp_texts and tgt_fp.fp_texts:
-                for src_text in src_fp.fp_texts:
-                    if src_text.type == "reference":
-                        for tgt_text in tgt_fp.fp_texts:
-                            if tgt_text.type == "reference":
-                                tgt_text.at = src_text.at
-                                break
-                        break
+        # Non-atopile footprints
+        new_objects = []
+        manual_fps = [
+            fp for fp in sub_pcb.footprints if not self._get_footprint_addr(fp)
+        ]
+        for sub_fp in manual_fps:
+            top_fp = copy.deepcopy(sub_fp)
+            top_fp.uuid = gen_uuid()
 
-            # Sync pad positions
-            if hasattr(tgt_fp, "pad") and hasattr(src_fp, "pad"):
-                for tgt_pad in tgt_fp.pad:  # type: ignore
-                    src_pads = [p for p in src_fp.pad if p.number == tgt_pad.number]  # type: ignore
-                    if src_pads:
-                        src_pad = src_pads[0]
-                        tgt_pad.at = src_pad.at
+            for pad in top_fp.pads:
+                pad.uuid = gen_uuid()
+                if pad.net and pad.net.name in net_map:
+                    top_net_name = net_map[pad.net.name]
+                    pad.net = C_net(
+                        self._get_net_number(top_pcb, top_net_name),
+                        name=top_net_name,
+                    )
+                else:
+                    pad.net = None
 
-    def calculate_group_offset(
-        self, source_pcb: PCB, target_group: C_group
-    ) -> tuple[float, float]:
+            new_objects.append(top_fp)
+
+            PCB_Transformer.move_fp(top_fp, sub_fp.at + offset, sub_fp.layer)
+
+        return new_objects
+
+    def _sync_routes(
+        self,
+        sub_pcb: PCB,
+        top_pcb: PCB,
+        net_map: dict[str, str],
+        offset: C_xy,
+    ):
+        new_objects = []
+        for track in sub_pcb.segments + sub_pcb.arcs + sub_pcb.zones + sub_pcb.vias:
+            # Get source net name
+            sub_net = find_or(sub_pcb.nets, lambda n: n.number == track.net, None)
+
+            # Create new track
+            new_track: PCB.C_segment | PCB.C_arc_segment | PCB.C_zone | PCB.C_via = (
+                copy.deepcopy(track)
+            )
+            new_track.uuid = gen_uuid()
+            if sub_net and sub_net.name in net_map:
+                new_track.net = self._get_net_number(top_pcb, net_map[sub_net.name])
+            else:
+                new_track.net = 0
+
+            PCB_Transformer.move_object(new_track, offset)
+            new_objects.append(new_track)
+
+        return new_objects
+
+    def _sync_other(self, sub_pcb: PCB, top_pcb: PCB, offset: C_xy):
+        new_graphics = []
+        for gr in (
+            get_all_geos(sub_pcb)
+            + sub_pcb.gr_text_boxs
+            + sub_pcb.gr_texts
+            + sub_pcb.images
+            # TODO tables are weird about uuids
+            # + sub_pcb.tables
+        ):
+            new_gr = copy.deepcopy(gr)
+            new_gr.uuid = gen_uuid()
+
+            PCB_Transformer.move_object(new_gr, offset)
+            new_graphics.append(new_gr)
+
+        return new_graphics
+
+    def _calculate_group_offset(self, source_pcb: PCB, target_group: C_group) -> C_xy:
         """Calculate offset to apply when pulling a group layout."""
-        # Find anchor footprint (largest by pad count)
-        target_pcb = self.load_pcb()
-        group_fps = []
 
-        for fp in target_pcb.footprints:
-            if fp.uuid in target_group.members:
-                group_fps.append(fp)
+        ZERO = C_xy(0, 0)
+        # Find anchor footprint (largest by pad count)
+        group_fps = [
+            fp
+            for fp in self.pcb.footprints
+            if fp.uuid in target_group.members and self._get_footprint_addr(fp)
+        ]
 
         if not group_fps:
-            return (0.0, 0.0)
+            return ZERO
 
         # Find anchor by pad count
         anchor_fp = max(
-            group_fps, key=lambda fp: len(fp.pad) if hasattr(fp, "pad") else 0
+            group_fps,
+            key=lambda fp: len(fp.pads),
         )
-        target_pos = anchor_fp.at
+        top_pos = anchor_fp.at
 
         # Find corresponding source footprint
-        target_addr = self.get_footprint_addr(anchor_fp)
-        if not target_addr:
-            return (0.0, 0.0)
+        target_addr = not_none(self._get_footprint_addr(anchor_fp))
+        target_addr = target_addr.split(".", maxsplit=1)[-1]
 
         # Find in source
-        for fp in source_pcb.footprints:
-            if self.get_footprint_addr(fp) == target_addr:
-                source_pos = fp.at
-                return (
-                    target_pos.x - source_pos.x,
-                    target_pos.y - source_pos.y,
-                )
+        try:
+            sub_fp = find(
+                source_pcb.footprints,
+                lambda fp: self._get_footprint_addr(fp) == target_addr,
+            )
+        except KeyErrorNotFound:
+            logger.warning(f"No source footprint found for '{target_addr}'")
+            return ZERO
 
-        return (0.0, 0.0)
+        sub_pos = sub_fp.at
+        # TODO rotation?
+        offset = C_xy(
+            top_pos.x - sub_pos.x,
+            top_pos.y - sub_pos.y,
+        )
+
+        return offset
 
     def pull_group_layout(self, group_name: str):
         """Pull layout for a specific group from its source file."""
+
         if group_name not in self.layout_maps:
             logger.warning(f"No layout map found for group {group_name}")
             return
-
         layout_map = self.layout_maps[group_name]
         if not layout_map.layout_path.exists():
             raise FileNotFoundError(f"Layout file {layout_map.layout_path} not found")
 
-        # Load source and target PCBs
-        source_pcb = C_kicad_pcb_file.loads(layout_map.layout_path).kicad_pcb
-        target_pcb = self.load_pcb()
+        top_pcb = self.pcb
+        sub_pcb = C_kicad_pcb_file.loads(layout_map.layout_path).kicad_pcb
 
-        # Get the group
-        groups = self.get_groups_by_name()
-        if group_name not in groups:
-            logger.warning(f"Group {group_name} not found in target PCB")
-            return
+        group = find(top_pcb.groups, lambda g: g.name == group_name)
+        offset = self._calculate_group_offset(sub_pcb, group)
+        inverted_addr_map = {v: k for k, v in layout_map.addr_map.items()}
 
-        group = groups[group_name]
+        net_map = self._generate_net_map(sub_pcb, top_pcb, inverted_addr_map)
 
-        # Calculate offset
-        offset = self.calculate_group_offset(source_pcb, group)
-
-        # Generate net map
-        net_map = self.generate_net_map(
-            source_pcb, target_pcb, {v: k for k, v in layout_map.addr_map.items()}
+        # delete all non-fp elements in group
+        to_delete = (
+            set(self._old_groups[group_name].members)
+            if group_name in self._old_groups
+            else set()
         )
+        for container in [
+            top_pcb.segments,
+            top_pcb.arcs,
+            top_pcb.vias,
+            top_pcb.zones,
+            *get_all_geo_containers(top_pcb),
+            top_pcb.images,
+            top_pcb.gr_texts,
+            top_pcb.gr_text_boxs,
+            # top_pcb.tables,
+        ]:
+            container[:] = [x for x in container if x.uuid not in to_delete]
+        # delete non-atopile group footprints
+        top_pcb.footprints[:] = [
+            fp
+            for fp in top_pcb.footprints
+            if fp.uuid not in to_delete or self._get_footprint_addr(fp)
+        ]
 
-        # Sync footprints
-        self.sync_footprints(
-            source_pcb,
-            target_pcb,
-            {v: k for k, v in layout_map.addr_map.items()},
+        new_fps = self._sync_footprints(
+            sub_pcb, top_pcb, inverted_addr_map, net_map, offset
         )
+        new_routes = self._sync_routes(sub_pcb, top_pcb, net_map, offset)
+        new_other = self._sync_other(sub_pcb, top_pcb, offset)
 
-        # Sync tracks
-        for track in source_pcb.segments:
-            # Get source net name
-            source_net_name = None
-            for net in source_pcb.nets:
-                if net.number == track.net:
-                    source_net_name = net.name
-                    break
+        new_elements = new_fps + new_routes + new_other
+        for new_element in new_elements:
+            container = PCB_Transformer.get_pcb_container(new_element, top_pcb)
+            container.append(new_element)
 
-            if source_net_name and source_net_name in net_map:
-                # Create new track
-                new_track = copy.deepcopy(track)
-                new_track.net = self._get_net_number(
-                    target_pcb, net_map[source_net_name]
-                )
-
-                # Apply offset
-                new_track.start.x += offset[0]
-                new_track.start.y += offset[1]
-                new_track.end.x += offset[0]
-                new_track.end.y += offset[1]
-
-                target_pcb.segments.append(new_track)
-                group.members.append(new_track.uuid)
-
-        # Sync zones
-        for zone in source_pcb.zones:
-            # Get source net name
-            source_net_name = None
-            if hasattr(zone, "net") and zone.net:
-                for net in source_pcb.nets:
-                    if net.number == zone.net:
-                        source_net_name = net.name
-                        break
-
-            if source_net_name and source_net_name in net_map:
-                new_zone = copy.deepcopy(zone)
-                new_zone.net = self._get_net_number(
-                    target_pcb, net_map[source_net_name]
-                )
-
-                # Apply offset to polygon points
-                if hasattr(new_zone, "polygon") and new_zone.polygon:
-                    polygon = new_zone.polygon
-                    if hasattr(polygon, "pts") and hasattr(polygon.pts, "xy"):
-                        for pt in polygon.pts.xy:
-                            pt.x += offset[0]
-                            pt.y += offset[1]
-
-                target_pcb.zones.append(new_zone)
-                group.members.append(new_zone.uuid)
-
-        # Sync graphics
-        for gr in source_pcb.gr_lines + source_pcb.gr_arcs + source_pcb.gr_rects:
-            new_gr = copy.deepcopy(gr)
-
-            # Apply offset based on type
-            if hasattr(new_gr, "start"):
-                new_gr.start.x += offset[0]
-                new_gr.start.y += offset[1]
-            if hasattr(new_gr, "end"):
-                new_gr.end.x += offset[0]
-                new_gr.end.y += offset[1]
-            if hasattr(new_gr, "center"):
-                new_gr.center.x += offset[0]
-                new_gr.center.y += offset[1]
-
-            # Add to appropriate list
-            if hasattr(new_gr, "start") and hasattr(new_gr, "end"):
-                if hasattr(new_gr, "mid"):
-                    target_pcb.gr_arcs.append(new_gr)
-                else:
-                    target_pcb.gr_lines.append(new_gr)
-            elif hasattr(new_gr, "center"):
-                target_pcb.gr_rects.append(new_gr)
-
-            group.members.append(new_gr.uuid)
+        group.members.extend(e.uuid for e in new_elements)
 
     def _get_net_number(self, pcb: PCB, net_name: str) -> int:
         """Get the net number for a given net name."""

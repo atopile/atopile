@@ -425,7 +425,7 @@ def _decode[T: DataclassInstance](
         out = t(**value_dict)
     except TypeError as e:
         raise TypeError(
-            f"Failed to create {pretty_type(t)} with \n{md_list(value_dict)}"
+            f"Failed to create {pretty_type(t)}:\n{str(e)} with \n{md_list(value_dict)}"
         ) from e
 
     # set parent pointers for all dataclasses in the tree
@@ -618,25 +618,59 @@ class JSON_File:
         return text
 
 
-def dataclass_dfs(obj) -> Iterator[tuple[Any, list, list[str]]]:
-    return _iterate_tree(obj, [], [])
+@dataclass
+class _visit_dataclass_context:
+    value: Any
+    path: list
+    name_path: list[str]
+    setter: Callable[[Any], None] | None
+
+
+def visit_dataclass(
+    obj,
+) -> Iterator[_visit_dataclass_context]:
+    return _iterate_tree(obj, [], [], setter=None)
 
 
 def _iterate_tree(
-    obj, path: list, name_path: list[str]
-) -> Iterator[tuple[Any, list, list[str]]]:
+    obj,
+    path: list,
+    name_path: list[str],
+    setter: Callable[[Any], None] | None = None,
+) -> Iterator[_visit_dataclass_context]:
     out_path = path + [obj]
 
-    yield obj, path, name_path
+    yield _visit_dataclass_context(
+        value=obj,
+        path=path,
+        name_path=name_path,
+        setter=setter,
+    )
+
+    def _set(k, v, it):
+        it[k] = v
 
     if is_dataclass(obj):
         for f in fields(obj):
             yield from _iterate_tree(
-                getattr(obj, f.name), out_path, name_path + [f".{f.name}"]
+                getattr(obj, f.name),
+                path=out_path,
+                name_path=name_path + [f".{f.name}"],
+                setter=lambda v: setattr(obj, f.name, v),
             )
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
-            yield from _iterate_tree(v, out_path, name_path + [f"[{i}]"])
+            yield from _iterate_tree(
+                v,
+                out_path,
+                name_path + [f"[{i}]"],
+                setter=lambda v: _set(i, v, obj),
+            )
     elif isinstance(obj, dict):
         for k, v in obj.items():
-            yield from _iterate_tree(v, out_path, name_path + [f"[{repr(k)}]"])
+            yield from _iterate_tree(
+                v,
+                out_path,
+                name_path + [f"[{repr(k)}]"],
+                setter=lambda v: _set(k, v, obj),
+            )

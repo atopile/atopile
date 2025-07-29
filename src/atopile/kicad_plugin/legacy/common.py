@@ -5,13 +5,25 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-import pcbnew  # type: ignore
 import wx as wx_module  # type: ignore
 
-log = logging.getLogger(__name__)
-
-
 # ATTENTION: RUNS IN PYTHON3.8
+
+LOG_FILE = (Path(__file__).parent / "log.log").expanduser().absolute()
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+formatter = logging.Formatter("%(asctime)s - %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+file_handler = logging.FileHandler(str(LOG_FILE), "w", "utf-8")
+file_handler.setFormatter(formatter)
+
+
+def setup_logger(module_name: str):
+    log = logging.getLogger(module_name)
+    log.addHandler(file_handler)
+    log.setLevel(logging.INFO)
+    return log
+
+
+log = setup_logger(__name__)
 
 
 def run_ato(args: list[str], cwd: Optional[Path] = None) -> subprocess.CompletedProcess:
@@ -35,14 +47,14 @@ def run_ato(args: list[str], cwd: Optional[Path] = None) -> subprocess.Completed
         raise
 
     log.info(f"Ran ato command: {cmd}")
-    log.info(f"Output: {out.stdout}")
-    log.info(f"Error: {out.stderr}")
+    log.info(f"stdo: {out.stdout}")
+    log.info(f"stde: {out.stderr}")
     return out
 
 
 def message_box(message: str, title: str, icon: int):
     """Show a message box."""
-    wx = pcbnew.GetWXApp()
+    wx = wx_module.GetApp()
     if wx:
         wx_module.MessageBox(message, title, icon)
     else:

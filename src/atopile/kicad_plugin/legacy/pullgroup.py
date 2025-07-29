@@ -1,14 +1,12 @@
-import logging
 import subprocess
 from pathlib import Path
 
 import pcbnew  # type: ignore
 import wx as wx_module  # type: ignore
 
-from .common import log_exceptions, message_box, run_ato
+from .common import LOG_FILE, log_exceptions, message_box, run_ato, setup_logger
 
-log = logging.getLogger(__name__)
-
+log = setup_logger(__name__)
 
 # print path to pcbnew
 log.info(f"pcbnew: {pcbnew.__file__}")
@@ -24,7 +22,9 @@ class PullGroup(pcbnew.ActionPlugin):
             "Warning: this will save the PCB file."
         )
         self.show_toolbar_button = True
-        self.icon_file_name = str(Path(__file__).parent / "download.png")
+        self.icon_file_name = str(
+            Path(__file__).parent.parent / "resource" / "download.png"
+        )
         self.dark_icon_file_name = self.icon_file_name
 
     @log_exceptions()
@@ -32,18 +32,21 @@ class PullGroup(pcbnew.ActionPlugin):
         target_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = target_board.GetFileName()
 
-        # Get selected groups
-        selected = [g for g in target_board.Groups() if g.IsSelected()] + [
-            fp for fp in target_board.GetFootprints() if fp.IsSelected()
-        ]
-
         # Find the manifest file
 
-        cmd = ["layout-sync", board_path, "--no-backup-unsaved"]
+        cmd = [
+            "kicad-ipc",
+            "layout-sync",
+            "--legacy",
+            "--board",
+            board_path,
+        ]
 
-        # Add selected groups if any
-        for selected in selected:
-            cmd.extend(["--include", selected.GetName()])
+        for selected in [g for g in target_board.Groups() if g.IsSelected()]:
+            cmd.extend(["--include-group", selected.GetName()])
+        for selected in [fp for fp in target_board.GetFootprints() if fp.IsSelected()]:
+            uuid = selected.m_Uuid.AsString()
+            cmd.extend(["--include-fp", uuid])
 
         # save pcb
         pcbnew.SaveBoard(board_path, target_board)
@@ -58,7 +61,7 @@ class PullGroup(pcbnew.ActionPlugin):
 
             # Show error message
             message_box(
-                f"Layout sync failed:\n{e.stderr or e.stdout or str(e)}",
+                f"Layout sync failed, check '{LOG_FILE}' for details",
                 "Pull Group Error",
                 wx_module.OK | wx_module.ICON_ERROR,
             )
@@ -66,7 +69,3 @@ class PullGroup(pcbnew.ActionPlugin):
             pass
         else:
             log.info("Layout sync successful")
-
-
-with log_exceptions():
-    PullGroup().register()
