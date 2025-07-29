@@ -1260,7 +1260,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     node = getattr(node, ref)
                 except AttributeError as ex:
                     raise errors.UserKeyError.from_ctx(
-                        item.original_ctx, f"No attribute `{ref}` found on {node}"
+                        item.original_ctx,
+                        f"Could not find `{ref}` in {node.__file__}",
+                        markdown=False,
                     ) from ex
 
             assert isinstance(node, type) and issubclass(node, L.Node)
@@ -1277,7 +1279,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if isinstance(node, Context.ImportPlaceholder):
                 raise errors.UserTypeError.from_ctx(
                     item.original_ctx,
-                    "Importing a import is not supported",
+                    "Importing an import is not supported",
                 )
 
             assert (
