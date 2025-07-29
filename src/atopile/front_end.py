@@ -1556,10 +1556,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                             type_hints, arg_name, arg_value
                         )
                     except _EnumUpgradeError as ex:
-                        raise errors.UserInvalidValueError(
-                            *ex.enum_types,
+                        raise errors.UserInvalidValueError.from_ctx(
+                            origin=None,  # TODO: add context
+                            enum_types=ex.enum_types,
                             param_name=arg_name,
-                            traceback=self.get_traceback(),
                         ) from ex
 
             return super_class(**kwargs), promised_supers
@@ -1902,8 +1902,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     value = attr.domain.enum_t[value]
                 except KeyError:
                     raise errors.UserInvalidValueError.from_ctx(
-                        assignable_ctx,
-                        attr.domain.enum_t,
+                        origin=assignable_ctx,
+                        enum_types=(attr.domain.enum_t,),
+                        param_name=assigned_name.name,
                         traceback=self.get_traceback(),
                     )
 
@@ -2462,9 +2463,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     )
                 except _EnumUpgradeError as ex:
                     raise errors.UserInvalidValueError.from_ctx(
-                        ctx,
-                        *ex.enum_types,
+                        enum_types=ex.enum_types,
                         param_name=arg_name,
+                        origin=ctx,
                         traceback=self.get_traceback(),
                     ) from ex
 
