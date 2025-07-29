@@ -16,13 +16,13 @@ from dataclasses import dataclass
 from enum import Enum, StrEnum
 from itertools import chain, pairwise
 from pathlib import Path
+from types import UnionType
 from typing import (
     Any,
     Iterable,
     Literal,
     Sequence,
     Type,
-    Union,
     cast,
 )
 
@@ -753,7 +753,7 @@ def _try_upgrade_str_to_enum(
         except KeyError:
             raise _EnumUpgradeError(type_hint, arg_name=arg_name)
 
-    elif isinstance(type_hint, Union):
+    elif isinstance(type_hint, UnionType):
         type_args = typing.get_args(type_hint)
         enum_args = [
             t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
