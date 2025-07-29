@@ -493,7 +493,6 @@ class Node(CNode):
                     if f_name in base.__dict__:
                         f = getattr(base, f_name)
                         f(self)
-
         self._setup_done = True
 
     def __hash__(self):
