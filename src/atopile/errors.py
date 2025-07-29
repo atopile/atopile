@@ -1,3 +1,4 @@
+from enum import Enum
 from pathlib import Path
 from typing import Sequence
 
@@ -215,6 +216,34 @@ class UserValueError(UserException):
     """
     Raised if something is the correct type but an invalid value.
     """
+
+
+class UserInvalidValueError(UserValueError):
+    """
+    Indicates an invalid enum value
+    """
+
+    @classmethod
+    def from_ctx(
+        cls,
+        ctx: ParserRuleContext,
+        *enum_types: type[Enum],
+        param_name: str | None = None,
+        **kwargs,
+    ) -> "UserInvalidValueError":
+        expected_values = ", ".join(
+            [
+                f"`{member.name}`"
+                for enum_type in enum_types
+                for member in enum_type.__members__.values()
+            ]
+        )
+        enum_names = ", ".join([enum_type.__qualname__ for enum_type in enum_types])
+        message = (
+            f"Invalid value for `{param_name or enum_names}`. "
+            f"Expected one of: {expected_values}."
+        )
+        return super().from_ctx(ctx, message, **kwargs)
 
 
 class UserImportNotFoundError(UserException):

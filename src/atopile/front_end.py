@@ -13,7 +13,7 @@ from collections import defaultdict
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 from itertools import chain, pairwise
 from pathlib import Path
 from typing import (
@@ -1466,6 +1466,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         isn't already known, attaching the __atopile_src_ctx__ attribute to the new
         class.
         """
+        kwargs = kwargs or {}
+
         if isinstance(item, type) and issubclass(item, L.Node):
             super_class = item
             for super_ctx in promised_supers:
@@ -1492,7 +1494,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(**(kwargs or {})), promised_supers
+            return super_class(**kwargs), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -1831,16 +1833,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 try:
                     value = attr.domain.enum_t[value]
                 except KeyError:
-                    expected_values = ", ".join(
-                        [
-                            f"`{member.name}`"
-                            for member in attr.domain.enum_t.__members__.values()
-                        ]
-                    )
-                    raise errors.UserValueError.from_ctx(
+                    raise errors.UserInvalidValueError.from_ctx(
                         assignable_ctx,
-                        f"Invalid value for `{attr.domain.enum_t.__qualname__}`. "
-                        f"Expected one of: {expected_values}.",
+                        attr.domain.enum_t,
                         traceback=self.get_traceback(),
                     )
 
@@ -2380,12 +2375,58 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         )
         kwargs = self.visitTemplate(ctx.template())
 
+        if hasattr(constructor, "__original_init__"):
+            callable_ = constructor.__original_init__
+        else:
+            callable_ = constructor
+
+        constructor_signature = inspect.signature(callable_)
+        type_hints = typing.get_type_hints(callable_)
+
+        def try_upgrade_str_to_enum(arg_name: str, arg_value: str) -> Enum | str:
+            type_args = typing.get_args(type_hints[arg_name])
+            enum_args = [
+                t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
+            ]
+
+            # assume any matching enum works equivalently well
+            if enum_args and isinstance(arg_value, str):
+                for t in enum_args:
+                    try:
+                        return t[arg_value]
+                    except KeyError:
+                        pass
+
+                if not any(
+                    isinstance(t, type) and issubclass(t, str) for t in type_args
+                ):
+                    raise errors.UserInvalidValueError.from_ctx(
+                        ctx,
+                        *enum_args,
+                        param_name=arg_name,
+                        traceback=self.get_traceback(),
+                    )
+
+            return arg_value
+
+        for arg_name, arg_value in kwargs.items():
+            if arg_name not in constructor_signature.parameters:
+                raise errors.UserBadParameterError.from_ctx(
+                    ctx,
+                    f"Unknown template argument `{arg_name}` for `{trait_name}`",
+                    traceback=self.get_traceback(),
+                )
+
+            if isinstance(arg_value, str):
+                kwargs[arg_name] = try_upgrade_str_to_enum(arg_name, arg_value)
+
         try:
             trait = constructor(*args, **kwargs)
         except Exception as e:
+            exc_str = f": {e}" if str(e) else ""
             raise errors.UserTraitError.from_ctx(
                 ctx,
-                f"Error applying trait `{trait_name}`: {e}",
+                f"Error applying trait `{trait_name}`{exc_str}",
                 traceback=self.get_traceback(),
             ) from e
 
