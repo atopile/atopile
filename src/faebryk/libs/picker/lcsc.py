@@ -226,6 +226,9 @@ class EasyEDAFootprint:
         for m in fp.footprint.models:
             if m.path.suffix == ".wrl":
                 m.path = m.path.parent
+        # workaround: kicad5 legacy stuff
+        for fp_text in fp.footprint.fp_texts:
+            fp_text.text = fp_text.text.replace("%R", "${REFERENCE}")
         return cls(fp)
 
     def dump(self, path: Path):

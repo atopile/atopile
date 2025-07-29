@@ -52,9 +52,7 @@ from atopile.errors import (
     UserNoProjectException,
 )
 from atopile.version import (
-    DISTRIBUTION_NAME,
     clean_version,
-    get_installed_atopile_version,
 )
 from faebryk.libs.exceptions import UserResourceException
 from faebryk.libs.paths import get_config_dir
@@ -354,10 +352,7 @@ class BuildTargetPaths(BaseConfigModel):
             # delayed import to improve startup time
             from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 
-            C_kicad_pcb_file.skeleton(
-                generator=DISTRIBUTION_NAME,
-                generator_version=str(get_installed_atopile_version()),
-            ).dumps(self.layout)
+            C_kicad_pcb_file.skeleton().dumps(self.layout)
         elif not self.layout.is_file():
             raise UserResourceException(f"Layout is not a file: {self.layout}")
 
