@@ -1,6 +1,6 @@
 from enum import Enum
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -228,7 +228,8 @@ class UserInvalidValueError(UserValueError):
         cls,
         origin: ParserRuleContext | None,
         enum_types: tuple[type[Enum], ...],
-        param_name: str | None = None,
+        enum_name: str | None = None,
+        value: Any | None = None,
         **kwargs,
     ) -> "UserInvalidValueError":
         expected_values = ", ".join(
@@ -238,11 +239,13 @@ class UserInvalidValueError(UserValueError):
                 for member in enum_type.__members__.values()
             ]
         )
-        enum_names = ", ".join([enum_type.__qualname__ for enum_type in enum_types])
+        enum_names = enum_name or ", ".join(
+            [enum_type.__qualname__ for enum_type in enum_types]
+        )
         return super().from_ctx(
             origin=origin,
             message=(
-                f"Invalid value for `{param_name or enum_names}`. "
+                f"Invalid value for `{enum_names}`: `{value}`. "
                 f"Expected one of: {expected_values}."
             ),
             **kwargs,
