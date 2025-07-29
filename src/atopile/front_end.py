@@ -22,6 +22,7 @@ from typing import (
     Literal,
     Sequence,
     Type,
+    Union,
     cast,
 )
 
@@ -728,6 +729,48 @@ class _ParameterDefinition:
         if not self.is_definition:
             return False
         return len(self.ref) == 1
+
+
+class _EnumUpgradeError(Exception):
+    def __init__(self, *enum_types: type[Enum], arg_name: str):
+        self.enum_types = enum_types
+        self.arg_name = arg_name
+
+
+def _try_upgrade_str_to_enum(
+    type_hints: dict[str, Any], arg_name: str, arg_value: str
+) -> Enum | str:
+    """
+    Attempts to convert a string argument to a compatible enum value, based on type
+    hints.
+    """
+
+    type_hint = type_hints[arg_name]
+
+    if isinstance(type_hint, type) and issubclass(type_hint, Enum):
+        try:
+            return type_hint[arg_value]
+        except KeyError:
+            raise _EnumUpgradeError(type_hint, arg_name=arg_name)
+
+    elif isinstance(type_hint, Union):
+        type_args = typing.get_args(type_hint)
+        enum_args = [
+            t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
+        ]
+
+        # assume any matching enum works equivalently well
+        if enum_args and isinstance(arg_value, str):
+            for t in enum_args:
+                try:
+                    return t[arg_value]
+                except KeyError:
+                    pass
+
+            if not any(isinstance(t, type) and issubclass(t, str) for t in type_args):
+                raise _EnumUpgradeError(*enum_args, arg_name=arg_name)
+
+    return arg_value
 
 
 def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
@@ -1501,43 +1544,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             super_class_signature = inspect.signature(callable_)
             type_hints = typing.get_type_hints(callable_)
 
-            def try_upgrade_str_to_enum(arg_name: str, arg_value: str) -> Enum | str:
-                type_hint = type_hints[arg_name]
-                if isinstance(type_hint, type):
-                    if issubclass(type_hint, Enum):
-                        return type_hint[arg_value]
-                    else:
-                        return arg_value
-
-                type_args = typing.get_args(type_hints[arg_name])
-                enum_args = [
-                    t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
-                ]
-
-                # assume any matching enum works equivalently well
-                if enum_args and isinstance(arg_value, str):
-                    for t in enum_args:
-                        try:
-                            print(f"upgraded: {t[arg_value]}")
-                            return t[arg_value]
-                        except KeyError:
-                            pass
-
-                    if not any(
-                        isinstance(t, type) and issubclass(t, str) for t in type_args
-                    ):
-                        raise ValueError(
-                            f"Unknown enum value `{arg_value}` for `{arg_name}`"
-                        )
-                        # raise errors.UserInvalidValueError.from_ctx(
-                        #     ctx,
-                        #     *enum_args,
-                        #     param_name=arg_name,
-                        #     traceback=self.get_traceback(),
-                        # )
-
-                return arg_value
-
             for arg_name, arg_value in kwargs.items():
                 if arg_name not in super_class_signature.parameters:
                     raise errors.UserBadParameterError(
@@ -1545,7 +1551,16 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     )
 
                 if isinstance(arg_value, str):
-                    kwargs[arg_name] = try_upgrade_str_to_enum(arg_name, arg_value)
+                    try:
+                        kwargs[arg_name] = _try_upgrade_str_to_enum(
+                            type_hints, arg_name, arg_value
+                        )
+                    except _EnumUpgradeError as ex:
+                        raise errors.UserInvalidValueError(
+                            *ex.enum_types,
+                            param_name=arg_name,
+                            traceback=self.get_traceback(),
+                        ) from ex
 
             return super_class(**kwargs), promised_supers
 
@@ -2432,32 +2447,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         constructor_signature = inspect.signature(callable_)
         type_hints = typing.get_type_hints(callable_)
 
-        def try_upgrade_str_to_enum(arg_name: str, arg_value: str) -> Enum | str:
-            type_args = typing.get_args(type_hints[arg_name])
-            enum_args = [
-                t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
-            ]
-
-            # assume any matching enum works equivalently well
-            if enum_args and isinstance(arg_value, str):
-                for t in enum_args:
-                    try:
-                        return t[arg_value]
-                    except KeyError:
-                        pass
-
-                if not any(
-                    isinstance(t, type) and issubclass(t, str) for t in type_args
-                ):
-                    raise errors.UserInvalidValueError.from_ctx(
-                        ctx,
-                        *enum_args,
-                        param_name=arg_name,
-                        traceback=self.get_traceback(),
-                    )
-
-            return arg_value
-
         for arg_name, arg_value in kwargs.items():
             if arg_name not in constructor_signature.parameters:
                 raise errors.UserBadParameterError.from_ctx(
@@ -2467,7 +2456,17 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 )
 
             if isinstance(arg_value, str):
-                kwargs[arg_name] = try_upgrade_str_to_enum(arg_name, arg_value)
+                try:
+                    kwargs[arg_name] = _try_upgrade_str_to_enum(
+                        type_hints, arg_name, arg_value
+                    )
+                except _EnumUpgradeError as ex:
+                    raise errors.UserInvalidValueError.from_ctx(
+                        ctx,
+                        *ex.enum_types,
+                        param_name=arg_name,
+                        traceback=self.get_traceback(),
+                    ) from ex
 
         try:
             trait = constructor(*args, **kwargs)

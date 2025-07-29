@@ -223,6 +223,11 @@ class UserInvalidValueError(UserValueError):
     Indicates an invalid enum value
     """
 
+    def __init__(
+        self, *enum_types: type[Enum], param_name: str | None = None, **kwargs
+    ):
+        super().__init__(self._message(*enum_types, param_name=param_name), **kwargs)
+
     @classmethod
     def from_ctx(
         cls,
@@ -231,6 +236,11 @@ class UserInvalidValueError(UserValueError):
         param_name: str | None = None,
         **kwargs,
     ) -> "UserInvalidValueError":
+        message = cls._message(*enum_types, param_name=param_name)
+        return super().from_ctx(ctx, message, **kwargs)
+
+    @classmethod
+    def _message(cls, *enum_types: type[Enum], param_name: str | None = None) -> str:
         expected_values = ", ".join(
             [
                 f"`{member.name}`"
@@ -239,11 +249,10 @@ class UserInvalidValueError(UserValueError):
             ]
         )
         enum_names = ", ".join([enum_type.__qualname__ for enum_type in enum_types])
-        message = (
+        return (
             f"Invalid value for `{param_name or enum_names}`. "
             f"Expected one of: {expected_values}."
         )
-        return super().from_ctx(ctx, message, **kwargs)
 
 
 class UserImportNotFoundError(UserException):
