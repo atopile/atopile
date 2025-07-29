@@ -104,8 +104,6 @@ class _BaseUserException(_BaseBaseUserException):
 
         if origin is not None:
             instance.attach_origin_from_ctx(origin)
-        else:
-            assert traceback is None
 
         return instance
 
