@@ -1494,6 +1494,57 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
+
+            callable_ = getattr(super_class, "__original_init__")
+            super_class_signature = inspect.signature(callable_)
+            type_hints = typing.get_type_hints(callable_)
+
+            def try_upgrade_str_to_enum(arg_name: str, arg_value: str) -> Enum | str:
+                type_hint = type_hints[arg_name]
+                if isinstance(type_hint, type):
+                    if issubclass(type_hint, Enum):
+                        return type_hint[arg_value]
+                    else:
+                        return arg_value
+
+                type_args = typing.get_args(type_hints[arg_name])
+                enum_args = [
+                    t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
+                ]
+
+                # assume any matching enum works equivalently well
+                if enum_args and isinstance(arg_value, str):
+                    for t in enum_args:
+                        try:
+                            print(f"upgraded: {t[arg_value]}")
+                            return t[arg_value]
+                        except KeyError:
+                            pass
+
+                    if not any(
+                        isinstance(t, type) and issubclass(t, str) for t in type_args
+                    ):
+                        raise ValueError(
+                            f"Unknown enum value `{arg_value}` for `{arg_name}`"
+                        )
+                        # raise errors.UserInvalidValueError.from_ctx(
+                        #     ctx,
+                        #     *enum_args,
+                        #     param_name=arg_name,
+                        #     traceback=self.get_traceback(),
+                        # )
+
+                return arg_value
+
+            for arg_name, arg_value in kwargs.items():
+                if arg_name not in super_class_signature.parameters:
+                    raise errors.UserBadParameterError(
+                        f"Unknown argument `{arg_name}` for `{super_class}`"
+                    )
+
+                if isinstance(arg_value, str):
+                    kwargs[arg_name] = try_upgrade_str_to_enum(arg_name, arg_value)
+
             return super_class(**kwargs), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
@@ -2375,11 +2426,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         )
         kwargs = self.visitTemplate(ctx.template())
 
-        if hasattr(constructor, "__original_init__"):
-            callable_ = constructor.__original_init__
-        else:
-            callable_ = constructor
-
+        callable_ = getattr(constructor, "__original_init__", constructor)
         constructor_signature = inspect.signature(callable_)
         type_hints = typing.get_type_hints(callable_)
 

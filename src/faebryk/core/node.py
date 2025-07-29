@@ -493,6 +493,7 @@ class Node(CNode):
                     if f_name in base.__dict__:
                         f = getattr(base, f_name)
                         f(self)
+
         self._setup_done = True
 
     def __hash__(self):
@@ -503,6 +504,9 @@ class Node(CNode):
         CNode.transfer_ownership(self)
         assert not hasattr(self, "_called_init")
         self._called_init = True
+
+        # TODO: explain
+        self.__original_init__ = self.__init__
 
     def __preinit__(self, *args, **kwargs) -> None: ...
 
