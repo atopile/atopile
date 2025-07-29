@@ -1727,3 +1727,113 @@ def test_assign_to_enum_param(bob: Bob):
     assert cap.temperature_coefficient.try_get_literal_subset() == P_Set.from_value(
         F.Capacitor.TemperatureCoefficient.X7R
     )
+
+
+def test_trait_template_enum(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import Resistor
+        import has_package_requirements
+
+        module Resistor0805 from Resistor:
+            trait has_package_requirements<size="I0805">
+
+        module App:
+            r = new Resistor0805
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    r = bob.resolve_field_shortcut(node, "r")
+    assert isinstance(r, F.Resistor)
+
+    solver = DefaultSolver()
+    assert r.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+
+
+def test_trait_template_enum_invalid(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import Resistor
+        import has_package_requirements
+
+        module Resistor0805 from Resistor:
+            trait has_package_requirements<size="<invalid size>">
+
+        module App:
+            r = new Resistor0805
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidValueError):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_module_template_enum(bob: Bob):
+    class ResistorWithSize(F.Resistor):
+        def __init__(self, size: SMDSize):
+            super().__init__()
+            self._size = size
+
+        def __postinit__(self, *args, **kwargs):
+            self.add(F.has_package_requirements(size=self._size))
+
+    F.ResistorWithSize = ResistorWithSize  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import ResistorWithSize
+
+        module App:
+            r = new ResistorWithSize<size="I0805">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    r = bob.resolve_field_shortcut(node, "r")
+    assert isinstance(r, ResistorWithSize)
+
+    solver = DefaultSolver()
+    assert r.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+
+
+def test_module_template_enum_invalid(bob: Bob):
+    class ResistorWithSize(F.Resistor):
+        def __init__(self, size: SMDSize):
+            super().__init__()
+            self._size = size
+
+        def __postinit__(self, *args, **kwargs):
+            self.add(F.has_package_requirements(size=self._size))
+
+    F.ResistorWithSize = ResistorWithSize  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import ResistorWithSize
+
+        module App:
+            r = new ResistorWithSize<size="<invalid size>">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidValueError):
+        bob.build_ast(tree, TypeRef(["App"]))
