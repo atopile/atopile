@@ -48,7 +48,7 @@
         "silk_text_thickness": 0.1,
         "silk_text_upright": false,
         "zones": {
-          "min_clearance": 0.25
+          "min_clearance": 0.2
         }
       },
       "diff_pair_dimensions": [
@@ -269,7 +269,7 @@
         "wire_width": 6
       },
       {
-        "clearance": 0.4,
+        "clearance": 0.2,
         "diff_pair_gap": 0.2,
         "diff_pair_width": 0.12,
         "name": "USB",

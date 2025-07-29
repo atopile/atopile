@@ -12,12 +12,12 @@ import can_bridge_by_name
 
 # Package imports from https://packages.atopile.io/
 from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
-from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020DSJR
+from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
 from "atopile/ti-bq25185/ti-bq25185.ato" import BQ25185_driver
 from "atopile/batteries/eemb_battery_lp402535.ato" import EMB_BATTERY_LP402535_Example
 from "atopile/espressif-esp32-c3/esp32_c3_mini.ato" import ESP32_C3_MINI_1_driver
 from "atopile/addressable-leds/sk6805-ec20.ato" import SK6805EC20_driver
-from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434_driver
+from "atopile/microphones/tdk_invensense_ics_43434.ato" import TDK_InvenSense_ICS_43434
 from "atopile/st-lsm6ds3/st-lsm6ds3.ato" import ST_LSM6DS3_driver
 from "atopile/logos/logos.ato" import atopile_logo_25x6mm
 
@@ -33,10 +33,10 @@ module LED_BADGE:
     - Accelerometer
     """
     microcontroller = new ESP32_C3_MINI_1_driver
-    microphone = new TDK_InvenSense_ICS_43434_driver
+    microphone = new TDK_InvenSense_ICS_43434
     imu = new ST_LSM6DS3_driver
     usb_c = new USBCConn
-    buck_boost = new TPS63020DSJR
+    buck_boost = new TPS63020_driver
     charger = new BQ25185_driver
     battery = new EMB_BATTERY_LP402535_Example
     led_grid = new SK6805EC20_grid100x100
@@ -50,12 +50,6 @@ module LED_BADGE:
     # Power path: USB 5V -> Charger -> Battery / System -> BuckBoost -> 3V3 rail
     usb_c.usb2.usb_if.buspower ~> charger ~> battery.power_battery
     charger.power_sys ~> buck_boost ~> power_3v3
-
-    # Buck boost enable
-    buck_boost_en_pullup = new Resistor
-    buck_boost_en_pullup.resistance = 10kohm +/- 1%
-    buck_boost_en_pullup.package = "R0402"
-    buck_boost.ic.EN ~> buck_boost_en_pullup ~> usb_c.usb2.usb_if.buspower.vcc
 
     # Configure Power
     usb_c.usb2.usb_if.buspower.voltage = 5V +/- 5%
