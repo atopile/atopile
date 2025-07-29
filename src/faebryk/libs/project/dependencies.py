@@ -217,7 +217,7 @@ class ProjectDependencies:
             self.gcfg.reload()
             self.pcfg = self.gcfg.project
 
-        self.__init__(pcfg=self.pcfg)
+        self.__init__(pcfg=self.pcfg, sync_versions=False)
 
     @property
     def not_installed_dependencies(self) -> set[ProjectDependency]:
@@ -463,9 +463,12 @@ class ProjectDependencies:
         Ensure that installed dependency versions match the manifest
         """
 
-        def _sync_dep(dep: ProjectDependency, installed_version: str):
+        def _sync_dep(dep: ProjectDependency, installed_version: str) -> bool:
             dep.load_dist()
             assert dep.dist is not None
+
+            if dep.dist.version == installed_version:
+                return False
 
             target_path = dep.target_path
             if target_path.exists():
@@ -474,6 +477,7 @@ class ProjectDependencies:
 
             _log_add_package(dep.identifier, dep.dist.version)
             dep.dist.install(target_path)
+            return True
 
         dirty = False
         for dep in self.direct_deps:
@@ -488,8 +492,7 @@ class ProjectDependencies:
                     desired_version = spec.release
 
                     if installed_version != desired_version:
-                        _sync_dep(dep, installed_version)
-                        dirty = True
+                        dirty |= _sync_dep(dep, installed_version)
 
                 case "file" | "git":
                     logger.warning(
