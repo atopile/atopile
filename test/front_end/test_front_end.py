@@ -1839,64 +1839,173 @@ def test_module_template_enum_invalid(bob: Bob):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
-def test_module_template_int_enum(bob: Bob):
-    """Test IntEnum in module template constructor."""
+# Helper classes for enum tests
+class _IntEnumForTests(IntEnum):
+    VALUE_1 = 1
+    VALUE_2 = 2
+    VALUE_3 = 3
 
-    class TestIntEnum(IntEnum):
-        VALUE_1 = 1
-        VALUE_2 = 2
-        VALUE_3 = 3
 
-    class ModuleWithIntEnum(L.Module):
-        def __init__(self, value: TestIntEnum):
-            super().__init__()
-            self._value = value
+class _StrEnumForTests(StrEnum):
+    OPTION_A = "option_a"
+    OPTION_B = "option_b"
+    OPTION_C = "option_c"
+    PRESET_A = "preset_a"
+    PRESET_B = "preset_b"
 
+
+# Test classes for enum template tests
+class ModuleWithIntEnum(L.Module):
+    def __init__(self, value: _IntEnumForTests):
+        super().__init__()
+        self._value = value
+
+
+class ModuleWithStrEnum(L.Module):
+    def __init__(self, mode: _StrEnumForTests):
+        super().__init__()
+        self._mode = mode
+
+
+class ModuleWithOptionalEnum(L.Module):
+    def __init__(self, color: F.LED.Color | None = None):
+        super().__init__()
+        self._color = color
+
+
+class ModuleWithTypingOptionalEnum(L.Module):
+    def __init__(self, color: Optional[F.LED.Color] = None):
+        super().__init__()
+        self._color = color
+
+
+class ModuleWithEnumUnion(L.Module):
+    def __init__(
+        self,
+        value: F.LED.Color | F.MOSFET.ChannelType | F.Capacitor.TemperatureCoefficient,
+    ):
+        super().__init__()
+        self._value = value
+
+
+class ModuleWithTypingUnionEnum(L.Module):
+    def __init__(
+        self,
+        value: Union[
+            F.LED.Color, F.MOSFET.ChannelType, F.Capacitor.TemperatureCoefficient
+        ],
+    ):
+        super().__init__()
+        self._value = value
+
+
+class ModuleWithStrOrEnum(L.Module):
+    def __init__(self, label: str | F.LED.Color):
+        super().__init__()
+        self._label = label
+
+
+class ModuleWithTypingUnionStrOrEnum(L.Module):
+    def __init__(self, label: Union[str, F.LED.Color]):
+        super().__init__()
+        self._label = label
+
+
+class ModuleWithStrOrStrEnum(L.Module):
+    def __init__(self, config: str | _StrEnumForTests):
+        super().__init__()
+        self._config = config
+
+
+class ModuleWithEnumOrNone(L.Module):
+    def __init__(self, channel: F.MOSFET.ChannelType | None = None):
+        super().__init__()
+        self._channel = channel
+
+
+class ModuleWithTypingUnionEnumOrNone(L.Module):
+    def __init__(self, channel: Union[F.MOSFET.ChannelType, None] = None):
+        super().__init__()
+        self._channel = channel
+
+
+@pytest.mark.parametrize(
+    "module_name,template_args,expected_attrs",
+    [
+        # Basic enum types
+        ("ModuleWithIntEnum", "<value=2>", {"_value": _IntEnumForTests.VALUE_2}),
+        ("ModuleWithStrEnum", '<mode="OPTION_B">', {"_mode": _StrEnumForTests.OPTION_B}),
+        # Optional enums with modern syntax
+        ("ModuleWithOptionalEnum", "", {"_color": None}),
+        ("ModuleWithOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
+        # Optional enums with typing syntax
+        ("ModuleWithTypingOptionalEnum", "", {"_color": None}),
+        ("ModuleWithTypingOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
+        # Enum | None variations
+        ("ModuleWithEnumOrNone", "", {"_channel": None}),
+        (
+            "ModuleWithEnumOrNone",
+            '<channel="P_CHANNEL">',
+            {"_channel": F.MOSFET.ChannelType.P_CHANNEL},
+        ),
+        ("ModuleWithTypingUnionEnumOrNone", "", {"_channel": None}),
+        (
+            "ModuleWithTypingUnionEnumOrNone",
+            '<channel="P_CHANNEL">',
+            {"_channel": F.MOSFET.ChannelType.P_CHANNEL},
+        ),
+        # str | Enum unions
+        ("ModuleWithStrOrEnum", '<label="custom_label">', {"_label": "custom_label"}),
+        ("ModuleWithStrOrEnum", '<label="GREEN">', {"_label": F.LED.Color.GREEN}),
+        (
+            "ModuleWithTypingUnionStrOrEnum",
+            '<label="custom_label">',
+            {"_label": "custom_label"},
+        ),
+        (
+            "ModuleWithTypingUnionStrOrEnum",
+            '<label="GREEN">',
+            {"_label": F.LED.Color.GREEN},
+        ),
+        # str | StrEnum unions
+        (
+            "ModuleWithStrOrStrEnum",
+            '<config="custom_config">',
+            {"_config": "custom_config"},
+        ),
+        (
+            "ModuleWithStrOrStrEnum",
+            '<config="PRESET_A">',
+            {"_config": _StrEnumForTests.PRESET_A},
+        ),
+    ],
+)
+def test_module_template_enum_scenarios(
+    bob: Bob, module_name, template_args, expected_attrs
+):
+    """Test various enum scenarios in module template constructors."""
+    # Register the module classes
     F.ModuleWithIntEnum = ModuleWithIntEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithIntEnum
-
-        module App:
-            mod = new ModuleWithIntEnum<value=2>
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-    mod = bob.resolve_field_shortcut(node, "mod")
-    assert isinstance(mod, ModuleWithIntEnum)
-    assert mod._value == TestIntEnum.VALUE_2
-
-
-def test_module_template_str_enum(bob: Bob):
-    """Test StrEnum in module template constructor."""
-
-    class TestStrEnum(StrEnum):
-        OPTION_A = "option_a"
-        OPTION_B = "option_b"
-        OPTION_C = "option_c"
-
-    class ModuleWithStrEnum(L.Module):
-        def __init__(self, mode: TestStrEnum):
-            super().__init__()
-            self._mode = mode
-
     F.ModuleWithStrEnum = ModuleWithStrEnum  # type: ignore
+    F.ModuleWithOptionalEnum = ModuleWithOptionalEnum  # type: ignore
+    F.ModuleWithTypingOptionalEnum = ModuleWithTypingOptionalEnum  # type: ignore
+    F.ModuleWithEnumUnion = ModuleWithEnumUnion  # type: ignore
+    F.ModuleWithTypingUnionEnum = ModuleWithTypingUnionEnum  # type: ignore
+    F.ModuleWithStrOrEnum = ModuleWithStrOrEnum  # type: ignore
+    F.ModuleWithTypingUnionStrOrEnum = ModuleWithTypingUnionStrOrEnum  # type: ignore
+    F.ModuleWithStrOrStrEnum = ModuleWithStrOrStrEnum  # type: ignore
+    F.ModuleWithEnumOrNone = ModuleWithEnumOrNone  # type: ignore
+    F.ModuleWithTypingUnionEnumOrNone = ModuleWithTypingUnionEnumOrNone  # type: ignore
+    F._StrEnumForTests = _StrEnumForTests  # type: ignore
 
     text = dedent(
-        """
+        f"""
         #pragma experiment("MODULE_TEMPLATING")
 
-        import ModuleWithStrEnum
+        import {module_name}
 
         module App:
-            mod = new ModuleWithStrEnum<mode="OPTION_B">
+            mod = new {module_name}{template_args}
         """
     )
 
@@ -1905,70 +2014,61 @@ def test_module_template_str_enum(bob: Bob):
 
     assert isinstance(node, L.Module)
     mod = bob.resolve_field_shortcut(node, "mod")
-    assert isinstance(mod, ModuleWithStrEnum)
-    assert mod._mode == TestStrEnum.OPTION_B
+    assert isinstance(mod, eval(module_name))
+
+    for attr, expected_value in expected_attrs.items():
+        assert getattr(mod, attr) == expected_value
 
 
-def test_module_template_optional_enum(bob: Bob):
-    """Test Optional[Enum] in module template constructor."""
-
-    class ModuleWithOptionalEnum(L.Module):
-        def __init__(self, color: F.LED.Color | None = None):
-            super().__init__()
-            self._color = color
-
-    F.ModuleWithOptionalEnum = ModuleWithOptionalEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithOptionalEnum
-
-        module App:
-            mod1 = new ModuleWithOptionalEnum
-            mod2 = new ModuleWithOptionalEnum<color="RED">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithOptionalEnum)
-    assert mod1._color is None
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithOptionalEnum)
-    assert mod2._color == F.LED.Color.RED
-
-
-def test_module_template_enum_union(bob: Bob):
-    """Test Enum1 | Enum2 | Enum3 union types in module template constructor."""
-
-    class ModuleWithEnumUnion(L.Module):
-        def __init__(
-            self,
-            value: F.LED.Color
-            | F.MOSFET.ChannelType
-            | F.Capacitor.TemperatureCoefficient,
-        ):
-            super().__init__()
-            self._value = value
-
+@pytest.mark.parametrize(
+    "module_name,template_args,expected_value,enum_type",
+    [
+        # Multiple enum type unions - modern syntax
+        ("ModuleWithEnumUnion", '<value="RED">', F.LED.Color.RED, "LED"),
+        (
+            "ModuleWithEnumUnion",
+            '<value="N_CHANNEL">',
+            F.MOSFET.ChannelType.N_CHANNEL,
+            "MOSFET",
+        ),
+        (
+            "ModuleWithEnumUnion",
+            '<value="X7R">',
+            F.Capacitor.TemperatureCoefficient.X7R,
+            "Capacitor",
+        ),
+        # Multiple enum type unions - typing syntax
+        ("ModuleWithTypingUnionEnum", '<value="RED">', F.LED.Color.RED, "LED"),
+        (
+            "ModuleWithTypingUnionEnum",
+            '<value="N_CHANNEL">',
+            F.MOSFET.ChannelType.N_CHANNEL,
+            "MOSFET",
+        ),
+        (
+            "ModuleWithTypingUnionEnum",
+            '<value="X7R">',
+            F.Capacitor.TemperatureCoefficient.X7R,
+            "Capacitor",
+        ),
+    ],
+)
+def test_module_template_enum_union_types(
+    bob: Bob, module_name, template_args, expected_value, enum_type
+):
+    """Test union of multiple enum types in module template constructors."""
+    # Register the module classes
     F.ModuleWithEnumUnion = ModuleWithEnumUnion  # type: ignore
+    F.ModuleWithTypingUnionEnum = ModuleWithTypingUnionEnum  # type: ignore
 
     text = dedent(
-        """
+        f"""
         #pragma experiment("MODULE_TEMPLATING")
 
-        import ModuleWithEnumUnion
+        import {module_name}
 
         module App:
-            mod1 = new ModuleWithEnumUnion<value="RED">
-            mod2 = new ModuleWithEnumUnion<value="N_CHANNEL">
-            mod3 = new ModuleWithEnumUnion<value="X7R">
+            mod = new {module_name}{template_args}
         """
     )
 
@@ -1976,131 +2076,9 @@ def test_module_template_enum_union(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithEnumUnion)
-    assert mod1._value == F.LED.Color.RED
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithEnumUnion)
-    assert mod2._value == F.MOSFET.ChannelType.N_CHANNEL
-
-    mod3 = bob.resolve_field_shortcut(node, "mod3")
-    assert isinstance(mod3, ModuleWithEnumUnion)
-    assert mod3._value == F.Capacitor.TemperatureCoefficient.X7R
-
-
-def test_module_template_str_or_enum(bob: Bob):
-    """Test str | Enum union type in module template constructor."""
-
-    class ModuleWithStrOrEnum(L.Module):
-        def __init__(self, label: str | F.LED.Color):
-            super().__init__()
-            self._label = label
-
-    F.ModuleWithStrOrEnum = ModuleWithStrOrEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithStrOrEnum
-
-        module App:
-            mod1 = new ModuleWithStrOrEnum<label="custom_label">
-            mod2 = new ModuleWithStrOrEnum<label="GREEN">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithStrOrEnum)
-    assert mod1._label == "custom_label"
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithStrOrEnum)
-    assert mod2._label == F.LED.Color.GREEN
-
-
-def test_module_template_str_or_str_enum(bob: Bob):
-    """Test str | StrEnum union type in module template constructor."""
-
-    class TestStrEnum(StrEnum):
-        PRESET_A = "preset_a"
-        PRESET_B = "preset_b"
-
-    class ModuleWithStrOrStrEnum(L.Module):
-        def __init__(self, config: str | TestStrEnum):
-            super().__init__()
-            self._config = config
-
-    F.ModuleWithStrOrStrEnum = ModuleWithStrOrStrEnum  # type: ignore
-    F.TestStrEnum = TestStrEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithStrOrStrEnum
-
-        module App:
-            mod1 = new ModuleWithStrOrStrEnum<config="custom_config">
-            mod2 = new ModuleWithStrOrStrEnum<config="PRESET_A">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithStrOrStrEnum)
-    assert mod1._config == "custom_config"
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithStrOrStrEnum)
-    assert mod2._config == TestStrEnum.PRESET_A
-
-
-def test_module_template_enum_or_none(bob: Bob):
-    """Test Enum | None union type in module template constructor."""
-
-    class ModuleWithEnumOrNone(L.Module):
-        def __init__(self, channel: F.MOSFET.ChannelType | None = None):
-            super().__init__()
-            self._channel = channel
-
-    F.ModuleWithEnumOrNone = ModuleWithEnumOrNone  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithEnumOrNone
-
-        module App:
-            mod1 = new ModuleWithEnumOrNone
-            mod2 = new ModuleWithEnumOrNone<channel="P_CHANNEL">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithEnumOrNone)
-    assert mod1._channel is None
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithEnumOrNone)
-    assert mod2._channel == F.MOSFET.ChannelType.P_CHANNEL
+    mod = bob.resolve_field_shortcut(node, "mod")
+    assert isinstance(mod, eval(module_name))
+    assert mod._value == expected_value
 
 
 def test_module_template_multiple_enum_args(bob: Bob):
@@ -2150,161 +2128,7 @@ def test_module_template_multiple_enum_args(bob: Bob):
     assert mod2._temp_coeff == F.Capacitor.TemperatureCoefficient.C0G
 
 
-# Tests using typing.Union and typing.Optional syntax
-def test_module_template_typing_optional_enum(bob: Bob):
-    """Test typing.Optional[Enum] in module template constructor."""
-
-    class ModuleWithOptionalEnum(L.Module):
-        def __init__(self, color: Optional[F.LED.Color] = None):
-            super().__init__()
-            self._color = color
-
-    F.ModuleWithOptionalEnum = ModuleWithOptionalEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithOptionalEnum
-
-        module App:
-            mod1 = new ModuleWithOptionalEnum
-            mod2 = new ModuleWithOptionalEnum<color="RED">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithOptionalEnum)
-    assert mod1._color is None
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithOptionalEnum)
-    assert mod2._color == F.LED.Color.RED
-
-
-def test_module_template_typing_union_enum(bob: Bob):
-    """Test typing.Union with multiple enum types."""
-
-    class ModuleWithUnionEnum(L.Module):
-        def __init__(
-            self,
-            value: Union[
-                F.LED.Color, F.MOSFET.ChannelType, F.Capacitor.TemperatureCoefficient
-            ],
-        ):
-            super().__init__()
-            self._value = value
-
-    F.ModuleWithUnionEnum = ModuleWithUnionEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithUnionEnum
-
-        module App:
-            mod1 = new ModuleWithUnionEnum<value="RED">
-            mod2 = new ModuleWithUnionEnum<value="N_CHANNEL">
-            mod3 = new ModuleWithUnionEnum<value="X7R">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithUnionEnum)
-    assert mod1._value == F.LED.Color.RED
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithUnionEnum)
-    assert mod2._value == F.MOSFET.ChannelType.N_CHANNEL
-
-    mod3 = bob.resolve_field_shortcut(node, "mod3")
-    assert isinstance(mod3, ModuleWithUnionEnum)
-    assert mod3._value == F.Capacitor.TemperatureCoefficient.X7R
-
-
-def test_module_template_typing_union_str_or_enum(bob: Bob):
-    """Test typing.Union[str, Enum] type."""
-
-    class ModuleWithUnionStrOrEnum(L.Module):
-        def __init__(self, label: Union[str, F.LED.Color]):
-            super().__init__()
-            self._label = label
-
-    F.ModuleWithUnionStrOrEnum = ModuleWithUnionStrOrEnum  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithUnionStrOrEnum
-
-        module App:
-            mod1 = new ModuleWithUnionStrOrEnum<label="custom_label">
-            mod2 = new ModuleWithUnionStrOrEnum<label="GREEN">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithUnionStrOrEnum)
-    assert mod1._label == "custom_label"
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithUnionStrOrEnum)
-    assert mod2._label == F.LED.Color.GREEN
-
-
-def test_module_template_typing_union_enum_or_none(bob: Bob):
-    """Test typing.Union[Enum, None] type."""
-
-    class ModuleWithUnionEnumOrNone(L.Module):
-        def __init__(self, channel: Union[F.MOSFET.ChannelType, None] = None):
-            super().__init__()
-            self._channel = channel
-
-    F.ModuleWithUnionEnumOrNone = ModuleWithUnionEnumOrNone  # type: ignore
-
-    text = dedent(
-        """
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import ModuleWithUnionEnumOrNone
-
-        module App:
-            mod1 = new ModuleWithUnionEnumOrNone
-            mod2 = new ModuleWithUnionEnumOrNone<channel="P_CHANNEL">
-        """
-    )
-
-    tree = parse_text_as_file(text)
-    node = bob.build_ast(tree, TypeRef(["App"]))
-
-    assert isinstance(node, L.Module)
-
-    mod1 = bob.resolve_field_shortcut(node, "mod1")
-    assert isinstance(mod1, ModuleWithUnionEnumOrNone)
-    assert mod1._channel is None
-
-    mod2 = bob.resolve_field_shortcut(node, "mod2")
-    assert isinstance(mod2, ModuleWithUnionEnumOrNone)
-    assert mod2._channel == F.MOSFET.ChannelType.P_CHANNEL
-
-
-def test_module_template_mixed_syntax_optional(bob: Bob):
+def test_module_template_mixed_syntax_compatibility(bob: Bob):
     """Test that both Optional and | None syntax work in the same context."""
 
     class ModuleWithModernOptional(L.Module):
