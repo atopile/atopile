@@ -104,11 +104,12 @@ class LayoutSync:
         """Synchronize groups based on the layout map."""
         self._old_groups = {g.name: copy.deepcopy(g) for g in self.pcb.groups}
         groups = {g.name: g for g in self.pcb.groups if g.name}
-        footprints = {
+        atopile_footprints = {
             addr: fp
             for fp in self.pcb.footprints
             if (addr := self._get_footprint_addr(fp))
         }
+        atopile_fps_uuid = {fp.uuid: fp for fp in atopile_footprints.values()}
 
         for group_name, layout_map in self.layout_maps.items():
             logger.debug(f"Updating group {group_name}")
@@ -128,11 +129,15 @@ class LayoutSync:
             # Update group membership
             expected_members = set()
             for fp_addr in layout_map.group_components:
-                if fp_addr in footprints:
-                    expected_members.add(footprints[fp_addr].uuid)
+                if fp_addr in atopile_footprints:
+                    expected_members.add(atopile_footprints[fp_addr].uuid)
 
-            # Update members list
-            group.members = list(expected_members)
+            # add new members
+            current_members = set(group.members) | expected_members
+            # remove old atopile fps
+            current_members -= set(atopile_fps_uuid.keys()).difference(expected_members)
+
+            group.members[:] = list(current_members)
 
     def _generate_net_map(
         self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
@@ -285,6 +290,8 @@ class LayoutSync:
             new_track.uuid = gen_uuid()
             if sub_net and sub_net.name in net_map:
                 new_track.net = self._get_net_number(top_pcb, net_map[sub_net.name])
+                if isinstance(new_track, PCB.C_zone):
+                    new_track.net_name = net_map[sub_net.name]
             else:
                 new_track.net = 0
 
