@@ -2,11 +2,13 @@ import logging
 import re
 import uuid
 from abc import abstractmethod
+from base64 import b64decode, b64encode
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
+import zstd
 from dataclasses_json.undefined import CatchAll
 
 from faebryk.libs.checksum import Checksum
@@ -18,7 +20,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     netlist_type,
     sexp_field,
 )
-from faebryk.libs.util import KeyErrorAmbiguous, compare_dataclasses
+from faebryk.libs.util import KeyErrorAmbiguous, compare_dataclasses, once
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +85,9 @@ class C_xyr:
     x: float = field(**sexp_field(positional=True))
     y: float = field(**sexp_field(positional=True))
     r: float = field(**sexp_field(positional=True), default=0)
+
+    def __add__(self, other: "C_xy") -> "C_xyr":
+        return C_xyr(x=self.x + other.x, y=self.y + other.y, r=self.r)
 
 
 @dataclass
@@ -154,7 +159,7 @@ class C_effects:
 
         J = C_effects.C_justify.E_justify
 
-        def _only_one_of(lst: list[J]):
+        def _only_one_of(lst: list[C_effects.C_justify.E_justify]):
             dups = [j for j in justifys if j in lst]
             if len(dups) > 1:
                 raise KeyErrorAmbiguous(dups)
@@ -277,3 +282,30 @@ class HasPropertiesMixin:
         except Checksum.Mismatch:
             # legacy
             Checksum.verify(checksum_stated, self._hashable(remove_uuid=False))
+
+
+@dataclass
+class C_data:
+    compressed: list[Symbol] = field(**sexp_field(positional=True))
+
+    @property
+    @once
+    def merged(self):
+        return "".join(str(v) for v in self.compressed)
+
+    @property
+    @once
+    def uncompressed(self) -> bytes:
+        assert self.merged.startswith("|") and self.merged.endswith("|")
+        return zstd.decompress(b64decode(self.merged[1:-1]))
+
+    @classmethod
+    def compress(cls, data: bytes):
+        # from kicad:common/embedded_files.cpp
+        b64 = b64encode(zstd.compress(data)).decode()
+        CHUNK_LEN = 76
+        # chunk string to 76 characters
+        chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
+        chunks[0] = "|" + chunks[0]
+        chunks[-1] = chunks[-1] + "|"
+        return cls(compressed=[Symbol(c) for c in chunks])
