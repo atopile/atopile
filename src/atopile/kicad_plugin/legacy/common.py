@@ -32,8 +32,14 @@ def run_ato(args: list[str], cwd: Optional[Path] = None) -> subprocess.Completed
     if not executable:
         raise RuntimeError("ATOPILE_PYTHON not set")
     cmd = [executable, "-m", "atopile"] + args
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env.pop("PYTHONHOME", None)
+    env.pop("PYTHONEXECUTABLE", None)
     try:
-        out = subprocess.run(cmd, check=True, text=True, cwd=cwd, capture_output=True)
+        out = subprocess.run(
+            cmd, check=True, text=True, cwd=cwd, capture_output=True, env=env
+        )
     except FileNotFoundError:
         log.error(f"Could not find Python executable: {executable}")
 
