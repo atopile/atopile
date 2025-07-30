@@ -4,7 +4,7 @@ import logging
 import tempfile
 import time
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import astuple, dataclass, is_dataclass
 from pathlib import Path
 from typing import Callable
 
@@ -187,7 +187,23 @@ def build(app: Module) -> None:
         logger.info(f"Backing up layout to {backup_file}")
         backup_file.write_bytes(config.build.paths.layout.read_bytes())
 
-        if pcb.pcb_file == original_pcb:
+        pcb_diff = compare_dataclasses(
+            sort_dataclass(
+                original_pcb,
+                sort_key=lambda x: astuple(x)
+                if is_dataclass(x) and not isinstance(x, type)
+                else x,
+            ),
+            sort_dataclass(
+                pcb.pcb_file,
+                sort_key=lambda x: astuple(x)
+                if is_dataclass(x) and not isinstance(x, type)
+                else x,
+            ),
+            skip_keys=("uuid", "__atopile_lib_fp_hash__"),
+        )
+
+        if not pcb_diff:
             if config.build.frozen:
                 logger.info("No changes to layout. Passed --frozen check.")
             else:

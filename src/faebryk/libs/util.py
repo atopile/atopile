@@ -2383,10 +2383,12 @@ def compare_dataclasses[T](
     def _fmt(b, a):
         return {"before": b, "after": a}
 
-    if type(before) is not type(after) and not all(
-        isinstance(x, (int, float)) for x in (before, after)
-    ):
-        return {"": (before, after)}
+    if (
+        type(before) is not type(after)
+        # dataclasses equality is independent of type
+        and not (is_dataclass(before) and is_dataclass(after))
+    ) and not all(isinstance(x, (int, float)) for x in (before, after)):
+        return {"": _fmt(before, after)}
     if not is_dataclass(before):
         if isinstance(before, list):
             assert isinstance(after, list)
