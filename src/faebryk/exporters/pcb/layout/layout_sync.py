@@ -102,7 +102,7 @@ class LayoutSync:
 
     def sync_groups(self):
         """Synchronize groups based on the layout map."""
-        self._old_groups = {g.name: copy.deepcopy(g) for g in self.pcb.groups}
+        self._old_groups = {g.name: copy.deepcopy(g) for g in self.pcb.groups if g.name}
         groups = {g.name: g for g in self.pcb.groups if g.name}
         atopile_footprints = {
             addr: fp
@@ -281,7 +281,11 @@ class LayoutSync:
         new_objects = []
         for track in sub_pcb.segments + sub_pcb.arcs + sub_pcb.zones + sub_pcb.vias:
             # Get source net name
-            sub_net = find_or(sub_pcb.nets, lambda n: n.number == track.net, None)
+            sub_net: C_net | None = find_or(
+                sub_pcb.nets,
+                lambda n: n.number == track.net,
+                None,  # type: ignore
+            )
 
             # Create new track
             new_track: PCB.C_segment | PCB.C_arc_segment | PCB.C_zone | PCB.C_via = (

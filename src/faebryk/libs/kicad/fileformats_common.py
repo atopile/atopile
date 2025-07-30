@@ -159,7 +159,7 @@ class C_effects:
 
         J = C_effects.C_justify.E_justify
 
-        def _only_one_of(lst: list[J]):
+        def _only_one_of(lst: list[C_effects.C_justify.E_justify]):
             dups = [j for j in justifys if j in lst]
             if len(dups) > 1:
                 raise KeyErrorAmbiguous(dups)

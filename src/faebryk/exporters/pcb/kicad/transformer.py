@@ -793,35 +793,35 @@ class PCB_Transformer:
     def get_pcb_container[R](obj: R, pcb: PCB) -> list[R]:
         match obj:
             case PCB.C_pcb_footprint():
-                return pcb.footprints
+                return pcb.footprints  # type: ignore
             case PCB.C_segment():
-                return pcb.segments
+                return pcb.segments  # type: ignore
             case PCB.C_arc_segment():
-                return pcb.arcs
+                return pcb.arcs  # type: ignore
             case PCB.C_via():
-                return pcb.vias
+                return pcb.vias  # type: ignore
             case PCB.C_zone():
-                return pcb.zones
+                return pcb.zones  # type: ignore
             case C_line():
-                return pcb.gr_lines
+                return pcb.gr_lines  # type: ignore
             case C_arc():
-                return pcb.gr_arcs
+                return pcb.gr_arcs  # type: ignore
             case C_rect():
-                return pcb.gr_rects
+                return pcb.gr_rects  # type: ignore
             case C_circle():
-                return pcb.gr_circles
+                return pcb.gr_circles  # type: ignore
             case C_polygon():
-                return pcb.gr_polys
+                return pcb.gr_polys  # type: ignore
             case C_curve():
-                return pcb.gr_curves
+                return pcb.gr_curves  # type: ignore
             case C_text():
-                return pcb.gr_texts
+                return pcb.gr_texts  # type: ignore
             case C_text_box():
-                return pcb.gr_text_boxs
+                return pcb.gr_text_boxs  # type: ignore
             case C_image():
-                return pcb.images
+                return pcb.images  # type: ignore
             case C_table():
-                return pcb.tables
+                return pcb.tables  # type: ignore
             case _:
                 raise TypeError(f"Unsupported object type: {type(obj)}")
 

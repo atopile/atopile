@@ -13,20 +13,20 @@ logger = logging.getLogger(__name__)
 RESOURCE_DIR = Path(__file__).parent / "resource"
 
 
-@dataclass_json(letter_case=LetterCase.KEBAB)
+@dataclass_json(letter_case=LetterCase.KEBAB)  # type: ignore
 @dataclass
 class KicadPluginManifest(DataClassJsonMixin):
     """
     https://gitlab.com/kicad/code/kicad/-/raw/master/api/schemas/api.v1.schema.json
     """
 
-    @dataclass_json(letter_case=LetterCase.KEBAB)
+    @dataclass_json(letter_case=LetterCase.KEBAB)  # type: ignore
     @dataclass
     class Runtime(DataClassJsonMixin):
         type: Literal["python", "exec"]
         # min_version: str | None = None
 
-    @dataclass_json(letter_case=LetterCase.KEBAB)
+    @dataclass_json(letter_case=LetterCase.KEBAB)  # type: ignore
     @dataclass
     class Action(DataClassJsonMixin):
         identifier: str
