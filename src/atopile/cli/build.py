@@ -5,11 +5,7 @@ from typing import Annotated
 
 import typer
 
-from atopile.cli.logging_ import NOW
-from atopile.config import config
 from atopile.telemetry import capture
-from faebryk.libs.app.pcb import open_pcb
-from faebryk.libs.kicad.ipc import reload_pcb
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +47,11 @@ def build(
     """
     from atopile import build as buildlib
     from atopile import buildutil
+    from atopile.cli.logging_ import NOW
+    from atopile.config import config
+    from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.exceptions import accumulate, log_user_errors
+    from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(
