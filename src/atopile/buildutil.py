@@ -4,7 +4,7 @@ import logging
 import tempfile
 import time
 from copy import deepcopy
-from dataclasses import astuple, dataclass, is_dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from textwrap import dedent
 from typing import Callable
@@ -90,18 +90,8 @@ def _update_layout(
     pcb_file: C_kicad_pcb_file, original_pcb_file: C_kicad_pcb_file
 ) -> None:
     pcb_diff = compare_dataclasses(
-        sort_dataclass(
-            original_pcb_file,
-            sort_key=lambda x: astuple(x)
-            if is_dataclass(x) and not isinstance(x, type)
-            else x,
-        ),
-        sort_dataclass(
-            pcb_file,
-            sort_key=lambda x: astuple(x)
-            if is_dataclass(x) and not isinstance(x, type)
-            else x,
-        ),
+        sort_dataclass(original_pcb_file, sort_key=lambda x: str(x)),
+        sort_dataclass(pcb_file, sort_key=lambda x: str(x)),
         skip_keys=("uuid", "__atopile_lib_fp_hash__"),
     )
 
