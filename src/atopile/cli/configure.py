@@ -46,12 +46,12 @@ def setup() -> None:
     try:
         install_kicad_plugin()
     except Exception as e:
-        logger.warning(f"Couldn't install plugin: {e}")
+        logger.warning(f"Couldn't install plugin: {e!r}")
 
     try:
         enable_plugin_api()
     except Exception as e:
-        logger.warning(f"Couldn't enable plugin api: {e}")
+        logger.warning(f"Couldn't enable plugin api: {e!r}")
 
 
 @capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")

@@ -71,8 +71,10 @@ def find_pcbnew() -> Path:
 @once
 def get_config_path():
     kicad_config_search_path = [
-        # windows & linux
+        # linux
         platformdirs.user_config_dir("kicad", roaming=True),
+        # windows
+        Path(platformdirs.user_config_dir("kicad", roaming=True)).parent,
         # macos
         "~/Library/Preferences/kicad/",
     ]

@@ -1,5 +1,6 @@
 import logging
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -39,7 +40,15 @@ def enable_plugin_api():
 
 
 def _kicad_socket_files():
-    return list(get_ipc_socket_path().glob("api*.sock"))
+    base = get_ipc_socket_path()
+    if sys.platform.startswith("win"):
+        # named pipe
+        pipes = [Path(p) for p in os.listdir(r"\\.\pipe\\")]
+        out = [pipe for pipe in pipes if pipe.is_relative_to(base)]
+    else:
+        # unix socket
+        out = list(base.glob("api*.sock"))
+    return out
 
 
 def _get_all_clients():
