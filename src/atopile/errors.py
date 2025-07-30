@@ -1,5 +1,6 @@
+from enum import Enum
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Sequence
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
 from rich.console import Console, ConsoleOptions, ConsoleRenderable
@@ -215,6 +216,40 @@ class UserValueError(UserException):
     """
     Raised if something is the correct type but an invalid value.
     """
+
+
+class UserInvalidValueError(UserValueError):
+    """
+    Indicates an invalid enum value
+    """
+
+    @classmethod
+    def from_ctx(
+        cls,
+        origin: ParserRuleContext | None,
+        enum_types: tuple[type[Enum], ...],
+        enum_name: str | None = None,
+        value: Any | None = None,
+        **kwargs,
+    ) -> "UserInvalidValueError":
+        expected_values = ", ".join(
+            [
+                f"`{member.name}`"
+                for enum_type in enum_types
+                for member in enum_type.__members__.values()
+            ]
+        )
+        enum_names = enum_name or ", ".join(
+            [enum_type.__qualname__ for enum_type in enum_types]
+        )
+        return super().from_ctx(
+            origin=origin,
+            message=(
+                f"Invalid value for `{enum_names}`: `{value}`. "
+                f"Expected one of: {expected_values}."
+            ),
+            **kwargs,
+        )
 
 
 class UserImportNotFoundError(UserException):

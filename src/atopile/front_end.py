@@ -13,15 +13,17 @@ from collections import defaultdict
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 from itertools import chain, pairwise
 from pathlib import Path
+from types import UnionType
 from typing import (
     Any,
     Iterable,
     Literal,
     Sequence,
     Type,
+    Union,
     cast,
 )
 
@@ -730,6 +732,48 @@ class _ParameterDefinition:
         return len(self.ref) == 1
 
 
+class _EnumUpgradeError(Exception):
+    def __init__(self, *enum_types: type[Enum], arg_name: str):
+        self.enum_types = enum_types
+        self.arg_name = arg_name
+
+
+def _try_upgrade_str_to_enum(
+    type_hints: dict[str, Any], arg_name: str, arg_value: str
+) -> Enum | str:
+    """
+    Attempts to convert a string argument to a compatible enum value, based on type
+    hints.
+    """
+
+    type_hint = type_hints[arg_name]
+
+    if isinstance(type_hint, type) and issubclass(type_hint, Enum):
+        try:
+            return type_hint[arg_value]
+        except KeyError:
+            raise _EnumUpgradeError(type_hint, arg_name=arg_name)
+
+    elif isinstance(type_hint, UnionType) or typing.get_origin(type_hint) is Union:
+        type_args = typing.get_args(type_hint)
+        enum_args = [
+            t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
+        ]
+
+        # assume any matching enum works equivalently well
+        if enum_args and isinstance(arg_value, str):
+            for t in enum_args:
+                try:
+                    return t[arg_value]
+                except KeyError:
+                    pass
+
+            if not any(isinstance(t, type) and issubclass(t, str) for t in type_args):
+                raise _EnumUpgradeError(*enum_args, arg_name=arg_name)
+
+    return arg_value
+
+
 def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
     """
     pragma_stmt: '#pragma' function_call
@@ -1260,7 +1304,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     node = getattr(node, ref)
                 except AttributeError as ex:
                     raise errors.UserKeyError.from_ctx(
-                        item.original_ctx, f"No attribute `{ref}` found on {node}"
+                        item.original_ctx,
+                        f"Could not find `{ref}` in {node.__file__}",
+                        markdown=False,
                     ) from ex
 
             assert isinstance(node, type) and issubclass(node, L.Node)
@@ -1277,7 +1323,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if isinstance(node, Context.ImportPlaceholder):
                 raise errors.UserTypeError.from_ctx(
                     item.original_ctx,
-                    "Importing a import is not supported",
+                    "Importing an import is not supported",
                 )
 
             assert (
@@ -1466,6 +1512,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         isn't already known, attaching the __atopile_src_ctx__ attribute to the new
         class.
         """
+        kwargs = kwargs or {}
+
         if isinstance(item, type) and issubclass(item, L.Node):
             super_class = item
             for super_ctx in promised_supers:
@@ -1492,7 +1540,31 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(**(kwargs or {})), promised_supers
+
+            callable_ = getattr(super_class, "__original_init__")
+            super_class_signature = inspect.signature(callable_)
+            type_hints = typing.get_type_hints(callable_)
+
+            for arg_name, arg_value in kwargs.items():
+                if arg_name not in super_class_signature.parameters:
+                    raise errors.UserBadParameterError(
+                        f"Unknown argument `{arg_name}` for `{super_class}`"
+                    )
+
+                if isinstance(arg_value, str):
+                    try:
+                        kwargs[arg_name] = _try_upgrade_str_to_enum(
+                            type_hints, arg_name, arg_value
+                        )
+                    except _EnumUpgradeError as ex:
+                        raise errors.UserInvalidValueError.from_ctx(
+                            origin=None,  # TODO: add context
+                            enum_types=ex.enum_types,
+                            enum_name=arg_name,
+                            value=arg_value,
+                        ) from ex
+
+            return super_class(**kwargs), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -1831,16 +1903,11 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 try:
                     value = attr.domain.enum_t[value]
                 except KeyError:
-                    expected_values = ", ".join(
-                        [
-                            f"`{member.name}`"
-                            for member in attr.domain.enum_t.__members__.values()
-                        ]
-                    )
-                    raise errors.UserValueError.from_ctx(
-                        assignable_ctx,
-                        f"Invalid value for `{attr.domain.enum_t.__qualname__}`. "
-                        f"Expected one of: {expected_values}.",
+                    raise errors.UserInvalidValueError.from_ctx(
+                        origin=assignable_ctx,
+                        enum_types=(attr.domain.enum_t,),
+                        enum_name=assigned_name.name,
+                        value=value,
                         traceback=self.get_traceback(),
                     )
 
@@ -2380,12 +2447,39 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         )
         kwargs = self.visitTemplate(ctx.template())
 
+        callable_ = getattr(constructor, "__original_init__", constructor)
+        constructor_signature = inspect.signature(callable_)
+        type_hints = typing.get_type_hints(callable_)
+
+        for arg_name, arg_value in kwargs.items():
+            if arg_name not in constructor_signature.parameters:
+                raise errors.UserBadParameterError.from_ctx(
+                    ctx,
+                    f"Unknown template argument `{arg_name}` for `{trait_name}`",
+                    traceback=self.get_traceback(),
+                )
+
+            if isinstance(arg_value, str):
+                try:
+                    kwargs[arg_name] = _try_upgrade_str_to_enum(
+                        type_hints, arg_name, arg_value
+                    )
+                except _EnumUpgradeError as ex:
+                    raise errors.UserInvalidValueError.from_ctx(
+                        enum_types=ex.enum_types,
+                        enum_name=arg_name,
+                        value=arg_value,
+                        origin=ctx,
+                        traceback=self.get_traceback(),
+                    ) from ex
+
         try:
             trait = constructor(*args, **kwargs)
         except Exception as e:
+            exc_str = f": {e}" if str(e) else ""
             raise errors.UserTraitError.from_ctx(
                 ctx,
-                f"Error applying trait `{trait_name}`: {e}",
+                f"Error applying trait `{trait_name}`{exc_str}",
                 traceback=self.get_traceback(),
             ) from e
 

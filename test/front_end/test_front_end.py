@@ -1,7 +1,7 @@
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from pathlib import Path
 from textwrap import dedent
-from typing import cast
+from typing import Optional, Union, cast
 
 import pytest
 
@@ -1727,3 +1727,449 @@ def test_assign_to_enum_param(bob: Bob):
     assert cap.temperature_coefficient.try_get_literal_subset() == P_Set.from_value(
         F.Capacitor.TemperatureCoefficient.X7R
     )
+
+
+def test_trait_template_enum(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import Resistor
+        import has_package_requirements
+
+        module Resistor0805 from Resistor:
+            trait has_package_requirements<size="I0805">
+
+        module App:
+            r = new Resistor0805
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    r = bob.resolve_field_shortcut(node, "r")
+    assert isinstance(r, F.Resistor)
+
+    solver = DefaultSolver()
+    assert r.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+
+
+def test_trait_template_enum_invalid(bob: Bob):
+    text = dedent(
+        """
+        #pragma experiment("TRAITS")
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import Resistor
+        import has_package_requirements
+
+        module Resistor0805 from Resistor:
+            trait has_package_requirements<size="<invalid size>">
+
+        module App:
+            r = new Resistor0805
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidValueError):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+def test_module_template_enum(bob: Bob):
+    class ResistorWithSize(F.Resistor):
+        def __init__(self, size: SMDSize):
+            super().__init__()
+            self._size = size
+
+        def __postinit__(self, *args, **kwargs):
+            self.add(F.has_package_requirements(size=self._size))
+
+    F.ResistorWithSize = ResistorWithSize  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import ResistorWithSize
+
+        module App:
+            r = new ResistorWithSize<size="I0805">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    r = bob.resolve_field_shortcut(node, "r")
+    assert isinstance(r, ResistorWithSize)
+
+    solver = DefaultSolver()
+    assert r.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+
+
+def test_module_template_enum_invalid(bob: Bob):
+    class ResistorWithSize(F.Resistor):
+        def __init__(self, size: SMDSize):
+            super().__init__()
+            self._size = size
+
+        def __postinit__(self, *args, **kwargs):
+            self.add(F.has_package_requirements(size=self._size))
+
+    F.ResistorWithSize = ResistorWithSize  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import ResistorWithSize
+
+        module App:
+            r = new ResistorWithSize<size="<invalid size>">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    with pytest.raises(errors.UserInvalidValueError):
+        bob.build_ast(tree, TypeRef(["App"]))
+
+
+# Helper classes for enum tests
+class _IntEnumForTests(IntEnum):
+    VALUE_1 = 1
+    VALUE_2 = 2
+    VALUE_3 = 3
+
+
+class _StrEnumForTests(StrEnum):
+    OPTION_A = "option_a"
+    OPTION_B = "option_b"
+    OPTION_C = "option_c"
+    PRESET_A = "preset_a"
+    PRESET_B = "preset_b"
+
+
+# Test classes for enum template tests
+class ModuleWithIntEnum(L.Module):
+    def __init__(self, value: _IntEnumForTests):
+        super().__init__()
+        self._value = value
+
+
+class ModuleWithStrEnum(L.Module):
+    def __init__(self, mode: _StrEnumForTests):
+        super().__init__()
+        self._mode = mode
+
+
+class ModuleWithOptionalEnum(L.Module):
+    def __init__(self, color: F.LED.Color | None = None):
+        super().__init__()
+        self._color = color
+
+
+class ModuleWithTypingOptionalEnum(L.Module):
+    def __init__(self, color: Optional[F.LED.Color] = None):
+        super().__init__()
+        self._color = color
+
+
+class ModuleWithEnumUnion(L.Module):
+    def __init__(
+        self,
+        value: F.LED.Color | F.MOSFET.ChannelType | F.Capacitor.TemperatureCoefficient,
+    ):
+        super().__init__()
+        self._value = value
+
+
+class ModuleWithTypingUnionEnum(L.Module):
+    def __init__(
+        self,
+        value: Union[
+            F.LED.Color, F.MOSFET.ChannelType, F.Capacitor.TemperatureCoefficient
+        ],
+    ):
+        super().__init__()
+        self._value = value
+
+
+class ModuleWithStrOrEnum(L.Module):
+    def __init__(self, label: str | F.LED.Color):
+        super().__init__()
+        self._label = label
+
+
+class ModuleWithTypingUnionStrOrEnum(L.Module):
+    def __init__(self, label: Union[str, F.LED.Color]):
+        super().__init__()
+        self._label = label
+
+
+class ModuleWithStrOrStrEnum(L.Module):
+    def __init__(self, config: str | _StrEnumForTests):
+        super().__init__()
+        self._config = config
+
+
+class ModuleWithEnumOrNone(L.Module):
+    def __init__(self, channel: F.MOSFET.ChannelType | None = None):
+        super().__init__()
+        self._channel = channel
+
+
+class ModuleWithTypingUnionEnumOrNone(L.Module):
+    def __init__(self, channel: Union[F.MOSFET.ChannelType, None] = None):
+        super().__init__()
+        self._channel = channel
+
+
+@pytest.mark.parametrize(
+    "module_name,template_args,expected_attrs",
+    [
+        # Basic enum types
+        ("ModuleWithIntEnum", "<value=2>", {"_value": _IntEnumForTests.VALUE_2}),
+        (
+            "ModuleWithStrEnum",
+            '<mode="OPTION_B">',
+            {"_mode": _StrEnumForTests.OPTION_B},
+        ),
+        # Optional enums with modern syntax
+        ("ModuleWithOptionalEnum", "", {"_color": None}),
+        ("ModuleWithOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
+        # Optional enums with typing syntax
+        ("ModuleWithTypingOptionalEnum", "", {"_color": None}),
+        ("ModuleWithTypingOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
+        # Enum | None variations
+        ("ModuleWithEnumOrNone", "", {"_channel": None}),
+        (
+            "ModuleWithEnumOrNone",
+            '<channel="P_CHANNEL">',
+            {"_channel": F.MOSFET.ChannelType.P_CHANNEL},
+        ),
+        ("ModuleWithTypingUnionEnumOrNone", "", {"_channel": None}),
+        (
+            "ModuleWithTypingUnionEnumOrNone",
+            '<channel="P_CHANNEL">',
+            {"_channel": F.MOSFET.ChannelType.P_CHANNEL},
+        ),
+        # str | Enum unions
+        ("ModuleWithStrOrEnum", '<label="custom_label">', {"_label": "custom_label"}),
+        ("ModuleWithStrOrEnum", '<label="GREEN">', {"_label": F.LED.Color.GREEN}),
+        (
+            "ModuleWithTypingUnionStrOrEnum",
+            '<label="custom_label">',
+            {"_label": "custom_label"},
+        ),
+        (
+            "ModuleWithTypingUnionStrOrEnum",
+            '<label="GREEN">',
+            {"_label": F.LED.Color.GREEN},
+        ),
+        # str | StrEnum unions
+        (
+            "ModuleWithStrOrStrEnum",
+            '<config="custom_config">',
+            {"_config": "custom_config"},
+        ),
+        (
+            "ModuleWithStrOrStrEnum",
+            '<config="PRESET_A">',
+            {"_config": _StrEnumForTests.PRESET_A},
+        ),
+    ],
+)
+def test_module_template_enum_scenarios(
+    bob: Bob, module_name, template_args, expected_attrs
+):
+    """Test various enum scenarios in module template constructors."""
+    # Register the module classes
+    F.ModuleWithIntEnum = ModuleWithIntEnum  # type: ignore
+    F.ModuleWithStrEnum = ModuleWithStrEnum  # type: ignore
+    F.ModuleWithOptionalEnum = ModuleWithOptionalEnum  # type: ignore
+    F.ModuleWithTypingOptionalEnum = ModuleWithTypingOptionalEnum  # type: ignore
+    F.ModuleWithEnumUnion = ModuleWithEnumUnion  # type: ignore
+    F.ModuleWithTypingUnionEnum = ModuleWithTypingUnionEnum  # type: ignore
+    F.ModuleWithStrOrEnum = ModuleWithStrOrEnum  # type: ignore
+    F.ModuleWithTypingUnionStrOrEnum = ModuleWithTypingUnionStrOrEnum  # type: ignore
+    F.ModuleWithStrOrStrEnum = ModuleWithStrOrStrEnum  # type: ignore
+    F.ModuleWithEnumOrNone = ModuleWithEnumOrNone  # type: ignore
+    F.ModuleWithTypingUnionEnumOrNone = ModuleWithTypingUnionEnumOrNone  # type: ignore
+    F._StrEnumForTests = _StrEnumForTests  # type: ignore
+
+    text = dedent(
+        f"""
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import {module_name}
+
+        module App:
+            mod = new {module_name}{template_args}
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    mod = bob.resolve_field_shortcut(node, "mod")
+    assert isinstance(mod, eval(module_name))
+
+    for attr, expected_value in expected_attrs.items():
+        assert getattr(mod, attr) == expected_value
+
+
+@pytest.mark.parametrize(
+    "module_name,template_args,expected_value,enum_type",
+    [
+        # Multiple enum type unions - modern syntax
+        ("ModuleWithEnumUnion", '<value="RED">', F.LED.Color.RED, "LED"),
+        (
+            "ModuleWithEnumUnion",
+            '<value="N_CHANNEL">',
+            F.MOSFET.ChannelType.N_CHANNEL,
+            "MOSFET",
+        ),
+        (
+            "ModuleWithEnumUnion",
+            '<value="X7R">',
+            F.Capacitor.TemperatureCoefficient.X7R,
+            "Capacitor",
+        ),
+        # Multiple enum type unions - typing syntax
+        ("ModuleWithTypingUnionEnum", '<value="RED">', F.LED.Color.RED, "LED"),
+        (
+            "ModuleWithTypingUnionEnum",
+            '<value="N_CHANNEL">',
+            F.MOSFET.ChannelType.N_CHANNEL,
+            "MOSFET",
+        ),
+        (
+            "ModuleWithTypingUnionEnum",
+            '<value="X7R">',
+            F.Capacitor.TemperatureCoefficient.X7R,
+            "Capacitor",
+        ),
+    ],
+)
+def test_module_template_enum_union_types(
+    bob: Bob, module_name, template_args, expected_value, enum_type
+):
+    """Test union of multiple enum types in module template constructors."""
+    # Register the module classes
+    F.ModuleWithEnumUnion = ModuleWithEnumUnion  # type: ignore
+    F.ModuleWithTypingUnionEnum = ModuleWithTypingUnionEnum  # type: ignore
+
+    text = dedent(
+        f"""
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import {module_name}
+
+        module App:
+            mod = new {module_name}{template_args}
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+    mod = bob.resolve_field_shortcut(node, "mod")
+    assert isinstance(mod, eval(module_name))
+    assert mod._value == expected_value
+
+
+def test_module_template_multiple_enum_args(bob: Bob):
+    """Test multiple enum arguments in module template constructor."""
+
+    class ModuleWithMultipleEnums(L.Module):
+        def __init__(
+            self,
+            color: F.LED.Color,
+            channel: F.MOSFET.ChannelType,
+            temp_coeff: F.Capacitor.TemperatureCoefficient | None = None,
+        ):
+            super().__init__()
+            self._color = color
+            self._channel = channel
+            self._temp_coeff = temp_coeff
+
+    F.ModuleWithMultipleEnums = ModuleWithMultipleEnums  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import ModuleWithMultipleEnums
+
+        module App:
+            mod1 = new ModuleWithMultipleEnums<color="BLUE", channel="N_CHANNEL">
+            mod2 = new ModuleWithMultipleEnums<color="RED", channel="P_CHANNEL", temp_coeff="C0G">
+        """  # noqa: E501
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    mod1 = bob.resolve_field_shortcut(node, "mod1")
+    assert isinstance(mod1, ModuleWithMultipleEnums)
+    assert mod1._color == F.LED.Color.BLUE
+    assert mod1._channel == F.MOSFET.ChannelType.N_CHANNEL
+    assert mod1._temp_coeff is None
+
+    mod2 = bob.resolve_field_shortcut(node, "mod2")
+    assert isinstance(mod2, ModuleWithMultipleEnums)
+    assert mod2._color == F.LED.Color.RED
+    assert mod2._channel == F.MOSFET.ChannelType.P_CHANNEL
+    assert mod2._temp_coeff == F.Capacitor.TemperatureCoefficient.C0G
+
+
+def test_module_template_mixed_syntax_compatibility(bob: Bob):
+    """Test that both Optional and | None syntax work in the same context."""
+
+    class ModuleWithModernOptional(L.Module):
+        def __init__(self, color: F.LED.Color | None = None):
+            super().__init__()
+            self._color = color
+
+    class ModuleWithTypingOptional(L.Module):
+        def __init__(self, color: Optional[F.LED.Color] = None):
+            super().__init__()
+            self._color = color
+
+    F.ModuleWithModernOptional = ModuleWithModernOptional  # type: ignore
+    F.ModuleWithTypingOptional = ModuleWithTypingOptional  # type: ignore
+
+    text = dedent(
+        """
+        #pragma experiment("MODULE_TEMPLATING")
+
+        import ModuleWithModernOptional
+        import ModuleWithTypingOptional
+
+        module App:
+            mod1 = new ModuleWithModernOptional<color="BLUE">
+            mod2 = new ModuleWithTypingOptional<color="BLUE">
+        """
+    )
+
+    tree = parse_text_as_file(text)
+    node = bob.build_ast(tree, TypeRef(["App"]))
+
+    assert isinstance(node, L.Module)
+
+    mod1 = bob.resolve_field_shortcut(node, "mod1")
+    assert isinstance(mod1, ModuleWithModernOptional)
+    assert mod1._color == F.LED.Color.BLUE
+
+    mod2 = bob.resolve_field_shortcut(node, "mod2")
+    assert isinstance(mod2, ModuleWithTypingOptional)
+    assert mod2._color == F.LED.Color.BLUE
