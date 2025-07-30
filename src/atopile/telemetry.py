@@ -79,9 +79,7 @@ def _flush_telemetry_on_exit() -> None:
     """Flush telemetry data when the program exits."""
     try:
         if not client.disabled:
-            now = time.perf_counter()
             client.flush()
-            print("Flushed telemetry data in", time.perf_counter() - now, "seconds")
     except Exception as e:
         log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
 
