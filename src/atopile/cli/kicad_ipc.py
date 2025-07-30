@@ -80,6 +80,8 @@ def layout_sync(
 
     if legacy:
         pcb_path = Path(not_none(board))
+        if not pcb_path.exists():
+            raise FileNotFoundError(f"PCB file not found: {pcb_path}")
     else:
         raise NotImplementedError("KiCAD IPC is too broken to use/test")
         pcbnew = PCBnew.get_host()

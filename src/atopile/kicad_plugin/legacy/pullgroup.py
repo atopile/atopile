@@ -32,8 +32,6 @@ class PullGroup(pcbnew.ActionPlugin):
         target_board: pcbnew.BOARD = pcbnew.GetBoard()
         board_path = target_board.GetFileName()
 
-        # Find the manifest file
-
         cmd = [
             "kicad-ipc",
             "layout-sync",
