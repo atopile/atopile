@@ -414,7 +414,11 @@ class PackagesAPIClient:
         url: str,
         timeout: float = 10,
     ) -> requests.Response:
-        response = self._client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+        response = self._client.get(
+            f"{self._cfg.api_url}{url}",
+            timeout=timeout,
+            verify=False,  # FIXME: SSL
+        )
         try:
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -441,6 +445,7 @@ class PackagesAPIClient:
             json=data,
             timeout=timeout,
             headers=headers,
+            verify=False,  # FIXME: SSL
         )
         try:
             response.raise_for_status()
