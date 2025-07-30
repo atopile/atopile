@@ -2,75 +2,66 @@
     <picture>
     <source media="(prefers-color-scheme: dark)" srcset="https://github.com/atopile/atopile/assets/9785003/00f19584-18a2-4b5f-9ce4-1248798974dd">
     <source media="(prefers-color-scheme: light)" src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
-    <img alt="Shows a black logo in light color mode and a white one in dark color mode." src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
+    <img alt="atopile logo" src="https://github.com/atopile/atopile/assets/9785003/d38941c1-d7c1-42e6-9b94-a62a0996bc19">
     </picture>
 </h1>
 
+# atopile – Hardware design at the speed of software
 
-# Welcome
+**atopile** is an open-source language, compiler and tool-chain for designing electronics with code instead of point-and-click schematics. Write human-readable `.ato` files, version them with Git, and let the compiler generate the PCB artifacts for you.
 
-`atopile` is a language, compiler and toolchain to design electronics with code.
+---
 
-Design circuit boards with the same powerful workflows that software developers use - version control, modularity, and automated validation. Instead of point-and-click schematics, use human-readable `.ato` files that can be version controlled and shared. Capture design intelligence and validation rules in code to ensure your hardware works as intended.
+## 🧩 What makes atopile different?
 
+|                               |                                                                                                                                                                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ⚡ **Move fast, stay safe**   | Treat hardware like software: branch, PR, review & merge. Every build re-compiles the design, solves equations and runs automated checks so you can refactor fearlessly.                                                                                                                             |
+| 📦 **Modular reuse**          | Install proven sub-circuits from [packages.atopile.io](https://packages.atopile.io) with a single command. Drop-in modules already include schematic, PCB layout – and with the KiCad plugin – _placement & routing_ reuse.                                                                          |
+| 🏪 **Millions of components** | Need a 0402 10 kΩ resistor? A single line `new Resistor  • resistance = 10 kΩ ±5 %` auto-picks a part from a database of >10 million manufacturer parts.                                                                                                                                             |
+| 📝 **Design intent in code**  | Express requirements, not footprints. Voltages, tolerances, interface contracts and equations live next to the net-list so your intent is always machine-checked.<br/>_Example:_ specify `fc = 10 kHz ±15 %` for a first-order RC filter and the compiler picks matching R & C values automatically. |
+| 🗂 **Versioned hardware**      | A PCB revision is just a Git hash. Tag, bisect and branch your board the same way you manage firmware.                                                                                                                                                                                               |
 
-## Features
+---
 
-- 🚀 Auto-select components like resistors and capacitors, based on their attribute's values
-- 🤖 Embed calculations in your code, which are checked on every build
-- 🧱 Build you circuit from reliable configurable modules so you can focus on high level design
-- 💥 Build, release and test your circuit board from the `CLI`
-- 📦 Embedded package manager to install and manage modules from https://packages.atopile.io, or Github
-- 🔍 Version control line-by-line diffable code w/ git
+## 🚀 Key capabilities
 
-Jump right in with the [quickstart guide](https://docs.atopile.io/quickstart)
+- **Physical-unit aware equations** – Write `vout = vin * R2/(R1+R2)` and assert `vout within 3.3 V ±3 %`.
+- **Automatic part selection** – Passive values & package footprints are selected by the compiler based on your constraints.
+- **Layout reuse** – Import a power supply module and its pre-routed layout is placed instantly in KiCad.
+- **VS Code extension** – Design, build and visualise directly inside Visual Studio Code.
+- **Cross-platform** – macOS, Linux, Windows. Container images available for CI.
+- **CI artifacts** – Provided GitHub Actions workflow builds your board on every commit, producing BoM, Gerbers and 3D previews automatically—no more copy-pasting values between tools.
 
+---
 
-## Who's atopile for?
+## 🔧 Quick start
 
-Currently atopile is young - which means we can't do everything yet and we're focussed on being incredible at a few things:
+1. Open **Visual Studio Code**.
+2. In the Extensions sidebar search for **“atopile”** and click **Install**.
+3. Press `Ctrl + Shift + P` / `⌘ + Shift + P` and run **“atopile: Create project”** to scaffold a new design, or choose **“atopile: Open Example Project”** to explore.
 
+That’s it! The extension bundles the compiler, language server and KiCad integration – no extra installs required.
 
-### Custom Validation Equipment
+Read the [full quick-start guide →](https://docs.atopile.io/quickstart)
 
-> "Rome wasn't built in a day, but your HiL should be"
+---
 
-If you're serious about automating the validation of your production hardware, you're in the right place.
+## 🤔 Why capture hardware in code?
 
-[Cell-sim](https://github.com/atopile/cell-sim/) is a 16ch, 16-bit, isolated, 0-5V, 0-500mA battery-cell simulator designed from scratch in atopile, from concept to 2-revisions in under 5 days work. Oh, and that time includes the firmware. It is a relatively complex HiL design, and required many new modules that didn't yet exist on our package manager. Simpler HiL designs are frequently just a day's work.
+1. **Repeatability** – Rebuild the entire design pipeline in CI to guarantee nothing drifts between “works on my machine” and production.
+2. **Composability** – A DC/DC module written once can power every future design; just set `vout` and you’re done.
+3. **Collaboration** – Code-reviews scale better than PDF schematics; nuanced changes are obvious in a diff.
+4. **Automation** – Parametric BoM generation, pin-mapping, rule-checking and documentation all flow from the source.
 
-![cell-sim](assets/cell-sim.png)
+---
 
+## 🌐 Join the community
 
-### Young companies who need to iterate on hardware
+- Browse community modules at [packages.atopile.io](https://packages.atopile.io)
+- Chat with us on [Discord](https://discord.gg/XyGVy6WjY6)
+- Follow new releases on [Twitter /X](https://twitter.com/atopile)
 
-`atopile` designed hardware is in satellites, humanoid robots and VTOL drones - all from startups within the last year.
+---
 
-Not every young company NEEDs to iterate on it's hardware, but many more should than do.
-
-We're used to this in the software world, but getting the same engine running at even remotely similar speeds for hardware is a huge challenge. `atopile` let's multiple people work on different features or concepts on the same project in parallel via branches in `git`. With calculations checked and tests run automatically on every change, you can iterate as an individual - quickly trying out new ideas before committing to a design as a team and only after validating it in the real-world.
-
-
-### Huge nerds 🤓
-
-Welcome the club!
-
-If you like making dope stuff, like these [servo drives](https://github.com/atopile/spin-servo-drive) you're in the right place. Welcome!
-
-![spin-showing-off-the-very-goods](assets/spin-showing-off-the-very-goods.jpg)
-
-
-## ❓ Why Atopile?
-
-The objective of atopile is to help push forward paradigms from the software world to hardware design. Describing hardware with code might seem odd at first glance. But once you realize it introduces software development paradigms and toolchains, you'll be hooked, just like we've become.
-
-**Intelligent Design Capture**: Code can capture the intelligence you put into your work. Define hardware specifications like ratios and tolerances in code, enabling precise control and easy reuse of designs. Imagine configuring not the resistance values of a voltage divider, but its ratio and total resistance, all using physical units and tolerances. You can do this because someone before you described precisely what this module is and described the relationships between the values of the components and the function you care about. Now instead imagine what you can gain from reusing a buck design you can merely configure the target voltage and ripple of. Now imagine installing a [servo drive](https://github.com/atopile/spin-servo-drive) the same way you might numpy.
-
-**Version Control Integration**: Use git to manage design changes, facilitating collaboration and ensuring each iteration is thoroughly reviewed and validated. Version controlling your designs using git means you can deeply validate and review changes a feature at a time, isolated from impacting others' work. It means you can detangle your organisation and collaborate on an unprecedented scale. We can forgo half-baked "releases" in favor of stamping a simple git-hash on our prototypes, providing an anchor off which to associate test data and expectations.
-
-**Continuous Integration (CI)**: Implement CI to guarantee high-quality, compliant designs with every commit, represented by a green checkmark for assurance. Implementing CI to test our work ensures both high-quality and compliance, all summarised in a green check mark, emboldening teams to target excellence.
-
-
-## 🔍 Discover what people build
-
-Browse and submit your modules at [packages.atopile.io](https://packages.atopile.io)
+Licensed under the MIT License. Happy hacking! 🍰
