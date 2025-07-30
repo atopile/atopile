@@ -2140,6 +2140,50 @@ def md_list[T](
     return "\n".join(lines)
 
 
+def md_table(obj: Iterable[Iterable[Any]], headers: Iterable[str]) -> str:
+    """Convert an iterable of iterables into a markdown table."""
+
+    headers_list = list(headers)
+    rows = list(obj)
+
+    if not headers_list:
+        return ""
+
+    # Calculate column widths
+    col_widths = [len(str(h)) for h in headers_list]
+    for row in rows:
+        row_list = list(row)
+        for i, cell in enumerate(row_list[: len(col_widths)]):
+            col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    # Build header row
+    header_cells = []
+    for i, header in enumerate(headers_list):
+        header_cells.append(str(header).ljust(col_widths[i]))
+    header_row = "| " + " | ".join(header_cells) + " |"
+
+    # Build separator row
+    separator_cells = ["-" * width for width in col_widths]
+    separator_row = "| " + " | ".join(separator_cells) + " |"
+
+    # Build data rows
+    data_rows = []
+    for row in rows:
+        row_list = list(row)
+        cells = []
+        for i in range(len(headers_list)):
+            if i < len(row_list):
+                cells.append(str(row_list[i]).ljust(col_widths[i]))
+            else:
+                cells.append(" " * col_widths[i])
+        data_rows.append("| " + " | ".join(cells) + " |")
+
+    # Combine all parts
+    result = []
+    result.extend([header_row, separator_row] + data_rows)
+    return "\n".join(result)
+
+
 def robustly_rm_dir(path: os.PathLike) -> None:
     """Remove a directory and all its contents."""
 

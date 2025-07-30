@@ -6,6 +6,7 @@ import time
 from copy import deepcopy
 from dataclasses import astuple, dataclass, is_dataclass
 from pathlib import Path
+from textwrap import dedent
 from typing import Callable
 
 import faebryk.library._F as F
@@ -62,7 +63,14 @@ from faebryk.libs.exceptions import (
     iter_leaf_exceptions,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous, once
+from faebryk.libs.util import (
+    ConfigFlag,
+    KeyErrorAmbiguous,
+    compare_dataclasses,
+    md_table,
+    once,
+    sort_dataclass,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -231,11 +239,28 @@ def build(app: Module) -> None:
             updated_relative = _try_relative(updated_path)
 
             raise UserException(
-                "Built as frozen, but layout changed. \n"
-                f"Original layout: {original_relative}\n"
-                f"Updated layout: {updated_relative}\n"
-                "You can see the changes by running:\n"
-                f'`diff --color "{original_relative}" "{updated_relative}"`',
+                dedent(
+                    """
+                    Built as frozen, but layout changed.
+
+                    Original layout: **{original_relative}**
+
+                    Updated layout: **{updated_relative}**
+
+                    Diff:
+                    {diff}
+                    """
+                ).format(
+                    original_relative=original_relative,
+                    updated_relative=updated_relative,
+                    diff=md_table(
+                        [
+                            [f"**{path}**", diff["before"], diff["after"]]
+                            for path, diff in pcb_diff.items()
+                        ],
+                        headers=["Path", "Before", "After"],
+                    ),
+                ),
                 title="Frozen failed",
                 # No markdown=False here because we have both a command and paths
             )
