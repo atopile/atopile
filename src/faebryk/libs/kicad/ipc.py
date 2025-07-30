@@ -1,4 +1,6 @@
 import logging
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -23,6 +25,10 @@ logger = logging.getLogger(__name__)
 # https://dev-docs.kicad.org/en/apis-and-binding/ipc-api/for-addon-developers/index.html
 
 
+def running_in_kicad():
+    return os.environ.get("KICAD_API_TOKEN") is not None
+
+
 @once
 def enable_plugin_api():
     cfg_file = get_config_common()
@@ -34,13 +40,22 @@ def enable_plugin_api():
 
 
 def _kicad_socket_files():
-    return list(get_ipc_socket_path().glob("api*.sock"))
+    base = get_ipc_socket_path()
+    if sys.platform.startswith("win"):
+        # named pipe
+        pipes = [Path(p) for p in os.listdir(r"\\.\pipe\\")]
+        out = [pipe for pipe in pipes if pipe.is_relative_to(base)]
+    else:
+        # unix socket
+        out = list(base.glob("api*.sock"))
+    return out
 
 
 def _get_all_clients():
     socket_files = _kicad_socket_files()
     clients = [
-        KiCad(socket_path=f"ipc://{socket_file}") for socket_file in socket_files
+        KiCad(socket_path=f"ipc://{socket_file}", timeout_ms=5000)
+        for socket_file in socket_files
     ]
     # try connect
     clients = [
@@ -139,6 +154,15 @@ class PCBnew:
 
     def matches(self, pcb_path: Path):
         return self.path == pcb_path.expanduser().resolve().absolute()
+
+    @classmethod
+    def get_host(cls):
+        if not running_in_kicad():
+            raise Exception("Not running in KiCad")
+        out = cls.from_client(KiCad())
+        if not out:
+            raise Exception("No PCBnew client found")
+        return out
 
 
 def opened_in_pcbnew(pcb_path: Path | None) -> bool:

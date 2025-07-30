@@ -13,10 +13,10 @@ from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.sexp.dataclass_sexp import (
     DecodeError,
     SymEnum,
-    dataclass_dfs,
     dumps,
     loads,
     sexp_field,
+    visit_dataclass,
 )
 from faebryk.libs.test.fileformats import (
     _FPLIB_DIR,  # noqa: F401
@@ -145,14 +145,20 @@ def test_unknowns():
 
 def test_print_sexp():
     pcb = C_kicad_pcb_file.loads(PCBFILE)
-    dfs = list(dataclass_dfs(pcb))
-    for obj, path, name_path in dfs:
+    dfs = list(visit_dataclass(pcb))
+    for it in dfs:
+        obj = it.value
+        path = it.path
+        name_path = it.name_path
         name = "".join(name_path)
         logger.debug(f"{name:70} {[type(p).__name__ for p in path + [obj]]}")
 
     logger.debug("-" * 80)
 
-    level2 = [p for p in dfs if len(p[1]) == 2]
-    for obj, path, name_path in level2:
+    level2 = [p for p in dfs if len(p.path) == 2]
+    for it in level2:
+        obj = it.value
+        path = it.path
+        name_path = it.name_path
         name = "".join(name_path)
         logger.debug(f"{name:70}  {[type(p).__name__ for p in path + [obj]]}")

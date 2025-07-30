@@ -4,6 +4,7 @@
 import os
 import shutil
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import platformdirs
@@ -66,3 +67,12 @@ def get_cache_dir() -> Path:
         return Path(platformdirs.user_cache_dir("atopile"))
     except Exception:
         return Path.home() / ".cache" / "atopile"
+
+
+def get_log_dir() -> Path:
+    return Path(platformdirs.user_log_dir("atopile", ensure_exists=True))
+
+
+def get_log_file(name: str) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return get_log_dir() / f"{name}_{timestamp}.log"

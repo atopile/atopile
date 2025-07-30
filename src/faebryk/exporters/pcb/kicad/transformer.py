@@ -32,17 +32,21 @@ from faebryk.libs.kicad.fileformats_latest import (
     UUID,
     C_arc,
     C_circle,
+    C_curve,
     C_effects,
     C_footprint,
     C_fp_text,
     C_group,
+    C_image,
     C_kicad_pcb_file,
     C_line,
     C_net,
     C_polygon,
     C_rect,
     C_stroke,
+    C_table,
     C_text,
+    C_text_box,
     C_text_layer,
     C_wh,
     C_xy,
@@ -51,7 +55,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     E_fill,
     _SingleOrMultiLayer,
 )
-from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
+from faebryk.libs.sexp.dataclass_sexp import visit_dataclass
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
@@ -83,7 +87,7 @@ Rect = C_rect
 Via = PCB.C_via
 Line = C_line
 
-Geom = C_line | C_arc | C_rect | C_circle
+Geom = C_line | C_arc | C_rect | C_circle | C_polygon | C_curve
 
 Point = Geometry.Point
 Point2D = Geometry.Point2D
@@ -158,7 +162,14 @@ def per_point[R](
 
 def get_all_geo_containers(obj: PCB | Footprint) -> list[Sequence[Geom]]:
     if isinstance(obj, C_kicad_pcb_file.C_kicad_pcb):
-        return [obj.gr_lines, obj.gr_arcs, obj.gr_circles, obj.gr_rects]
+        return [
+            obj.gr_lines,
+            obj.gr_arcs,
+            obj.gr_circles,
+            obj.gr_rects,
+            obj.gr_curves,
+            obj.gr_polys,
+        ]
     elif isinstance(obj, Footprint):
         return [obj.fp_lines, obj.fp_arcs, obj.fp_circles, obj.fp_rects]
 
@@ -767,6 +778,8 @@ class PCB_Transformer:
 
     def _get_pcb_list_field[R](self, node: R, prefix: str = "") -> list[R]:
         root = self.pcb
+        # TODO this doesnt work for every type (e.g arc_segment, gr_lines)
+        # see get_container for better solution
         key = prefix + type(node).__name__.removeprefix("C_") + "s"
 
         assert hasattr(root, key)
@@ -775,6 +788,42 @@ class PCB_Transformer:
         assert isinstance(target, list)
         assert all(isinstance(x, type(node)) for x in target)
         return target
+
+    @staticmethod
+    def get_pcb_container[R](obj: R, pcb: PCB) -> list[R]:
+        match obj:
+            case PCB.C_pcb_footprint():
+                return pcb.footprints  # type: ignore
+            case PCB.C_segment():
+                return pcb.segments  # type: ignore
+            case PCB.C_arc_segment():
+                return pcb.arcs  # type: ignore
+            case PCB.C_via():
+                return pcb.vias  # type: ignore
+            case PCB.C_zone():
+                return pcb.zones  # type: ignore
+            case C_line():
+                return pcb.gr_lines  # type: ignore
+            case C_arc():
+                return pcb.gr_arcs  # type: ignore
+            case C_rect():
+                return pcb.gr_rects  # type: ignore
+            case C_circle():
+                return pcb.gr_circles  # type: ignore
+            case C_polygon():
+                return pcb.gr_polys  # type: ignore
+            case C_curve():
+                return pcb.gr_curves  # type: ignore
+            case C_text():
+                return pcb.gr_texts  # type: ignore
+            case C_text_box():
+                return pcb.gr_text_boxs  # type: ignore
+            case C_image():
+                return pcb.images  # type: ignore
+            case C_table():
+                return pcb.tables  # type: ignore
+            case _:
+                raise TypeError(f"Unsupported object type: {type(obj)}")
 
     def _insert(self, obj: Any, prefix: str = ""):
         obj = PCB_Transformer.mark(obj)
@@ -1065,9 +1114,25 @@ class PCB_Transformer:
                     layer = layer_names[coord[3]]
 
             logger.debug(f"Placing {fp.name} at {coord} layer {layer}")
-            self.move_fp(fp, C_xyr(*coord[:3]), layer)
+            to = C_xyr(*coord[:3])
+            self.move_fp(fp, to, layer)
 
-    def move_fp(self, fp: Footprint, coord: C_xyr, layer: str):
+            # Label
+            if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
+                rot_angle = (to.r - fp.at.r) % 360
+                fp.fp_texts.append(
+                    C_fp_text(
+                        type=C_fp_text.E_type.user,
+                        text="FBRK:autoplaced",
+                        at=C_xyr(0, 0, rot_angle),
+                        effects=C_fp_text.C_fp_text_effects(font=self.font),
+                        uuid=self.gen_uuid(mark=True),
+                        layer=C_text_layer("User.5"),
+                    )
+                )
+
+    @staticmethod
+    def move_fp(fp: Footprint, coord: C_xyr, layer: str):
         if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):
             logger.warning(f"Skipped no touch component: {fp.name}")
             return
@@ -1113,18 +1178,58 @@ class PCB_Transformer:
                     case _:
                         obj.layer = _flip(obj.layer)
 
-        # Label
-        if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
-            fp.fp_texts.append(
-                C_fp_text(
-                    type=C_fp_text.E_type.user,
-                    text="FBRK:autoplaced",
-                    at=C_xyr(0, 0, rot_angle),
-                    effects=C_effects(self.font),
-                    uuid=self.gen_uuid(mark=True),
-                    layer=C_text_layer("User.5"),
-                )
-            )
+    @staticmethod
+    def move_object(obj: Any, vector: C_xy):
+        match obj:
+            case PCB.C_segment():
+                obj.start += vector
+                obj.end += vector
+            case PCB.C_arc_segment():
+                obj.start += vector
+                obj.mid += vector
+                obj.end += vector
+            case PCB.C_via():
+                obj.at += vector
+            case PCB.C_zone():
+                obj.polygon.pts.xys = [pt + vector for pt in obj.polygon.pts.xys]
+                for p in obj.filled_polygon:
+                    p.pts.xys = [pt + vector for pt in p.pts.xys]
+            case C_line():
+                obj.start += vector
+                obj.end += vector
+            case C_arc():
+                obj.start += vector
+                obj.mid += vector
+                obj.end += vector
+            case C_circle():
+                obj.center += vector
+                obj.end += vector
+            case C_rect():
+                obj.start += vector
+                obj.end += vector
+            case C_polygon():
+                obj.pts.xys = [pt + vector for pt in obj.pts.xys]
+            case C_curve():
+                obj.pts.xys = [pt + vector for pt in obj.pts.xys]
+            case C_text():
+                obj.at += vector
+            case C_text_box():
+                obj.start += vector
+                if obj.end:
+                    obj.end += vector
+                if obj.pts:
+                    obj.pts[:] = [pt + vector for pt in obj.pts]
+            case C_image():
+                obj.at += vector
+            case C_table():
+                for cell in obj.cells.table_cells:
+                    cell.start += vector
+                    if cell.end:
+                        cell.end += vector
+                    if cell.pts:
+                        cell.pts[:] = [pt + vector for pt in cell.pts]
+            case _:
+                raise TypeError(f"Unsupported object type: {type(obj)}")
 
     # Edge -----------------------------------------------------------------------------
     # TODO: make generic
@@ -1555,7 +1660,11 @@ class PCB_Transformer:
             if obj is None:
                 return
 
-            for obj, path, name_path in dataclass_dfs(obj):
+            for it in visit_dataclass(obj):
+                obj = it.value
+                path = it.path
+                name_path = it.name_path
+
                 # This only works for strings, so skip everything else
                 if not isinstance(obj, str):
                     continue
