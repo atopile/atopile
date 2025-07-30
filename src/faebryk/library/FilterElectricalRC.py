@@ -61,7 +61,8 @@ class FilterElectricalRC(F.Filter):
         return F.can_bridge_defined(self.in_.line, self.out.line)
 
     @classmethod
-    def hardcoded_fc(cls, fc: Quantity_Set):
+    def hardcoded_fc(cls, fc: Quantity_Set, r: Quantity_Set, c: Quantity_Set):
+        #TODO: Remove hardcoded when normal equations solve faster
         self = cls(_hardcoded=True)
         r = None
         c = None
