@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import Field, dataclass, fields, is_dataclass
+from copy import deepcopy
+from dataclasses import Field, dataclass, fields, is_dataclass, replace
 from enum import Enum, IntEnum, StrEnum
 from os import PathLike
 from pathlib import Path
@@ -640,3 +641,41 @@ def _iterate_tree(
     elif isinstance(obj, dict):
         for k, v in obj.items():
             yield from _iterate_tree(v, out_path, name_path + [f"[{repr(k)}]"])
+
+
+def _filter_fields(obj: Any, field_names: list[str]) -> Any:
+    """
+    Recursively filter fields of a dataclass instance. Operates in-place.
+    """
+    match obj:
+        case list():
+            return [_filter_fields(item, field_names) for item in obj]
+        case tuple():
+            return tuple(_filter_fields(item, field_names) for item in obj)
+        case dict():
+            return {k: _filter_fields(v, field_names) for k, v in obj.items()}
+        case _ if is_dataclass(obj):
+            for f in fields(obj):
+                if f.name in field_names:
+                    setattr(obj, f.name, None)
+                else:
+                    setattr(
+                        obj, f.name, _filter_fields(getattr(obj, f.name), field_names)
+                    )
+            return obj
+        case _:
+            return obj
+
+
+def filter_fields[T: DataclassInstance](obj: T, field_names: list[str]) -> T:
+    """
+    Returns a copy of a dataclass object (or collection of dataclass instances),
+    with all properties listed in field_names recursively removed.
+    """
+    out = deepcopy(obj)
+    _filter_fields(out, field_names)
+    return out
+
+
+def filter_uuids[T: DataclassInstance](obj: T) -> T:
+    return filter_fields(obj, field_names=["uuid"])
