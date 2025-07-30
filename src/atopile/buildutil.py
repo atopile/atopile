@@ -62,6 +62,7 @@ from faebryk.libs.exceptions import (
     accumulate,
     iter_leaf_exceptions,
 )
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import (
     ConfigFlag,
@@ -83,6 +84,81 @@ def _get_solver() -> Solver:
         return NullSolver()
     else:
         return DefaultSolver()
+
+
+def _update_layout(
+    pcb_file: C_kicad_pcb_file, original_pcb_file: C_kicad_pcb_file
+) -> None:
+    pcb_diff = compare_dataclasses(
+        sort_dataclass(
+            original_pcb_file,
+            sort_key=lambda x: astuple(x)
+            if is_dataclass(x) and not isinstance(x, type)
+            else x,
+        ),
+        sort_dataclass(
+            pcb_file,
+            sort_key=lambda x: astuple(x)
+            if is_dataclass(x) and not isinstance(x, type)
+            else x,
+        ),
+        skip_keys=("uuid", "__atopile_lib_fp_hash__"),
+    )
+
+    if config.build.frozen:
+        if pcb_diff:
+            original_path = config.build.paths.output_base.with_suffix(
+                ".original.kicad_pcb"
+            )
+            updated_path = config.build.paths.output_base.with_suffix(
+                ".updated.kicad_pcb"
+            )
+            original_pcb_file.dumps(original_path)
+            pcb_file.dumps(updated_path)
+
+            # TODO: make this a real util
+            def _try_relative(path: Path) -> Path:
+                try:
+                    return path.relative_to(Path.cwd(), walk_up=True)
+                except ValueError:
+                    return path
+
+            original_relative = _try_relative(original_path)
+            updated_relative = _try_relative(updated_path)
+
+            raise UserException(
+                dedent(
+                    """
+                    Built as frozen, but layout changed.
+
+                    Original layout: **{original_relative}**
+
+                    Updated layout: **{updated_relative}**
+
+                    Diff:
+                    {diff}
+                    """
+                ).format(
+                    original_relative=original_relative,
+                    updated_relative=updated_relative,
+                    diff=md_table(
+                        [
+                            [f"**{path}**", diff["before"], diff["after"]]
+                            for path, diff in pcb_diff.items()
+                        ],
+                        headers=["Path", "Before", "After"],
+                    ),
+                ),
+                title="Frozen failed",
+                # No markdown=False here because we have both a command and paths
+            )
+        else:
+            logger.info("No changes to layout. Passed --frozen check.")
+    elif original_pcb_file == pcb_file:
+        logger.info("No changes to layout. Not writing %s", config.build.paths.layout)
+    else:
+        logger.info(f"Updating layout {config.build.paths.layout}")
+        pcb_file.dumps(config.build.paths.layout)
 
 
 def build(app: Module) -> None:
@@ -194,79 +270,7 @@ def build(app: Module) -> None:
         )
         logger.info(f"Backing up layout to {backup_file}")
         backup_file.write_bytes(config.build.paths.layout.read_bytes())
-
-        pcb_diff = compare_dataclasses(
-            sort_dataclass(
-                original_pcb,
-                sort_key=lambda x: astuple(x)
-                if is_dataclass(x) and not isinstance(x, type)
-                else x,
-            ),
-            sort_dataclass(
-                pcb.pcb_file,
-                sort_key=lambda x: astuple(x)
-                if is_dataclass(x) and not isinstance(x, type)
-                else x,
-            ),
-            skip_keys=("uuid", "__atopile_lib_fp_hash__"),
-        )
-
-        if not pcb_diff:
-            if config.build.frozen:
-                logger.info("No changes to layout. Passed --frozen check.")
-            else:
-                logger.info(
-                    f"No changes to layout. Not writing {config.build.paths.layout}"
-                )
-        elif config.build.frozen:
-            original_path = config.build.paths.output_base.with_suffix(
-                ".original.kicad_pcb"
-            )
-            updated_path = config.build.paths.output_base.with_suffix(
-                ".updated.kicad_pcb"
-            )
-            original_pcb.dumps(original_path)
-            pcb.pcb_file.dumps(updated_path)
-
-            # TODO: make this a real util
-            def _try_relative(path: Path) -> Path:
-                try:
-                    return path.relative_to(Path.cwd(), walk_up=True)
-                except ValueError:
-                    return path
-
-            original_relative = _try_relative(original_path)
-            updated_relative = _try_relative(updated_path)
-
-            raise UserException(
-                dedent(
-                    """
-                    Built as frozen, but layout changed.
-
-                    Original layout: **{original_relative}**
-
-                    Updated layout: **{updated_relative}**
-
-                    Diff:
-                    {diff}
-                    """
-                ).format(
-                    original_relative=original_relative,
-                    updated_relative=updated_relative,
-                    diff=md_table(
-                        [
-                            [f"**{path}**", diff["before"], diff["after"]]
-                            for path, diff in pcb_diff.items()
-                        ],
-                        headers=["Path", "Before", "After"],
-                    ),
-                ),
-                title="Frozen failed",
-                # No markdown=False here because we have both a command and paths
-            )
-        else:
-            logger.info(f"Updating layout {config.build.paths.layout}")
-            pcb.pcb_file.dumps(config.build.paths.layout)
+        _update_layout(pcb.pcb_file, original_pcb)
 
     # Figure out what targets to build
     if config.build.targets == ["__default__"]:
