@@ -160,7 +160,6 @@ from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
-from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
@@ -173,6 +172,7 @@ from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.EnablePin import EnablePin
 from faebryk.library.Ethernet import Ethernet
+from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG
