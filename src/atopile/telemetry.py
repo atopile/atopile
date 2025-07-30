@@ -11,6 +11,7 @@ What we collect:
 - Git hash of current commit
 """
 
+import configparser
 import contextlib
 import hashlib
 import importlib.metadata
@@ -130,6 +131,7 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
         ):
@@ -149,6 +151,7 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
         ):
@@ -170,6 +173,7 @@ class PropertyLoaders:
         except (
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
         ):
