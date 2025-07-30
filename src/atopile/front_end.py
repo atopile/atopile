@@ -23,6 +23,7 @@ from typing import (
     Literal,
     Sequence,
     Type,
+    Union,
     cast,
 )
 
@@ -753,7 +754,7 @@ def _try_upgrade_str_to_enum(
         except KeyError:
             raise _EnumUpgradeError(type_hint, arg_name=arg_name)
 
-    elif isinstance(type_hint, UnionType):
+    elif isinstance(type_hint, UnionType) or typing.get_origin(type_hint) is Union:
         type_args = typing.get_args(type_hint)
         enum_args = [
             t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
