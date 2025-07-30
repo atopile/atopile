@@ -1934,7 +1934,11 @@ class ModuleWithTypingUnionEnumOrNone(L.Module):
     [
         # Basic enum types
         ("ModuleWithIntEnum", "<value=2>", {"_value": _IntEnumForTests.VALUE_2}),
-        ("ModuleWithStrEnum", '<mode="OPTION_B">', {"_mode": _StrEnumForTests.OPTION_B}),
+        (
+            "ModuleWithStrEnum",
+            '<mode="OPTION_B">',
+            {"_mode": _StrEnumForTests.OPTION_B},
+        ),
         # Optional enums with modern syntax
         ("ModuleWithOptionalEnum", "", {"_color": None}),
         ("ModuleWithOptionalEnum", '<color="RED">', {"_color": F.LED.Color.RED}),
@@ -2107,7 +2111,7 @@ def test_module_template_multiple_enum_args(bob: Bob):
         module App:
             mod1 = new ModuleWithMultipleEnums<color="BLUE", channel="N_CHANNEL">
             mod2 = new ModuleWithMultipleEnums<color="RED", channel="P_CHANNEL", temp_coeff="C0G">
-        """
+        """  # noqa: E501
     )
 
     tree = parse_text_as_file(text)
