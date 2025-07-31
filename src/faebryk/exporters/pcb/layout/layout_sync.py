@@ -3,7 +3,6 @@
 
 import copy
 import logging
-from pathlib import Path
 
 from atopile.config import config as gcfg
 from atopile.layout import SubAddress
@@ -37,9 +36,8 @@ type Footprint = PCB.C_pcb_footprint
 class LayoutSync:
     """Handles layout synchronization between PCB files."""
 
-    def __init__(self, pcb_path: Path):
-        self.pcb_path = pcb_path
-        self.pcb = C_kicad_pcb_file.loads(pcb_path).kicad_pcb
+    def __init__(self, pcb: PCB):
+        self.pcb = pcb
 
         self._old_groups: dict[str, C_group] = {}
 
@@ -70,8 +68,8 @@ class LayoutSync:
         return self._choose_sublayout(self._get_all_sub_addresses(fp))
 
     @once
-    def _get_pcb(self, name: str) -> PCB:
-        path = gcfg.project.paths.layout / name / f"{name}.kicad_pcb"
+    def _get_pcb(self, pcb_address: str) -> PCB:
+        path = gcfg.project.paths.root / pcb_address
         return C_kicad_pcb_file.loads(path).kicad_pcb
 
     def _get_group_name(self, sub_addr: SubAddress, fp: Footprint) -> str:
@@ -422,13 +420,13 @@ class LayoutSync:
             return
 
         fps = self.groups[group_name]
-        pcb_name = fps[0][1].pcb_address
+        pcb_address = fps[0][1].pcb_address
 
         top_pcb = self.pcb
         try:
-            sub_pcb = self._get_pcb(pcb_name)
+            sub_pcb = self._get_pcb(pcb_address)
         except Exception as e:
-            logger.error(f"Error loading sub pcb {pcb_name}: {e}")
+            logger.error(f"Error loading sub pcb {pcb_address}: {e}")
             return
 
         group = find(top_pcb.groups, lambda g: g.name == group_name)
@@ -469,11 +467,3 @@ class LayoutSync:
                 return net.number
         # If net doesn't exist, return 0 (no net)
         return 0
-
-    def save_pcb(self, output_path: Path | None = None):
-        """Save the PCB file."""
-        if self.pcb is None:
-            raise ValueError("No PCB loaded")
-
-        output_path = output_path or self.pcb_path
-        C_kicad_pcb_file(kicad_pcb=self.pcb).dumps(output_path)

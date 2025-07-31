@@ -68,8 +68,11 @@ class in_sub_pcb(Module.TraitT.decless()):
     @property
     def addresses(self) -> list[SubAddress]:
         obj = self.get_obj(Module)
+        root = config.project.paths.root
         return [
-            SubAddress(pcb._path.stem, obj.relative_address(sub_root_module))
+            SubAddress(
+                str(pcb._path.relative_to(root)), obj.relative_address(sub_root_module)
+            )
             for sub_root_module in self._sub_root_modules
             for pcb in sub_root_module.get_trait(has_subpcb).subpcb
         ]
