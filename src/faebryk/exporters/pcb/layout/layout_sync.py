@@ -39,6 +39,7 @@ class LayoutSync:
 
     def __init__(self, pcb_path: Path):
         self.pcb_path = pcb_path
+        self.pcb = C_kicad_pcb_file.loads(pcb_path).kicad_pcb
 
         self._old_groups: dict[str, C_group] = {}
 
@@ -53,12 +54,6 @@ class LayoutSync:
             assert len(pcb_names) == 1, (
                 f"Multiple PCB names found for group {group_name}: {pcb_names}"
             )
-
-    @property
-    @once
-    def pcb(self) -> PCB:
-        """Load the PCB file."""
-        return C_kicad_pcb_file.loads(self.pcb_path).kicad_pcb
 
     def _get_sub_address(self, fp: Footprint) -> SubAddress | None:
         sub_addresses = fp.propertys.get("atopile_subaddresses")
@@ -92,8 +87,18 @@ class LayoutSync:
         if not addr_to_pcb:
             return None
 
-        # Heuristic: Choose the sublayout with the most tracks
-        candidate = max(addr_to_pcb.items(), key=lambda x: len(x[1].segments))
+        # prefer sublayouts with tracks if any exist
+        candidates = addr_to_pcb
+        if any(pcb.segments for pcb in candidates.values()):
+            candidates = {
+                sub_addr: pcb for sub_addr, pcb in addr_to_pcb.items() if pcb.segments
+            }
+
+        # Heuristic: prefer higher level modules
+        candidate = max(
+            candidates.items(),
+            key=lambda x: len(x[0].module_address.split(".")),
+        )
         return candidate[0]
 
     def _get_footprint_addr(self, fp: Footprint) -> str | None:
