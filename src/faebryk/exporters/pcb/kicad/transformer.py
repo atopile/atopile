@@ -9,14 +9,24 @@ from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
 from math import floor
-from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    TypeVar,
+)
 
 import numpy as np
 from deprecated import deprecated
 from more_itertools import first
 from shapely import Polygon
 
-import faebryk.library._F as F
+# import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
@@ -99,6 +109,9 @@ Alignment_Default = (
     Justify.center_vertical,
     Justify.normal,
 )
+
+if TYPE_CHECKING:
+    import faebryk.library._F as F
 
 
 def gen_uuid(mark: str = "") -> UUID:
@@ -253,6 +266,8 @@ class PCB_Transformer:
 
     def attach(self):
         """Bind footprints and nets from the PCB to the graph."""
+        import faebryk.library._F as F
+
         for node, fp in PCB_Transformer.map_footprints(self.graph, self.pcb).items():
             if node.has_trait(F.has_footprint):
                 self.bind_footprint(fp, node)
@@ -280,6 +295,8 @@ class PCB_Transformer:
         """
         Check that all the nodes with a footprint, have a linked footprint in the PCB
         """
+        import faebryk.library._F as F
+
         unattached_nodes = {
             node
             for node, trait in GraphFunctions(self.graph).nodes_with_trait(
@@ -338,6 +355,8 @@ class PCB_Transformer:
         - F.Footprint and PCB Footprint
         - F.Pad and PCB Pads
         """
+        import faebryk.library._F as F
+
         module.add(self.has_linked_kicad_footprint(pcb_fp, self))
 
         # By now, the node being bound MUST have a footprint
@@ -363,18 +382,20 @@ class PCB_Transformer:
         if pcb_pads and logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
-    def map_nets(self, match_threshold: float = 0.8) -> dict[F.Net, Net]:
+    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", Net]:
         """
         Create a mapping between the internal nets and the nets defined in the PCB file.
 
         This relies on linking between the footprints and pads, so must be called after.
         """
+        import faebryk.library._F as F
+
         if match_threshold < 0.5:
             # This is because we rely on being >50% sure to ensure we're the most
             # likely match.
             raise ValueError("match_threshold must be at least 0.5")
 
-        known_nets: dict[F.Net, Net] = {}
+        known_nets: dict["F.Net", Net] = {}
         pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
         mapped_net_names = set()
 
@@ -436,7 +457,7 @@ class PCB_Transformer:
 
         return known_nets
 
-    def bind_net(self, pcb_net: Net, net: F.Net):
+    def bind_net(self, pcb_net: Net, net: "F.Net"):
         net.add(self.has_linked_kicad_net(pcb_net, self))
 
     @staticmethod
@@ -466,7 +487,9 @@ class PCB_Transformer:
             )
         ]
 
-    def get_net(self, net: F.Net) -> Net:
+    def get_net(self, net: "F.Net") -> Net:
+        import faebryk.library._F as F
+
         nets = {pcb_net.name: pcb_net for pcb_net in self.pcb.nets}
         return nets[net.get_trait(F.has_overriden_name).get_name()]
 
@@ -661,7 +684,9 @@ class PCB_Transformer:
         return list(poly.exterior.coords)
 
     @staticmethod
-    def _get_pad(ffp: F.Footprint, intf: F.Electrical):
+    def _get_pad(ffp: "F.Footprint", intf: "F.Electrical"):
+        import faebryk.library._F as F
+
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
@@ -674,14 +699,14 @@ class PCB_Transformer:
         return fp, pad
 
     @staticmethod
-    def get_pad(intf: F.Electrical) -> tuple[Footprint, Pad, Node]:
+    def get_pad(intf: "F.Electrical") -> tuple[Footprint, Pad, Node]:
         obj, ffp = F.Footprint.get_footprint_of_parent(intf)
         fp, pad = PCB_Transformer._get_pad(ffp, intf)
 
         return fp, pad, obj
 
     @staticmethod
-    def get_pad_pos_any(intf: F.Electrical):
+    def get_pad_pos_any(intf: "F.Electrical"):
         try:
             fpads = F.Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         except KeyErrorNotFound:
@@ -691,7 +716,7 @@ class PCB_Transformer:
         return [PCB_Transformer.get_fpad_pos(fpad) for fpad in fpads]
 
     @staticmethod
-    def get_pad_pos(intf: F.Electrical):
+    def get_pad_pos(intf: "F.Electrical"):
         try:
             fpad = F.Pad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
         except ValueError:
@@ -700,7 +725,7 @@ class PCB_Transformer:
         return PCB_Transformer.get_fpad_pos(fpad)
 
     @staticmethod
-    def get_fpad_pos(fpad: F.Pad):
+    def get_fpad_pos(fpad: "F.Pad"):
         fp, pad = fpad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
         if len(pad) > 1:
             raise NotImplementedError(
@@ -1088,6 +1113,8 @@ class PCB_Transformer:
 
     # Positioning ----------------------------------------------------------------------
     def move_footprints(self):
+        import faebryk.library._F as F
+
         # position modules with defined positions
         pos_mods = GraphFunctions(self.graph).nodes_with_traits(
             (F.has_pcb_position, self.has_linked_kicad_footprint)
@@ -1267,9 +1294,9 @@ class PCB_Transformer:
         arc_start = np.array(l1e) + v1 * radius
 
         # convert to tuples
-        arc_start = point2d_to_coord(tuple(arc_start))
-        arc_center = point2d_to_coord(tuple(arc_center))
-        arc_end = point2d_to_coord(tuple(arc_end))
+        arc_start = point2d_to_coord(tuple(arc_start))  # type: ignore
+        arc_center = point2d_to_coord(tuple(arc_center))  # type: ignore
+        arc_end = point2d_to_coord(tuple(arc_end))  # type: ignore
 
         logger.debug(f"{v_middle=}")
         logger.debug(f"{v_middle_norm=}")
@@ -1861,6 +1888,7 @@ class PCB_Transformer:
 
     def apply_design(self, logger: logging.Logger = logger):
         """Apply the design to the pcb"""
+        import faebryk.library._F as F
         from faebryk.libs.part_lifecycle import PartLifecycle
 
         lifecycle = PartLifecycle.singleton()

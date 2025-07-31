@@ -10,19 +10,12 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-import ruamel.yaml
 import typer
 
 from atopile import errors
-from atopile.config import DependencySpec, config
 from atopile.telemetry import capture
-from faebryk.libs.backend.packages import api
-from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
-from faebryk.libs.util import md_list
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-yaml = ruamel.yaml.YAML()
 
 dependencies_app = typer.Typer(rich_markup_mode="rich")
 
@@ -104,6 +97,9 @@ def sync(
     """
     Update the project's environment
     """
+    from atopile.config import config
+    from faebryk.libs.backend.packages import api
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(None, working_dir=path)
 
@@ -143,6 +139,9 @@ def add(
     """
     Add dependencies to the project
     """
+    from atopile.config import DependencySpec, config
+    from faebryk.libs.backend.packages import api
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     if not package:
         raise errors.UserException("No package identifier provided")
@@ -174,6 +173,8 @@ def remove(
     """
     Remove dependencies from the project
     """
+    from atopile.config import config
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(None, working_dir=path)
 
@@ -188,6 +189,9 @@ def list():
     """
     List all dependencies in the project
     """
+    from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
+    from faebryk.libs.util import md_list
+
     deps = ProjectDependencies()
     # TODO bug, if A -> B, B deps
     # will not see that B is under root, because of the way DAG checks roots
