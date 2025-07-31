@@ -8,11 +8,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from atopile.config import config as gcfg
 from atopile.telemetry import capture
-from faebryk.libs.kicad.ipc import PCBnew, reload_pcb, running_in_kicad
-from faebryk.libs.paths import get_log_file
-from faebryk.libs.util import not_none, root_by_file
 
 kicad_ipc_app = typer.Typer(rich_markup_mode="rich")
 
@@ -20,6 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 def _setup_logger():
+    from faebryk.libs.kicad.ipc import running_in_kicad
+    from faebryk.libs.paths import get_log_file
+
     if not running_in_kicad():
         return
     formatter = logging.Formatter(
@@ -28,9 +27,6 @@ def _setup_logger():
     file_handler = logging.FileHandler(str(get_log_file("kicad_ipc")), "w", "utf-8")
     file_handler.setFormatter(formatter)
     logger.addHandler(file_handler)
-
-
-_setup_logger()
 
 
 @kicad_ipc_app.command()
@@ -67,6 +63,11 @@ def layout_sync(
     groups in the target PCB file, preserving relative positions and routing.
     """
 
+    from atopile.config import config as gcfg
+    from faebryk.libs.kicad.ipc import PCBnew, reload_pcb
+    from faebryk.libs.util import not_none, root_by_file
+
+    _setup_logger()
     logger.info("layout_sync")
 
     if not legacy and (include_groups or include_fp):
@@ -154,5 +155,7 @@ def layout_sync(
 @kicad_ipc_app.command()
 def reload(pcb_path: Path):
     """Reload the PCB in KiCad."""
+    from faebryk.libs.kicad.ipc import reload_pcb
 
+    _setup_logger()
     reload_pcb(pcb_path, backup_path=None)

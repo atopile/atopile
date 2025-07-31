@@ -1,25 +1,29 @@
 from enum import Enum
 from pathlib import Path
-from typing import Any, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 from antlr4 import CommonTokenStream, ParserRuleContext, Token
-from rich.console import Console, ConsoleOptions, ConsoleRenderable
 from rich.highlighter import ReprHighlighter
 from rich.markdown import Markdown
 from rich.syntax import Syntax
 from rich.text import Text
 
-from atopile.parse_utils import (
-    PygmentsLexerReconstructor,
-    get_src_info_from_token,
-)
-from faebryk.core.node import NodeException
 from faebryk.libs.exceptions import UserException as _BaseBaseUserException
+
+if TYPE_CHECKING:
+    from rich.console import Console, ConsoleOptions, ConsoleRenderable
+
+    from faebryk.core.node import NodeException
 
 
 def _render_tokens(
     token_stream: CommonTokenStream, start_token: Token, stop_token: Token
-) -> list[ConsoleRenderable]:
+) -> list["ConsoleRenderable"]:
+    from atopile.parse_utils import (
+        PygmentsLexerReconstructor,
+        get_src_info_from_token,
+    )
+
     lexer = PygmentsLexerReconstructor.from_tokens(
         token_stream, start_token, stop_token, 1, 1
     )
@@ -132,6 +136,8 @@ class _BaseUserException(_BaseBaseUserException):
         return instance
 
     def get_frozen(self) -> tuple:
+        from atopile.parse_utils import get_src_info_from_token
+
         if self.origin_start and self.origin_stop:
             return (
                 super().get_frozen()
@@ -141,15 +147,15 @@ class _BaseUserException(_BaseBaseUserException):
         return super().get_frozen()
 
     def __rich_console__(
-        self, console: Console, options: ConsoleOptions
-    ) -> list[ConsoleRenderable]:
-        def _markdown(message: str) -> ConsoleRenderable:
+        self, console: "Console", options: "ConsoleOptions"
+    ) -> list["ConsoleRenderable"]:
+        def _markdown(message: str) -> "ConsoleRenderable":
             if console.is_terminal:
                 return Markdown(message)
             else:
                 return Text(message)
 
-        renderables: list[ConsoleRenderable] = []
+        renderables: list["ConsoleRenderable"] = []
 
         if self.title:
             renderables += [Text(self.title, style="bold")]
@@ -359,7 +365,7 @@ class UserNodeException(UserException):
     @classmethod
     def from_node_exception(
         cls,
-        node_ex: NodeException,
+        node_ex: "NodeException",
         origin: ParserRuleContext | None,
         traceback: Sequence[ParserRuleContext | None] | None,
         *args,

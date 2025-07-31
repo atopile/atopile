@@ -20,7 +20,6 @@ from rich.table import Table
 
 from atopile import errors, version
 from atopile.address import AddrStr
-from atopile.config import PROJECT_CONFIG_FILENAME, config
 from atopile.telemetry import capture
 from faebryk.libs.github import (
     GITHUB_USERNAME_REGEX,
@@ -89,6 +88,8 @@ def query_helper[T: str | Path | bool](
     validate_default: bool = True,
 ) -> T:
     """Query a user for input."""
+    from atopile.config import config
+
     rich_print_robust(prompt)
 
     # Check the default value
@@ -349,6 +350,8 @@ class _TemplateValues:
             return value
 
         def query(self, value: T | None = None) -> T:
+            from atopile.config import config
+
             if value is not None:
                 return value
 
@@ -442,6 +445,8 @@ class _Template:
         self.extra_context = extra_context
 
     def run(self, output_dir: Path) -> Path:
+        from atopile.config import config
+
         try:
             project_path = Path(
                 cookiecutter(
@@ -479,6 +484,7 @@ def project(path: Annotated[Path | None, typer.Option()] = None):
     """
     Create a new ato project.
     """
+    from atopile.config import config
 
     template = _ProjectTemplate(
         extra_context={
@@ -582,6 +588,8 @@ def build_target(
     - adds entry to ato.yaml
     - creates a new directory in layout
     """
+    from atopile.config import PROJECT_CONFIG_FILENAME, config
+
     config.apply_options(None)
 
     try:
@@ -736,6 +744,7 @@ def part(
     project_dir: Annotated[Path | None, typer.Option("--project-dir", "-p")] = None,
 ):
     """Create a new component."""
+    from atopile.config import config
     from faebryk.libs.picker.api.api import ApiHTTPError
     from faebryk.libs.picker.api.picker_lib import _extract_numeric_id, client
     from faebryk.libs.picker.lcsc import download_easyeda_info

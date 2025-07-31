@@ -11,6 +11,7 @@ What we collect:
 - Git hash of current commit
 """
 
+import atexit
 import contextlib
 import hashlib
 import importlib.metadata
@@ -50,6 +51,9 @@ class _MockClient:
     ) -> None:
         pass
 
+    def flush(self) -> None:
+        pass
+
 
 @once
 def _get_posthog_client() -> Posthog | _MockClient:
@@ -58,7 +62,10 @@ def _get_posthog_client() -> Posthog | _MockClient:
             # write-only API key, intended to be made public
             project_api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
             host="https://telemetry.atopileapi.com",
-            sync_mode=True,
+            sync_mode=False,
+            thread=2,
+            flush_at=1,
+            flush_interval=0.1,
         )
     except Exception as e:
         log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
@@ -66,6 +73,19 @@ def _get_posthog_client() -> Posthog | _MockClient:
 
 
 client = _get_posthog_client()
+
+
+def _flush_telemetry_on_exit() -> None:
+    """Flush telemetry data when the program exits."""
+    try:
+        if not client.disabled:
+            client.flush()
+    except Exception as e:
+        log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
+
+
+# Register exit handler to flush telemetry data
+atexit.register(_flush_telemetry_on_exit)
 
 
 @dataclass

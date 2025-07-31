@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 from faebryk.core.cpp import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
-from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import cast_assert, unique_ref
 
 if TYPE_CHECKING:
     from faebryk.core.moduleinterface import ModuleInterface
+    from faebryk.core.parameter import Parameter
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +226,9 @@ class Module(Node):
             self, dst, allow_partial=allow_partial
         )
 
-    def get_parameters(self) -> list[Parameter]:
+    def get_parameters(self) -> list["Parameter"]:
+        from faebryk.core.parameter import Parameter
+
         return list(self.get_children(types=Parameter, direct_only=True))
 
     # TODO get rid of this abomination
