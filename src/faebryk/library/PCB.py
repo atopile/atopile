@@ -3,12 +3,11 @@
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import Node
-from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_drc_report_file,
@@ -16,7 +15,7 @@ from faebryk.libs.kicad.fileformats_latest import (
 )
 from faebryk.libs.kicad.fileformats_version import try_load_kicad_pcb_file
 from faebryk.libs.units import to_si_str
-from faebryk.libs.util import groupby, md_list
+from faebryk.libs.util import find, groupby, md_list
 
 logger = logging.getLogger(__name__)
 
@@ -25,21 +24,20 @@ if TYPE_CHECKING:
 
 
 class PCB(Node):
-    def __init__(self):
+    def __init__(self, path: Path):
         super().__init__()
 
-        self._path: Path | None = None
+        self._path = path
         self._pcb_file: C_kicad_pcb_file | None = None
         self._transformer: "PCB_Transformer | None" = None
         self.app: Module | None = None
 
-    def load_from_file(self, path: Path):
+    def load(self):
         from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 
         assert self.app is not None
 
-        self._path = path
-        self._pcb_file = try_load_kicad_pcb_file(path)
+        self._pcb_file = try_load_kicad_pcb_file(self._path)
         self._transformer = PCB_Transformer(
             self._pcb_file.kicad_pcb, self.app.get_graph(), self.app
         )
@@ -132,17 +130,32 @@ class PCB(Node):
                     pcb, shorts, not_connected, drc_report.coordinate_units
                 )
 
+    # TODO use reference
     class has_pcb(Module.TraitT.decless()):
-        class has_pcb_ref(F.has_reference.decless()):
-            reference: "PCB" = reference()
-
         def __init__(self, pcb: "PCB"):
             super().__init__()
-            self.pcb = pcb
+            self._pcbs = {pcb}
 
         def on_obj_set(self):
-            assert self.pcb.app is None
-            self.pcb.app = self.get_obj(Module)
-            self.pcb.app.add(self.has_pcb_ref(self.pcb))
+            obj = self.get_obj(Module)
+            for pcb in self._pcbs:
+                if pcb.app and pcb.app is not obj:
+                    raise ValueError(
+                        f"PCB {pcb._path} already has an app {pcb.app}."
+                        f" Can't assign {obj}"
+                    )
+                pcb.app = obj
 
             return super().on_obj_set()
+
+        @override
+        def handle_duplicate(self, old: "PCB.has_pcb", node: Node) -> bool:
+            self._pcbs.update(old._pcbs)
+            return True
+
+        @property
+        def pcbs(self) -> set["PCB"]:
+            return self._pcbs
+
+        def get_pcb_by_path(self, path: Path) -> "PCB":
+            return find(self._pcbs, lambda pcb: pcb._path == path)

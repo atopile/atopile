@@ -2,12 +2,11 @@
 # SPDX-License-Identifier: MIT
 
 import copy
-import json
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 
 from atopile.config import config as gcfg
+from atopile.layout import SubAddress
 from faebryk.exporters.pcb.kicad.transformer import (
     PCB_Transformer,
     get_all_geo_containers,
@@ -23,8 +22,10 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     find,
     find_or,
+    groupby,
     not_none,
     once,
+    try_or,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,31 +34,25 @@ PCB = C_kicad_pcb_file.C_kicad_pcb
 type Footprint = PCB.C_pcb_footprint
 
 
-@dataclass
-class LayoutMap:
-    """Maps module addresses to their layout information."""
-
-    layout_path: Path
-    addr_map: dict[str, str]  # source addr -> target addr
-    uuid_to_addr_map: dict[str, str]  # uuid -> addr (legacy support)
-    group_components: list[str]
-    nested_groups: list[str]
-
-
 class LayoutSync:
     """Handles layout synchronization between PCB files."""
 
     def __init__(self, pcb_path: Path):
         self.pcb_path = pcb_path
-        self.layout_maps: dict[str, LayoutMap] = {}
 
-        manifest = gcfg.project.paths.manifest
-        if not manifest.exists():
-            raise FileNotFoundError(f"Manifest file not found: {manifest}")
-
-        logger.info(f"Loading layout maps from {manifest}")
-        self._load_layout_maps(manifest)
         self._old_groups: dict[str, C_group] = {}
+
+        fps = self.pcb.footprints
+        sub_fps = [
+            (fp, sub_addr) for fp in fps if (sub_addr := self._get_sub_address(fp))
+        ]
+
+        self.groups = groupby(sub_fps, lambda x: self._get_group_name(x[1], x[0]))
+        for group_name, fps in self.groups.items():
+            pcb_names = {x[1].pcb_address for x in fps}
+            assert len(pcb_names) == 1, (
+                f"Multiple PCB names found for group {group_name}: {pcb_names}"
+            )
 
     @property
     @once
@@ -65,33 +60,41 @@ class LayoutSync:
         """Load the PCB file."""
         return C_kicad_pcb_file.loads(self.pcb_path).kicad_pcb
 
-    def _load_layout_maps(self, manifest_path: Path) -> dict[str, LayoutMap]:
-        """Load layout maps from the manifest."""
-        with manifest_path.open("r") as f:
-            manifest = json.load(f)
+    def _get_sub_address(self, fp: Footprint) -> SubAddress | None:
+        sub_addresses = fp.propertys.get("atopile_subaddresses")
+        if not sub_addresses:
+            return None
+        candidates = [
+            SubAddress.deserialize(addr)
+            for addr in sub_addresses.value.removeprefix("[")
+            .removesuffix("]")
+            .split(", ")
+        ]
+        return self._choose_sublayout(candidates)
 
-        # Find the layout map file for this PCB
-        layouts = manifest.get("by-layout", {})
-        pcb_key = find(
-            layouts, lambda key: Path(key).resolve() == self.pcb_path.resolve()
-        )
+    @once
+    def _get_pcb(self, name: str) -> PCB:
+        path = gcfg.project.paths.layout / name / f"{name}.kicad_pcb"
+        return C_kicad_pcb_file.loads(path).kicad_pcb
 
-        layout_file = Path(layouts[pcb_key]["layouts"])
-        with layout_file.open("r") as f:
-            layout_data = json.load(f)
+    def _get_group_name(self, sub_addr: SubAddress, fp: Footprint) -> str:
+        base_addr = self._get_footprint_addr(fp)
+        assert base_addr
+        inner = sub_addr.module_address
+        return base_addr.removesuffix("." + inner)
 
-        # Convert to LayoutMap objects
-        self.layout_maps = {}
-        for group_name, data in layout_data.items():
-            self.layout_maps[group_name] = LayoutMap(
-                layout_path=Path(data["layout_path"]),
-                addr_map=data.get("addr_map", {}),
-                uuid_to_addr_map=data.get("uuid_to_addr_map", {}),
-                group_components=data.get("group_components", []),
-                nested_groups=data.get("nested_groups", []),
-            )
+    def _choose_sublayout(self, sub_addr: list[SubAddress]) -> SubAddress | None:
+        addr_to_pcb = {
+            x: pcb
+            for x in sub_addr
+            if (pcb := try_or(lambda: self._get_pcb(x.pcb_address), None))
+        }
+        if not addr_to_pcb:
+            return None
 
-        return self.layout_maps
+        # Heuristic: Choose the sublayout with the most tracks
+        candidate = max(addr_to_pcb.items(), key=lambda x: len(x[1].segments))
+        return candidate[0]
 
     def _get_footprint_addr(self, fp: Footprint) -> str | None:
         """Get the address of a footprint."""
@@ -111,7 +114,7 @@ class LayoutSync:
         }
         atopile_fps_uuid = {fp.uuid: fp for fp in atopile_footprints.values()}
 
-        for group_name, layout_map in self.layout_maps.items():
+        for group_name, fps in self.groups.items():
             logger.debug(f"Updating group {group_name}")
 
             # Create group if it doesn't exist
@@ -127,10 +130,7 @@ class LayoutSync:
                 group = groups[group_name]
 
             # Update group membership
-            expected_members = set()
-            for fp_addr in layout_map.group_components:
-                if fp_addr in atopile_footprints:
-                    expected_members.add(atopile_footprints[fp_addr].uuid)
+            expected_members = {fp.uuid for fp, _ in fps}
 
             # add new members
             current_members = set(group.members) | expected_members
@@ -369,19 +369,22 @@ class LayoutSync:
     def pull_group_layout(self, group_name: str):
         """Pull layout for a specific group from its source file."""
 
-        if group_name not in self.layout_maps:
+        if group_name not in self.groups:
             logger.warning(f"No layout map found for group {group_name}")
             return
-        layout_map = self.layout_maps[group_name]
-        if not layout_map.layout_path.exists():
-            raise FileNotFoundError(f"Layout file {layout_map.layout_path} not found")
+        fps = self.groups[group_name]
+        pcb_name = fps[0][1].pcb_address
 
         top_pcb = self.pcb
-        sub_pcb = C_kicad_pcb_file.loads(layout_map.layout_path).kicad_pcb
+        # TODO: graceful error if not found
+        sub_pcb = self._get_pcb(pcb_name)
 
         group = find(top_pcb.groups, lambda g: g.name == group_name)
         offset = self._calculate_group_offset(sub_pcb, group)
-        inverted_addr_map = {v: k for k, v in layout_map.addr_map.items()}
+        inverted_addr_map = {
+            sub_addr.module_address: not_none(self._get_footprint_addr(fp))
+            for fp, sub_addr in fps
+        }
 
         net_map = self._generate_net_map(sub_pcb, top_pcb, inverted_addr_map)
 
