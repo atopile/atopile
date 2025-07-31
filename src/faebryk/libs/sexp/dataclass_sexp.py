@@ -709,7 +709,3 @@ def filter_fields[T: DataclassInstance](obj: T, field_names: list[str]) -> T:
     out = deepcopy(obj)
     _filter_fields(out, field_names)
     return out
-
-
-def filter_uuids[T: DataclassInstance](obj: T) -> T:
-    return filter_fields(obj, field_names=["uuid"])

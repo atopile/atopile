@@ -3,7 +3,7 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 from dataclasses_json import CatchAll
@@ -14,6 +14,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     DecodeError,
     SymEnum,
     dumps,
+    filter_fields,
     loads,
     sexp_field,
     visit_dataclass,
@@ -287,7 +288,8 @@ def test_filter_fields_edge_cases():
 
 
 def test_filter_uuids():
-    from faebryk.libs.sexp.dataclass_sexp import filter_uuids
+    def filter_uuids(obj: Any) -> Any:
+        return filter_fields(obj, ["uuid"])
 
     @dataclass
     class WithUuid:
