@@ -55,17 +55,19 @@ class LayoutSync:
                 f"Multiple PCB names found for group {group_name}: {pcb_names}"
             )
 
-    def _get_sub_address(self, fp: Footprint) -> SubAddress | None:
+    def _get_all_sub_addresses(self, fp: Footprint) -> list[SubAddress]:
         sub_addresses = fp.propertys.get("atopile_subaddresses")
         if not sub_addresses:
-            return None
-        candidates = [
+            return []
+        return [
             SubAddress.deserialize(addr)
             for addr in sub_addresses.value.removeprefix("[")
             .removesuffix("]")
             .split(", ")
         ]
-        return self._choose_sublayout(candidates)
+
+    def _get_sub_address(self, fp: Footprint) -> SubAddress | None:
+        return self._choose_sublayout(self._get_all_sub_addresses(fp))
 
     @once
     def _get_pcb(self, name: str) -> PCB:
@@ -118,6 +120,12 @@ class LayoutSync:
             if (addr := self._get_footprint_addr(fp))
         }
         atopile_fps_uuid = {fp.uuid: fp for fp in atopile_footprints.values()}
+
+        # remove all atopile footprints from groups (later re-added)
+        for pcb_group in self.pcb.groups:
+            pcb_group.members[:] = [
+                uuid for uuid in pcb_group.members if uuid not in atopile_fps_uuid
+            ]
 
         for group_name, fps in self.groups.items():
             logger.debug(f"Updating group {group_name}")
@@ -327,7 +335,11 @@ class LayoutSync:
 
         return new_graphics
 
-    def _calculate_group_offset(self, source_pcb: PCB, target_group: C_group) -> C_xy:
+    def _calculate_group_offset(
+        self,
+        source_pcb: PCB,
+        target_group: C_group,
+    ) -> C_xy:
         """Calculate offset to apply when pulling a group layout."""
 
         ZERO = C_xy(0, 0)
@@ -349,8 +361,7 @@ class LayoutSync:
         top_pos = anchor_fp.at
 
         # Find corresponding source footprint
-        target_addr = not_none(self._get_footprint_addr(anchor_fp))
-        target_addr = target_addr.split(".", maxsplit=1)[-1]
+        target_addr = not_none(self._get_sub_address(anchor_fp)).module_address
 
         # Find in source
         try:
@@ -371,18 +382,54 @@ class LayoutSync:
 
         return offset
 
+    def _clean_group(self, group_name: str):
+        """Delete all non-fp elements in group."""
+
+        if group_name not in self._old_groups:
+            return
+
+        pcb = self.pcb
+
+        to_delete = (
+            set(self._old_groups[group_name].members)
+            if group_name in self._old_groups
+            else set()
+        )
+        for container in [
+            pcb.segments,
+            pcb.arcs,
+            pcb.vias,
+            pcb.zones,
+            *get_all_geo_containers(pcb),
+            pcb.images,
+            pcb.gr_texts,
+            pcb.gr_text_boxs,
+            # top_pcb.tables,
+        ]:
+            container[:] = [x for x in container if x.uuid not in to_delete]
+        # delete non-atopile group footprints
+        pcb.footprints[:] = [
+            fp
+            for fp in pcb.footprints
+            if fp.uuid not in to_delete or self._get_footprint_addr(fp)
+        ]
+
     def pull_group_layout(self, group_name: str):
         """Pull layout for a specific group from its source file."""
 
         if group_name not in self.groups:
             logger.warning(f"No layout map found for group {group_name}")
             return
+
         fps = self.groups[group_name]
         pcb_name = fps[0][1].pcb_address
 
         top_pcb = self.pcb
-        # TODO: graceful error if not found
-        sub_pcb = self._get_pcb(pcb_name)
+        try:
+            sub_pcb = self._get_pcb(pcb_name)
+        except Exception as e:
+            logger.error(f"Error loading sub pcb {pcb_name}: {e}")
+            return
 
         group = find(top_pcb.groups, lambda g: g.name == group_name)
         offset = self._calculate_group_offset(sub_pcb, group)
@@ -393,30 +440,14 @@ class LayoutSync:
 
         net_map = self._generate_net_map(sub_pcb, top_pcb, inverted_addr_map)
 
-        # delete all non-fp elements in group
-        to_delete = (
-            set(self._old_groups[group_name].members)
-            if group_name in self._old_groups
-            else set()
-        )
-        for container in [
-            top_pcb.segments,
-            top_pcb.arcs,
-            top_pcb.vias,
-            top_pcb.zones,
-            *get_all_geo_containers(top_pcb),
-            top_pcb.images,
-            top_pcb.gr_texts,
-            top_pcb.gr_text_boxs,
-            # top_pcb.tables,
-        ]:
-            container[:] = [x for x in container if x.uuid not in to_delete]
-        # delete non-atopile group footprints
-        top_pcb.footprints[:] = [
-            fp
-            for fp in top_pcb.footprints
-            if fp.uuid not in to_delete or self._get_footprint_addr(fp)
-        ]
+        # remove all stuff from involved groups, before re-adding new elements
+        involved_groups = {
+            self._get_group_name(addr, fp)
+            for fp, _ in fps
+            for addr in self._get_all_sub_addresses(fp)
+        }
+        for g_name in involved_groups:
+            self._clean_group(g_name)
 
         new_fps = self._sync_footprints(
             sub_pcb, top_pcb, inverted_addr_map, net_map, offset
