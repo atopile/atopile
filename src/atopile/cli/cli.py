@@ -36,7 +36,6 @@ from atopile.cli import (
     mcp,
 )
 from atopile.cli.logging_ import handler, logger
-from atopile.config import config
 from atopile.errors import UserException, UserNoProjectException
 from atopile.version import check_for_update
 from faebryk.libs.exceptions import (
@@ -139,6 +138,8 @@ def cli(
     # are reloaded from a pointed-to file (eg in `ato build path/to/file`)
     # from outside a project directory
     if non_interactive is not None:
+        from atopile.config import config
+
         config.interactive = not non_interactive
 
     if ctx.invoked_subcommand:
@@ -184,6 +185,8 @@ class ConfigFormat(str, Enum):
 def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
+    from atopile.config import config
+
     print(config.project.model_dump(mode=format))
 
 
@@ -192,6 +195,7 @@ def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
     from atopile import front_end
+    from atopile.config import config
 
     path = path.resolve().relative_to(Path.cwd())
 
