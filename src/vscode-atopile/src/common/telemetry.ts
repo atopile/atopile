@@ -39,6 +39,15 @@ function getConfigDir(): string {
     }
 }
 
+export function updateConfig(enabled: boolean) {
+    const configDir = getConfigDir();
+    const configFile = path.join(configDir, 'telemetry.yaml');
+    const config = parse(fs.readFileSync(configFile, 'utf8'));
+    config.telemetry = enabled;
+    fs.writeFileSync(configFile, stringify(config));
+    enabled = config.telemetry;
+}
+
 function loadConfig() {
     const configDir = getConfigDir();
     const configFile = path.join(configDir, 'telemetry.yaml');
@@ -58,7 +67,7 @@ function loadConfig() {
         fs.writeFileSync(configFile, stringify(config));
     }
 
-    if (!config.telemetry) {
+    if (typeof config.telemetry !== 'boolean') {
         config.telemetry = true;
         fs.writeFileSync(configFile, stringify(config));
     }
