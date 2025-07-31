@@ -8,8 +8,6 @@ from typing import Annotated, Optional
 
 import typer
 
-from atopile.telemetry import capture
-
 kicad_ipc_app = typer.Typer(rich_markup_mode="rich")
 
 logger = logging.getLogger(__name__)
@@ -30,7 +28,8 @@ def _setup_logger():
 
 
 @kicad_ipc_app.command()
-@capture("cli:kicad_ipc_layout_sync_start", "cli:kicad_ipc_layout_sync_end")
+# TODO: had to disable because slow and blocking kicad
+# @capture("cli:kicad_ipc_layout_sync_start", "cli:kicad_ipc_layout_sync_end")
 def layout_sync(
     legacy: Annotated[
         bool,
