@@ -451,12 +451,6 @@ def generate_manifest(app: Module, solver: Solver) -> None:
                 json.dump(manifest, f, indent=4)
 
 
-@muster.register("layout-module-map")
-def generate_module_map(app: Module, solver: Solver) -> None:
-    """Generate a designator map for the project."""
-    layout.generate_module_map(app)
-
-
 @muster.register("variable-report")
 def generate_variable_report(app: Module, solver: Solver) -> None:
     """Generate a report of all the variable values in the design."""
