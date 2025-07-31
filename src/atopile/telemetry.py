@@ -109,7 +109,7 @@ class TelemetryConfig:
 
         with atopile_yaml.open(encoding="utf-8") as f:
             yaml = YAML()
-            config = TelemetryConfig(**yaml.load(f))
+            config = TelemetryConfig(**(yaml.load(f) or {}))
 
         if config.telemetry is False:
             log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
