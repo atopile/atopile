@@ -417,7 +417,7 @@ class PackagesAPIClient:
         response = self._client.get(
             f"{self._cfg.api_url}{url}",
             timeout=timeout,
-            verify=False,  # FIXME: SSL
+            verify=not config.project.dangerously_skip_ssl_verification,
         )
         try:
             response.raise_for_status()
@@ -445,7 +445,7 @@ class PackagesAPIClient:
             json=data,
             timeout=timeout,
             headers=headers,
-            verify=False,  # FIXME: SSL
+            verify=not config.project.dangerously_skip_ssl_verification,
         )
         try:
             response.raise_for_status()

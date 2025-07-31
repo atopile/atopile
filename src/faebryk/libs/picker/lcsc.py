@@ -425,7 +425,7 @@ class EasyEDAPart:
         lcsc_site = requests.get(
             url,
             headers={"User-Agent": "curl/7.81.0"},
-            verify=False,  # FIXME: SSL
+            verify=not Gcfg.project.dangerously_skip_ssl_verification,
         )
         lcsc_id = self.lcsc_id
         # find _{partno}.pdf in html
