@@ -40,6 +40,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
     export_step,
     githash_layout,
 )
+from faebryk.exporters.pcb.layout.layout_sync import LayoutSync
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
@@ -235,6 +236,34 @@ def build(app: Module) -> None:
             )
         else:
             logger.info(f"Updating layout {config.build.paths.layout}")
+            # sync layout
+            sync = LayoutSync(pcb.pcb_file.kicad_pcb)
+            original_fps = {
+                addr: fp
+                for fp in original_pcb.kicad_pcb.footprints
+                if (addr := fp.try_get_property("atopile_address"))
+            }
+            current_fps = {
+                addr: fp
+                for fp in pcb.pcb_file.kicad_pcb.footprints
+                if (addr := fp.try_get_property("atopile_address"))
+            }
+            new_fps = {k: v for k, v in current_fps.items() if k not in original_fps}
+            sync.sync_groups()
+            groups_to_update = {
+                gname
+                for gname, fps in sync.groups.items()
+                if {
+                    addr
+                    for fp, _ in fps
+                    if (addr := fp.try_get_property("atopile_address"))
+                }.issubset(new_fps)
+            }
+            print("groups_to_update", groups_to_update)
+
+            for group_name in groups_to_update:
+                sync.pull_group_layout(group_name)
+
             pcb.pcb_file.dumps(config.build.paths.layout)
 
     # Figure out what targets to build
