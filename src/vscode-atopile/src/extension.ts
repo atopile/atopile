@@ -9,7 +9,7 @@ import { getLSClientTraceLevel } from './common/utilities';
 import { createOutputChannel, get_ide_type } from './common/vscodeapi';
 import * as ui from './ui/ui';
 import { SERVER_ID, SERVER_NAME } from './common/constants';
-import { captureEvent, deinitializeTelemetry, initializeTelemetry } from './common/telemetry';
+import { captureEvent, deinitializeTelemetry, initializeTelemetry, updateConfig } from './common/telemetry';
 import { onBuildTargetChanged } from './common/target';
 import { Build } from './common/manifest';
 import { openPackageExplorer } from './ui/packagexplorer';
@@ -56,6 +56,14 @@ class atopileUriHandler implements vscode.UriHandler {
     }
 }
 
+async function handleConfigUpdate(event: vscode.ConfigurationChangeEvent) {
+    if (event.affectsConfiguration('atopile.telemetry')) {
+        // mirror to CLI config
+        const telemetry = vscode.workspace.getConfiguration('atopile').get('telemetry');
+        updateConfig(telemetry as boolean);
+    }
+}
+
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
     const outputChannel = _setupLogging(context);
@@ -88,6 +96,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     await llm.activate(context);
 
     context.subscriptions.push(vscode.window.registerUriHandler(new atopileUriHandler()));
+
+    vscode.workspace.onDidChangeConfiguration(handleConfigUpdate);
 
     traceInfo(`atopile extension activated in IDE: ${get_ide_type()}`);
 }
