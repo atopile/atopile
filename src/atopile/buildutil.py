@@ -93,6 +93,7 @@ def _update_layout(
         sort_dataclass(original_pcb_file, sort_key=lambda x: str(x)),
         sort_dataclass(pcb_file, sort_key=lambda x: str(x)),
         skip_keys=("uuid", "__atopile_lib_fp_hash__"),
+        require_dataclass_type_match=False,
     )
 
     if config.build.frozen:
