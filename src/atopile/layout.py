@@ -69,7 +69,7 @@ class in_sub_pcb(Module.TraitT.decless()):
     def addresses(self) -> list[SubAddress]:
         obj = self.get_obj(Module)
         return [
-            SubAddress(obj.relative_address(sub_root_module), pcb._path.stem)
+            SubAddress(pcb._path.stem, obj.relative_address(sub_root_module))
             for sub_root_module in self._sub_root_modules
             for pcb in sub_root_module.get_trait(has_subpcb).subpcb
         ]
@@ -137,9 +137,6 @@ def attach_sub_pcbs_to_entry_points(app: Module):
         modules = app.get_children_modules(types=module_type, direct_only=False)
         for module in modules:
             for pcb in pcbs:
-                print(
-                    "Adding subpcb", pcb._path, "to", module.get_full_name(types=True)
-                )
                 module.add(has_subpcb(pcb))
 
 
