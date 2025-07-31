@@ -12,6 +12,7 @@ What we collect:
 """
 
 import atexit
+import configparser
 import contextlib
 import hashlib
 import importlib.metadata
@@ -169,6 +170,7 @@ class PropertyLoaders:
             git.NoSuchPathError,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             repo = git.Repo(search_parent_directories=True)
             config_reader = repo.config_reader()
@@ -188,6 +190,7 @@ class PropertyLoaders:
             git.NoSuchPathError,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             repo = git.Repo(search_parent_directories=True)
             return repo.head.commit.hexsha
@@ -209,6 +212,7 @@ class PropertyLoaders:
             git.NoSuchPathError,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             return None
 
