@@ -259,7 +259,6 @@ def build(app: Module) -> None:
                     if (addr := fp.try_get_property("atopile_address"))
                 }.issubset(new_fps)
             }
-            print("groups_to_update", groups_to_update)
 
             for group_name in groups_to_update:
                 sync.pull_group_layout(group_name)
