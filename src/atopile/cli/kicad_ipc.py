@@ -8,7 +8,7 @@ from typing import Annotated, Optional
 
 import typer
 
-from atopile.telemetry import capture
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 
 kicad_ipc_app = typer.Typer(rich_markup_mode="rich")
 
@@ -30,7 +30,8 @@ def _setup_logger():
 
 
 @kicad_ipc_app.command()
-@capture("cli:kicad_ipc_layout_sync_start", "cli:kicad_ipc_layout_sync_end")
+# TODO: had to disable because slow and blocking kicad
+# @capture("cli:kicad_ipc_layout_sync_start", "cli:kicad_ipc_layout_sync_end")
 def layout_sync(
     legacy: Annotated[
         bool,
@@ -55,6 +56,10 @@ def layout_sync(
             help="Legacy only: Specific footprint(s) to sync.",
         ),
     ] = None,
+    sync_all: Annotated[
+        bool,
+        typer.Option("--all", help="Debug only: Sync all groups"),
+    ] = False,
 ):
     """
     Synchronize PCB layout groups from their source layouts.
@@ -65,7 +70,7 @@ def layout_sync(
 
     from atopile.config import config as gcfg
     from faebryk.libs.kicad.ipc import PCBnew, reload_pcb
-    from faebryk.libs.util import not_none, root_by_file
+    from faebryk.libs.util import find, not_none, root_by_file
 
     _setup_logger()
     logger.info("layout_sync")
@@ -103,12 +108,15 @@ def layout_sync(
 
     prj_root = root_by_file("ato.yaml", pcb_path.parent)
     gcfg.apply_options(entry=None, working_dir=prj_root)
+    build = find(gcfg.project.builds.values(), lambda b: b.paths.layout == pcb_path)
+    gcfg.select_build(build.name)
 
     # Create layout sync instance
-    sync = LayoutSync(pcb_path)
+    pcb_file = C_kicad_pcb_file.loads(pcb_path)
+    sync = LayoutSync(pcb_file.kicad_pcb)
 
-    if not sync.layout_maps:
-        logger.warning("No layout maps found in manifest")
+    if not sync.groups:
+        logger.warning("No sub layout groups found in pcb")
         return
 
     # Sync groups
@@ -123,9 +131,12 @@ def layout_sync(
         if set(group.members).issubset(fp_uuids):
             group_names.add(not_none(group.name))
 
+    if sync_all:
+        group_names = set(sync.groups.keys())
+
     # Only sync specified groups
     for group_name in group_names:
-        if group_name in sync.layout_maps:
+        if group_name in sync.groups:
             logger.info(f"Pulling layout for group: {group_name}")
             sync.pull_group_layout(group_name)
         else:
@@ -133,7 +144,7 @@ def layout_sync(
 
     # Save the PCB
     logger.info(f"Saving PCB to {pcb_path}")
-    sync.save_pcb()
+    pcb_file.dumps(pcb_path)
 
     # Reload in KiCad if requested
     logger.info("Reloading PCB in KiCad...")

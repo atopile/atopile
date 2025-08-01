@@ -62,7 +62,11 @@ from faebryk.libs.exceptions import (
     iter_leaf_exceptions,
 )
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
-from faebryk.libs.util import ConfigFlag, KeyErrorAmbiguous, once
+from faebryk.libs.util import (
+    ConfigFlag,
+    KeyErrorAmbiguous,
+    once,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +89,11 @@ def build(app: Module) -> None:
 
     solver = _get_solver()
     app.add(F.has_solver(solver))
-    pcb = F.PCB()
+
+    # Attach PCBs to entry points
+    pcb = F.PCB(config.build.paths.layout)
     app.add(F.PCB.has_pcb(pcb))
+    layout.attach_sub_pcbs_to_entry_points(app)
 
     # TODO remove, once erc split up
     app.add(needs_erc_check())
@@ -124,7 +131,7 @@ def build(app: Module) -> None:
         )
 
     with LoggingStage("load-pcb", "Loading PCB"):
-        pcb.load_from_file(config.build.paths.layout)
+        pcb.load()
         if config.build.keep_designators:
             load_designators(G(), attach=True)
 
@@ -165,6 +172,9 @@ def build(app: Module) -> None:
         )
 
     with LoggingStage("update-pcb", "Updating PCB"):
+        # attach subaddresses for lifecycle manager to use
+        layout.attach_subaddresses_to_modules(app)
+
         original_pcb = deepcopy(pcb.pcb_file)
         pcb.transformer.apply_design()
         pcb.transformer.check_unattached_fps()
@@ -439,12 +449,6 @@ def generate_manifest(app: Module, solver: Solver) -> None:
             manifest_path.parent.mkdir(exist_ok=True, parents=True)
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=4)
-
-
-@muster.register("layout-module-map")
-def generate_module_map(app: Module, solver: Solver) -> None:
-    """Generate a designator map for the project."""
-    layout.generate_module_map(app)
 
 
 @muster.register("variable-report")
