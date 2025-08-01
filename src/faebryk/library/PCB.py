@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, override
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.node import Node
+from faebryk.core.reference import reference
 from faebryk.core.trait import Trait
 from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_drc_report_file,
@@ -132,6 +133,9 @@ class PCB(Node):
 
     # TODO use reference
     class has_pcb(Module.TraitT.decless()):
+        class has_pcb_ref(F.has_reference.decless()):
+            reference: "PCB" = reference()
+
         def __init__(self, pcb: "PCB"):
             super().__init__()
             self._pcbs = {pcb}
@@ -145,6 +149,7 @@ class PCB(Node):
                         f" Can't assign {obj}"
                     )
                 pcb.app = obj
+                pcb.app.add(self.has_pcb_ref(pcb))
 
             return super().on_obj_set()
 
