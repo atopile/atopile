@@ -3,7 +3,7 @@
 
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import pytest
 from dataclasses_json import CatchAll
@@ -14,6 +14,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     DecodeError,
     SymEnum,
     dumps,
+    filter_fields,
     loads,
     sexp_field,
     visit_dataclass,
@@ -162,3 +163,143 @@ def test_print_sexp():
         name_path = it.name_path
         name = "".join(name_path)
         logger.debug(f"{name:70}  {[type(p).__name__ for p in path + [obj]]}")
+
+
+def test_filter_fields():
+    from faebryk.libs.sexp.dataclass_sexp import filter_fields
+
+    @dataclass
+    class Inner:
+        keep_me: str
+        remove_me: str
+        also_keep: int
+
+    @dataclass
+    class Outer:
+        name: str
+        remove_me: str
+        inner: Inner
+        inner_list: list[Inner]
+        inner_dict: dict[str, Inner]
+
+    # Create test data
+    inner1 = Inner(keep_me="hello", remove_me="secret1", also_keep=42)
+    inner2 = Inner(keep_me="world", remove_me="secret2", also_keep=99)
+    inner3 = Inner(keep_me="test", remove_me="secret3", also_keep=7)
+
+    outer = Outer(
+        name="test_outer",
+        remove_me="top_secret",
+        inner=inner1,
+        inner_list=[inner2, inner3],
+        inner_dict={"key1": inner1, "key2": inner2},
+    )
+
+    # Test filtering single field
+    filtered = filter_fields(outer, ["remove_me"])
+
+    # Check that remove_me is set to None in the filtered object
+    assert filtered.name == "test_outer"
+    assert filtered.remove_me is None
+
+    # Check nested objects
+    assert filtered.inner.keep_me == "hello"
+    assert filtered.inner.remove_me is None
+    assert filtered.inner.also_keep == 42
+
+    # Check list of objects
+    assert len(filtered.inner_list) == 2
+    for item in filtered.inner_list:
+        assert item.keep_me in ["world", "test"]
+        assert item.remove_me is None
+        assert item.also_keep in [99, 7]
+
+    # Check dict of objects
+    assert len(filtered.inner_dict) == 2
+    for key, item in filtered.inner_dict.items():
+        assert item.keep_me in ["hello", "world"]
+        assert item.remove_me is None
+        assert item.also_keep in [42, 99]
+
+
+def test_filter_fields_multiple():
+    from faebryk.libs.sexp.dataclass_sexp import filter_fields
+
+    @dataclass
+    class TestClass:
+        field1: str
+        field2: int
+        field3: float
+        field4: bool
+        field5: Optional[str] = None
+
+    obj = TestClass(
+        field1="keep", field2=42, field3=3.14, field4=True, field5="optional"
+    )
+
+    # Filter multiple fields
+    filtered = filter_fields(obj, ["field2", "field4"])
+
+    assert filtered.field1 == "keep"
+    assert filtered.field2 is None
+    assert filtered.field3 == 3.14
+    assert filtered.field4 is None
+    assert filtered.field5 == "optional"
+
+
+def test_filter_fields_edge_cases():
+    from faebryk.libs.sexp.dataclass_sexp import filter_fields
+
+    @dataclass
+    class SimpleClass:
+        value: str
+
+    # Test with empty field list
+    obj = SimpleClass(value="test")
+    filtered = filter_fields(obj, [])
+    assert filtered.value == "test"
+
+    # Test with non-existent field
+    filtered = filter_fields(obj, ["non_existent"])
+    assert filtered.value == "test"
+
+    # Test with dataclass containing list
+    @dataclass
+    class ContainerWithList:
+        items: list[SimpleClass]
+
+    obj_with_list = ContainerWithList(items=[SimpleClass("a"), SimpleClass("b")])
+    filtered_with_list = filter_fields(obj_with_list, ["value"])
+    assert len(filtered_with_list.items) == 2
+    for item in filtered_with_list.items:
+        assert item.value is None
+
+    # Test with dataclass containing tuple
+    @dataclass
+    class ContainerWithTuple:
+        items: tuple[SimpleClass, SimpleClass]
+
+    obj_with_tuple = ContainerWithTuple(items=(SimpleClass("x"), SimpleClass("y")))
+    filtered_with_tuple = filter_fields(obj_with_tuple, ["value"])
+    assert len(filtered_with_tuple.items) == 2
+    assert isinstance(filtered_with_tuple.items, tuple)
+    for item in filtered_with_tuple.items:
+        assert item.value is None
+
+
+def test_filter_uuids():
+    def filter_uuids(obj: Any) -> Any:
+        return filter_fields(obj, ["uuid"])
+
+    @dataclass
+    class WithUuid:
+        name: str
+        uuid: str
+        data: int
+
+    obj = WithUuid(name="test", uuid="12345-67890", data=42)
+    filtered = filter_uuids(obj)
+
+    assert filtered.name == "test"
+    assert filtered.uuid is None
+    assert filtered.data == 42

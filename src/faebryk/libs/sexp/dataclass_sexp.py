@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from dataclasses import Field, dataclass, fields, is_dataclass
 from enum import Enum, IntEnum, StrEnum
 from os import PathLike
@@ -624,6 +625,7 @@ class _visit_dataclass_context:
     path: list
     name_path: list[str]
     setter: Callable[[Any], None] | None
+    field: Field | None = None  # set if this context represents a dataclass field
 
 
 def visit_dataclass(
@@ -637,6 +639,7 @@ def _iterate_tree(
     path: list,
     name_path: list[str],
     setter: Callable[[Any], None] | None = None,
+    field: Field | None = None,
 ) -> Iterator[_visit_dataclass_context]:
     out_path = path + [obj]
 
@@ -645,6 +648,7 @@ def _iterate_tree(
         path=path,
         name_path=name_path,
         setter=setter,
+        field=field,
     )
 
     def _set(k, v, it):
@@ -656,7 +660,8 @@ def _iterate_tree(
                 getattr(obj, f.name),
                 path=out_path,
                 name_path=name_path + [f".{f.name}"],
-                setter=lambda v: setattr(obj, f.name, v),
+                setter=lambda v, f=f: setattr(obj, f.name, v),
+                field=f,
             )
     elif isinstance(obj, list):
         for i, v in enumerate(obj):
@@ -664,7 +669,8 @@ def _iterate_tree(
                 v,
                 out_path,
                 name_path + [f"[{i}]"],
-                setter=lambda v: _set(i, v, obj),
+                setter=lambda v, i=i: _set(i, v, obj),
+                field=None,
             )
     elif isinstance(obj, dict):
         for k, v in obj.items():
@@ -672,5 +678,43 @@ def _iterate_tree(
                 v,
                 out_path,
                 name_path + [f"[{repr(k)}]"],
-                setter=lambda v: _set(k, v, obj),
+                setter=lambda v, k=k: _set(k, v, obj),
+                field=None,
             )
+    elif isinstance(obj, tuple):
+        as_list = list(obj)
+
+        def make_tuple_setter(idx):
+            def set_in_tuple(new_val):
+                as_list[idx] = new_val
+                if setter:
+                    setter(tuple(as_list))
+
+            return set_in_tuple
+
+        for i, v in enumerate(obj):
+            yield from _iterate_tree(
+                v,
+                out_path,
+                name_path + [f"[{i}]"],
+                setter=make_tuple_setter(i),
+                field=None,
+            )
+
+
+def filter_fields[T: DataclassInstance](obj: T, field_names: list[str]) -> T:
+    """
+    Returns a copy of a dataclass object (or collection of dataclass instances),
+    with all properties listed in field_names recursively set to None.
+    """
+    out = deepcopy(obj)
+
+    for f in fields(out):
+        if f.name in field_names:
+            setattr(out, f.name, None)
+
+    for context in _iterate_tree(out, [], []):
+        if context.field and context.field.name in field_names and context.setter:
+            context.setter(None)
+
+    return out

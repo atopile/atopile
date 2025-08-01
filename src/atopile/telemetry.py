@@ -168,6 +168,7 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
             configparser.Error,
@@ -188,6 +189,7 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
             configparser.Error,
@@ -210,6 +212,7 @@ class PropertyLoaders:
         except (
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
             configparser.Error,
