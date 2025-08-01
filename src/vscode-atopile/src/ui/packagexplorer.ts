@@ -73,7 +73,6 @@ class PackageExplorerWebview extends BaseWebview {
         const upwardEventTypes = ['request-theme', 'install-package', 'upgrade-package', 'uninstall-package', 'request-project-name', 'subscribe-package', 'copy-text'];
         window.addEventListener('message', (event) => {
             if (event.source === iframe.contentWindow) {
-                console.log('Received message from iframe:', event.data);
                 if (upwardEventTypes.includes(event.data.type)) {
                     vscode.postMessage(event.data);
                 }
