@@ -65,7 +65,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     E_fill,
     _SingleOrMultiLayer,
 )
-from faebryk.libs.sexp.dataclass_sexp import visit_dataclass
+from faebryk.libs.sexp.dataclass_sexp import filter_fields, visit_dataclass
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
@@ -1590,9 +1590,11 @@ class PCB_Transformer:
 
     @staticmethod
     def _hash_lib_fp(lib_fp: C_footprint) -> str:
+        dict_ = asdict(filter_fields(lib_fp, ["uuid"]))
+
         # Ignore the name field. It's not meaningful and we override it
-        dict_ = asdict(lib_fp)
-        dict_["name"] = ""
+        dict_["name"] = None
+
         return hash_string(repr(dict_))
 
     _FP_LIB_HASH = "__atopile_lib_fp_hash__"

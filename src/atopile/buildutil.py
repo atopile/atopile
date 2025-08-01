@@ -6,6 +6,7 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
+from textwrap import dedent
 from typing import Callable
 
 import faebryk.library._F as F
@@ -62,11 +63,15 @@ from faebryk.libs.exceptions import (
     accumulate,
     iter_leaf_exceptions,
 )
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
 from faebryk.libs.util import (
     ConfigFlag,
     KeyErrorAmbiguous,
+    compare_dataclasses,
+    md_table,
     once,
+    sort_dataclass,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +85,98 @@ def _get_solver() -> Solver:
         return NullSolver()
     else:
         return DefaultSolver()
+
+
+def _update_layout(
+    pcb_file: C_kicad_pcb_file, original_pcb_file: C_kicad_pcb_file
+) -> None:
+    pcb_diff = compare_dataclasses(
+        sort_dataclass(original_pcb_file, sort_key=lambda x: str(x)),
+        sort_dataclass(pcb_file, sort_key=lambda x: str(x)),
+        skip_keys=("uuid", "__atopile_lib_fp_hash__"),
+        require_dataclass_type_match=False,
+    )
+
+    if config.build.frozen:
+        if pcb_diff:
+            original_path = config.build.paths.output_base.with_suffix(
+                ".original.kicad_pcb"
+            )
+            updated_path = config.build.paths.output_base.with_suffix(
+                ".updated.kicad_pcb"
+            )
+            original_pcb_file.dumps(original_path)
+            pcb_file.dumps(updated_path)
+
+            # TODO: make this a real util
+            def _try_relative(path: Path) -> Path:
+                try:
+                    return path.relative_to(Path.cwd(), walk_up=True)
+                except ValueError:
+                    return path
+
+            original_relative = _try_relative(original_path)
+            updated_relative = _try_relative(updated_path)
+
+            raise UserException(
+                dedent(
+                    """
+                    Built as frozen, but layout changed.
+
+                    Original layout: **{original_relative}**
+
+                    Updated layout: **{updated_relative}**
+
+                    Diff:
+                    {diff}
+                    """
+                ).format(
+                    original_relative=original_relative,
+                    updated_relative=updated_relative,
+                    diff=md_table(
+                        [
+                            [f"**{path}**", diff["before"], diff["after"]]
+                            for path, diff in pcb_diff.items()
+                        ],
+                        headers=["Path", "Before", "After"],
+                    ),
+                ),
+                title="Frozen failed",
+                # No markdown=False here because we have both a command and paths
+            )
+        else:
+            logger.info("No changes to layout. Passed --frozen check.")
+    elif original_pcb_file == pcb_file:
+        logger.info("No changes to layout. Not writing %s", config.build.paths.layout)
+    else:
+        logger.info(f"Updating layout {config.build.paths.layout}")
+        sync = LayoutSync(pcb_file.kicad_pcb)
+        original_fps = {
+            addr: fp
+            for fp in original_pcb_file.kicad_pcb.footprints
+            if (addr := fp.try_get_property("atopile_address"))
+        }
+        current_fps = {
+            addr: fp
+            for fp in pcb_file.kicad_pcb.footprints
+            if (addr := fp.try_get_property("atopile_address"))
+        }
+        new_fps = {k: v for k, v in current_fps.items() if k not in original_fps}
+        sync.sync_groups()
+        groups_to_update = {
+            gname
+            for gname, fps in sync.groups.items()
+            if {
+                addr
+                for fp, _ in fps
+                if (addr := fp.try_get_property("atopile_address"))
+            }.issubset(new_fps)
+        }
+
+        for group_name in groups_to_update:
+            sync.pull_group_layout(group_name)
+
+        pcb_file.dumps(config.build.paths.layout)
 
 
 def build(app: Module) -> None:
@@ -197,73 +294,7 @@ def build(app: Module) -> None:
         )
         logger.info(f"Backing up layout to {backup_file}")
         backup_file.write_bytes(config.build.paths.layout.read_bytes())
-
-        if pcb.pcb_file == original_pcb:
-            if config.build.frozen:
-                logger.info("No changes to layout. Passed --frozen check.")
-            else:
-                logger.info(
-                    f"No changes to layout. Not writing {config.build.paths.layout}"
-                )
-        elif config.build.frozen:
-            original_path = config.build.paths.output_base.with_suffix(
-                ".original.kicad_pcb"
-            )
-            updated_path = config.build.paths.output_base.with_suffix(
-                ".updated.kicad_pcb"
-            )
-            original_pcb.dumps(original_path)
-            pcb.pcb_file.dumps(updated_path)
-
-            # TODO: make this a real util
-            def _try_relative(path: Path) -> Path:
-                try:
-                    return path.relative_to(Path.cwd(), walk_up=True)
-                except ValueError:
-                    return path
-
-            original_relative = _try_relative(original_path)
-            updated_relative = _try_relative(updated_path)
-
-            raise UserException(
-                "Built as frozen, but layout changed. \n"
-                f"Original layout: {original_relative}\n"
-                f"Updated layout: {updated_relative}\n"
-                "You can see the changes by running:\n"
-                f'`diff --color "{original_relative}" "{updated_relative}"`',
-                title="Frozen failed",
-                # No markdown=False here because we have both a command and paths
-            )
-        else:
-            logger.info(f"Updating layout {config.build.paths.layout}")
-            # sync layout
-            sync = LayoutSync(pcb.pcb_file.kicad_pcb)
-            original_fps = {
-                addr: fp
-                for fp in original_pcb.kicad_pcb.footprints
-                if (addr := fp.try_get_property("atopile_address"))
-            }
-            current_fps = {
-                addr: fp
-                for fp in pcb.pcb_file.kicad_pcb.footprints
-                if (addr := fp.try_get_property("atopile_address"))
-            }
-            new_fps = {k: v for k, v in current_fps.items() if k not in original_fps}
-            sync.sync_groups()
-            groups_to_update = {
-                gname
-                for gname, fps in sync.groups.items()
-                if {
-                    addr
-                    for fp, _ in fps
-                    if (addr := fp.try_get_property("atopile_address"))
-                }.issubset(new_fps)
-            }
-
-            for group_name in groups_to_update:
-                sync.pull_group_layout(group_name)
-
-            pcb.pcb_file.dumps(config.build.paths.layout)
+        _update_layout(pcb.pcb_file, original_pcb)
 
     # Figure out what targets to build
     if config.build.targets == ["__default__"]:

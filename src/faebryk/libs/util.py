@@ -2140,6 +2140,50 @@ def md_list[T](
     return "\n".join(lines)
 
 
+def md_table(obj: Iterable[Iterable[Any]], headers: Iterable[str]) -> str:
+    """Convert an iterable of iterables into a markdown table."""
+
+    headers_list = list(headers)
+    rows = list(obj)
+
+    if not headers_list:
+        return ""
+
+    # Calculate column widths
+    col_widths = [len(str(h)) for h in headers_list]
+    for row in rows:
+        row_list = list(row)
+        for i, cell in enumerate(row_list[: len(col_widths)]):
+            col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    # Build header row
+    header_cells = []
+    for i, header in enumerate(headers_list):
+        header_cells.append(str(header).ljust(col_widths[i]))
+    header_row = "| " + " | ".join(header_cells) + " |"
+
+    # Build separator row
+    separator_cells = ["-" * width for width in col_widths]
+    separator_row = "| " + " | ".join(separator_cells) + " |"
+
+    # Build data rows
+    data_rows = []
+    for row in rows:
+        row_list = list(row)
+        cells = []
+        for i in range(len(headers_list)):
+            if i < len(row_list):
+                cells.append(str(row_list[i]).ljust(col_widths[i]))
+            else:
+                cells.append(" " * col_widths[i])
+        data_rows.append("| " + " | ".join(cells) + " |")
+
+    # Combine all parts
+    result = []
+    result.extend([header_row, separator_row] + data_rows)
+    return "\n".join(result)
+
+
 def robustly_rm_dir(path: os.PathLike) -> None:
     """Remove a directory and all its contents."""
 
@@ -2374,45 +2418,73 @@ def diff(before: str, after: str) -> str:
 
 
 def compare_dataclasses[T](
-    before: T, after: T, skip_keys: tuple[str, ...] = ()
+    before: T,
+    after: T,
+    skip_keys: tuple[str, ...] = (),
+    require_dataclass_type_match: bool = True,
 ) -> dict[str, dict[str, Any]]:
     """
-    check two dataclasses for equivalence (with some keys skipped)
+    Check two dataclasses for equivalence (with some keys skipped).
+
+    Parameters:
+        before: The first dataclass to compare.
+        after: The second dataclass to compare.
+        skip_keys: A tuple of keys to skip when encountered at any level.
+        require_dataclass_type_match: If False, compare dataclasses on fields only.
     """
 
     def _fmt(b, a):
         return {"before": b, "after": a}
 
-    if type(before) is not type(after) and not all(
-        isinstance(x, (int, float)) for x in (before, after)
-    ):
-        return {"": (before, after)}
-    if not is_dataclass(before):
-        if isinstance(before, list):
-            assert isinstance(after, list)
+    def _dataclasses_are_comparable(b, a):
+        return type(b) is type(a) or (
+            not require_dataclass_type_match
+            and {field.name for field in fields(b) if field.name not in skip_keys}
+            == {field.name for field in fields(a) if field.name not in skip_keys}
+        )
+
+    match (before, after):
+        case (list(), list()):
             return {
                 f"[{i}]{k}": v
                 for i, (b, a) in enumerate(zip(before, after))
-                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+                for k, v in compare_dataclasses(
+                    b,
+                    a,
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
             }
-        if isinstance(before, dict):
-            assert isinstance(after, dict)
+        case (dict(), dict()):
             return {
                 f"[{i!r}]{k}": v
                 for i, (b, a) in zip_dicts_by_key(before, after).items()
-                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+                for k, v in compare_dataclasses(
+                    b,
+                    a,
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
                 if i not in skip_keys
             }
-        return {"": _fmt(before, after)} if before != after else {}
-
-    return {
-        f".{f.name}{k}": v
-        for f in fields(before)  # type: ignore
-        if f.name not in skip_keys
-        for k, v in compare_dataclasses(
-            getattr(before, f.name), getattr(after, f.name), skip_keys=skip_keys
-        ).items()
-    }
+        case before, after if (
+            is_dataclass(before)
+            and is_dataclass(after)
+            and _dataclasses_are_comparable(before, after)
+        ):
+            return {
+                f".{f.name}{k}": v
+                for f in fields(before)  # type: ignore
+                if f.name not in skip_keys
+                for k, v in compare_dataclasses(
+                    getattr(before, f.name),
+                    getattr(after, f.name),
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
+            }
+        case _:
+            return {"": _fmt(before, after)} if before != after else {}
 
 
 def complete_type_string(value: Any) -> str:
