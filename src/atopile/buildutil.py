@@ -69,6 +69,7 @@ from faebryk.libs.util import (
     ConfigFlag,
     KeyErrorAmbiguous,
     compare_dataclasses,
+    find_or,
     md_table,
     once,
     sort_dataclass,
@@ -176,6 +177,57 @@ def _update_layout(
         for group_name in groups_to_update:
             sync.pull_group_layout(group_name)
 
+        # cleanup leftovers
+        def _get_fp(
+            uuid: str,
+        ) -> C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint | None:
+            return find_or(
+                pcb_file.kicad_pcb.footprints,
+                lambda fp: fp.uuid == uuid,
+                default=None,  # type: ignore
+            )
+
+        def _get_old_fp(
+            uuid: str,
+        ) -> C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint | None:
+            new_fp = _get_fp(uuid)
+            if new_fp is None:
+                print(f"new_fp is None for {uuid}")
+                return None
+            addr = new_fp.try_get_property("atopile_address")
+            if addr is None:
+                print(f"addr is None for {uuid}")
+                return None
+            out = find_or(
+                original_pcb_file.kicad_pcb.footprints,
+                lambda fp: fp.get_property("atopile_address") == addr,
+                default=None,  # type: ignore
+            )
+            if out is None:
+                print(f"out is None for {uuid} (addr={addr})")
+            return out
+
+        old_groups = {g.name: g for g in original_pcb_file.kicad_pcb.groups}
+        print(pcb_file.kicad_pcb.groups)
+        for g in list(pcb_file.kicad_pcb.groups):
+            if (
+                g.name
+                and g.name in old_groups
+                and any(
+                    fp.try_get_property("atopile_subaddresses")
+                    for fp_uuid in g.members
+                    if (fp := _get_old_fp(fp_uuid))
+                )
+                and not any(
+                    fp.try_get_property("atopile_subaddresses")
+                    for fp_uuid in g.members
+                    if (fp := _get_fp(fp_uuid))
+                )
+            ):
+                pcb_file.kicad_pcb.groups.remove(g)
+
+        # TODO remove
+        return
         pcb_file.dumps(config.build.paths.layout)
 
 
