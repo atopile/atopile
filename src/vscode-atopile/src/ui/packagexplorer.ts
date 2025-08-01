@@ -70,10 +70,13 @@ class PackageExplorerWebview extends BaseWebview {
         });
 
         // forward messages from iframe to VSCode
-        const upwardEventTypes = ['request-theme', 'install-package', 'upgrade-package', 'uninstall-package', 'request-project-name', 'subscribe-package'];
+        const upwardEventTypes = ['request-theme', 'install-package', 'upgrade-package', 'uninstall-package', 'request-project-name', 'subscribe-package', 'copy-text'];
         window.addEventListener('message', (event) => {
-            if (event.source === iframe.contentWindow && upwardEventTypes.includes(event.data.type)) {
-                vscode.postMessage(event.data);
+            if (event.source === iframe.contentWindow) {
+                console.log('Received message from iframe:', event.data);
+                if (upwardEventTypes.includes(event.data.type)) {
+                    vscode.postMessage(event.data);
+                }
             }
         });
     </script>
@@ -117,6 +120,12 @@ class PackageExplorerWebview extends BaseWebview {
                     break;
                 case 'subscribe-package':
                     this.subscribeToPackage(message.packageId);
+                    break;
+                case 'copy-text':
+                    if (message.text) {
+                        await vscode.env.clipboard.writeText(message.text);
+                        vscode.window.showInformationMessage(`Copied to clipboard: ${message.text}`);
+                    }
                     break;
             }
         });
