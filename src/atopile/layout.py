@@ -1,32 +1,20 @@
-"""
-This module contains functions for interacting with layout data,
-and generating files required to reuse layouts.
-
-Thanks @nickkrstevski (https://github.com/nickkrstevski) for
-the heavy lifting on this one!
-"""
-
-import copy
-import hashlib
-import json
 import logging
-import uuid
+from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
-
-from more_itertools import first
+from typing import override
 
 import faebryk.library._F as F
 import faebryk.libs.exceptions
-from atopile import errors, front_end
+from atopile import front_end
 from atopile.address import AddressError, AddrStr
 from atopile.config import ProjectConfig, config
 from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
+from faebryk.core.node import Node
 from faebryk.libs.util import (
-    FuncDict,
-    KeyErrorAmbiguous,
-    KeyErrorNotFound,
+    DefaultFactoryDict,
+    cast_assert,
     find,
     get_module_from_path,
 )
@@ -34,18 +22,73 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 
-def _generate_uuid_from_string(path: str) -> str:
-    """Spits out a uuid in hex from a string"""
-    path_as_bytes = path.encode("utf-8")
-    hashed_path = hashlib.blake2b(path_as_bytes, digest_size=16).digest()
-    return str(uuid.UUID(bytes=hashed_path))
+# TODO should be Node
+class SubPCB:
+    def __init__(self, path: Path) -> None:
+        self._path = path
 
 
-def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
+class has_subpcb(Module.TraitT.decless()):
+    def __init__(self, subpcb: SubPCB) -> None:
+        super().__init__()
+        self._subpcb = {subpcb}
+
+    @override
+    def handle_duplicate(self, old: "has_subpcb", node: Node) -> bool:
+        old._subpcb.update(self._subpcb)
+        return False
+
+    @property
+    def subpcb(self) -> set["SubPCB"]:
+        return self._subpcb
+
+    def get_subpcb_by_path(self, path: Path) -> "SubPCB":
+        return find(self._subpcb, lambda subpcb: subpcb._path == path)
+
+
+@dataclass(frozen=True)
+class SubAddress:
+    pcb_address: str
+    module_address: str
+
+    @classmethod
+    def deserialize(cls, address: str) -> "SubAddress":
+        pcb_address, module_address = address.split(":")
+        return cls(pcb_address, module_address)
+
+    def serialize(self) -> str:
+        return f"{self.pcb_address}:{self.module_address}"
+
+
+class in_sub_pcb(Module.TraitT.decless()):
+    def __init__(self, sub_root_module: Module):
+        super().__init__()
+        self._sub_root_modules = {sub_root_module}
+
+    @property
+    def addresses(self) -> list[SubAddress]:
+        obj = self.get_obj(Module)
+        root = config.project.paths.root
+        return [
+            SubAddress(
+                str(pcb._path.relative_to(root)), obj.relative_address(sub_root_module)
+            )
+            for sub_root_module in self._sub_root_modules
+            for pcb in sub_root_module.get_trait(has_subpcb).subpcb
+        ]
+
+    @override
+    def handle_duplicate(self, old: "in_sub_pcb", node: Node) -> bool:
+        old._sub_root_modules.update(self._sub_root_modules)
+        return False
+
+
+def _index_module_layouts() -> dict[type[Module], set[SubPCB]]:
     """Find, tag and return a set of all the modules with layouts."""
     directory = config.project.paths.root
 
-    entries: FuncDict[type[Module], set[Path]] = FuncDict()
+    pcbs: dict[Path, SubPCB] = DefaultFactoryDict(SubPCB)
+    entries: dict[type[Module], set[SubPCB]] = defaultdict(set)
     ato_modules = front_end.bob.modules
 
     for filepath in directory.glob("**/ato.yaml"):
@@ -66,6 +109,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                         # config validation happens before this point
                         continue
 
+                    pcb = pcbs[build.paths.layout]
                     # Check if the module is a known python module
                     if (
                         class_ := get_module_from_path(
@@ -77,8 +121,7 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                     ) is not None:
                         # we only bother to index things we've imported,
                         # otherwise we can be sure they weren't used
-                        assert isinstance(class_, type)
-                        entries.setdefault(class_, set()).add(build.paths.layout)
+                        entries[cast_assert(type, class_)].add(pcb)
 
                     # Check if the module is a known ato module
                     elif class_ := ato_modules.get(
@@ -86,130 +129,29 @@ def _index_module_layouts() -> FuncDict[type[Module], set[Path]]:
                         # which is the format also used by the frontend to key modules
                         AddrStr.from_parts(build.entry_file_path, build.entry_section)
                     ):
-                        entries.setdefault(class_, set()).add(build.paths.layout)
+                        entries[cast_assert(type, class_)].add(pcb)
 
     return entries
 
 
-class ModuleMap(TypedDict):
-    layout_path: str
-    """Absolute path to the KiCAD layout file"""
-
-    uuid_to_addr_map: dict[str, str]
-    """Map of UUIDs, as expected in the layout, to addresses"""
-
-    addr_map: dict[str, str]
-    """Map of addresses in the parent module to addresses in the child module"""
-
-    group_components: list[str]
-    """List of components in the group"""
-
-    nested_groups: list[str]
-    """List of addresses of nested groups"""
+def attach_sub_pcbs_to_entry_points(app: Module):
+    module_index = _index_module_layouts()
+    for module_type, pcbs in module_index.items():
+        modules = app.get_children_modules(types=module_type, direct_only=False)
+        for module in modules:
+            for pcb in pcbs:
+                module.add(has_subpcb(pcb))
 
 
-def generate_module_map(app: Module) -> None:
-    """Generate a file containing a list of all the modules and their components in the build."""  # noqa: E501  # pre-existing
-    module_map: dict[str, ModuleMap] = {}
-
-    module_layouts = _index_module_layouts()
-
-    for module, trait in GraphFunctions(app.get_graph()).nodes_with_trait(
-        F.has_reference_layout
-    ):
+def attach_subaddresses_to_modules(app: Module):
+    pcb_modules = GraphFunctions(app.get_graph()).nodes_with_trait(has_subpcb)
+    for module, _ in pcb_modules:
         assert isinstance(module, Module)
-        module_layouts.setdefault(type(module), set()).update(trait.paths)
 
-    def _dfs_layouts(module_instance: Module) -> tuple[list[str], set[str]]:
-        """
-        Pre-order DFS of the module's layout tree
-        Returns:
-            - a list of addresses of nested groups
-            - a set of addresses of child components
-        """
-        nested_groups: list[str] = []
-        child_component_addrs: set[str] = set()
-
-        # FIXME: this was created for nested grouping, however it was too much effort
-        # to support this in KiCAD, so we're ignoring it for now
-        def _descend() -> None:
-            for child_instance in module_instance.get_children_modules(
-                types=Module, direct_only=True
-            ):
-                ngs, cca = _dfs_layouts(child_instance)
-                nested_groups.extend(ngs)
-                child_component_addrs.update(cca)
-
-        try:
-            # TODO: this could be improved if we had the mro of the module
-            module_super = find(
-                module_layouts.keys(), lambda x: isinstance(module_instance, x)
-            )
-        except KeyErrorNotFound:
-            # For now, only descend if there isn't a layout for this module
-            # This means we'll only get the top-level group
-            _descend()
-
-        except KeyErrorAmbiguous as e:
-            mod_name = module_instance.get_full_name()
-            raise errors.UserNotImplementedError(
-                f"There are multiple possible layouts for '{mod_name}'.\n"
-                "This can happen when you have subclasses with their own configs.\n"
-                "We don't currently support multiple layouts for the same module.\n"
-                "Show the issue some love to get it done: https://github.com/atopile/atopile/issues/399"
-            ) from e
-
-        else:
-            # Build up a map of UUIDs of the children of the module
-            # The keys are instance UUIDs and the values are the
-            # corresponding UUIDs in the layout
-            # Here we include everything, even if accounted for by a nested group
-            uuid_map = {}
-            addr_map = {}
-            for inst_child in module_instance.get_children_modules(types=Module):
-                if not inst_child.has_trait(F.has_footprint):
-                    continue
-
-                parent_addr = inst_child.get_full_name()
-                # This is a bit of a hack that makes assumptions based on the addressing
-                # scheme to get the child's address w/r/t to it's root module
-                child_addr = inst_child.relative_address(module_instance)
-
-                addr_map[parent_addr] = child_addr
-
-                for addr in (parent_addr, child_addr):
-                    uuid_map[_generate_uuid_from_string(addr)] = addr
-
-            # Add the module map to the module map
-            group_name = module_instance.relative_address(app)
-            ungrouped_footprints = set(addr_map.keys()) - child_component_addrs
-
-            module_map[group_name] = {
-                "layout_path": str(first(module_layouts[module_super])),
-                # This maps the UUIDs of footprints to their addresses
-                # for compatibility with the old layouts
-                # TODO: @v0.4 remove this
-                "uuid_to_addr_map": uuid_map,
-                "addr_map": addr_map,
-                "group_components": list(ungrouped_footprints),
-                "nested_groups": copy.copy(nested_groups),
-            }
-
-            # Reset the nested_groups here to add only next-of-kin
-            nested_groups = [group_name]
-            child_component_addrs.update(ungrouped_footprints)
-
-        return nested_groups, child_component_addrs
-
-    # Run the DFS on the root module
-    # We add an additional loop at the top here to avoid creating a top-level group
-    for child_instance in app.get_children_modules(types=Module, direct_only=True):
-        _dfs_layouts(child_instance)
-
-    # Dump the module map to the relevant layout file for the KiCAD extension to use
-    with open(
-        config.build.paths.output_base.with_suffix(".layouts.json"),
-        "w",
-        encoding="utf-8",
-    ) as f:
-        json.dump(module_map, f, indent=4)
+        footprint_children = module.get_children(
+            direct_only=False,
+            f_filter=lambda c: c.has_trait(F.has_footprint),
+            types=Module,
+        )
+        for footprint_child in footprint_children:
+            footprint_child.add(in_sub_pcb(module))

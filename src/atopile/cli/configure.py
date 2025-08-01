@@ -52,7 +52,6 @@ def setup() -> None:
         logger.warning(f"Couldn't enable plugin api: {e!r}")
 
 
-@capture("cli:install_kicad_plugin_start", "cli:install_kicad_plugin_end")
 def install_kicad_plugin() -> None:
     """Install the kicad plugin."""
     # TODO switch to new plugin as soon as group serialize ipc works in kicad

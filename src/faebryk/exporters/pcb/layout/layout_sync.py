@@ -2,12 +2,10 @@
 # SPDX-License-Identifier: MIT
 
 import copy
-import json
 import logging
-from dataclasses import dataclass
-from pathlib import Path
 
 from atopile.config import config as gcfg
+from atopile.layout import SubAddress
 from faebryk.exporters.pcb.kicad.transformer import (
     PCB_Transformer,
     get_all_geo_containers,
@@ -23,8 +21,10 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     find,
     find_or,
+    groupby,
     not_none,
     once,
+    try_or,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,65 +33,73 @@ PCB = C_kicad_pcb_file.C_kicad_pcb
 type Footprint = PCB.C_pcb_footprint
 
 
-@dataclass
-class LayoutMap:
-    """Maps module addresses to their layout information."""
-
-    layout_path: Path
-    addr_map: dict[str, str]  # source addr -> target addr
-    uuid_to_addr_map: dict[str, str]  # uuid -> addr (legacy support)
-    group_components: list[str]
-    nested_groups: list[str]
-
-
 class LayoutSync:
     """Handles layout synchronization between PCB files."""
 
-    def __init__(self, pcb_path: Path):
-        self.pcb_path = pcb_path
-        self.layout_maps: dict[str, LayoutMap] = {}
+    def __init__(self, pcb: PCB):
+        self.pcb = pcb
 
-        manifest = gcfg.project.paths.manifest
-        if not manifest.exists():
-            raise FileNotFoundError(f"Manifest file not found: {manifest}")
-
-        logger.info(f"Loading layout maps from {manifest}")
-        self._load_layout_maps(manifest)
         self._old_groups: dict[str, C_group] = {}
 
-    @property
-    @once
-    def pcb(self) -> PCB:
-        """Load the PCB file."""
-        return C_kicad_pcb_file.loads(self.pcb_path).kicad_pcb
+        fps = self.pcb.footprints
+        sub_fps = [
+            (fp, sub_addr) for fp in fps if (sub_addr := self._get_sub_address(fp))
+        ]
 
-    def _load_layout_maps(self, manifest_path: Path) -> dict[str, LayoutMap]:
-        """Load layout maps from the manifest."""
-        with manifest_path.open("r") as f:
-            manifest = json.load(f)
-
-        # Find the layout map file for this PCB
-        layouts = manifest.get("by-layout", {})
-        pcb_key = find(
-            layouts, lambda key: Path(key).resolve() == self.pcb_path.resolve()
-        )
-
-        layout_file = Path(layouts[pcb_key]["layouts"])
-        with layout_file.open("r") as f:
-            layout_data = json.load(f)
-
-        # Convert to LayoutMap objects
-        self.layout_maps = {}
-        for group_name, data in layout_data.items():
-            self.layout_maps[group_name] = LayoutMap(
-                layout_path=Path(data["layout_path"]),
-                addr_map=data.get("addr_map", {}),
-                uuid_to_addr_map=data.get("uuid_to_addr_map", {}),
-                group_components=data.get("group_components", []),
-                nested_groups=data.get("nested_groups", []),
+        self.groups = groupby(sub_fps, lambda x: self._get_group_name(x[1], x[0]))
+        for group_name, fps in self.groups.items():
+            pcb_names = {x[1].pcb_address for x in fps}
+            assert len(pcb_names) == 1, (
+                f"Multiple PCB names found for group {group_name}: {pcb_names}"
             )
 
-        return self.layout_maps
+    def _get_all_sub_addresses(self, fp: Footprint) -> list[SubAddress]:
+        sub_addresses = fp.propertys.get("atopile_subaddresses")
+        if not sub_addresses:
+            return []
+        return [
+            SubAddress.deserialize(addr)
+            for addr in sub_addresses.value.removeprefix("[")
+            .removesuffix("]")
+            .split(", ")
+        ]
+
+    def _get_sub_address(self, fp: Footprint) -> SubAddress | None:
+        return self._choose_sublayout(self._get_all_sub_addresses(fp))
+
+    @once
+    def _get_pcb(self, pcb_address: str) -> PCB:
+        path = gcfg.project.paths.root / pcb_address
+        return C_kicad_pcb_file.loads(path).kicad_pcb
+
+    def _get_group_name(self, sub_addr: SubAddress, fp: Footprint) -> str:
+        base_addr = self._get_footprint_addr(fp)
+        assert base_addr
+        inner = sub_addr.module_address
+        return base_addr.removesuffix("." + inner)
+
+    def _choose_sublayout(self, sub_addr: list[SubAddress]) -> SubAddress | None:
+        addr_to_pcb = {
+            x: pcb
+            for x in sub_addr
+            if (pcb := try_or(lambda: self._get_pcb(x.pcb_address), None))
+        }
+        if not addr_to_pcb:
+            return None
+
+        # prefer sublayouts with tracks if any exist
+        candidates = addr_to_pcb
+        if any(pcb.segments for pcb in candidates.values()):
+            candidates = {
+                sub_addr: pcb for sub_addr, pcb in addr_to_pcb.items() if pcb.segments
+            }
+
+        # Heuristic: prefer higher level modules
+        candidate = max(
+            candidates.items(),
+            key=lambda x: len(x[0].module_address.split(".")),
+        )
+        return candidate[0]
 
     def _get_footprint_addr(self, fp: Footprint) -> str | None:
         """Get the address of a footprint."""
@@ -111,7 +119,13 @@ class LayoutSync:
         }
         atopile_fps_uuid = {fp.uuid: fp for fp in atopile_footprints.values()}
 
-        for group_name, layout_map in self.layout_maps.items():
+        # remove all atopile footprints from groups (later re-added)
+        for pcb_group in self.pcb.groups:
+            pcb_group.members[:] = [
+                uuid for uuid in pcb_group.members if uuid not in atopile_fps_uuid
+            ]
+
+        for group_name, fps in self.groups.items():
             logger.debug(f"Updating group {group_name}")
 
             # Create group if it doesn't exist
@@ -127,10 +141,7 @@ class LayoutSync:
                 group = groups[group_name]
 
             # Update group membership
-            expected_members = set()
-            for fp_addr in layout_map.group_components:
-                if fp_addr in atopile_footprints:
-                    expected_members.add(atopile_footprints[fp_addr].uuid)
+            expected_members = {fp.uuid for fp, _ in fps}
 
             # add new members
             current_members = set(group.members) | expected_members
@@ -322,7 +333,11 @@ class LayoutSync:
 
         return new_graphics
 
-    def _calculate_group_offset(self, source_pcb: PCB, target_group: C_group) -> C_xy:
+    def _calculate_group_offset(
+        self,
+        source_pcb: PCB,
+        target_group: C_group,
+    ) -> C_xy:
         """Calculate offset to apply when pulling a group layout."""
 
         ZERO = C_xy(0, 0)
@@ -344,8 +359,7 @@ class LayoutSync:
         top_pos = anchor_fp.at
 
         # Find corresponding source footprint
-        target_addr = not_none(self._get_footprint_addr(anchor_fp))
-        target_addr = target_addr.split(".", maxsplit=1)[-1]
+        target_addr = not_none(self._get_sub_address(anchor_fp)).module_address
 
         # Find in source
         try:
@@ -366,49 +380,72 @@ class LayoutSync:
 
         return offset
 
-    def pull_group_layout(self, group_name: str):
-        """Pull layout for a specific group from its source file."""
+    def _clean_group(self, group_name: str):
+        """Delete all non-fp elements in group."""
 
-        if group_name not in self.layout_maps:
-            logger.warning(f"No layout map found for group {group_name}")
+        if group_name not in self._old_groups:
             return
-        layout_map = self.layout_maps[group_name]
-        if not layout_map.layout_path.exists():
-            raise FileNotFoundError(f"Layout file {layout_map.layout_path} not found")
 
-        top_pcb = self.pcb
-        sub_pcb = C_kicad_pcb_file.loads(layout_map.layout_path).kicad_pcb
+        pcb = self.pcb
 
-        group = find(top_pcb.groups, lambda g: g.name == group_name)
-        offset = self._calculate_group_offset(sub_pcb, group)
-        inverted_addr_map = {v: k for k, v in layout_map.addr_map.items()}
-
-        net_map = self._generate_net_map(sub_pcb, top_pcb, inverted_addr_map)
-
-        # delete all non-fp elements in group
         to_delete = (
             set(self._old_groups[group_name].members)
             if group_name in self._old_groups
             else set()
         )
         for container in [
-            top_pcb.segments,
-            top_pcb.arcs,
-            top_pcb.vias,
-            top_pcb.zones,
-            *get_all_geo_containers(top_pcb),
-            top_pcb.images,
-            top_pcb.gr_texts,
-            top_pcb.gr_text_boxs,
+            pcb.segments,
+            pcb.arcs,
+            pcb.vias,
+            pcb.zones,
+            *get_all_geo_containers(pcb),
+            pcb.images,
+            pcb.gr_texts,
+            pcb.gr_text_boxs,
             # top_pcb.tables,
         ]:
             container[:] = [x for x in container if x.uuid not in to_delete]
         # delete non-atopile group footprints
-        top_pcb.footprints[:] = [
+        pcb.footprints[:] = [
             fp
-            for fp in top_pcb.footprints
+            for fp in pcb.footprints
             if fp.uuid not in to_delete or self._get_footprint_addr(fp)
         ]
+
+    def pull_group_layout(self, group_name: str):
+        """Pull layout for a specific group from its source file."""
+
+        if group_name not in self.groups:
+            logger.warning(f"No layout map found for group {group_name}")
+            return
+
+        fps = self.groups[group_name]
+        pcb_address = fps[0][1].pcb_address
+
+        top_pcb = self.pcb
+        try:
+            sub_pcb = self._get_pcb(pcb_address)
+        except Exception as e:
+            logger.error(f"Error loading sub pcb {pcb_address}: {e}")
+            return
+
+        group = find(top_pcb.groups, lambda g: g.name == group_name)
+        offset = self._calculate_group_offset(sub_pcb, group)
+        inverted_addr_map = {
+            sub_addr.module_address: not_none(self._get_footprint_addr(fp))
+            for fp, sub_addr in fps
+        }
+
+        net_map = self._generate_net_map(sub_pcb, top_pcb, inverted_addr_map)
+
+        # remove all stuff from involved groups, before re-adding new elements
+        involved_groups = {
+            self._get_group_name(addr, fp)
+            for fp, _ in fps
+            for addr in self._get_all_sub_addresses(fp)
+        }
+        for g_name in involved_groups:
+            self._clean_group(g_name)
 
         new_fps = self._sync_footprints(
             sub_pcb, top_pcb, inverted_addr_map, net_map, offset
@@ -430,11 +467,3 @@ class LayoutSync:
                 return net.number
         # If net doesn't exist, return 0 (no net)
         return 0
-
-    def save_pcb(self, output_path: Path | None = None):
-        """Save the PCB file."""
-        if self.pcb is None:
-            raise ValueError("No PCB loaded")
-
-        output_path = output_path or self.pcb_path
-        C_kicad_pcb_file(kicad_pcb=self.pcb).dumps(output_path)
