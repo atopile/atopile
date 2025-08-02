@@ -1189,11 +1189,35 @@ class PCB_Transformer:
 
             fp.layer = _flip(fp.layer)
 
-            # TODO: sometimes pads are being rotated by kicad ?!??
+            # Mirror the footprint geometry about y-axis when flipping layers
+            # This maintains proper orientation when viewed from the top
             for obj in fp.pads:
                 obj.layers = [_flip(x) for x in obj.layers]
+                # Mirror pad position about y-axis relative to footprint center
+                obj.at.y = -obj.at.y
+                # Mirror pad rotation
+                if obj.at.r:
+                    obj.at.r = (360 - obj.at.r) % 360
 
             for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys.values()):
+                # Mirror text and geometry positions about y-axis
+                if hasattr(obj, "at") and obj.at:
+                    obj.at.y = -obj.at.y
+                    # Mirror text rotation
+                    if hasattr(obj.at, "r") and obj.at.r:
+                        obj.at.r = (360 - obj.at.r) % 360
+
+                # Handle geometry objects that have start/end points
+                if hasattr(obj, "start") and obj.start:
+                    obj.start.y = -obj.start.y
+                if hasattr(obj, "end") and obj.end:
+                    obj.end.y = -obj.end.y
+                if hasattr(obj, "mid") and obj.mid:
+                    obj.mid.y = -obj.mid.y
+                # Handle circles which have center and end points
+                if hasattr(obj, "center") and obj.center:
+                    obj.center.y = -obj.center.y
+
                 if isinstance(obj, C_footprint.C_property):
                     obj = obj.layer
                 if isinstance(obj, C_fp_text):
