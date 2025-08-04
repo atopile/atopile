@@ -28,7 +28,6 @@ from faebryk.library.has_single_electric_reference import has_single_electric_re
 from faebryk.library.is_optional_defined import is_optional_defined
 from faebryk.library.has_footprint import has_footprint
 from faebryk.library.Mechanical import Mechanical
-from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.has_overriden_name import has_overriden_name
 from faebryk.library.has_reference import has_reference
 from faebryk.library.has_linked_pad import has_linked_pad
@@ -134,7 +133,6 @@ from faebryk.library.QFN import QFN
 from faebryk.library.SMDTwoPin import SMDTwoPin
 from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
-from faebryk.library.Mounting_Hole import Mounting_Hole
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
 from faebryk.library.is_surge_protected import is_surge_protected
