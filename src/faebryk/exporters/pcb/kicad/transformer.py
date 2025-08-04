@@ -1189,34 +1189,37 @@ class PCB_Transformer:
 
             fp.layer = _flip(fp.layer)
 
-            # Mirror the footprint geometry about y-axis when flipping layers
-            # This maintains proper orientation when viewed from the top
-            for obj in fp.pads:
-                obj.layers = [_flip(x) for x in obj.layers]
-                # Mirror pad position about y-axis relative to footprint center
-                obj.at.y = -obj.at.y
-                # Mirror pad rotation
-                if obj.at.r:
-                    obj.at.r = (360 - obj.at.r) % 360
+            # Mirror the footprint geometry about the Y-axis when flipping layers
+            # so that everything remains readable from the top view.
+            for pad in fp.pads:
+                pad.layers = [_flip(x) for x in pad.layers]
+                # Mirror pad centre and rotation
+                pad.at.y = -pad.at.y
+                if pad.at.r:
+                    pad.at.r = (360 - pad.at.r) % 360
 
+            # Mirror the remaining primitives inside the footprint.
             for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys.values()):
-                # Mirror text and geometry positions about y-axis
-                if hasattr(obj, "at") and obj.at:
+                # Objects that expose an `at` attribute (text & properties)
+                if isinstance(obj, (C_fp_text, C_footprint.C_property)):
                     obj.at.y = -obj.at.y
-                    # Mirror text rotation
-                    if hasattr(obj.at, "r") and obj.at.r:
+                    if obj.at.r:
                         obj.at.r = (360 - obj.at.r) % 360
 
-                # Handle geometry objects that have start/end points
-                if hasattr(obj, "start") and obj.start:
+                # Geometric primitives -------------------------------------------------
+                if isinstance(obj, (C_line, C_rect)):
                     obj.start.y = -obj.start.y
-                if hasattr(obj, "end") and obj.end:
                     obj.end.y = -obj.end.y
-                if hasattr(obj, "mid") and obj.mid:
+                elif isinstance(obj, C_arc):
+                    obj.start.y = -obj.start.y
                     obj.mid.y = -obj.mid.y
-                # Handle circles which have center and end points
-                if hasattr(obj, "center") and obj.center:
+                    obj.end.y = -obj.end.y
+                elif isinstance(obj, C_circle):
                     obj.center.y = -obj.center.y
+                    obj.end.y = -obj.end.y
+                elif isinstance(obj, (C_polygon, C_curve)) and hasattr(obj, "pts"):
+                    # Flip every stored point; keep X, negate Y
+                    obj.pts.xys = [pt.__class__(pt.x, -pt.y) for pt in obj.pts.xys]  # type: ignore[attr-defined]
 
                 if isinstance(obj, C_footprint.C_property):
                     obj = obj.layer
