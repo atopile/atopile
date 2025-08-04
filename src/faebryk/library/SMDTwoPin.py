@@ -15,7 +15,7 @@ class SMDTwoPin(F.Footprint):
         Inductor = "L"
 
     def __init__(
-        self, size: SMDSize = SMDSize.I0402, type: Type = Type.Resistor
+        self, size: SMDSize, type: Type
     ) -> None:
         super().__init__()
         self._size = size
