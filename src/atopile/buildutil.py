@@ -416,6 +416,8 @@ def generate_bom(app: Module, solver: Solver) -> None:
 def generate_3d_model(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
 
+    # TODO: This try/except should be removed once 3D model generation is stable
+    # For now, we log a warning and continue instead of failing the build
     try:
         export_glb(
             config.build.paths.layout,
@@ -423,7 +425,9 @@ def generate_3d_model(app: Module, solver: Solver) -> None:
             project_dir=config.build.paths.layout.parent,
         )
     except KicadCliExportError as e:
-        raise UserExportError(f"Failed to generate 3D model: {e}") from e
+        logger.warning(
+            f"Failed to generate 3D model (GLB): {e}. Continuing build."
+        )
 
 
 @muster.register("mfg-data", default=False, requires_kicad=True)
@@ -444,6 +448,8 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
             Path(tmpdir) / config.build.paths.layout.name,
         )
 
+        # TODO: This try/except should be removed once 3D model generation is stable
+        # For now, we log a warning and continue instead of failing the build
         try:
             export_step(
                 tmp_layout,
