@@ -49,6 +49,23 @@ pub const SExp = union(enum) {
         }
     }
 
+    pub fn str(self: SExp, writer: anytype) !void {
+        switch (self) {
+            .symbol => |s| try writer.print("{s}", .{s}),
+            .number => |n| try writer.print("{s}", .{n}),
+            .string => |s| try writer.print("\"{s}\"", .{s}),
+            .comment => |c| try writer.print(";{s}", .{c}),
+            .list => |items| {
+                try writer.writeAll("(");
+                for (items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(" ");
+                    try item.str(writer);
+                }
+                try writer.writeAll(")");
+            },
+        }
+    }
+
     pub fn format(
         self: SExp,
         comptime fmt: []const u8,
@@ -59,22 +76,6 @@ pub const SExp = union(enum) {
         _ = options;
 
         try self.repr(writer);
-        return;
-
-        //switch (self) {
-        //    .symbol => |s| try writer.print("{s}", .{s}),
-        //    .number => |n| try writer.print("{s}", .{n}),
-        //    .string => |s| try writer.print("\"{s}\"", .{s}),
-        //    .comment => |c| try writer.print(";{s}", .{c}),
-        //    .list => |items| {
-        //        try writer.writeAll("(");
-        //        for (items, 0..) |item, i| {
-        //            if (i > 0) try writer.writeAll(" ");
-        //            try item.format("", .{}, writer);
-        //        }
-        //        try writer.writeAll(")");
-        //    },
-        //}
     }
 };
 
@@ -148,10 +149,10 @@ pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!?SE
 pub fn parseArena(base_allocator: std.mem.Allocator, tokens: []const Token) ParseError!?SExp {
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     errdefer arena.deinit();
-    
+
     var parser = Parser.init(arena.allocator(), tokens);
     const result = try parser.parse();
-    
+
     // Transfer ownership of arena to the SExp
     // The caller must call deinit on the SExp to free the arena
     if (result) |sexp| {
@@ -160,7 +161,7 @@ pub fn parseArena(base_allocator: std.mem.Allocator, tokens: []const Token) Pars
         // TODO: Implement proper arena ownership transfer
         return sexp;
     }
-    
+
     arena.deinit();
     return null;
 }

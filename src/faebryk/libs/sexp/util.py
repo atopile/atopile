@@ -8,6 +8,33 @@ logger = logging.getLogger(__name__)
 
 
 def prettify_sexp_string(raw: str) -> str:
+    """
+    Prettify an S-expression string by adding proper indentation and line breaks.
+
+    S-expressions (symbolic expressions) are a notation for nested list-like data
+    structures, commonly used in formats like KiCad files. This function takes a raw,
+    potentially single-line or poorly formatted S-expression and formats it for better
+    readability.
+
+    Formatting rules applied:
+    - Each nested level gets 4 spaces of indentation
+    - Opening parentheses that start new nested expressions get their own lines
+    - Closing parentheses of non-leaf expressions get proper indentation
+    - Consecutive spaces are collapsed to single spaces
+    - Newlines in the raw input are removed and replaced with strategic line breaks
+    - Content within quoted strings is preserved as-is
+    - Leaf expressions (containing only simple values) stay on single lines
+
+    Args:
+        raw: The raw S-expression string to prettify
+
+    Returns:
+        A formatted S-expression string with proper indentation and line breaks
+
+    Example:
+        Input:  '(module (at 1 2) (layer "F.Cu") (tedit 123))'
+        Output: '(module\n    (at 1 2)\n    (layer "F.Cu")\n    (tedit 123))'
+    """
     out = deque()
     level = 0
     in_quotes = False

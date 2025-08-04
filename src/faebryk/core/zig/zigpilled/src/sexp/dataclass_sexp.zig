@@ -1,5 +1,6 @@
 const std = @import("std");
 const ast = @import("ast.zig");
+const tokenizer = @import("tokenizer.zig");
 const SExp = ast.SExp;
 
 // Type trait helpers
@@ -57,7 +58,7 @@ fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField 
 // Main decode function
 pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
     const type_info = @typeInfo(T);
-    
+
     switch (type_info) {
         .@"struct" => return try decodeStruct(T, allocator, sexp),
         .optional => |opt| return try decodeOptional(opt.child, allocator, sexp),
@@ -78,12 +79,12 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
 fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
     const fields = std.meta.fields(T);
     var result: T = std.mem.zeroInit(T, .{});
-    
+
     const items = ast.getList(sexp) orelse return error.UnexpectedType;
-    
+
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
-    
+
     // Process positional fields first
     var pos_index: usize = 0;
     inline for (fields, 0..) |field, field_idx| {
@@ -96,21 +97,21 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             }
         }
     }
-    
+
     // Process key-value pairs
     var i = pos_index;
     while (i < items.len) : (i += 1) {
         if (ast.isList(items[i])) {
             const kv_items = ast.getList(items[i]).?;
             if (kv_items.len < 2) continue;
-            
+
             const key = ast.getSymbol(kv_items[0]) orelse continue;
-            
+
             // Find matching field
             inline for (fields, 0..) |field, field_idx| {
                 const metadata = comptime getSexpMetadata(T, field.name);
                 const field_name = metadata.sexp_name orelse field.name;
-                
+
                 if (std.mem.eql(u8, key, field_name)) {
                     if (metadata.multidict) {
                         // Handle multidict fields
@@ -119,7 +120,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                             if (!fields_set.isSet(field_idx)) {
                                 const ChildType = std.meta.Child(field.type);
                                 var values = std.ArrayList(ChildType).init(allocator);
-                                
+
                                 // Collect all matching entries from the entire list
                                 var scan_idx: usize = i;
                                 while (scan_idx < items.len) : (scan_idx += 1) {
@@ -136,7 +137,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                         }
                                     }
                                 }
-                                
+
                                 @field(result, field.name) = try values.toOwnedSlice();
                                 fields_set.set(field_idx);
                             }
@@ -156,12 +157,12 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             }
         }
     }
-    
+
     // Check required fields and set defaults
     inline for (fields, 0..) |field, field_idx| {
         if (!fields_set.isSet(field_idx)) {
             const metadata = comptime getSexpMetadata(T, field.name);
-            
+
             // Handle different field types
             if (comptime isOptional(field.type)) {
                 @field(result, field.name) = null;
@@ -184,7 +185,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             }
         }
     }
-    
+
     return result;
 }
 
@@ -198,7 +199,7 @@ fn decodeOptional(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) De
 
 fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
     const child_type = std.meta.Child(T);
-    
+
     // Special handling for strings ([]const u8)
     if (child_type == u8) {
         switch (sexp) {
@@ -220,14 +221,14 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
             else => {},
         }
     }
-    
+
     const items = ast.getList(sexp) orelse return error.UnexpectedType;
-    
+
     var result = try allocator.alloc(child_type, items.len);
     for (items, 0..) |item, idx| {
         result[idx] = try decode(child_type, allocator, item);
     }
-    
+
     return result;
 }
 
@@ -272,7 +273,7 @@ fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
 pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     const T = @TypeOf(value);
     const type_info = @typeInfo(T);
-    
+
     switch (type_info) {
         .@"struct" => return try encodeStruct(allocator, value),
         .optional => {
@@ -319,9 +320,9 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     const T = @TypeOf(value);
     var items = std.ArrayList(SExp).init(allocator);
     defer items.deinit();
-    
+
     const fields = std.meta.fields(T);
-    
+
     // Process positional fields first
     inline for (fields) |field| {
         const metadata = getSexpMetadata(T, field.name);
@@ -331,21 +332,21 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
             try items.append(encoded);
         }
     }
-    
+
     // Then process non-positional fields
     inline for (fields) |field| {
         const metadata = getSexpMetadata(T, field.name);
         if (!metadata.positional) {
             const field_value = @field(value, field.name);
             const field_name = metadata.sexp_name orelse field.name;
-            
+
             if (metadata.multidict) {
                 // Handle multidict
                 if (comptime isSlice(@TypeOf(field_value))) {
                     for (field_value) |item| {
                         // Encode the item
                         const encoded_item = try encode(allocator, item);
-                        
+
                         // For multidict structs, we want to unwrap the struct encoding
                         // and prepend the field name
                         if (ast.getList(encoded_item)) |item_contents| {
@@ -383,7 +384,7 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
             }
         }
     }
-    
+
     return SExp{ .list = try items.toOwnedSlice() };
 }
 
@@ -404,30 +405,102 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeE
 pub fn dumps(allocator: std.mem.Allocator, value: anytype) EncodeError![]u8 {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    
+
     const sexp = try encode(arena.allocator(), value);
-    
+
     var buffer = std.ArrayList(u8).init(allocator);
     const writer = buffer.writer();
-    
-    try writeSexp(writer, sexp);
-    
+
+    try sexp.str(writer);
+
     return try buffer.toOwnedSlice();
 }
 
-fn writeSexp(writer: anytype, sexp: SExp) !void {
-    switch (sexp) {
-        .symbol => |s| try writer.print("{s}", .{s}),
-        .number => |n| try writer.print("{s}", .{n}),
-        .string => |s| try writer.print("\"{s}\"", .{s}),
-        .comment => |c| try writer.print(";{s}", .{c}),
-        .list => |items| {
-            try writer.writeAll("(");
-            for (items, 0..) |item, i| {
-                if (i > 0) try writer.writeAll(" ");
-                try writeSexp(writer, item);
-            }
-            try writer.writeAll(")");
-        },
+// Generic functions for loading and dumping S-expressions
+
+// Load a struct from an S-expression string
+pub fn loadsString(comptime T: type, allocator: std.mem.Allocator, content: []const u8) !T {
+    // Tokenize
+    const tokens = try tokenizer.tokenize(allocator, content);
+    defer allocator.free(tokens);
+
+    // Parse to AST using arena allocator for performance
+    var parse_arena = std.heap.ArenaAllocator.init(allocator);
+    defer parse_arena.deinit();
+
+    var sexp = try ast.parse(parse_arena.allocator(), tokens) orelse return error.EmptyFile;
+    defer sexp.deinit(parse_arena.allocator());
+
+    // Decode
+    return try decode(T, allocator, sexp);
+}
+
+// Load a struct from an S-expression string with a wrapping symbol
+pub fn loadsStringWithSymbol(comptime T: type, allocator: std.mem.Allocator, content: []const u8, expected_symbol: []const u8) !T {
+    // Tokenize
+    const tokens = try tokenizer.tokenize(allocator, content);
+    defer allocator.free(tokens);
+
+    // Parse to AST using arena allocator for performance
+    var parse_arena = std.heap.ArenaAllocator.init(allocator);
+    defer parse_arena.deinit();
+
+    var sexp = try ast.parse(parse_arena.allocator(), tokens) orelse return error.EmptyFile;
+    defer sexp.deinit(parse_arena.allocator());
+
+    // The file structure is (symbol_name ...)
+    const file_list = ast.getList(sexp) orelse return error.UnexpectedType;
+    if (file_list.len < 1) return error.UnexpectedType;
+
+    const symbol = ast.getSymbol(file_list[0]) orelse return error.UnexpectedType;
+    if (!std.mem.eql(u8, symbol, expected_symbol)) return error.UnexpectedType;
+
+    // Create a new list without the symbol for decoding
+    const contents = file_list[1..];
+    const table_sexp = ast.SExp{ .list = contents };
+
+    // Decode
+    return try decode(T, allocator, table_sexp);
+}
+
+// Dump a struct to an S-expression string with a wrapping symbol
+pub fn dumpsStringWithSymbol(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8) ![]u8 {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // Encode the data
+    const encoded = try encode(arena.allocator(), data);
+
+    // The encoded result is a list of key-value pairs
+    // We need to prepend the symbol name
+    const encoded_items = ast.getList(encoded).?;
+
+    var items = try arena.allocator().alloc(ast.SExp, encoded_items.len + 1);
+    items[0] = ast.SExp{ .symbol = symbol_name };
+
+    // Copy the encoded items
+    for (encoded_items, 0..) |item, i| {
+        items[i + 1] = item;
     }
+
+    const wrapped = ast.SExp{ .list = items };
+
+    // Write to string
+    var buffer = std.ArrayList(u8).init(allocator);
+    const writer = buffer.writer();
+
+    try wrapped.str(writer);
+
+    return try buffer.toOwnedSlice();
+}
+
+// Write S-expression with symbol to file
+pub fn writeFileWithSymbol(data: anytype, file_path: []const u8, symbol_name: []const u8, allocator: std.mem.Allocator) !void {
+    const content = try dumpsStringWithSymbol(data, allocator, symbol_name);
+    defer allocator.free(content);
+
+    const file = try std.fs.cwd().createFile(file_path, .{});
+    defer file.close();
+
+    try file.writeAll(content);
 }

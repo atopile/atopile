@@ -4,6 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+
     // Performance test executable
     const perf_test = b.addExecutable(.{
         .name = "performance_test",
@@ -25,7 +26,7 @@ pub fn build(b: *std.Build) void {
     // Example fp_lib_table usage
     const fp_lib_table = b.addExecutable(.{
         .name = "fp_lib_table",
-        .root_source_file = b.path("fp_lib_table.zig"),
+        .root_source_file = b.path("fp_lib_table_main.zig"),
         .target = target,
         .optimize = optimize,
     });
