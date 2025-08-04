@@ -1,5 +1,6 @@
 const std = @import("std");
 const kicad = @import("kicad.zig");
+const dataclass_sexp = @import("../dataclass_sexp.zig");
 
 // KiCad footprint library table entry
 pub const FpLibEntry = struct {
@@ -31,44 +32,23 @@ pub const FpLibTable = struct {
     };
 };
 
-// For KiCad files, the top-level structure IS the table itself
-// with a symbol name of "fp_lib_table"
-pub const FpLibTableFile = FpLibTable;
-
-// Helper function to free a FpLibEntry
-pub fn freeFpLibEntry(allocator: std.mem.Allocator, entry: FpLibEntry) void {
-    allocator.free(entry.name);
-    allocator.free(entry.type);
-    allocator.free(entry.uri);
-    allocator.free(entry.options);
-    allocator.free(entry.descr);
-}
-
-// Helper function to free a FpLibTable
-pub fn freeFpLibTable(allocator: std.mem.Allocator, table: FpLibTable) void {
-    for (table.libs) |entry| {
-        freeFpLibEntry(allocator, entry);
+const FpLibTableFile = struct {
+    fn loads(allocator: std.mem.Allocator, content: []const u8) !FpLibTable {
+        return try kicad.loadsKicadFile(FpLibTable, allocator, content, "fp_lib_table");
     }
-    if (table.libs.len > 0) {
-        allocator.free(table.libs);
+
+    fn dumps(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
+        return try kicad.dumpsKicadFile(table, allocator, "fp_lib_table");
     }
-}
 
-pub fn loadsFpLibTable(allocator: std.mem.Allocator, content: []const u8) !FpLibTable {
-    return try kicad.loadsKicadFile(FpLibTable, allocator, content, "fp_lib_table");
-}
+    fn write(table: FpLibTable, file_path: []const u8, allocator: std.mem.Allocator) !void {
+        return try kicad.writeKicadFile(table, file_path, "fp_lib_table", allocator);
+    }
 
-pub fn dumpsFpLibTable(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
-    return try kicad.dumpsKicadFile(table, allocator, "fp_lib_table");
-}
-
-pub fn dumpsPrettyFpLibTable(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
-    return try kicad.dumpsPrettyKicadFile(table, allocator, "fp_lib_table");
-}
-
-pub fn writeFpLibTable(table: FpLibTable, file_path: []const u8, allocator: std.mem.Allocator) !void {
-    return try kicad.writeKicadFile(table, file_path, "fp_lib_table", allocator);
-}
+    fn free(allocator: std.mem.Allocator, table: FpLibTable) void {
+        dataclass_sexp.free(FpLibTable, allocator, table);
+    }
+};
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -104,14 +84,14 @@ pub fn example(allocator: std.mem.Allocator) !void {
     };
 
     // Serialize to S-expression (normal)
-    const sexp_str = try dumpsFpLibTable(table, allocator);
+    const sexp_str = try FpLibTableFile.dumps(table, allocator);
     defer allocator.free(sexp_str);
 
     std.debug.print("Generated S-expression (normal):\n{s}\n\n", .{sexp_str});
 
     // Parse it back
-    const parsed = try loadsFpLibTable(allocator, sexp_str);
-    defer freeFpLibTable(allocator, parsed);
+    const parsed = try FpLibTableFile.loads(allocator, sexp_str);
+    defer FpLibTableFile.free(allocator, parsed);
 
     std.debug.print("Loaded: {}\n", .{parsed});
 }

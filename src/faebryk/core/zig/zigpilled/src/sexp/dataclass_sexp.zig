@@ -502,3 +502,56 @@ pub fn writeFileWithSymbol(data: anytype, file_path: []const u8, symbol_name: []
 
     try file.writeAll(content);
 }
+
+// Generic free function for structs decoded by this library
+pub fn free(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    const type_info = @typeInfo(T);
+    
+    switch (type_info) {
+        .@"struct" => freeStruct(T, allocator, value),
+        .pointer => |ptr| {
+            if (ptr.size == .slice) {
+                freeSlice(T, allocator, value);
+            }
+        },
+        .optional => |opt| {
+            if (value) |v| {
+                free(opt.child, allocator, v);
+            }
+        },
+        else => {},
+    }
+}
+
+fn freeStruct(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    const fields = std.meta.fields(T);
+    
+    inline for (fields) |field| {
+        const field_value = @field(value, field.name);
+        free(field.type, allocator, field_value);
+    }
+}
+
+fn freeSlice(comptime T: type, allocator: std.mem.Allocator, value: T) void {
+    const child_type = std.meta.Child(T);
+    
+    // Free each element in the slice
+    if (comptime !isSimpleType(child_type)) {
+        for (value) |item| {
+            free(child_type, allocator, item);
+        }
+    }
+    
+    // Free the slice itself
+    if (value.len > 0) {
+        allocator.free(value);
+    }
+}
+
+fn isSimpleType(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .int, .float, .bool, .@"enum" => true,
+        .pointer => |ptr| ptr.size == .slice and ptr.child == u8, // Consider strings as simple
+        else => false,
+    };
+}
