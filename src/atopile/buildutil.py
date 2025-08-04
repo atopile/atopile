@@ -10,7 +10,7 @@ from atopile import layout
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
 from atopile.errors import UserException, UserPickError, UserToolNotAvailableError
-from atopile.targets import muster
+from atopile.targets import generate_manufacturing_data, muster
 from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
 from faebryk.core.pathfinder import MAX_PATHS
@@ -266,20 +266,12 @@ def build(app: Module) -> None:
         backup_file.write_bytes(config.build.paths.layout.read_bytes())
         _update_layout(pcb.pcb_file, original_pcb)
 
-    # Figure out what targets to build
-    if config.build.targets == ["__default__"]:
-        targets = [t for t in muster.targets.values() if t.default]
-    elif config.build.targets == ["*"] or config.build.targets == ["all"]:
-        targets = [t for t in muster.targets.values()]
-    else:
-        targets = [muster.targets[t] for t in config.build.targets]
-        for target in targets:
-            target.implicit = False
+    targets = muster.select(
+        set(config.build.targets) - set(config.build.exclude_targets)
+    )
 
-    # Remove excluded targets
-    targets = [t for t in targets if t.name not in config.build.exclude_targets]
-
-    if any(t.name == "mfg-data" for t in targets):
+    if any(t.name == generate_manufacturing_data.name for t in targets):
+        # TODO: model this better
         with LoggingStage("checks-post-pcb", "Running post-pcb checks"):
             pcb.add(F.PCB.requires_drc_check())
             try:

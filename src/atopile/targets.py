@@ -2,7 +2,7 @@ import json
 import logging
 import tempfile
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from atopile.config import config
@@ -26,15 +26,17 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.exceptions import accumulate
+from faebryk.libs.util import DAG
 
 
 @dataclass
 class MusterTarget:
     name: str
-    default: bool
+    aliases: list[str]
     requires_kicad: bool
     func: Callable[[Module, Solver], None]
     implicit: bool = True
+    dependencies: list[str] = field(default_factory=list)
 
     def __call__(self, app: Module, solver: Solver) -> None:
         return self.func(app, solver)
@@ -45,18 +47,28 @@ class Muster:
 
     def __init__(self, logger: logging.Logger | None = None) -> None:
         self.targets: dict[str, MusterTarget] = {}
+        self.dependency_dag: DAG[str] = DAG()
         self.log = logger or logging.getLogger(__name__)
 
     def add_target(self, target: MusterTarget) -> MusterTarget:
         """Register a function as a target."""
         self.targets[target.name] = target
+
+        self.dependency_dag.add_or_get(target.name)
+        for dep in target.dependencies:
+            assert dep in self.targets, (
+                f"Dependency '{dep}' for target '{target.name}' not yet registered"
+            )
+            self.dependency_dag.add_edge(dep, target.name)
+
         return target
 
     def register(
         self,
         name: str | None = None,
-        default: bool = True,
+        aliases: list[str] | None = None,
         requires_kicad: bool = False,
+        dependencies: list[str] | None = None,
     ) -> Callable[[Callable[[Module, Solver], None]], MusterTarget]:
         """Register a target under a given name."""
 
@@ -64,14 +76,36 @@ class Muster:
             target_name = name or func.__name__
             target = MusterTarget(
                 name=target_name,
-                default=default,
+                aliases=aliases or [],
                 requires_kicad=requires_kicad,
                 func=func,
+                dependencies=dependencies or [],
             )
             self.add_target(target)
             return target
 
         return decorator
+
+    def select(self, selected_targets: set[str] = {"all"}) -> list[MusterTarget]:
+        """
+        Returns selected targets in topologically sorted order based on dependencies.
+        """
+        subgraph = self.dependency_dag.get_subgraph(
+            selector_func=lambda name: name in selected_targets
+            or any(alias in selected_targets for alias in self.targets[name].aliases)
+        )
+
+        sorted_names = subgraph.topologically_sorted()
+
+        for target in self.targets.values():
+            if target.name in selected_targets:
+                target.implicit = False
+
+        return [self.targets[name] for name in sorted_names if name in self.targets]
+
+    def get_dependency_tree(self) -> str:
+        tree = self.dependency_dag.to_tree()
+        return tree.pretty()
 
 
 muster = Muster()
@@ -86,7 +120,7 @@ def generate_bom(app: Module, solver: Solver) -> None:
     )
 
 
-@muster.register("3d-model", default=False, requires_kicad=True)
+@muster.register("3d-model", requires_kicad=True)
 def generate_3d_model(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
 
@@ -100,7 +134,7 @@ def generate_3d_model(app: Module, solver: Solver) -> None:
         raise UserExportError(f"Failed to generate 3D model: {e}") from e
 
 
-@muster.register("mfg-data", default=False, requires_kicad=True)
+@muster.register("mfg-data", requires_kicad=True)
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
     Generate manufacturing artifacts for the project.
@@ -202,3 +236,27 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
     export_i2c_tree(
         app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
     )
+
+
+@muster.register(
+    "__default__", dependencies=["bom", "manifest", "variable-report", "i2c-tree"]
+)
+def default(app: Module, solver: Solver) -> None:
+    pass
+
+
+@muster.register(
+    "all",
+    aliases=["*"],
+    dependencies=[
+        "bom",
+        "mfg-data",
+        "i2c-tree",
+        "variable-report",
+        "manifest",
+        "3d-model",
+    ],
+)
+def all(app: Module, solver: Solver) -> None:
+    """Generate all targets."""
+    pass
