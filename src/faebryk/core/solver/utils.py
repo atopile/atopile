@@ -72,7 +72,7 @@ PRINT_START = ConfigFlag("SPRINT_START", default=False, descr="Print start of so
 MAX_ITERATIONS_HEURISTIC = int(
     ConfigFlagInt("SMAX_ITERATIONS", default=40, descr="Max iterations")
 )
-TIMEOUT = ConfigFlagFloat("STIMEOUT", default=150, descr="Solver timeout").get()
+TIMEOUT = ConfigFlagFloat("STIMEOUT", default=5000, descr="Solver timeout").get()
 ALLOW_PARTIAL_STATE = ConfigFlag("SPARTIAL", default=True, descr="Allow partial state")
 # --------------------------------------------------------------------------------------
 

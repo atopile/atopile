@@ -451,7 +451,9 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
                 project_dir=config.build.paths.layout.parent,
             )
         except KicadCliExportError as e:
-            raise UserExportError(f"Failed to generate STEP file: {e}") from e
+            logger.warning(
+                f"Failed to generate STEP file: {e}. Continuing with remaining manufacturing data generation."
+            )
 
         try:
             export_dxf(
