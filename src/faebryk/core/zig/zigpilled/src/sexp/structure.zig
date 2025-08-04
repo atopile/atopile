@@ -154,6 +154,16 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
 
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
+    
+    // Add errdefer to clean up partial allocations on error
+    errdefer {
+        // Free any fields that were already allocated
+        inline for (fields, 0..) |field, idx| {
+            if (fields_set.isSet(idx)) {
+                free(field.type, allocator, @field(result, field.name));
+            }
+        }
+    }
 
     // First, count how many key-value pairs we have
     var kv_count: usize = 0;
@@ -177,6 +187,12 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             const pos_idx = pos_start + @as(usize, @intCast(@max(0, metadata.order - 1)));
 
             if (pos_idx < items.len and !ast.isList(items[pos_idx])) {
+                // Set context for positional fields too
+                setErrorContext(.{
+                    .path = @typeName(T),
+                    .field_name = field.name,
+                    .sexp_preview = null,
+                });
                 @field(result, field.name) = try decode(field.type, allocator, items[pos_idx]);
                 fields_set.set(field_idx);
             }
@@ -214,6 +230,12 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                         if (scan_kv.len >= 2) {
                                             const scan_key = ast.getSymbol(scan_kv[0]) orelse continue;
                                             if (std.mem.eql(u8, field_name, scan_key)) {
+                                                // Set context for multidict items
+                                                setErrorContext(.{
+                                                    .path = @typeName(T),
+                                                    .field_name = field.name,
+                                                    .sexp_preview = null,
+                                                });
                                                 // For multidict entries, decode the rest as struct fields
                                                 const scan_struct_sexp = SExp{ .list = scan_kv[1..] };
                                                 const scan_val = try decode(ChildType, allocator, scan_struct_sexp);
@@ -230,6 +252,12 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     } else {
                         // Single value
                         if (!fields_set.isSet(field_idx)) {
+                            // Set context before decoding so errors have proper context
+                            setErrorContext(.{
+                                .path = @typeName(T),
+                                .field_name = field.name,
+                                .sexp_preview = null,
+                            });
                             @field(result, field.name) = if (kv_items.len == 2)
                                 try decode(field.type, allocator, kv_items[1])
                             else
@@ -266,9 +294,8 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
                 } else {
                     // Set error context before returning error
-                    var arena = std.heap.ArenaAllocator.init(allocator);
-                    defer arena.deinit();
-                    const preview = formatSexpPreview(arena.allocator(), sexp) catch "<error formatting preview>";
+                    // Use page allocator for preview since error context is global
+                    const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
                     setErrorContext(.{
                         .path = @typeName(T),
                         .field_name = field.name,
@@ -302,15 +329,15 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
                 @memcpy(duped, str);
                 return duped;
             },
-            .symbol => |sym| {
-                const duped = try allocator.alloc(u8, sym.len);
-                @memcpy(duped, sym);
-                return duped;
-            },
-            .number => |num| {
-                const duped = try allocator.alloc(u8, num.len);
-                @memcpy(duped, num);
-                return duped;
+            .symbol, .number => {
+                // Get current context to preserve field name
+                const ctx = getErrorContext();
+                setErrorContext(.{
+                    .path = if (ctx) |c| c.path else @typeName(T),
+                    .field_name = if (ctx) |c| c.field_name else null,
+                    .sexp_preview = "expected quoted string, got unquoted value",
+                });
+                return error.UnexpectedType;
             },
             else => {},
         }
@@ -327,35 +354,92 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
 }
 
 fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
+    // Get current context to preserve field name
+    const ctx = getErrorContext();
+    
     const str = switch (sexp) {
         .number => |n| n,
-        .symbol => |s| s,
+        .string => |s| {
+            // More helpful error for common mistake of quoting numbers
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, 
+                    "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
+            });
+            return error.UnexpectedType;
+        },
+        .symbol => |s| {
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
+                    "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+            });
+            return error.UnexpectedType;
+        },
         else => {
             setErrorContext(.{
-                .path = @typeName(T),
-                .sexp_preview = "not a number or symbol",
-                .field_name = "Expected number or symbol for integer",
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = "expected number for integer",
             });
             return error.UnexpectedType;
         },
     };
     return std.fmt.parseInt(T, str, 10) catch {
         setErrorContext(.{
-            .path = @typeName(T),
-            .sexp_preview = str,
-            .field_name = "Failed to parse as integer",
+            .path = if (ctx) |c| c.path else @typeName(T),
+            .field_name = if (ctx) |c| c.field_name else null,
+            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
+                "failed to parse \"{s}\" as {s}", .{str, @typeName(T)}) catch str,
         });
         return error.InvalidValue;
     };
 }
 
 fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
+    // Get current context to preserve field name
+    const ctx = getErrorContext();
+    
     const str = switch (sexp) {
         .number => |n| n,
-        .symbol => |s| s,
-        else => return error.UnexpectedType,
+        .string => |s| {
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, 
+                    "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
+            });
+            return error.UnexpectedType;
+        },
+        .symbol => |s| {
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
+                    "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+            });
+            return error.UnexpectedType;
+        },
+        else => {
+            setErrorContext(.{
+                .path = if (ctx) |c| c.path else @typeName(T),
+                .field_name = if (ctx) |c| c.field_name else null,
+                .sexp_preview = "expected number for float",
+            });
+            return error.UnexpectedType;
+        },
     };
-    return std.fmt.parseFloat(T, str) catch return error.InvalidValue;
+    return std.fmt.parseFloat(T, str) catch {
+        setErrorContext(.{
+            .path = if (ctx) |c| c.path else @typeName(T),
+            .field_name = if (ctx) |c| c.field_name else null,
+            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
+                "failed to parse \"{s}\" as {s}", .{str, @typeName(T)}) catch str,
+        });
+        return error.InvalidValue;
+    };
 }
 
 fn decodeBool(sexp: SExp) DecodeError!bool {
