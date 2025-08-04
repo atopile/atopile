@@ -25,6 +25,9 @@ def build(
     target: Annotated[
         list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
     ] = [],
+    exclude_target: Annotated[
+        list[str], typer.Option("--exclude-target", "-x", envvar="ATO_EXCLUDE_TARGET")
+    ] = [],
     frozen: Annotated[
         bool | None,
         typer.Option(
@@ -57,7 +60,8 @@ def build(
     config.apply_options(
         entry=entry,
         selected_builds=selected_builds,
-        target=target,
+        include_targets=target,
+        exclude_targets=exclude_target,
         standalone=standalone,
         frozen=frozen,
         keep_picked_parts=keep_picked_parts,
