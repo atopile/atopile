@@ -59,21 +59,21 @@ pub fn build(b: *std.Build) void {
 
     // Add tokenizer tests
     const tokenizer_tests = b.addTest(.{
-        .root_source_file = b.path("src/sexp/tokenizer_test.zig"),
+        .root_source_file = b.path("src/sexp/test_tokenizer.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const run_tokenizer_tests = b.addRunArtifact(tokenizer_tests);
 
-    // Add ato file test
-    const ato_file_test = b.addTest(.{
-        .root_source_file = b.path("src/sexp/test_ato_file.zig"),
+    // Add netlist tests
+    const netlist_tests = b.addTest(.{
+        .root_source_file = b.path("src/sexp/test_netlist.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const run_ato_file_test = b.addRunArtifact(ato_file_test);
+    const run_netlist_tests = b.addRunArtifact(netlist_tests);
 
     // Similar to creating the run step earlier, this exposes a `test` step to
     // the `zig build --help` menu, providing a way for the user to request
@@ -81,23 +81,23 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_unit_tests.step);
     test_step.dependOn(&run_tokenizer_tests.step);
-    test_step.dependOn(&run_ato_file_test.step);
+    test_step.dependOn(&run_netlist_tests.step);
 
     // Add a specific step for testing the tokenizer
     const test_tokenizer_step = b.step("test-tokenizer", "Run tokenizer tests");
     test_tokenizer_step.dependOn(&run_tokenizer_tests.step);
 
-    // Add executable for testing ato file
-    const test_ato = b.addExecutable(.{
-        .name = "test_ato",
-        .root_source_file = b.path("src/sexp/test_ato_file.zig"),
+    // Add executable for KiCad examples
+    const example_kicad = b.addExecutable(.{
+        .name = "example_kicad",
+        .root_source_file = b.path("src/sexp/example_kicad.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    b.installArtifact(test_ato);
+    b.installArtifact(example_kicad);
 
-    const run_test_ato = b.addRunArtifact(test_ato);
-    const test_ato_step = b.step("test-ato", "Test tokenizer with ato.kicad_pcb file");
-    test_ato_step.dependOn(&run_test_ato.step);
+    const run_example_kicad = b.addRunArtifact(example_kicad);
+    const example_kicad_step = b.step("example-kicad", "Run KiCad format examples");
+    example_kicad_step.dependOn(&run_example_kicad.step);
 }

@@ -8,6 +8,7 @@
 
 import subprocess
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 import sexpdata
@@ -78,25 +79,25 @@ def test_python(file_path):
         )
         total_tokens = lparen + rparen + symbols + numbers + strings + comments
 
-        return {
-            "file_size": file_size,
-            "tokenize_time": parse_time,  # Python does both in one pass
-            "parse_time": 0,  # Already included in tokenize_time
-            "total_tokens": total_tokens,
-            "lparen": lparen,
-            "rparen": rparen,
-            "symbols": symbols,
-            "numbers": numbers,
-            "strings": strings,
-            "comments": comments,
-            "balanced": lparen == rparen,
-            "sexp_count": 1 if isinstance(data, list) else 0,
-            "list_count": lists,
-            "atom_count": atoms,
-            "error": None,
-        }
+        return TestResults(
+            file_size=file_size,
+            tokenize_time=parse_time,  # Python does both in one pass
+            parse_time=0,  # Already included in tokenize_time
+            total_tokens=total_tokens,
+            lparen=lparen,
+            rparen=rparen,
+            symbols=symbols,
+            numbers=numbers,
+            strings=strings,
+            comments=comments,
+            balanced=lparen == rparen,
+            sexp_count=1 if isinstance(data, list) else 0,
+            list_count=lists,
+            atom_count=atoms,
+            cpu_count=1,
+        )
     except Exception as e:
-        return {"file_size": file_size, "error": str(e)}
+        raise Exception(f"Python test failed: {e}")
 
 
 def compile_zig_if_needed():
@@ -104,12 +105,12 @@ def compile_zig_if_needed():
     build_file = Path(__file__).parent / "build.zig"
 
     if not build_file.exists():
-        return {"error": f"Build file {build_file} not found"}
+        raise Exception(f"Build file {build_file} not found")
 
     # Check if we need to rebuild
     source_files = list(Path(__file__).parent.glob("*.zig"))
     if not source_files:
-        return {"error": "No Zig source files found"}
+        raise Exception("No Zig source files found")
 
     needs_compile = not PERFORMANCE_TEST_EXE.exists()
     if not needs_compile:
@@ -129,18 +130,33 @@ def compile_zig_if_needed():
             text=True,
         )
         if result.returncode != 0:
-            return {"error": f"Failed to build: {result.stderr}"}
+            raise Exception(f"Failed to build: {result.stderr}")
         print("Build successful")
 
-    return None
+
+@dataclass
+class TestResults:
+    file_size: int
+    tokenize_time: int
+    parse_time: int
+    total_tokens: int
+    lparen: int
+    rparen: int
+    symbols: int
+    numbers: int
+    strings: int
+    comments: int
+    balanced: bool
+    sexp_count: int
+    list_count: int
+    atom_count: int
+    cpu_count: int
 
 
 def test_zig(file_path):
     """Test Zig parallel tokenizer and AST parser performance"""
     # Compile if needed
-    compile_error = compile_zig_if_needed()
-    if compile_error:
-        return compile_error
+    compile_zig_if_needed()
 
     # Run the performance test
     result = subprocess.run(
@@ -150,76 +166,75 @@ def test_zig(file_path):
     )
 
     if result.returncode != 0:
-        return {"error": f"Zig test failed: {result.stderr}"}
+        raise Exception(f"Zig test failed: {result.stderr}")
 
     # Parse output
     for line in result.stderr.split("\n"):
         if line.startswith("RESULT:"):
             parts = line.replace("RESULT:", "").split(":")
             if len(parts) >= 15:
-                return {
-                    "file_size": int(parts[0]),
-                    "tokenize_time": int(parts[1]),
-                    "parse_time": int(parts[2]),
-                    "total_tokens": int(parts[3]),
-                    "lparen": int(parts[4]),
-                    "rparen": int(parts[5]),
-                    "symbols": int(parts[6]),
-                    "numbers": int(parts[7]),
-                    "strings": int(parts[8]),
-                    "comments": int(parts[9]),
-                    "balanced": parts[10] == "true",
-                    "sexp_count": int(parts[11]),
-                    "list_count": int(parts[12]),
-                    "atom_count": int(parts[13]),
-                    "cpu_count": int(parts[14]),
-                    "error": None,
-                }
+                return TestResults(
+                    file_size=int(parts[0]),
+                    tokenize_time=int(parts[1]),
+                    parse_time=int(parts[2]),
+                    total_tokens=int(parts[3]),
+                    lparen=int(parts[4]),
+                    rparen=int(parts[5]),
+                    symbols=int(parts[6]),
+                    numbers=int(parts[7]),
+                    strings=int(parts[8]),
+                    comments=int(parts[9]),
+                    balanced=parts[10] == "true",
+                    sexp_count=int(parts[11]),
+                    list_count=int(parts[12]),
+                    atom_count=int(parts[13]),
+                    cpu_count=int(parts[14]),
+                )
 
-    return {"error": "Could not parse Zig output"}
+    raise Exception("Could not parse Zig output")
 
 
-def format_results(name, results):
+def format_results(name, results: TestResults | None):
+    if results is None:
+        return f"{name}: ERROR - No results"
+
     """Format test results for display"""
-    if results.get("error"):
-        return f"{name}: ERROR - {results['error']}"
-
     tokens_str = (
-        f"(L:{results['lparen']} R:{results['rparen']} "
-        f"S:{results['symbols']} N:{results['numbers']} "
-        f"Str:{results['strings']}"
+        f"(L:{results.lparen} R:{results.rparen} "
+        f"S:{results.symbols} N:{results.numbers} "
+        f"Str:{results.strings}"
     )
 
     # Add comments if present
-    if results.get("comments", 0) > 0:
-        tokens_str += f" C:{results['comments']}"
+    if results.comments > 0:
+        tokens_str += f" C:{results.comments}"
 
     tokens_str += ")"
 
     # Build timing string
-    if results.get("parse_time", 0) > 0:
+    if results.parse_time > 0:
         time_str = (
-            f"tokenize:{results['tokenize_time']}ms "
-            f"+ parse:{results['parse_time']}ms = "
-            f"{results['tokenize_time'] + results['parse_time']}ms"
+            f"tokenize:{results.tokenize_time}ms "
+            f"+ parse:{results.parse_time}ms = "
+            f"{results.tokenize_time + results.parse_time}ms"
         )
     else:
-        time_str = f"{results['tokenize_time']}ms"
+        time_str = f"{results.tokenize_time}ms"
 
     # Add S-expression counts if available
     sexp_str = ""
-    if "list_count" in results and "atom_count" in results:
+    if results.list_count > 0 and results.atom_count > 0:
         sexp_str = (
-            f", S-exps: {results.get('sexp_count', 0)}"
-            f" (Lists:{results['list_count']} Atoms:{results['atom_count']})"
+            f", S-exps: {results.sexp_count}"
+            f" (Lists:{results.list_count} Atoms:{results.atom_count})"
         )
 
     return (
-        f"{name}: {results['file_size']} bytes, "
+        f"{name}: {results.file_size} bytes, "
         f"{time_str}, "
-        f"{results['total_tokens']} tokens "
+        f"{results.total_tokens} tokens "
         f"{tokens_str} "
-        f"{'✓' if results['balanced'] else '✗'}"
+        f"{'✓' if results.balanced else '✗'}"
         f"{sexp_str}"
     )
 
@@ -238,22 +253,28 @@ def main():
         print(f"=== {test_file.name} ===")
 
         # Test Python
-        python_results = test_python(test_file)
+        try:
+            python_results = test_python(test_file)
+        except Exception:
+            python_results = None
+
         print(format_results("Python", python_results))
 
         # Test Zig
-        zig_results = test_zig(test_file)
+        try:
+            zig_results = test_zig(test_file)
+        except Exception:
+            zig_results = None
+
         zig_name = "Zig"
-        if zig_results.get("cpu_count"):
-            zig_name += f" ({zig_results['cpu_count']} cores)"
+        if zig_results:
+            zig_name += f" ({zig_results.cpu_count} cores)"
         print(format_results(zig_name, zig_results))
 
         # Show speedup if both succeeded
-        if not python_results.get("error") and not zig_results.get("error"):
-            python_time = python_results["tokenize_time"] + python_results.get(
-                "parse_time", 0
-            )
-            zig_time = zig_results["tokenize_time"] + zig_results["parse_time"]
+        if python_results and zig_results:
+            python_time = python_results.tokenize_time + python_results.parse_time
+            zig_time = zig_results.tokenize_time + zig_results.parse_time
 
             if zig_time > 0:
                 speedup = python_time / zig_time
@@ -262,10 +283,10 @@ def main():
                 print("Speedup: Too fast to measure accurately")
 
         # Show throughput
-        if not zig_results.get("error"):
-            file_size_mb = zig_results["file_size"] / (1024 * 1024)
+        if zig_results:
+            file_size_mb = zig_results.file_size / (1024 * 1024)
             total_time_sec = (
-                zig_results["tokenize_time"] + zig_results["parse_time"]
+                zig_results.tokenize_time + zig_results.parse_time
             ) / 1000.0
             if total_time_sec > 0:
                 throughput = file_size_mb / total_time_sec

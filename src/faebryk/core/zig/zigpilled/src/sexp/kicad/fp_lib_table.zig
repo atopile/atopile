@@ -11,7 +11,7 @@ pub const FpLibEntry = struct {
 };
 
 pub const FpLibTable = struct {
-    version: ?i32 = null,
+    version: ?[]const u8 = null,
     libs: []FpLibEntry = &.{},
 
     pub const fields_meta = .{
@@ -51,54 +51,3 @@ const FpLibTableFile = struct {
         }
     }
 };
-
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    try example(allocator);
-}
-
-// Example usage
-pub fn example(allocator: std.mem.Allocator) !void {
-    // Create a library table
-    var libs = try allocator.alloc(FpLibEntry, 2);
-    defer allocator.free(libs);
-    libs[0] = .{
-        .name = "faebryk",
-        .type = "KiCad",
-        .uri = "${KIPRJMOD}/faebryk.pretty",
-        .options = "",
-        .descr = "Faebryk generated footprints",
-    };
-    libs[1] = .{
-        .name = "KiCad",
-        .type = "KiCad",
-        .uri = "$(KICAD7_FOOTPRINT_DIR)/Connector_PinHeader_2.54mm.pretty",
-        .options = "",
-        .descr = "KiCad builtin footprints",
-    };
-
-    const table = FpLibTable{
-        .version = 7,
-        .libs = libs,
-    };
-
-    // Create wrapper
-    const file = FpLibTableFile{
-        .fp_lib_table = table,
-    };
-
-    // Serialize to S-expression (normal)
-    const sexp_str = try file.dumps(allocator);
-    defer allocator.free(sexp_str);
-
-    std.debug.print("Generated S-expression (normal):\n{s}\n\n", .{sexp_str});
-
-    // Parse it back
-    var parsed = try FpLibTableFile.loads(allocator, sexp_str);
-    defer parsed.free(allocator);
-
-    std.debug.print("Loaded: {?}\n", .{parsed.fp_lib_table});
-}
