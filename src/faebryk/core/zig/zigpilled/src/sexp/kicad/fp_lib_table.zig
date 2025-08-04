@@ -24,6 +24,13 @@ const FpLibTableFile = struct {
 
     const root_symbol = "fp_lib_table";
 
+    pub fn read(allocator: std.mem.Allocator, path: []const u8) !FpLibTableFile {
+        const table: FpLibTable = try structure.loadsFileWithSymbol(FpLibTable, allocator, path, root_symbol);
+        return FpLibTableFile{
+            .fp_lib_table = table,
+        };
+    }
+
     pub fn loads(allocator: std.mem.Allocator, content: []const u8) !FpLibTableFile {
         const table = try structure.loadsStringWithSymbol(FpLibTable, allocator, content, root_symbol);
         return FpLibTableFile{

@@ -41,10 +41,11 @@ pub const Component = struct {
     value: []const u8,
     footprint: []const u8,
     propertys: []Property = &.{},
-    tstamps: []const u8,
+    tstamps: []const u8,  // Usually single, but can be multiple in some files
     fields: ?Fields = null,
     sheetpath: ?Sheetpath = null,
     libsource: ?Libsource = null,
+    datasheet: ?[]const u8 = null,  // Added based on real file
 
     pub const fields_meta = .{
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
@@ -182,6 +183,13 @@ pub const NetlistFile = struct {
     netlist: ?Netlist = null,
 
     const root_symbol = "export";
+
+    pub fn read(allocator: std.mem.Allocator, path: []const u8) !NetlistFile {
+        const netlist: Netlist = try structure.loadsFileWithSymbol(Netlist, allocator, path, root_symbol);
+        return NetlistFile{
+            .netlist = netlist,
+        };
+    }
 
     pub fn loads(allocator: std.mem.Allocator, content: []const u8) !NetlistFile {
         const netlist = try structure.loadsStringWithSymbol(Netlist, allocator, content, root_symbol);

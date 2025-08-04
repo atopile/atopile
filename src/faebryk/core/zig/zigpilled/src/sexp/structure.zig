@@ -23,6 +23,15 @@ pub const SexpField = struct {
     order: i32 = 0,
 };
 
+// Error context for better diagnostics
+pub const ErrorContext = struct {
+    path: []const u8,
+    field_name: ?[]const u8 = null,
+    sexp_preview: ?[]const u8 = null,
+    line: ?usize = null,
+    column: ?usize = null,
+};
+
 // Error types
 pub const DecodeError = error{
     UnexpectedType,
@@ -32,6 +41,67 @@ pub const DecodeError = error{
     AssertionFailed,
     OutOfMemory,
 };
+
+// Thread-local error context
+threadlocal var current_error_context: ?ErrorContext = null;
+
+pub fn getErrorContext() ?ErrorContext {
+    return current_error_context;
+}
+
+fn setErrorContext(context: ErrorContext) void {
+    current_error_context = context;
+}
+
+fn clearErrorContext() void {
+    current_error_context = null;
+}
+
+// Helper to format S-expression preview
+fn formatSexpPreview(allocator: std.mem.Allocator, sexp: SExp) ![]u8 {
+    var buf = std.ArrayList(u8).init(allocator);
+    defer buf.deinit();
+
+    try formatSexpPreviewInternal(sexp, &buf, 0, 50); // max 50 chars
+    return try buf.toOwnedSlice();
+}
+
+fn formatSexpPreviewInternal(sexp: SExp, buf: *std.ArrayList(u8), depth: usize, max_len: usize) !void {
+    if (buf.items.len >= max_len) {
+        try buf.appendSlice("...");
+        return;
+    }
+
+    switch (sexp) {
+        .symbol => |s| try buf.appendSlice(s),
+        .string => |s| {
+            try buf.append('"');
+            const preview_len = @min(s.len, max_len - buf.items.len - 2);
+            try buf.appendSlice(s[0..preview_len]);
+            if (preview_len < s.len) try buf.appendSlice("...");
+            try buf.append('"');
+        },
+        .number => |n| try buf.appendSlice(n),
+        .comment => |c| {
+            try buf.appendSlice("; ");
+            const preview_len = @min(c.len, max_len - buf.items.len - 2);
+            try buf.appendSlice(c[0..preview_len]);
+            if (preview_len < c.len) try buf.appendSlice("...");
+        },
+        .list => |items| {
+            try buf.append('(');
+            for (items, 0..) |item, i| {
+                if (i > 0) try buf.append(' ');
+                if (buf.items.len >= max_len) {
+                    try buf.appendSlice("...");
+                    break;
+                }
+                try formatSexpPreviewInternal(item, buf, depth + 1, max_len);
+            }
+            try buf.append(')');
+        },
+    }
+}
 
 pub const EncodeError = error{
     OutOfMemory,
@@ -85,21 +155,36 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
 
-    // Process positional fields first
-    var pos_index: usize = 0;
+    // First, count how many key-value pairs we have
+    var kv_count: usize = 0;
+    for (items) |item| {
+        if (ast.isList(item)) {
+            const kv_items = ast.getList(item).?;
+            if (kv_items.len >= 2) {
+                if (ast.getSymbol(kv_items[0]) != null) {
+                    kv_count += 1;
+                }
+            }
+        }
+    }
+
+    // Process positional fields based on order
     inline for (fields, 0..) |field, field_idx| {
         const metadata = comptime getSexpMetadata(T, field.name);
         if (metadata.positional) {
-            if (pos_index < items.len) {
-                @field(result, field.name) = try decode(field.type, allocator, items[pos_index]);
+            // If order > 0, it means this positional field comes after named fields
+            const pos_start = if (metadata.order > 0) kv_count else 0;
+            const pos_idx = pos_start + @as(usize, @intCast(@max(0, metadata.order - 1)));
+
+            if (pos_idx < items.len and !ast.isList(items[pos_idx])) {
+                @field(result, field.name) = try decode(field.type, allocator, items[pos_idx]);
                 fields_set.set(field_idx);
-                pos_index += 1;
             }
         }
     }
 
     // Process key-value pairs
-    var i = pos_index;
+    var i: usize = 0;
     while (i < items.len) : (i += 1) {
         if (ast.isList(items[i])) {
             const kv_items = ast.getList(items[i]).?;
@@ -180,6 +265,15 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
                     @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
                 } else {
+                    // Set error context before returning error
+                    var arena = std.heap.ArenaAllocator.init(allocator);
+                    defer arena.deinit();
+                    const preview = formatSexpPreview(arena.allocator(), sexp) catch "<error formatting preview>";
+                    setErrorContext(.{
+                        .path = @typeName(T),
+                        .field_name = field.name,
+                        .sexp_preview = preview,
+                    });
                     return error.MissingField;
                 }
             }
@@ -236,9 +330,23 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
     const str = switch (sexp) {
         .number => |n| n,
         .symbol => |s| s,
-        else => return error.UnexpectedType,
+        else => {
+            setErrorContext(.{
+                .path = @typeName(T),
+                .sexp_preview = "not a number or symbol",
+                .field_name = "Expected number or symbol for integer",
+            });
+            return error.UnexpectedType;
+        },
     };
-    return std.fmt.parseInt(T, str, 10) catch return error.InvalidValue;
+    return std.fmt.parseInt(T, str, 10) catch {
+        setErrorContext(.{
+            .path = @typeName(T),
+            .sexp_preview = str,
+            .field_name = "Failed to parse as integer",
+        });
+        return error.InvalidValue;
+    };
 }
 
 fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
@@ -439,12 +547,9 @@ pub fn loadsStringWithSymbol(comptime T: type, allocator: std.mem.Allocator, con
     const tokens = try tokenizer.tokenize(allocator, content);
     defer allocator.free(tokens);
 
-    // Parse to AST using arena allocator for performance
-    var parse_arena = std.heap.ArenaAllocator.init(allocator);
-    defer parse_arena.deinit();
-
-    var sexp = try ast.parse(parse_arena.allocator(), tokens) orelse return error.EmptyFile;
-    defer sexp.deinit(parse_arena.allocator());
+    // Parse to AST
+    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    defer sexp.deinit(allocator);
 
     // The file structure is (symbol_name ...)
     const file_list = ast.getList(sexp) orelse return error.UnexpectedType;
@@ -459,6 +564,17 @@ pub fn loadsStringWithSymbol(comptime T: type, allocator: std.mem.Allocator, con
 
     // Decode
     return try decode(T, allocator, table_sexp);
+}
+
+pub fn loadsFileWithSymbol(comptime T: type, allocator: std.mem.Allocator, path: []const u8, expected_symbol: []const u8) !T {
+    // Read file content
+    const file = try std.fs.cwd().openFile(path, .{});
+    defer file.close();
+    
+    const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10MB max
+    defer allocator.free(content);
+    
+    return try loadsStringWithSymbol(T, allocator, content, expected_symbol);
 }
 
 // Dump a struct to an S-expression string with a wrapping symbol
@@ -551,7 +667,7 @@ fn freeSlice(comptime T: type, allocator: std.mem.Allocator, value: T) void {
 fn isSimpleType(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .int, .float, .bool, .@"enum" => true,
-        .pointer => |ptr| ptr.size == .slice and ptr.child == u8, // Consider strings as simple
+        // Don't consider strings as simple - they need to be freed
         else => false,
     };
 }
