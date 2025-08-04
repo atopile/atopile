@@ -171,12 +171,10 @@ def generate_3d_models(app: Module, solver: Solver) -> None:
     pass
 
 
-@muster.register("mfg-data", requires_kicad=True, dependencies=[generate_3d_models])
+@muster.register("mfg-data", requires_kicad=True)
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
     Generate manufacturing artifacts for the project.
-    - STEP
-    - GLB
     - DXF
     - Gerber zip
     - Pick and place (default and JLCPCB)
@@ -280,6 +278,7 @@ def default(app: Module, solver: Solver) -> None:
     dependencies=[
         generate_bom,
         generate_manufacturing_data,
+        generate_3d_models,
         generate_i2c_tree,
         generate_variable_report,
         generate_manifest,
