@@ -1,6 +1,5 @@
 const std = @import("std");
-const kicad = @import("kicad.zig");
-const dataclass_sexp = @import("../dataclass_sexp.zig");
+const structure = @import("../structure.zig");
 
 // KiCad footprint library table entry
 pub const FpLibEntry = struct {
@@ -34,19 +33,19 @@ pub const FpLibTable = struct {
 
 const FpLibTableFile = struct {
     fn loads(allocator: std.mem.Allocator, content: []const u8) !FpLibTable {
-        return try kicad.loadsKicadFile(FpLibTable, allocator, content, "fp_lib_table");
+        return try structure.loadsStringWithSymbol(FpLibTable, allocator, content, "fp_lib_table");
     }
 
     fn dumps(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
-        return try kicad.dumpsKicadFile(table, allocator, "fp_lib_table");
+        return try structure.dumpsStringWithSymbol(table, allocator, "fp_lib_table");
     }
 
     fn write(table: FpLibTable, file_path: []const u8, allocator: std.mem.Allocator) !void {
-        return try kicad.writeKicadFile(table, file_path, "fp_lib_table", allocator);
+        return try structure.writeFileWithSymbol(table, file_path, "fp_lib_table", allocator);
     }
 
     fn free(allocator: std.mem.Allocator, table: FpLibTable) void {
-        dataclass_sexp.free(FpLibTable, allocator, table);
+        structure.free(FpLibTable, allocator, table);
     }
 };
 

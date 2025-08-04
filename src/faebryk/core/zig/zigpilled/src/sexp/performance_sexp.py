@@ -14,7 +14,7 @@ import sexpdata
 
 TEST_FILES_DIR = Path(__file__).parent / "test_files"
 ZIG_OUT_DIR = Path(__file__).parent / "zig-out" / "bin"
-PERFORMANCE_TEST_EXE = ZIG_OUT_DIR / "performance_test"
+PERFORMANCE_TEST_EXE = ZIG_OUT_DIR / "performance_sexp"
 
 
 def count_tokens(data, depth=0):

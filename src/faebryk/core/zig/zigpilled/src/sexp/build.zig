@@ -4,11 +4,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-
     // Performance test executable
     const perf_test = b.addExecutable(.{
-        .name = "performance_test",
-        .root_source_file = b.path("performance_test.zig"),
+        .name = "performance_sexp",
+        .root_source_file = b.path("performance_sexp.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -25,8 +24,8 @@ pub fn build(b: *std.Build) void {
 
     // Example fp_lib_table usage
     const fp_lib_table = b.addExecutable(.{
-        .name = "fp_lib_table",
-        .root_source_file = b.path("fp_lib_table_main.zig"),
+        .name = "example_kicad",
+        .root_source_file = b.path("example_kicad.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -34,31 +33,31 @@ pub fn build(b: *std.Build) void {
 
     // Tests
     const tokenizer_test = b.addTest(.{
-        .root_source_file = b.path("tokenizer_test.zig"),
+        .root_source_file = b.path("test_tokenizer.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const ast_test = b.addTest(.{
-        .root_source_file = b.path("ast_test.zig"),
+        .root_source_file = b.path("test_ast.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const dataclass_sexp_test = b.addTest(.{
-        .root_source_file = b.path("test_dataclass_sexp.zig"),
+    const structure_test = b.addTest(.{
+        .root_source_file = b.path("test_structure.zig"),
         .target = target,
         .optimize = optimize,
     });
 
     const run_tokenizer_test = b.addRunArtifact(tokenizer_test);
     const run_ast_test = b.addRunArtifact(ast_test);
-    const run_dataclass_sexp_test = b.addRunArtifact(dataclass_sexp_test);
+    const run_structure_test = b.addRunArtifact(structure_test);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tokenizer_test.step);
     test_step.dependOn(&run_ast_test.step);
-    test_step.dependOn(&run_dataclass_sexp_test.step);
+    test_step.dependOn(&run_structure_test.step);
 
     // Run example
     const run_example = b.addRunArtifact(example_ast);
@@ -69,7 +68,7 @@ pub fn build(b: *std.Build) void {
     const run_fp_example = b.addRunArtifact(fp_lib_table);
     const fp_example_step = b.step("fp-example", "Run fp_lib_table example");
     fp_example_step.dependOn(&run_fp_example.step);
-    
+
     // Run performance test
     const run_perf = b.addRunArtifact(perf_test);
     if (b.args) |args| {
