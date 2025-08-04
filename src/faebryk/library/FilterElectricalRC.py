@@ -61,25 +61,15 @@ class FilterElectricalRC(F.Filter):
         return F.can_bridge_defined(self.in_.line, self.out.line)
 
     @classmethod
-    def hardcoded_fc(cls, fc: Quantity_Set, r: Quantity_Set, c: Quantity_Set):
-        # TODO: Remove hardcoded when normal equations solve faster
-        self = cls(_hardcoded=True)
-        r = None
-        c = None
-        self.cutoff_frequency.constrain_subset(fc)
-        self.resistor.resistance.constrain_subset(r)
-        self.capacitor.capacitance.constrain_subset(c)
-        return self
-
-    @classmethod
     def hardcoded_rc(cls, resistance: Quantity_Set, capacitance: Quantity_Set):
-        self = cls(_hardcoded=True)
-        fc = 1 / (
+        # TODO: Remove hardcoded when normal equations solve faster
+        out = cls(_hardcoded=True)
+        cutoff_frequency = 1 / (
             Quantity_Interval_Disjoint.from_value(resistance * capacitance)
             * 2
             * math.pi
         )
-        self.resistor.resistance.constrain_subset(resistance)
-        self.capacitor.capacitance.constrain_subset(capacitance)
-        self.cutoff_frequency.constrain_subset(fc)
-        return self
+        out.resistor.resistance.constrain_subset(resistance)
+        out.capacitor.capacitance.constrain_subset(capacitance)
+        out.cutoff_frequency.constrain_subset(cutoff_frequency)
+        return out
