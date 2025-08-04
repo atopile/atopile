@@ -30,6 +30,12 @@ pub const ErrorContext = struct {
     sexp_preview: ?[]const u8 = null,
     line: ?usize = null,
     column: ?usize = null,
+
+    pub fn format(self: ErrorContext, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        try writer.print("ErrorContext(\n path={s},\n field_name={?s},\n sexp_preview={?s},\n line={?d},\n column={?d})", .{ self.path, self.field_name, self.sexp_preview, self.line, self.column });
+    }
 };
 
 // Error types
@@ -154,7 +160,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
 
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
-    
+
     // Add errdefer to clean up partial allocations on error
     errdefer {
         // Free any fields that were already allocated
@@ -356,7 +362,7 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
 fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
     // Get current context to preserve field name
     const ctx = getErrorContext();
-    
+
     const str = switch (sexp) {
         .number => |n| n,
         .string => |s| {
@@ -364,8 +370,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, 
-                    "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
             });
             return error.UnexpectedType;
         },
@@ -373,8 +378,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
-                    "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
             });
             return error.UnexpectedType;
         },
@@ -391,8 +395,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
         setErrorContext(.{
             .path = if (ctx) |c| c.path else @typeName(T),
             .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
-                "failed to parse \"{s}\" as {s}", .{str, @typeName(T)}) catch str,
+            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
         });
         return error.InvalidValue;
     };
@@ -401,15 +404,14 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
 fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
     // Get current context to preserve field name
     const ctx = getErrorContext();
-    
+
     const str = switch (sexp) {
         .number => |n| n,
         .string => |s| {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, 
-                    "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
             });
             return error.UnexpectedType;
         },
@@ -417,8 +419,7 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
-                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
-                    "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
             });
             return error.UnexpectedType;
         },
@@ -435,8 +436,7 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
         setErrorContext(.{
             .path = if (ctx) |c| c.path else @typeName(T),
             .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator,
-                "failed to parse \"{s}\" as {s}", .{str, @typeName(T)}) catch str,
+            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
         });
         return error.InvalidValue;
     };
@@ -654,10 +654,10 @@ pub fn loadsFileWithSymbol(comptime T: type, allocator: std.mem.Allocator, path:
     // Read file content
     const file = try std.fs.cwd().openFile(path, .{});
     defer file.close();
-    
+
     const content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024); // 10MB max
     defer allocator.free(content);
-    
+
     return try loadsStringWithSymbol(T, allocator, content, expected_symbol);
 }
 
