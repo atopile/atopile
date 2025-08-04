@@ -1,0 +1,4 @@
+zig-out
+.vscode
+.zig-cache
+.claude
