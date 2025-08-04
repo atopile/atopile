@@ -1,7 +1,8 @@
+import contextlib
 import json
 import logging
 import tempfile
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -27,6 +28,13 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import DAG
+
+
+@contextlib.contextmanager
+def _githash_layout(layout: Path) -> Generator[Path, None, None]:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_layout = githash_layout(layout, Path(tmpdir) / layout.name)
+        yield tmp_layout
 
 
 @dataclass
@@ -123,21 +131,41 @@ def generate_bom(app: Module, solver: Solver) -> None:
     )
 
 
-@muster.register("3d-model", requires_kicad=True)
-def generate_3d_model(app: Module, solver: Solver) -> None:
+@muster.register(name="glb", aliases=["3d-model"], requires_kicad=True)
+def generate_glb(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB. Used for 3D preview in extension."""
+    with _githash_layout(config.build.paths.layout) as tmp_layout:
+        try:
+            export_glb(
+                tmp_layout,
+                glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
+                project_dir=config.build.paths.layout.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate 3D model: {e}") from e
 
-    try:
-        export_glb(
-            config.build.paths.layout,
-            glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
-            project_dir=config.build.paths.layout.parent,
-        )
-    except KicadCliExportError as e:
-        raise UserExportError(f"Failed to generate 3D model: {e}") from e
+
+@muster.register(name="step", requires_kicad=True)
+def generate_step(app: Module, solver: Solver) -> None:
+    """Generate PCBA 3D model as STEP."""
+    with _githash_layout(config.build.paths.layout) as tmp_layout:
+        try:
+            export_step(
+                tmp_layout,
+                step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
+                project_dir=config.build.paths.layout.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate STEP file: {e}") from e
 
 
-@muster.register("mfg-data", requires_kicad=True)
+@muster.register("3d-models", dependencies=["glb", "step"], virtual=True)
+def generate_3d_model(app: Module, solver: Solver) -> None:
+    """Generate PCBA 3D model as GLB and STEP."""
+    pass
+
+
+@muster.register("mfg-data", requires_kicad=True, dependencies=["3d-models"])
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
     Generate manufacturing artifacts for the project.
@@ -148,22 +176,7 @@ def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     - Pick and place (default and JLCPCB)
     - Testpoint-location
     """
-    # Create temp copy of layout file with git hash substituted
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_layout = githash_layout(
-            config.build.paths.layout,
-            Path(tmpdir) / config.build.paths.layout.name,
-        )
-
-        try:
-            export_step(
-                tmp_layout,
-                step_file=config.build.paths.output_base.with_suffix(".pcba.step"),
-                project_dir=config.build.paths.layout.parent,
-            )
-        except KicadCliExportError as e:
-            raise UserExportError(f"Failed to generate STEP file: {e}") from e
-
+    with _githash_layout(config.build.paths.layout) as tmp_layout:
         try:
             export_dxf(
                 tmp_layout,
@@ -259,7 +272,7 @@ def default(app: Module, solver: Solver) -> None:
         "i2c-tree",
         "variable-report",
         "manifest",
-        "3d-model",
+        "3d-models",
     ],
     virtual=True,
 )
