@@ -29,6 +29,26 @@ pub const SExp = union(enum) {
         }
     }
 
+    pub fn repr(
+        self: SExp,
+        writer: anytype,
+    ) !void {
+        switch (self) {
+            .symbol => |s| try writer.print("Symbol({s})", .{s}),
+            .number => |n| try writer.print("Number({s})", .{n}),
+            .string => |s| try writer.print("String({s})", .{s}),
+            .comment => |c| try writer.print("Comment({s})", .{c}),
+            .list => |items| {
+                try writer.writeAll("List(");
+                for (items, 0..) |item, i| {
+                    if (i > 0) try writer.writeAll(" ");
+                    try item.repr(writer);
+                }
+                try writer.writeAll(")");
+            },
+        }
+    }
+
     pub fn format(
         self: SExp,
         comptime fmt: []const u8,
@@ -38,20 +58,23 @@ pub const SExp = union(enum) {
         _ = fmt;
         _ = options;
 
-        switch (self) {
-            .symbol => |s| try writer.print("{s}", .{s}),
-            .number => |n| try writer.print("{s}", .{n}),
-            .string => |s| try writer.print("\"{s}\"", .{s}),
-            .comment => |c| try writer.print(";{s}", .{c}),
-            .list => |items| {
-                try writer.writeAll("(");
-                for (items, 0..) |item, i| {
-                    if (i > 0) try writer.writeAll(" ");
-                    try item.format("", .{}, writer);
-                }
-                try writer.writeAll(")");
-            },
-        }
+        try self.repr(writer);
+        return;
+
+        //switch (self) {
+        //    .symbol => |s| try writer.print("{s}", .{s}),
+        //    .number => |n| try writer.print("{s}", .{n}),
+        //    .string => |s| try writer.print("\"{s}\"", .{s}),
+        //    .comment => |c| try writer.print(";{s}", .{c}),
+        //    .list => |items| {
+        //        try writer.writeAll("(");
+        //        for (items, 0..) |item, i| {
+        //            if (i > 0) try writer.writeAll(" ");
+        //            try item.format("", .{}, writer);
+        //        }
+        //        try writer.writeAll(")");
+        //    },
+        //}
     }
 };
 
@@ -119,6 +142,27 @@ pub const Parser = struct {
 pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!?SExp {
     var parser = Parser.init(allocator, tokens);
     return parser.parse();
+}
+
+// Parse with arena allocator for better performance
+pub fn parseArena(base_allocator: std.mem.Allocator, tokens: []const Token) ParseError!?SExp {
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    errdefer arena.deinit();
+    
+    var parser = Parser.init(arena.allocator(), tokens);
+    const result = try parser.parse();
+    
+    // Transfer ownership of arena to the SExp
+    // The caller must call deinit on the SExp to free the arena
+    if (result) |sexp| {
+        // Store arena state in a way that can be accessed later
+        // For now, we'll just use the regular parse
+        // TODO: Implement proper arena ownership transfer
+        return sexp;
+    }
+    
+    arena.deinit();
+    return null;
 }
 
 // Helper functions for working with S-expressions -------------------------------------
