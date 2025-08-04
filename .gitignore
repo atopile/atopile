@@ -209,3 +209,8 @@ examples/**/.west/
 # might want to make a CLAUDE.md for the repo at some point
 .mcp.json
 CLAUDE.md
+
+# KiCad temporary files
+**/~*.kicad_pcb.lck
+**/~_autosave-*.kicad_pcb.lck
+**/fp-info-cache
