@@ -72,7 +72,7 @@ class Muster:
         self.dependency_dag.add_or_get(target.name)
         for dep in target.dependencies:
             assert dep.name in self.targets, (
-                f"Dependency '{dep}' for target '{target.name}' not yet registered"
+                f"Dependency '{dep.name}' for target '{target.name}' not yet registered"
             )
             self.dependency_dag.add_edge(dep.name, target.name)
 
