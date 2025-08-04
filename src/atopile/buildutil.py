@@ -296,6 +296,9 @@ def build(app: Module) -> None:
     # Make the noise
     with accumulate() as accumulator:
         for target in targets:
+            if target.virtual:
+                continue
+
             with LoggingStage(
                 f"target-{target.name}", f"Building [green]'{target.name}'[/green]"
             ):

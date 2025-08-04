@@ -36,6 +36,7 @@ class MusterTarget:
     requires_kicad: bool
     func: Callable[[Module, Solver], None]
     implicit: bool = True
+    virtual: bool = False
     dependencies: list[str] = field(default_factory=list)
 
     def __call__(self, app: Module, solver: Solver) -> None:
@@ -69,6 +70,7 @@ class Muster:
         aliases: list[str] | None = None,
         requires_kicad: bool = False,
         dependencies: list[str] | None = None,
+        virtual: bool = False,
     ) -> Callable[[Callable[[Module, Solver], None]], MusterTarget]:
         """Register a target under a given name."""
 
@@ -80,6 +82,7 @@ class Muster:
                 requires_kicad=requires_kicad,
                 func=func,
                 dependencies=dependencies or [],
+                virtual=virtual,
             )
             self.add_target(target)
             return target
@@ -239,7 +242,9 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
 
 
 @muster.register(
-    "__default__", dependencies=["bom", "manifest", "variable-report", "i2c-tree"]
+    "__default__",
+    dependencies=["bom", "manifest", "variable-report", "i2c-tree"],
+    virtual=True,
 )
 def default(app: Module, solver: Solver) -> None:
     pass
@@ -256,6 +261,7 @@ def default(app: Module, solver: Solver) -> None:
         "manifest",
         "3d-model",
     ],
+    virtual=True,
 )
 def all(app: Module, solver: Solver) -> None:
     """Generate all targets."""
