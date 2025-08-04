@@ -40,9 +40,9 @@ pub const EncodeError = error{
 
 // Helper to get sexp metadata for a field
 fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField {
-    if (@hasDecl(T, "sexp_metadata")) {
-        if (@hasField(@TypeOf(T.sexp_metadata), field_name)) {
-            const meta = @field(T.sexp_metadata, field_name);
+    if (@hasDecl(T, "fields_meta")) {
+        if (@hasField(@TypeOf(T.fields_meta), field_name)) {
+            const meta = @field(T.fields_meta, field_name);
             // Convert anonymous struct to SexpField
             var result = SexpField{};
             if (@hasField(@TypeOf(meta), "positional")) result.positional = meta.positional;
@@ -506,7 +506,7 @@ pub fn writeFileWithSymbol(data: anytype, file_path: []const u8, symbol_name: []
 // Generic free function for structs decoded by this library
 pub fn free(comptime T: type, allocator: std.mem.Allocator, value: T) void {
     const type_info = @typeInfo(T);
-    
+
     switch (type_info) {
         .@"struct" => freeStruct(T, allocator, value),
         .pointer => |ptr| {
@@ -525,7 +525,7 @@ pub fn free(comptime T: type, allocator: std.mem.Allocator, value: T) void {
 
 fn freeStruct(comptime T: type, allocator: std.mem.Allocator, value: T) void {
     const fields = std.meta.fields(T);
-    
+
     inline for (fields) |field| {
         const field_value = @field(value, field.name);
         free(field.type, allocator, field_value);
@@ -534,14 +534,14 @@ fn freeStruct(comptime T: type, allocator: std.mem.Allocator, value: T) void {
 
 fn freeSlice(comptime T: type, allocator: std.mem.Allocator, value: T) void {
     const child_type = std.meta.Child(T);
-    
+
     // Free each element in the slice
     if (comptime !isSimpleType(child_type)) {
         for (value) |item| {
             free(child_type, allocator, item);
         }
     }
-    
+
     // Free the slice itself
     if (value.len > 0) {
         allocator.free(value);

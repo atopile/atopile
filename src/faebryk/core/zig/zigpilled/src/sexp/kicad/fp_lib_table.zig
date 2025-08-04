@@ -8,44 +8,47 @@ pub const FpLibEntry = struct {
     uri: []const u8,
     options: []const u8,
     descr: []const u8,
-
-    // Metadata for SEXP serialization
-    pub const sexp_metadata = .{
-        .name = .{ .positional = false, .order = 0 },
-        .type = .{ .positional = false, .order = 1 },
-        .uri = .{ .positional = false, .order = 2 },
-        .options = .{ .positional = false, .order = 3 },
-        .descr = .{ .positional = false, .order = 4 },
-    };
 };
 
-// KiCad footprint library table
 pub const FpLibTable = struct {
     version: ?i32 = null,
     libs: []FpLibEntry = &.{},
 
-    // Metadata for SEXP serialization
-    pub const sexp_metadata = .{
-        .version = .{ .positional = false, .order = -1 },
-        .libs = .{ .positional = false, .multidict = true, .sexp_name = "lib", .order = 0 },
+    pub const fields_meta = .{
+        .libs = structure.SexpField{ .multidict = true, .sexp_name = "lib" },
     };
 };
 
 const FpLibTableFile = struct {
-    fn loads(allocator: std.mem.Allocator, content: []const u8) !FpLibTable {
-        return try structure.loadsStringWithSymbol(FpLibTable, allocator, content, "fp_lib_table");
+    fp_lib_table: ?FpLibTable = null,
+
+    const root_symbol = "fp_lib_table";
+
+    pub fn loads(allocator: std.mem.Allocator, content: []const u8) !FpLibTableFile {
+        const table = try structure.loadsStringWithSymbol(FpLibTable, allocator, content, root_symbol);
+        return FpLibTableFile{
+            .fp_lib_table = table,
+        };
     }
 
-    fn dumps(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
-        return try structure.dumpsStringWithSymbol(table, allocator, "fp_lib_table");
+    pub fn dumps(self: FpLibTableFile, allocator: std.mem.Allocator) ![]u8 {
+        if (self.fp_lib_table) |table| {
+            return try structure.dumpsStringWithSymbol(table, allocator, root_symbol);
+        }
+        return error.NoTable;
     }
 
-    fn write(table: FpLibTable, file_path: []const u8, allocator: std.mem.Allocator) !void {
-        return try structure.writeFileWithSymbol(table, file_path, "fp_lib_table", allocator);
+    pub fn write(self: FpLibTableFile, file_path: []const u8, allocator: std.mem.Allocator) !void {
+        if (self.fp_lib_table) |table| {
+            return try structure.writeFileWithSymbol(table, file_path, root_symbol, allocator);
+        }
+        return error.NoTable;
     }
 
-    fn free(allocator: std.mem.Allocator, table: FpLibTable) void {
-        structure.free(FpLibTable, allocator, table);
+    pub fn free(self: *FpLibTableFile, allocator: std.mem.Allocator) void {
+        if (self.fp_lib_table) |table| {
+            structure.free(FpLibTable, allocator, table);
+        }
     }
 };
 
@@ -82,15 +85,20 @@ pub fn example(allocator: std.mem.Allocator) !void {
         .libs = libs,
     };
 
+    // Create wrapper
+    const file = FpLibTableFile{
+        .fp_lib_table = table,
+    };
+
     // Serialize to S-expression (normal)
-    const sexp_str = try FpLibTableFile.dumps(table, allocator);
+    const sexp_str = try file.dumps(allocator);
     defer allocator.free(sexp_str);
 
     std.debug.print("Generated S-expression (normal):\n{s}\n\n", .{sexp_str});
 
     // Parse it back
-    const parsed = try FpLibTableFile.loads(allocator, sexp_str);
-    defer FpLibTableFile.free(allocator, parsed);
+    var parsed = try FpLibTableFile.loads(allocator, sexp_str);
+    defer parsed.free(allocator);
 
-    std.debug.print("Loaded: {}\n", .{parsed});
+    std.debug.print("Loaded: {?}\n", .{parsed.fp_lib_table});
 }
