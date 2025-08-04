@@ -171,7 +171,7 @@ def generate_3d_models(app: Module, solver: Solver) -> None:
     pass
 
 
-@muster.register("mfg-data", requires_kicad=True)
+@muster.register("mfg-data", requires_kicad=True, dependencies=[generate_3d_models])
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
     Generate manufacturing artifacts for the project.

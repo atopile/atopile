@@ -299,6 +299,10 @@ def build(app: Module) -> None:
             if target.virtual:
                 continue
 
+            if target.name in config.build.exclude_targets:
+                logger.warning(f"Skipping excluded target '{target.name}'")
+                continue
+
             with LoggingStage(
                 f"target-{target.name}", f"Building [green]'{target.name}'[/green]"
             ):
