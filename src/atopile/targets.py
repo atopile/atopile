@@ -37,15 +37,18 @@ def _githash_layout(layout: Path) -> Generator[Path, None, None]:
         yield tmp_layout
 
 
+MusterFuncType = Callable[[Module, Solver], None]
+
+
 @dataclass
 class MusterTarget:
     name: str
     aliases: list[str]
     requires_kicad: bool
-    func: Callable[[Module, Solver], None]
+    func: MusterFuncType
     implicit: bool = True
     virtual: bool = False
-    dependencies: list[str] = field(default_factory=list)
+    dependencies: list["MusterTarget"] = field(default_factory=list)
 
     def __call__(self, app: Module, solver: Solver) -> None:
         return self.func(app, solver)
@@ -61,14 +64,17 @@ class Muster:
 
     def add_target(self, target: MusterTarget) -> MusterTarget:
         """Register a function as a target."""
+        assert target.name not in self.targets, (
+            f"Target '{target.name}' already registered"
+        )
         self.targets[target.name] = target
 
         self.dependency_dag.add_or_get(target.name)
         for dep in target.dependencies:
-            assert dep in self.targets, (
+            assert dep.name in self.targets, (
                 f"Dependency '{dep}' for target '{target.name}' not yet registered"
             )
-            self.dependency_dag.add_edge(dep, target.name)
+            self.dependency_dag.add_edge(dep.name, target.name)
 
         return target
 
@@ -77,7 +83,7 @@ class Muster:
         name: str | None = None,
         aliases: list[str] | None = None,
         requires_kicad: bool = False,
-        dependencies: list[str] | None = None,
+        dependencies: list["MusterTarget"] | None = None,
         virtual: bool = False,
     ) -> Callable[[Callable[[Module, Solver], None]], MusterTarget]:
         """Register a target under a given name."""
@@ -159,13 +165,13 @@ def generate_step(app: Module, solver: Solver) -> None:
             raise UserExportError(f"Failed to generate STEP file: {e}") from e
 
 
-@muster.register("3d-models", dependencies=["glb", "step"], virtual=True)
-def generate_3d_model(app: Module, solver: Solver) -> None:
+@muster.register("3d-models", dependencies=[generate_glb, generate_step], virtual=True)
+def generate_3d_models(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB and STEP."""
     pass
 
 
-@muster.register("mfg-data", requires_kicad=True, dependencies=["3d-models"])
+@muster.register("mfg-data", requires_kicad=True, dependencies=[generate_3d_models])
 def generate_manufacturing_data(app: Module, solver: Solver) -> None:
     """
     Generate manufacturing artifacts for the project.
@@ -256,7 +262,12 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
 
 @muster.register(
     "__default__",
-    dependencies=["bom", "manifest", "variable-report", "i2c-tree"],
+    dependencies=[
+        generate_bom,
+        generate_manifest,
+        generate_variable_report,
+        generate_i2c_tree,
+    ],
     virtual=True,
 )
 def default(app: Module, solver: Solver) -> None:
@@ -267,12 +278,11 @@ def default(app: Module, solver: Solver) -> None:
     "all",
     aliases=["*"],
     dependencies=[
-        "bom",
-        "mfg-data",
-        "i2c-tree",
-        "variable-report",
-        "manifest",
-        "3d-models",
+        generate_bom,
+        generate_manufacturing_data,
+        generate_i2c_tree,
+        generate_variable_report,
+        generate_manifest,
     ],
     virtual=True,
 )
