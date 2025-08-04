@@ -62,6 +62,10 @@ pub fn dumpsFpLibTable(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
     return try kicad.dumpsKicadFile(table, allocator, "fp_lib_table");
 }
 
+pub fn dumpsPrettyFpLibTable(table: FpLibTable, allocator: std.mem.Allocator) ![]u8 {
+    return try kicad.dumpsPrettyKicadFile(table, allocator, "fp_lib_table");
+}
+
 pub fn writeFpLibTable(table: FpLibTable, file_path: []const u8, allocator: std.mem.Allocator) !void {
     return try kicad.writeKicadFile(table, file_path, "fp_lib_table", allocator);
 }
@@ -99,24 +103,15 @@ pub fn example(allocator: std.mem.Allocator) !void {
         .libs = libs,
     };
 
-    // Serialize to S-expression
+    // Serialize to S-expression (normal)
     const sexp_str = try dumpsFpLibTable(table, allocator);
     defer allocator.free(sexp_str);
 
-    std.debug.print("Generated S-expression:\n{s}\n", .{sexp_str});
-    std.debug.print("\n", .{});
+    std.debug.print("Generated S-expression (normal):\n{s}\n\n", .{sexp_str});
 
     // Parse it back
     const parsed = try loadsFpLibTable(allocator, sexp_str);
     defer freeFpLibTable(allocator, parsed);
 
     std.debug.print("Loaded: {}\n", .{parsed});
-
-    //std.debug.print("Successfully round-tripped!\n", .{});
-    //std.debug.print("  Version: {?}\n", .{parsed.version});
-    //std.debug.print("  Libraries: {}\n", .{parsed.libs.len});
-
-    //for (parsed.libs) |lib| {
-    //    std.debug.print("    - {s}: {s}\n", .{ lib.name, lib.descr });
-    //}
 }

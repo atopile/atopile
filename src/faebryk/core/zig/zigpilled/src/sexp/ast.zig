@@ -50,17 +50,55 @@ pub const SExp = union(enum) {
     }
 
     pub fn str(self: SExp, writer: anytype) !void {
+        try self.strDepth(writer, 0, true);
+    }
+
+    fn strDepth(self: SExp, writer: anytype, depth: usize, pretty: bool) !void {
         switch (self) {
             .symbol => |s| try writer.print("{s}", .{s}),
             .number => |n| try writer.print("{s}", .{n}),
             .string => |s| try writer.print("\"{s}\"", .{s}),
             .comment => |c| try writer.print(";{s}", .{c}),
             .list => |items| {
-                try writer.writeAll("(");
-                for (items, 0..) |item, i| {
-                    if (i > 0) try writer.writeAll(" ");
-                    try item.str(writer);
+                // Check if this is a leaf expression (contains only non-list elements)
+                var is_leaf = true;
+                for (items) |item| {
+                    if (item == .list) {
+                        is_leaf = false;
+                        break;
+                    }
                 }
+
+                try writer.writeAll("(");
+
+                if (pretty and !is_leaf and items.len > 0) {
+                    // Non-leaf expression with pretty printing
+                    for (items, 0..) |item, i| {
+                        if (i > 0) {
+                            // Add newline and indentation before non-first elements
+                            try writer.writeAll("\n");
+                            // 4 spaces per depth level
+                            for (0..(depth + 1) * 4) |_| {
+                                try writer.writeAll(" ");
+                            }
+                        }
+                        try item.strDepth(writer, depth + 1, pretty);
+                    }
+                    if (items.len > 1) {
+                        // Add newline and indentation before closing paren
+                        try writer.writeAll("\n");
+                        for (0..depth * 4) |_| {
+                            try writer.writeAll(" ");
+                        }
+                    }
+                } else {
+                    // Leaf expression or non-pretty mode
+                    for (items, 0..) |item, i| {
+                        if (i > 0) try writer.writeAll(" ");
+                        try item.strDepth(writer, depth + 1, pretty);
+                    }
+                }
+
                 try writer.writeAll(")");
             },
         }

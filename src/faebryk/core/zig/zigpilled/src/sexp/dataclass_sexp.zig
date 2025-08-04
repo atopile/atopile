@@ -416,8 +416,6 @@ pub fn dumps(allocator: std.mem.Allocator, value: anytype) EncodeError![]u8 {
     return try buffer.toOwnedSlice();
 }
 
-// Generic functions for loading and dumping S-expressions
-
 // Load a struct from an S-expression string
 pub fn loadsString(comptime T: type, allocator: std.mem.Allocator, content: []const u8) !T {
     // Tokenize
