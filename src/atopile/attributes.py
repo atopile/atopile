@@ -306,209 +306,209 @@ class GlobalAttributes(L.Module):
         self.add(F.requires_external_usage())
 
 
-@_register_shim("generics/resistors.ato:Resistor", "import Resistor")
-class Resistor(F.Resistor):
-    """
-    This resistor is replaces `generics/resistors.ato:Resistor`
-    every times it's referenced.
-    """
+# @_register_shim("generics/resistors.ato:Resistor", "import Resistor")
+# class Resistor(F.Resistor):
+#     """
+#     This resistor is replaces `generics/resistors.ato:Resistor`
+#     every times it's referenced.
+#     """
 
-    @property
-    def value(self):
-        """Represents the resistance of the resistor."""
-        return self.resistance
+#     @property
+#     def value(self):
+#         """Represents the resistance of the resistor."""
+#         return self.resistance
 
-    @value.setter
-    def value(self, value: L.Range):
-        self.resistance.constrain_subset(value)
+#     @value.setter
+#     def value(self, value: L.Range):
+#         self.resistance.constrain_subset(value)
 
-    @property
-    def footprint(self):
-        """See `GlobalAttributes.footprint`"""
-        raise AttributeError("write-only")
+#     @property
+#     def footprint(self):
+#         """See `GlobalAttributes.footprint`"""
+#         raise AttributeError("write-only")
 
-    @footprint.setter
-    def footprint(self, value: str):
-        from atopile.front_end import DeprecatedException
+#     @footprint.setter
+#     def footprint(self, value: str):
+#         from atopile.front_end import DeprecatedException
 
-        if value.startswith("R"):
-            try:
-                GlobalAttributes._handle_package_size(self, value[1:])
-            except UserBadParameterError:
-                pass
-            else:
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        "`footprint` is deprecated for assignment of package. "
-                        f"Use: `package = '{value[1:]}'`"
-                    )
-                # Return here, to avoid additionally setting the footprint
-                return
+#         if value.startswith("R"):
+#             try:
+#                 GlobalAttributes._handle_package_size(self, value[1:])
+#             except UserBadParameterError:
+#                 pass
+#             else:
+#                 with downgrade(DeprecatedException):
+#                     raise DeprecatedException(
+#                         "`footprint` is deprecated for assignment of package. "
+#                         f"Use: `package = '{value[1:]}'`"
+#                     )
+#                 # Return here, to avoid additionally setting the footprint
+#                 return
 
-        not_none(GlobalAttributes.footprint.fset)(self, value)
+#         not_none(GlobalAttributes.footprint.fset)(self, value)
 
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
+#     @property
+#     def _1(self) -> F.Electrical:
+#         return self.unnamed[0]
 
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
+#     @property
+#     def _2(self) -> F.Electrical:
+#         return self.unnamed[1]
 
-    @L.rt_field
-    def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
-        """Ignore this field."""
-        trait = _has_ato_cmp_attrs()
-        trait.pinmap["1"] = self.p1
-        trait.pinmap["2"] = self.p2
-        return trait
-
-
-class CommonCapacitor(F.Capacitor):
-    """
-    These attributes are common to both electrolytic and non-electrolytic capacitors.
-    """
-
-    @property
-    def value(self):
-        """Represents the capacitance of the capacitor."""
-        return self.capacitance
-
-    @value.setter
-    def value(self, value: L.Range):
-        self.capacitance.constrain_subset(value)
-
-    @property
-    def footprint(self):
-        """See `GlobalAttributes.footprint`"""
-        raise AttributeError("write-only")
-
-    @footprint.setter
-    def footprint(self, value: str):
-        from atopile.front_end import DeprecatedException
-
-        if value.startswith("C"):
-            try:
-                GlobalAttributes._handle_package_size(self, value[1:])
-            except UserBadParameterError:
-                pass
-            else:
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        "`footprint` is deprecated for assignment of package. "
-                        f"Use: `package = '{value[1:]}'`"
-                    )
-                # Return here, to avoid additionally setting the footprint
-                return
-
-        not_none(GlobalAttributes.footprint.fset)(self, value)
-
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
+#     @L.rt_field
+#     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
+#         """Ignore this field."""
+#         trait = _has_ato_cmp_attrs()
+#         trait.pinmap["1"] = self.p1
+#         trait.pinmap["2"] = self.p2
+#         return trait
 
 
-@_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
-class Capacitor(CommonCapacitor):
-    """
-    This capacitor is replaces `generics/capacitors.ato:Capacitor`
-    every times it's referenced.
-    """
+# class CommonCapacitor(F.Capacitor):
+#     """
+#     These attributes are common to both electrolytic and non-electrolytic capacitors.
+#     """
 
-    @L.rt_field
-    def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
-        """Ignore this field."""
-        trait = _has_ato_cmp_attrs()
-        trait.pinmap["1"] = self.p1
-        trait.pinmap["2"] = self.p2
-        return trait
+#     @property
+#     def value(self):
+#         """Represents the capacitance of the capacitor."""
+#         return self.capacitance
 
+#     @value.setter
+#     def value(self, value: L.Range):
+#         self.capacitance.constrain_subset(value)
 
-@_register_shim(
-    "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
-)
-class CapacitorElectrolytic(CommonCapacitor):
-    """Temporary shim to translate capacitors."""
+#     @property
+#     def footprint(self):
+#         """See `GlobalAttributes.footprint`"""
+#         raise AttributeError("write-only")
 
-    anode: F.Electrical
-    cathode: F.Electrical
+#     @footprint.setter
+#     def footprint(self, value: str):
+#         from atopile.front_end import DeprecatedException
 
-    pickable = None
+#         if value.startswith("C"):
+#             try:
+#                 GlobalAttributes._handle_package_size(self, value[1:])
+#             except UserBadParameterError:
+#                 pass
+#             else:
+#                 with downgrade(DeprecatedException):
+#                     raise DeprecatedException(
+#                         "`footprint` is deprecated for assignment of package. "
+#                         f"Use: `package = '{value[1:]}'`"
+#                     )
+#                 # Return here, to avoid additionally setting the footprint
+#                 return
 
-    # Overrides the default implementation in F.Capacitor
-    @property
-    def power(self) -> F.ElectricPower:
-        if self.has_trait(self._has_power):
-            power = self.get_trait(self._has_power).power
-        else:
-            power = F.ElectricPower()
-            self.add(power, name="power_shim")
-            power.hv.connect(self.anode)
-            power.lv.connect(self.cathode)
-            self.add(self._has_power(power))
+#         not_none(GlobalAttributes.footprint.fset)(self, value)
 
-        return power
+#     @property
+#     def _1(self) -> F.Electrical:
+#         return self.unnamed[0]
 
-
-@_register_shim("generics/inductors.ato:Inductor", "import Inductor")
-class Inductor(F.Inductor):
-    """
-    This inductor is replaces `generics/inductors.ato:Inductor`
-    every times it's referenced.
-    """
-
-    @property
-    def _1(self) -> F.Electrical:
-        return self.unnamed[0]
-
-    @property
-    def _2(self) -> F.Electrical:
-        return self.unnamed[1]
-
-    @L.rt_field
-    def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
-        """Ignore this field."""
-        trait = _has_ato_cmp_attrs()
-        trait.pinmap["1"] = self.p1
-        trait.pinmap["2"] = self.p2
-        return trait
+#     @property
+#     def _2(self) -> F.Electrical:
+#         return self.unnamed[1]
 
 
-@_register_shim("generics/leds.ato:LED", "import LED")
-class LED(F.LED):
-    """Temporary shim to translate LEDs."""
+# @_register_shim("generics/capacitors.ato:Capacitor", "import Capacitor")
+# class Capacitor(CommonCapacitor):
+#     """
+#     This capacitor is replaces `generics/capacitors.ato:Capacitor`
+#     every times it's referenced.
+#     """
 
-    @property
-    def v_f(self):
-        return self.forward_voltage
-
-    @property
-    def i_max(self):
-        return self.max_current
-
-
-@_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
-class Power(F.ElectricPower):
-    """Temporary shim to translate `value` to `power`."""
-
-    @property
-    def current(self):
-        """
-        Maximum current the power interface can provide.
-
-        Negative is current draw.
-        """
-        return self.max_current
+#     @L.rt_field
+#     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
+#         """Ignore this field."""
+#         trait = _has_ato_cmp_attrs()
+#         trait.pinmap["1"] = self.p1
+#         trait.pinmap["2"] = self.p2
+#         return trait
 
 
-@_register_shim("generics/interfaces.ato:I2C", "import I2C")
-class I2C(F.I2C):
-    """Temporary shim to translate I2C interfaces."""
+# @_register_shim(
+#     "generics/capacitors.ato:CapacitorElectrolytic", "import CapacitorElectrolytic"
+# )
+# class CapacitorElectrolytic(CommonCapacitor):
+#     """Temporary shim to translate capacitors."""
 
-    @property
-    def gnd(self):
-        return self.single_electric_reference.get_reference().gnd
+#     anode: F.Electrical
+#     cathode: F.Electrical
+
+#     pickable = None
+
+#     # Overrides the default implementation in F.Capacitor
+#     @property
+#     def power(self) -> F.ElectricPower:
+#         if self.has_trait(self._has_power):
+#             power = self.get_trait(self._has_power).power
+#         else:
+#             power = F.ElectricPower()
+#             self.add(power, name="power_shim")
+#             power.hv.connect(self.anode)
+#             power.lv.connect(self.cathode)
+#             self.add(self._has_power(power))
+
+#         return power
+
+
+# @_register_shim("generics/inductors.ato:Inductor", "import Inductor")
+# class Inductor(F.Inductor):
+#     """
+#     This inductor is replaces `generics/inductors.ato:Inductor`
+#     every times it's referenced.
+#     """
+
+#     @property
+#     def _1(self) -> F.Electrical:
+#         return self.unnamed[0]
+
+#     @property
+#     def _2(self) -> F.Electrical:
+#         return self.unnamed[1]
+
+#     @L.rt_field
+#     def has_ato_cmp_attrs_(self) -> _has_ato_cmp_attrs:
+#         """Ignore this field."""
+#         trait = _has_ato_cmp_attrs()
+#         trait.pinmap["1"] = self.p1
+#         trait.pinmap["2"] = self.p2
+#         return trait
+
+
+# @_register_shim("generics/leds.ato:LED", "import LED")
+# class LED(F.LED):
+#     """Temporary shim to translate LEDs."""
+
+#     @property
+#     def v_f(self):
+#         return self.forward_voltage
+
+#     @property
+#     def i_max(self):
+#         return self.max_current
+
+
+# @_register_shim("generics/interfaces.ato:Power", "import ElectricPower")
+# class Power(F.ElectricPower):
+#     """Temporary shim to translate `value` to `power`."""
+
+#     @property
+#     def current(self):
+#         """
+#         Maximum current the power interface can provide.
+
+#         Negative is current draw.
+#         """
+#         return self.max_current
+
+
+# @_register_shim("generics/interfaces.ato:I2C", "import I2C")
+# class I2C(F.I2C):
+#     """Temporary shim to translate I2C interfaces."""
+
+#     @property
+#     def gnd(self):
+#         return self.single_electric_reference.get_reference().gnd
