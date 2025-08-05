@@ -1169,7 +1169,8 @@ class Config:
         self,
         entry: str | None,
         standalone: bool = False,
-        target: Iterable[str] = (),
+        include_targets: Iterable[str] = (),
+        exclude_targets: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
         frozen: bool | None = None,
         working_dir: Path | None = None,
@@ -1221,8 +1222,12 @@ class Config:
 
             if entry_addr_override is not None:
                 build_cfg.address = entry_addr_override
-            if target:
-                build_cfg.targets = list(target)
+
+            if include_targets:
+                build_cfg.targets = list(include_targets)
+
+            if exclude_targets:
+                build_cfg.exclude_targets = list(exclude_targets)
 
             # Attach CLI options passed via kwargs
             for key, value in kwargs.items():
