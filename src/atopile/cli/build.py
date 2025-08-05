@@ -5,11 +5,7 @@ from typing import Annotated
 
 import typer
 
-from atopile.cli.logging_ import NOW
-from atopile.config import config
 from atopile.telemetry import capture
-from faebryk.libs.app.pcb import open_pcb
-from faebryk.libs.kicad.ipc import reload_pcb
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +24,9 @@ def build(
     ] = [],
     target: Annotated[
         list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    exclude_target: Annotated[
+        list[str], typer.Option("--exclude-target", "-x", envvar="ATO_EXCLUDE_TARGET")
     ] = [],
     frozen: Annotated[
         bool | None,
@@ -51,13 +50,18 @@ def build(
     """
     from atopile import build as buildlib
     from atopile import buildutil
+    from atopile.cli.logging_ import NOW
+    from atopile.config import config
+    from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.exceptions import accumulate, log_user_errors
+    from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(
         entry=entry,
         selected_builds=selected_builds,
-        target=target,
+        include_targets=target,
+        exclude_targets=exclude_target,
         standalone=standalone,
         frozen=frozen,
         keep_picked_parts=keep_picked_parts,

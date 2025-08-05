@@ -9,8 +9,6 @@ from typing import Annotated
 
 import typer
 
-from atopile import errors
-
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
 
@@ -28,4 +26,7 @@ def view(
     """
     View a block diagram or schematic of your project.
     """
+
+    from atopile import errors
+
     raise errors.UserNotImplementedError("View is not yet implemented.")

@@ -71,8 +71,10 @@ def find_pcbnew() -> Path:
 @once
 def get_config_path():
     kicad_config_search_path = [
-        # windows & linux
+        # linux
         platformdirs.user_config_dir("kicad", roaming=True),
+        # windows
+        Path(platformdirs.user_config_dir("kicad", roaming=True)).parent,
         # macos
         "~/Library/Preferences/kicad/",
     ]
@@ -101,7 +103,7 @@ def get_config_common():
     return get_config("kicad_common.json")
 
 
-def get_plugin_paths():
+def get_plugin_paths(legacy: bool = False):
     kicad_config_search_path = [
         # windows / macos
         Path(platformdirs.user_documents_dir()) / "KiCad",
@@ -110,14 +112,13 @@ def get_plugin_paths():
         platformdirs.user_data_dir("kicad"),
     ]
 
+    plugin_suffix = "scripting/plugins" if legacy else "plugins"
+
     plugin_paths_existing = [
         rp
         for p in kicad_config_search_path
         if (
-            rp := Path(p).expanduser().resolve()
-            / KICAD_VERSION
-            / "scripting"
-            / "plugins"
+            rp := Path(p).expanduser().resolve() / KICAD_VERSION / plugin_suffix
         ).exists()
     ]
 
@@ -129,7 +130,7 @@ def get_plugin_paths():
             Path("~")
             .expanduser()
             .resolve()
-            .glob("**/kicad/*/scripting/plugins", case_sensitive=False)
+            .glob(f"**/kicad/*/{plugin_suffix}", case_sensitive=False)
         )
 
     if not plugin_paths_existing:

@@ -51,7 +51,6 @@ from faebryk.library.has_kicad_ref import has_kicad_ref
 from faebryk.library.has_pcb_layout import has_pcb_layout
 from faebryk.library.has_pcb_routing_strategy import has_pcb_routing_strategy
 from faebryk.library.is_optional import is_optional
-from faebryk.library.has_reference_layout import has_reference_layout
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_esphome_bus import is_esphome_bus
@@ -160,7 +159,6 @@ from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
-from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.PowerMux import PowerMux
 from faebryk.library.ResistorVoltageDivider import ResistorVoltageDivider
 from faebryk.library.has_single_electric_reference_shared import has_single_electric_reference_shared
@@ -173,6 +171,7 @@ from faebryk.library.CAN_TTL import CAN_TTL
 from faebryk.library.ElectricLogicGate import ElectricLogicGate
 from faebryk.library.EnablePin import EnablePin
 from faebryk.library.Ethernet import Ethernet
+from faebryk.library.FilterElectricalRC import FilterElectricalRC
 from faebryk.library.GenericBusProtection import GenericBusProtection
 from faebryk.library.I2S import I2S
 from faebryk.library.JTAG import JTAG

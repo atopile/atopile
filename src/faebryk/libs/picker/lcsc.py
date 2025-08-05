@@ -422,7 +422,11 @@ class EasyEDAPart:
         logger.debug(f"Crawling datasheet for {self.identifier}")
 
         # make requests act like curl
-        lcsc_site = requests.get(url, headers={"User-Agent": "curl/7.81.0"})
+        lcsc_site = requests.get(
+            url,
+            headers={"User-Agent": "curl/7.81.0"},
+            verify=not Gcfg.project.dangerously_skip_ssl_verification,
+        )
         lcsc_id = self.lcsc_id
         # find _{partno}.pdf in html
         match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)

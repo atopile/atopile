@@ -9,14 +9,24 @@ from dataclasses import asdict, fields
 from enum import Enum, StrEnum, auto
 from itertools import pairwise
 from math import floor
-from typing import Any, Callable, Iterable, List, Mapping, Optional, Sequence, TypeVar
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    TypeVar,
+)
 
 import numpy as np
 from deprecated import deprecated
 from more_itertools import first
 from shapely import Polygon
 
-import faebryk.library._F as F
+# import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
@@ -32,17 +42,21 @@ from faebryk.libs.kicad.fileformats_latest import (
     UUID,
     C_arc,
     C_circle,
+    C_curve,
     C_effects,
     C_footprint,
     C_fp_text,
     C_group,
+    C_image,
     C_kicad_pcb_file,
     C_line,
     C_net,
     C_polygon,
     C_rect,
     C_stroke,
+    C_table,
     C_text,
+    C_text_box,
     C_text_layer,
     C_wh,
     C_xy,
@@ -51,7 +65,7 @@ from faebryk.libs.kicad.fileformats_latest import (
     E_fill,
     _SingleOrMultiLayer,
 )
-from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
+from faebryk.libs.sexp.dataclass_sexp import filter_fields, visit_dataclass
 from faebryk.libs.util import (
     FuncSet,
     KeyErrorNotFound,
@@ -83,7 +97,7 @@ Rect = C_rect
 Via = PCB.C_via
 Line = C_line
 
-Geom = C_line | C_arc | C_rect | C_circle
+Geom = C_line | C_arc | C_rect | C_circle | C_polygon | C_curve
 
 Point = Geometry.Point
 Point2D = Geometry.Point2D
@@ -95,6 +109,9 @@ Alignment_Default = (
     Justify.center_vertical,
     Justify.normal,
 )
+
+if TYPE_CHECKING:
+    import faebryk.library._F as F
 
 
 def gen_uuid(mark: str = "") -> UUID:
@@ -158,7 +175,14 @@ def per_point[R](
 
 def get_all_geo_containers(obj: PCB | Footprint) -> list[Sequence[Geom]]:
     if isinstance(obj, C_kicad_pcb_file.C_kicad_pcb):
-        return [obj.gr_lines, obj.gr_arcs, obj.gr_circles, obj.gr_rects]
+        return [
+            obj.gr_lines,
+            obj.gr_arcs,
+            obj.gr_circles,
+            obj.gr_rects,
+            obj.gr_curves,
+            obj.gr_polys,
+        ]
     elif isinstance(obj, Footprint):
         return [obj.fp_lines, obj.fp_arcs, obj.fp_circles, obj.fp_rects]
 
@@ -242,6 +266,8 @@ class PCB_Transformer:
 
     def attach(self):
         """Bind footprints and nets from the PCB to the graph."""
+        import faebryk.library._F as F
+
         for node, fp in PCB_Transformer.map_footprints(self.graph, self.pcb).items():
             if node.has_trait(F.has_footprint):
                 self.bind_footprint(fp, node)
@@ -269,6 +295,8 @@ class PCB_Transformer:
         """
         Check that all the nodes with a footprint, have a linked footprint in the PCB
         """
+        import faebryk.library._F as F
+
         unattached_nodes = {
             node
             for node, trait in GraphFunctions(self.graph).nodes_with_trait(
@@ -327,6 +355,8 @@ class PCB_Transformer:
         - F.Footprint and PCB Footprint
         - F.Pad and PCB Pads
         """
+        import faebryk.library._F as F
+
         module.add(self.has_linked_kicad_footprint(pcb_fp, self))
 
         # By now, the node being bound MUST have a footprint
@@ -352,18 +382,20 @@ class PCB_Transformer:
         if pcb_pads and logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"No pads in design for PCB pads: {pcb_pads}")
 
-    def map_nets(self, match_threshold: float = 0.8) -> dict[F.Net, Net]:
+    def map_nets(self, match_threshold: float = 0.8) -> dict["F.Net", Net]:
         """
         Create a mapping between the internal nets and the nets defined in the PCB file.
 
         This relies on linking between the footprints and pads, so must be called after.
         """
+        import faebryk.library._F as F
+
         if match_threshold < 0.5:
             # This is because we rely on being >50% sure to ensure we're the most
             # likely match.
             raise ValueError("match_threshold must be at least 0.5")
 
-        known_nets: dict[F.Net, Net] = {}
+        known_nets: dict["F.Net", Net] = {}
         pcb_nets_by_name: dict[str, Net] = {n.name: n for n in self.pcb.nets}
         mapped_net_names = set()
 
@@ -425,7 +457,7 @@ class PCB_Transformer:
 
         return known_nets
 
-    def bind_net(self, pcb_net: Net, net: F.Net):
+    def bind_net(self, pcb_net: Net, net: "F.Net"):
         net.add(self.has_linked_kicad_net(pcb_net, self))
 
     @staticmethod
@@ -455,7 +487,9 @@ class PCB_Transformer:
             )
         ]
 
-    def get_net(self, net: F.Net) -> Net:
+    def get_net(self, net: "F.Net") -> Net:
+        import faebryk.library._F as F
+
         nets = {pcb_net.name: pcb_net for pcb_net in self.pcb.nets}
         return nets[net.get_trait(F.has_overriden_name).get_name()]
 
@@ -650,7 +684,9 @@ class PCB_Transformer:
         return list(poly.exterior.coords)
 
     @staticmethod
-    def _get_pad(ffp: F.Footprint, intf: F.Electrical):
+    def _get_pad(ffp: "F.Footprint", intf: "F.Electrical"):
+        import faebryk.library._F as F
+
         pin_map = ffp.get_trait(F.has_kicad_footprint).get_pin_names()
         pin_name = find(
             pin_map.items(),
@@ -663,14 +699,14 @@ class PCB_Transformer:
         return fp, pad
 
     @staticmethod
-    def get_pad(intf: F.Electrical) -> tuple[Footprint, Pad, Node]:
+    def get_pad(intf: "F.Electrical") -> tuple[Footprint, Pad, Node]:
         obj, ffp = F.Footprint.get_footprint_of_parent(intf)
         fp, pad = PCB_Transformer._get_pad(ffp, intf)
 
         return fp, pad, obj
 
     @staticmethod
-    def get_pad_pos_any(intf: F.Electrical):
+    def get_pad_pos_any(intf: "F.Electrical"):
         try:
             fpads = F.Pad.find_pad_for_intf_with_parent_that_has_footprint(intf)
         except KeyErrorNotFound:
@@ -680,7 +716,7 @@ class PCB_Transformer:
         return [PCB_Transformer.get_fpad_pos(fpad) for fpad in fpads]
 
     @staticmethod
-    def get_pad_pos(intf: F.Electrical):
+    def get_pad_pos(intf: "F.Electrical"):
         try:
             fpad = F.Pad.find_pad_for_intf_with_parent_that_has_footprint_unique(intf)
         except ValueError:
@@ -689,7 +725,7 @@ class PCB_Transformer:
         return PCB_Transformer.get_fpad_pos(fpad)
 
     @staticmethod
-    def get_fpad_pos(fpad: F.Pad):
+    def get_fpad_pos(fpad: "F.Pad"):
         fp, pad = fpad.get_trait(PCB_Transformer.has_linked_kicad_pad).get_pad()
         if len(pad) > 1:
             raise NotImplementedError(
@@ -767,6 +803,8 @@ class PCB_Transformer:
 
     def _get_pcb_list_field[R](self, node: R, prefix: str = "") -> list[R]:
         root = self.pcb
+        # TODO this doesnt work for every type (e.g arc_segment, gr_lines)
+        # see get_container for better solution
         key = prefix + type(node).__name__.removeprefix("C_") + "s"
 
         assert hasattr(root, key)
@@ -775,6 +813,42 @@ class PCB_Transformer:
         assert isinstance(target, list)
         assert all(isinstance(x, type(node)) for x in target)
         return target
+
+    @staticmethod
+    def get_pcb_container[R](obj: R, pcb: PCB) -> list[R]:
+        match obj:
+            case PCB.C_pcb_footprint():
+                return pcb.footprints  # type: ignore
+            case PCB.C_segment():
+                return pcb.segments  # type: ignore
+            case PCB.C_arc_segment():
+                return pcb.arcs  # type: ignore
+            case PCB.C_via():
+                return pcb.vias  # type: ignore
+            case PCB.C_zone():
+                return pcb.zones  # type: ignore
+            case C_line():
+                return pcb.gr_lines  # type: ignore
+            case C_arc():
+                return pcb.gr_arcs  # type: ignore
+            case C_rect():
+                return pcb.gr_rects  # type: ignore
+            case C_circle():
+                return pcb.gr_circles  # type: ignore
+            case C_polygon():
+                return pcb.gr_polys  # type: ignore
+            case C_curve():
+                return pcb.gr_curves  # type: ignore
+            case C_text():
+                return pcb.gr_texts  # type: ignore
+            case C_text_box():
+                return pcb.gr_text_boxs  # type: ignore
+            case C_image():
+                return pcb.images  # type: ignore
+            case C_table():
+                return pcb.tables  # type: ignore
+            case _:
+                raise TypeError(f"Unsupported object type: {type(obj)}")
 
     def _insert(self, obj: Any, prefix: str = ""):
         obj = PCB_Transformer.mark(obj)
@@ -1039,6 +1113,8 @@ class PCB_Transformer:
 
     # Positioning ----------------------------------------------------------------------
     def move_footprints(self):
+        import faebryk.library._F as F
+
         # position modules with defined positions
         pos_mods = GraphFunctions(self.graph).nodes_with_traits(
             (F.has_pcb_position, self.has_linked_kicad_footprint)
@@ -1065,9 +1141,25 @@ class PCB_Transformer:
                     layer = layer_names[coord[3]]
 
             logger.debug(f"Placing {fp.name} at {coord} layer {layer}")
-            self.move_fp(fp, C_xyr(*coord[:3]), layer)
+            to = C_xyr(*coord[:3])
+            self.move_fp(fp, to, layer)
 
-    def move_fp(self, fp: Footprint, coord: C_xyr, layer: str):
+            # Label
+            if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
+                rot_angle = (to.r - fp.at.r) % 360
+                fp.fp_texts.append(
+                    C_fp_text(
+                        type=C_fp_text.E_type.user,
+                        text="FBRK:autoplaced",
+                        at=C_xyr(0, 0, rot_angle),
+                        effects=C_fp_text.C_fp_text_effects(font=self.font),
+                        uuid=self.gen_uuid(mark=True),
+                        layer=C_text_layer("User.5"),
+                    )
+                )
+
+    @staticmethod
+    def move_fp(fp: Footprint, coord: C_xyr, layer: str):
         if any([x.text == "FBRK:notouch" for x in fp.fp_texts]):
             logger.warning(f"Skipped no touch component: {fp.name}")
             return
@@ -1113,18 +1205,58 @@ class PCB_Transformer:
                     case _:
                         obj.layer = _flip(obj.layer)
 
-        # Label
-        if not any([x.text == "FBRK:autoplaced" for x in fp.fp_texts]):
-            fp.fp_texts.append(
-                C_fp_text(
-                    type=C_fp_text.E_type.user,
-                    text="FBRK:autoplaced",
-                    at=C_xyr(0, 0, rot_angle),
-                    effects=C_effects(self.font),
-                    uuid=self.gen_uuid(mark=True),
-                    layer=C_text_layer("User.5"),
-                )
-            )
+    @staticmethod
+    def move_object(obj: Any, vector: C_xy):
+        match obj:
+            case PCB.C_segment():
+                obj.start += vector
+                obj.end += vector
+            case PCB.C_arc_segment():
+                obj.start += vector
+                obj.mid += vector
+                obj.end += vector
+            case PCB.C_via():
+                obj.at += vector
+            case PCB.C_zone():
+                obj.polygon.pts.xys = [pt + vector for pt in obj.polygon.pts.xys]
+                for p in obj.filled_polygon:
+                    p.pts.xys = [pt + vector for pt in p.pts.xys]
+            case C_line():
+                obj.start += vector
+                obj.end += vector
+            case C_arc():
+                obj.start += vector
+                obj.mid += vector
+                obj.end += vector
+            case C_circle():
+                obj.center += vector
+                obj.end += vector
+            case C_rect():
+                obj.start += vector
+                obj.end += vector
+            case C_polygon():
+                obj.pts.xys = [pt + vector for pt in obj.pts.xys]
+            case C_curve():
+                obj.pts.xys = [pt + vector for pt in obj.pts.xys]
+            case C_text():
+                obj.at += vector
+            case C_text_box():
+                obj.start += vector
+                if obj.end:
+                    obj.end += vector
+                if obj.pts:
+                    obj.pts[:] = [pt + vector for pt in obj.pts]
+            case C_image():
+                obj.at += vector
+            case C_table():
+                for cell in obj.cells.table_cells:
+                    cell.start += vector
+                    if cell.end:
+                        cell.end += vector
+                    if cell.pts:
+                        cell.pts[:] = [pt + vector for pt in cell.pts]
+            case _:
+                raise TypeError(f"Unsupported object type: {type(obj)}")
 
     # Edge -----------------------------------------------------------------------------
     # TODO: make generic
@@ -1162,9 +1294,9 @@ class PCB_Transformer:
         arc_start = np.array(l1e) + v1 * radius
 
         # convert to tuples
-        arc_start = point2d_to_coord(tuple(arc_start))
-        arc_center = point2d_to_coord(tuple(arc_center))
-        arc_end = point2d_to_coord(tuple(arc_end))
+        arc_start = point2d_to_coord(tuple(arc_start))  # type: ignore
+        arc_center = point2d_to_coord(tuple(arc_center))  # type: ignore
+        arc_end = point2d_to_coord(tuple(arc_end))  # type: ignore
 
         logger.debug(f"{v_middle=}")
         logger.debug(f"{v_middle_norm=}")
@@ -1458,9 +1590,11 @@ class PCB_Transformer:
 
     @staticmethod
     def _hash_lib_fp(lib_fp: C_footprint) -> str:
+        dict_ = asdict(filter_fields(lib_fp, ["uuid"]))
+
         # Ignore the name field. It's not meaningful and we override it
-        dict_ = asdict(lib_fp)
-        dict_["name"] = ""
+        dict_["name"] = None
+
         return hash_string(repr(dict_))
 
     _FP_LIB_HASH = "__atopile_lib_fp_hash__"
@@ -1555,7 +1689,11 @@ class PCB_Transformer:
             if obj is None:
                 return
 
-            for obj, path, name_path in dataclass_dfs(obj):
+            for it in visit_dataclass(obj):
+                obj = it.value
+                path = it.path
+                name_path = it.name_path
+
                 # This only works for strings, so skip everything else
                 if not isinstance(obj, str):
                     continue
@@ -1752,6 +1890,7 @@ class PCB_Transformer:
 
     def apply_design(self, logger: logging.Logger = logger):
         """Apply the design to the pcb"""
+        import faebryk.library._F as F
         from faebryk.libs.part_lifecycle import PartLifecycle
 
         lifecycle = PartLifecycle.singleton()

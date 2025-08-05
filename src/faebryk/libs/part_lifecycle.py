@@ -17,6 +17,7 @@ from atopile.config import (
 )
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
+from atopile.layout import in_sub_pcb
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
 from faebryk.libs.ato_part import AtoPart
@@ -626,6 +627,14 @@ class PartLifecycle:
                 property_values["Value"] = ""
 
             property_values["atopile_address"] = component.get_full_name()
+            if sub_pcb_t := component.try_get_trait(in_sub_pcb):
+                property_values["atopile_subaddresses"] = (
+                    "["
+                    + ", ".join(
+                        subaddress.serialize() for subaddress in sub_pcb_t.addresses
+                    )
+                    + "]"
+                )
 
             for prop_name, prop_value in property_values.items():
                 ### Get old property value, representing non-existent properties as None

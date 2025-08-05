@@ -76,7 +76,10 @@ class ApiClient:
     def _get(self, url: str, timeout: float = 10) -> requests.Response:
         try:
             response = self._client.get(
-                f"{self._cfg.api_url}{url}", timeout=timeout, headers=self._headers
+                f"{self._cfg.api_url}{url}",
+                timeout=timeout,
+                headers=self._headers,
+                verify=not config.project.dangerously_skip_ssl_verification,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -103,6 +106,7 @@ class ApiClient:
                 json=data,
                 timeout=timeout,
                 headers=self._headers,
+                verify=not config.project.dangerously_skip_ssl_verification,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
