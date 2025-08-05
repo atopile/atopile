@@ -4,6 +4,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    const prettytable_dep = b.dependency("prettytable", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
     // Performance test executable
     const perf_test = b.addExecutable(.{
         .name = "performance_sexp",
@@ -39,6 +44,15 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+
+    const performance_sexp_synthetic = b.addExecutable(.{
+        .name = "performance_sexp_synthetic",
+        .root_source_file = b.path("performance_sexp_synthetic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    performance_sexp_synthetic.root_module.addImport("prettytable", prettytable_dep.module("prettytable"));
+    b.installArtifact(performance_sexp_synthetic);
 
     const run_tokenizer_test = b.addRunArtifact(tokenizer_test);
     const run_ast_test = b.addRunArtifact(ast_test);

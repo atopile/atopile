@@ -57,7 +57,7 @@ test "encode simple struct" {
         .enabled = false,
     };
 
-    const encoded = try structure.dumps(allocator, data);
+    const encoded = try structure.dumps(data, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Just check that it contains the expected values, not exact formatting
@@ -75,7 +75,7 @@ test "decode simple struct" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     const result = try structure.decode(SimpleStruct, allocator, sexp);
@@ -95,7 +95,7 @@ test "positional fields" {
         .y = 20,
     };
 
-    const encoded = try structure.dumps(allocator, data);
+    const encoded = try structure.dumps(data, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Check content, not exact formatting
@@ -113,7 +113,7 @@ test "optional fields" {
         .optional = null,
     };
 
-    const encoded1 = try structure.dumps(allocator, data1);
+    const encoded1 = try structure.dumps(data1, allocator, "test", null);
     defer allocator.free(encoded1);
 
     // Check content
@@ -126,7 +126,7 @@ test "optional fields" {
         .optional = "world",
     };
 
-    const encoded2 = try structure.dumps(allocator, data2);
+    const encoded2 = try structure.dumps(data2, allocator, "test", null);
     defer allocator.free(encoded2);
 
     // Check content
@@ -148,7 +148,7 @@ test "multidict fields" {
         .items = items,
     };
 
-    const encoded = try structure.dumps(allocator, data);
+    const encoded = try structure.dumps(data, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Check multidict content
@@ -168,7 +168,7 @@ test "round trip" {
     };
 
     // Encode
-    const encoded = try structure.dumps(allocator, original);
+    const encoded = try structure.dumps(original, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Decode
@@ -176,7 +176,7 @@ test "round trip" {
     const tokens = try tokenizer.tokenize(allocator, encoded);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     const decoded = try structure.decode(SimpleStruct, allocator, sexp);
@@ -197,7 +197,7 @@ test "missing required field - name" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // This should fail with MissingField error
@@ -221,7 +221,7 @@ test "missing required field - value" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // This should fail with MissingField error
@@ -245,7 +245,7 @@ test "missing optional field is ok" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     const result = try structure.decode(SimpleStruct, allocator, sexp);
@@ -266,7 +266,7 @@ test "missing required field in OptionalStruct" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // This should fail with MissingField error
@@ -295,7 +295,7 @@ test "all fields missing in struct without defaults" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // This should fail with MissingField error
@@ -328,7 +328,7 @@ test "netlist component missing required fields" {
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // This should fail with MissingField error for footprint
@@ -358,12 +358,9 @@ const A = struct {
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
-    
+
     // Test different error scenarios
-    const test_cases = [_]struct { 
-        name: []const u8, 
-        sexp: []const u8 
-    }{
+    const test_cases = [_]struct { name: []const u8, sexp: []const u8 }{
         .{ .name = "String instead of number", .sexp = "((a \"1\") (b \"10k\"))" },
         .{ .name = "Missing required field", .sexp = "((a 1))" },
         .{ .name = "Invalid number format", .sexp = "((a 1.5) (b \"test\"))" },
@@ -371,17 +368,17 @@ pub fn main() !void {
         .{ .name = "Number for string field", .sexp = "((a 1) (b 123))" },
         .{ .name = "Correct format", .sexp = "((a 42) (b \"hello world\"))" },
         .{ .name = "Multiline with error", .sexp = 
-            \\(
-            \\  (a "not a number") ; This is line 2
-            \\  (b "test string")
-            \\)
+        \\(
+        \\  (a "not a number") ; This is line 2
+        \\  (b "test string")
+        \\)
         },
     };
-    
+
     for (test_cases) |test_case| {
         std.debug.print("\n=== Test: {s} ===\n", .{test_case.name});
         std.debug.print("Input: {s}\n", .{test_case.sexp});
-        
+
         testDecode(allocator, test_case.sexp) catch {
             // Error already printed by testDecode
         };
@@ -389,18 +386,17 @@ pub fn main() !void {
 }
 
 fn testDecode(allocator: std.mem.Allocator, sexp_str: []const u8) !void {
-
     const tokenizer = @import("tokenizer.zig");
     const tokens = try tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // Catch the decode error and print context
     const result = structure.decode(A, allocator, sexp) catch |err| {
         std.debug.print("Error: {}\n", .{err});
-        
+
         // Get and print the error context
         if (structure.getErrorContext()) |ctx| {
             if (ctx.path.len > 0) {
@@ -419,19 +415,19 @@ fn testDecode(allocator: std.mem.Allocator, sexp_str: []const u8) !void {
                 if (ctx.column) |col| {
                     if (ctx.end_line) |end_line| {
                         if (ctx.end_column) |end_col| {
-                            std.debug.print("  Location: line {d}:{d} to {d}:{d}\n", .{line, col, end_line, end_col});
+                            std.debug.print("  Location: line {d}:{d} to {d}:{d}\n", .{ line, col, end_line, end_col });
                         } else {
-                            std.debug.print("  Location: line {d}:{d}\n", .{line, col});
+                            std.debug.print("  Location: line {d}:{d}\n", .{ line, col });
                         }
                     } else {
-                        std.debug.print("  Location: line {d}:{d}\n", .{line, col});
+                        std.debug.print("  Location: line {d}:{d}\n", .{ line, col });
                     }
                 }
             }
         }
         return err;
     };
-    
+
     defer structure.free(A, allocator, result);
-    std.debug.print("Success! a={}, b={s}\n", .{result.a, result.b});
+    std.debug.print("Success! a={}, b={s}\n", .{ result.a, result.b });
 }

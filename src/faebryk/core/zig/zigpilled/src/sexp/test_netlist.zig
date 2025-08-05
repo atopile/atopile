@@ -14,6 +14,8 @@ test "load real netlist file - basic checks" {
             ctx_with_source.source = try std.fs.cwd().readFileAlloc(allocator, "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net", 1024 * 1024);
             defer allocator.free(ctx_with_source.source.?);
             std.debug.print("{}\n", .{ctx_with_source});
+        } else {
+            std.debug.print("No error context\n", .{});
         }
         return err;
     };
@@ -364,7 +366,7 @@ pub fn main() !void {
         \\)
     ;
 
-    var parsed = netlist.NetlistFile.loads(allocator, test_netlist_str) catch |err| {
+    var parsed = netlist.NetlistFile.loads(allocator, .{ .string = test_netlist_str }) catch |err| {
         std.debug.print("Error loading netlist: {}\n", .{err});
         if (structure.getErrorContext()) |ctx| {
             var ctx_with_source = ctx;

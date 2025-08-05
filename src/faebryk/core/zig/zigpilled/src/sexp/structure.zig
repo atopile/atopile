@@ -203,13 +203,25 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
             if (ptr.size == .slice) {
                 return try decodeSlice(T, allocator, sexp);
             }
+            setErrorContext(.{
+                .path = @typeName(T),
+                .field_name = null,
+                .sexp_preview = "unsupported pointer type (only slices are supported)",
+            }, sexp);
             return error.InvalidType;
         },
         .int => return try decodeInt(T, sexp),
         .float => return try decodeFloat(T, sexp),
         .bool => return try decodeBool(sexp),
         .@"enum" => return try decodeEnum(T, sexp),
-        else => return error.InvalidType,
+        else => {
+            setErrorContext(.{
+                .path = @typeName(T),
+                .field_name = null,
+                .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "unsupported type: {s}", .{@typeName(T)}) catch "unsupported type",
+            }, sexp);
+            return error.InvalidType;
+        },
     }
 }
 
@@ -217,7 +229,14 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     const fields = std.meta.fields(T);
     var result: T = std.mem.zeroInit(T, .{});
 
-    const items = ast.getList(sexp) orelse return error.UnexpectedType;
+    const items = ast.getList(sexp) orelse {
+        setErrorContext(.{
+            .path = @typeName(T),
+            .field_name = null,
+            .sexp_preview = "expected list for struct",
+        }, sexp);
+        return error.UnexpectedType;
+    };
 
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
@@ -410,7 +429,16 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
         }
     }
 
-    const items = ast.getList(sexp) orelse return error.UnexpectedType;
+    const items = ast.getList(sexp) orelse {
+        // Get current context to preserve field name
+        const ctx = getErrorContext();
+        setErrorContext(.{
+            .path = if (ctx) |c| c.path else @typeName(T),
+            .field_name = if (ctx) |c| c.field_name else null,
+            .sexp_preview = "expected list for slice",
+        }, sexp);
+        return error.UnexpectedType;
+    };
 
     var result = try allocator.alloc(child_type, items.len);
     for (items, 0..) |item, idx| {
@@ -504,21 +532,55 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
 }
 
 fn decodeBool(sexp: SExp) DecodeError!bool {
-    const sym = ast.getSymbol(sexp) orelse return error.UnexpectedType;
+    const sym = ast.getSymbol(sexp) orelse {
+        // Get current context to preserve field name
+        const ctx = getErrorContext();
+        setErrorContext(.{
+            .path = if (ctx) |c| c.path else "bool",
+            .field_name = if (ctx) |c| c.field_name else null,
+            .sexp_preview = "expected symbol for boolean",
+        }, sexp);
+        return error.UnexpectedType;
+    };
     if (std.mem.eql(u8, sym, "yes")) return true;
     if (std.mem.eql(u8, sym, "no")) return false;
     if (std.mem.eql(u8, sym, "true")) return true;
     if (std.mem.eql(u8, sym, "false")) return false;
+
+    // Get current context to preserve field name
+    const ctx = getErrorContext();
+    setErrorContext(.{
+        .path = if (ctx) |c| c.path else "bool",
+        .field_name = if (ctx) |c| c.field_name else null,
+        .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "invalid boolean value '{s}' (expected yes/no/true/false)", .{sym}) catch "invalid boolean value",
+    }, sexp);
     return error.InvalidValue;
 }
 
 fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
-    const sym = ast.getSymbol(sexp) orelse return error.UnexpectedType;
+    const sym = ast.getSymbol(sexp) orelse {
+        // Get current context to preserve field name
+        const ctx = getErrorContext();
+        setErrorContext(.{
+            .path = if (ctx) |c| c.path else @typeName(T),
+            .field_name = if (ctx) |c| c.field_name else null,
+            .sexp_preview = "expected symbol for enum",
+        }, sexp);
+        return error.UnexpectedType;
+    };
     inline for (std.meta.fields(T)) |field| {
         if (std.mem.eql(u8, sym, field.name)) {
             return @field(T, field.name);
         }
     }
+
+    // Get current context to preserve field name
+    const ctx = getErrorContext();
+    setErrorContext(.{
+        .path = if (ctx) |c| c.path else @typeName(T),
+        .field_name = if (ctx) |c| c.field_name else null,
+        .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "invalid enum value '{s}' for type {s}", .{ sym, @typeName(T) }) catch "invalid enum value",
+    }, sexp);
     return error.InvalidValue;
 }
 
@@ -665,56 +727,103 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
     // Parse S-expression from input
     var sexp: SExp = undefined;
     var should_deinit = false;
-    
+
     switch (in) {
         .path => {
-            const tokens = try tokenizer.tokenizeFile(allocator, in.path);
+            const file_content = try std.fs.cwd().readFileAlloc(allocator, in.path, 200 * 1024 * 1024);
+            defer allocator.free(file_content);
+            const tokens = try tokenizer.tokenize(allocator, file_content);
             defer allocator.free(tokens);
-            sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+            sexp = try ast.parse(allocator, tokens);
             should_deinit = true;
         },
         .string => {
             const tokens = try tokenizer.tokenize(allocator, in.string);
             defer allocator.free(tokens);
-            sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+            sexp = try ast.parse(allocator, tokens);
             should_deinit = true;
         },
         .sexp => |s| {
             // When given a pre-parsed SExp, check if it's already unwrapped
             // (i.e., if it's the contents without the symbol wrapper)
-            if (ast.isList(s)) {
-                const items = ast.getList(s).?;
-                if (items.len > 0) {
-                    if (ast.getSymbol(items[0])) |sym| {
-                        if (std.mem.eql(u8, sym, expected_symbol)) {
-                            // It has the wrapper, proceed normally
-                            sexp = s;
-                        } else {
-                            // Different symbol, error
-                            return error.UnexpectedType;
-                        }
-                    } else {
-                        // First item is not a symbol, assume it's already unwrapped
-                        return try decode(T, allocator, s);
-                    }
-                } else {
-                    // Empty list, can't be a wrapped structure
-                    return error.UnexpectedType;
-                }
-            } else {
-                // Not a list, can't be a wrapped structure
-                return error.UnexpectedType;
-            }
+            sexp = s;
+            // for now dont support that
+            //if (ast.isList(s)) {
+            //    const items = ast.getList(s).?;
+            //    if (items.len > 0) {
+            //        if (ast.getSymbol(items[0])) |sym| {
+            //            if (std.mem.eql(u8, sym, expected_symbol)) {
+            //                // It has the wrapper, proceed normally
+            //                sexp = s;
+            //            } else {
+            //                // Different symbol, error
+            //                setErrorContext(.{
+            //                    .path = @typeName(T),
+            //                    .field_name = null,
+            //                    .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, sym }) catch "wrong symbol",
+            //                }, s);
+            //                return error.UnexpectedType;
+            //            }
+            //        } else {
+            //            // First item is not a symbol, assume it's already unwrapped
+            //            return try decode(T, allocator, s);
+            //        }
+            //    } else {
+            //        // Empty list, can't be a wrapped structure
+            //        setErrorContext(.{
+            //            .path = @typeName(T),
+            //            .field_name = null,
+            //            .sexp_preview = "empty list cannot be a wrapped structure",
+            //        }, s);
+            //        return error.UnexpectedType;
+            //    }
+            //} else {
+            //    // Not a list, can't be a wrapped structure
+            //    setErrorContext(.{
+            //        .path = @typeName(T),
+            //        .field_name = null,
+            //        .sexp_preview = "expected list for wrapped structure",
+            //    }, s);
+            //    return error.UnexpectedType;
+            //}
         },
     }
     defer if (should_deinit) sexp.deinit(allocator);
 
     // The file structure is (symbol_name ...)
-    const file_list = ast.getList(sexp) orelse return error.UnexpectedType;
-    if (file_list.len < 1) return error.UnexpectedType;
+    const file_list = ast.getList(sexp) orelse {
+        setErrorContext(.{
+            .path = @typeName(T),
+            .field_name = null,
+            .sexp_preview = "expected list at top level",
+        }, sexp);
+        return error.UnexpectedType;
+    };
+    if (file_list.len < 1) {
+        setErrorContext(.{
+            .path = @typeName(T),
+            .field_name = null,
+            .sexp_preview = "empty top-level list",
+        }, sexp);
+        return error.UnexpectedType;
+    }
 
-    const symbol = ast.getSymbol(file_list[0]) orelse return error.UnexpectedType;
-    if (!std.mem.eql(u8, symbol, expected_symbol)) return error.UnexpectedType;
+    const symbol = ast.getSymbol(file_list[0]) orelse {
+        setErrorContext(.{
+            .path = @typeName(T),
+            .field_name = null,
+            .sexp_preview = "expected symbol as first element",
+        }, file_list[0]);
+        return error.UnexpectedType;
+    };
+    if (!std.mem.eql(u8, symbol, expected_symbol)) {
+        setErrorContext(.{
+            .path = @typeName(T),
+            .field_name = null,
+            .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "expected symbol '{s}' but got '{s}'", .{ expected_symbol, symbol }) catch "wrong symbol",
+        }, file_list[0]);
+        return error.UnexpectedType;
+    }
 
     // Create a new list without the symbol for decoding
     const contents = file_list[1..];

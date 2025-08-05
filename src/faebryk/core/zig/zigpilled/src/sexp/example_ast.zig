@@ -93,7 +93,7 @@ pub fn main() !void {
 
     // Pretty print with indentation
     std.debug.print("Pretty printed:\n", .{});
-    try prettyPrint(encoded, 0);
+    std.debug.print("{s}\n", .{encoded});
     std.debug.print("\n", .{});
 
     // Parse it back
@@ -101,7 +101,7 @@ pub fn main() !void {
     const tokens = try tokenizer.tokenize(allocator, encoded);
     defer allocator.free(tokens); // No need for deinitTokens here since tokens point to encoded
 
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     const decoded = try structure.loads(Symbol, allocator, .{ .sexp = sexp }, "symbol");
@@ -115,65 +115,5 @@ pub fn main() !void {
         for (comp.pins) |pin| {
             std.debug.print("      - Pin {s}: {s} ({s})\n", .{ pin.number, pin.name, pin.type });
         }
-    }
-}
-
-fn prettyPrint(sexp_str: []const u8, indent: usize) !void {
-    var depth: usize = 0;
-    var in_string = false;
-    var escape_next = false;
-
-    for (sexp_str) |char| {
-        if (escape_next) {
-            std.debug.print("{c}", .{char});
-            escape_next = false;
-            continue;
-        }
-
-        switch (char) {
-            '\\' => {
-                std.debug.print("{c}", .{char});
-                escape_next = true;
-            },
-            '"' => {
-                std.debug.print("{c}", .{char});
-                in_string = !in_string;
-            },
-            '(' => {
-                if (!in_string) {
-                    std.debug.print("(\n", .{});
-                    depth += 1;
-                    try printIndent(indent + depth * 2);
-                } else {
-                    std.debug.print("{c}", .{char});
-                }
-            },
-            ')' => {
-                if (!in_string) {
-                    depth -= 1;
-                    std.debug.print("\n", .{});
-                    try printIndent(indent + depth * 2);
-                    std.debug.print(")", .{});
-                } else {
-                    std.debug.print("{c}", .{char});
-                }
-            },
-            ' ' => {
-                if (!in_string and depth > 0) {
-                    std.debug.print("\n", .{});
-                    try printIndent(indent + depth * 2);
-                } else {
-                    std.debug.print("{c}", .{char});
-                }
-            },
-            else => std.debug.print("{c}", .{char}),
-        }
-    }
-}
-
-fn printIndent(n: usize) !void {
-    var i: usize = 0;
-    while (i < n) : (i += 1) {
-        std.debug.print(" ", .{});
     }
 }

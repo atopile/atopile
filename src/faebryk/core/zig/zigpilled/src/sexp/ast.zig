@@ -128,6 +128,7 @@ pub const ParseError = error{
     UnexpectedRightParen,
     UnterminatedList,
     OutOfMemory,
+    EmptyFile,
 };
 
 pub const Parser = struct {
@@ -171,13 +172,10 @@ pub const Parser = struct {
             if (next_token.type == .rparen) {
                 const end_location = next_token.location;
                 self.position += 1;
-                return SExp{ 
-                    .value = .{ .list = try items.toOwnedSlice() }, 
-                    .location = .{
-                        .start = start_location.start,
-                        .end = end_location.end,
-                    }
-                };
+                return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = .{
+                    .start = start_location.start,
+                    .end = end_location.end,
+                } };
             }
 
             if (try self.parse()) |sexp| {
@@ -192,9 +190,9 @@ pub const Parser = struct {
 };
 
 // Parse a single S-expression
-pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!?SExp {
+pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!SExp {
     var parser = Parser.init(allocator, tokens);
-    return parser.parse();
+    return try parser.parse() orelse return error.EmptyFile;
 }
 
 // Parse with arena allocator for better performance

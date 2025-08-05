@@ -350,89 +350,90 @@ pub const Tokenizer = struct {
     }
 };
 
-pub fn tokenize(allocator: std.mem.Allocator, input: []const u8) ![]Token {
+pub fn _tokenize(allocator: std.mem.Allocator, input: []const u8) ![]Token {
     var tokenizer = Tokenizer.init(allocator, input);
     return tokenizer.tokenize();
 }
 
-// Free tokens that have duplicated values
-pub fn deinitTokens(allocator: std.mem.Allocator, tokens: []Token) void {
-    if (tokens.len == 0) {
-        allocator.free(tokens);
+const WorkerContext = struct {
+    data: []const u8,
+    allocator: std.mem.Allocator,
+    result: ?[]Token = null,
+    err: ?anyerror = null,
+};
+
+fn tokenizeWorker(context: *WorkerContext) void {
+    var t = Tokenizer.init(context.allocator, context.data);
+    context.result = t.tokenize() catch |err| {
+        context.err = err;
         return;
-    }
-
-    // Check if values are in a single contiguous buffer (new tokenizeFile)
-    var all_contiguous = true;
-    if (tokens.len > 1) {
-        for (1..tokens.len) |i| {
-            const prev_end = @intFromPtr(tokens[i - 1].value.ptr) + tokens[i - 1].value.len;
-            const curr_start = @intFromPtr(tokens[i].value.ptr);
-            if (prev_end != curr_start) {
-                all_contiguous = false;
-                break;
-            }
-        }
-    }
-
-    if (all_contiguous) {
-        // All values are in a single buffer, free it once
-        const buffer_start = tokens[0].value.ptr;
-        var total_len: usize = 0;
-        for (tokens) |token| {
-            total_len += token.value.len;
-        }
-        allocator.free(buffer_start[0..total_len]);
-    } else {
-        // Check if values are within the tokens array (shouldn't be freed)
-        const tokens_start = @intFromPtr(tokens.ptr);
-        const tokens_end = tokens_start + tokens.len * @sizeOf(Token);
-        const value_ptr = @intFromPtr(tokens[0].value.ptr);
-
-        // If value is outside tokens memory, values were separately allocated
-        if (value_ptr < tokens_start or value_ptr >= tokens_end) {
-            for (tokens) |token| {
-                allocator.free(token.value);
-            }
-        }
-    }
-
-    allocator.free(tokens);
+    };
 }
 
-// File tokenizer - reads file content into memory
-pub fn tokenizeFile(allocator: std.mem.Allocator, path: []const u8) ![]Token {
-    // Use arena allocator for better performance
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    errdefer arena.deinit();
+// Simple parallel tokenizer for benchmarking
+pub fn tokenize(allocator: std.mem.Allocator, data: []const u8) ![]Token {
+    const cpu_count = try std.Thread.getCpuCount();
 
-    // Read file content into arena
-    const file_content = try std.fs.cwd().readFileAlloc(arena.allocator(), path, 200 * 1024 * 1024);
+    const DATA_PER_THREAD_THRESOLD = 256 * 1024; // 128kB
+    const thread_count = @max(1, @min(cpu_count, @divFloor(data.len, DATA_PER_THREAD_THRESOLD)));
 
-    var tokenizer = Tokenizer.init(allocator, file_content);
-    const tokens = try tokenizer.tokenize();
-
-    // Calculate total size needed for all token values
-    var total_size: usize = 0;
-    for (tokens) |token| {
-        total_size += token.value.len;
+    if (thread_count == 1) {
+        return _tokenize(allocator, data);
     }
 
-    // Allocate one big buffer for all token values
-    const values_buffer = try allocator.alloc(u8, total_size);
-    errdefer allocator.free(values_buffer);
+    // Split data into chunks
+    var chunks = try allocator.alloc([]const u8, thread_count);
+    defer allocator.free(chunks);
+    const chunk_size = data.len / thread_count;
+    var start: usize = 0;
+    for (0..thread_count) |i| {
+        const target_end = @min(start + chunk_size, data.len);
+        var end = target_end;
 
-    // Copy all token values into the buffer
+        // Find safe boundary (newline)
+        while (end < data.len and data[end] != '\n') : (end += 1) {}
+
+        chunks[i] = data[start..end];
+        start = end;
+    }
+
+    // Create contexts and threads
+    var contexts = try allocator.alloc(WorkerContext, thread_count);
+    defer allocator.free(contexts);
+
+    var threads = try allocator.alloc(std.Thread, thread_count);
+    defer allocator.free(threads);
+
+    for (0..thread_count) |i| {
+        contexts[i] = .{
+            .data = chunks[i],
+            .allocator = allocator,
+        };
+        threads[i] = try std.Thread.spawn(.{}, tokenizeWorker, .{&contexts[i]});
+    }
+
+    // Wait for completion
+    for (threads) |thread| {
+        thread.join();
+    }
+
+    // Check errors and count tokens
+    var total_tokens: usize = 0;
+    for (contexts) |ctx| {
+        if (ctx.err) |err| return err;
+        total_tokens += ctx.result.?.len;
+    }
+
+    // Merge results
+    var result = try allocator.alloc(Token, total_tokens);
     var offset: usize = 0;
-    for (tokens) |*token| {
-        const new_value = values_buffer[offset .. offset + token.value.len];
-        @memcpy(new_value, token.value);
-        token.value = new_value;
-        offset += token.value.len;
+
+    for (contexts) |ctx| {
+        const tokens = ctx.result.?;
+        @memcpy(result[offset..][0..tokens.len], tokens);
+        offset += tokens.len;
+        allocator.free(tokens);
     }
 
-    // Arena will be freed, but tokens and values_buffer remain
-    arena.deinit();
-
-    return tokens;
+    return result;
 }

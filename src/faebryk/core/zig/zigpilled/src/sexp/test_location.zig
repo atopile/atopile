@@ -26,7 +26,7 @@ pub fn main() !void {
     defer allocator.free(tokens);
 
     // Parse to AST
-    var sexp = try ast.parse(allocator, tokens) orelse return error.EmptyFile;
+    var sexp = try ast.parse(allocator, tokens);
     defer sexp.deinit(allocator);
 
     // Try to decode
