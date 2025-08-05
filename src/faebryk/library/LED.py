@@ -107,7 +107,7 @@ class LED(F.Diode):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import LED, Resistor, ElectricPower
-        
+
         led = new LED
         led.forward_voltage = 2.1V +/- 10%
         led.current = 20mA +/- 5%
@@ -120,9 +120,9 @@ class LED(F.Diode):
         current_resistor = new Resistor
         power_supply = new ElectricPower
         assert power_supply.voltage within 5V +/- 5%
-        
+
         power_supply.hv ~> current_resistor ~> led ~> power_supply.lv
-        
+
         # Alternative: use dedicated function
         led.connect_via_current_limiting_resistor(
             power_supply.voltage,

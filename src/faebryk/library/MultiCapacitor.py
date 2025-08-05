@@ -84,7 +84,7 @@ class MultiCapacitor(F.Capacitor):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import MultiCapacitor
-        
+
         multicapacitor = new MultiCapacitor<count=4>
         for c in multicapacitor.capacitors:
             c.capacitance = 100nF +/- 10%

@@ -82,7 +82,7 @@ class Inductor(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Inductor
-        
+
         inductor = new Inductor
         inductor.inductance = 10uH +/- 10%
         inductor.max_current = 2A
@@ -94,7 +94,7 @@ class Inductor(Module):
         electrical2 ~ inductor.unnamed[1]
         # OR
         electrical1 ~> inductor ~> electrical2
-        
+
         # For filtering applications
         power_input ~> inductor ~> filtered_output
         """,

@@ -25,10 +25,10 @@ class UART(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import UART, ElectricPower
-        
+
         uart = new UART
         uart.base_uart.baud_rate = 115200
-        
+
         # Connect power reference for logic levels
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
@@ -36,18 +36,18 @@ class UART(ModuleInterface):
         uart.base_uart.rx.reference ~ power_3v3
         uart.rts.reference ~ power_3v3
         uart.cts.reference ~ power_3v3
-        
+
         # Connect to microcontroller
         microcontroller.uart ~ uart
-        
+
         # Connect to external UART device or RS232 transceiver
         external_device.uart_rx ~ uart.base_uart.tx.line
         external_device.uart_tx ~ uart.base_uart.rx.line
-        
+
         # Hardware flow control (optional)
         external_device.rts ~ uart.cts.line
         external_device.cts ~ uart.rts.line
-        
+
         # Common baud rates: 9600, 38400, 115200, 230400, 460800
         """,
         language=F.has_usage_example.Language.ato,

@@ -35,7 +35,7 @@ class Relay(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Relay, ElectricPower, Diode, NFET, ElectricLogic
-        
+
         relay = new Relay
         relay.coil_max_voltage = 12V
         relay.coil_max_current = 50mA
@@ -43,26 +43,26 @@ class Relay(Module):
         relay.contact_max_switching_voltage = 250V
         relay.contact_max_switching_current = 10A
         relay.contact_max_current = 16A
-        
+
         # Connect coil power
         power_12v = new ElectricPower
         assert power_12v.voltage within 12V +/- 5%
         relay.coil_power ~ power_12v
-        
+
         # Control relay with MOSFET and flyback diode
         control_mosfet = new NFET
         flyback_diode = new Diode
         control_signal = new ElectricLogic
-        
+
         # Coil control circuit
         power_12v.hv ~ relay.coil_power.hv
         relay.coil_power.lv ~> control_mosfet ~> power_12v.lv
         control_signal ~ control_mosfet.gate
-        
+
         # Flyback diode for coil protection
         relay.coil_power.hv ~ flyback_diode.cathode
         flyback_diode.anode ~ relay.coil_power.lv
-        
+
         # Switch high-power load using normally open contact
         high_power_load ~ relay.switch_a_no
         relay.switch_a_common ~ high_voltage_supply

@@ -48,20 +48,20 @@ class Addressor(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Addressor, I2C, ElectricPower
-        
+
         # For I2C device with 2 address pins (4 possible addresses)
         addressor = new Addressor<address_bits=2>
         addressor.base = 0x48  # Base address from datasheet
-        
+
         # Connect power reference for address pins
         power_3v3 = new ElectricPower
         for line in addressor.address_lines:
             line.reference ~ power_3v3
-        
+
         # Connect address pins to device
         device.addr0 ~ addressor.address_lines[0].line
         device.addr1 ~ addressor.address_lines[1].line
-        
+
         # Connect to I2C interface
         i2c_bus = new I2C
         assert i2c_bus.address is addressor.address

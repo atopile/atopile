@@ -51,7 +51,7 @@ class BJT(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import BJT, Resistor, ElectricPower
-        
+
         bjt = new BJT
         bjt.doping_type ="NPN"
         bjt.mpn = "C373737
@@ -60,7 +60,7 @@ class BJT(Module):
         base_resistor = new Resistor
         collector_resistor = new Resistor
         power_supply = new ElectricPower
-        
+
         # Basic amplifier configuration
         power_supply.hv ~> collector_resistor ~> bjt.collector
         bjt.emitter ~ power_supply.lv

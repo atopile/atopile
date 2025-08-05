@@ -68,7 +68,7 @@ class MOSFET(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import MOSFET, ElectricLogic, ElectricPower
-        
+
         mosfet = new MOSFET
         mosfet.channel_type = MOSFET.ChannelType.N_CHANNEL
         mosfet.saturation_type = MOSFET.SaturationType.ENHANCEMENT
@@ -82,7 +82,7 @@ class MOSFET(Module):
         gate_control = new ElectricLogic
         power_supply = new ElectricPower
         load = new ElectricLogic
-        
+
         mosfet.gate ~ gate_control.line
         mosfet.source ~ power_supply.lv
         mosfet.drain ~ load.line

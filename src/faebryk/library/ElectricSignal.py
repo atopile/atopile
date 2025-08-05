@@ -130,20 +130,20 @@ class ElectricSignal(F.Signal):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import ElectricSignal, ElectricPower
-        
+
         signal = new ElectricSignal
-        
-        # Connect power reference for signal levels  
+
+        # Connect power reference for signal levels
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
         signal.reference ~ power_3v3
-        
+
         # Connect between components
         sensor_output ~ signal.line
         adc_input ~ signal.line
-        
+
         # For differential signals, use two ElectricSignals
-        diff_pos = new ElectricSignal  
+        diff_pos = new ElectricSignal
         diff_neg = new ElectricSignal
         diff_pos.reference ~ power_3v3
         diff_neg.reference ~ power_3v3

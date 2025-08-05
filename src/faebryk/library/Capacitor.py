@@ -134,7 +134,7 @@ class Capacitor(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Capacitor
-        
+
         capacitor = new Capacitor
         capacitor.capacitance = 100nF +/- 10%
         assert capacitor.max_voltage within 25V to 50V
