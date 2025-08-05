@@ -207,6 +207,16 @@ fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField 
 // Main decode function
 pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
     const type_info = @typeInfo(T);
+    
+    // Check if type has a custom decode method (only for types that support declarations)
+    switch (type_info) {
+        .@"struct", .@"enum", .@"union", .@"opaque" => {
+            if (comptime @hasDecl(T, "decode")) {
+                return try T.decode(allocator, sexp);
+            }
+        },
+        else => {},
+    }
 
     switch (type_info) {
         .@"struct" => return try decodeStruct(T, allocator, sexp),
@@ -226,6 +236,15 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
         .float => return try decodeFloat(T, sexp),
         .bool => return try decodeBool(sexp),
         .@"enum" => return try decodeEnum(T, sexp),
+        .@"union" => {
+            // If no custom decode, unions need custom decoders
+            setErrorContext(.{
+                .path = @typeName(T),
+                .field_name = null,
+                .sexp_preview = "union types require custom decode method",
+            }, sexp);
+            return error.InvalidType;
+        },
         else => {
             setErrorContext(.{
                 .path = @typeName(T),
@@ -238,6 +257,7 @@ pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decode
 }
 
 fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
+    @setEvalBranchQuota(10000);
     const fields = std.meta.fields(T);
     var result: T = std.mem.zeroInit(T, .{});
 
@@ -249,6 +269,60 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
         }, sexp);
         return error.UnexpectedType;
     };
+
+    // Special case: if the struct has exactly one non-optional, non-default field and the sexp 
+    // is a single nested structure matching that field, treat the entire sexp as that field's value
+    // This handles cases like (font ...) being passed to Effects{font: Font}
+    comptime var non_optional_non_default_count: usize = 0;
+    comptime var single_field_name: ?[]const u8 = null;
+    comptime {
+        for (fields) |field| {
+            if (!isOptional(field.type)) {
+                // Check if field has a default value
+                const has_default = field.default_value_ptr != null;
+                
+                if (!has_default) {
+                    non_optional_non_default_count += 1;
+                    single_field_name = field.name;
+                }
+            }
+        }
+    }
+    
+    // Check if struct has any positional fields
+    comptime var has_positional_fields = false;
+    comptime {
+        for (fields) |field| {
+            const metadata = getSexpMetadata(T, field.name);
+            if (metadata.positional) {
+                has_positional_fields = true;
+                break;
+            }
+        }
+    }
+    
+    // Special case for single-field structs (but not for structs with positional fields)
+    // This handles cases like Effects{font: Font} receiving (font ...)
+    if (non_optional_non_default_count == 1 and items.len == 1 and !has_positional_fields) {
+        // Only apply if we have exactly one item and it's a list starting with the field name
+        if (ast.isList(items[0])) {
+            const item_list = ast.getList(items[0]).?;
+            if (item_list.len > 0 and ast.getSymbol(item_list[0]) != null) {
+                const sym = ast.getSymbol(item_list[0]).?;
+                inline for (fields) |field| {
+                    if (comptime std.mem.eql(u8, field.name, single_field_name.?)) {
+                        const metadata = comptime getSexpMetadata(T, field.name);
+                        const field_name = metadata.sexp_name orelse field.name;
+                        if (std.mem.eql(u8, sym, field_name)) {
+                            // The symbol matches the single field name, decode the entire list as that field
+                            @field(result, field.name) = try decode(field.type, allocator, items[0]);
+                            return result;
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     // Track which fields have been set
     var fields_set = std.StaticBitSet(fields.len).initEmpty();
@@ -276,23 +350,71 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
         }
     }
 
+    // Check if this is a struct with only positional fields
+    const all_positional = comptime blk: {
+        var all_pos = true;
+        var has_fields = false;
+        for (fields) |field| {
+            const metadata = getSexpMetadata(T, field.name);
+            has_fields = true;
+            if (!metadata.positional) {
+                all_pos = false;
+                break;
+            }
+        }
+        break :blk all_pos and has_fields;
+    };
+    
+    
+    // For structs with only positional fields, check if we need to skip a type symbol
+    // This handles cases like (xyz 0 0 0) where "xyz" is the type name
+    // But NOT cases like (edge 0.5) where "edge" is actual data
+    var positional_start: usize = 0;
+    if (all_positional and items.len > 0) {
+        if (ast.getSymbol(items[0])) |sym| {
+            // Only skip if the symbol looks like a type name (lowercase version of struct name)
+            const type_name = @typeName(T);
+            var last_dot: usize = 0;
+            for (type_name, 0..) |c, i| {
+                if (c == '.') last_dot = i + 1;
+            }
+            const short_name = type_name[last_dot..];
+            
+            // Create lowercase version for comparison
+            var lower_buf: [128]u8 = undefined;
+            if (short_name.len <= lower_buf.len) {
+                for (short_name, 0..) |c, i| {
+                    lower_buf[i] = std.ascii.toLower(c);
+                }
+                const lower_name = lower_buf[0..short_name.len];
+                
+                if (std.mem.eql(u8, sym, lower_name)) {
+                    positional_start = 1;
+                }
+            }
+        }
+    }
+    
     // Process positional fields based on order
+    var positional_idx: usize = positional_start;
     inline for (fields, 0..) |field, field_idx| {
         const metadata = comptime getSexpMetadata(T, field.name);
         if (metadata.positional) {
-            // If order > 0, it means this positional field comes after named fields
-            const pos_start = if (metadata.order > 0) kv_count else 0;
-            const pos_idx = pos_start + @as(usize, @intCast(@max(0, metadata.order - 1)));
+            // For positional fields, we need to find the next non-list item
+            while (positional_idx < items.len and ast.isList(items[positional_idx])) {
+                positional_idx += 1;
+            }
 
-            if (pos_idx < items.len and !ast.isList(items[pos_idx])) {
+            if (positional_idx < items.len) {
                 // Set context for positional fields too
                 setErrorContext(.{
                     .path = @typeName(T),
                     .field_name = field.name,
                     .sexp_preview = null,
-                }, items[pos_idx]);
-                @field(result, field.name) = try decode(field.type, allocator, items[pos_idx]);
+                }, items[positional_idx]);
+                @field(result, field.name) = try decode(field.type, allocator, items[positional_idx]);
                 fields_set.set(field_idx);
+                positional_idx += 1;
             }
         }
     }
@@ -373,14 +495,109 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
     inline for (fields, 0..) |field, field_idx| {
         if (!fields_set.isSet(field_idx)) {
             const metadata = comptime getSexpMetadata(T, field.name);
+            const field_name = metadata.sexp_name orelse field.name;
 
-            // Handle different field types
-            if (comptime isOptional(field.type)) {
-                @field(result, field.name) = null;
-            } else if (comptime isSlice(field.type) and metadata.multidict) {
-                // Empty slice for multidict
-                @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
-            } else {
+            // Before giving up, check if there's a single nested structure that matches this field
+            // This handles cases like (effects (font ...)) where font is the only content
+            var found_nested = false;
+            
+            for (items) |item| {
+                if (ast.isList(item)) {
+                    const nested_items = ast.getList(item).?;
+                    if (nested_items.len > 0) {
+                        if (ast.getSymbol(nested_items[0])) |sym| {
+                            if (std.mem.eql(u8, sym, field_name)) {
+                                // Check if this is just (field_name) with no value
+                                if (nested_items.len == 1 and field.default_value_ptr != null) {
+                                    // Use default value
+                                    fields_set.set(field_idx);
+                                    found_nested = true;
+                                    break;
+                                } else {
+                                    // Found a nested structure that matches this field
+                                    setErrorContext(.{
+                                        .path = @typeName(T),
+                                        .field_name = field.name,
+                                        .sexp_preview = null,
+                                    }, item);
+                                    // Parse the entire nested structure as the field value
+                                    @field(result, field.name) = try decode(field.type, allocator, item);
+                                    fields_set.set(field_idx);
+                                    found_nested = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Also check if we have a symbol followed by other items that form the value
+            // This handles cases like: font (size ...) (thickness ...)  
+            if (!found_nested) {
+                for (items, 0..) |item, idx| {
+                    if (ast.getSymbol(item)) |sym| {
+                        if (std.mem.eql(u8, sym, field_name)) {
+                            if (idx + 1 < items.len) {
+                                // Check if next items could be values (not other field names)
+                                var looks_like_value = true;
+                                if (ast.getSymbol(items[idx + 1])) |next_sym| {
+                                    // Check if next symbol is another field name
+                                    inline for (fields) |check_field| {
+                                        const check_meta = comptime getSexpMetadata(T, check_field.name);
+                                        const check_name = check_meta.sexp_name orelse check_field.name;
+                                        if (std.mem.eql(u8, next_sym, check_name)) {
+                                            looks_like_value = false;
+                                            break;
+                                        }
+                                    }
+                                }
+                                
+                                if (looks_like_value and field.default_value_ptr == null) {
+                                    // Found the field name as a symbol with values following
+                                    const value_items = items[idx + 1..];
+                                    const value_sexp = if (value_items.len == 1)
+                                        // Single item: pass directly
+                                        value_items[0]
+                                    else
+                                        // Multiple items: wrap in a list
+                                        SExp{ .value = .{ .list = value_items }, .location = null };
+                                    
+                                    setErrorContext(.{
+                                        .path = @typeName(T),
+                                        .field_name = field.name,
+                                        .sexp_preview = null,
+                                    }, value_sexp);
+                                    @field(result, field.name) = try decode(field.type, allocator, value_sexp);
+                                    fields_set.set(field_idx);
+                                    found_nested = true;
+                                    break;
+                                } else if (field.default_value_ptr != null) {
+                                    // Standalone field name with default - use default
+                                    fields_set.set(field_idx);
+                                    found_nested = true;
+                                    break;
+                                }
+                            } else if (field.default_value_ptr != null) {
+                                // Standalone field name at end with default - use default
+                                fields_set.set(field_idx);
+                                found_nested = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            
+            if (!found_nested) {
+                // Handle different field types
+                if (comptime isOptional(field.type)) {
+                    @field(result, field.name) = null;
+                } else if (comptime isSlice(field.type) and metadata.multidict) {
+                    // Empty slice for multidict
+                    @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
+                } else {
                 // Use default if available
                 const default_instance = std.mem.zeroInit(T, .{});
                 const zero_value = std.mem.zeroes(field.type);
@@ -401,6 +618,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     }, sexp);
                     return error.MissingField;
                 }
+            }
             }
         }
     }
@@ -427,29 +645,29 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
                 @memcpy(duped, str);
                 return duped;
             },
-            .symbol, .number => {
-                // Get current context to preserve field name
-                const ctx = getErrorContext();
-                setErrorContext(.{
-                    .path = if (ctx) |c| c.path else @typeName(T),
-                    .field_name = if (ctx) |c| c.field_name else null,
-                    .sexp_preview = "expected quoted string, got unquoted value",
-                }, sexp);
-                return error.UnexpectedType;
+            .symbol => |sym| {
+                // Allow symbols as strings for KiCad compatibility
+                const duped = try allocator.alloc(u8, sym.len);
+                @memcpy(duped, sym);
+                return duped;
+            },
+            .number => |num| {
+                // Allow numbers as strings for KiCad compatibility
+                const duped = try allocator.alloc(u8, num.len);
+                @memcpy(duped, num);
+                return duped;
             },
             else => {},
         }
     }
 
+    // For non-u8 slices, check if we have a list
     const items = ast.getList(sexp) orelse {
-        // Get current context to preserve field name
-        const ctx = getErrorContext();
-        setErrorContext(.{
-            .path = if (ctx) |c| c.path else @typeName(T),
-            .field_name = if (ctx) |c| c.field_name else null,
-            .sexp_preview = "expected list for slice",
-        }, sexp);
-        return error.UnexpectedType;
+        // If not a list, treat single value as a one-element slice
+        // This handles cases like (attr smd) where attr is [][]const u8
+        var result = try allocator.alloc(child_type, 1);
+        result[0] = try decode(child_type, allocator, sexp);
+        return result;
     };
 
     var result = try allocator.alloc(child_type, items.len);

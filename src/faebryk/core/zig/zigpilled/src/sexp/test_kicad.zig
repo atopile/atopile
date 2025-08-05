@@ -294,10 +294,22 @@ test "pcb: property" {
         return err;
     };
     defer structure.free(pcb.Property, allocator, property);
+
+    try std.testing.expectEqualStrings("Reference", property.name);
+    try std.testing.expectEqualStrings("G***", property.value);
+    try std.testing.expectEqualStrings("F.SilkS", property.layer);
+    try std.testing.expectEqualStrings("13bc68c1-7d1e-4abb-88c2-bf2277ec8354", property.uuid);
+    try std.testing.expectEqual(0, property.at.x);
+    try std.testing.expectEqual(0, property.at.y);
+    try std.testing.expectEqual(0, property.at.r);
+    try std.testing.expectEqual(true, property.hide);
+    try std.testing.expectEqual(1.524, property.effects.font.size.w);
+    try std.testing.expectEqual(1.524, property.effects.font.size.h);
+    try std.testing.expectEqual(0.3, property.effects.font.thickness.?);
 }
 
 test "load real pcb file" {
-    const FILE_PATH = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/pcb/test.kicad_pcb";
+    const FILE_PATH = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/pcb/top.kicad_pcb";
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -312,9 +324,9 @@ test "load real pcb file" {
     const pcb_ = pcb_file.kicad_pcb;
 
     try std.testing.expectEqual(20241229, pcb_.version);
-    try std.testing.expectEqual(@as(usize, 4), pcb_.footprints.len);
+    try std.testing.expectEqual(@as(usize, 12), pcb_.footprints.len);
     const fp_logo = pcb_.footprints[0];
-    try std.testing.expectEqualStrings("logos:faebryk_logo", fp_logo.name);
+    try std.testing.expectEqualStrings("UNI_ROYAL_0402WGF1001TCE:R0402", fp_logo.name);
 }
 
 pub fn main() !void {

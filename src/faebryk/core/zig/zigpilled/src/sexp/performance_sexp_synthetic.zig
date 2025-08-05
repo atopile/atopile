@@ -3,6 +3,7 @@ const tokenizer = @import("tokenizer.zig");
 const prettytable = @import("prettytable");
 const ast = @import("ast.zig");
 const netlist = @import("kicad/netlist.zig");
+const structure = @import("structure.zig");
 
 const Result = struct {
     tokenize_time: u64,
@@ -101,7 +102,9 @@ pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8)) !TestRun 
     timer.reset();
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-    const sexp = try ast.parse(arena.allocator(), tokens_seq);
+    const arena_allocator = arena.allocator();
+    var sexp = try ast.parse(arena_allocator, tokens_seq);
+    defer sexp.deinit(arena_allocator);
     const seq_parse_time = timer.read();
 
     timer.reset();
