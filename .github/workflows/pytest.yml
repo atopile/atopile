@@ -59,9 +59,6 @@ jobs:
 
     - name: Prepare test environment
       run: |
-        mkdir -p ~/.config/kicad/${{ env.KICAD_VERSION }}/
-        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-${{ env.KICAD_VERSION }}-fp-lib-table" ~/.config/kicad/${{ env.KICAD_VERSION }}/fp-lib-table
-
         mkdir -p /usr/share/kicad/
         aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-${{ env.KICAD_VERSION }}-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
 
