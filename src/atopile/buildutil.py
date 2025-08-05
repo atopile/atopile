@@ -38,6 +38,7 @@ from faebryk.libs.util import (
     compare_dataclasses,
     md_table,
     once,
+    round_dataclass,
     sort_dataclass,
 )
 
@@ -57,12 +58,16 @@ def _get_solver() -> Solver:
 def _update_layout(
     pcb_file: C_kicad_pcb_file, original_pcb_file: C_kicad_pcb_file
 ) -> None:
-    pcb_sorted = deepcopy(pcb_file)
-    sort_dataclass(original_pcb_file, sort_key=str)
-    sort_dataclass(pcb_sorted, sort_key=str)
+    pcb_original_normalized = round_dataclass(
+        sort_dataclass(original_pcb_file, sort_key=str, inplace=False), precision=2
+    )
+    pcb_normalized = round_dataclass(
+        sort_dataclass(pcb_file, sort_key=str, inplace=False), precision=2
+    )
+
     pcb_diff = compare_dataclasses(
-        before=original_pcb_file,
-        after=pcb_sorted,
+        before=pcb_original_normalized,
+        after=pcb_normalized,
         skip_keys=("uuid", "__atopile_lib_fp_hash__"),
         require_dataclass_type_match=False,
     )
@@ -76,7 +81,7 @@ def _update_layout(
                 ".updated.kicad_pcb"
             )
             original_pcb_file.dumps(original_path)
-            pcb_sorted.dumps(updated_path)
+            pcb_normalized.dumps(updated_path)
 
             # TODO: make this a real util
             def _try_relative(path: Path) -> Path:

@@ -23,6 +23,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from enum import Enum, StrEnum, auto
@@ -2768,7 +2769,12 @@ def path_replace(base: Path, match: Path, replacement: Path) -> Path:
     )
 
 
-def sort_dataclass(obj: Any, sort_key: Callable[[Any], Any], prefix: str = "") -> Any:
+def sort_dataclass(
+    obj: Any, sort_key: Callable[[Any], Any], prefix: str = "", inplace: bool = True
+) -> Any:
+    if not inplace:
+        obj = deepcopy(obj)  # TODO: more efficient copy
+
     for f in fields(obj):
         val = getattr(obj, f.name)
         if isinstance(val, list):
