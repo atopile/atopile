@@ -49,3 +49,31 @@ class DifferentialPair(ModuleInterface):
         # Apply suffixes to the electrical lines of the signals
         self.p.line.add(F.has_net_name_affix.suffix("_P"))
         self.n.line.add(F.has_net_name_affix.suffix("_N"))
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import DifferentialPair, ElectricPower
+
+        diff_pair = new DifferentialPair
+        diff_pair.impedance = 100ohm +/- 10%  # Common for high-speed signals
+
+        # Connect power reference for signal levels
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+        diff_pair.p.reference ~ power_3v3
+        diff_pair.n.reference ~ power_3v3
+
+        # Connect between transmitter and receiver
+        transmitter.diff_out ~ diff_pair
+        diff_pair ~ receiver.diff_in
+
+        # For terminated transmission line
+        terminated_pair = diff_pair.terminated()
+        transmitter.diff_out ~ terminated_pair
+
+        # Common applications: USB, Ethernet, PCIe, HDMI
+        usb_dp_dn = new DifferentialPair
+        usb_dp_dn.impedance = 90ohm +/- 10%
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

@@ -9,9 +9,7 @@ from faebryk.libs.util import times
 
 
 class DIP(F.Footprint):
-    def __init__(
-        self, pin_cnt: int, spacing: Quantity, long_pads: bool
-    ) -> None:
+    def __init__(self, pin_cnt: int, spacing: Quantity, long_pads: bool) -> None:
         super().__init__()
 
         self.spacing = spacing

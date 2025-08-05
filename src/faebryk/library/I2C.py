@@ -165,3 +165,26 @@ class I2C(ModuleInterface):
             # For now, we only raise if we find concrete duplicates.
 
     address_check: requires_unique_addresses
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import I2C, ElectricPower
+        
+        i2c_bus = new I2C
+        i2c_bus.frequency = 400kHz  # Fast mode
+        i2c_bus.address = 0x48  # Device address
+        
+        # Connect power reference for logic levels
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+        i2c_bus.scl.reference ~ power_3v3
+        i2c_bus.sda.reference ~ power_3v3
+        
+        # Connect to microcontroller
+        microcontroller.i2c ~ i2c_bus
+        
+        # Connect to I2C sensor
+        sensor.i2c ~ i2c_bus
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

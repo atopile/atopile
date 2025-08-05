@@ -92,4 +92,3 @@ class Resistor(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
-

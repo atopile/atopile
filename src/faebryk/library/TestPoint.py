@@ -23,3 +23,15 @@ class TestPoint(Module):
 
     def __preinit__(self):
         self.contact.add(F.requires_external_usage())
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import TestPoint
+        
+        test_point = new TestPoint
+        
+        # Connect to signal you want to probe
+        signal_to_test ~ test_point.contact
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
