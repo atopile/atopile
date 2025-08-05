@@ -1189,11 +1189,38 @@ class PCB_Transformer:
 
             fp.layer = _flip(fp.layer)
 
-            # TODO: sometimes pads are being rotated by kicad ?!??
-            for obj in fp.pads:
-                obj.layers = [_flip(x) for x in obj.layers]
+            # Mirror the footprint geometry about the Y-axis when flipping layers
+            # so that everything remains readable from the top view.
+            for pad in fp.pads:
+                pad.layers = [_flip(x) for x in pad.layers]
+                # Mirror pad centre and rotation
+                pad.at.y = -pad.at.y
+                if pad.at.r:
+                    pad.at.r = (360 - pad.at.r) % 360
 
+            # Mirror the remaining primitives inside the footprint.
             for obj in get_all_geos(fp) + fp.fp_texts + list(fp.propertys.values()):
+                # Objects that expose an `at` attribute (text & properties)
+                if isinstance(obj, (C_fp_text, C_footprint.C_property)):
+                    obj.at.y = -obj.at.y
+                    if obj.at.r:
+                        obj.at.r = (360 - obj.at.r) % 360
+
+                # Geometric primitives -------------------------------------------------
+                if isinstance(obj, (C_line, C_rect)):
+                    obj.start.y = -obj.start.y
+                    obj.end.y = -obj.end.y
+                elif isinstance(obj, C_arc):
+                    obj.start.y = -obj.start.y
+                    obj.mid.y = -obj.mid.y
+                    obj.end.y = -obj.end.y
+                elif isinstance(obj, C_circle):
+                    obj.center.y = -obj.center.y
+                    obj.end.y = -obj.end.y
+                elif isinstance(obj, (C_polygon, C_curve)) and hasattr(obj, "pts"):
+                    # Flip every stored point; keep X, negate Y
+                    obj.pts.xys = [pt.__class__(pt.x, -pt.y) for pt in obj.pts.xys]  # type: ignore[attr-defined]
+
                 if isinstance(obj, C_footprint.C_property):
                     obj = obj.layer
                 if isinstance(obj, C_fp_text):
