@@ -23,6 +23,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from enum import Enum, StrEnum, auto
@@ -1183,6 +1184,86 @@ class DAG[T]:
             parents.update(new_parents)
 
         return parents
+
+    @property
+    def _in_degrees_by_node(self) -> dict[T, int]:
+        return {node.value: len(node._parents) for node in self.nodes.values()}
+
+    def topologically_sorted(self) -> list[T]:
+        """
+        Performs a topological sort of the DAG.
+        Returns a list where each element comes after all its dependencies (parents).
+        Raises ValueError if the graph contains cycles.
+        """
+
+        if self.contains_cycles:
+            raise ValueError("Cannot topologically sort a graph with cycles")
+
+        in_degrees_by_node = self._in_degrees_by_node
+
+        # Start with nodes with no incoming edges
+        queue = deque(
+            [value for value, degree in in_degrees_by_node.items() if degree == 0]
+        )
+        out: list[T] = []
+
+        while queue:
+            # Remove a node with no incoming edges
+            current = queue.popleft()
+            out.append(current)
+
+            # Remove edges from current node to its children
+            current_node = self.nodes[current]
+            for child_node in current_node._children:
+                child_value = child_node.value
+                in_degrees_by_node[child_value] -= 1
+
+                # If child has no more incoming edges, add to queue
+                if in_degrees_by_node[child_value] == 0:
+                    queue.append(child_value)
+
+        assert len(out) == len(self.nodes), (
+            "Topological sort failed: graph contains cycles"
+        )
+
+        return out
+
+    def get_subgraph(self, selector_func: Callable[[T], bool]) -> "DAG[T]":
+        """
+        Create the smallest subgraph that contains all nodes selected by the selector
+        function.
+
+        Args:
+            selector_func: A callable that returns True for nodes that must be included
+
+        Returns:
+            A new DAG containing the selected nodes and all their dependencies
+        """
+
+        subgraph = DAG[T]()
+
+        selected_nodes = {
+            node_value for node_value in self.nodes if selector_func(node_value)
+        }
+
+        if not selected_nodes:
+            return subgraph
+
+        nodes_to_include = selected_nodes.copy()
+
+        for node_value in selected_nodes:
+            nodes_to_include |= self.all_parents(node_value)
+
+        for node_value in nodes_to_include:
+            subgraph.add_or_get(node_value)
+
+        for node_value in nodes_to_include:
+            node = self.nodes[node_value]
+            for child_node in node._children:
+                if child_node.value in nodes_to_include:
+                    subgraph.add_edge(node_value, child_node.value)
+
+        return subgraph
 
 
 class Tree[T](dict[T, "Tree[T]"]):
@@ -2688,7 +2769,12 @@ def path_replace(base: Path, match: Path, replacement: Path) -> Path:
     )
 
 
-def sort_dataclass(obj: Any, sort_key: Callable[[Any], Any], prefix: str = "") -> Any:
+def sort_dataclass(
+    obj: Any, sort_key: Callable[[Any], Any], prefix: str = "", inplace: bool = True
+) -> Any:
+    if not inplace:
+        obj = deepcopy(obj)  # TODO: more efficient copy
+
     for f in fields(obj):
         val = getattr(obj, f.name)
         if isinstance(val, list):

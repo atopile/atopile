@@ -145,7 +145,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     "package,package_str",
     [
         (SMDSize.I0402, "L0402"),
-        (SMDSize.SMD0_6x1_2mm, "SMD0_6x1_2mm"),
+        (SMDSize.SMD1_1x1_8mm, "SMD1_1x1_8mm"),
     ],
 )
 def test_ato_pick_inductor(
