@@ -151,7 +151,7 @@ class ElectricLogic(F.ElectricSignal):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import ElectricLogic
-        
+
         logic_signal = new ElectricLogic
 
         logic_signal.reference ~ example_electric_power

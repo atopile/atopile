@@ -42,14 +42,14 @@ class JTAG(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import JTAG, ElectricPower, Resistor
-        
+
         jtag = new JTAG
-        
+
         # Connect voltage reference for all logic signals
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
         jtag.vtref ~ power_3v3
-        
+
         # All logic signals use same reference
         jtag.tdo.reference ~ power_3v3
         jtag.tdi.reference ~ power_3v3
@@ -58,7 +58,7 @@ class JTAG(ModuleInterface):
         jtag.n_trst.reference ~ power_3v3
         jtag.n_reset.reference ~ power_3v3
         jtag.dbgrq.reference ~ power_3v3
-        
+
         # Connect to microcontroller JTAG interface
         microcontroller.jtag_tdo ~ jtag.tdo.line
         microcontroller.jtag_tdi ~ jtag.tdi.line
@@ -66,10 +66,10 @@ class JTAG(ModuleInterface):
         microcontroller.jtag_tck ~ jtag.tck.line
         microcontroller.jtag_trst ~ jtag.n_trst.line
         microcontroller.reset_n ~ jtag.n_reset.line
-        
+
         # Connect to JTAG debugger/programmer
         debugger.jtag ~ jtag
-        
+
         # Pullup resistors for reset lines
         trst_pullup = new Resistor
         reset_pullup = new Resistor

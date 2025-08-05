@@ -36,9 +36,9 @@ class SWD(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import SWD, ElectricPower, Resistor
-        
+
         swd = new SWD
-        
+
         # Connect power reference for logic levels
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
@@ -46,21 +46,21 @@ class SWD(ModuleInterface):
         swd.dio.reference ~ power_3v3
         swd.swo.reference ~ power_3v3
         swd.reset.reference ~ power_3v3
-        
+
         # Connect to microcontroller SWD interface
         microcontroller.swd_clk ~ swd.clk.line
         microcontroller.swd_dio ~ swd.dio.line
         microcontroller.swd_swo ~ swd.swo.line
         microcontroller.reset_n ~ swd.reset.line
-        
+
         # Connect to debugger/programmer
         debugger.swd ~ swd
-        
+
         # Optional pullup resistors for robust operation
         reset_pullup = new Resistor
         reset_pullup.resistance = 10kohm +/- 5%
         swd.reset.line ~> reset_pullup ~> power_3v3.hv
-        
+
         # SWD is commonly used for ARM Cortex-M debugging and programming
         """,
         language=F.has_usage_example.Language.ato,

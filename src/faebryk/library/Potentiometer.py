@@ -32,13 +32,13 @@ class Potentiometer(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Potentiometer, ElectricPower, Electrical
-        
+
         potentiometer = new Potentiometer
         potentiometer.total_resistance = 10kohm +/- 5%
-        
+
         power_supply = new ElectricPower
         output_voltage = new Electrical
-        
+
         # Use as voltage divider
         power_supply.hv ~ potentiometer.resistors_ifs[0]
         power_supply.lv ~ potentiometer.resistors_ifs[1]

@@ -12,7 +12,8 @@ from faebryk.libs.units import P
 
 class ElectricPower(F.Power):
     """
-    ElectricPower is a class that represents a power rail. Power rails have a higher potential (hv), and lower potential (lv) Electrical.
+    ElectricPower is a class that represents a power rail. Power rails have a
+    higher potential (hv), and lower potential (lv) Electrical.
     """
 
     class can_be_decoupled_power(F.can_be_decoupled.impl()):

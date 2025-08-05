@@ -80,7 +80,7 @@ class Resistor(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Resistor
-        
+
         resistor = new Resistor
         resistor.resistance = 10kohm +/- 5%
         resistor.package = "0402"

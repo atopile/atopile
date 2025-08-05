@@ -43,22 +43,22 @@ class I2S(ModuleInterface):
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
         i2s.sd.reference ~ power_3v3   # Serial Data
-        i2s.ws.reference ~ power_3v3   # Word Select (Left/Right Clock)  
+        i2s.ws.reference ~ power_3v3   # Word Select (Left/Right Clock)
         i2s.sck.reference ~ power_3v3  # Serial Clock (Bit Clock)
-        
+
         # Connect to microcontroller I2S peripheral
         microcontroller.i2s_sd ~ i2s.sd.line
         microcontroller.i2s_ws ~ i2s.ws.line
         microcontroller.i2s_sck ~ i2s.sck.line
-        
+
         # Connect to audio codec or DAC/ADC
         audio_codec.i2s ~ i2s
-        
+
         # I2S timing relationships:
         # - SCK frequency = sample_rate * bit_depth * 2 (stereo)
         # - WS frequency = sample_rate (toggles left/right channel)
         # - SD carries time-multiplexed audio data
-        
+
         # Common applications: digital audio, microphones, speakers
         """,
         language=F.has_usage_example.Language.ato,

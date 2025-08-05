@@ -64,7 +64,7 @@ class CapacitorElectrolytic(F.Capacitor):
 
         # Common values and applications:
         # - 10-100uF: Local power supply filtering
-        # - 100-1000uF: Bulk power supply capacitance  
+        # - 100-1000uF: Bulk power supply capacitance
         # - 1000-10000uF: Main power supply smoothing
         # - Audio coupling: 1-100uF (mind polarity!)
 

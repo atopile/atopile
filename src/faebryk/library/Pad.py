@@ -49,7 +49,7 @@ class Pad(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import Pad
-        
+
         pad = new Pad
         electrical_signal ~ pad.net
         """,

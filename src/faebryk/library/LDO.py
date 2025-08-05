@@ -138,7 +138,7 @@ class LDO(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import LDO, ElectricPower, Capacitor
-        
+
         ldo = new LDO
         ldo.output_voltage = 3.3V +/- 2%
         ldo.max_input_voltage = 6V
@@ -146,19 +146,19 @@ class LDO(Module):
         ldo.dropout_voltage = 300mV +/- 50%
         ldo.output_type = LDO.OutputType.FIXED
         ldo.package = "SOT-223"
-        
+
         # Connect input power (typically 5V)
         power_5v = new ElectricPower
         assert power_5v.voltage within 5V +/- 5%
         ldo.power_in ~ power_5v
-        
+
         # Connect output power (regulated 3.3V)
         power_3v3 = new ElectricPower
         ldo.power_out ~ power_3v3
-        
+
         # Enable the LDO
         ldo.enable_output()
-        
+
         # Add input and output capacitors
         input_cap = new Capacitor
         output_cap = new Capacitor
