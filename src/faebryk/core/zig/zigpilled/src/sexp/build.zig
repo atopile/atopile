@@ -22,16 +22,6 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(example_ast);
 
-    // Example fp_lib_table usage
-    const fp_lib_table = b.addExecutable(.{
-        .name = "example_kicad",
-        .root_source_file = b.path("example_kicad.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    b.installArtifact(fp_lib_table);
-
-    // Tests
     const tokenizer_test = b.addTest(.{
         .root_source_file = b.path("test_tokenizer.zig"),
         .target = target,
@@ -63,11 +53,6 @@ pub fn build(b: *std.Build) void {
     const run_example = b.addRunArtifact(example_ast);
     const example_step = b.step("example", "Run comprehensive example");
     example_step.dependOn(&run_example.step);
-
-    // Run fp_lib_table example
-    const run_fp_example = b.addRunArtifact(fp_lib_table);
-    const fp_example_step = b.step("fp-example", "Run fp_lib_table example");
-    fp_example_step.dependOn(&run_fp_example.step);
 
     // Run performance test
     const run_perf = b.addRunArtifact(perf_test);

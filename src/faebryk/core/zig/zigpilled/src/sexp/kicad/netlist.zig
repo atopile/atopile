@@ -36,16 +36,26 @@ pub const Fields = struct {
     };
 };
 
+pub const Tstamps = struct {
+    tstamps: [][]const u8 = &.{},
+
+    pub const fields_meta = .{
+        .tstamps = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const Component = struct {
     ref: []const u8,
     value: []const u8,
     footprint: []const u8,
     propertys: []Property = &.{},
-    tstamps: []const u8,  // Usually single, but can be multiple in some files
+    // TODO handle multiple tstamp values
+    //tstamps: Tstamps,
+    tstamps: []const u8,
     fields: ?Fields = null,
     sheetpath: ?Sheetpath = null,
     libsource: ?Libsource = null,
-    datasheet: ?[]const u8 = null,  // Added based on real file
+    datasheet: ?[]const u8 = null, // Added based on real file
 
     pub const fields_meta = .{
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },

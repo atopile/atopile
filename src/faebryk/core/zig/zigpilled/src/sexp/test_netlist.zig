@@ -3,13 +3,27 @@ const netlist = @import("kicad/netlist.zig");
 const structure = @import("structure.zig");
 
 test "load real netlist file - basic checks" {
-    // Skip this test for now - the real netlist has edge cases like:
-    // - Multiple tstamps values: (tstamps "val1" "val2" "val3")
-    // - Empty field values
-    // - Other variations not present in our test cases
-    //
-    // TODO: Update the structure decoder to handle these cases
-    return error.SkipZigTest;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var netlist_file = netlist.NetlistFile.read(allocator, "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net") catch |err| {
+        std.debug.print("Error parsing real netlist: {}\n", .{err});
+        if (structure.getErrorContext()) |ctx| {
+            var ctx_with_source = ctx;
+            ctx_with_source.source = try std.fs.cwd().readFileAlloc(allocator, "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net", 1024 * 1024);
+            defer allocator.free(ctx_with_source.source.?);
+            std.debug.print("{}\n", .{ctx_with_source});
+        }
+        return err;
+    };
+    defer netlist_file.free(allocator);
+
+    try std.testing.expect(netlist_file.netlist != null);
+    const nl = netlist_file.netlist.?;
+
+    try std.testing.expectEqualStrings("E", nl.version);
+    try std.testing.expectEqual(@as(usize, 13), nl.components.comps.len);
 }
 
 test "comprehensive netlist example" {
@@ -191,7 +205,7 @@ test "comprehensive netlist example" {
     try std.testing.expectEqual(nl.components.comps.len, nl2.components.comps.len);
     try std.testing.expectEqual(nl.nets.nets.len, nl2.nets.nets.len);
     try std.testing.expectEqual(nl.libparts.libparts.len, nl2.libparts.libparts.len);
-    
+
     // Note: We don't need to call free when using arena allocator
     // The arena.deinit() in the defer statement will free all memory
 }
@@ -267,7 +281,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
 
     // Use the comprehensive test netlist that we know works
-    const test_netlist_str = 
+    const test_netlist_str =
         \\(export (version "E")
         \\  (design
         \\    (source "test_circuit.kicad_sch")
@@ -349,7 +363,7 @@ pub fn main() !void {
         \\  (libraries)
         \\)
     ;
-    
+
     var parsed = netlist.NetlistFile.loads(allocator, test_netlist_str) catch |err| {
         std.debug.print("Error loading netlist: {}\n", .{err});
         if (structure.getErrorContext()) |ctx| {
@@ -362,7 +376,7 @@ pub fn main() !void {
     defer parsed.free(allocator);
 
     std.debug.print("Parsed netlist is null: {}\n", .{parsed.netlist == null});
-    
+
     if (parsed.netlist) |nl| {
         std.debug.print("Loaded netlist version: {s}\n", .{nl.version});
         std.debug.print("Components: {} (expected 2)\n", .{nl.components.comps.len});
