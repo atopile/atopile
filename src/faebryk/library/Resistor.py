@@ -42,57 +42,26 @@ class Resistor(Module):
             S(self.max_power),
         )
 
-    def allow_removal_if_zero(self):
-        # FIXME: enable as soon as solver works
-        return
-        # import faebryk.library._F as F
-
-        # @once
-        # def do_replace():
-        #     self.resistance.constrain_subset(0.0 * P.ohm)
-        #     self.unnamed[0].connect(self.unnamed[1])
-        #     self.add(F.has_part_removed())
-        #
-        # self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
-        #     lambda: do_replace(),
-        #     lambda: None,
-        #     preference=True,
-        # )
-        #
-        # def replace_zero(m: Module, solver: Solver):
-        #     assert m is self
-        #
-        #     solver.assert_any_predicate(
-        #         [(Is(self.resistance, 0.0 * P.ohm), None)], lock=True
-        #     )
-        #
-        # self.add(
-        #    F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))
-        # )
-
-    # TODO: remove @https://github.com/atopile/atopile/issues/727
-    @property
-    def p1(self) -> F.Electrical:
-        """One side of the resistor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """The other side of the resistor."""
-        return self.unnamed[1]
-
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Resistor
+        #pragma experiment("BRIDGE_CONNECT")
 
-        resistor = new Resistor
-        resistor.resistance = 10kohm +/- 5%
-        resistor.package = "0402"
+        import Electrical, Resistor
 
-        electrical1 ~ resistor.unnamed[0]
-        electrical2 ~ resistor.unnamed[1]
-        # OR
-        electrical1 ~> resistor ~> electrical2
+        module App:
+            resistor = new Resistor
+            resistor.resistance = 100ohm +/- 5%
+            assert resistor.max_power >= 100mW
+            assert resistor.max_voltage >= 10V
+            resistor.package = "0402"
+
+            electrical1 = new Electrical
+            electrical2 = new Electrical
+
+            electrical1 ~ resistor.unnamed[0]
+            electrical2 ~ resistor.unnamed[1]
+            # OR
+            electrical1 ~> resistor ~> electrical2
         """,
         language=F.has_usage_example.Language.ato,
     )
