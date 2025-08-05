@@ -106,6 +106,18 @@ pub fn getErrorContext() ?ErrorContext {
     return current_error_context;
 }
 
+pub fn printError(source: []const u8, err: anytype) void {
+    std.debug.print("Error parsing: {}\n", .{err});
+
+    if (getErrorContext()) |ctx| {
+        var ctx_with_source = ctx;
+        ctx_with_source.source = source;
+        std.debug.print("{}\n", .{ctx_with_source});
+    } else {
+        std.debug.print("No error context\n", .{});
+    }
+}
+
 fn clearErrorContext() void {
     current_error_context = null;
 }

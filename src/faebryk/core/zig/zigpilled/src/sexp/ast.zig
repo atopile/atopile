@@ -189,31 +189,11 @@ pub const Parser = struct {
     }
 };
 
+// Parse with arena allocator for better performance!
 // Parse a single S-expression
 pub fn parse(allocator: std.mem.Allocator, tokens: []const Token) ParseError!SExp {
     var parser = Parser.init(allocator, tokens);
     return try parser.parse() orelse return error.EmptyFile;
-}
-
-// Parse with arena allocator for better performance
-pub fn parseArena(base_allocator: std.mem.Allocator, tokens: []const Token) ParseError!?SExp {
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    errdefer arena.deinit();
-
-    var parser = Parser.init(arena.allocator(), tokens);
-    const result = try parser.parse();
-
-    // Transfer ownership of arena to the SExp
-    // The caller must call deinit on the SExp to free the arena
-    if (result) |sexp| {
-        // Store arena state in a way that can be accessed later
-        // For now, we'll just use the regular parse
-        // TODO: Implement proper arena ownership transfer
-        return sexp;
-    }
-
-    arena.deinit();
-    return null;
 }
 
 // Helper functions for working with S-expressions -------------------------------------

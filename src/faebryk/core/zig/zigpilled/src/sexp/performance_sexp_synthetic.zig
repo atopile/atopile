@@ -99,9 +99,10 @@ pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8)) !TestRun 
     const seq_token_time = timer.read();
 
     timer.reset();
-    var sexp = try ast.parse(allocator, tokens_seq);
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const sexp = try ast.parse(arena.allocator(), tokens_seq);
     const seq_parse_time = timer.read();
-    defer sexp.deinit(allocator);
 
     timer.reset();
     var netlistfile = try netlist.NetlistFile.loads(allocator, .{ .sexp = sexp });
@@ -154,19 +155,16 @@ pub fn main() !void {
         "Test #",
         "Input Size",
         "Tokens",
-        "Tok Seq",
-        "Tok Par",
-        "AST",
-        "Structure",
-        "Speedup",
-        "Throughput",
+        "Lexical",
+        "Syntactic",
+        "Semantic",
     });
     // bug?
     //table.setAlign(prettytable.Alignment.right);
 
-    const C = 5;
+    const C = 10;
 
-    var cell_buffers: [C][9][32]u8 = undefined;
+    var cell_buffers: [C][6][32]u8 = undefined;
 
     for (0..C) |i| {
         const factor = (i + 1) * (i + 1) * (i + 1);
@@ -178,41 +176,32 @@ pub fn main() !void {
 
         // Generate about 5MB of S-expression data
         try content.appendSlice(TEMPLATE_HEADER);
-        for (0..5 * factor) |_| {
+        for (0..100 * factor) |_| {
             try content.appendSlice(TEMPLATE_ENTRY);
         }
         try content.appendSlice(TEMPLATE_FOOTER);
 
         const result = try bench(allocator, content);
 
-        const tokenize_time_seq_ms = @as(f64, @floatFromInt(result.seq.tokenize_time)) / 1_000_000.0;
         const tokenize_time_par_ms = @as(f64, @floatFromInt(result.par.tokenize_time)) / 1_000_000.0;
         const ast_time_ms = @as(f64, @floatFromInt(result.seq.parse_time)) / 1_000_000.0;
         const structure_time_ms = @as(f64, @floatFromInt(result.seq.structure_time)) / 1_000_000.0;
-        const speedup = tokenize_time_seq_ms / tokenize_time_par_ms;
         const mb = @as(f64, @floatFromInt(content.items.len)) / (1024.0 * 1024.0);
-        const mb_s = mb / tokenize_time_par_ms * 1000;
 
         const test_num = try std.fmt.bufPrint(&cell_buffers[i][0], "{}", .{i + 1});
         const size = try std.fmt.bufPrint(&cell_buffers[i][1], "{d:.2} MB", .{mb});
         const tokens = try std.fmt.bufPrint(&cell_buffers[i][2], "{}", .{result.token_count});
-        const seq = try std.fmt.bufPrint(&cell_buffers[i][3], "{d:.2} ms", .{tokenize_time_seq_ms});
-        const par = try std.fmt.bufPrint(&cell_buffers[i][4], "{d:.2} ms", .{tokenize_time_par_ms});
-        const ast_time = try std.fmt.bufPrint(&cell_buffers[i][5], "{d:.2} ms", .{ast_time_ms});
-        const structure_time = try std.fmt.bufPrint(&cell_buffers[i][6], "{d:.2} ms", .{structure_time_ms});
-        const speedup_str = try std.fmt.bufPrint(&cell_buffers[i][7], "{d:.2}x", .{speedup});
-        const throughput = try std.fmt.bufPrint(&cell_buffers[i][8], "{d:.2} MB/s", .{mb_s});
+        const par = try std.fmt.bufPrint(&cell_buffers[i][3], "{d:.2} ms ({d:.2} MB/s)", .{ tokenize_time_par_ms, mb / tokenize_time_par_ms * 1000 });
+        const ast_time = try std.fmt.bufPrint(&cell_buffers[i][4], "{d:.2} ms ({d:.2} MB/s)", .{ ast_time_ms, mb / ast_time_ms * 1000 });
+        const structure_time = try std.fmt.bufPrint(&cell_buffers[i][5], "{d:.2} ms ({d:.2} MB/s)", .{ structure_time_ms, mb / structure_time_ms * 1000 });
 
         try table.addRow(&.{
             test_num,
             size,
             tokens,
-            seq,
             par,
             ast_time,
             structure_time,
-            speedup_str,
-            throughput,
         });
     }
 

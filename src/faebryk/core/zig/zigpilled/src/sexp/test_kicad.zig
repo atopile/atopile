@@ -1,22 +1,17 @@
 const std = @import("std");
 const netlist = @import("kicad/netlist.zig");
+const pcb = @import("kicad/pcb.zig");
 const structure = @import("structure.zig");
 
 test "load real netlist file - basic checks" {
+    const FILE_PATH = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net";
+
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var netlist_file = netlist.NetlistFile.loads(allocator, .{ .path = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net" }) catch |err| {
-        std.debug.print("Error parsing real netlist: {}\n", .{err});
-        if (structure.getErrorContext()) |ctx| {
-            var ctx_with_source = ctx;
-            ctx_with_source.source = try std.fs.cwd().readFileAlloc(allocator, "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net", 1024 * 1024);
-            defer allocator.free(ctx_with_source.source.?);
-            std.debug.print("{}\n", .{ctx_with_source});
-        } else {
-            std.debug.print("No error context\n", .{});
-        }
+    var netlist_file = netlist.NetlistFile.loads(allocator, .{ .path = FILE_PATH }) catch |err| {
+        structure.printError(try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024), err);
         return err;
     };
     defer netlist_file.free(allocator);
@@ -272,6 +267,54 @@ test "simple round-trip netlist" {
     try std.testing.expectEqual(nl1.components.comps.len, nl2.components.comps.len);
     try std.testing.expectEqual(nl1.nets.nets.len, nl2.nets.nets.len);
     try std.testing.expectEqual(nl1.libparts.libparts.len, nl2.libparts.libparts.len);
+}
+
+test "pcb: property" {
+    const sexp_string =
+        \\ (property "Reference" "G***"
+        \\   (at 0 0 0)
+        \\   (hide yes)
+        \\   (layer "F.SilkS")
+        \\   (uuid "13bc68c1-7d1e-4abb-88c2-bf2277ec8354")
+        \\   (effects
+        \\     (font
+        \\       (size 1.524 1.524)
+        \\       (thickness 0.3)
+        \\     )
+        \\   )
+        \\ )
+    ;
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const property = structure.loads(pcb.Property, allocator, .{ .string = sexp_string }, "property") catch |err| {
+        structure.printError(sexp_string, err);
+        return err;
+    };
+    defer structure.free(pcb.Property, allocator, property);
+}
+
+test "load real pcb file" {
+    const FILE_PATH = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/pcb/test.kicad_pcb";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var pcb_file = pcb.PcbFile.loads(allocator, .{ .path = FILE_PATH }) catch |err| {
+        structure.printError(try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024), err);
+        return err;
+    };
+    defer pcb_file.free(allocator);
+
+    const pcb_ = pcb_file.kicad_pcb;
+
+    try std.testing.expectEqual(20241229, pcb_.version);
+    try std.testing.expectEqual(@as(usize, 4), pcb_.footprints.len);
+    const fp_logo = pcb_.footprints[0];
+    try std.testing.expectEqualStrings("logos:faebryk_logo", fp_logo.name);
 }
 
 pub fn main() !void {
