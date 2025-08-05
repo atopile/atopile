@@ -1,5 +1,5 @@
 # a minimal Dockerfile for CI
-ARG KICAD_VERSION=9.0.0
+ARG KICAD_VERSION=9.0.3
 FROM ghcr.io/kicad/kicad:${KICAD_VERSION}
 
 ENV PYTHONDONTWRITEBYTECODE=1
