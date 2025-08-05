@@ -221,10 +221,12 @@ def build(app: Module) -> None:
         if config.build.keep_designators:
             load_designators(G(), attach=True)
 
-    with LoggingStage("picker", "Picking components") as stage:
+    with LoggingStage("solver", "Solving constraints") as stage:
         if config.build.keep_picked_parts:
             load_part_info_from_pcb(G())
             solver.simplify(G())
+        
+    with LoggingStage("picking", "Picking components"):
         try:
             pick_part_recursively(app, solver, progress=stage)
         except* PickError as ex:
