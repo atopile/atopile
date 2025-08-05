@@ -45,9 +45,6 @@ jobs:
       with:
         python-version-file: "pyproject.toml"
 
-    - name: Setup cmake
-      uses: jwlawson/actions-setup-cmake@v2
-
     - name: Run pytest
       id: pytest
       continue-on-error: true
