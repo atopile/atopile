@@ -8,35 +8,34 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
         .root_source_file = b.path("src/sexp.zig"),
     });
     
-    // List of test files
-    const test_files = [_][]const u8{
-        "test_ast.zig",
-        "test_ast_2.zig",
-        "test_effects_value.zig",
-        "test_kicad.zig",
-        "test_layer_parsing.zig",
-        "test_location.zig",
-        "test_positional_debug.zig",
-        "test_struct_parsing.zig",
-        "test_structure.zig",
-        "test_textlayer.zig",
-        "test_tokenizer.zig",
-        "test_xyz.zig",
+    // Automatically discover test files
+    const test_dir_path = b.pathFromRoot("test");
+    var test_dir = std.fs.openDirAbsolute(test_dir_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Failed to open test directory: {}\n", .{err});
+        return;
     };
+    defer test_dir.close();
     
-    for (test_files) |test_file| {
-        const test_path = b.fmt("test/{s}", .{test_file});
-        const _test = b.addTest(.{
-            .root_source_file = b.path(test_path),
-            .target = target,
-            .optimize = optimize,
-        });
-        
-        // Add only the sexp module to the test
-        _test.root_module.addImport("sexp", sexp_mod);
-        
-        const run_test = b.addRunArtifact(_test);
-        test_step.dependOn(&run_test.step);
+    var iterator = test_dir.iterate();
+    while (iterator.next() catch null) |entry| {
+        // Look for test_*.zig files
+        if (entry.kind == .file and 
+            std.mem.startsWith(u8, entry.name, "test_") and 
+            std.mem.endsWith(u8, entry.name, ".zig")) 
+        {
+            const test_path = b.fmt("test/{s}", .{entry.name});
+            const _test = b.addTest(.{
+                .root_source_file = b.path(test_path),
+                .target = target,
+                .optimize = optimize,
+            });
+            
+            // Add only the sexp module to the test
+            _test.root_module.addImport("sexp", sexp_mod);
+            
+            const run_test = b.addRunArtifact(_test);
+            test_step.dependOn(&run_test.step);
+        }
     }
 }
 
