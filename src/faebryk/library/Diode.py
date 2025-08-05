@@ -93,3 +93,24 @@ class Diode(Module):
         self, input_voltage_V: ParameterOperatable
     ):
         return (input_voltage_V - self.forward_voltage) / self.current
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Diode, Resistor, ElectricPower
+        
+        diode = new Diode
+        diode.forward_voltage = 0.7V +/- 10%
+        diode.current = 10mA +/- 5%
+        diode.reverse_working_voltage = 50V
+        diode.max_current = 100mA
+        diode.package = "SOD-123"
+
+        # Connect as rectifier
+        ac_input ~ diode.anode
+        diode.cathode ~ dc_output
+        
+        # With current limiting resistor
+        power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

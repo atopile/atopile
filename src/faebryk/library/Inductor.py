@@ -78,3 +78,25 @@ class Inductor(Module):
     def p2(self) -> F.Electrical:
         """Signal to the other side of the inductor."""
         return self.unnamed[1]
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Inductor
+        
+        inductor = new Inductor
+        inductor.inductance = 10uH +/- 10%
+        inductor.max_current = 2A
+        inductor.dc_resistance = 50mohm +/- 20%
+        inductor.self_resonant_frequency = 100MHz +/- 10%
+        inductor.package = "0805"
+
+        electrical1 ~ inductor.unnamed[0]
+        electrical2 ~ inductor.unnamed[1]
+        # OR
+        electrical1 ~> inductor ~> electrical2
+        
+        # For filtering applications
+        power_input ~> inductor ~> filtered_output
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

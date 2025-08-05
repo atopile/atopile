@@ -21,3 +21,45 @@ class JTAG(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import JTAG, ElectricPower, Resistor
+        
+        jtag = new JTAG
+        
+        # Connect voltage reference for all logic signals
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+        jtag.vtref ~ power_3v3
+        
+        # All logic signals use same reference
+        jtag.tdo.reference ~ power_3v3
+        jtag.tdi.reference ~ power_3v3
+        jtag.tms.reference ~ power_3v3
+        jtag.tck.reference ~ power_3v3
+        jtag.n_trst.reference ~ power_3v3
+        jtag.n_reset.reference ~ power_3v3
+        jtag.dbgrq.reference ~ power_3v3
+        
+        # Connect to microcontroller JTAG interface
+        microcontroller.jtag_tdo ~ jtag.tdo.line
+        microcontroller.jtag_tdi ~ jtag.tdi.line
+        microcontroller.jtag_tms ~ jtag.tms.line
+        microcontroller.jtag_tck ~ jtag.tck.line
+        microcontroller.jtag_trst ~ jtag.n_trst.line
+        microcontroller.reset_n ~ jtag.n_reset.line
+        
+        # Connect to JTAG debugger/programmer
+        debugger.jtag ~ jtag
+        
+        # Pullup resistors for reset lines
+        trst_pullup = new Resistor
+        reset_pullup = new Resistor
+        trst_pullup.resistance = 10kohm +/- 5%
+        reset_pullup.resistance = 10kohm +/- 5%
+        jtag.n_trst.line ~> trst_pullup ~> power_3v3.hv
+        jtag.n_reset.line ~> reset_pullup ~> power_3v3.hv
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

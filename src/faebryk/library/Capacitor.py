@@ -130,3 +130,20 @@ class Capacitor(Module):
             self.add(self._has_power(power))
 
         return power
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Capacitor
+        
+        capacitor = new Capacitor
+        capacitor.capacitance = 100nF +/- 10%
+        assert capacitor.max_voltage within 25V to 50V
+        capacitor.package = "0603"
+
+        electrical1 ~ capacitor.unnamed[0]
+        electrical2 ~ capacitor.unnamed[1]
+        # OR
+        electrical1 ~> capacitor ~> electrical2
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

@@ -81,7 +81,6 @@ class MultiCapacitor(F.Capacitor):
             c_new.specialize(c_old)
         return obj
 
-
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import MultiCapacitor

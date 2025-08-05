@@ -50,3 +50,46 @@ class EEPROM(Module):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import EEPROM, ElectricPower, I2C, Resistor
+        
+        eeprom = new EEPROM
+        eeprom.memory_size = 32kbit  # Common sizes: 1k, 2k, 4k, 8k, 16k, 32k, 64k, 128k bit
+        
+        # Connect power supply
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+        eeprom.power ~ power_3v3
+        
+        # Connect I2C bus
+        i2c_bus = new I2C
+        i2c_bus.frequency = 400kHz  # Fast mode
+        eeprom.i2c ~ i2c_bus
+        
+        # Connect to microcontroller
+        microcontroller.i2c ~ i2c_bus
+        
+        # Set device address using address pins
+        eeprom.set_address(0)  # Device address 0b000
+        
+        # Connect address pins to power rails for different addresses
+        eeprom.address[0].line ~ power_3v3.lv  # A0 = 0
+        eeprom.address[1].line ~ power_3v3.lv  # A1 = 0  
+        eeprom.address[2].line ~ power_3v3.lv  # A2 = 0
+        
+        # Write protect control (optional)
+        eeprom.write_protect.reference ~ power_3v3
+        eeprom.write_protect.line ~ power_3v3.lv  # Enable writes
+        
+        # Pull-up resistors for I2C (if not provided elsewhere)
+        sda_pullup = new Resistor
+        scl_pullup = new Resistor
+        sda_pullup.resistance = 4.7kohm +/- 5%
+        scl_pullup.resistance = 4.7kohm +/- 5%
+        i2c_bus.sda.line ~> sda_pullup ~> power_3v3.hv
+        i2c_bus.scl.line ~> scl_pullup ~> power_3v3.hv
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

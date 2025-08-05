@@ -24,3 +24,22 @@ class MultiSPI(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    # ----------------------------------------
+    #              usage example
+    # ----------------------------------------
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import MultiSPI, SPI
+
+        # Microcontroller SPI peripheral
+        mcu_spi = new SPI
+
+        # Quad-SPI flash interface (4 data lanes)
+        qspi = new MultiSPI<int_=4>
+
+        # Connect the buses
+        mcu_spi ~ qspi
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
