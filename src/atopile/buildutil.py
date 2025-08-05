@@ -131,7 +131,6 @@ def _update_layout(
                     else "",
                 ),
                 title="Frozen failed",
-                # No markdown=False here because we have both a command and paths
             )
         else:
             logger.info("No changes to layout. Passed --frozen check.")
