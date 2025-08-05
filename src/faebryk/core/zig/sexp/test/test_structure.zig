@@ -1,7 +1,6 @@
 const std = @import("std");
 const testing = std.testing;
-const structure = @import("structure.zig");
-const ast = @import("ast.zig");
+const sexp = @import("sexp");
 
 // Test structures
 const SimpleStruct = struct {
@@ -10,9 +9,9 @@ const SimpleStruct = struct {
     enabled: bool = true,
 
     pub const fields_meta = .{
-        .name = structure.SexpField{ .positional = false },
-        .value = structure.SexpField{ .positional = false },
-        .enabled = structure.SexpField{ .positional = false },
+        .name = sexp.structure.SexpField{ .positional = false },
+        .value = sexp.structure.SexpField{ .positional = false },
+        .enabled = sexp.structure.SexpField{ .positional = false },
     };
 };
 
@@ -22,9 +21,9 @@ const PositionalStruct = struct {
     y: i32,
 
     pub const fields_meta = .{
-        .symbol = structure.SexpField{ .positional = true },
-        .x = structure.SexpField{ .positional = false },
-        .y = structure.SexpField{ .positional = false },
+        .symbol = sexp.structure.SexpField{ .positional = true },
+        .x = sexp.structure.SexpField{ .positional = false },
+        .y = sexp.structure.SexpField{ .positional = false },
     };
 };
 
@@ -33,8 +32,8 @@ const OptionalStruct = struct {
     optional: ?[]const u8 = null,
 
     pub const fields_meta = .{
-        .required = structure.SexpField{ .positional = false },
-        .optional = structure.SexpField{ .positional = false },
+        .required = sexp.structure.SexpField{ .positional = false },
+        .optional = sexp.structure.SexpField{ .positional = false },
     };
 };
 
@@ -43,8 +42,8 @@ const MultidictStruct = struct {
     items: []SimpleStruct = &.{},
 
     pub const fields_meta = .{
-        .name = structure.SexpField{ .positional = false },
-        .items = structure.SexpField{ .positional = false, .multidict = true, .sexp_name = "item" },
+        .name = sexp.structure.SexpField{ .positional = false },
+        .items = sexp.structure.SexpField{ .positional = false, .multidict = true, .sexp_name = "item" },
     };
 };
 
@@ -57,7 +56,7 @@ test "encode simple struct" {
         .enabled = false,
     };
 
-    const encoded = try structure.dumps(data, allocator, "test", null);
+    const encoded = try sexp.structure.dumps(data, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Just check that it contains the expected values, not exact formatting
@@ -71,14 +70,13 @@ test "decode simple struct" {
 
     const sexp_str = "((name \"test\") (value 42) (enabled yes))";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
-    const result = try structure.decode(SimpleStruct, allocator, sexp);
+    const result = try sexp.structure.decode(SimpleStruct, allocator, sexp_ast);
     defer allocator.free(result.name);
 
     try testing.expectEqualStrings("test", result.name);
@@ -95,7 +93,7 @@ test "positional fields" {
         .y = 20,
     };
 
-    const encoded = try structure.dumps(data, allocator, "test", null);
+    const encoded = try sexp.structure.dumps(data, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Check content, not exact formatting
@@ -113,7 +111,7 @@ test "optional fields" {
         .optional = null,
     };
 
-    const encoded1 = try structure.dumps(data1, allocator, "test", null);
+    const encoded1 = try sexp.structure.dumps(data1, allocator, "test", null);
     defer allocator.free(encoded1);
 
     // Check content
@@ -126,7 +124,7 @@ test "optional fields" {
         .optional = "world",
     };
 
-    const encoded2 = try structure.dumps(data2, allocator, "test", null);
+    const encoded2 = try sexp.structure.dumps(data2, allocator, "test", null);
     defer allocator.free(encoded2);
 
     // Check content
@@ -148,7 +146,7 @@ test "multidict fields" {
         .items = items,
     };
 
-    const encoded = try structure.dumps(data, allocator, "test", null);
+    const encoded = try sexp.structure.dumps(data, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Check multidict content
@@ -168,18 +166,17 @@ test "round trip" {
     };
 
     // Encode
-    const encoded = try structure.dumps(original, allocator, "test", null);
+    const encoded = try sexp.structure.dumps(original, allocator, "test", null);
     defer allocator.free(encoded);
 
     // Decode
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, encoded);
+    const tokens = try sexp.tokenizer.tokenize(allocator, encoded);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
-    const decoded = try structure.decode(SimpleStruct, allocator, sexp);
+    const decoded = try sexp.structure.decode(SimpleStruct, allocator, sexp_ast);
     defer allocator.free(decoded.name);
 
     try testing.expectEqualStrings(original.name, decoded.name);
@@ -193,19 +190,18 @@ test "missing required field - name" {
     // Missing 'name' field (required)
     const sexp_str = "((value 42) (enabled yes))";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // This should fail with MissingField error
-    const result = structure.decode(SimpleStruct, allocator, sexp);
+    const result = sexp.structure.decode(SimpleStruct, allocator, sexp_ast);
     try testing.expectError(error.MissingField, result);
 
     // Check error context
-    if (structure.getErrorContext()) |ctx| {
+    if (sexp.structure.getErrorContext()) |ctx| {
         try testing.expectEqualStrings("test_structure.SimpleStruct", ctx.path);
         try testing.expectEqualStrings("name", ctx.field_name.?);
     }
@@ -217,19 +213,18 @@ test "missing required field - value" {
     // Missing 'value' field (required)
     const sexp_str = "((name \"test\") (enabled yes))";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // This should fail with MissingField error
-    const result = structure.decode(SimpleStruct, allocator, sexp);
+    const result = sexp.structure.decode(SimpleStruct, allocator, sexp_ast);
     try testing.expectError(error.MissingField, result);
 
     // Check error context
-    if (structure.getErrorContext()) |ctx| {
+    if (sexp.structure.getErrorContext()) |ctx| {
         try testing.expectEqualStrings("test_structure.SimpleStruct", ctx.path);
         try testing.expectEqualStrings("value", ctx.field_name.?);
     }
@@ -241,14 +236,13 @@ test "missing optional field is ok" {
     // Missing 'enabled' field (has default value)
     const sexp_str = "((name \"test\") (value 42))";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
-    const result = try structure.decode(SimpleStruct, allocator, sexp);
+    const result = try sexp.structure.decode(SimpleStruct, allocator, sexp_ast);
     defer allocator.free(result.name);
 
     try testing.expectEqualStrings("test", result.name);
@@ -262,15 +256,14 @@ test "missing required field in OptionalStruct" {
     // Missing 'required' field
     const sexp_str = "((optional \"world\"))";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // This should fail with MissingField error
-    const result = structure.decode(OptionalStruct, allocator, sexp);
+    const result = sexp.structure.decode(OptionalStruct, allocator, sexp_ast);
     try testing.expectError(error.MissingField, result);
 }
 
@@ -280,8 +273,8 @@ const NoDefaultsStruct = struct {
     required2: i32,
 
     pub const fields_meta = .{
-        .required1 = structure.SexpField{ .positional = false },
-        .required2 = structure.SexpField{ .positional = false },
+        .required1 = sexp.structure.SexpField{ .positional = false },
+        .required2 = sexp.structure.SexpField{ .positional = false },
     };
 };
 
@@ -291,15 +284,14 @@ test "all fields missing in struct without defaults" {
     // Empty s-expression
     const sexp_str = "()";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // This should fail with MissingField error
-    const result = structure.decode(NoDefaultsStruct, allocator, sexp);
+    const result = sexp.structure.decode(NoDefaultsStruct, allocator, sexp_ast);
     try testing.expectError(error.MissingField, result);
 }
 
@@ -311,10 +303,10 @@ const Component = struct {
     tstamps: []const u8,
 
     pub const fields_meta = .{
-        .ref = structure.SexpField{ .positional = false },
-        .value = structure.SexpField{ .positional = false },
-        .footprint = structure.SexpField{ .positional = false },
-        .tstamps = structure.SexpField{ .positional = false },
+        .ref = sexp.structure.SexpField{ .positional = false },
+        .value = sexp.structure.SexpField{ .positional = false },
+        .footprint = sexp.structure.SexpField{ .positional = false },
+        .tstamps = sexp.structure.SexpField{ .positional = false },
     };
 };
 
@@ -324,19 +316,18 @@ test "netlist component missing required fields" {
     // Missing 'footprint' and 'tstamps' fields
     const sexp_str = "((ref \"R1\") (value \"10k\"))";
 
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // This should fail with MissingField error for footprint
-    const result = structure.decode(Component, allocator, sexp);
+    const result = sexp.structure.decode(Component, allocator, sexp_ast);
     try testing.expectError(error.MissingField, result);
 
     // Check error context shows which field is missing
-    if (structure.getErrorContext()) |ctx| {
+    if (sexp.structure.getErrorContext()) |ctx| {
         try testing.expectEqualStrings("test_structure.Component", ctx.path);
         // Should be either footprint or tstamps
         try testing.expect(ctx.field_name != null);
@@ -351,8 +342,8 @@ const A = struct {
     b: []const u8,
 
     pub const fields_meta = .{
-        .a = structure.SexpField{ .positional = false },
-        .b = structure.SexpField{ .positional = false },
+        .a = sexp.structure.SexpField{ .positional = false },
+        .b = sexp.structure.SexpField{ .positional = false },
     };
 };
 
@@ -386,19 +377,18 @@ pub fn main() !void {
 }
 
 fn testDecode(allocator: std.mem.Allocator, sexp_str: []const u8) !void {
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, sexp_str);
+    const tokens = try sexp.tokenizer.tokenize(allocator, sexp_str);
     defer allocator.free(tokens);
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // Catch the decode error and print context
-    const result = structure.decode(A, allocator, sexp) catch |err| {
+    const result = sexp.structure.decode(A, allocator, sexp_ast) catch |err| {
         std.debug.print("Error: {}\n", .{err});
 
         // Get and print the error context
-        if (structure.getErrorContext()) |ctx| {
+        if (sexp.structure.getErrorContext()) |ctx| {
             if (ctx.path.len > 0) {
                 std.debug.print("  In struct: {s}\n", .{ctx.path});
             }
@@ -428,6 +418,6 @@ fn testDecode(allocator: std.mem.Allocator, sexp_str: []const u8) !void {
         return err;
     };
 
-    defer structure.free(A, allocator, result);
+    defer sexp.structure.free(A, allocator, result);
     std.debug.print("Success! a={}, b={s}\n", .{ result.a, result.b });
 }

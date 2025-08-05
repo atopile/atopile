@@ -1,7 +1,7 @@
 const std = @import("std");
-const tokenizer = @import("tokenizer.zig");
-const ast = @import("ast.zig");
-const netlist = @import("kicad/netlist.zig");
+const tokenizer = @import("tokenizer");
+const ast = @import("ast");
+const netlist = @import("kicad/netlist");
 
 const TokenCounts = struct {
     lparen: usize = 0,

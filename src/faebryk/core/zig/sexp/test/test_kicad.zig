@@ -1,17 +1,17 @@
 const std = @import("std");
-const netlist = @import("kicad/netlist.zig");
-const pcb = @import("kicad/pcb.zig");
-const structure = @import("structure.zig");
+const sexp = @import("sexp");
+
+const RESOURCES_ROOT = "test/resources/v9";
 
 test "load real netlist file - basic checks" {
-    const FILE_PATH = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net";
+    const FILE_PATH = RESOURCES_ROOT ++ "/netlist/test_e.net";
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var netlist_file = netlist.NetlistFile.loads(allocator, .{ .path = FILE_PATH }) catch |err| {
-        structure.printError(try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024), err);
+    var netlist_file = sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .path = FILE_PATH }) catch |err| {
+        sexp.structure.printError(try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024), err);
         return err;
     };
     defer netlist_file.free(allocator);
@@ -113,9 +113,9 @@ test "comprehensive netlist example" {
     ;
 
     // Parse the netlist
-    const parsed = netlist.NetlistFile.loads(allocator, .{ .string = test_netlist }) catch |err| {
+    const parsed = sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = test_netlist }) catch |err| {
         std.debug.print("\nError parsing netlist: {}\n", .{err});
-        if (structure.getErrorContext()) |ctx| {
+        if (sexp.structure.getErrorContext()) |ctx| {
             std.debug.print("  Location: {s}\n", .{ctx.path});
             if (ctx.field_name) |field| {
                 std.debug.print("  Field: {s}\n", .{field});
@@ -192,7 +192,7 @@ test "comprehensive netlist example" {
 
     // Now test round-trip
     const serialized = try parsed.dumps(allocator, null);
-    const reparsed = try netlist.NetlistFile.loads(allocator, .{ .string = serialized });
+    const reparsed = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = serialized });
 
     try std.testing.expect(reparsed.netlist != null);
     const nl2 = reparsed.netlist.?;
@@ -250,13 +250,13 @@ test "simple round-trip netlist" {
     ;
 
     // Parse the netlist
-    const parsed = try netlist.NetlistFile.loads(allocator, .{ .string = minimal_netlist });
+    const parsed = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = minimal_netlist });
 
     // Serialize it back
     const serialized = try parsed.dumps(allocator, null);
 
     // Parse again
-    const reparsed = try netlist.NetlistFile.loads(allocator, .{ .string = serialized });
+    const reparsed = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = serialized });
 
     // Basic checks to ensure round-trip worked
     try std.testing.expect(reparsed.netlist != null);
@@ -289,11 +289,11 @@ test "pcb: property" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const property = structure.loads(pcb.Property, allocator, .{ .string = sexp_string }, "property") catch |err| {
-        structure.printError(sexp_string, err);
+    const property = sexp.structure.loads(sexp.kicad.pcb.Property, allocator, .{ .string = sexp_string }, "property") catch |err| {
+        sexp.structure.printError(sexp_string, err);
         return err;
     };
-    defer structure.free(pcb.Property, allocator, property);
+    defer sexp.structure.free(sexp.kicad.pcb.Property, allocator, property);
 
     try std.testing.expectEqualStrings("Reference", property.name);
     try std.testing.expectEqualStrings("G***", property.value);
@@ -309,14 +309,14 @@ test "pcb: property" {
 }
 
 test "load real pcb file" {
-    const FILE_PATH = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/pcb/top.kicad_pcb";
+    const FILE_PATH = RESOURCES_ROOT ++ "/pcb/top.kicad_pcb";
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var pcb_file = pcb.PcbFile.loads(allocator, .{ .path = FILE_PATH }) catch |err| {
-        structure.printError(try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024), err);
+    var pcb_file = sexp.kicad.pcb.PcbFile.loads(allocator, .{ .path = FILE_PATH }) catch |err| {
+        sexp.structure.printError(try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024), err);
         return err;
     };
     defer pcb_file.free(allocator);
@@ -421,9 +421,9 @@ pub fn main() !void {
         \\)
     ;
 
-    var parsed = netlist.NetlistFile.loads(allocator, .{ .string = test_netlist_str }) catch |err| {
+    var parsed = sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = test_netlist_str }) catch |err| {
         std.debug.print("Error loading netlist: {}\n", .{err});
-        if (structure.getErrorContext()) |ctx| {
+        if (sexp.structure.getErrorContext()) |ctx| {
             var ctx_with_source = ctx;
             ctx_with_source.source = test_netlist_str;
             std.debug.print("{}\n", .{ctx_with_source});

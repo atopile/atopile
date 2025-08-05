@@ -1,0 +1,16 @@
+.{
+    .name = .sexp,
+    .version = "0.0.0",
+    .fingerprint = 0xa1315b6721b93292,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+    .dependencies = .{
+        .prettytable = .{
+            .url = "git+https://github.com/dying-will-bullet/prettytable-zig#6527e132c2097a8044fc3679ad2dfbe14370ce7e",
+            .hash = "prettytable-0.2.0--Be65z2DAQBJILbf_3jyNYjFAPH0V4Tbrt4uYgfuYLFJ",
+        },
+    },
+}

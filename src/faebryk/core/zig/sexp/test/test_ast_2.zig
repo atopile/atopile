@@ -1,6 +1,5 @@
 const std = @import("std");
-const structure = @import("structure.zig");
-const ast = @import("ast.zig");
+const sexp = @import("sexp");
 
 // Example: KiCad-style component definition
 pub const Pin = struct {
@@ -86,21 +85,20 @@ pub fn main() !void {
     };
 
     // Encode to S-expression
-    const encoded = try structure.dumps(symbol, allocator, "symbol", null);
+    const encoded = try sexp.structure.dumps(symbol, allocator, "symbol", null);
     defer allocator.free(encoded);
 
     std.debug.print("Generated S-expression:\n{s}\n\n", .{encoded});
 
     // Parse it back
-    const tokenizer = @import("tokenizer.zig");
-    const tokens = try tokenizer.tokenize(allocator, encoded);
+    const tokens = try sexp.tokenizer.tokenize(allocator, encoded);
     defer allocator.free(tokens); // No need for deinitTokens here since tokens point to encoded
 
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
-    const decoded = try structure.loads(Symbol, allocator, .{ .sexp = sexp }, "symbol");
-    defer structure.free(Symbol, allocator, decoded);
+    const decoded = try sexp.structure.loads(Symbol, allocator, .{ .sexp = sexp_ast }, "symbol");
+    defer sexp.structure.free(Symbol, allocator, decoded);
 
     std.debug.print("\nDecoded symbol: {s}\n", .{decoded.symbol_name});
     std.debug.print("Components: {}\n", .{decoded.components.len});

@@ -1,9 +1,9 @@
 const std = @import("std");
-const tokenizer = @import("tokenizer.zig");
+const tokenizer = @import("tokenizer");
 const prettytable = @import("prettytable");
-const ast = @import("ast.zig");
-const netlist = @import("kicad/netlist.zig");
-const structure = @import("structure.zig");
+const ast = @import("ast");
+const netlist = @import("kicad/netlist");
+const structure = @import("structure");
 
 const Result = struct {
     tokenize_time: u64,

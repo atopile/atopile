@@ -1,7 +1,5 @@
 const std = @import("std");
-const ast = @import("ast.zig");
-const structure = @import("structure.zig");
-const tokenizer = @import("tokenizer.zig");
+const sexp = @import("sexp");
 
 const TestStruct = struct {
     name: []const u8,
@@ -22,18 +20,18 @@ pub fn main() !void {
     std.debug.print("Input:\n{s}\n\n", .{input});
 
     // Tokenize
-    const tokens = try tokenizer.tokenize(allocator, input);
+    const tokens = try sexp.tokenizer.tokenize(allocator, input);
     defer allocator.free(tokens);
 
     // Parse to AST
-    var sexp = try ast.parse(allocator, tokens);
-    defer sexp.deinit(allocator);
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
 
     // Try to decode
-    const result = structure.decode(TestStruct, allocator, sexp) catch |err| {
+    const result = sexp.structure.decode(TestStruct, allocator, sexp_ast) catch |err| {
         std.debug.print("Error: {}\n", .{err});
 
-        if (structure.getErrorContext()) |ctx| {
+        if (sexp.structure.getErrorContext()) |ctx| {
             var ctx_with_source = ctx;
             ctx_with_source.source = input;
             std.debug.print("{}\n", .{ctx_with_source});
