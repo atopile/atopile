@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import logging
 import time
 from copy import deepcopy
@@ -45,6 +46,8 @@ from faebryk.libs.util import (
 logger = logging.getLogger(__name__)
 
 SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
+
+MAX_PCB_DIFF_LENGTH = 100
 
 
 def _get_solver() -> Solver:
@@ -93,6 +96,14 @@ def _update_layout(
             original_relative = _try_relative(original_path)
             updated_relative = _try_relative(updated_path)
 
+            diff_length = len(pcb_diff)
+            truncated = diff_length > MAX_PCB_DIFF_LENGTH
+            pcb_diff_items = (
+                itertools.islice(pcb_diff.items(), MAX_PCB_DIFF_LENGTH)
+                if truncated
+                else pcb_diff.items()
+            )
+
             raise UserException(
                 dedent(
                     """
@@ -103,7 +114,7 @@ def _update_layout(
                     Updated layout: **{updated_relative}**
 
                     Diff:
-                    {diff}
+                    {diff}{truncated_msg}
                     """
                 ).format(
                     original_relative=original_relative,
@@ -111,10 +122,13 @@ def _update_layout(
                     diff=md_table(
                         [
                             [f"**{path}**", diff["before"], diff["after"]]
-                            for path, diff in pcb_diff.items()
+                            for path, diff in pcb_diff_items
                         ],
                         headers=["Path", "Before", "After"],
                     ),
+                    truncated_msg=f"\n... ({diff_length - MAX_PCB_DIFF_LENGTH} more)"
+                    if truncated
+                    else "",
                 ),
                 title="Frozen failed",
                 # No markdown=False here because we have both a command and paths
