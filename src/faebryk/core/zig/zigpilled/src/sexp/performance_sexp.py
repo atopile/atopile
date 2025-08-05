@@ -3,6 +3,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "sexpdata",
+#     "atopile"
 # ]
 # ///
 
@@ -12,6 +13,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import sexpdata
+
+from faebryk.libs.kicad.fileformats_latest import C_kicad_netlist_file
 
 TEST_FILES_DIR = Path(__file__).parent / "test_files"
 ZIG_OUT_DIR = Path(__file__).parent / "zig-out" / "bin"
@@ -73,6 +76,12 @@ def test_python(file_path):
         end_time = time.time() * 1000
         parse_time = int(end_time - start_time)
 
+        if file_path.endswith(".net"):
+            _ = C_kicad_netlist_file.loads(data)
+            structure_time = int((time.time() * 1000) - end_time)
+        else:
+            structure_time = 0
+
         # Count tokens
         lparen, rparen, symbols, numbers, strings, comments, lists, atoms = (
             count_tokens(data)
@@ -83,6 +92,7 @@ def test_python(file_path):
             file_size=file_size,
             tokenize_time=parse_time,  # Python does both in one pass
             parse_time=0,  # Already included in tokenize_time
+            structure_time=structure_time,
             total_tokens=total_tokens,
             lparen=lparen,
             rparen=rparen,
@@ -139,6 +149,7 @@ class TestResults:
     file_size: int
     tokenize_time: int
     parse_time: int
+    structure_time: int
     total_tokens: int
     lparen: int
     rparen: int
@@ -177,18 +188,19 @@ def test_zig(file_path):
                     file_size=int(parts[0]),
                     tokenize_time=int(parts[1]),
                     parse_time=int(parts[2]),
-                    total_tokens=int(parts[3]),
-                    lparen=int(parts[4]),
-                    rparen=int(parts[5]),
-                    symbols=int(parts[6]),
-                    numbers=int(parts[7]),
-                    strings=int(parts[8]),
-                    comments=int(parts[9]),
-                    balanced=parts[10] == "true",
-                    sexp_count=int(parts[11]),
-                    list_count=int(parts[12]),
-                    atom_count=int(parts[13]),
-                    cpu_count=int(parts[14]),
+                    structure_time=int(parts[3]),
+                    total_tokens=int(parts[4]),
+                    lparen=int(parts[5]),
+                    rparen=int(parts[6]),
+                    symbols=int(parts[7]),
+                    numbers=int(parts[8]),
+                    strings=int(parts[9]),
+                    comments=int(parts[10]),
+                    balanced=parts[11] == "true",
+                    sexp_count=int(parts[12]),
+                    list_count=int(parts[13]),
+                    atom_count=int(parts[14]),
+                    cpu_count=int(parts[15]),
                 )
 
     raise Exception("Could not parse Zig output")
@@ -273,8 +285,16 @@ def main():
 
         # Show speedup if both succeeded
         if python_results and zig_results:
-            python_time = python_results.tokenize_time + python_results.parse_time
-            zig_time = zig_results.tokenize_time + zig_results.parse_time
+            python_time = (
+                python_results.tokenize_time
+                + python_results.parse_time
+                + python_results.structure_time
+            )
+            zig_time = (
+                zig_results.tokenize_time
+                + zig_results.parse_time
+                + zig_results.structure_time
+            )
 
             if zig_time > 0:
                 speedup = python_time / zig_time
@@ -286,7 +306,9 @@ def main():
         if zig_results:
             file_size_mb = zig_results.file_size / (1024 * 1024)
             total_time_sec = (
-                zig_results.tokenize_time + zig_results.parse_time
+                zig_results.tokenize_time
+                + zig_results.parse_time
+                + zig_results.structure_time
             ) / 1000.0
             if total_time_sec > 0:
                 throughput = file_size_mb / total_time_sec

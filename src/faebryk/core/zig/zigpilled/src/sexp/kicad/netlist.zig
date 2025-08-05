@@ -194,30 +194,16 @@ pub const NetlistFile = struct {
 
     const root_symbol = "export";
 
-    pub fn read(allocator: std.mem.Allocator, path: []const u8) !NetlistFile {
-        const netlist: Netlist = try structure.loadsFileWithSymbol(Netlist, allocator, path, root_symbol);
+    pub fn loads(allocator: std.mem.Allocator, in: structure.input) !NetlistFile {
+        const netlist = try structure.loads(Netlist, allocator, in, root_symbol);
         return NetlistFile{
             .netlist = netlist,
         };
     }
 
-    pub fn loads(allocator: std.mem.Allocator, content: []const u8) !NetlistFile {
-        const netlist = try structure.loadsStringWithSymbol(Netlist, allocator, content, root_symbol);
-        return NetlistFile{
-            .netlist = netlist,
-        };
-    }
-
-    pub fn dumps(self: NetlistFile, allocator: std.mem.Allocator) ![]u8 {
+    pub fn dumps(self: NetlistFile, allocator: std.mem.Allocator, out: ?structure.output) ![]u8 {
         if (self.netlist) |netlist| {
-            return try structure.dumpsStringWithSymbol(netlist, allocator, root_symbol);
-        }
-        return error.NoTable;
-    }
-
-    pub fn write(self: NetlistFile, file_path: []const u8, allocator: std.mem.Allocator) !void {
-        if (self.netlist) |netlist| {
-            return try structure.writeFileWithSymbol(netlist, file_path, root_symbol, allocator);
+            return try structure.dumps(netlist, allocator, root_symbol, out);
         }
         return error.NoTable;
     }

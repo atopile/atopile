@@ -7,7 +7,7 @@ test "load real netlist file - basic checks" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var netlist_file = netlist.NetlistFile.read(allocator, "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net") catch |err| {
+    var netlist_file = netlist.NetlistFile.loads(allocator, .{ .path = "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/netlist/test_e.net" }) catch |err| {
         std.debug.print("Error parsing real netlist: {}\n", .{err});
         if (structure.getErrorContext()) |ctx| {
             var ctx_with_source = ctx;
@@ -116,7 +116,7 @@ test "comprehensive netlist example" {
     ;
 
     // Parse the netlist
-    const parsed = netlist.NetlistFile.loads(allocator, test_netlist) catch |err| {
+    const parsed = netlist.NetlistFile.loads(allocator, .{ .string = test_netlist }) catch |err| {
         std.debug.print("\nError parsing netlist: {}\n", .{err});
         if (structure.getErrorContext()) |ctx| {
             std.debug.print("  Location: {s}\n", .{ctx.path});
@@ -194,8 +194,8 @@ test "comprehensive netlist example" {
     }
 
     // Now test round-trip
-    const serialized = try parsed.dumps(allocator);
-    const reparsed = try netlist.NetlistFile.loads(allocator, serialized);
+    const serialized = try parsed.dumps(allocator, null);
+    const reparsed = try netlist.NetlistFile.loads(allocator, .{ .string = serialized });
 
     try std.testing.expect(reparsed.netlist != null);
     const nl2 = reparsed.netlist.?;
@@ -253,13 +253,13 @@ test "simple round-trip netlist" {
     ;
 
     // Parse the netlist
-    const parsed = try netlist.NetlistFile.loads(allocator, minimal_netlist);
+    const parsed = try netlist.NetlistFile.loads(allocator, .{ .string = minimal_netlist });
 
     // Serialize it back
-    const serialized = try parsed.dumps(allocator);
+    const serialized = try parsed.dumps(allocator, null);
 
     // Parse again
-    const reparsed = try netlist.NetlistFile.loads(allocator, serialized);
+    const reparsed = try netlist.NetlistFile.loads(allocator, .{ .string = serialized });
 
     // Basic checks to ensure round-trip worked
     try std.testing.expect(reparsed.netlist != null);

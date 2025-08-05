@@ -24,30 +24,16 @@ const FpLibTableFile = struct {
 
     const root_symbol = "fp_lib_table";
 
-    pub fn read(allocator: std.mem.Allocator, path: []const u8) !FpLibTableFile {
-        const table: FpLibTable = try structure.loadsFileWithSymbol(FpLibTable, allocator, path, root_symbol);
+    pub fn loads(allocator: std.mem.Allocator, in: structure.input) !FpLibTableFile {
+        const table = try structure.loads(FpLibTable, allocator, in, root_symbol);
         return FpLibTableFile{
             .fp_lib_table = table,
         };
     }
 
-    pub fn loads(allocator: std.mem.Allocator, content: []const u8) !FpLibTableFile {
-        const table = try structure.loadsStringWithSymbol(FpLibTable, allocator, content, root_symbol);
-        return FpLibTableFile{
-            .fp_lib_table = table,
-        };
-    }
-
-    pub fn dumps(self: FpLibTableFile, allocator: std.mem.Allocator) ![]u8 {
+    pub fn dumps(self: FpLibTableFile, allocator: std.mem.Allocator, out: ?structure.output) ![]u8 {
         if (self.fp_lib_table) |table| {
-            return try structure.dumpsStringWithSymbol(table, allocator, root_symbol);
-        }
-        return error.NoTable;
-    }
-
-    pub fn write(self: FpLibTableFile, file_path: []const u8, allocator: std.mem.Allocator) !void {
-        if (self.fp_lib_table) |table| {
-            return try structure.writeFileWithSymbol(table, file_path, root_symbol, allocator);
+            return try structure.dumps(table, allocator, root_symbol, out);
         }
         return error.NoTable;
     }
