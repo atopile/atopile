@@ -34,14 +34,14 @@ jobs:
     - run: git fetch --prune --unshallow --tags
 
     - name: Install uv
-      uses: useblacksmith/setup-uv@v4
+      uses: astral-sh/setup-uv@v6
       with:
-        version: 0.6.4
+        version: 0.8
         enable-cache: true
         cache-dependency-glob: "uv.lock"
 
     - name: "Set up Python"
-      uses: useblacksmith/setup-python@v6
+      uses: actions/setup-python@v5
       with:
         python-version-file: "pyproject.toml"
 
