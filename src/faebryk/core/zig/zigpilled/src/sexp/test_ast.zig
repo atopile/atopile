@@ -9,8 +9,8 @@ test "parse empty input" {
     const tokens = try tokenizer.tokenize(allocator, "");
     defer allocator.free(tokens);
 
-    const sexp = try ast.parse(allocator, tokens);
-    try std.testing.expect(sexp == null);
+    const sexp = ast.parse(allocator, tokens);
+    try std.testing.expectError(error.EmptyFile, sexp);
 }
 
 test "parse single symbol" {

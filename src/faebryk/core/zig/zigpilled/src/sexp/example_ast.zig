@@ -91,11 +91,6 @@ pub fn main() !void {
 
     std.debug.print("Generated S-expression:\n{s}\n\n", .{encoded});
 
-    // Pretty print with indentation
-    std.debug.print("Pretty printed:\n", .{});
-    std.debug.print("{s}\n", .{encoded});
-    std.debug.print("\n", .{});
-
     // Parse it back
     const tokenizer = @import("tokenizer.zig");
     const tokens = try tokenizer.tokenize(allocator, encoded);
@@ -105,7 +100,7 @@ pub fn main() !void {
     defer sexp.deinit(allocator);
 
     const decoded = try structure.loads(Symbol, allocator, .{ .sexp = sexp }, "symbol");
-    // Note: In a real application, you'd need to free all the allocated strings
+    defer structure.free(Symbol, allocator, decoded);
 
     std.debug.print("\nDecoded symbol: {s}\n", .{decoded.symbol_name});
     std.debug.print("Components: {}\n", .{decoded.components.len});

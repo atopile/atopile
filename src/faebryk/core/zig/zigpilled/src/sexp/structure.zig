@@ -731,10 +731,11 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
     switch (in) {
         .path => {
             const file_content = try std.fs.cwd().readFileAlloc(allocator, in.path, 200 * 1024 * 1024);
-            defer allocator.free(file_content);
             const tokens = try tokenizer.tokenize(allocator, file_content);
             defer allocator.free(tokens);
             sexp = try ast.parse(allocator, tokens);
+            // Don't free file_content here - it's referenced by sexp!
+            // The caller is responsible for using an arena allocator
             should_deinit = true;
         },
         .string => {
