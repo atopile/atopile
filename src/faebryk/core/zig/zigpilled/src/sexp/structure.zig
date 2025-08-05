@@ -23,6 +23,13 @@ pub const SexpField = struct {
     order: i32 = 0,
 };
 
+fn _print_indent(writer: anytype, indent: usize) !void {
+    var k: usize = 0;
+    while (k < indent) : (k += 1) {
+        try writer.print(" ", .{});
+    }
+}
+
 // Error context for better diagnostics
 pub const ErrorContext = struct {
     path: []const u8,
@@ -30,11 +37,55 @@ pub const ErrorContext = struct {
     sexp_preview: ?[]const u8 = null,
     line: ?usize = null,
     column: ?usize = null,
+    end_line: ?usize = null,
+    end_column: ?usize = null,
+
+    source: ?[]const u8 = null,
+    indent: usize = 0,
+
+    pub fn print_source(self: ErrorContext, source: []const u8, writer: anytype, indent: usize) !void {
+        var line_iter = std.mem.tokenizeScalar(u8, source, '\n');
+        var current_line: usize = 1;
+        while (line_iter.next()) |line_text| {
+            if (current_line == self.line) {
+                // Print indentation
+                try _print_indent(writer, indent);
+                try writer.print("Source: {s}\n", .{line_text});
+
+                // Show cursor position with indentation
+                try _print_indent(writer, indent);
+                try writer.print("        ", .{});
+
+                var i: usize = 1;
+                if (self.column) |col| {
+                    while (i < col) : (i += 1) {
+                        try writer.print(" ", .{});
+                    }
+                    if (self.end_column) |end_col| {
+                        const len = if (self.end_line == self.line) end_col - col else line_text.len - col + 1;
+                        var j: usize = 0;
+                        while (j < len) : (j += 1) {
+                            try writer.print("^", .{});
+                        }
+                    } else {
+                        try writer.print("^", .{});
+                    }
+                }
+                try writer.print("\n", .{});
+                break;
+            }
+            current_line += 1;
+        }
+    }
 
     pub fn format(self: ErrorContext, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
-        try writer.print("ErrorContext(\n path={s},\n field_name={?s},\n sexp_preview={?s},\n line={?d},\n column={?d})", .{ self.path, self.field_name, self.sexp_preview, self.line, self.column });
+        try writer.print("ErrorContext(\n  Struct: {s},\n  Field: {?s},\n  Problem: {?s},\n  Location: {?d}:{?d} to {?d}:{?d}", .{ self.path, self.field_name, self.sexp_preview, self.line, self.column, self.end_line, self.end_column });
+        if (self.source) |source| {
+            try writer.print("\n", .{});
+            try self.print_source(source, writer, self.indent + 2);
+        }
     }
 };
 
@@ -55,12 +106,22 @@ pub fn getErrorContext() ?ErrorContext {
     return current_error_context;
 }
 
-fn setErrorContext(context: ErrorContext) void {
-    current_error_context = context;
-}
-
 fn clearErrorContext() void {
     current_error_context = null;
+}
+
+// Helper to set error context with location from SExp
+fn setErrorContext(base_ctx: ErrorContext, sexp: SExp) void {
+    var ctx = base_ctx;
+
+    if (sexp.location) |location| {
+        ctx.line = location.start.line;
+        ctx.column = location.start.column;
+        ctx.end_line = location.end.line;
+        ctx.end_column = location.end.column;
+    }
+
+    current_error_context = ctx;
 }
 
 // Helper to format S-expression preview
@@ -78,7 +139,7 @@ fn formatSexpPreviewInternal(sexp: SExp, buf: *std.ArrayList(u8), depth: usize, 
         return;
     }
 
-    switch (sexp) {
+    switch (sexp.value) {
         .symbol => |s| try buf.appendSlice(s),
         .string => |s| {
             try buf.append('"');
@@ -198,7 +259,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     .path = @typeName(T),
                     .field_name = field.name,
                     .sexp_preview = null,
-                });
+                }, items[pos_idx]);
                 @field(result, field.name) = try decode(field.type, allocator, items[pos_idx]);
                 fields_set.set(field_idx);
             }
@@ -241,9 +302,9 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                                     .path = @typeName(T),
                                                     .field_name = field.name,
                                                     .sexp_preview = null,
-                                                });
+                                                }, items[scan_idx]);
                                                 // For multidict entries, decode the rest as struct fields
-                                                const scan_struct_sexp = SExp{ .list = scan_kv[1..] };
+                                                const scan_struct_sexp = SExp{ .value = .{ .list = scan_kv[1..] }, .location = null };
                                                 const scan_val = try decode(ChildType, allocator, scan_struct_sexp);
                                                 try values.append(scan_val);
                                             }
@@ -263,11 +324,11 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                 .path = @typeName(T),
                                 .field_name = field.name,
                                 .sexp_preview = null,
-                            });
+                            }, items[i]);
                             @field(result, field.name) = if (kv_items.len == 2)
                                 try decode(field.type, allocator, kv_items[1])
                             else
-                                try decode(field.type, allocator, SExp{ .list = kv_items[1..] });
+                                try decode(field.type, allocator, SExp{ .value = .{ .list = kv_items[1..] }, .location = null });
                             fields_set.set(field_idx);
                         }
                     }
@@ -306,7 +367,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                         .path = @typeName(T),
                         .field_name = field.name,
                         .sexp_preview = preview,
-                    });
+                    }, sexp);
                     return error.MissingField;
                 }
             }
@@ -329,7 +390,7 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
 
     // Special handling for strings ([]const u8)
     if (child_type == u8) {
-        switch (sexp) {
+        switch (sexp.value) {
             .string => |str| {
                 const duped = try allocator.alloc(u8, str.len);
                 @memcpy(duped, str);
@@ -342,7 +403,7 @@ fn decodeSlice(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Decod
                     .path = if (ctx) |c| c.path else @typeName(T),
                     .field_name = if (ctx) |c| c.field_name else null,
                     .sexp_preview = "expected quoted string, got unquoted value",
-                });
+                }, sexp);
                 return error.UnexpectedType;
             },
             else => {},
@@ -363,7 +424,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
     // Get current context to preserve field name
     const ctx = getErrorContext();
 
-    const str = switch (sexp) {
+    const str = switch (sexp.value) {
         .number => |n| n,
         .string => |s| {
             // More helpful error for common mistake of quoting numbers
@@ -371,7 +432,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
-            });
+            }, sexp);
             return error.UnexpectedType;
         },
         .symbol => |s| {
@@ -379,7 +440,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
-            });
+            }, sexp);
             return error.UnexpectedType;
         },
         else => {
@@ -387,7 +448,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = "expected number for integer",
-            });
+            }, sexp);
             return error.UnexpectedType;
         },
     };
@@ -396,7 +457,7 @@ fn decodeInt(comptime T: type, sexp: SExp) DecodeError!T {
             .path = if (ctx) |c| c.path else @typeName(T),
             .field_name = if (ctx) |c| c.field_name else null,
             .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
-        });
+        }, sexp);
         return error.InvalidValue;
     };
 }
@@ -405,14 +466,14 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
     // Get current context to preserve field name
     const ctx = getErrorContext();
 
-    const str = switch (sexp) {
+    const str = switch (sexp.value) {
         .number => |n| n,
         .string => |s| {
             setErrorContext(.{
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got string \"{s}\" but expected unquoted number", .{s}) catch "string instead of number",
-            });
+            }, sexp);
             return error.UnexpectedType;
         },
         .symbol => |s| {
@@ -420,7 +481,7 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "got symbol '{s}' but expected number", .{s}) catch "symbol instead of number",
-            });
+            }, sexp);
             return error.UnexpectedType;
         },
         else => {
@@ -428,7 +489,7 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
                 .path = if (ctx) |c| c.path else @typeName(T),
                 .field_name = if (ctx) |c| c.field_name else null,
                 .sexp_preview = "expected number for float",
-            });
+            }, sexp);
             return error.UnexpectedType;
         },
     };
@@ -437,7 +498,7 @@ fn decodeFloat(comptime T: type, sexp: SExp) DecodeError!T {
             .path = if (ctx) |c| c.path else @typeName(T),
             .field_name = if (ctx) |c| c.field_name else null,
             .sexp_preview = std.fmt.allocPrint(std.heap.page_allocator, "failed to parse \"{s}\" as {s}", .{ str, @typeName(T) }) catch str,
-        });
+        }, sexp);
         return error.InvalidValue;
     };
 }
@@ -470,12 +531,12 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
         .@"struct" => return try encodeStruct(allocator, value),
         .optional => {
             if (value) |v| return try encode(allocator, v);
-            return SExp{ .list = try allocator.alloc(SExp, 0) };
+            return SExp{ .value = .{ .list = try allocator.alloc(SExp, 0) }, .location = null };
         },
         .pointer => |ptr| {
             if (ptr.size == .slice and ptr.child == u8) {
                 // Handle strings
-                return SExp{ .string = value };
+                return SExp{ .value = .{ .string = value }, .location = null };
             } else if (ptr.size == .slice) {
                 return try encodeSlice(allocator, value);
             }
@@ -486,20 +547,20 @@ pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
             const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
             const duped = try allocator.alloc(u8, str.len);
             @memcpy(duped, str);
-            return SExp{ .number = duped };
+            return SExp{ .value = .{ .number = duped }, .location = null };
         },
         .float => {
             var buf: [32]u8 = undefined;
             const str = std.fmt.bufPrint(&buf, "{d}", .{value}) catch return error.OutOfMemory;
             const duped = try allocator.alloc(u8, str.len);
             @memcpy(duped, str);
-            return SExp{ .number = duped };
+            return SExp{ .value = .{ .number = duped }, .location = null };
         },
-        .bool => return SExp{ .symbol = if (value) "yes" else "no" },
+        .bool => return SExp{ .value = .{ .symbol = if (value) "yes" else "no" }, .location = null },
         .@"enum" => {
             inline for (std.meta.fields(T)) |field| {
                 if (@intFromEnum(value) == field.value) {
-                    return SExp{ .symbol = field.name };
+                    return SExp{ .value = .{ .symbol = field.name }, .location = null };
                 }
             }
             unreachable;
@@ -544,17 +605,17 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                         if (ast.getList(encoded_item)) |item_contents| {
                             // Create a new list with the field name prepended
                             var kv_items = try allocator.alloc(SExp, item_contents.len + 1);
-                            kv_items[0] = SExp{ .symbol = field_name };
+                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
                             for (item_contents, 0..) |content, idx| {
                                 kv_items[idx + 1] = content;
                             }
-                            try items.append(SExp{ .list = kv_items });
+                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
                         } else {
                             // Not a list, encode normally
                             var kv_items = try allocator.alloc(SExp, 2);
-                            kv_items[0] = SExp{ .symbol = field_name };
+                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
                             kv_items[1] = encoded_item;
-                            try items.append(SExp{ .list = kv_items });
+                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
                         }
                     }
                 }
@@ -563,21 +624,21 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                 if (comptime isOptional(@TypeOf(field_value))) {
                     if (field_value) |val| {
                         var kv_items = try allocator.alloc(SExp, 2);
-                        kv_items[0] = SExp{ .symbol = field_name };
+                        kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
                         kv_items[1] = try encode(allocator, val);
-                        try items.append(SExp{ .list = kv_items });
+                        try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
                     }
                 } else {
                     var kv_items = try allocator.alloc(SExp, 2);
-                    kv_items[0] = SExp{ .symbol = field_name };
+                    kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
                     kv_items[1] = try encode(allocator, field_value);
-                    try items.append(SExp{ .list = kv_items });
+                    try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
                 }
             }
         }
     }
 
-    return SExp{ .list = try items.toOwnedSlice() };
+    return SExp{ .value = .{ .list = try items.toOwnedSlice() }, .location = null };
 }
 
 fn encodeSlice(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
@@ -585,7 +646,7 @@ fn encodeSlice(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     for (value, 0..) |item, i| {
         items[i] = try encode(allocator, item);
     }
-    return SExp{ .list = items };
+    return SExp{ .value = .{ .list = items }, .location = null };
 }
 
 // File I/O helpers
@@ -644,7 +705,7 @@ pub fn loadsStringWithSymbol(comptime T: type, allocator: std.mem.Allocator, con
 
     // Create a new list without the symbol for decoding
     const contents = file_list[1..];
-    const table_sexp = ast.SExp{ .list = contents };
+    const table_sexp = ast.SExp{ .value = .{ .list = contents }, .location = null };
 
     // Decode
     return try decode(T, allocator, table_sexp);
@@ -674,14 +735,14 @@ pub fn dumpsStringWithSymbol(data: anytype, allocator: std.mem.Allocator, symbol
     const encoded_items = ast.getList(encoded).?;
 
     var items = try arena.allocator().alloc(ast.SExp, encoded_items.len + 1);
-    items[0] = ast.SExp{ .symbol = symbol_name };
+    items[0] = ast.SExp{ .value = .{ .symbol = symbol_name }, .location = null };
 
     // Copy the encoded items
     for (encoded_items, 0..) |item, i| {
         items[i + 1] = item;
     }
 
-    const wrapped = ast.SExp{ .list = items };
+    const wrapped = ast.SExp{ .value = .{ .list = items }, .location = null };
 
     // Write to string
     var buffer = std.ArrayList(u8).init(allocator);

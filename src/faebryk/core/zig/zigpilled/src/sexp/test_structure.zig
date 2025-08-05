@@ -370,6 +370,12 @@ pub fn main() !void {
         .{ .name = "Unquoted string for b", .sexp = "((a 1) (b hello))" },
         .{ .name = "Number for string field", .sexp = "((a 1) (b 123))" },
         .{ .name = "Correct format", .sexp = "((a 42) (b \"hello world\"))" },
+        .{ .name = "Multiline with error", .sexp = 
+            \\(
+            \\  (a "not a number") ; This is line 2
+            \\  (b "test string")
+            \\)
+        },
     };
     
     for (test_cases) |test_case| {
@@ -406,6 +412,20 @@ fn testDecode(allocator: std.mem.Allocator, sexp_str: []const u8) !void {
             if (ctx.sexp_preview) |preview| {
                 if (preview.len > 0) {
                     std.debug.print("  Problem: {s}\n", .{preview});
+                }
+            }
+            // Print location information if available
+            if (ctx.line) |line| {
+                if (ctx.column) |col| {
+                    if (ctx.end_line) |end_line| {
+                        if (ctx.end_column) |end_col| {
+                            std.debug.print("  Location: line {d}:{d} to {d}:{d}\n", .{line, col, end_line, end_col});
+                        } else {
+                            std.debug.print("  Location: line {d}:{d}\n", .{line, col});
+                        }
+                    } else {
+                        std.debug.print("  Location: line {d}:{d}\n", .{line, col});
+                    }
                 }
             }
         }

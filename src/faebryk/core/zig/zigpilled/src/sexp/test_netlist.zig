@@ -350,7 +350,15 @@ pub fn main() !void {
         \\)
     ;
     
-    var parsed = try netlist.NetlistFile.loads(allocator, test_netlist_str);
+    var parsed = netlist.NetlistFile.loads(allocator, test_netlist_str) catch |err| {
+        std.debug.print("Error loading netlist: {}\n", .{err});
+        if (structure.getErrorContext()) |ctx| {
+            var ctx_with_source = ctx;
+            ctx_with_source.source = test_netlist_str;
+            std.debug.print("{}\n", .{ctx_with_source});
+        }
+        return err;
+    };
     defer parsed.free(allocator);
 
     std.debug.print("Parsed netlist is null: {}\n", .{parsed.netlist == null});

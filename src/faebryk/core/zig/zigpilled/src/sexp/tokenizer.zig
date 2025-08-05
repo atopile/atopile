@@ -15,26 +15,33 @@ pub const TokenType = enum {
     comment,
 };
 
+pub const TokenLocation = struct {
+    start: LocationInfo,
+    end: LocationInfo,
+};
+
+pub const LocationInfo = struct {
+    line: usize,
+    column: usize,
+};
+
 pub const Token = struct {
     type: TokenType,
     value: []const u8,
-    line: usize,
-    column: usize,
+    location: TokenLocation,
 };
 
 pub const Tokenizer = struct {
     input: []const u8,
     position: usize,
-    line: usize,
-    column: usize,
+    location: LocationInfo,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, input: []const u8) Tokenizer {
         return .{
             .input = input,
             .position = 0,
-            .line = 1,
-            .column = 1,
+            .location = .{ .line = 1, .column = 1 },
             .allocator = allocator,
         };
     }
@@ -120,8 +127,8 @@ pub const Tokenizer = struct {
         const input = self.input;
         const len = input.len;
         var pos = self.position;
-        var line = self.line;
-        var column = self.column;
+        var line = self.location.line;
+        var column = self.location.column;
 
         // Unroll common case of spaces/tabs
         while (pos < len) {
@@ -142,17 +149,15 @@ pub const Tokenizer = struct {
         }
 
         self.position = pos;
-        self.line = line;
-        self.column = column;
+        self.location = .{ .line = line, .column = column };
     }
 
     fn readString(self: *Tokenizer) !Token {
-        const start_line = self.line;
-        const start_column = self.column;
+        const start_location = self.location;
         const start = self.position;
         var pos = self.position + 1; // skip opening quote
-        var column = self.column + 1;
-        var line = self.line;
+        var column = self.location.column + 1;
+        var line = self.location.line;
         const input = self.input;
         const len = input.len;
 
@@ -160,13 +165,15 @@ pub const Tokenizer = struct {
             const c = input[pos];
             if (c == '"') {
                 self.position = pos + 1;
-                self.column = column + 1;
-                self.line = line;
+                self.location.column = column + 1;
+                self.location.line = line;
                 return Token{
                     .type = .string,
                     .value = input[start + 1 .. pos],
-                    .line = start_line,
-                    .column = start_column,
+                    .location = .{
+                        .start = start_location,
+                        .end = self.location,
+                    },
                 };
             }
             if (c == '\\' and pos + 1 < len) {
@@ -186,8 +193,7 @@ pub const Tokenizer = struct {
     }
 
     fn readNumber(self: *Tokenizer) Token {
-        const start_line = self.line;
-        const start_column = self.column;
+        const start_location = self.location;
         const start = self.position;
         var pos = self.position;
         const input = self.input;
@@ -203,20 +209,21 @@ pub const Tokenizer = struct {
             pos += 1;
         }
 
-        self.column += pos - self.position;
+        self.location.column += pos - self.position;
         self.position = pos;
 
         return Token{
             .type = .number,
             .value = input[start..pos],
-            .line = start_line,
-            .column = start_column,
+            .location = .{
+                .start = start_location,
+                .end = self.location,
+            },
         };
     }
 
     fn readSymbol(self: *Tokenizer) Token {
-        const start_line = self.line;
-        const start_column = self.column;
+        const start_location = self.location;
         const start = self.position;
         var pos = self.position;
         const input = self.input;
@@ -227,20 +234,21 @@ pub const Tokenizer = struct {
             pos += 1;
         }
 
-        self.column += pos - self.position;
+        self.location.column += pos - self.position;
         self.position = pos;
 
         return Token{
             .type = .symbol,
             .value = input[start..pos],
-            .line = start_line,
-            .column = start_column,
+            .location = .{
+                .start = start_location,
+                .end = self.location,
+            },
         };
     }
 
     fn readComment(self: *Tokenizer) Token {
-        const start_line = self.line;
-        const start_column = self.column;
+        const start_location = self.location;
         const start = self.position;
         var pos = self.position + 1; // skip semicolon
         const input = self.input;
@@ -252,13 +260,15 @@ pub const Tokenizer = struct {
         }
 
         self.position = pos;
-        self.column = pos - start;
+        self.location.column += pos - start;
 
         return Token{
             .type = .comment,
             .value = input[start..pos],
-            .line = start_line,
-            .column = start_column,
+            .location = .{
+                .start = start_location,
+                .end = self.location,
+            },
         };
     }
 
@@ -270,28 +280,32 @@ pub const Tokenizer = struct {
         }
 
         const c = self.input[self.position];
-        const line = self.line;
-        const column = self.column;
 
         switch (c) {
             '(' => {
+                const start_location = self.location;
                 self.position += 1;
-                self.column += 1;
+                self.location.column += 1;
                 return Token{
                     .type = .lparen,
                     .value = self.input[self.position - 1 .. self.position],
-                    .line = line,
-                    .column = column,
+                    .location = .{
+                        .start = start_location,
+                        .end = self.location,
+                    },
                 };
             },
             ')' => {
+                const start_location = self.location;
                 self.position += 1;
-                self.column += 1;
+                self.location.column += 1;
                 return Token{
                     .type = .rparen,
                     .value = self.input[self.position - 1 .. self.position],
-                    .line = line,
-                    .column = column,
+                    .location = .{
+                        .start = start_location,
+                        .end = self.location,
+                    },
                 };
             },
             '"' => {
