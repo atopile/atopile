@@ -5,7 +5,7 @@ from pydantic import HttpUrl
 import typer
 from semver import Version
 
-from atopile.errors import UserBadParameterError, UserException
+from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
 from atopile.telemetry import capture
 
 if TYPE_CHECKING:
@@ -239,101 +239,108 @@ def verify(
     # Let config find the project root, load `ato.yaml`, etc.
     config.apply_options(entry=package_address)
 
-    with LoggingStage("package-checks", "Validating ato.yaml package configuration"):
-        if config.project.package is None:
-            raise UserException(
-                "Project has no package configuration. "
-                "Please add a `package` section to your `ato.yaml` file."
-            )
-        logger.info("Package version: %s", config.project.package.version)
 
-        if not config.project.package.identifier:
-            raise UserBadParameterError(
-                "Project `identifier` is not set. Set via ATO_PACKAGE_IDENTIFIER envvar"
-                " or in `ato.yaml`"
-            )
+    print(config.project.paths.root.joinpath("builds","default"))
+    missing_builds = [b for b in config.project.builds.keys() if not config.project.paths.root.joinpath("build","builds").exists()]
+    if missing_builds:
+        raise UserFileNotFoundError(
+            "Missing build directories: " + ", ".join(missing_builds) +
+            " Please run `ato build` to create the build directories."
+        )
 
-        if not config.project.package.repository:
-            raise UserBadParameterError(
-                "Project `repository` is not set. Set via ATO_PACKAGE_REPOSITORY envvar"
-                " or in `ato.yaml`"
-            )
+    if config.project.package is None:
+        raise UserException(
+            "Project has no package configuration. "
+            "Please add a `package` section to your `ato.yaml` file."
+        )
+    logger.info("Package version: %s", config.project.package.version)
+
+    if not config.project.package.identifier:
+        raise UserBadParameterError(
+            "Project `identifier` is not set. Set via ATO_PACKAGE_IDENTIFIER envvar"
+            " or in `ato.yaml`"
+        )
+
+    if not config.project.package.repository:
+        raise UserBadParameterError(
+            "Project `repository` is not set. Set via ATO_PACKAGE_REPOSITORY envvar"
+            " or in `ato.yaml`"
+        )
 
     first_party = config.project.package.repository == HttpUrl("https://github.com/atopile/packages")
 
     if first_party:
-        with LoggingStage("first-party-checks", "Validating first-party package"):
-            """Validate folder & naming conventions for first-party packages.
-            Raises UserBadParameterError if any rule is violated.
-            """
-            project_root: Path = config.project.paths.root
+        """Validate folder & naming conventions for first-party packages.
+        Raises UserBadParameterError if any rule is violated.
+        """
+        project_root: Path = config.project.paths.root
 
-            # 1. Directory name must match the final component of identifier
-            expected_dirname = config.project.package.identifier.split("/")[-1]
-            if project_root.name != expected_dirname:
+        # 1. Directory name must match the final component of identifier
+        expected_dirname = config.project.package.identifier.split("/")[-1]
+        if project_root.name != expected_dirname:
+            raise UserBadParameterError(
+                f"Project directory '{project_root.name}' must be named '{expected_dirname}'"
+            )
+
+        # 2. Required top-level files / dirs
+        required = [
+            project_root / "ato.yaml",
+            project_root / f"{expected_dirname}.ato",
+            project_root / "layouts",
+            project_root / "parts",
+            project_root / "README.md",
+        ]
+        missing = [str(p.relative_to(project_root)) for p in required if not p.exists()]
+        if missing:
+            raise UserBadParameterError(
+                "Missing required files/directories: " + ", ".join(missing)
+            )
+
+        # 3. ato.yaml must contain both 'default' and 'usage' builds
+        build_names = set(config.project.builds.keys())
+        for required_build in {"default", "usage"}:
+            if required_build not in build_names:
                 raise UserBadParameterError(
-                    f"Project directory '{project_root.name}' must be named '{expected_dirname}'"
+                    f"ato.yaml must define a '{required_build}' build target"
                 )
 
-            # 2. Required top-level files / dirs
-            required = [
-                project_root / "ato.yaml",
-                project_root / f"{expected_dirname}.ato",
-                project_root / "layouts",
-                project_root / "parts",
-                project_root / "README.md",
-            ]
-            missing = [str(p.relative_to(project_root)) for p in required if not p.exists()]
-            if missing:
+        # 4. Build settings requirements
+        for build_cfg in config.project.builds.values():
+            if build_cfg.hide_designators is not True:
                 raise UserBadParameterError(
-                    "Missing required files/directories: " + ", ".join(missing)
+                    "Every build must set 'hide_designators: true' in ato.yaml"
+                )
+            if "PCB.requires_drc_check" not in set(build_cfg.exclude_checks):
+                raise UserBadParameterError(
+                    "Every build must include 'exclude_checks: [\'PCB.requires_drc_check\']'"
                 )
 
-            # 3. ato.yaml must contain both 'default' and 'usage' builds
-            build_names = set(config.project.builds.keys())
-            for required_build in {"default", "usage"}:
-                if required_build not in build_names:
-                    raise UserBadParameterError(
-                        f"ato.yaml must define a '{required_build}' build target"
-                    )
+        # 5. Package version must match the latest release in the registry
+        from faebryk.libs.backend.packages.api import PackagesAPIClient
+        api = PackagesAPIClient()
+        # latest_info = api.get_package(config.project.package.identifier)
+        # latest_version = latest_info.info.version
+        # if config.project.package.version != latest_version:
+        #     raise UserBadParameterError(
+        #         f"Package version {config.project.package.version} is not the latest. "
+        #         f"Latest published version is {latest_version}."
+        #     )
 
-            # 4. Build settings requirements
-            for build_cfg in config.project.builds.values():
-                if build_cfg.hide_designators is not True:
-                    raise UserBadParameterError(
-                        "Every build must set 'hide_designators: true' in ato.yaml"
-                    )
-                if "PCB.requires_drc_check" not in set(build_cfg.exclude_checks):
-                    raise UserBadParameterError(
-                        "Every build must include 'exclude_checks: [\'PCB.requires_drc_check\']'"
-                    )
-
-            # 5. Package version must match the latest release in the registry
-            from faebryk.libs.backend.packages.api import PackagesAPIClient
-            api = PackagesAPIClient()
-            # latest_info = api.get_package(config.project.package.identifier)
-            # latest_version = latest_info.info.version
-            # if config.project.package.version != latest_version:
-            #     raise UserBadParameterError(
-            #         f"Package version {config.project.package.version} is not the latest. "
-            #         f"Latest published version is {latest_version}."
-            #     )
-
-            # 6. Dependencies must be pinned to latest versions
-            if config.project.dependencies:
-                from atopile.config import RegistryDependencySpec
-                for dep in config.project.dependencies:
-                    if isinstance(dep, RegistryDependencySpec):
-                        latest_dep_info = api.get_package(dep.identifier)
-                        latest_dep_ver = latest_dep_info.info.version
-                        if dep.release != latest_dep_ver:
-                            raise UserBadParameterError(
-                                f"Dependency {dep.identifier} is not at latest version {latest_dep_ver}."
-                            )
-                    else:
+        # 6. Dependencies must be pinned to latest versions
+        if config.project.dependencies:
+            from atopile.config import RegistryDependencySpec
+            for dep in config.project.dependencies:
+                if isinstance(dep, RegistryDependencySpec):
+                    latest_dep_info = api.get_package(dep.identifier)
+                    latest_dep_ver = latest_dep_info.info.version
+                    if dep.release != latest_dep_ver:
                         raise UserBadParameterError(
-                            "Packages can not be published with github or file dependencies"
+                            f"Dependency {dep.identifier} is not at latest version {latest_dep_ver}."
                         )
+                else:
+                    raise UserBadParameterError(
+                        "Packages can not be published with github or file dependencies"
+                    )
 
 
     # # Build Project --keep-picked-parts --frozen
