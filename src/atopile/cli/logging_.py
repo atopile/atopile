@@ -1,6 +1,9 @@
+import io
 import logging
 import shutil
 from collections.abc import Iterable
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -38,6 +41,10 @@ from . import console
 
 logging.getLogger("requests").setLevel(logging.WARNING)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+import urllib3  # noqa: E402
+
+urllib3.disable_warnings()  # FIXME: SSL
 
 COLOR_LOGS = ConfigFlag("COLOR_LOGS", default=False)
 NOW = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -293,6 +300,25 @@ class LiveLogHandler(LogHandler):
                 self._logged_exceptions.add(hashable)
 
 
+class CaptureLogHandler(LogHandler):
+    def __init__(self, status: "LoggingStage", console: Console, *args, **kwargs):
+        super().__init__(*args, console=console, **kwargs)
+        self.status = status
+
+    def emit(self, record: logging.LogRecord) -> None:
+        hashable = self._get_hashable(record)
+        if hashable and hashable in self._logged_exceptions:
+            return
+
+        try:
+            super().emit(record)
+        except Exception:
+            self.handleError(record)
+        finally:
+            if hashable:
+                self._logged_exceptions.add(hashable)
+
+
 class IndentedProgress(Progress):
     def __init__(self, *args, indent: int = 20, **kwargs):
         self.indent = indent
@@ -347,6 +373,36 @@ class CompletableSpinnerColumn(SpinnerColumn):
         return text
 
 
+_log_sink_var = ContextVar[io.StringIO | None]("log_sink", default=None)
+
+
+@contextmanager
+def capture_logs():
+    log_sink = _log_sink_var.get()
+    _log_sink_var.set(io.StringIO())
+    _log_sink = _log_sink_var.get()
+    assert _log_sink is not None
+    yield _log_sink
+    _log_sink_var.set(log_sink)
+
+
+@contextmanager
+def log_exceptions(log_sink: io.StringIO):
+    from atopile.cli.excepthook import _handle_exception
+
+    exc_log_console = Console(file=log_sink)
+    exc_log_handler = LogHandler(console=exc_log_console)
+    logger.addHandler(exc_log_handler)
+
+    try:
+        yield
+    except Exception as e:
+        _handle_exception(type(e), e, e.__traceback__)
+        raise e
+    finally:
+        logger.removeHandler(exc_log_handler)
+
+
 class LoggingStage(Advancable):
     _LOG_LEVELS = {
         logging.DEBUG: "debug",
@@ -367,6 +423,7 @@ class LoggingStage(Advancable):
         self._error_count = 0
         self._info_log_path = None
         self._log_handler = None
+        self._capture_log_handler = None
         self._file_handlers = []
         self._original_handlers = {}
         self._sanitized_name = pathvalidate.sanitize_filename(self.name)
@@ -429,6 +486,9 @@ class LoggingStage(Advancable):
         return f"{self.description}{problems_text}"
 
     def refresh(self) -> None:
+        if not hasattr(self, "_task_id"):
+            return
+
         self._progress.update(self._task_id, description=self._generate_description())
 
     def set_total(self, total: int | None) -> None:
@@ -470,7 +530,7 @@ class LoggingStage(Advancable):
     def _create_log_dir(self) -> Path:
         from atopile.config import config
 
-        base_log_dir = Path(config.project.paths.logs) / NOW
+        base_log_dir = Path(config.project.paths.logs) / "archive" / NOW
 
         try:
             build_cfg = config.build
@@ -486,7 +546,13 @@ class LoggingStage(Advancable):
                 latest_link.unlink()
             else:
                 shutil.rmtree(latest_link)
-        latest_link.symlink_to(base_log_dir, target_is_directory=True)
+        try:
+            latest_link.symlink_to(base_log_dir, target_is_directory=True)
+        except OSError:
+            # If we can't symlink, just don't symlink
+            # Logs are still written to the dated directory
+            # Seems to happen on Windows if 'Developer Mode' is not enabled
+            pass
 
         return log_dir
 
@@ -503,12 +569,20 @@ class LoggingStage(Advancable):
         self._log_handler.setFormatter(_DEFAULT_FORMATTER)
         self._log_handler.setLevel(self._original_level)
 
+        if _log_sink_var.get() is not None:
+            capture_console = Console(file=_log_sink_var.get())
+            self._capture_log_handler = CaptureLogHandler(self, console=capture_console)
+            self._capture_log_handler.setFormatter(_DEFAULT_FORMATTER)
+            self._capture_log_handler.setLevel(logging.INFO)
+
         log_dir = self._create_log_dir()
 
         for handler in root_logger.handlers.copy():
             root_logger.removeHandler(handler)
 
         root_logger.addHandler(self._log_handler)
+        if self._capture_log_handler is not None:
+            root_logger.addHandler(self._capture_log_handler)
 
         self._file_handlers = []
         self._file_handles = {}
@@ -533,7 +607,12 @@ class LoggingStage(Advancable):
             root_logger.addHandler(file_handler)
 
             if level_name == "info":
-                self._info_log_path = log_file.relative_to(Path.cwd())
+                try:
+                    info_log_path = log_file.relative_to(Path.cwd())
+                except ValueError:
+                    info_log_path = log_file
+
+                self._info_log_path = info_log_path
 
     def _restore_logging(self) -> None:
         if not self._log_handler and not self._file_handlers:
@@ -541,8 +620,12 @@ class LoggingStage(Advancable):
 
         root_logger = logging.getLogger()
         root_logger.setLevel(self._original_level)
+
         if self._log_handler in root_logger.handlers:
             root_logger.removeHandler(self._log_handler)
+
+        if self._capture_log_handler in root_logger.handlers:
+            root_logger.removeHandler(self._capture_log_handler)
 
         for file_handler in self._file_handlers:
             if file_handler in root_logger.handlers:
@@ -561,6 +644,7 @@ class LoggingStage(Advancable):
         self._original_handlers = {}
         self._original_level = logging.INFO
         self._log_handler = None
+        self._capture_log_handler = None
         self._file_handlers = []
 
 

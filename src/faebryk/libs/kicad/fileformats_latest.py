@@ -1,18 +1,17 @@
 import logging
 import re
-from base64 import b64decode, b64encode
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional, Self, override
 
-import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 from more_itertools import first
 
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
+    C_data,
     C_effects,
     C_property_base,
     C_pts,
@@ -31,9 +30,11 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
-from faebryk.libs.util import lazy_split, once
+from faebryk.libs.util import ConfigFlag, lazy_split
 
 logger = logging.getLogger(__name__)
+
+RICH_PRINT = ConfigFlag("FF_RICH_PRINT")
 
 # TODO find complete examples of the fileformats, maybe in the kicad repo
 
@@ -672,6 +673,9 @@ class C_kicad_project_file(JSON_File):
     text_variables: dict = field(default_factory=dict)
     unknown: CatchAll = None
 
+    def __rich_repr__(self):
+        yield "**kwargs", "..."
+
 
 @dataclass
 class C_text_layer:
@@ -748,9 +752,9 @@ class C_polygon(C_shape):
     uuid: UUID | None = None
 
     def __post_init__(self):
-        assert (
-            len(self.pts.xys) > 0 or len(self.pts.arcs) > 0
-        ), "Polygon must have at least one point or arc"
+        assert len(self.pts.xys) > 0 or len(self.pts.arcs) > 0, (
+            "Polygon must have at least one point or arc"
+        )
 
 
 @dataclass(kw_only=True)
@@ -808,31 +812,32 @@ class C_image:
     at: C_xy
     layer: str
     scale: float = 1.0
-    data: bytes  # base64 encoded image data
+    data: C_data | None = None
+    uuid: UUID = field(default_factory=gen_uuid)
 
 
 @dataclass(kw_only=True)
-class C_textbox:
+class C_text_box:
     @dataclass
     class C_margins:
-        left: int
-        top: int
-        right: int
-        bottom: int
+        left: int = field(**sexp_field(positional=True))
+        top: int = field(**sexp_field(positional=True))
+        right: int = field(**sexp_field(positional=True))
+        bottom: int = field(**sexp_field(positional=True))
 
     @dataclass
     class C_span:
-        cols: int
-        rows: int
+        cols: int = field(**sexp_field(positional=True))
+        rows: int = field(**sexp_field(positional=True))
 
-    text: str
+    text: str = field(**sexp_field(positional=True))
     locked: bool = False
     start: C_xy
     end: C_xy | None = None
     pts: list[C_xy] | None = None
-    angle: float
-    stroke: C_stroke
-    border: bool
+    angle: float | None = None
+    stroke: C_stroke | None = None
+    border: bool | None = None
     margins: C_margins | None = None
     layer: str
     span: Optional[C_span] = None
@@ -848,8 +853,14 @@ class C_textbox:
 @dataclass(kw_only=True)
 class C_table:
     @dataclass
-    class C_table_cell:
-        table_cell: C_textbox
+    class C_cells:
+        @dataclass
+        class C_table_cell(C_text_box):
+            pass
+
+        table_cells: list[C_table_cell] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
 
     @dataclass
     class C_border:
@@ -868,10 +879,9 @@ class C_table:
     layer: str
     column_widths: list[float]
     row_heights: list[float]
-    cells: list[C_table_cell]
+    cells: C_cells
     border: C_border
     separators: C_separator
-    uuid: UUID = field(default_factory=gen_uuid)
 
 
 @dataclass(kw_only=True)
@@ -940,32 +950,6 @@ class C_embedded_file:
         font = auto()
         datasheet = auto()
         worksheet = auto()
-
-    @dataclass
-    class C_data:
-        compressed: list[Symbol] = field(**sexp_field(positional=True))
-
-        @property
-        @once
-        def merged(self):
-            return "".join(str(v) for v in self.compressed)
-
-        @property
-        @once
-        def uncompressed(self) -> bytes:
-            assert self.merged.startswith("|") and self.merged.endswith("|")
-            return zstd.decompress(b64decode(self.merged[1:-1]))
-
-        @classmethod
-        def compress(cls, data: bytes):
-            # from kicad:common/embedded_files.cpp
-            b64 = b64encode(zstd.compress(data)).decode()
-            CHUNK_LEN = 76
-            # chunk string to 76 characters
-            chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
-            chunks[0] = "|" + chunks[0]
-            chunks[-1] = chunks[-1] + "|"
-            return cls(compressed=[Symbol(c) for c in chunks])
 
     name: str
     type: C_type
@@ -1264,6 +1248,10 @@ class C_footprint(HasPropertiesMixin):
                 hide=True,
             ),
         )
+
+    def __rich_repr__(self):
+        yield "name", self.name
+        yield "**kwargs", "..."
 
 
 @dataclass
@@ -1885,13 +1873,13 @@ class C_kicad_pcb_file(SEXP_File):
         gr_rects: list[C_rect] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        gr_images: list[C_image] = field(
+        images: list[C_image] = field(
             **sexp_field(multidict=True), default_factory=list
         )
         gr_texts: list[C_text] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        gr_textboxes: list[C_textbox] = field(
+        gr_text_boxs: list[C_text_box] = field(
             **sexp_field(multidict=True), default_factory=list
         )
         tables: list[C_table] = field(
@@ -1909,14 +1897,11 @@ class C_kicad_pcb_file(SEXP_File):
         targets: list[C_target] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        # TODO
-        # enbedded_fonts: list[C_embedded_font] = field(
-        #    **sexp_field(multidict=True), default_factory=list
-        # )
-        # enbedded_files: list[C_embedded_file] = field(
-        #    **sexp_field(multidict=True), default_factory=list
-        # )
+
         unknown: CatchAll = None
+
+        def __rich_repr__(self):
+            yield "**kwargs", "..."
 
     kicad_pcb: C_kicad_pcb
 
@@ -2149,8 +2134,19 @@ class C_kicad_model_file:
     def header(self) -> str:
         # Extract header section between HEADER; and ENDSEC; using regex
 
-        # Read till DATA; token
-        non_data = first(lazy_split(self._raw, b"DATA;")).decode("utf-8")
+        # ISO 10303-21:2016-03, section 5.2:
+        # The set of LATIN_CODEPOINT character is equivalent to the basic alphabet
+        # in the first and second editions of ISO 10303-21. The UTF-8 representation of
+        # code points U+0020 to U+007E is the same as the ISO/IEC 8859-1 characters
+        # G(02/00) to G(07/14) that defined the basic alphabet in earlier editions.
+        # Use of HIGH_CODEPOINT characters within the exchange structure can be avoided
+        # when compatibility with previous editions of ISO 10303-21 is desired.
+
+        # Read till DATA; token ignore any invalid UTF-8 characters that may occur
+        # Currently only used to extract filename, so not critical to drop characters
+        non_data = first(lazy_split(self._raw, b"DATA;")).decode(
+            "utf-8", errors="ignore"
+        )
 
         pattern = r"HEADER;(.*?)ENDSEC;"
         match = re.search(pattern, non_data, re.DOTALL)
@@ -2181,3 +2177,10 @@ class C_kicad_model_file:
         if path is not None:
             path.write_bytes(self._raw)
         return self._raw
+
+
+if RICH_PRINT:
+    # TODO ugly
+    del C_kicad_pcb_file.C_kicad_pcb.__rich_repr__
+    del C_kicad_project_file.__rich_repr__
+    del C_footprint.__rich_repr__

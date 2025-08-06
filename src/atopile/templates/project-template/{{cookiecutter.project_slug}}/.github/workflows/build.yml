@@ -1,0 +1,26 @@
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: atopile/setup-atopile@main
+
+      - run: ato sync
+      - run: ato build --frozen
+        id: build
+        continue-on-error: true
+
+      - name: Upload Combined Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build
+          path: build
+
+      - name: Check build status
+        if: steps.build.outcome == 'failure'
+        run: exit 1

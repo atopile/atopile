@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING, Callable, Iterable
 
 from faebryk.core.cpp import GraphInterfaceModuleSibling
 from faebryk.core.node import Node, NodeException, f_field
-from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import cast_assert, unique_ref
 
 if TYPE_CHECKING:
     from faebryk.core.moduleinterface import ModuleInterface
+    from faebryk.core.parameter import Parameter
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +42,9 @@ class Module(Node):
             specialer.get_most_special() for specialer in specialers
         )
 
-        assert (
-            len(specialest_next) == 1
-        ), f"Ambiguous specialest {specialest_next} for {self}"
+        assert len(specialest_next) == 1, (
+            f"Ambiguous specialest {specialest_next} for {self}"
+        )
         return next(iter(specialest_next))
 
     def get_children_modules[T: Module](
@@ -226,5 +226,16 @@ class Module(Node):
             self, dst, allow_partial=allow_partial
         )
 
-    def get_parameters(self) -> list[Parameter]:
+    def get_parameters(self) -> list["Parameter"]:
+        from faebryk.core.parameter import Parameter
+
         return list(self.get_children(types=Parameter, direct_only=True))
+
+    # TODO get rid of this abomination
+    @property
+    def reference_shim(self):
+        from faebryk.library.has_single_electric_reference import (
+            has_single_electric_reference,
+        )
+
+        return self.get_trait(has_single_electric_reference).get_reference()

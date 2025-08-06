@@ -72,9 +72,9 @@ def attach_random_designators(graph: Graph):
     assert not no_designator
 
     dupes = duplicates(nodes, lambda n: n.get_trait(F.has_designator).get_designator())
-    assert (
-        not dupes
-    ), f"Duplicate designators found in layout:\n{md_list(dupes, recursive=True)}"
+    assert not dupes, (
+        f"Duplicate designators found in layout:\n{md_list(dupes, recursive=True)}"
+    )
 
 
 def load_designators(graph: Graph, attach: bool = False) -> dict[L.Node, str]:

@@ -9,18 +9,12 @@ on:
 
 jobs:
   regression:
-    runs-on: blacksmith-4vcpu-ubuntu-2204
+    runs-on: blacksmith-8vcpu-ubuntu-2404
     if: ${{
         (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'regression-required')) ||
         (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
       }}
     steps:
-    # FIXME: remove this once we're done debugging
-    - run: echo "Event " ${{ github.event_name }}
-    - run: echo "Event labels " ${{ github.event.pull_request.labels }}
-    - run: echo "run for pull_request " ${{ (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'regression-required')) }}
-    - run: echo "run else " ${{ (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
-
     - name: Checkout code
       uses: actions/checkout@v4
 
@@ -29,35 +23,16 @@ jobs:
     - run: git fetch --prune --unshallow --tags
 
     - name: Install uv
-      uses: useblacksmith/setup-uv@v4
+      uses: astral-sh/setup-uv@v6
       with:
-        version: 0.6.4
+        version: 0.8
         enable-cache: true
         cache-dependency-glob: "uv.lock"
 
     - name: "Set up Python"
-      uses: useblacksmith/setup-python@v6
+      uses: actions/setup-python@v5
       with:
         python-version-file: "pyproject.toml"
-
-    - name: Setup cmake
-      uses: jwlawson/actions-setup-cmake@v2
-
-    - name: Configure AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ secrets.AWS_REGION }}
-
-    # TODO: remove dependency on global fp-lib-table
-    - name: Prepare test environment
-      run: |
-        mkdir -p ~/.config/kicad/8.0/
-        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-fp-lib-table" ~/.config/kicad/8.0/fp-lib-table
-
-        mkdir -p /usr/share/kicad/
-        aws s3 cp "s3://${{ secrets.TEST_DATASET_BUCKET }}/kicad-8.0-footprints.tar.gz" - | tar -xz -C /usr/share/kicad/
 
     - name: Run pytest
       id: pytest

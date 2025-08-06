@@ -7,6 +7,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
+from more_itertools import first
+
 import faebryk.library._F as F
 from atopile.errors import UserException
 from faebryk.core.graph import Graph, GraphFunctions
@@ -78,12 +80,8 @@ def add_or_get_nets(*interfaces: F.Electrical):
     buses = ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
 
-    for bus_repr, connected_mifs in buses.items():
-        nets_on_bus = {
-            net
-            for mif in connected_mifs
-            if (net := F.Net.find_from_part_of_mif(mif)) is not None
-        }
+    for bus_repr in buses.keys():
+        nets_on_bus = F.Net.find_nets_for_mif(bus_repr)
 
         if not nets_on_bus:
             net = F.Net()
@@ -91,7 +89,17 @@ def add_or_get_nets(*interfaces: F.Electrical):
             nets_on_bus = {net}
 
         if len(nets_on_bus) > 1:
-            raise KeyErrorAmbiguous(list(nets_on_bus), "Multiple nets interconnected")
+            named_nets_on_bus = {
+                n for n in nets_on_bus if n.has_trait(F.has_overriden_name)
+            }
+            if not named_nets_on_bus:
+                nets_on_bus = {first(nets_on_bus)}
+            elif len(named_nets_on_bus) == 1:
+                nets_on_bus = named_nets_on_bus
+            else:
+                raise KeyErrorAmbiguous(
+                    list(named_nets_on_bus), "Multiple (named) nets interconnected"
+                )
 
         nets_out |= nets_on_bus
 
@@ -122,7 +130,9 @@ class _NetName:
         Prefixes and suffixes are joined with a "-" if they exist.
         """
         return "-".join(
-            str(n) for n in [self.prefix, self.base_name or "net", self.suffix] if n
+            str(n)
+            for n in [self.prefix, self.base_name or "net", self.suffix]
+            if n is not None
         )
 
 
@@ -187,10 +197,34 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     Generate good net names, assuming that we're passed all the nets in a design
     """
 
-    # Ignore nets with names already
-    unnamed_nets = [n for n in nets if not n.has_trait(F.has_overriden_name)]
-
     names = FuncDict[F.Net, _NetName]()
+
+    # Ignore nets with names already
+    unnamed_nets = {
+        n: sorted(n.get_connected_interfaces(), key=lambda m: m.get_full_name())
+        for n in nets
+        if not n.has_trait(F.has_overriden_name)
+    }
+    # sort nets by
+    # 1. name of first connected interface (remove hex)
+    # 2. number of connected interfaces
+
+    def stable_node_name(m: ModuleInterface) -> str:
+        return ".".join([p_name for p, p_name in m.get_hierarchy() if p.get_parent()])
+
+    unnamed_nets = dict(
+        sorted(
+            unnamed_nets.items(),
+            key=lambda it: [stable_node_name(m) for m in it[1]],
+        )
+    )
+
+    # Capture already-named nets for conflict checking
+    for net in nets:
+        if net.has_trait(F.has_overriden_name):
+            names[net] = _NetName(
+                base_name=net.get_trait(F.has_overriden_name).get_name()
+            )
 
     # First generate candidate base names
     def _decay(depth: int) -> float:
@@ -200,13 +234,13 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # FIXME: the errors for this deserve vast improvement. Attaching an origin trait
     # to has_net_name is a start, but we need a generic way to raise those as
     # well-formed errors
-    for net in unnamed_nets:
+    for net, mifs in unnamed_nets.items():
         net_required_names: set[str] = set()
         net_suggested_names: list[tuple[str, int]] = []
         implicit_name_candidates: Mapping[str, float] = defaultdict(float)
         case_insensitive_map: Mapping[str, str] = {}
 
-        for mif in net.get_connected_interfaces():
+        for mif in mifs:
             # If there's net info, use it
             depth = len(mif.get_hierarchy())
 

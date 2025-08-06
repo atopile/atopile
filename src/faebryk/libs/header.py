@@ -13,8 +13,7 @@ logger = logging.getLogger(__name__)
 
 def get_header():
     return (
-        "# This file is part of the faebryk project\n"
-        "# SPDX-License-Identifier: MIT\n"
+        "# This file is part of the faebryk project\n# SPDX-License-Identifier: MIT\n"
     )
 
 
@@ -33,7 +32,7 @@ def formatted_file_contents(file_contents: str, is_pyi: bool = False) -> str:
         if match:
             lineno, column = map(int, match.groups())
         with_line_numbers = "\n".join(
-            f"{'>>' if i+1==lineno else '  '}{i + 1:3d}: {line}"
+            f"{'>>' if i + 1 == lineno else '  '}{i + 1:3d}: {line}"
             for i, line in enumerate(file_contents.split("\n"))
         )
         logger.warning("black failed to format file:\n" + with_line_numbers)

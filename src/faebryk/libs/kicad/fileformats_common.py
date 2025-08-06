@@ -1,13 +1,17 @@
 import logging
+import re
 import uuid
 from abc import abstractmethod
+from base64 import b64decode, b64encode
+from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import auto
-from hashlib import sha256
 from typing import Optional
 
+import zstd
 from dataclasses_json.undefined import CatchAll
 
+from faebryk.libs.checksum import Checksum
 from faebryk.libs.sexp.dataclass_sexp import (
     SEXP_File,
     Symbol,
@@ -16,7 +20,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     netlist_type,
     sexp_field,
 )
-from faebryk.libs.util import KeyErrorAmbiguous, compare_dataclasses
+from faebryk.libs.util import KeyErrorAmbiguous, compare_dataclasses, once
 
 logger = logging.getLogger(__name__)
 
@@ -28,10 +32,6 @@ KICAD_FP_VERSION = 20241229
 
 
 class PropertyNotSet(Exception):
-    pass
-
-
-class ChecksumMismatch(Exception):
     pass
 
 
@@ -85,6 +85,9 @@ class C_xyr:
     x: float = field(**sexp_field(positional=True))
     y: float = field(**sexp_field(positional=True))
     r: float = field(**sexp_field(positional=True), default=0)
+
+    def __add__(self, other: "C_xy") -> "C_xyr":
+        return C_xyr(x=self.x + other.x, y=self.y + other.y, r=self.r)
 
 
 @dataclass
@@ -156,7 +159,7 @@ class C_effects:
 
         J = C_effects.C_justify.E_justify
 
-        def _only_one_of(lst: list[J]):
+        def _only_one_of(lst: list[C_effects.C_justify.E_justify]):
             dups = [j for j in justifys if j in lst]
             if len(dups) > 1:
                 raise KeyErrorAmbiguous(dups)
@@ -250,24 +253,59 @@ class HasPropertiesMixin:
     def property_dict(self) -> dict[str, str]:
         return {k: v.value for k, v in self.propertys.items()}
 
-    def _hash(self) -> str:
-        content = dump_single(self)
-        return sha256(content.encode("utf-8")).hexdigest()
+    def _hashable(self, remove_uuid: bool = True) -> str:
+        copy = deepcopy(self)
+
+        try:
+            del copy.propertys["checksum"]
+        except KeyError:
+            pass
+
+        out = dump_single(copy)
+
+        if remove_uuid:
+            out = re.sub(r"\(uuid \"[^\"]*\"\)", "", out)
+
+        return out
 
     def set_checksum(self):
         if "checksum" in self.propertys:
             del self.propertys["checksum"]
 
-        self.add_property("checksum", self._hash())
+        self.add_property("checksum", Checksum.build(self._hashable()))
 
     def verify_checksum(self):
         checksum_stated = self.get_property("checksum")
 
-        del self.propertys["checksum"]
-        checksum_actual = self._hash()
-        self.add_property("checksum", checksum_stated)
+        try:
+            Checksum.verify(checksum_stated, self._hashable())
+        except Checksum.Mismatch:
+            # legacy
+            Checksum.verify(checksum_stated, self._hashable(remove_uuid=False))
 
-        if checksum_actual != checksum_stated:
-            raise ChecksumMismatch(
-                f"{type(self).__name__} `{self.name}` has a checksum mismatch."
-            )
+
+@dataclass
+class C_data:
+    compressed: list[Symbol] = field(**sexp_field(positional=True))
+
+    @property
+    @once
+    def merged(self):
+        return "".join(str(v) for v in self.compressed)
+
+    @property
+    @once
+    def uncompressed(self) -> bytes:
+        assert self.merged.startswith("|") and self.merged.endswith("|")
+        return zstd.decompress(b64decode(self.merged[1:-1]))
+
+    @classmethod
+    def compress(cls, data: bytes):
+        # from kicad:common/embedded_files.cpp
+        b64 = b64encode(zstd.compress(data)).decode()
+        CHUNK_LEN = 76
+        # chunk string to 76 characters
+        chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
+        chunks[0] = "|" + chunks[0]
+        chunks[-1] = chunks[-1] + "|"
+        return cls(compressed=[Symbol(c) for c in chunks])

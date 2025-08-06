@@ -4,7 +4,7 @@ Datatypes used in the model.
 
 import logging
 from contextlib import contextmanager
-from typing import Iterable, Iterator, Self
+from typing import Iterable, Iterator, Self, override
 
 log = logging.getLogger(__name__)
 log.setLevel(logging.INFO)
@@ -70,6 +70,10 @@ class ReferencePartType:
             return f"{self.name}[{self.key}]"
         return self.name
 
+    @override
+    def __repr__(self) -> str:
+        return f"{type(self)}({str(self)})"
+
     def has_key(self) -> bool:
         return self.key is not None
 
@@ -122,6 +126,10 @@ class FieldRef:
 
     def __str__(self) -> str:
         return ".".join(str(part) for part in self.parts)
+
+    @override
+    def __repr__(self) -> str:
+        return f"{type(self)}({str(self)})"
 
     def to_type_ref(self) -> TypeRef | None:
         if any(part.has_key() for part in self.parts):

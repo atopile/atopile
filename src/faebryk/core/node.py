@@ -20,6 +20,7 @@ from typing import (
 
 from deprecated import deprecated
 from more_itertools import partition
+from ordered_set import OrderedSet
 
 from faebryk.core.cpp import Node as CNode
 from faebryk.core.graphinterface import (
@@ -503,6 +504,10 @@ class Node(CNode):
         assert not hasattr(self, "_called_init")
         self._called_init = True
 
+        # Preserved for later inspection of signature, which is otherwise clobbered
+        # by nanobind, so we only get (self, *args, **kwargs)
+        self.__original_init__ = self.__init__
+
     def __preinit__(self, *args, **kwargs) -> None: ...
 
     def __postinit__(self, *args, **kwargs) -> None: ...
@@ -664,10 +669,10 @@ class Node(CNode):
         include_root: bool = False,
         f_filter: Callable[[T], bool] | None = None,
         sort: bool = True,
-    ) -> set[T]:
+    ) -> OrderedSet[T]:
         return cast(
-            set[T],
-            set(
+            OrderedSet[T],
+            OrderedSet(
                 super().get_children(
                     direct_only=direct_only,
                     types=types if isinstance(types, tuple) else (types,),

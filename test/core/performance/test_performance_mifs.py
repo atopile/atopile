@@ -10,6 +10,11 @@ from faebryk.core.graphinterface import GraphInterface
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import times
+from test.common.resources.fabll_modules.RP2040 import RP2040
+from test.common.resources.fabll_modules.RP2040_ReferenceDesign import (
+    RP2040_ReferenceDesign,
+)
+from test.common.resources.fabll_modules.USB2514B import USB2514B
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +98,8 @@ def test_performance_mifs_connect_hull(mif_type):
 @pytest.mark.parametrize(
     "module_type",
     [
-        F.USB2514B,
-        F.RP2040,
+        USB2514B,
+        RP2040,
     ],
 )
 def test_performance_mifs_bus_params(module_type):
@@ -115,7 +120,7 @@ def test_performance_mifs_no_connect():
     CNT = 30
     timings = Times(multi_sample_strategy=Times.MultiSampleStrategy.ALL)
 
-    app = F.RP2040_ReferenceDesign()
+    app = RP2040_ReferenceDesign()
     timings.add("construct")
 
     for i in range(CNT):

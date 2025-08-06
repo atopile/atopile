@@ -95,7 +95,7 @@ def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
 
 ResistorParams = _make_params_for_type(F.Resistor, "resistors")
 CapacitorParams = _make_params_for_type(F.Capacitor, "capacitors")
-# InductorParams = _make_params_for_type(F.Inductor, "inductors")
+InductorParams = _make_params_for_type(F.Inductor, "inductors")
 # DiodeParams = _make_params_for_type(F.Diode, "diodes")
 # TVSParams = _make_params_for_type(F.TVS, "tvs")
 # LEDParams = _make_params_for_type(F.LED, "leds")

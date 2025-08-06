@@ -50,7 +50,6 @@ from atopile.errors import (
     UserException,
     UserFileNotFoundError,
     UserNoProjectException,
-    UserNotImplementedError,
 )
 from atopile.version import (
     DISTRIBUTION_NAME,
@@ -58,8 +57,9 @@ from atopile.version import (
     get_installed_atopile_version,
 )
 from faebryk.libs.exceptions import UserResourceException
+from faebryk.libs.paths import get_config_dir
 from faebryk.libs.test.testutil import in_test
-from faebryk.libs.util import indented_container
+from faebryk.libs.util import indented_container, md_list
 
 logger = logging.getLogger(__name__)
 yaml = YAML()
@@ -151,15 +151,7 @@ class ConfigFileSettingsSource(YamlConfigSettingsSource, ABC):
 class GlobalConfigSettingsSource(ConfigFileSettingsSource):
     @classmethod
     def find_config_file(cls) -> Path | None:
-        """Find the global config file in the user's home directory."""
-
-        # note deliberate use of ~/.config on all platforms
-        # (rather than e.g. platformdirs)
-        config_dir = (
-            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-            / APPLICATION_NAME
-        )
-        config_file = config_dir / GLOBAL_CONFIG_FILENAME
+        config_file = get_config_dir() / GLOBAL_CONFIG_FILENAME
         return config_file if config_file.exists() else None
 
     def get_data(self) -> dict[str, Any]:
@@ -753,8 +745,11 @@ class ProjectConfig(BaseConfigModel):
     """A map of all the build targets (/ "builds") in this project."""
 
     services: ServicesConfig = Field(default_factory=ServicesConfig)
-    open_layout_on_build: bool | None = None
+    open_layout_on_build: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
+
+    dangerously_skip_ssl_verification: bool = Field(default=True)  # FIXME: SSL
+    """Skip SSL verification for all API requests."""
 
     @classmethod
     def from_path(cls, path: Path | None) -> "ProjectConfig | None":
@@ -971,6 +966,9 @@ class Config:
         yield "selected_builds", self._selected_builds
         yield "project_dir", self._project_dir
 
+    def reload(self):
+        self._project = _try_construct_config(ProjectSettings)
+
     @property
     def project(self) -> ProjectSettings | ProjectConfig:
         if self._project is None:
@@ -1042,6 +1040,9 @@ class Config:
     def builds(self) -> Generator[_GeneratorContextManager[None], None, None]:
         """Return an iterable of BuildContext objects for each build."""
         return (_build_context(self, name) for name in self.selected_builds)
+
+    def select_build(self, name: str) -> _GeneratorContextManager[None]:
+        return _build_context(self, name)
 
     @property
     def build(self) -> BuildTargetConfig:
@@ -1168,13 +1169,16 @@ class Config:
         self,
         entry: str | None,
         standalone: bool = False,
-        option: Iterable[str] = (),
-        target: Iterable[str] = (),
+        include_targets: Iterable[str] = (),
+        exclude_targets: Iterable[str] = (),
         selected_builds: Iterable[str] = (),
         frozen: bool | None = None,
         working_dir: Path | None = None,
         **kwargs: Any,
     ) -> None:
+        if working_dir:
+            working_dir = Path(working_dir).expanduser().resolve().absolute()
+
         entry, entry_arg_file_path = self._get_entry_arg_file_path(entry, working_dir)
 
         if standalone:
@@ -1183,7 +1187,7 @@ class Config:
             if config_file_path := _find_project_config_file(entry_arg_file_path):
                 self.project_dir = config_file_path.parent
             elif entry is None:
-                raise UserNoProjectException()
+                raise UserNoProjectException(search_path=entry_arg_file_path)
 
             else:
                 raise UserBadParameterError(
@@ -1195,15 +1199,6 @@ class Config:
         self.project.entry = entry
 
         logger.info("Using project %s", self.project_dir)
-
-        # add custom config overrides
-        if option:
-            raise UserNotImplementedError(
-                "Custom config overrides have been removed in a refactor. "
-                "It's planned to re-add them in a future release. "
-                "If this is a blocker for you, please raise an issue. "
-                "In the meantime, you can use the `ato.yaml` file to set these options."
-            )
 
         # if we set an entry-point, we now need to deal with that
         entry_addr_override = self._check_entry_arg_file_path(
@@ -1217,17 +1212,22 @@ class Config:
             self.selected_builds = list(selected_builds)
 
         for build_name in self.selected_builds:
-            build_cfg = self.project.builds[build_name]
-
-            if build_name not in self.project.builds:
+            try:
+                build_cfg = self.project.builds[build_name]
+            except KeyError:
                 raise UserBadParameterError(
-                    f"Build `{build_name}` not found in project config"
+                    f"Build `{build_name}` not found in project config.\n\nAvailable"
+                    " builds:\n" + md_list(self.project.builds.keys())
                 )
 
             if entry_addr_override is not None:
                 build_cfg.address = entry_addr_override
-            if target:
-                build_cfg.targets = list(target)
+
+            if include_targets:
+                build_cfg.targets = list(include_targets)
+
+            if exclude_targets:
+                build_cfg.exclude_targets = list(exclude_targets)
 
             # Attach CLI options passed via kwargs
             for key, value in kwargs.items():

@@ -22,19 +22,20 @@ from typing import Annotated
 
 import typer
 
-from atopile import telemetry, version
+from atopile import version
 from atopile.cli import (
     build,
     configure,
     create,
     inspect_,
     install,
+    kicad_ipc,
     package,
     view,
     lsp,
+    mcp,
 )
 from atopile.cli.logging_ import handler, logger
-from atopile.config import config
 from atopile.errors import UserException, UserNoProjectException
 from atopile.version import check_for_update
 from faebryk.libs.exceptions import (
@@ -137,22 +138,20 @@ def cli(
     # are reloaded from a pointed-to file (eg in `ato build path/to/file`)
     # from outside a project directory
     if non_interactive is not None:
+        from atopile.config import config
+
         config.interactive = not non_interactive
 
     if ctx.invoked_subcommand:
         check_for_update()
 
-        # Initialize telemetry
-        telemetry.setup_telemetry_data(ctx.invoked_subcommand)
-
-    if config.interactive and ctx.invoked_subcommand != "configure":
-        configure.do_configure_if_needed()
+    configure.setup()
 
 
 app.command()(build.build)
 app.add_typer(create.create_app, name="create")
 app.command(deprecated=True, hidden=True)(install.install)
-app.command()(configure.configure)
+app.command(deprecated=True, hidden=True)(configure.configure)
 app.command()(inspect_.inspect)
 app.command()(view.view)
 app.add_typer(package.package_app, name="package", hidden=True)
@@ -161,6 +160,8 @@ app.command(rich_help_panel="Shortcuts")(install.sync)
 app.command(rich_help_panel="Shortcuts")(install.add)
 app.command(rich_help_panel="Shortcuts")(install.remove)
 app.add_typer(lsp.lsp_app, name="lsp", hidden=True)
+app.add_typer(mcp.mcp_app, name="mcp", hidden=True)
+app.add_typer(kicad_ipc.kicad_ipc_app, name="kicad-ipc", hidden=True)
 
 
 @app.command(hidden=True)
@@ -184,6 +185,8 @@ class ConfigFormat(str, Enum):
 def dump_config(format: ConfigFormat = ConfigFormat.python):
     from rich import print
 
+    from atopile.config import config
+
     print(config.project.model_dump(mode=format))
 
 
@@ -192,6 +195,7 @@ def validate(
     path: Annotated[Path, typer.Argument(exists=True, file_okay=True, dir_okay=False)],
 ):
     from atopile import front_end
+    from atopile.config import config
 
     path = path.resolve().relative_to(Path.cwd())
 
