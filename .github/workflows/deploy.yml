@@ -1,4 +1,3 @@
-# Taken from https://github.com/pybind/scikit_build_example/blob/master/.github/workflows/wheels.yml
 
 name: deploy
 
@@ -103,8 +102,9 @@ jobs:
     name: Publish Wheels
     needs: [build_wheels, build_sdist]
     runs-on: ubuntu-latest
-    # Publish wheels properly on release
-    # or to testpypi on main branch pushes to validate the workflow
+    # This job runs only on the main atopile/atopile repository when:
+    # - A release is published (publishes to PyPI)
+    # - A push to main branch (publishes to TestPyPI for validation)
     if: github.repository == 'atopile/atopile' && (github.event_name == 'release' && github.event.action == 'published' || github.event_name == 'push' && github.ref == 'refs/heads/main')
     environment: pypi
     permissions:
@@ -142,7 +142,12 @@ jobs:
     name: Docker Build and Publish
     runs-on: blacksmith-4vcpu-ubuntu-2404
     needs: build_wheels
-    if: github.repository == 'atopile/atopile'
+    # This job runs only on the main atopile/atopile repository when:
+    # - Any push to main branch
+    # - A release is published
+    # - A PR from the same repository (not from forks)
+    # - Manual workflow dispatch
+    if: github.repository == 'atopile/atopile' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == 'atopile/atopile')
 
     strategy:
       matrix:
