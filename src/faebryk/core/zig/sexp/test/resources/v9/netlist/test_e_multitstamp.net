@@ -1,6 +1,6 @@
 (export (version "E")
   (design
-    (source "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/sch/test.kicad_sch")
+    (source "src/sexp/test_files/v9/sch/test.kicad_sch")
     (date "2025-08-04T14:24:57-0700")
     (tool "Eeschema 9.0.3")
     (sheet (number "1") (name "/") (tstamps "/")
