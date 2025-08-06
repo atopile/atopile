@@ -264,11 +264,12 @@ pub const Model = struct {
 pub const Footprint = struct {
     name: []const u8,
     layer: []const u8 = "F.Cu",
+    uuid: []const u8,
     at: Xyr,
-    attr: [][]const u8 = &.{},
     path: ?[]const u8 = null,
     propertys: []Property = &.{},
     fp_texts: []FpText = &.{},
+    attr: [][]const u8 = &.{},
     fp_lines: []Line = &.{},
     fp_arcs: []Arc = &.{},
     fp_circles: []Circle = &.{},
@@ -276,13 +277,9 @@ pub const Footprint = struct {
     fp_poly: []Polygon = &.{},
     pads: []Pad = &.{},
     models: []Model = &.{},
-    uuid: []const u8,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
-        .layer = structure.SexpField{ .order = -20 },
-        .at = structure.SexpField{ .order = -10 },
-        .uuid = structure.SexpField{ .order = -15 },
         .propertys = structure.SexpField{ .multidict = true, .sexp_name = "property" },
         .fp_texts = structure.SexpField{ .multidict = true, .sexp_name = "fp_text" },
         .fp_lines = structure.SexpField{ .multidict = true, .sexp_name = "fp_line" },
@@ -436,7 +433,7 @@ pub const Layer = struct {
     pub const fields_meta = .{
         .number = structure.SexpField{ .positional = true },
         .name = structure.SexpField{ .positional = true },
-        .type = structure.SexpField{ .positional = true },
+        .type = structure.SexpField{ .positional = true, .symbol = true },
         .alias = structure.SexpField{ .positional = true },
     };
 };
@@ -509,15 +506,18 @@ pub const PcbPlotParams = struct {
     hpglpendiameter: f64 = 15.0,
     pdf_front_fp_property_popups: bool = true,
     pdf_back_fp_property_popups: bool = true,
+    pdf_metadata: bool = true,
+    pdf_single_document: bool = false,
     dxfpolygonmode: bool = true,
     dxfimperialunits: bool = true,
     dxfusepcbnewfont: bool = true,
     psnegative: bool = false,
     psa4output: bool = false,
-    plotreference: bool = true,
-    plotvalue: bool = true,
+    plot_black_and_white: bool = true,
     plotinvisibletext: bool = false,
     sketchpadsonfab: bool = false,
+    plotreference: bool = true,
+    plotvalue: bool = true,
     plotpadnumbers: bool = false,
     hidednponfab: bool = false,
     sketchdnponfab: bool = true,
@@ -529,14 +529,38 @@ pub const PcbPlotParams = struct {
     drillshape: i32 = 1,
     scaleselection: i32 = 1,
     outputdirectory: []const u8 = "",
+
+    pub const fields_meta = .{
+        .layerselection = structure.SexpField{ .symbol = true },
+        .plot_on_all_layers_selection = structure.SexpField{ .symbol = true },
+    };
+};
+
+// Special struct for tenting that encodes as positional symbols
+pub const Tenting = struct {
+    values: [][]const u8,
+
+    // Custom encoding to output values as positional symbols
+    pub fn encode(self: Tenting, allocator: std.mem.Allocator) !structure.SExp {
+        var items = try allocator.alloc(structure.SExp, self.values.len);
+        for (self.values, 0..) |val, i| {
+            items[i] = structure.SExp{ .value = .{ .symbol = val }, .location = null };
+        }
+        return structure.SExp{ .value = .{ .list = items }, .location = null };
+    }
 };
 
 pub const Setup = struct {
     stackup: ?Stackup = null,
     pad_to_mask_clearance: i32 = 0,
     allow_soldermask_bridges_in_footprints: bool = false,
+    tenting: ?[][]const u8 = null,
     pcbplotparams: PcbPlotParams = .{},
-    rules: Rules = .{},
+    rules: ?Rules = null,
+
+    pub const fields_meta = .{
+        .tenting = structure.SexpField{ .symbol = true },
+    };
 };
 
 // Main PCB structure
@@ -639,7 +663,7 @@ pub const PcbFile = struct {
         };
     }
 
-    pub fn dumps(self: PcbFile, allocator: std.mem.Allocator, out: ?structure.output) ![]u8 {
+    pub fn dumps(self: PcbFile, allocator: std.mem.Allocator, out: ?structure.output) ![]const u8 {
         return try structure.dumps(self.kicad_pcb, allocator, root_symbol, out);
     }
 

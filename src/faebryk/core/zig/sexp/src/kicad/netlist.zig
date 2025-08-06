@@ -201,7 +201,7 @@ pub const NetlistFile = struct {
         };
     }
 
-    pub fn dumps(self: NetlistFile, allocator: std.mem.Allocator, out: ?structure.output) ![]u8 {
+    pub fn dumps(self: NetlistFile, allocator: std.mem.Allocator, out: ?structure.output) ![]const u8 {
         if (self.netlist) |netlist| {
             return try structure.dumps(netlist, allocator, root_symbol, out);
         }

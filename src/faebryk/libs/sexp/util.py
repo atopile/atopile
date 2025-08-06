@@ -3,6 +3,9 @@
 
 import logging
 from collections import deque
+from pathlib import Path
+
+import typer
 
 logger = logging.getLogger(__name__)
 
@@ -68,3 +71,15 @@ def prettify_sexp_string(raw: str) -> str:
     return "\n".join(
         x.rstrip() if i > 0 else x for i, x in enumerate("".join(out).splitlines())
     )
+
+
+def main(path: Path, out: Path | None = None):
+    if not out:
+        out = path
+    content = path.read_text(encoding="utf-8")
+    pretty = prettify_sexp_string(content)
+    out.write_text(pretty, encoding="utf-8")
+
+
+if __name__ == "__main__":
+    typer.run(main)

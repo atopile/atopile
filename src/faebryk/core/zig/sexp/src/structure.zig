@@ -21,6 +21,7 @@ pub const SexpField = struct {
     multidict: bool = false,
     sexp_name: ?[]const u8 = null,
     order: i32 = 0,
+    symbol: bool = false, // If true, encode strings as symbols (no quotes)
 };
 
 fn _print_indent(writer: anytype, indent: usize) !void {
@@ -198,6 +199,7 @@ fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField 
             if (@hasField(@TypeOf(meta), "multidict")) result.multidict = meta.multidict;
             if (@hasField(@TypeOf(meta), "sexp_name")) result.sexp_name = meta.sexp_name;
             if (@hasField(@TypeOf(meta), "order")) result.order = meta.order;
+            if (@hasField(@TypeOf(meta), "symbol")) result.symbol = meta.symbol;
             return result;
         }
     }
@@ -812,6 +814,39 @@ fn decodeEnum(comptime T: type, sexp: SExp) DecodeError!T {
     return error.InvalidValue;
 }
 
+// Encode with metadata (for symbol flag support)
+fn encodeWithMetadata(allocator: std.mem.Allocator, value: anytype, metadata: SexpField) EncodeError!SExp {
+    const T = @TypeOf(value);
+    const type_info = @typeInfo(T);
+
+    // Special handling for strings that should be encoded as symbols
+    if (type_info == .pointer) {
+        if (type_info.pointer.size == .slice and type_info.pointer.child == u8 and metadata.symbol) {
+            // Encode as symbol instead of string
+            return SExp{ .value = .{ .symbol = value }, .location = null };
+        }
+
+        // Special handling for slices of strings that should be encoded as symbols
+        if (type_info.pointer.size == .slice and metadata.symbol) {
+            const child_type = type_info.pointer.child;
+            if (@typeInfo(child_type) == .pointer and
+                @typeInfo(child_type).pointer.size == .slice and
+                @typeInfo(child_type).pointer.child == u8)
+            {
+                // This is [][]const u8 with symbol flag - encode each string as a symbol
+                var items = try allocator.alloc(SExp, value.len);
+                for (value, 0..) |str_val, i| {
+                    items[i] = SExp{ .value = .{ .symbol = str_val }, .location = null };
+                }
+                return SExp{ .value = .{ .list = items }, .location = null };
+            }
+        }
+    }
+
+    // Otherwise, use normal encoding
+    return try encode(allocator, value);
+}
+
 // Main encode function
 pub fn encode(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
     const T = @TypeOf(value);
@@ -871,8 +906,18 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
         const metadata = getSexpMetadata(T, field.name);
         if (metadata.positional) {
             const field_value = @field(value, field.name);
-            const encoded = try encode(allocator, field_value);
-            try items.append(encoded);
+
+            // Handle optional positional fields differently
+            if (comptime isOptional(field.type)) {
+                if (field_value) |val| {
+                    const encoded = try encodeWithMetadata(allocator, val, metadata);
+                    try items.append(encoded);
+                }
+                // Skip null optionals entirely
+            } else {
+                const encoded = try encodeWithMetadata(allocator, field_value, metadata);
+                try items.append(encoded);
+            }
         }
     }
 
@@ -888,12 +933,12 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                 if (comptime isSlice(@TypeOf(field_value))) {
                     for (field_value) |item| {
                         // Encode the item
-                        const encoded_item = try encode(allocator, item);
+                        const encoded_item = try encodeWithMetadata(allocator, item, metadata);
 
                         // For multidict structs, we want to unwrap the struct encoding
                         // and prepend the field name
                         if (ast.getList(encoded_item)) |item_contents| {
-                            // Create a new list with the field name prepended
+                            // For other structs, unwrap and prepend the field name
                             var kv_items = try allocator.alloc(SExp, item_contents.len + 1);
                             kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
                             for (item_contents, 0..) |content, idx| {
@@ -913,16 +958,108 @@ fn encodeStruct(allocator: std.mem.Allocator, value: anytype) EncodeError!SExp {
                 // Handle optional values
                 if (comptime isOptional(@TypeOf(field_value))) {
                     if (field_value) |val| {
-                        var kv_items = try allocator.alloc(SExp, 2);
-                        kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                        kv_items[1] = try encode(allocator, val);
-                        try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                        const encoded_val = try encodeWithMetadata(allocator, val, metadata);
+
+                        // Check if this is a slice that should be unwrapped
+                        if (@typeInfo(@TypeOf(val)) == .pointer and
+                            @typeInfo(@TypeOf(val)).pointer.size == .slice)
+                        {
+                            // For slices, unwrap the list and prepend the field name
+                            if (ast.getList(encoded_val)) |slice_items| {
+                                var kv_items = try allocator.alloc(SExp, slice_items.len + 1);
+                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                                for (slice_items, 0..) |item, idx| {
+                                    kv_items[idx + 1] = item;
+                                }
+                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                            } else {
+                                // Fallback
+                                var kv_items = try allocator.alloc(SExp, 2);
+                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                                kv_items[1] = encoded_val;
+                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                            }
+                        } else {
+                            // For non-slices, normal encoding
+                            var kv_items = try allocator.alloc(SExp, 2);
+                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                            kv_items[1] = encoded_val;
+                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                        }
                     }
                 } else {
-                    var kv_items = try allocator.alloc(SExp, 2);
-                    kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
-                    kv_items[1] = try encode(allocator, field_value);
-                    try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                    // Check if we're encoding a struct (which would be a list)
+                    const encoded_value = try encodeWithMetadata(allocator, field_value, metadata);
+
+                    // If the field value is a struct (represented as a list), we need to flatten it
+                    if (@typeInfo(@TypeOf(field_value)) == .@"struct") {
+                        if (ast.getList(encoded_value)) |struct_items| {
+                            // Create a new list with the field name prepended to the struct's items
+                            var kv_items = try allocator.alloc(SExp, struct_items.len + 1);
+                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                            for (struct_items, 0..) |item, idx| {
+                                kv_items[idx + 1] = item;
+                            }
+                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                        } else {
+                            // Fallback to normal encoding
+                            var kv_items = try allocator.alloc(SExp, 2);
+                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                            kv_items[1] = encoded_value;
+                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                        }
+                    } else {
+                        // Check if this is a slice field
+                        if (@typeInfo(@TypeOf(field_value)) == .pointer and
+                            @typeInfo(@TypeOf(field_value)).pointer.size == .slice)
+                        {
+                            // For slices, unwrap the list and prepend the field name
+                            if (ast.getList(encoded_value)) |slice_items| {
+                                var kv_items = try allocator.alloc(SExp, slice_items.len + 1);
+                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+
+                                // Special handling for symbol slices
+                                const child_type = @typeInfo(@TypeOf(field_value)).pointer.child;
+                                if (metadata.symbol) {
+                                    // Check if this is a slice of strings ([][]const u8)
+                                    if (@typeInfo(child_type) == .pointer and
+                                        @typeInfo(child_type).pointer.size == .slice and
+                                        @typeInfo(child_type).pointer.child == u8)
+                                    {
+                                        // This is a slice of strings that should be encoded as symbols
+                                        // Re-encode each item as a symbol
+                                        for (field_value, 0..) |str_val, idx| {
+                                            kv_items[idx + 1] = SExp{ .value = .{ .symbol = str_val }, .location = null };
+                                        }
+                                    } else {
+                                        // Normal slice encoding
+                                        for (slice_items, 0..) |item, idx| {
+                                            kv_items[idx + 1] = item;
+                                        }
+                                    }
+                                } else {
+                                    // Normal slice encoding
+                                    for (slice_items, 0..) |item, idx| {
+                                        kv_items[idx + 1] = item;
+                                    }
+                                }
+
+                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                            } else {
+                                // Fallback for non-list encoding
+                                var kv_items = try allocator.alloc(SExp, 2);
+                                kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                                kv_items[1] = encoded_value;
+                                try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                            }
+                        } else {
+                            // Normal encoding for non-slice values
+                            var kv_items = try allocator.alloc(SExp, 2);
+                            kv_items[0] = SExp{ .value = .{ .symbol = field_name }, .location = null };
+                            kv_items[1] = encoded_value;
+                            try items.append(SExp{ .value = .{ .list = kv_items }, .location = null });
+                        }
+                    }
                 }
             }
         }
@@ -1063,7 +1200,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
 }
 
 // Dump a struct to an S-expression string with a wrapping symbol
-pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8, out: ?output) ![]u8 {
+pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8, out: ?output) ![]const u8 {
     if (out != null) {
         //TODO
     }
@@ -1088,13 +1225,7 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
 
     const wrapped = ast.SExp{ .value = .{ .list = items }, .location = null };
 
-    // Write to string
-    var buffer = std.ArrayList(u8).init(allocator);
-    const writer = buffer.writer();
-
-    try wrapped.str(writer);
-
-    return try buffer.toOwnedSlice();
+    return try wrapped.pretty(allocator);
 }
 
 // Generic free function for structs decoded by this library

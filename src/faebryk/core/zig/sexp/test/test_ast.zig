@@ -3,6 +3,8 @@ const sexp = @import("sexp");
 
 const SExp = sexp.ast.SExp;
 
+const RESOURCES_ROOT = "test/resources/v9";
+
 test "parse empty input" {
     const allocator = std.testing.allocator;
     const tokens = try sexp.tokenizer.tokenize(allocator, "");
@@ -121,4 +123,32 @@ test "mixed types in list" {
     try std.testing.expectEqualStrings("hello", items[2].value.string);
 
     try std.testing.expect(items[3].value == .list);
+}
+
+test "round-trip pcb ast" {
+    const FILE_PATH = RESOURCES_ROOT ++ "/pcb/top.kicad_pcb";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const file_content = try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024);
+
+    const tokens = try sexp.tokenizer.tokenize(allocator, file_content);
+    defer allocator.free(tokens);
+
+    var sexp_ast = try sexp.ast.parse(allocator, tokens);
+    defer sexp_ast.deinit(allocator);
+
+    const output = try sexp_ast.pretty(allocator);
+    defer allocator.free(output);
+
+    // Debug: write actual output to see the difference
+    if (!std.mem.eql(u8, file_content, output)) {
+        const debug_file = try std.fs.cwd().createFile("test_ast_output_debug.txt", .{});
+        defer debug_file.close();
+        try debug_file.writeAll(output);
+    }
+
+    try std.testing.expectEqualStrings(file_content, output);
 }

@@ -329,6 +329,68 @@ test "load real pcb file" {
     try std.testing.expectEqualStrings("UNI_ROYAL_0402WGF1001TCE:R0402", fp_logo.name);
 }
 
+test "encode Layer with symbol type field" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const layer = sexp.kicad.pcb.Layer{
+        .number = 0,
+        .name = "F.Cu",
+        .type = "signal",
+        .alias = null,
+    };
+
+    const encoded = try sexp.structure.encode(allocator, layer);
+    
+    // Debug: print the S-expression
+    var output = std.ArrayList(u8).init(allocator);
+    defer output.deinit();
+    try encoded.str(output.writer());
+    
+    
+    // Should be: (0 "F.Cu" signal)
+    // Not:       (0 "F.Cu" "signal")
+    const expected = "(0 \"F.Cu\" signal)";
+    try std.testing.expectEqualStrings(expected, output.items);
+}
+
+test "round-trip pcb structure" {
+    const FILE_PATH = RESOURCES_ROOT ++ "/pcb/top.kicad_pcb";
+
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const file_content = try std.fs.cwd().readFileAlloc(allocator, FILE_PATH, 1024 * 1024);
+
+    var pcb_file = try sexp.kicad.pcb.PcbFile.loads(allocator, .{ .string = file_content });
+
+    const serialized = try pcb_file.dumps(allocator, null);
+
+    // Debug: write actual output to see the difference
+    if (!std.mem.eql(u8, file_content, serialized)) {
+        const debug_file = try std.fs.cwd().createFile("test_kicad_output_debug.txt", .{});
+        defer debug_file.close();
+        try debug_file.writeAll(serialized);
+        
+        // Print the first difference
+        for (file_content, 0..) |char, i| {
+            if (i >= serialized.len or char != serialized[i]) {
+                std.debug.print("\nFirst difference at position {d}:\n", .{i});
+                const start = if (i > 50) i - 50 else 0;
+                const end = @min(i + 50, @min(file_content.len, serialized.len));
+                std.debug.print("Expected: ...{s}...\n", .{file_content[start..end]});
+                std.debug.print("Actual:   ...{s}...\n", .{serialized[start..end]});
+                break;
+            }
+        }
+        
+    }
+
+    try std.testing.expectEqualStrings(file_content, serialized);
+}
+
 pub fn main() !void {
     // Run tests
     std.debug.print("Running netlist tests...\n", .{});
