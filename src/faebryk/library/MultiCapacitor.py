@@ -42,8 +42,8 @@ class MultiCapacitor(F.Capacitor):
         #           connections
         # ------------------------------------
 
-        self.unnamed[0].connect(*(c.unnamed[0] for c in self.capacitors))
-        self.unnamed[1].connect(*(c.unnamed[1] for c in self.capacitors))
+        self.terminals[0].connect(*(c.terminals[0] for c in self.capacitors))
+        self.terminals[1].connect(*(c.terminals[1] for c in self.capacitors))
 
         # ------------------------------------
         #          parametrization

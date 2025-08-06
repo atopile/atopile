@@ -9,7 +9,7 @@ from faebryk.libs.units import P
 
 
 class Inductor(Module):
-    unnamed = L.list_field(2, F.Electrical)
+    terminals = L.list_field(2, F.Electrical)
 
     inductance = L.p_field(
         units=P.H,
@@ -27,76 +27,45 @@ class Inductor(Module):
         soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
     )
-    saturation_current = L.p_field(units=P.A)
     self_resonant_frequency = L.p_field(
         units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
+    saturation_current = L.p_field(units=P.A)
 
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Inductor,
-            {
-                "inductance": self.inductance,
-                "max_current": self.max_current,
-                "dc_resistance": self.dc_resistance,
-                "saturation_current": self.saturation_current,
-                "self_resonant_frequency": self.self_resonant_frequency,
-            },
-        )
+    attach_to_footprint: F.can_attach_to_footprint_symmetrically
+    pickable: F.is_pickable_by_type
 
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(*self.unnamed)
+        return F.can_bridge_defined(*self.terminals)
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
-
-    @L.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.inductance, tolerance=True),
-            S(self.self_resonant_frequency),
-            S(self.max_current),
-            S(self.dc_resistance),
-        )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.L
     )
 
-    # TODO: remove @https://github.com/atopile/atopile/issues/727
-    @property
-    def p1(self) -> F.Electrical:
-        """Signal to one side of the inductor."""
-        return self.unnamed[0]
-
-    @property
-    def p2(self) -> F.Electrical:
-        """Signal to the other side of the inductor."""
-        return self.unnamed[1]
-
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Inductor
+        import Electrical, Inductor
 
         inductor = new Inductor
         inductor.inductance = 10uH +/- 10%
-        inductor.max_current = 2A
-        inductor.dc_resistance = 50mohm +/- 20%
-        inductor.self_resonant_frequency = 100MHz +/- 10%
-        inductor.package = "0805"
+        inductor.package = "SMD5x5mm"
+        assert inductor.max_current >= 2A
+        assert inductor.dc_resistance = 50mohm +/- 20%
+        assert inductor.self_resonant_frequency within 100MHz +/- 10%
+        assert inductor.saturation_current >= 2A
 
-        electrical1 ~ inductor.unnamed[0]
-        electrical2 ~ inductor.unnamed[1]
+        electrical1 = new Electrical
+        electrical2 = new Electrical
+
+        electrical1 ~ inductor.terminals[0]
+        electrical2 ~ inductor.terminals[1]
         # OR
         electrical1 ~> inductor ~> electrical2
-
-        # For filtering applications
-        power_input ~> inductor ~> filtered_output
         """,
         language=F.has_usage_example.Language.ato,
     )

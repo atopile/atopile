@@ -235,7 +235,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
                     continue
 
                 if path := ModuleInterfacePath.from_connection(
-                    comp.unnamed[0], comp.unnamed[1]
+                    comp.terminals[0], comp.terminals[1]
                 ):
                     raise ERCFaultShortedModuleInterfaces.from_path(path)
 
