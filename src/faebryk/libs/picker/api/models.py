@@ -5,7 +5,7 @@ import functools
 import logging
 from dataclasses import asdict, dataclass, field, make_dataclass
 from textwrap import indent
-from typing import Any, Iterable
+from typing import Any
 
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
@@ -17,7 +17,7 @@ from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import Serializable, SerializableJSONEncoder
+from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,6 @@ def SerializableField():
     )
 
 
-# Consider moving to a more general markdown utility
-def _md_list(items: Iterable[str]) -> str:
-    return "\n".join(f"- {item}" for item in items)
-
-
 # Consider making this a mixin instead
 def _pretty_params_helper(params) -> str:
     def _map(v: Any) -> str:
@@ -54,7 +49,7 @@ def _pretty_params_helper(params) -> str:
         else:
             return str(v)
 
-    return _md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
+    return md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
 
 
 @dataclass_json
