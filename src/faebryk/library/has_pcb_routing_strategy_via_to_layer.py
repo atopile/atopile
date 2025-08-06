@@ -35,8 +35,6 @@ class has_pcb_routing_strategy_via_to_layer(F.has_pcb_routing_strategy.impl()):
         logger.debug(f"Routing {node} {'-' * 40}")
 
         def get_route_for_net(net: F.Net, mifs) -> Route | None:
-            net_name = net.get_trait(F.has_overriden_name).get_name()
-
             pads = get_pads_pos_of_mifs(mifs)
             pad_groups = group_pads_that_are_connected_already(pads)
 
@@ -53,7 +51,7 @@ class has_pcb_routing_strategy_via_to_layer(F.has_pcb_routing_strategy.impl()):
                 )
             }
 
-            logger.debug(f"Routing net {net_name} with pads: {pads_filtered}")
+            logger.debug(f"Routing net {net} with pads: {pads_filtered}")
 
             path = Path()
 

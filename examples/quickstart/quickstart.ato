@@ -1,0 +1,5 @@
+import Resistor
+
+module App:
+    r1 = new Resistor                # Create a new resistor
+    r1.resistance = 100ohm +/- 10%   # Set the resistor value

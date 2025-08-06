@@ -14,6 +14,11 @@ from faebryk.libs.units import P
 
 
 class ElectricSignal(F.Signal):
+    """
+    ElectricSignal is a class that represents a signal that is represented
+    by the voltage between the reference.hv and reference.lv.
+    """
+
     class LinkIsolatedReference(LinkDirectConditional):
         def test(self, node: CNode):
             return not isinstance(node, F.ElectricPower)

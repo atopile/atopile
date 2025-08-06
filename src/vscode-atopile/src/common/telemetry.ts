@@ -31,8 +31,21 @@ function getConfigDir(): string {
         case 'linux':
         case 'darwin':
         default:
-            return path.join(os.homedir(), 'atopile');
+            const xdg = process.env.XDG_CONFIG_HOME;
+            if (xdg) {
+                return path.join(xdg, 'atopile');
+            }
+            return path.join(os.homedir(), '.config', 'atopile');
     }
+}
+
+export function updateConfig(enabled: boolean) {
+    const configDir = getConfigDir();
+    const configFile = path.join(configDir, 'telemetry.yaml');
+    const config = parse(fs.readFileSync(configFile, 'utf8'));
+    config.telemetry = enabled;
+    fs.writeFileSync(configFile, stringify(config));
+    enabled = config.telemetry;
 }
 
 function loadConfig() {
@@ -54,7 +67,7 @@ function loadConfig() {
         fs.writeFileSync(configFile, stringify(config));
     }
 
-    if (!config.telemetry) {
+    if (typeof config.telemetry !== 'boolean') {
         config.telemetry = true;
         fs.writeFileSync(configFile, stringify(config));
     }

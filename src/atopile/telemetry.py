@@ -11,6 +11,8 @@ What we collect:
 - Git hash of current commit
 """
 
+import atexit
+import configparser
 import contextlib
 import hashlib
 import importlib.metadata
@@ -21,9 +23,10 @@ import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Unpack
 
 from posthog import Posthog
+from posthog.args import OptionalCaptureArgs
 from ruamel.yaml import YAML
 
 from faebryk.libs.paths import get_config_dir
@@ -37,28 +40,33 @@ class _MockClient:
 
     def capture_exception(
         self,
-        exc: Exception,
-        distinct_id: uuid.UUID | None,
-        properties: dict | None = None,
+        exception: Exception,
+        **kwargs: Unpack[OptionalCaptureArgs],
     ) -> None:
         pass
 
     def capture(
         self,
-        distinct_id: uuid.UUID | None,
         event: str,
-        properties: dict | None = None,
+        **kwargs: Unpack[OptionalCaptureArgs],
     ) -> None:
         pass
 
+    def flush(self) -> None:
+        pass
 
+
+@once
 def _get_posthog_client() -> Posthog | _MockClient:
     try:
         return Posthog(
             # write-only API key, intended to be made public
             project_api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
             host="https://telemetry.atopileapi.com",
-            sync_mode=True,
+            sync_mode=False,
+            thread=2,
+            flush_at=1,
+            flush_interval=0.1,
         )
     except Exception as e:
         log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
@@ -68,28 +76,58 @@ def _get_posthog_client() -> Posthog | _MockClient:
 client = _get_posthog_client()
 
 
+def _flush_telemetry_on_exit() -> None:
+    """Flush telemetry data when the program exits."""
+    try:
+        if not client.disabled:
+            client.flush()
+    except Exception as e:
+        log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
+
+
+# Register exit handler to flush telemetry data
+atexit.register(_flush_telemetry_on_exit)
+
+
 @dataclass
 class TelemetryConfig:
-    telemetry: bool | None = True
-    id: uuid.UUID | None = field(default_factory=uuid.uuid4)
+    telemetry: bool
+    id: uuid.UUID
+
+    def __init__(
+        self, telemetry: bool | None = None, id: uuid.UUID | str | None = None
+    ) -> None:
+        match id:
+            case str():
+                self.id = uuid.UUID(id)
+            case uuid.UUID():
+                self.id = id
+            case _:
+                self.id = uuid.uuid4()
+
+        match telemetry:
+            case bool():
+                self.telemetry = telemetry
+            case _:
+                self.telemetry = True
+
+    def to_dict(self) -> dict:
+        return {"id": str(self.id), "telemetry": self.telemetry}
 
     @classmethod
     @once
     def load(cls) -> "TelemetryConfig":
         atopile_config_dir = get_config_dir()
-        atopile_yaml = atopile_config_dir / "telemetry.yaml"
+        telemetry_yaml = atopile_config_dir / "telemetry.yaml"
+        yaml = YAML()
 
-        if not atopile_yaml.exists():
+        try:
+            config = TelemetryConfig(**(yaml.load(telemetry_yaml) or {}))
+        except Exception:
             config = TelemetryConfig()
-            atopile_config_dir.mkdir(parents=True, exist_ok=True)
-            with atopile_yaml.open("w", encoding="utf-8") as f:
-                yaml = YAML()
-                yaml.dump(config, f)
-            return config
 
-        with atopile_yaml.open(encoding="utf-8") as f:
-            yaml = YAML()
-            config = TelemetryConfig(**yaml.load(f))
+        atopile_config_dir.mkdir(parents=True, exist_ok=True)
+        yaml.dump(config.to_dict(), telemetry_yaml)
 
         if config.telemetry is False:
             log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
@@ -130,8 +168,10 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             repo = git.Repo(search_parent_directories=True)
             config_reader = repo.config_reader()
@@ -149,8 +189,10 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             repo = git.Repo(search_parent_directories=True)
             return repo.head.commit.hexsha
@@ -170,8 +212,10 @@ class PropertyLoaders:
         except (
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             return None
 
@@ -223,7 +267,7 @@ class PropertyLoaders:
 
 @dataclass
 class TelemetryProperties:
-    duration: float
+    duration: float | None = None
     email: str | None = field(default_factory=PropertyLoaders.email)
     current_git_hash: str | None = field(
         default_factory=PropertyLoaders.current_git_hash
@@ -233,6 +277,14 @@ class TelemetryProperties:
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
+
+    def __post_init__(self) -> None:
+        self._start_time = time.perf_counter()
+
+    def prepare(self, properties: dict | None = None) -> dict:
+        now = time.perf_counter()
+        self.duration = now - (self._start_time or now)
+        return {**asdict(self), **(properties or {})}
 
 
 def capture_exception(exc: Exception, properties: dict | None = None) -> None:
@@ -245,8 +297,11 @@ def capture_exception(exc: Exception, properties: dict | None = None) -> None:
     if config.telemetry is False:
         return
 
+    default_properties = TelemetryProperties()
+    properties = default_properties.prepare(properties)
+
     try:
-        client.capture_exception(exc, config.id, properties)
+        client.capture_exception(exc, distinct_id=config.id, properties=properties)
     except Exception as e:
         log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
 
@@ -266,19 +321,14 @@ def capture(
         yield
         return
 
-    try:
-        start_time = time.perf_counter()
-        default_properties = TelemetryProperties(
-            duration=time.perf_counter() - start_time
-        )
-        properties = {**asdict(default_properties), **(properties or {})}
-    except Exception as e:
-        log.debug("Failed to create telemetry properties: %s", e, exc_info=e)
-        yield
-        return
+    default_properties = TelemetryProperties()
 
     try:
-        client.capture(distinct_id=config.id, event=event_start, properties=properties)
+        client.capture(
+            distinct_id=config.id,
+            event=event_start,
+            properties=default_properties.prepare(properties),
+        )
     except Exception as e:
         log.debug("Failed to send telemetry data (event start): %s", e, exc_info=e)
         yield
@@ -288,12 +338,20 @@ def capture(
         yield
     except Exception as e:
         try:
-            client.capture_exception(e, config.id, properties)
+            client.capture_exception(
+                e,
+                distinct_id=config.id,
+                properties=default_properties.prepare(properties),
+            )
         except Exception as e:
             log.debug("Failed to send exception telemetry data: %s", e, exc_info=e)
         raise
 
     try:
-        client.capture(distinct_id=config.id, event=event_end, properties=properties)
+        client.capture(
+            distinct_id=config.id,
+            event=event_end,
+            properties=default_properties.prepare(properties),
+        )
     except Exception as e:
         log.debug("Failed to send telemetry data (event end): %s", e, exc_info=e)

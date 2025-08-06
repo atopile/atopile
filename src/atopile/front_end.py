@@ -13,15 +13,17 @@ from collections import defaultdict
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from enum import StrEnum
+from enum import Enum, StrEnum
 from itertools import chain, pairwise
 from pathlib import Path
+from types import UnionType
 from typing import (
     Any,
     Iterable,
     Literal,
     Sequence,
     Type,
+    Union,
     cast,
 )
 
@@ -147,6 +149,10 @@ class from_dsl(Trait.decless()):
         self.src_ctx = src_ctx
         self.definition_ctx = definition_ctx
         self.references: list[Span] = []
+
+        # just a failsafe
+        if str(self.src_file.parent).startswith("file:"):
+            raise ValueError(f"src_file: {self.src_file}")
 
     def add_reference(self, ctx: ParserRuleContext) -> None:
         self.references.append(Span.from_ctx(ctx))
@@ -726,6 +732,48 @@ class _ParameterDefinition:
         return len(self.ref) == 1
 
 
+class _EnumUpgradeError(Exception):
+    def __init__(self, *enum_types: type[Enum], arg_name: str):
+        self.enum_types = enum_types
+        self.arg_name = arg_name
+
+
+def _try_upgrade_str_to_enum(
+    type_hints: dict[str, Any], arg_name: str, arg_value: str
+) -> Enum | str:
+    """
+    Attempts to convert a string argument to a compatible enum value, based on type
+    hints.
+    """
+
+    type_hint = type_hints[arg_name]
+
+    if isinstance(type_hint, type) and issubclass(type_hint, Enum):
+        try:
+            return type_hint[arg_value]
+        except KeyError:
+            raise _EnumUpgradeError(type_hint, arg_name=arg_name)
+
+    elif isinstance(type_hint, UnionType) or typing.get_origin(type_hint) is Union:
+        type_args = typing.get_args(type_hint)
+        enum_args = [
+            t for t in type_args if isinstance(t, type) and issubclass(t, Enum)
+        ]
+
+        # assume any matching enum works equivalently well
+        if enum_args and isinstance(arg_value, str):
+            for t in enum_args:
+                try:
+                    return t[arg_value]
+                except KeyError:
+                    pass
+
+            if not any(isinstance(t, type) and issubclass(t, str) for t in type_args):
+                raise _EnumUpgradeError(*enum_args, arg_name=arg_name)
+
+    return arg_value
+
+
 def _parse_pragma(pragma_text: str) -> tuple[str, list[str | int | float | bool]]:
     """
     pragma_stmt: '#pragma' function_call
@@ -943,8 +991,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 from_dsl_.add_reference(context.ref_ctxs[ref])
 
             return node
-        except* SkipPriorFailedException:
-            raise errors.UserException("Build failed")
+        except* SkipPriorFailedException as e:
+            raise errors.UserException("Build failed") from e
 
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}
@@ -1211,9 +1259,19 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         return search_paths
 
-    def _import_item(
-        self, context: Context, item: Context.ImportPlaceholder
-    ) -> Type[L.Node] | ap.BlockdefContext:
+    def _find_import_path(self, context: Context, item: Context.ImportPlaceholder):
+        # allow importing <src path>/file.suffix as either:
+        # from "file.suffix" import X
+        # or
+        # from "<owner>/<package>/file.suffix" import X
+
+        if (
+            pkg_cfg := config.project.package
+        ) is not None and item.from_path.startswith(pkg_cfg.identifier):
+            item.from_path = item.from_path.replace(
+                pkg_cfg.identifier, str(config.project.paths.src), count=1
+            )
+
         # Build up search paths to check for the import in
         # Iterate though them, checking if any contains the thing we're looking for
         search_paths = self._get_search_paths(context)
@@ -1226,7 +1284,13 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 item.original_ctx, f"Unable to resolve import `{item.from_path}`"
             )
 
-        from_path = self._sanitise_path(candidate_from_path)
+        return self._sanitise_path(candidate_from_path)
+
+    def _import_item(
+        self, context: Context, item: Context.ImportPlaceholder
+    ) -> Type[L.Node] | ap.BlockdefContext:
+        from_path = self._find_import_path(context, item)
+
         if from_path.suffix == ".py":
             try:
                 node = import_from_path(from_path)
@@ -1240,7 +1304,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     node = getattr(node, ref)
                 except AttributeError as ex:
                     raise errors.UserKeyError.from_ctx(
-                        item.original_ctx, f"No attribute `{ref}` found on {node}"
+                        item.original_ctx,
+                        f"Could not find `{ref}` in {node.__file__}",
+                        markdown=False,
                     ) from ex
 
             assert isinstance(node, type) and issubclass(node, L.Node)
@@ -1257,7 +1323,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if isinstance(node, Context.ImportPlaceholder):
                 raise errors.UserTypeError.from_ctx(
                     item.original_ctx,
-                    "Importing a import is not supported",
+                    "Importing an import is not supported",
                 )
 
             assert (
@@ -1446,6 +1512,8 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         isn't already known, attaching the __atopile_src_ctx__ attribute to the new
         class.
         """
+        kwargs = kwargs or {}
+
         if isinstance(item, type) and issubclass(item, L.Node):
             super_class = item
             for super_ctx in promised_supers:
@@ -1472,7 +1540,31 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 self._python_classes[super_ctx] = super_class
 
             assert issubclass(super_class, L.Node)
-            return super_class(**(kwargs or {})), promised_supers
+
+            callable_ = getattr(super_class, "__original_init__")
+            super_class_signature = inspect.signature(callable_)
+            type_hints = typing.get_type_hints(callable_)
+
+            for arg_name, arg_value in kwargs.items():
+                if arg_name not in super_class_signature.parameters:
+                    raise errors.UserBadParameterError(
+                        f"Unknown argument `{arg_name}` for `{super_class}`"
+                    )
+
+                if isinstance(arg_value, str):
+                    try:
+                        kwargs[arg_name] = _try_upgrade_str_to_enum(
+                            type_hints, arg_name, arg_value
+                        )
+                    except _EnumUpgradeError as ex:
+                        raise errors.UserInvalidValueError.from_ctx(
+                            origin=None,  # TODO: add context
+                            enum_types=ex.enum_types,
+                            enum_name=arg_name,
+                            value=arg_value,
+                        ) from ex
+
+            return super_class(**kwargs), promised_supers
 
         if isinstance(item, ap.BlockdefContext):
             # Find the superclass of the new node, if there's one defined
@@ -1797,10 +1889,36 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         # Check if it's a property or attribute that can be set
         if has_instance_settable_attr(target, assigned_name.name):
             try:
-                setattr(target, assigned_name.name, value)
-            except errors.UserException as e:
-                e.attach_origin_from_ctx(assignable_ctx)
-                raise
+                attr = getattr(target, assigned_name.name)
+            except AttributeError:
+                attr = None
+
+            if (
+                attr is not None
+                and isinstance(attr, Parameter)
+                # non-string enum values would need parser changes
+                and isinstance(value, str)
+                and isinstance(attr.domain, L.Domains.ENUM)
+            ):
+                try:
+                    value = attr.domain.enum_t[value]
+                except KeyError:
+                    raise errors.UserInvalidValueError.from_ctx(
+                        origin=assignable_ctx,
+                        enum_types=(attr.domain.enum_t,),
+                        enum_name=assigned_name.name,
+                        value=value,
+                        traceback=self.get_traceback(),
+                    )
+
+                attr.constrain_subset(value)
+
+            else:
+                try:
+                    setattr(target, assigned_name.name, value)
+                except errors.UserException as e:
+                    e.attach_origin_from_ctx(assignable_ctx)
+                    raise
         elif (
             # If ModuleShims has a settable property, use it
             hasattr(GlobalAttributes, assigned_name.name)
@@ -2072,7 +2190,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 )
 
-        head.connect_via(bridgeables, *([tail] if tail else []))
+        try:
+            head.connect_via(bridgeables, *([tail] if tail else []))
+        except NodeException as ex:
+            raise errors.UserNodeException.from_node_exception(
+                ex, ctx, self.get_traceback()
+            )
 
         return NOTHING
 
@@ -2324,12 +2447,39 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         )
         kwargs = self.visitTemplate(ctx.template())
 
+        callable_ = getattr(constructor, "__original_init__", constructor)
+        constructor_signature = inspect.signature(callable_)
+        type_hints = typing.get_type_hints(callable_)
+
+        for arg_name, arg_value in kwargs.items():
+            if arg_name not in constructor_signature.parameters:
+                raise errors.UserBadParameterError.from_ctx(
+                    ctx,
+                    f"Unknown template argument `{arg_name}` for `{trait_name}`",
+                    traceback=self.get_traceback(),
+                )
+
+            if isinstance(arg_value, str):
+                try:
+                    kwargs[arg_name] = _try_upgrade_str_to_enum(
+                        type_hints, arg_name, arg_value
+                    )
+                except _EnumUpgradeError as ex:
+                    raise errors.UserInvalidValueError.from_ctx(
+                        enum_types=ex.enum_types,
+                        enum_name=arg_name,
+                        value=arg_value,
+                        origin=ctx,
+                        traceback=self.get_traceback(),
+                    ) from ex
+
         try:
             trait = constructor(*args, **kwargs)
         except Exception as e:
+            exc_str = f": {e}" if str(e) else ""
             raise errors.UserTraitError.from_ctx(
                 ctx,
-                f"Error applying trait `{trait_name}`: {e}",
+                f"Error applying trait `{trait_name}`{exc_str}",
                 traceback=self.get_traceback(),
             ) from e
 

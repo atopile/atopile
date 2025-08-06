@@ -1,0 +1,12 @@
+# Uncomment this when ready to publish
+# on:
+#   release:
+#     types: [created]
+
+# jobs:
+#   release:
+#     if: github.event.release.draft != true && github.event.release.prerelease != true
+#     runs-on: ubuntu-latest
+#     steps:
+#       - uses: actions/checkout@v4
+#       - uses: atopile/publish-package@main

@@ -1,17 +1,11 @@
 """CLI command definition for `ato build`."""
 
 import logging
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import typer
-from more_itertools import first
 
-from atopile.cli.logging_ import NOW, LoggingStage
-from atopile.config import config
 from atopile.telemetry import capture
-
-if TYPE_CHECKING:
-    from faebryk.core.module import Module
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +24,9 @@ def build(
     ] = [],
     target: Annotated[
         list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    exclude_target: Annotated[
+        list[str], typer.Option("--exclude-target", "-x", envvar="ATO_EXCLUDE_TARGET")
     ] = [],
     frozen: Annotated[
         bool | None,
@@ -51,16 +48,20 @@ def build(
     Optionally specify a different entrypoint with the argument ENTRY.
     eg. `ato build --target my_target path/to/source.ato:module.path`
     """
+    from atopile import build as buildlib
     from atopile import buildutil
-    from atopile.cli.install import check_missing_deps_or_offer_to_install
-    from atopile.config import BuildType
-    from faebryk.library import _F as F
+    from atopile.cli.logging_ import NOW
+    from atopile.config import config
+    from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.exceptions import accumulate, log_user_errors
+    from faebryk.libs.kicad.ipc import reload_pcb
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(
         entry=entry,
         selected_builds=selected_builds,
-        target=target,
+        include_targets=target,
+        exclude_targets=exclude_target,
         standalone=standalone,
         frozen=frozen,
         keep_picked_parts=keep_picked_parts,
@@ -68,7 +69,10 @@ def build(
         keep_designators=keep_designators,
     )
 
-    check_missing_deps_or_offer_to_install()
+    deps = ProjectDependencies(sync_versions=False)
+    if deps.not_installed_dependencies:
+        logger.info("Installing missing dependencies")
+        deps.install_missing_dependencies()
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout
@@ -78,92 +82,30 @@ def build(
         for build in config.builds:
             with accumulator.collect(), log_user_errors(logger), build:
                 logger.info("Building '%s'", config.build.name)
-                with LoggingStage(
-                    name=f"init-{config.build.name}",
-                    description="Initializing app",
-                ):
-                    match config.build.build_type:
-                        case BuildType.ATO:
-                            app = _init_ato_app()
-                        case BuildType.PYTHON:
-                            app = _init_python_app()
-                            app.add(F.is_app_root())
-                        case _:
-                            raise ValueError(
-                                f"Unknown build type: {config.build.build_type}"
-                            )
+                app = buildlib.init_app()
 
                 # TODO: add a way to override the following with custom build machinery
                 buildutil.build(app)
 
     logger.info("Build successful! 🚀")
 
-    if config.should_open_layout_on_build():
-        selected_build_names = list(config.selected_builds)
-        if len(selected_build_names) == 1:
-            build = config.project.builds[first(selected_build_names)]
+    selected_build_names = list(config.selected_builds)
+    for build_name in selected_build_names:
+        build = config.project.builds[build_name]
+
+        opened = False
+        if config.should_open_layout_on_build():
             try:
-                from faebryk.libs.app.pcb import open_pcb
-
                 open_pcb(build.paths.layout)
+            # No PCBnew
             except FileNotFoundError:
+                continue
+            # Already open, reload
+            except RuntimeError:
                 pass
-            except RuntimeError as e:
-                logger.info(
-                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
-                )
 
-        elif len(selected_build_names) > 1:
-            logger.warning(
-                "`--open` option is only supported when building "
-                "a single build. It will be ignored."
-            )
-
-
-def _init_python_app() -> "Module":
-    """Initialize a specific .py build."""
-
-    from atopile import errors
-    from faebryk.libs.util import import_from_path
-
-    try:
-        app_class = import_from_path(
-            config.build.entry_file_path, config.build.entry_section
-        )
-    except FileNotFoundError as e:
-        raise errors.UserFileNotFoundError(
-            f"Cannot find build entry {config.build.address}"
-        ) from e
-    except Exception as e:
-        raise errors.UserPythonModuleError(
-            f"Cannot import build entry {config.build.address}"
-        ) from e
-
-    if not isinstance(app_class, type):
-        raise errors.UserPythonLoadError(
-            f"Build entry {config.build.address} is not a module we can instantiate"
-        )
-
-    try:
-        app = app_class()
-    except Exception as e:
-        raise errors.UserPythonConstructionError(
-            f"Cannot construct build entry {config.build.address}"
-        ) from e
-
-    return app
-
-
-def _init_ato_app() -> "Module":
-    """Initialize a specific .ato build."""
-
-    from atopile import front_end
-    from atopile.datatypes import TypeRef
-    from faebryk.libs.library import L
-
-    node = front_end.bob.build_file(
-        config.build.entry_file_path,
-        TypeRef.from_path_str(config.build.entry_section),
-    )
-    assert isinstance(node, L.Module)
-    return node
+        if not opened:
+            try:
+                reload_pcb(build.paths.layout, backup_path=build.paths.output_base)
+            except Exception as e:
+                logger.warning(f"{e}\nReload pcb manually in KiCAD")

@@ -38,7 +38,7 @@ from faebryk.libs.kicad.fileformats_sch import (
     C_symbol,
 )
 from faebryk.libs.kicad.paths import GLOBAL_FP_DIR_PATH, GLOBAL_FP_LIB_PATH
-from faebryk.libs.sexp.dataclass_sexp import dataclass_dfs
+from faebryk.libs.sexp.dataclass_sexp import visit_dataclass
 from faebryk.libs.util import (
     cast_assert,
     find,
@@ -185,7 +185,9 @@ class SchTransformer:
         """Delete faebryk-created objects in schematic."""
 
         # find all objects with path_len 2 (direct children of a list in pcb)
-        candidates = [o for o in dataclass_dfs(self.sch) if len(o[1]) == 2]
+        candidates = [
+            o.value for o in visit_dataclass(self.sch) if len(o.value[1]) == 2
+        ]
         for obj, path, _ in candidates:
             if not self.is_marked(obj):
                 continue

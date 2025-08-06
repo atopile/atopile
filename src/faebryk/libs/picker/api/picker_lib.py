@@ -4,7 +4,7 @@
 import logging
 import re
 from dataclasses import fields
-from enum import StrEnum, auto
+from enum import StrEnum
 from socket import gaierror
 
 import more_itertools
@@ -22,7 +22,7 @@ from faebryk.libs.picker.api.models import (
     CapacitorParams,
     Component,
     # DiodeParams,
-    # InductorParams,
+    InductorParams,
     LCSCParams,
     # LDOParams,
     # LEDParams,
@@ -81,7 +81,7 @@ def _extract_numeric_id(lcsc_id: str) -> int:
 TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
     F.is_pickable_by_type.Type.Resistor: ResistorParams,
     F.is_pickable_by_type.Type.Capacitor: CapacitorParams,
-    # F.is_pickable_by_type.Type.Inductor: InductorParams,
+    F.is_pickable_by_type.Type.Inductor: InductorParams,
     # F.is_pickable_by_type.Type.TVS: TVSParams,
     # F.is_pickable_by_type.Type.LED: LEDParams,
     # F.is_pickable_by_type.Type.Diode: DiodeParams,
@@ -89,64 +89,39 @@ TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
     # F.is_pickable_by_type.Type.MOSFET: MOSFETParams,
 }
 
+BackendPackage = StrEnum(
+    "BackendPackage",
+    {
+        f"{prefix}{size.imperial.without_prefix}": (
+            f"{prefix}{size.imperial.without_prefix}"
+        )
+        for prefix in ["R", "C", "L"]
+        for size in SMDSize
+        if size.name.startswith(("I", "M"))
+    }
+    | {
+        size.value: size.value
+        for size in SMDSize
+        if not size.name.startswith(("I", "M"))
+    },
+)
 
-# TODO: backend should do this
-class BackendPackage(StrEnum):
-    # Capacitors
-    C0201 = auto()
-    C0402 = auto()
-    C0603 = auto()
-    C0805 = auto()
-    C1206 = auto()
-    C1210 = auto()
-    C1808 = auto()
-    C1812 = auto()
-    C1825 = auto()
-    C2220 = auto()
-    C2225 = auto()
-    C3640 = auto()
-    C01005 = auto()
 
-    # Resistors
-    R0201 = auto()
-    R0402 = auto()
-    R0603 = auto()
-    R0805 = auto()
-    R0815 = auto()
-    R1020 = auto()
-    R1206 = auto()
-    R1210 = auto()
-    R1218 = auto()
-    R1812 = auto()
-    R2010 = auto()
-    R2512 = auto()
-    R2816 = auto()
-    R4020 = auto()
-    R01005 = auto()
-
-    # Inductors
-    L0201 = auto()
-    L0402 = auto()
-    L0603 = auto()
-    L0805 = auto()
-    L1008 = auto()
-    L1206 = auto()
-    L1210 = auto()
-    L1806 = auto()
-    L1812 = auto()
-    L2010 = auto()
-    L2512 = auto()
-    L01005 = auto()
-
-    @classmethod
-    def from_smd_size(
-        cls, size: SMDSize, type: F.is_pickable_by_type.Type
-    ) -> "BackendPackage":
+def _from_smd_size(
+    cls, size: SMDSize, type: F.is_pickable_by_type.Type
+) -> "BackendPackage":
+    try:
         prefix = {
             F.is_pickable_by_type.Type.Resistor: "R",
             F.is_pickable_by_type.Type.Capacitor: "C",
+            F.is_pickable_by_type.Type.Inductor: "L",
         }[type]
         return cls[f"{prefix}{size.imperial.without_prefix}"]
+    except SMDSize.UnableToConvert:
+        return cls[size.value]
+
+
+BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
 
 
 def _prepare_query(

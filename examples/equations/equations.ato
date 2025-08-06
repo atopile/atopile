@@ -1,0 +1,57 @@
+import Resistor, ElectricPower, ElectricSignal
+
+module VoltageDivider:
+    """
+    A voltage divider using two resistors.
+
+    Connect to the `power` and `output` interfaces
+    Configure via:
+    - `power.voltage`
+    - `output.reference.voltage`
+    - `max_current`
+    """
+
+    # External interfaces
+    power = new ElectricPower
+    output = new ElectricSignal
+
+    # Components
+    r_bottom = new Resistor
+    r_top = new Resistor
+
+    # Variables
+    v_in: voltage
+    v_out: voltage
+    max_current: current
+    total_resistance: resistance
+    ratio: dimensionless
+    r_total: resistance
+
+    # Connections
+    power.hv ~ r_top.p1; r_top.p2 ~ output.line
+    output.line ~ r_bottom.p1; r_bottom.p2 ~ power.lv
+
+    # Link interface voltages
+    assert v_out is output.reference.voltage
+    assert v_in is power.voltage
+
+    # Equations - rearranged a few ways to simplify for the solver
+    assert r_top.resistance is (v_in / max_current) - r_bottom.resistance
+    assert r_bottom.resistance is (v_in / max_current) - r_top.resistance
+    assert r_top.resistance is (v_in - v_out) / max_current
+    assert r_bottom.resistance is v_out / max_current
+    assert r_bottom.resistance is r_total * ratio
+    assert r_top.resistance is r_total * (1 - ratio)
+
+    # Calculate outputs
+    assert r_total is r_top.resistance + r_bottom.resistance
+    assert v_out is v_in * r_bottom.resistance / r_total
+    assert v_out is v_in * ratio
+    assert max_current is v_in / r_total
+    assert ratio is r_bottom.resistance / r_total
+
+module App:
+    my_vdiv = new VoltageDivider
+    assert my_vdiv.power.voltage is 10V +/- 1%
+    assert my_vdiv.output.reference.voltage within 3.3V +/- 10%
+    assert my_vdiv.max_current within 10uA to 100uA

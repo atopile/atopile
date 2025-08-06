@@ -18,8 +18,7 @@ class requires_external_usage(Trait.decless()):
     ):
         def __init__(self, nodes: list[Node]):
             super().__init__(
-                "Nodes requiring external usage but not used externally: "
-                f"{', '.join(mif.get_full_name() for mif in nodes)}",
+                "Nodes requiring external usage but not used externally",
                 nodes=nodes,
             )
 
