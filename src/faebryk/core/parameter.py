@@ -1785,6 +1785,7 @@ class Parameter(ParameterOperatable):
         tolerance_guess: float | None = None,
         # hints
         likely_constrained: bool = False,  # TODO rename expect_constraits or similiar
+        used_for_picking: bool = False,  # TODO: better name? make it a trait?
     ):
         super().__init__()
         if within is not None and not within.units.is_compatible_with(units):
@@ -1805,6 +1806,7 @@ class Parameter(ParameterOperatable):
         self.guess = guess
         self.tolerance_guess = tolerance_guess
         self.likely_constrained = likely_constrained
+        self.used_for_picking = used_for_picking
 
     # Type forwards
     type All = ParameterOperatable.All

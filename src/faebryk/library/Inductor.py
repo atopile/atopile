@@ -16,37 +16,30 @@ class Inductor(Module):
         likely_constrained=True,
         soft_set=L.Range(100 * P.nH, 1 * P.H),
         tolerance_guess=10 * P.percent,
+        used_for_picking=True,
     )
     max_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
+        used_for_picking=True,
     )
     dc_resistance = L.p_field(
         units=P.Ω,
         soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
+        used_for_picking=True,
     )
-    saturation_current = L.p_field(units=P.A)
+    saturation_current = L.p_field(units=P.A, used_for_picking=True)
     self_resonant_frequency = L.p_field(
         units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
+        used_for_picking=True,
     )
 
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Inductor,
-            {
-                "inductance": self.inductance,
-                "max_current": self.max_current,
-                "dc_resistance": self.dc_resistance,
-                "saturation_current": self.saturation_current,
-                "self_resonant_frequency": self.self_resonant_frequency,
-            },
-        )
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Inductor)
 
     @L.rt_field
     def can_bridge(self):

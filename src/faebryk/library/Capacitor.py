@@ -36,15 +36,18 @@ class Capacitor(Module):
         likely_constrained=True,
         soft_set=L.Range(100 * P.pF, 1 * P.F),
         tolerance_guess=10 * P.percent,
+        used_for_picking=True,
     )
     # Voltage at which the design may be damaged
     max_voltage = L.p_field(
         units=P.V,
         likely_constrained=True,
         soft_set=L.Range(10 * P.V, 100 * P.V),
+        used_for_picking=True,
     )
     temperature_coefficient = L.p_field(
         domain=L.Domains.ENUM(TemperatureCoefficient),
+        used_for_picking=True,
     )
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
@@ -52,16 +55,7 @@ class Capacitor(Module):
         F.has_designator_prefix.Prefix.C
     )
 
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Capacitor,
-            {
-                "capacitance": self.capacitance,
-                "max_voltage": self.max_voltage,
-                "temperature_coefficient": self.temperature_coefficient,
-            },
-        )
+    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Capacitor)
 
     @L.rt_field
     def can_bridge(self):

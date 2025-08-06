@@ -10,9 +10,9 @@ from faebryk.libs.units import P
 class Resistor(Module):
     unnamed = L.list_field(2, F.Electrical)
 
-    resistance = L.p_field(units=P.ohm)
-    max_power = L.p_field(units=P.W)
-    max_voltage = L.p_field(units=P.V)
+    resistance = L.p_field(units=P.ohm, used_for_picking=True)
+    max_power = L.p_field(units=P.W, used_for_picking=True)
+    max_voltage = L.p_field(units=P.V, used_for_picking=True)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix)(
@@ -21,14 +21,7 @@ class Resistor(Module):
 
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Resistor,
-            {
-                "resistance": self.resistance,
-                "max_power": self.max_power,
-                "max_voltage": self.max_voltage,
-            },
-        )
+        return F.is_pickable_by_type(F.is_pickable_by_type.Type.Resistor)
 
     @L.rt_field
     def can_bridge(self):
