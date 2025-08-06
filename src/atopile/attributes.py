@@ -437,7 +437,7 @@ class CapacitorElectrolytic(CommonCapacitor):
     anode: F.Electrical
     cathode: F.Electrical
 
-    pickable: F.is_not_pickable  # type: ignore
+    pickable = None  # type: ignore
 
     # Overrides the default implementation in F.Capacitor
     @property

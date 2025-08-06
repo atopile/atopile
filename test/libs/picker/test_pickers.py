@@ -117,7 +117,7 @@ def test_no_pick():
 @pytest.mark.usefixtures("setup_project_config")
 def test_no_pick_inherit_override_none():
     class _CapInherit(F.Capacitor):
-        pickable: F.is_not_pickable  # type: ignore
+        pickable = None  # type: ignore
 
     module = _CapInherit()
 
@@ -145,7 +145,7 @@ def test_no_pick_inherit_remove():
 def test_skip_self_pick():
     # TODO: this test is not working
     class _CapInherit(F.Capacitor):
-        pickable: F.is_not_pickable  # type: ignore
+        pickable = None  # type: ignore
         inner: F.Capacitor
 
     module = _CapInherit()
