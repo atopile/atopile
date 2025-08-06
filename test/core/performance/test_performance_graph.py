@@ -98,7 +98,7 @@ def test_performance_graph_get_all(count_power: int, connected: bool):
     logger.info(str(G))
 
     per_resistor = timings.get("instance") / count
-    logger.info(f"----> Avg/resistor: {per_resistor*1e6:.2f} us")
+    logger.info(f"----> Avg/resistor: {per_resistor * 1e6:.2f} us")
 
 
 def test_performance_graph_merge_rec():

@@ -1,4 +1,3 @@
-import contextlib
 import sys
 
 from faebryk.libs.logging import FLOG_FMT, rich_print_robust
@@ -6,7 +5,6 @@ from faebryk.libs.logging import FLOG_FMT, rich_print_robust
 
 def _handle_exception(exc_type, exc_value, exc_traceback):
     # avoid exceptions raised during import
-    from atopile import telemetry
     from atopile.cli.logging_ import logger
     from atopile.errors import _BaseBaseUserException
 
@@ -27,15 +25,10 @@ def _handle_exception(exc_type, exc_value, exc_traceback):
             msg=exc_value.message, exc_info=(exc_type, exc_value, exc_traceback)
         )
 
-        if telemetry.telemetry_data is not None:
-            with contextlib.suppress(Exception):
-                telemetry.telemetry_data.ato_error += 1
     elif issubclass(exc_type, BaseExceptionGroup):
         for e in exc_value.exceptions:
             _handle_exception(type(e), e, e.__traceback__)
     else:
-        with contextlib.suppress(Exception):
-            telemetry.telemetry_data.crash += 1
         logger.exception(
             "Uncaught compiler exception", exc_info=(exc_type, exc_value, exc_traceback)
         )
@@ -49,12 +42,13 @@ def handle_exception(exc_type, exc_value, exc_traceback):
     except Exception as e:
         sys.__excepthook__(type(e), e, e.__traceback__)
     finally:
-        with contextlib.suppress(Exception):
-            telemetry.log_telemetry()
+        telemetry.capture_exception(exc_value)
 
         rich_print_robust(
             "\n\nUnfortunately errors ^^^ stopped the build. "
-            "If you need a hand jump on [#9656ce]Discord[/]! [link=https://discord.gg/JY62WubxsP]https://discord.gg/JY62WubxsP[/] :wave:"  # noqa: E501  # pre-existing
+            "If you need a hand jump on [#9656ce]Discord[/]! "
+            "[link=https://discord.gg/CRe5xaDBr3]https://discord.gg/CRe5xaDBr3[/] "
+            ":wave:"
         )
         sys.exit(1)
 

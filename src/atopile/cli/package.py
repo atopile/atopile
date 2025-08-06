@@ -1,19 +1,17 @@
 import logging
-from typing import Annotated, Iterator
+from typing import TYPE_CHECKING, Annotated, Iterator
 
 import typer
 from semver import Version
 
-import faebryk.libs.backend.packages.api as packages_api
-from atopile.config import config
 from atopile.errors import UserBadParameterError, UserException
-from faebryk.libs.backend.packages.api import PackagesAPIClient
-from faebryk.libs.package.artifacts import Artifacts
-from faebryk.libs.package.dist import Dist, DistValidationError
+from atopile.telemetry import capture
+
+if TYPE_CHECKING:
+    from atopile.config import Config
 
 # Set up logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 package_app = typer.Typer(rich_markup_mode="rich")
 
@@ -21,7 +19,7 @@ package_app = typer.Typer(rich_markup_mode="rich")
 FROM_GIT = "from-git"
 
 
-def _yield_semver_tags() -> Iterator[Version]:
+def _yield_semver_tags(config: "Config") -> Iterator[Version]:
     from git import Repo
 
     repo = Repo(config.project.paths.root)
@@ -35,10 +33,10 @@ def _yield_semver_tags() -> Iterator[Version]:
             continue
 
 
-def _apply_version(specd_version: str) -> None:
+def _apply_version(specd_version: str, config: "Config") -> None:
     if specd_version == FROM_GIT:
         try:
-            semver_tags = list(_yield_semver_tags())
+            semver_tags = list(_yield_semver_tags(config))
         except Exception as e:
             raise UserException(
                 "Could not determine version from git tags: %s" % e
@@ -74,6 +72,7 @@ def _apply_version(specd_version: str) -> None:
 
 
 @package_app.command()
+@capture("cli:package_publish_start", "cli:package_publish_end")
 def publish(
     version: Annotated[
         str,
@@ -121,6 +120,12 @@ def publish(
 
     For the options which allow multiple inputs, use comma separated values.
     """
+    import faebryk.libs.backend.packages.api as packages_api
+    from atopile.config import config
+    from atopile.errors import UserBadParameterError, UserException
+    from faebryk.libs.backend.packages.api import PackagesAPIClient
+    from faebryk.libs.package.artifacts import Artifacts
+    from faebryk.libs.package.dist import Dist, DistValidationError
 
     # Apply the entry-point early
     # This will configure the project root properly, meaning you can practically spec
@@ -130,7 +135,7 @@ def publish(
     logger.info("Using project config: %s", config.project.paths.root / "ato.yaml")
 
     if version:  # NOT `is not None` to allow for empty strings
-        _apply_version(version)
+        _apply_version(version, config)
 
     if config.project.package is None:
         raise UserException(

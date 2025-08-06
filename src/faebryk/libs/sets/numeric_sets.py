@@ -744,8 +744,9 @@ class Numeric_Interval_Disjoint(Numeric_Set):
         return hash(tuple(hash(r) for r in self.intervals))
 
     def __repr__(self) -> str:
-        return f"_N_intervals({', '.join(f"[{r._min}, {r._max}]"
-                                         for r in self.intervals)})"
+        return f"_N_intervals({
+            ', '.join(f'[{r._min}, {r._max}]' for r in self.intervals)
+        })"
 
     def __iter__(self) -> Generator["Numeric_Interval"]:
         yield from self.intervals

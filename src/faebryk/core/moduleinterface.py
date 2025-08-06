@@ -199,9 +199,18 @@ class ModuleInterface(Node):
         if special.has_trait(can_specialize):
             extra = set(special.get_trait(can_specialize).get_specializable_types())
 
-        assert isinstance(special, type(self)) or any(
-            issubclass(t, type(self)) for t in extra
-        )
+        if not (
+            isinstance(special, type(self))
+            or any(issubclass(t, type(self)) for t in extra)
+            # TODO: remove, this is a hack for ato
+            or type(special).__name__ == type(self).__name__
+        ):
+            type_self_id = f"{type(self).__name__}|{id(type(self)):02X}"
+            type_special_id = f"{type(special).__name__}|{id(type(special)):02X}"
+            raise TypeError(
+                f"Cannot specialize {self}(type={type_self_id}) with "
+                f"{special}(type={type_special_id}). Specializable types: {extra}"
+            )
 
         # This is doing the heavy lifting
         self.connected.connect(special.connected)
@@ -278,3 +287,12 @@ class ModuleInterface(Node):
             to_check.difference_update(ifs.keys())
 
         return buses
+
+    # TODO get rid of this abomination
+    @property
+    def reference_shim(self):
+        from faebryk.library.has_single_electric_reference import (
+            has_single_electric_reference,
+        )
+
+        return self.get_trait(has_single_electric_reference).get_reference()

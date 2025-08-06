@@ -20,6 +20,12 @@ class DifferentialPair(ModuleInterface):
         tolerance_guess=10 * P.percent,
     )
 
+    @L.rt_field
+    def single_electric_reference(self):
+        return F.has_single_electric_reference_defined(
+            F.ElectricSignal.connect_all_module_references(self)
+        )
+
     def terminated(self) -> Self:
         terminated_bus = type(self)()
         rs = terminated_bus.add_to_container(2, F.Resistor)

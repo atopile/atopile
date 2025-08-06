@@ -1,0 +1,10 @@
+requires-atopile: ^0.10.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  default:
+    entry: quickstart.ato:App
+

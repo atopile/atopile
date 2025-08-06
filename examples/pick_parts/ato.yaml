@@ -1,0 +1,9 @@
+requires-atopile: ^0.7.0
+
+paths:
+  src: ./
+  layout: ./layout
+
+builds:
+  default:
+    entry: pick_parts.ato:App

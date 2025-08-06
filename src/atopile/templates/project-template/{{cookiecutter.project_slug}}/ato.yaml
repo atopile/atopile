@@ -1,0 +1,22 @@
+requires-atopile: "{{cookiecutter.__ato_version}}"
+
+paths:
+  src: ./
+  layout: ./layouts
+
+builds:
+  default:
+    entry: main.ato:App
+
+# This metadata is only required for publishing
+# Uncomment it and fill out the fields to publish your package
+# package:
+#   identifier: # fill me!/{{cookiecutter.project_slug}}
+#   repository: # fill me!
+#   version: "0.1.0"  # recommended first version
+#   authors:
+#     - name: {{cookiecutter.author_name}}
+#       email: {{cookiecutter.author_email}}
+#   summary: # fill me!
+#   license: {{cookiecutter.license}}
+#   homepage: # fill me!

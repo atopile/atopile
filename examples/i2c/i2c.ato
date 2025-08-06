@@ -1,0 +1,119 @@
+"""
+This example demonstrates how to use the Addressor component to automatically
+configure the address pins of an I2C client device based on a desired I2C address.
+"""
+
+#pragma experiment("MODULE_TEMPLATING")
+
+import Addressor
+import I2C
+import ElectricPower
+import ElectricLogic
+import Resistor
+
+from "resistors.ato" import I2CPullup
+
+
+module I2CExampleIC:
+    """
+    Example IC to use as I2C client/server
+    """
+
+    signal gnd ~ pin 12
+    signal vcc ~ pin 24
+
+    signal i2c_sda ~ pin 23
+    signal i2c_scl ~ pin 22
+
+    signal i2c_address_pin_0 ~ pin 1
+    signal i2c_address_pin_1 ~ pin 2
+    signal i2c_address_pin_2 ~ pin 21
+
+    signal i2c_out0_sda ~ pin 4
+    signal i2c_out0_scl ~ pin 5
+
+    manufacturer = "Texas Instruments"
+    mpn = "TCA9548APWR" # 8-channel I2C switch
+
+
+module I2CExampleDriver:
+    """
+    Example driver for the I2C client/server example
+    """
+
+    # addressor with 3 address lines
+    addressor = new Addressor<address_bits=3>
+    ic = new I2CExampleIC
+    power = new ElectricPower
+
+    i2c_in = new I2C
+    i2c_out = new I2C
+
+    # Setup addressor:
+    # Link the addressor's logical address parameter to the I2C interface's address parameter.
+    assert addressor.address is i2c_in.address
+    # Define the base address for the address calculation (can be 0 if no base offset).
+    assert addressor.base is 16
+    # Connect the addressor's output lines to the physical address pins of the IC.
+    addressor.address_lines[0].line ~ ic.i2c_address_pin_0
+    addressor.address_lines[1].line ~ ic.i2c_address_pin_1
+    addressor.address_lines[2].line ~ ic.i2c_address_pin_2
+    # Provide a reference (e.g., ground) for the addressor's logic lines.
+    addressor.address_lines[0].reference ~ power
+
+    # connect IC signals to the driver's interfaces (power and I2C)
+    power.lv ~ ic.gnd
+    power.hv ~ ic.vcc
+
+    i2c_in.sda.line ~ ic.i2c_sda
+    i2c_in.scl.line ~ ic.i2c_scl
+    i2c_in.sda.reference ~ power
+    i2c_in.scl.reference ~ power
+
+    i2c_out.sda.line ~ ic.i2c_out0_sda
+    i2c_out.scl.line ~ ic.i2c_out0_scl
+    i2c_out.sda.reference ~ power
+    i2c_out.scl.reference ~ power
+
+    assert i2c_out.address is 0
+
+
+module App:
+    """
+    Application to test the I2C client/server example
+    """
+
+    i2c_server = new I2CExampleDriver
+    i2c_bridge = new I2CExampleDriver
+    i2c_bridge2 = new I2CExampleDriver
+    i2c_client = new I2CExampleDriver
+    i2c_client2 = new I2CExampleDriver
+    i2c_client_pre = new I2CExampleDriver
+
+
+    # Set the desired I2C address for the client.
+    # The addressor will automatically determine the required logic levels
+    # for the address pins (ic.i2c_address_pin_*) based on this constraint
+    # and the base address (16). 18 = 16 (base) + 2 (offset).
+    # Offset 2 (binary 010) means:
+    # - address_lines[0] -> LOW
+    # - address_lines[1] -> HIGH
+    # - address_lines[2] -> LOW
+    assert i2c_client.addressor.address is 18
+    assert i2c_bridge.addressor.address is 19
+    assert i2c_bridge2.addressor.address is 19
+    assert i2c_client2.addressor.address is 20
+    assert i2c_client_pre.addressor.address is 18
+    # Connect the client and server I2C buses together.
+    i2c_server.i2c_out ~ i2c_bridge.i2c_in
+    i2c_bridge.i2c_out ~ i2c_bridge2.i2c_in
+    i2c_bridge2.i2c_out ~ i2c_client.i2c_in
+    i2c_bridge2.i2c_out ~ i2c_client2.i2c_in
+    i2c_server.i2c_out ~ i2c_client_pre.i2c_in
+
+    # Add required pull-up resistors for the I2C bus.
+    i2c_client_pullup = new I2CPullup
+    i2c_client.i2c_in ~ i2c_client_pullup.i2c
+
+    i2c_bridge_pullup = new I2CPullup
+    i2c_bridge.i2c_in ~ i2c_bridge_pullup.i2c

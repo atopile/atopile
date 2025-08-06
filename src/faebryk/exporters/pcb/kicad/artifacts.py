@@ -14,6 +14,10 @@ from kicadcliwrapper.generated.kicad_cli import kicad_cli as k
 logger = logging.getLogger(__name__)
 
 
+class KicadCliExportError(Exception):
+    pass
+
+
 def _export(cmd):
     return k(k.pcb(k.pcb.export(cmd))).exec()
 
@@ -28,7 +32,7 @@ def githash_layout(layout: Path, out: Path) -> Path:
             .decode("ascii")
             .strip()
         )
-    except subprocess.CalledProcessError:
+    except (subprocess.CalledProcessError, FileNotFoundError):
         logger.warning("Could not get git hash, using 'unknown'")
         git_hash = "unknown"
 
@@ -64,7 +68,7 @@ def export_step(
     try:
         _export(k.pcb.export.step(**cmd_args))
     except sp.CalledProcessError as e:
-        raise Exception("Failed to export step file") from e
+        raise KicadCliExportError("Failed to export step file") from e
 
 
 def export_dxf(pcb_file: Path, dxf_file: Path) -> None:
@@ -84,7 +88,7 @@ def export_dxf(pcb_file: Path, dxf_file: Path) -> None:
             )
         )
     except sp.CalledProcessError as e:
-        raise Exception("Failed to export dxf file") from e
+        raise KicadCliExportError("Failed to export dxf file") from e
 
 
 def export_glb(
@@ -116,7 +120,7 @@ def export_glb(
     try:
         _export(k.pcb.export.glb(**cmd_args))
     except sp.CalledProcessError as e:
-        raise Exception("Failed to export glb file") from e
+        raise KicadCliExportError("Failed to export glb file") from e
 
 
 def export_svg(pcb_file: Path, svg_file: Path, flip_board: bool = False) -> None:
@@ -139,7 +143,7 @@ def export_svg(pcb_file: Path, svg_file: Path, flip_board: bool = False) -> None
             )
         )
     except sp.CalledProcessError as e:
-        raise Exception("Failed to export svg file") from e
+        raise KicadCliExportError("Failed to export svg file") from e
 
 
 def export_gerber(pcb_file: Path, gerber_zip_file: Path) -> None:
@@ -163,7 +167,7 @@ def export_gerber(pcb_file: Path, gerber_zip_file: Path) -> None:
                 )
             )
         except sp.CalledProcessError as e:
-            raise Exception("Failed to export gerber files") from e
+            raise KicadCliExportError("Failed to export gerber files") from e
 
         try:
             _export(
@@ -178,7 +182,7 @@ def export_gerber(pcb_file: Path, gerber_zip_file: Path) -> None:
             )
 
         except sp.CalledProcessError as e:
-            raise Exception("Failed to export drill files") from e
+            raise KicadCliExportError("Failed to export drill files") from e
 
         # Zip the gerber files
         with ZipFile(gerber_zip_file, "w") as zipf:
@@ -204,4 +208,4 @@ def export_pick_and_place(pcb_file: Path, pick_and_place_file: Path) -> None:
             )
         )
     except sp.CalledProcessError as e:
-        raise Exception("Failed to export pick and place file") from e
+        raise KicadCliExportError("Failed to export pick and place file") from e

@@ -23,6 +23,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from enum import Enum, StrEnum, auto
@@ -1184,6 +1185,86 @@ class DAG[T]:
 
         return parents
 
+    @property
+    def _in_degrees_by_node(self) -> dict[T, int]:
+        return {node.value: len(node._parents) for node in self.nodes.values()}
+
+    def topologically_sorted(self) -> list[T]:
+        """
+        Performs a topological sort of the DAG.
+        Returns a list where each element comes after all its dependencies (parents).
+        Raises ValueError if the graph contains cycles.
+        """
+
+        if self.contains_cycles:
+            raise ValueError("Cannot topologically sort a graph with cycles")
+
+        in_degrees_by_node = self._in_degrees_by_node
+
+        # Start with nodes with no incoming edges
+        queue = deque(
+            [value for value, degree in in_degrees_by_node.items() if degree == 0]
+        )
+        out: list[T] = []
+
+        while queue:
+            # Remove a node with no incoming edges
+            current = queue.popleft()
+            out.append(current)
+
+            # Remove edges from current node to its children
+            current_node = self.nodes[current]
+            for child_node in current_node._children:
+                child_value = child_node.value
+                in_degrees_by_node[child_value] -= 1
+
+                # If child has no more incoming edges, add to queue
+                if in_degrees_by_node[child_value] == 0:
+                    queue.append(child_value)
+
+        assert len(out) == len(self.nodes), (
+            "Topological sort failed: graph contains cycles"
+        )
+
+        return out
+
+    def get_subgraph(self, selector_func: Callable[[T], bool]) -> "DAG[T]":
+        """
+        Create the smallest subgraph that contains all nodes selected by the selector
+        function.
+
+        Args:
+            selector_func: A callable that returns True for nodes that must be included
+
+        Returns:
+            A new DAG containing the selected nodes and all their dependencies
+        """
+
+        subgraph = DAG[T]()
+
+        selected_nodes = {
+            node_value for node_value in self.nodes if selector_func(node_value)
+        }
+
+        if not selected_nodes:
+            return subgraph
+
+        nodes_to_include = selected_nodes.copy()
+
+        for node_value in selected_nodes:
+            nodes_to_include |= self.all_parents(node_value)
+
+        for node_value in nodes_to_include:
+            subgraph.add_or_get(node_value)
+
+        for node_value in nodes_to_include:
+            node = self.nodes[node_value]
+            for child_node in node._children:
+                if child_node.value in nodes_to_include:
+                    subgraph.add_edge(node_value, child_node.value)
+
+        return subgraph
+
 
 class Tree[T](dict[T, "Tree[T]"]):
     def iter_by_depth(self) -> Iterable[Sequence[T]]:
@@ -1473,9 +1554,9 @@ def merge_dicts(*dicts: dict) -> dict:
         for k, v in d.items():
             if k in result:
                 if isinstance(v, list):
-                    assert isinstance(
-                        result[k], list
-                    ), f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    assert isinstance(result[k], list), (
+                        f"Trying to merge list into key '{k}' of type {type(result[k])}"
+                    )
                     result[k] += v
                 elif isinstance(v, dict):
                     assert isinstance(result[k], dict)
@@ -1857,9 +1938,9 @@ def get_module_from_path(
     def _needle(m: ModuleType) -> bool:
         try:
             file = Path(getattr(m, "__file__"))
+            return sanitized_file_path.samefile(file)
         except Exception:
             return False
-        return sanitized_file_path.samefile(file)
 
     try:
         module = find(sys.modules.values(), _needle)
@@ -2140,6 +2221,50 @@ def md_list[T](
     return "\n".join(lines)
 
 
+def md_table(obj: Iterable[Iterable[Any]], headers: Iterable[str]) -> str:
+    """Convert an iterable of iterables into a markdown table."""
+
+    headers_list = list(headers)
+    rows = list(obj)
+
+    if not headers_list:
+        return ""
+
+    # Calculate column widths
+    col_widths = [len(str(h)) for h in headers_list]
+    for row in rows:
+        row_list = list(row)
+        for i, cell in enumerate(row_list[: len(col_widths)]):
+            col_widths[i] = max(col_widths[i], len(str(cell)))
+
+    # Build header row
+    header_cells = []
+    for i, header in enumerate(headers_list):
+        header_cells.append(str(header).ljust(col_widths[i]))
+    header_row = "| " + " | ".join(header_cells) + " |"
+
+    # Build separator row
+    separator_cells = ["-" * width for width in col_widths]
+    separator_row = "| " + " | ".join(separator_cells) + " |"
+
+    # Build data rows
+    data_rows = []
+    for row in rows:
+        row_list = list(row)
+        cells = []
+        for i in range(len(headers_list)):
+            if i < len(row_list):
+                cells.append(str(row_list[i]).ljust(col_widths[i]))
+            else:
+                cells.append(" " * col_widths[i])
+        data_rows.append("| " + " | ".join(cells) + " |")
+
+    # Combine all parts
+    result = []
+    result.extend([header_row, separator_row] + data_rows)
+    return "\n".join(result)
+
+
 def robustly_rm_dir(path: os.PathLike) -> None:
     """Remove a directory and all its contents."""
 
@@ -2176,14 +2301,40 @@ def try_relative_to(
 
 
 def repo_root() -> Path:
-    repo_root = Path(__file__)
-    while not (repo_root / ".git").exists():
-        if parent := repo_root.parent:
-            repo_root = parent
+    return root_by_file(".git")
+
+
+def in_git_repo(path: Path) -> bool:
+    """Check if a path is in a git repository."""
+    import git
+
+    try:
+        git.Repo(path)
+    except git.InvalidGitRepositoryError:
+        return False
+    return True
+
+
+def test_for_git_executable() -> bool:
+    try:
+        import git  # noqa: F401
+    except ImportError as e:
+        # catch no git executable
+        if "executable" not in e.msg:
+            raise
+        return False
+    return True
+
+
+def root_by_file(pattern: str, start: Path = Path(__file__)) -> Path:
+    root = start
+    while not (root / pattern).exists():
+        if parent := root.parent:
+            root = parent
         else:
-            raise FileNotFoundError("Could not find repo root")
+            raise FileNotFoundError("Could not find root")
     else:
-        return repo_root
+        return root
 
 
 def is_numeric_str(s: str) -> bool:
@@ -2348,45 +2499,73 @@ def diff(before: str, after: str) -> str:
 
 
 def compare_dataclasses[T](
-    before: T, after: T, skip_keys: tuple[str, ...] = ()
+    before: T,
+    after: T,
+    skip_keys: tuple[str, ...] = (),
+    require_dataclass_type_match: bool = True,
 ) -> dict[str, dict[str, Any]]:
     """
-    check two dataclasses for equivalence (with some keys skipped)
+    Check two dataclasses for equivalence (with some keys skipped).
+
+    Parameters:
+        before: The first dataclass to compare.
+        after: The second dataclass to compare.
+        skip_keys: A tuple of keys to skip when encountered at any level.
+        require_dataclass_type_match: If False, compare dataclasses on fields only.
     """
 
     def _fmt(b, a):
         return {"before": b, "after": a}
 
-    if type(before) is not type(after) and not all(
-        isinstance(x, (int, float)) for x in (before, after)
-    ):
-        return {"": (before, after)}
-    if not is_dataclass(before):
-        if isinstance(before, list):
-            assert isinstance(after, list)
+    def _dataclasses_are_comparable(b, a):
+        return type(b) is type(a) or (
+            not require_dataclass_type_match
+            and {field.name for field in fields(b) if field.name not in skip_keys}
+            == {field.name for field in fields(a) if field.name not in skip_keys}
+        )
+
+    match (before, after):
+        case (list(), list()):
             return {
                 f"[{i}]{k}": v
                 for i, (b, a) in enumerate(zip(before, after))
-                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+                for k, v in compare_dataclasses(
+                    b,
+                    a,
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
             }
-        if isinstance(before, dict):
-            assert isinstance(after, dict)
+        case (dict(), dict()):
             return {
                 f"[{i!r}]{k}": v
                 for i, (b, a) in zip_dicts_by_key(before, after).items()
-                for k, v in compare_dataclasses(b, a, skip_keys=skip_keys).items()
+                for k, v in compare_dataclasses(
+                    b,
+                    a,
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
                 if i not in skip_keys
             }
-        return {"": _fmt(before, after)} if before != after else {}
-
-    return {
-        f".{f.name}{k}": v
-        for f in fields(before)  # type: ignore
-        if f.name not in skip_keys
-        for k, v in compare_dataclasses(
-            getattr(before, f.name), getattr(after, f.name), skip_keys=skip_keys
-        ).items()
-    }
+        case before, after if (
+            is_dataclass(before)
+            and is_dataclass(after)
+            and _dataclasses_are_comparable(before, after)
+        ):
+            return {
+                f".{f.name}{k}": v
+                for f in fields(before)  # type: ignore
+                if f.name not in skip_keys
+                for k, v in compare_dataclasses(
+                    getattr(before, f.name),
+                    getattr(after, f.name),
+                    skip_keys=skip_keys,
+                    require_dataclass_type_match=require_dataclass_type_match,
+                ).items()
+            }
+        case _:
+            return {"": _fmt(before, after)} if before != after else {}
 
 
 def complete_type_string(value: Any) -> str:
@@ -2557,3 +2736,89 @@ def get_code_bin_of_terminal() -> str | None:
             return code_bin
 
     return None
+
+
+def list_match[T](base: list[T], match: list[T]) -> Generator[int, None, None]:
+    for i in range(len(base)):
+        if base[i : i + len(match)] == match:
+            yield i
+
+
+def sublist_replace[T](base: list[T], match: list[T], replacement: list[T]) -> list[T]:
+    out: list[T] = []
+    buffer: list[T] = []
+
+    for i in base:
+        buffer.append(i)
+        if len(buffer) > len(match):
+            out.append(buffer.pop(0))
+        if buffer == match:
+            out.extend(replacement)
+            buffer = []
+    out.extend(buffer)
+    return out
+
+
+def path_replace(base: Path, match: Path, replacement: Path) -> Path:
+    return Path(
+        *sublist_replace(
+            list(base.parts),
+            list(match.parts),
+            list(replacement.parts),
+        ),
+    )
+
+
+def sort_dataclass(
+    obj: Any, sort_key: Callable[[Any], Any], prefix: str = "", inplace: bool = True
+) -> Any:
+    if not inplace:
+        obj = deepcopy(obj)  # TODO: more efficient copy
+
+    for f in fields(obj):
+        val = getattr(obj, f.name)
+        if isinstance(val, list):
+            s = sorted(val, key=sort_key)
+            setattr(obj, f.name, s)
+            for v in s:
+                if is_dataclass(v):
+                    sort_dataclass(v, sort_key, prefix=f"{prefix}.{f.name}")
+        elif isinstance(val, dict):
+            s = dict(sorted(val.items(), key=lambda x: sort_key(x[1])))
+            setattr(obj, f.name, s)
+            for v in s.values():
+                if is_dataclass(v):
+                    sort_dataclass(v, sort_key, prefix=f"{prefix}.{f.name}")
+        elif is_dataclass(val):
+            sort_dataclass(val, sort_key, prefix=f"{prefix}.{f.name}")
+    return obj
+
+
+def round_dataclass(obj: Any, precision: int = 0) -> Any:
+    if isinstance(obj, (float, int)):
+        return round(obj, precision)
+
+    if not is_dataclass(obj):
+        return obj
+
+    for f in fields(obj):
+        val = getattr(obj, f.name)
+        if isinstance(val, float):
+            setattr(obj, f.name, round(val, precision))
+        elif isinstance(val, list):
+            val = [round_dataclass(v, precision) for v in val]
+        elif isinstance(val, dict):
+            val = {k: round_dataclass(v, precision) for k, v in val.items()}
+        elif is_dataclass(val):
+            round_dataclass(val, precision)
+    return obj
+
+
+def match_iterables[T, U](
+    *iterables: Iterable[T], key: Callable[[T], U] = lambda x: x
+) -> dict[U, Iterable[T]]:
+    multi_dicts = [groupby(iterable, key) for iterable in iterables]
+    if not all(len(vs) == 1 for d in multi_dicts for vs in d.values()):
+        raise ValueError("All iterables must have unique keys")
+    dicts = [{k: vs[0] for k, vs in d.items()} for d in multi_dicts]
+    return zip_dicts_by_key(*dicts)  # type: ignore
