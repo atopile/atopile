@@ -14,11 +14,10 @@ from pathlib import Path
 
 import sexpdata
 
-from faebryk.libs.kicad.fileformats_latest import C_kicad_netlist_file
+from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 
-TEST_FILES_DIR = Path(__file__).parent / "test_files"
-ZIG_OUT_DIR = Path(__file__).parent / "zig-out" / "bin"
-PERFORMANCE_TEST_EXE = ZIG_OUT_DIR / "performance_sexp"
+SEXP_ROOT = Path(__file__).parent.parent.parent
+TEST_FILES_DIR = SEXP_ROOT / "test" / "resources" / "v9"
 
 
 def count_tokens(data, depth=0):
@@ -76,8 +75,11 @@ def test_python(file_path):
         end_time = time.time() * 1000
         parse_time = int(end_time - start_time)
 
-        if file_path.endswith(".net"):
-            _ = C_kicad_netlist_file.loads(data)
+        if file_path.suffix == ".net":
+            _ = C_kicad_pcb_file.loads(data)
+            structure_time = int((time.time() * 1000) - end_time)
+        elif file_path.suffix == ".kicad_pcb":
+            _ = C_kicad_pcb_file.loads(data)
             structure_time = int((time.time() * 1000) - end_time)
         else:
             structure_time = 0
@@ -90,8 +92,8 @@ def test_python(file_path):
 
         return TestResults(
             file_size=file_size,
-            tokenize_time=parse_time,  # Python does both in one pass
-            parse_time=0,  # Already included in tokenize_time
+            tokenize_time=0,  # Python does both in one pass
+            parse_time=parse_time,
             structure_time=structure_time,
             total_tokens=total_tokens,
             lparen=lparen,
@@ -108,40 +110,6 @@ def test_python(file_path):
         )
     except Exception as e:
         raise Exception(f"Python test failed: {e}")
-
-
-def compile_zig_if_needed():
-    """Build the Zig performance test using the build system"""
-    build_file = Path(__file__).parent / "build.zig"
-
-    if not build_file.exists():
-        raise Exception(f"Build file {build_file} not found")
-
-    # Check if we need to rebuild
-    source_files = list(Path(__file__).parent.glob("*.zig"))
-    if not source_files:
-        raise Exception("No Zig source files found")
-
-    needs_compile = not PERFORMANCE_TEST_EXE.exists()
-    if not needs_compile:
-        # Check if any source is newer than executable
-        exe_mtime = PERFORMANCE_TEST_EXE.stat().st_mtime
-        for source in source_files:
-            if source.stat().st_mtime > exe_mtime:
-                needs_compile = True
-                break
-
-    if needs_compile:
-        print("Building Zig performance test...")
-        result = subprocess.run(
-            ["zig", "build", "-Doptimize=ReleaseFast", "--build-file", str(build_file)],
-            cwd=Path(__file__).parent,
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode != 0:
-            raise Exception(f"Failed to build: {result.stderr}")
-        print("Build successful")
 
 
 @dataclass
@@ -166,14 +134,13 @@ class TestResults:
 
 def test_zig(file_path):
     """Test Zig parallel tokenizer and AST parser performance"""
-    # Compile if needed
-    compile_zig_if_needed()
 
     # Run the performance test
     result = subprocess.run(
-        [str(PERFORMANCE_TEST_EXE), str(file_path.absolute())],
+        ["zig", "build", "perf", "--", str(file_path.absolute())],
         capture_output=True,
         text=True,
+        cwd=SEXP_ROOT,
     )
 
     if result.returncode != 0:
@@ -224,14 +191,12 @@ def format_results(name, results: TestResults | None):
     tokens_str += ")"
 
     # Build timing string
-    if results.parse_time > 0:
-        time_str = (
-            f"tokenize:{results.tokenize_time}ms "
-            f"+ parse:{results.parse_time}ms = "
-            f"{results.tokenize_time + results.parse_time}ms"
-        )
-    else:
-        time_str = f"{results.tokenize_time}ms"
+    time_str = (
+        f"tokenize:{results.tokenize_time}ms "
+        f"+ parse:{results.parse_time}ms "
+        f"+ structure:{results.structure_time}ms "
+        f"= {results.tokenize_time + results.parse_time + results.structure_time}ms"
+    )
 
     # Add S-expression counts if available
     sexp_str = ""
@@ -245,7 +210,7 @@ def format_results(name, results: TestResults | None):
         f"{name}: {results.file_size} bytes, "
         f"{time_str}, "
         f"{results.total_tokens} tokens "
-        f"{tokens_str} "
+        # f"{tokens_str} "
         f"{'✓' if results.balanced else '✗'}"
         f"{sexp_str}"
     )
@@ -253,10 +218,10 @@ def format_results(name, results: TestResults | None):
 
 def main():
     # Find all .kicad_pcb files in test_files directory
-    test_files = sorted(TEST_FILES_DIR.glob("*.kicad_pcb"))
+    test_files = sorted(TEST_FILES_DIR.glob("pcb/*.kicad_pcb"))
 
     if not test_files:
-        print("No .kicad_pcb files found in test_files directory")
+        print(f"No .kicad_pcb files found in {TEST_FILES_DIR}")
         return
 
     print(f"Found {len(test_files)} test files\n")

@@ -1,9 +1,6 @@
 const std = @import("std");
-const tokenizer = @import("tokenizer");
+const sexp = @import("sexp");
 const prettytable = @import("prettytable");
-const ast = @import("ast");
-const netlist = @import("kicad/netlist");
-const structure = @import("structure");
 
 const Result = struct {
     tokenize_time: u64,
@@ -56,7 +53,7 @@ const TEMPLATE_HEADER =
     \\        (comment (number "8") (value ""))
     \\        (comment (number "9") (value "")))))
     \\  (components
-    \\)
+    \\
 ;
 
 const TEMPLATE_ENTRY =
@@ -76,6 +73,7 @@ const TEMPLATE_ENTRY =
     \\      (sheetpath (names "/") (tstamps "/"))
     \\      (tstamps "64269ac3-771b-4c0d-91e0-eafc3dc4a07f")
     \\    )
+    \\
 ;
 
 const TEMPLATE_FOOTER =
@@ -86,16 +84,16 @@ const TEMPLATE_FOOTER =
     \\)
 ;
 
-pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8)) !TestRun {
+pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8), cnt: usize) !TestRun {
     // Warm up
     {
-        const tokens = try tokenizer.tokenize(allocator, content.items);
+        const tokens = try sexp.tokenizer.tokenize(allocator, content.items);
         allocator.free(tokens);
     }
 
     // Benchmark sequential tokenization
     var timer = try std.time.Timer.start();
-    const tokens_seq = try tokenizer._tokenize(allocator, content.items);
+    const tokens_seq = try sexp.tokenizer._tokenize(allocator, content.items);
     defer allocator.free(tokens_seq);
     const seq_token_time = timer.read();
 
@@ -103,14 +101,30 @@ pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8)) !TestRun 
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
-    var sexp = try ast.parse(arena_allocator, tokens_seq);
-    defer sexp.deinit(arena_allocator);
+    const sexp_ast = try sexp.ast.parse(arena_allocator, tokens_seq);
     const seq_parse_time = timer.read();
 
     timer.reset();
-    var netlistfile = try netlist.NetlistFile.loads(allocator, .{ .sexp = sexp });
+    var netlistfile = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .sexp = sexp_ast });
     defer netlistfile.free(allocator);
     const seq_structure_time = timer.read();
+
+    if (netlistfile.netlist) |netlist| {
+        if (netlist.components.comps.len != cnt) {
+            std.debug.print("WARNING: Component count doesn't match! Expected: {}, Got: {}\n", .{ cnt, netlist.components.comps.len });
+        }
+
+        // TODO remove all this once it works
+        std.debug.print("{}\n", .{netlist});
+
+        std.debug.print("-" ** 80 ++ "\n", .{});
+
+        const str = try netlistfile.dumps(allocator, null);
+        std.debug.print("{s}\n", .{str});
+
+        std.debug.print("-" ** 80 ++ "\n", .{});
+        std.debug.print("{s}\n", .{content.items});
+    }
 
     const seq_result = Result{
         .tokenize_time = seq_token_time,
@@ -120,7 +134,7 @@ pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8)) !TestRun 
 
     // Benchmark parallel tokenization
     timer.reset();
-    const tokens_par = try tokenizer.tokenize(allocator, content.items);
+    const tokens_par = try sexp.tokenizer.tokenize(allocator, content.items);
     defer allocator.free(tokens_par);
     const par_time = timer.read();
 
@@ -165,7 +179,7 @@ pub fn main() !void {
     // bug?
     //table.setAlign(prettytable.Alignment.right);
 
-    const C = 10;
+    const C = 1;
 
     var cell_buffers: [C][6][32]u8 = undefined;
 
@@ -178,13 +192,14 @@ pub fn main() !void {
         defer content.deinit();
 
         // Generate about 5MB of S-expression data
+        const total = 1 * factor;
         try content.appendSlice(TEMPLATE_HEADER);
-        for (0..100 * factor) |_| {
+        for (0..total) |_| {
             try content.appendSlice(TEMPLATE_ENTRY);
         }
         try content.appendSlice(TEMPLATE_FOOTER);
 
-        const result = try bench(allocator, content);
+        const result = try bench(allocator, content, total);
 
         const tokenize_time_par_ms = @as(f64, @floatFromInt(result.par.tokenize_time)) / 1_000_000.0;
         const ast_time_ms = @as(f64, @floatFromInt(result.seq.parse_time)) / 1_000_000.0;

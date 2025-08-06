@@ -207,7 +207,7 @@ fn getSexpMetadata(comptime T: type, comptime field_name: []const u8) SexpField 
 // Main decode function
 pub fn decode(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) DecodeError!T {
     const type_info = @typeInfo(T);
-    
+
     // Check if type has a custom decode method (only for types that support declarations)
     switch (type_info) {
         .@"struct", .@"enum", .@"union", .@"opaque" => {
@@ -270,7 +270,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
         return error.UnexpectedType;
     };
 
-    // Special case: if the struct has exactly one non-optional, non-default field and the sexp 
+    // Special case: if the struct has exactly one non-optional, non-default field and the sexp
     // is a single nested structure matching that field, treat the entire sexp as that field's value
     // This handles cases like (font ...) being passed to Effects{font: Font}
     comptime var non_optional_non_default_count: usize = 0;
@@ -280,7 +280,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             if (!isOptional(field.type)) {
                 // Check if field has a default value
                 const has_default = field.default_value_ptr != null;
-                
+
                 if (!has_default) {
                     non_optional_non_default_count += 1;
                     single_field_name = field.name;
@@ -288,7 +288,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             }
         }
     }
-    
+
     // Check if struct has any positional fields
     comptime var has_positional_fields = false;
     comptime {
@@ -300,7 +300,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             }
         }
     }
-    
+
     // Special case for single-field structs (but not for structs with positional fields)
     // This handles cases like Effects{font: Font} receiving (font ...)
     if (non_optional_non_default_count == 1 and items.len == 1 and !has_positional_fields) {
@@ -364,8 +364,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
         }
         break :blk all_pos and has_fields;
     };
-    
-    
+
     // For structs with only positional fields, check if we need to skip a type symbol
     // This handles cases like (xyz 0 0 0) where "xyz" is the type name
     // But NOT cases like (edge 0.5) where "edge" is actual data
@@ -379,7 +378,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                 if (c == '.') last_dot = i + 1;
             }
             const short_name = type_name[last_dot..];
-            
+
             // Create lowercase version for comparison
             var lower_buf: [128]u8 = undefined;
             if (short_name.len <= lower_buf.len) {
@@ -387,14 +386,14 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     lower_buf[i] = std.ascii.toLower(c);
                 }
                 const lower_name = lower_buf[0..short_name.len];
-                
+
                 if (std.mem.eql(u8, sym, lower_name)) {
                     positional_start = 1;
                 }
             }
         }
     }
-    
+
     // Process positional fields based on order
     var positional_idx: usize = positional_start;
     inline for (fields, 0..) |field, field_idx| {
@@ -500,7 +499,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
             // Before giving up, check if there's a single nested structure that matches this field
             // This handles cases like (effects (font ...)) where font is the only content
             var found_nested = false;
-            
+
             for (items) |item| {
                 if (ast.isList(item)) {
                     const nested_items = ast.getList(item).?;
@@ -531,9 +530,9 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     }
                 }
             }
-            
+
             // Also check if we have a symbol followed by other items that form the value
-            // This handles cases like: font (size ...) (thickness ...)  
+            // This handles cases like: font (size ...) (thickness ...)
             if (!found_nested) {
                 for (items, 0..) |item, idx| {
                     if (ast.getSymbol(item)) |sym| {
@@ -552,17 +551,17 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                                         }
                                     }
                                 }
-                                
+
                                 if (looks_like_value and field.default_value_ptr == null) {
                                     // Found the field name as a symbol with values following
-                                    const value_items = items[idx + 1..];
+                                    const value_items = items[idx + 1 ..];
                                     const value_sexp = if (value_items.len == 1)
                                         // Single item: pass directly
                                         value_items[0]
                                     else
                                         // Multiple items: wrap in a list
                                         SExp{ .value = .{ .list = value_items }, .location = null };
-                                    
+
                                     setErrorContext(.{
                                         .path = @typeName(T),
                                         .field_name = field.name,
@@ -588,8 +587,7 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     }
                 }
             }
-            
-            
+
             if (!found_nested) {
                 // Handle different field types
                 if (comptime isOptional(field.type)) {
@@ -598,27 +596,27 @@ fn decodeStruct(comptime T: type, allocator: std.mem.Allocator, sexp: SExp) Deco
                     // Empty slice for multidict
                     @field(result, field.name) = try allocator.alloc(std.meta.Child(field.type), 0);
                 } else {
-                // Use default if available
-                const default_instance = std.mem.zeroInit(T, .{});
-                const zero_value = std.mem.zeroes(field.type);
-                if (!std.meta.eql(@field(default_instance, field.name), zero_value)) {
-                    @field(result, field.name) = @field(default_instance, field.name);
-                } else if (field.default_value_ptr) |default_ptr| {
-                    // Use field default value
-                    const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
-                    @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
-                } else {
-                    // Set error context before returning error
-                    // Use page allocator for preview since error context is global
-                    const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
-                    setErrorContext(.{
-                        .path = @typeName(T),
-                        .field_name = field.name,
-                        .sexp_preview = preview,
-                    }, sexp);
-                    return error.MissingField;
+                    // Use default if available
+                    const default_instance = std.mem.zeroInit(T, .{});
+                    const zero_value = std.mem.zeroes(field.type);
+                    if (!std.meta.eql(@field(default_instance, field.name), zero_value)) {
+                        @field(result, field.name) = @field(default_instance, field.name);
+                    } else if (field.default_value_ptr) |default_ptr| {
+                        // Use field default value
+                        const default_bytes = @as([*]const u8, @ptrCast(default_ptr))[0..@sizeOf(field.type)];
+                        @memcpy(@as([*]u8, @ptrCast(&@field(result, field.name)))[0..@sizeOf(field.type)], default_bytes);
+                    } else {
+                        // Set error context before returning error
+                        // Use page allocator for preview since error context is global
+                        const preview = formatSexpPreview(std.heap.page_allocator, sexp) catch null;
+                        setErrorContext(.{
+                            .path = @typeName(T),
+                            .field_name = field.name,
+                            .sexp_preview = preview,
+                        }, sexp);
+                        return error.MissingField;
+                    }
                 }
-            }
             }
         }
     }

@@ -1,7 +1,5 @@
 const std = @import("std");
-const tokenizer = @import("tokenizer");
-const ast = @import("ast");
-const netlist = @import("kicad/netlist");
+const sexp = @import("sexp");
 
 const TokenCounts = struct {
     lparen: usize = 0,
@@ -12,7 +10,7 @@ const TokenCounts = struct {
     comments: usize = 0,
 };
 
-fn countTokenTypes(tokens: []const tokenizer.Token) TokenCounts {
+fn countTokenTypes(tokens: []const sexp.tokenizer.Token) TokenCounts {
     var counts = TokenCounts{};
 
     for (tokens) |token| {
@@ -34,18 +32,18 @@ const SExpCounts = struct {
     atoms: usize = 0,
 };
 
-fn countSExpElements(sexp: ?ast.SExp) SExpCounts {
+fn countSExpElements(sexp_ast: ?sexp.ast.SExp) SExpCounts {
     var counts = SExpCounts{};
 
-    if (sexp) |s| {
+    if (sexp_ast) |s| {
         countSExpRecursive(s, &counts);
     }
 
     return counts;
 }
 
-fn countSExpRecursive(sexp: ast.SExp, counts: *SExpCounts) void {
-    switch (sexp.value) {
+fn countSExpRecursive(sexp_ast: sexp.ast.SExp, counts: *SExpCounts) void {
+    switch (sexp_ast.value) {
         .list => |items| {
             counts.lists += 1;
             for (items) |item| {
@@ -60,6 +58,10 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
+
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+    const arena_allocator = arena.allocator();
 
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
@@ -85,83 +87,57 @@ pub fn main() !void {
     std.debug.print("File size: {} bytes ({d:.2} MB)\n", .{ file_size, @as(f64, @floatFromInt(file_size)) / (1024.0 * 1024.0) });
     std.debug.print("\n", .{});
 
-    // Read file content
+    // Test1: Read file content
     const file_content = try std.fs.cwd().readFileAlloc(allocator, file_path, 100 * 1024 * 1024);
     defer allocator.free(file_content);
     const read_time = timer.read();
     std.debug.print("Read time: {d:.3} ms\n", .{@as(f64, @floatFromInt(read_time)) / 1_000_000.0});
     std.debug.print("Speed: {d:.2} MB/s\n", .{@as(f64, @floatFromInt(file_size)) / (@as(f64, @floatFromInt(read_time)) / 1_000_000_000.0) / (1024.0 * 1024.0)});
 
-    // Test 1: Sequential tokenization
-    std.debug.print("=== Sequential Tokenization ===\n", .{});
-
-    timer.reset();
-    const tokens_seq = try tokenizer._tokenize(allocator, file_content);
-    defer {
-        allocator.free(tokens_seq);
-    } // No need for deinitTokens - tokens point to file_content
-
-    const seq_time = timer.read();
-    std.debug.print("Time: {d:.3} ms\n", .{@as(f64, @floatFromInt(seq_time)) / 1_000_000.0});
-    std.debug.print("Tokens: {}\n", .{tokens_seq.len});
-    std.debug.print("Speed: {d:.2} MB/s\n", .{@as(f64, @floatFromInt(file_size)) / (@as(f64, @floatFromInt(seq_time)) / 1_000_000_000.0) / (1024.0 * 1024.0)});
-    std.debug.print("\n", .{});
-
-    // Test 2: File tokenization (with duplication)
-    std.debug.print("=== Parallel Tokenization ===\n", .{});
+    // Test2: File tokenization
+    std.debug.print("=== Tokenization ===\n", .{});
     timer.reset();
 
-    const tokens_par = try tokenizer.tokenize(allocator, file_content);
-    defer allocator.free(tokens_par);
+    const tokens = try sexp.tokenizer.tokenize(allocator, file_content);
+    defer allocator.free(tokens);
 
-    const par_time = timer.read();
-    std.debug.print("Time: {d:.3} ms\n", .{@as(f64, @floatFromInt(par_time)) / 1_000_000.0});
-    std.debug.print("Tokens: {}\n", .{tokens_par.len});
-    std.debug.print("Speed: {d:.2} MB/s\n", .{@as(f64, @floatFromInt(file_size)) / (@as(f64, @floatFromInt(par_time)) / 1_000_000_000.0) / (1024.0 * 1024.0)});
-    std.debug.print("Speedup: {d:.2}x\n", .{@as(f64, @floatFromInt(seq_time)) / @as(f64, @floatFromInt(par_time))});
+    const token_time = timer.read();
+    std.debug.print("Time: {d:.3} ms\n", .{@as(f64, @floatFromInt(token_time)) / 1_000_000.0});
+    std.debug.print("Tokens: {}\n", .{tokens.len});
+    std.debug.print("Speed: {d:.2} MB/s\n", .{@as(f64, @floatFromInt(file_size)) / (@as(f64, @floatFromInt(token_time)) / 1_000_000_000.0) / (1024.0 * 1024.0)});
     std.debug.print("\n", .{});
 
     // Test 3: Full parsing with arena allocator
     std.debug.print("=== Full Parsing (Arena Allocator) ===\n", .{});
 
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
     timer.reset();
-    var sexp = try ast.parse(arena.allocator(), tokens_seq);
-    defer sexp.deinit(arena.allocator());
+    const sexp_ast = try sexp.ast.parse(arena_allocator, tokens);
     const parse_time = timer.read();
 
     timer.reset();
     var structure_time: u64 = 0;
     // Only perform structure decoding if the file is a .net file
     if (std.mem.endsWith(u8, file_path, ".net")) {
-        // The parsed sexp should be the (export ...) expression
-        // Remove debug output and just pass it directly
-
-        var netlistfile = try netlist.NetlistFile.loads(arena.allocator(), .{ .sexp = sexp });
-        defer netlistfile.free(arena.allocator());
+        var netlistfile = try sexp.kicad.netlist.NetlistFile.loads(arena_allocator, .{ .sexp = sexp_ast });
+        defer netlistfile.free(arena_allocator);
         structure_time = timer.read();
+    } else if (std.mem.endsWith(u8, file_path, ".kicad_pcb")) {
+        var pcb_file = try sexp.kicad.pcb.PcbFile.loads(arena_allocator, .{ .sexp = sexp_ast });
+        defer pcb_file.free(arena_allocator);
+        structure_time = timer.read();
+        std.debug.print("{}\n", .{pcb_file.kicad_pcb.footprints.len});
     }
 
-    std.debug.print("Tokenize time: {d:.3} ms\n", .{@as(f64, @floatFromInt(par_time)) / 1_000_000.0});
+    std.debug.print("Tokenize time: {d:.3} ms\n", .{@as(f64, @floatFromInt(token_time)) / 1_000_000.0});
     std.debug.print("Parse time: {d:.3} ms\n", .{@as(f64, @floatFromInt(parse_time)) / 1_000_000.0});
     std.debug.print("Structure time: {d:.3} ms\n", .{@as(f64, @floatFromInt(structure_time)) / 1_000_000.0});
-    std.debug.print("Total time (tokenize + parse + structure): {d:.3} ms\n", .{@as(f64, @floatFromInt(par_time + parse_time + structure_time)) / 1_000_000.0});
-    std.debug.print("Speed: {d:.2} MB/s\n", .{@as(f64, @floatFromInt(file_size)) / (@as(f64, @floatFromInt(par_time + parse_time + structure_time)) / 1_000_000_000.0) / (1024.0 * 1024.0)});
-
-    // Verify results match
-    std.debug.print("\n=== Verification ===\n", .{});
-    if (tokens_seq.len != tokens_par.len) {
-        std.debug.print("WARNING: Token counts don't match! Sequential: {}, File: {}\n", .{ tokens_seq.len, tokens_par.len });
-    } else {
-        std.debug.print("✓ Token counts match\n", .{});
-    }
+    std.debug.print("Total time (tokenize + parse + structure): {d:.3} ms\n", .{@as(f64, @floatFromInt(token_time + parse_time + structure_time)) / 1_000_000.0});
+    std.debug.print("Speed: {d:.2} MB/s\n", .{@as(f64, @floatFromInt(file_size)) / (@as(f64, @floatFromInt(token_time + parse_time + structure_time)) / 1_000_000_000.0) / (1024.0 * 1024.0)});
 
     // Output in format expected by Python script
-    const counts = countTokenTypes(tokens_seq);
-    const sexp_counts = countSExpElements(sexp);
-    const tokenize_time_ms = @divFloor(seq_time, 1_000_000);
+    const counts = countTokenTypes(tokens);
+    const sexp_counts = countSExpElements(sexp_ast);
+    const tokenize_time_ms = @divFloor(token_time, 1_000_000);
     const parse_time_ms = @divFloor(parse_time, 1_000_000);
     const structure_time_ms = @divFloor(structure_time, 1_000_000);
 
@@ -171,7 +147,7 @@ pub fn main() !void {
         tokenize_time_ms,
         parse_time_ms,
         structure_time_ms,
-        tokens_seq.len,
+        tokens.len,
         counts.lparen,
         counts.rparen,
         counts.symbols,
