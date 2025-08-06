@@ -3,6 +3,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.library.is_pickable_by_type import is_pickable_by_type
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
@@ -20,7 +21,7 @@ class Resistor(Module):
     )
 
     @L.rt_field
-    def pickable(self):
+    def pickable(self) -> is_pickable_by_type:
         return F.is_pickable_by_type(
             endpoint="resistors",
             params=[self.resistance, self.max_power, self.max_voltage],
