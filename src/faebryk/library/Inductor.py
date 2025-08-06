@@ -18,7 +18,9 @@ class Inductor(Module):
         tolerance_guess=10 * P.percent,
     )
     max_current = L.p_field(
-        units=P.A, likely_constrained=True, soft_set=L.Range(1 * P.mA, 100 * P.A)
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mA, 100 * P.A),
     )
     dc_resistance = L.p_field(
         units=P.Ω,

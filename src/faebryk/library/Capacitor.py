@@ -39,7 +39,9 @@ class Capacitor(Module):
     )
     # Voltage at which the design may be damaged
     max_voltage = L.p_field(
-        units=P.V, likely_constrained=True, soft_set=L.Range(10 * P.V, 100 * P.V)
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(10 * P.V, 100 * P.V),
     )
     temperature_coefficient = L.p_field(domain=L.Domains.ENUM(TemperatureCoefficient))
 
