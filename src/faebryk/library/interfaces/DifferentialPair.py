@@ -26,18 +26,6 @@ class DifferentialPair(ModuleInterface):
             F.ElectricSignal.connect_all_module_references(self)
         )
 
-    def terminated(self) -> Self:
-        terminated_bus = type(self)()
-        rs = terminated_bus.add_to_container(2, F.Resistor)
-        for r in rs:
-            r.resistance.alias_is(self.impedance)
-
-        terminated_bus.p.line.connect_via(rs[0], self.p.line)
-        terminated_bus.n.line.connect_via(rs[1], self.n.line)
-        self.connect_shallow(terminated_bus)
-
-        return terminated_bus
-
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         import DifferentialPair, ElectricPower

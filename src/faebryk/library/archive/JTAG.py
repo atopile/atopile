@@ -43,12 +43,7 @@ class JTAG(ModuleInterface):
         jtag.dbgrq.reference ~ power_3v3
 
         # Connect to microcontroller JTAG interface
-        microcontroller.jtag_tdo ~ jtag.tdo.line
-        microcontroller.jtag_tdi ~ jtag.tdi.line
-        microcontroller.jtag_tms ~ jtag.tms.line
-        microcontroller.jtag_tck ~ jtag.tck.line
-        microcontroller.jtag_trst ~ jtag.n_trst.line
-        microcontroller.reset_n ~ jtag.n_reset.line
+        microcontroller.jtag ~ jtag
 
         # Connect to JTAG debugger/programmer
         debugger.jtag ~ jtag

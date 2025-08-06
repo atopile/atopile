@@ -14,6 +14,9 @@ class Addressor(ModuleInterface):
     address = L.p_field(domain=L.Domains.Numbers.NATURAL())
     offset = L.p_field(domain=L.Domains.Numbers.NATURAL())
     base = L.p_field(domain=L.Domains.Numbers.NATURAL())
+    """
+    Base address is the starting address of the device if all address bits are 0.
+    """
 
     @L.rt_field
     def address_lines(self):

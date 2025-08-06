@@ -53,8 +53,8 @@ class Capacitor(Module):
         domain=L.Domains.ENUM(TemperatureCoefficient),
     )
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
     pickable: F.is_pickable_by_type
+    attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.C

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -21,25 +21,53 @@ class Fuse(Module):
         SLOW = auto()
         FAST = auto()
 
-    unnamed = L.list_field(2, F.Electrical)
+    terminals = L.list_field(2, F.Electrical)
+    
     fuse_type = L.p_field(
         domain=L.Domains.ENUM(FuseType),
     )
     response_type = L.p_field(
         domain=L.Domains.ENUM(ResponseType),
     )
-    trip_current = L.p_field(
+
+    rated_trip_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         domain=L.Domains.Numbers.REAL(),
         soft_set=L.Range(100 * P.mA, 100 * P.A),
     )
 
+    rated_hold_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        domain=L.Domains.Numbers.REAL(),
+        soft_set=L.Range(100 * P.mA, 100 * P.A),
+    )
+
+    rated_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(10 * P.V, 100 * P.V),
+        tolerance_guess=10 * P.percent,
+    )
+
+    rated_power_dissipation = L.p_field(
+        units=P.W,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.mW, 10 * P.W),
+        tolerance_guess=10 * P.percent,
+    )
+
+    pickable: F.is_pickable_by_type
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
+
+    def __init__(self, fuse_type: FuseType):
+        super().__init__()
+        self.fuse_type = fuse_type
 
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(self.unnamed[0], self.unnamed[1])
+        return F.can_bridge_defined(self.terminals[0], self.terminals[1])
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.F
@@ -73,3 +101,8 @@ class Fuse(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
+
+    class Package(StrEnum):
+        _01005 = "PACKAGE"
+
+    package = L.p_field(domain=L.Domains.ENUM(Package))

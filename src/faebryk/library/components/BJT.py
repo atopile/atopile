@@ -1,7 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -13,13 +13,6 @@ class BJT(Module):
     class DopingType(Enum):
         NPN = auto()
         PNP = auto()
-
-    # TODO use this, here is more info: https://en.wikipedia.org/wiki/Bipolar_junction_transistor#Regions_of_operation
-    class OperationRegion(Enum):
-        ACTIVE = auto()
-        INVERTED = auto()
-        SATURATION = auto()
-        CUT_OFF = auto()
 
     doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
 
@@ -37,7 +30,12 @@ class BJT(Module):
 
     @rt_field
     def can_bridge(self):
+        # if self.doping_type == self.DopingType.NPN:
         return F.can_bridge_defined(self.collector, self.emitter)
+        # elif self.doping_type == self.DopingType.PNP:
+            # return F.can_bridge_defined(self.emitter, self.collector)
+        # else:
+            # raise ValueError(f"Invalid doping type: {self.doping_type}")
 
     @rt_field
     def pin_association_heuristic(self):
@@ -55,8 +53,7 @@ class BJT(Module):
         example="""
         import BJT, Resistor, ElectricPower
 
-        bjt = new BJT
-        bjt.doping_type ="NPN"
+        bjt = new BJT<doping_type="NPN">
         bjt.mpn = "C373737
 
         # Use as amplifier with bias resistors
@@ -72,3 +69,8 @@ class BJT(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
+
+    class Package(StrEnum):
+        _01005 = "STRING"
+
+    package = L.p_field(domain=L.Domains.ENUM(Package))
