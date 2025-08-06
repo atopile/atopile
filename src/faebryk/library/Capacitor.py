@@ -19,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 class Capacitor(Module):
+    """
+    A capacitor is a passive two-terminal electrical component. Capacitors can be configured by specifying a range for the following parameters:
+    - capacitance: The capacitance of the capacitor in farads.
+    - max_voltage: The maximum rated voltage that the capacitor can withstand in volts.
+    - package: The imperial SMD package of the capacitor.
+    """
     class TemperatureCoefficient(Enum):
         Y5V = auto()
         Z5U = auto()

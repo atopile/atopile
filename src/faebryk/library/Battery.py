@@ -19,6 +19,17 @@ class Battery(Module):
         soft_set=L.Range(100 * P.mAh, 100 * P.Ah),
         likely_constrained=True,
     )
+    discharge_rate = L.p_field(
+        units=P.A,
+        soft_set=L.Range(1 * P.C, 10 * P.C), #TODO: Cleanup
+        likely_constrained=True,
+    )
+    c_rate = L.p_field(
+        units=P.dimensionless,
+        soft_set=L.Range(1 * P.C, 10 * P.C),
+        likely_constrained=True,
+    )
+    #TODO: equations to connect c rate discharge and capacity
 
     power: F.ElectricPower
 

@@ -22,7 +22,6 @@ class BJT(Module):
         CUT_OFF = auto()
 
     doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
-    operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
 
     emitter: F.Electrical
     base: F.Electrical
@@ -31,6 +30,10 @@ class BJT(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.Q
     )
+
+    def __init__(self, doping_type: DopingType):
+        super().__init__()
+        self.doping_type = doping_type
 
     @rt_field
     def can_bridge(self):

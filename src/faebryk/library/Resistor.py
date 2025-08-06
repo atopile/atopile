@@ -10,6 +10,13 @@ from faebryk.libs.units import P
 
 
 class Resistor(Module):
+    """
+    A resistor is a passive two-terminal electrical component. Resistors can be configured by specifying a range for the following parameters:
+    - resistance: The resistance of the resistor in ohms.
+    - max_power: The maximum rated power that the resistor can dissipate in watts.
+    - max_voltage: The maximum rated voltage that the resistor can withstand in volts.
+    - package: The imperial SMD package of the resistor.
+    """
     terminals = L.list_field(2, F.Electrical)
 
     resistance = L.p_field(units=P.ohm)
