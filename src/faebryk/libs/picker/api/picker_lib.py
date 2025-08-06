@@ -16,6 +16,7 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
+from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -78,16 +79,26 @@ def _extract_numeric_id(lcsc_id: str) -> int:
     return int(match[1])
 
 
-TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
-    F.is_pickable_by_type.Type.Resistor: ResistorParams,
-    F.is_pickable_by_type.Type.Capacitor: CapacitorParams,
-    F.is_pickable_by_type.Type.Inductor: InductorParams,
-    # F.is_pickable_by_type.Type.TVS: TVSParams,
-    # F.is_pickable_by_type.Type.LED: LEDParams,
-    # F.is_pickable_by_type.Type.Diode: DiodeParams,
-    # F.is_pickable_by_type.Type.LDO: LDOParams,
-    # F.is_pickable_by_type.Type.MOSFET: MOSFETParams,
-}
+def _get_pick_params(module_t: type[L.Module]) -> type[BaseParams]:
+    if issubclass(module_t, F.Resistor):
+        return ResistorParams
+    elif issubclass(module_t, F.Capacitor):
+        return CapacitorParams
+    elif issubclass(module_t, F.Inductor):
+        return InductorParams
+    # elif issubclass(module_t, F.TVS):
+    #     return TVSParams
+    # elif issubclass(module_t, F.LED):
+    #     return LEDParams
+    # elif issubclass(module_t, F.Diode):
+    #     return DiodeParams
+    # elif issubclass(module_t, F.LDO):
+    #     return LDOParams
+    # elif issubclass(module_t, F.MOSFET):
+    #     return MOSFETParams
+    else:
+        raise NotImplementedError(f"Unsupported pickable trait: {module_t}")
+
 
 BackendPackage = StrEnum(
     "BackendPackage",
@@ -107,15 +118,17 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(
-    cls, size: SMDSize, type: F.is_pickable_by_type.Type
-) -> "BackendPackage":
+def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
+    if issubclass(type, F.Resistor):
+        prefix = "R"
+    elif issubclass(type, F.Capacitor):
+        prefix = "C"
+    elif issubclass(type, F.Inductor):
+        prefix = "L"
+    else:
+        raise NotImplementedError(f"Unsupported pickable trait: {type}")
+
     try:
-        prefix = {
-            F.is_pickable_by_type.Type.Resistor: "R",
-            F.is_pickable_by_type.Type.Capacitor: "C",
-            F.is_pickable_by_type.Type.Inductor: "L",
-        }[type]
         return cls[f"{prefix}{size.imperial.without_prefix}"]
     except SMDSize.UnableToConvert:
         return cls[size.value]
@@ -147,7 +160,7 @@ def _prepare_query(
 
     elif trait := module.try_get_trait(F.is_pickable_by_type):
         pick_type = trait.get_pick_type()
-        params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
+        params_t = _get_pick_params(pick_type)
 
         if pkg_t := module.try_get_trait(F.has_package_requirements):
             package = pkg_t.get_sizes(solver)

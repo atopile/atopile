@@ -39,7 +39,7 @@ class Inductor(Module):
         used_for_picking=True,
     )
 
-    pickable = L.f_field(F.is_pickable_by_type)(F.is_pickable_by_type.Type.Inductor)
+    pickable: F.is_pickable_by_type
 
     @L.rt_field
     def can_bridge(self):

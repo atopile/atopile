@@ -18,10 +18,7 @@ class Resistor(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R
     )
-
-    @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
-        return F.is_pickable_by_type(F.is_pickable_by_type.Type.Resistor)
+    pickable: F.is_pickable_by_type
 
     @L.rt_field
     def can_bridge(self):

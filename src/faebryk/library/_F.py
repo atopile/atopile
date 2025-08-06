@@ -19,6 +19,7 @@ from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.has_package_requirements import has_package_requirements
+from faebryk.library.is_not_pickable import is_not_pickable
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.can_be_surge_protected import can_be_surge_protected
@@ -54,7 +55,6 @@ from faebryk.library.is_optional import is_optional
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.is_not_pickable import is_not_pickable
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.XtalIF import XtalIF
