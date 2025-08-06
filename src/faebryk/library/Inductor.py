@@ -98,6 +98,7 @@ class Inductor(Module):
         SMD11_5x10mm = "SMD,11.5x10mm"
         SMD6_6x7mm = "SMD,6.6x7mm"
         SMD7x6_6mm = "SMD,7x6.6mm"
+        # Less than 100 options below this line
         SMD5_8x5_2mm = "SMD,5.8x5.2mm"
         SMD6_6x7_3mm = "SMD,6.6x7.3mm"
         SMD3_5x3mm = "SMD,3.5x3mm"
