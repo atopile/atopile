@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import StrEnum, auto
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -48,3 +50,20 @@ class Resistor(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
+
+    class Package(StrEnum):
+        _01005 = auto()
+        _0201 = auto()
+        _0402 = auto()
+        _0603 = auto()
+        _0805 = auto()
+        _1206 = auto()
+        _1210 = auto()
+        _1808 = auto()
+        _1812 = auto()
+        _1825 = auto()
+        _2220 = auto()
+        _2225 = auto()
+        _3640 = auto()
+
+    package = L.p_field(domain=L.Domains.ENUM(Package))
