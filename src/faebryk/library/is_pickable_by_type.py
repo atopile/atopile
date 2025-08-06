@@ -4,6 +4,7 @@
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from faebryk.core.parameter import Parameter
+from faebryk.libs.picker.api.api import QueryType
 
 
 class is_pickable_by_type(F.is_pickable.decless()):
@@ -15,7 +16,7 @@ class is_pickable_by_type(F.is_pickable.decless()):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
-    def __init__(self, endpoint: str, params: list[Parameter]):
+    def __init__(self, endpoint: QueryType, params: list[Parameter]):
         super().__init__()
         self.endpoint = endpoint
         self._params = params

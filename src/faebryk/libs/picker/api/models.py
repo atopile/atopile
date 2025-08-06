@@ -14,6 +14,7 @@ import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.libs.exceptions import UserException, downgrade
+from faebryk.libs.picker.api.api import QueryType
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
@@ -57,7 +58,7 @@ def _pretty_params_helper(params) -> str:
 class BaseParams(Serializable):
     package: ApiParamT = SerializableField()
     qty: int
-    endpoint: str | None = None
+    endpoint: QueryType | None = None
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
@@ -72,7 +73,7 @@ def make_params_for_type(module_type: type[Module]) -> type:
     pickable_trait = m.get_trait(F.is_pickable_by_type)
 
     fields = [
-        ("endpoint", str, field(default=pickable_trait.endpoint, init=False)),
+        ("endpoint", QueryType, field(default=pickable_trait.endpoint, init=False)),
         *[
             (param.get_name(), ApiParamT, SerializableField())
             for param in pickable_trait.params
