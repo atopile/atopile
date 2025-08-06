@@ -20,17 +20,10 @@ from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
-    CapacitorParams,
     Component,
-    # DiodeParams,
-    InductorParams,
     LCSCParams,
-    # LDOParams,
-    # LEDParams,
     ManufacturerPartParams,
-    # MOSFETParams,
-    ResistorParams,
-    # TVSParams,
+    make_params_for_type,
 )
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
@@ -77,27 +70,6 @@ def _extract_numeric_id(lcsc_id: str) -> int:
     if match is None:
         raise ValueError(f"Invalid LCSC part number {lcsc_id}")
     return int(match[1])
-
-
-def _get_pick_params(module_t: type[L.Module]) -> type[BaseParams]:
-    if issubclass(module_t, F.Resistor):
-        return ResistorParams
-    elif issubclass(module_t, F.Capacitor):
-        return CapacitorParams
-    elif issubclass(module_t, F.Inductor):
-        return InductorParams
-    # elif issubclass(module_t, F.TVS):
-    #     return TVSParams
-    # elif issubclass(module_t, F.LED):
-    #     return LEDParams
-    # elif issubclass(module_t, F.Diode):
-    #     return DiodeParams
-    # elif issubclass(module_t, F.LDO):
-    #     return LDOParams
-    # elif issubclass(module_t, F.MOSFET):
-    #     return MOSFETParams
-    else:
-        raise NotImplementedError(f"Unsupported pickable trait: {module_t}")
 
 
 BackendPackage = StrEnum(
@@ -159,14 +131,13 @@ def _prepare_query(
             )
 
     elif trait := module.try_get_trait(F.is_pickable_by_type):
-        pick_type = trait.get_pick_type()
-        params_t = _get_pick_params(pick_type)
+        params_t = make_params_for_type(trait.pick_type)
 
         if pkg_t := module.try_get_trait(F.has_package_requirements):
             package = pkg_t.get_sizes(solver)
             package = EnumSet[BackendPackage](
                 *[
-                    BackendPackage.from_smd_size(SMDSize[s.name], pick_type)
+                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)
                     for s in package
                 ]
             )
@@ -314,10 +285,12 @@ def _get_compatible_parameters(
     except LCSC_NoDataException as e:
         raise NotCompatibleException(module, c) from e
 
-    design_params = module.get_trait(F.is_pickable_by_type).get_parameters()
+    design_params = {
+        p.get_name() for p in module.get_trait(F.is_pickable_by_type).params
+    }
     component_params = c.attribute_literals
 
-    if no_attr := component_params.keys() - design_params.keys():
+    if no_attr := component_params.keys() - design_params:
         with downgrade(UserException):
             no_attr_str = "\n".join(f"- `{a}`" for a in no_attr)
             raise UserException(

@@ -7,10 +7,23 @@ from faebryk.core.parameter import Parameter
 
 
 class is_pickable_by_type(F.is_pickable.decless()):
-    def get_pick_type(self) -> type[L.Module]:
-        return type(self.get_obj(L.Module))
+    """
+    Marks a module as being parametrically selectable using the given parameters.
 
-    def get_parameters(self) -> dict[str, Parameter]:
-        obj = self.get_obj(L.Module)
-        params = obj.get_children(direct_only=True, types=(Parameter,))
-        return {p.get_name(): p for p in params if p.used_for_picking}
+    Must map to an existing API endpoint.
+
+    Should be named "pickable" to aid overriding by subclasses.
+    """
+
+    def __init__(self, endpoint: str, params: list[Parameter]):
+        super().__init__()
+        self.endpoint = endpoint
+        self._params = params
+
+    @property
+    def params(self) -> list[Parameter]:
+        return self._params
+
+    @property
+    def pick_type(self) -> type[L.Module]:
+        return type(self.get_obj(L.Module))

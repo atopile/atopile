@@ -71,16 +71,17 @@ class BaseParams(Serializable):
         return _pretty_params_helper(self)
 
 
-def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
+def make_params_for_type(module_type: type[Module]) -> type:
     m = module_type()
     assert m.has_trait(F.is_pickable_by_type)
-
     pickable_trait = m.get_trait(F.is_pickable_by_type)
-    parameters = pickable_trait.get_parameters()
 
     fields = [
-        ("endpoint", str, field(default=endpoint, init=False)),
-        *[(param_name, ApiParamT, SerializableField()) for param_name in parameters],
+        ("endpoint", str, field(default=pickable_trait.endpoint, init=False)),
+        *[
+            (param.get_name(), ApiParamT, SerializableField())
+            for param in pickable_trait.params
+        ],
     ]
 
     cls = make_dataclass(
@@ -91,16 +92,6 @@ def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
         kw_only=True,
     )
     return dataclass_json(cls)
-
-
-ResistorParams = _make_params_for_type(F.Resistor, "resistors")
-CapacitorParams = _make_params_for_type(F.Capacitor, "capacitors")
-InductorParams = _make_params_for_type(F.Inductor, "inductors")
-# DiodeParams = _make_params_for_type(F.Diode, "diodes")
-# TVSParams = _make_params_for_type(F.TVS, "tvs")
-# LEDParams = _make_params_for_type(F.LED, "leds")
-# LDOParams = _make_params_for_type(F.LDO, "ldos")
-# MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
 
 
 @dataclass_json
