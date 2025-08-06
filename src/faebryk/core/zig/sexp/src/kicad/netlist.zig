@@ -190,7 +190,7 @@ pub const Netlist = struct {
 };
 
 pub const NetlistFile = struct {
-    netlist: ?Netlist = null,
+    netlist: Netlist,
 
     const root_symbol = "export";
 
@@ -201,16 +201,11 @@ pub const NetlistFile = struct {
         };
     }
 
-    pub fn dumps(self: NetlistFile, allocator: std.mem.Allocator, out: ?structure.output) ![]const u8 {
-        if (self.netlist) |netlist| {
-            return try structure.dumps(netlist, allocator, root_symbol, out);
-        }
-        return error.NoTable;
+    pub fn dumps(self: NetlistFile, allocator: std.mem.Allocator, out: structure.output) !void {
+        try structure.dumps(self.netlist, allocator, root_symbol, out);
     }
 
     pub fn free(self: *NetlistFile, allocator: std.mem.Allocator) void {
-        if (self.netlist) |netlist| {
-            structure.free(Netlist, allocator, netlist);
-        }
+        structure.free(Netlist, allocator, self.netlist);
     }
 };

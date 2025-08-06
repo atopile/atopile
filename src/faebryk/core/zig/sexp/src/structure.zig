@@ -1084,7 +1084,8 @@ pub const input = union(enum) {
 
 pub const output = union(enum) {
     path: []const u8,
-    string: []const u8,
+    string: *?[]const u8,
+    sexp: *?SExp,
 };
 
 // Load a struct from an S-expression string with a wrapping symbol
@@ -1200,11 +1201,7 @@ pub fn loads(comptime T: type, allocator: std.mem.Allocator, in: input, expected
 }
 
 // Dump a struct to an S-expression string with a wrapping symbol
-pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8, out: ?output) ![]const u8 {
-    if (out != null) {
-        //TODO
-    }
-
+pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u8, out: output) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -1224,8 +1221,28 @@ pub fn dumps(data: anytype, allocator: std.mem.Allocator, symbol_name: []const u
     }
 
     const wrapped = ast.SExp{ .value = .{ .list = items }, .location = null };
+    switch (out) {
+        .sexp => |sexp| {
+            sexp.* = wrapped;
+        },
+        .string, .path => {
+            const out_str = try wrapped.pretty(allocator);
+            switch (out) {
+                .string => |s| {
+                    s.* = out_str;
+                },
+                .path => |p| {
+                    defer allocator.free(out_str);
+                    const file = try std.fs.cwd().createFile(p, .{ .truncate = true });
+                    defer file.close();
 
-    return try wrapped.pretty(allocator);
+                    const writer = file.writer();
+                    try writer.writeAll(out_str);
+                },
+                .sexp => unreachable,
+            }
+        },
+    }
 }
 
 // Generic free function for structs decoded by this library

@@ -6,6 +6,9 @@ const Result = struct {
     tokenize_time: u64,
     parse_time: u64,
     structure_time: u64,
+    destructure_time: u64,
+    serialize_time: u64,
+    pretty_time: u64,
 };
 
 const TestRun = struct {
@@ -44,10 +47,29 @@ pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8), cnt: usiz
         std.debug.print("WARNING: Component count doesn't match! Expected: {}, Got: {}\n", .{ cnt, pcb.footprints.len });
     }
 
+    timer.reset();
+    var sexp_out: ?sexp.ast.SExp = null;
+    try pcbfile.dumps(arena_allocator, .{ .sexp = &sexp_out });
+    const destructure_time = timer.read();
+
+    timer.reset();
+    var in = std.ArrayList(u8).init(allocator);
+    defer in.deinit();
+    try sexp_out.?.str(in.writer());
+    const serialize_time = timer.read();
+
+    timer.reset();
+    const pretty_str = try sexp.ast.SExp.prettify_sexp_string(allocator, in.items);
+    defer allocator.free(pretty_str);
+    const pretty_time = timer.read();
+
     const par_result = Result{
         .tokenize_time = token_time,
         .parse_time = parse_time,
         .structure_time = structure_time,
+        .destructure_time = destructure_time,
+        .serialize_time = serialize_time,
+        .pretty_time = pretty_time,
     };
 
     return TestRun{
@@ -87,13 +109,16 @@ pub fn main() !void {
         "Lexical",
         "Syntactic",
         "Semantic",
+        "Destructure",
+        "Serialize",
+        "Pretty",
     });
     // bug?
     //table.setAlign(prettytable.Alignment.right);
 
-    const C = 10;
+    const C = 5;
 
-    var cell_buffers: [C][6][32]u8 = undefined;
+    var cell_buffers: [C][9][32]u8 = undefined;
 
     for (0..C) |i| {
         const factor = (i + 1) * (i + 1) * (i + 1);
@@ -116,6 +141,9 @@ pub fn main() !void {
         const tokenize_time_par_ms = @as(f64, @floatFromInt(result.par.tokenize_time)) / 1_000_000.0;
         const ast_time_ms = @as(f64, @floatFromInt(result.par.parse_time)) / 1_000_000.0;
         const structure_time_ms = @as(f64, @floatFromInt(result.par.structure_time)) / 1_000_000.0;
+        const destructure_time_ms = @as(f64, @floatFromInt(result.par.destructure_time)) / 1_000_000.0;
+        const serialize_time_ms = @as(f64, @floatFromInt(result.par.serialize_time)) / 1_000_000.0;
+        const pretty_time_ms = @as(f64, @floatFromInt(result.par.pretty_time)) / 1_000_000.0;
         const mb = @as(f64, @floatFromInt(content.items.len)) / (1024.0 * 1024.0);
 
         const test_num = try std.fmt.bufPrint(&cell_buffers[i][0], "{}", .{i + 1});
@@ -124,6 +152,9 @@ pub fn main() !void {
         const par = try std.fmt.bufPrint(&cell_buffers[i][3], "{d:.2} ms ({d:.2} MB/s)", .{ tokenize_time_par_ms, mb / tokenize_time_par_ms * 1000 });
         const ast_time = try std.fmt.bufPrint(&cell_buffers[i][4], "{d:.2} ms ({d:.2} MB/s)", .{ ast_time_ms, mb / ast_time_ms * 1000 });
         const structure_time = try std.fmt.bufPrint(&cell_buffers[i][5], "{d:.2} ms ({d:.2} MB/s)", .{ structure_time_ms, mb / structure_time_ms * 1000 });
+        const destructure_time = try std.fmt.bufPrint(&cell_buffers[i][6], "{d:.2} ms ({d:.2} MB/s)", .{ destructure_time_ms, mb / destructure_time_ms * 1000 });
+        const serialize_time = try std.fmt.bufPrint(&cell_buffers[i][7], "{d:.2} ms ({d:.2} MB/s)", .{ serialize_time_ms, mb / serialize_time_ms * 1000 });
+        const pretty_time = try std.fmt.bufPrint(&cell_buffers[i][8], "{d:.2} ms ({d:.2} MB/s)", .{ pretty_time_ms, mb / pretty_time_ms * 1000 });
 
         try table.addRow(&.{
             test_num,
@@ -132,6 +163,9 @@ pub fn main() !void {
             par,
             ast_time,
             structure_time,
+            destructure_time,
+            serialize_time,
+            pretty_time,
         });
     }
 

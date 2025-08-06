@@ -85,7 +85,9 @@ pub fn main() !void {
     };
 
     // Encode to S-expression
-    const encoded = try sexp.structure.dumps(symbol, allocator, "symbol", null);
+    var _encoded: ?[]u8 = null;
+    try sexp.structure.dumps(symbol, allocator, "symbol", .{ .string = &_encoded });
+    const encoded = _encoded.?;
     defer allocator.free(encoded);
 
     std.debug.print("Generated S-expression:\n{s}\n\n", .{encoded});

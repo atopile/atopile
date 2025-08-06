@@ -16,8 +16,7 @@ test "load real netlist file - basic checks" {
     };
     defer netlist_file.free(allocator);
 
-    try std.testing.expect(netlist_file.netlist != null);
-    const nl = netlist_file.netlist.?;
+    const nl = netlist_file.netlist;
 
     try std.testing.expectEqualStrings("E", nl.version);
     try std.testing.expectEqual(@as(usize, 13), nl.components.comps.len);
@@ -128,8 +127,7 @@ test "comprehensive netlist example" {
     };
 
     // Verify comprehensive content
-    try std.testing.expect(parsed.netlist != null);
-    const nl = parsed.netlist.?;
+    const nl = parsed.netlist;
 
     // Check all major sections
     try std.testing.expectEqualStrings("E", nl.version);
@@ -191,11 +189,13 @@ test "comprehensive netlist example" {
     }
 
     // Now test round-trip
-    const serialized = try parsed.dumps(allocator, null);
+    var _serialized: ?[]const u8 = null;
+    try parsed.dumps(allocator, .{ .string = &_serialized });
+    const serialized = _serialized.?;
+    defer allocator.free(serialized);
     const reparsed = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = serialized });
 
-    try std.testing.expect(reparsed.netlist != null);
-    const nl2 = reparsed.netlist.?;
+    const nl2 = reparsed.netlist;
 
     // Verify round-trip preserved everything
     try std.testing.expectEqualStrings(nl.version, nl2.version);
@@ -253,15 +253,17 @@ test "simple round-trip netlist" {
     const parsed = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = minimal_netlist });
 
     // Serialize it back
-    const serialized = try parsed.dumps(allocator, null);
+    var _serialized: ?[]const u8 = null;
+    try parsed.dumps(allocator, .{ .string = &_serialized });
+    const serialized = _serialized.?;
+    defer allocator.free(serialized);
 
     // Parse again
     const reparsed = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .string = serialized });
 
     // Basic checks to ensure round-trip worked
-    try std.testing.expect(reparsed.netlist != null);
-    const nl1 = parsed.netlist.?;
-    const nl2 = reparsed.netlist.?;
+    const nl1 = parsed.netlist;
+    const nl2 = reparsed.netlist;
 
     try std.testing.expectEqualStrings(nl1.version, nl2.version);
     try std.testing.expectEqual(nl1.components.comps.len, nl2.components.comps.len);
@@ -342,13 +344,12 @@ test "encode Layer with symbol type field" {
     };
 
     const encoded = try sexp.structure.encode(allocator, layer);
-    
+
     // Debug: print the S-expression
     var output = std.ArrayList(u8).init(allocator);
     defer output.deinit();
     try encoded.str(output.writer());
-    
-    
+
     // Should be: (0 "F.Cu" signal)
     // Not:       (0 "F.Cu" "signal")
     const expected = "(0 \"F.Cu\" signal)";
@@ -366,14 +367,17 @@ test "round-trip pcb structure" {
 
     var pcb_file = try sexp.kicad.pcb.PcbFile.loads(allocator, .{ .string = file_content });
 
-    const serialized = try pcb_file.dumps(allocator, null);
+    var _serialized: ?[]const u8 = null;
+    try pcb_file.dumps(allocator, .{ .string = &_serialized });
+    var serialized = _serialized.?;
+    defer allocator.free(serialized);
 
     // Debug: write actual output to see the difference
     if (!std.mem.eql(u8, file_content, serialized)) {
         const debug_file = try std.fs.cwd().createFile("test_kicad_output_debug.txt", .{});
         defer debug_file.close();
         try debug_file.writeAll(serialized);
-        
+
         // Print the first difference
         for (file_content, 0..) |char, i| {
             if (i >= serialized.len or char != serialized[i]) {
@@ -385,7 +389,6 @@ test "round-trip pcb structure" {
                 break;
             }
         }
-        
     }
 
     try std.testing.expectEqualStrings(file_content, serialized);
@@ -494,29 +497,27 @@ pub fn main() !void {
     };
     defer parsed.free(allocator);
 
-    std.debug.print("Parsed netlist is null: {}\n", .{parsed.netlist == null});
+    const nl = parsed.netlist;
 
-    if (parsed.netlist) |nl| {
-        std.debug.print("Loaded netlist version: {s}\n", .{nl.version});
-        std.debug.print("Components: {} (expected 2)\n", .{nl.components.comps.len});
-        std.debug.print("Nets: {} (expected 2)\n", .{nl.nets.nets.len});
-        std.debug.print("Libparts: {} (expected 2)\n", .{nl.libparts.libparts.len});
+    std.debug.print("Loaded netlist version: {s}\n", .{nl.version});
+    std.debug.print("Components: {} (expected 2)\n", .{nl.components.comps.len});
+    std.debug.print("Nets: {} (expected 2)\n", .{nl.nets.nets.len});
+    std.debug.print("Libparts: {} (expected 2)\n", .{nl.libparts.libparts.len});
 
-        if (nl.design) |design| {
-            std.debug.print("Design tool: {s}\n", .{design.tool});
-            std.debug.print("Design date: {s}\n", .{design.date});
-        }
+    if (nl.design) |design| {
+        std.debug.print("Design tool: {s}\n", .{design.tool});
+        std.debug.print("Design date: {s}\n", .{design.date});
+    }
 
-        // Debug: print the actual component if it exists
-        if (nl.components.comps.len > 0) {
-            std.debug.print("\nFirst component:\n", .{});
-            const comp = nl.components.comps[0];
-            std.debug.print("  ref: {s}\n", .{comp.ref});
-            std.debug.print("  value: {s}\n", .{comp.value});
-            std.debug.print("  footprint: {s}\n", .{comp.footprint});
-        } else {
-            std.debug.print("\nNo components found!\n", .{});
-        }
+    // Debug: print the actual component if it exists
+    if (nl.components.comps.len > 0) {
+        std.debug.print("\nFirst component:\n", .{});
+        const comp = nl.components.comps[0];
+        std.debug.print("  ref: {s}\n", .{comp.ref});
+        std.debug.print("  value: {s}\n", .{comp.value});
+        std.debug.print("  footprint: {s}\n", .{comp.footprint});
+    } else {
+        std.debug.print("\nNo components found!\n", .{});
     }
 
     std.debug.print("\nAll tests passed!\n", .{});

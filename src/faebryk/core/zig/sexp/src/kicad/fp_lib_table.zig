@@ -20,7 +20,7 @@ pub const FpLibTable = struct {
 };
 
 const FpLibTableFile = struct {
-    fp_lib_table: ?FpLibTable = null,
+    fp_lib_table: FpLibTable,
 
     const root_symbol = "fp_lib_table";
 
@@ -31,16 +31,11 @@ const FpLibTableFile = struct {
         };
     }
 
-    pub fn dumps(self: FpLibTableFile, allocator: std.mem.Allocator, out: ?structure.output) ![]u8 {
-        if (self.fp_lib_table) |table| {
-            return try structure.dumps(table, allocator, root_symbol, out);
-        }
-        return error.NoTable;
+    pub fn dumps(self: FpLibTableFile, allocator: std.mem.Allocator, out: structure.output) !void {
+        try structure.dumps(self.fp_lib_table, allocator, root_symbol, out);
     }
 
     pub fn free(self: *FpLibTableFile, allocator: std.mem.Allocator) void {
-        if (self.fp_lib_table) |table| {
-            structure.free(FpLibTable, allocator, table);
-        }
+        structure.free(FpLibTable, allocator, self.fp_lib_table);
     }
 };

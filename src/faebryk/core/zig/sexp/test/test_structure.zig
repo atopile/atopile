@@ -56,7 +56,9 @@ test "encode simple struct" {
         .enabled = false,
     };
 
-    const encoded = try sexp.structure.dumps(data, allocator, "test", null);
+    var _encoded: ?[]const u8 = null;
+    try sexp.structure.dumps(data, allocator, "test", .{ .string = &_encoded });
+    const encoded = _encoded.?;
     defer allocator.free(encoded);
 
     // Just check that it contains the expected values, not exact formatting
@@ -93,7 +95,9 @@ test "positional fields" {
         .y = 20,
     };
 
-    const encoded = try sexp.structure.dumps(data, allocator, "test", null);
+    var _encoded: ?[]const u8 = null;
+    try sexp.structure.dumps(data, allocator, "test", .{ .string = &_encoded });
+    const encoded = _encoded.?;
     defer allocator.free(encoded);
 
     // Check content, not exact formatting
@@ -111,7 +115,9 @@ test "optional fields" {
         .optional = null,
     };
 
-    const encoded1 = try sexp.structure.dumps(data1, allocator, "test", null);
+    var _encoded1: ?[]const u8 = null;
+    try sexp.structure.dumps(data1, allocator, "test", .{ .string = &_encoded1 });
+    const encoded1 = _encoded1.?;
     defer allocator.free(encoded1);
 
     // Check content
@@ -124,7 +130,9 @@ test "optional fields" {
         .optional = "world",
     };
 
-    const encoded2 = try sexp.structure.dumps(data2, allocator, "test", null);
+    var _encoded2: ?[]const u8 = null;
+    try sexp.structure.dumps(data2, allocator, "test", .{ .string = &_encoded2 });
+    const encoded2 = _encoded2.?;
     defer allocator.free(encoded2);
 
     // Check content
@@ -146,7 +154,9 @@ test "multidict fields" {
         .items = items,
     };
 
-    const encoded = try sexp.structure.dumps(data, allocator, "test", null);
+    var _encoded: ?[]const u8 = null;
+    try sexp.structure.dumps(data, allocator, "test", .{ .string = &_encoded });
+    const encoded = _encoded.?;
     defer allocator.free(encoded);
 
     // Check multidict content
@@ -166,7 +176,9 @@ test "round trip" {
     };
 
     // Encode
-    const encoded = try sexp.structure.dumps(original, allocator, "test", null);
+    var _encoded: ?[]const u8 = null;
+    try sexp.structure.dumps(original, allocator, "test", .{ .string = &_encoded });
+    const encoded = _encoded.?;
     defer allocator.free(encoded);
 
     // Decode

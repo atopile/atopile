@@ -663,8 +663,8 @@ pub const PcbFile = struct {
         };
     }
 
-    pub fn dumps(self: PcbFile, allocator: std.mem.Allocator, out: ?structure.output) ![]const u8 {
-        return try structure.dumps(self.kicad_pcb, allocator, root_symbol, out);
+    pub fn dumps(self: PcbFile, allocator: std.mem.Allocator, out: structure.output) !void {
+        try structure.dumps(self.kicad_pcb, allocator, root_symbol, out);
     }
 
     pub fn free(self: *PcbFile, allocator: std.mem.Allocator) void {
