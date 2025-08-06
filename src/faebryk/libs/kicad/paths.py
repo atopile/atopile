@@ -131,12 +131,10 @@ def get_plugin_paths(legacy: bool = False):
         for subdir in [".local", ".config", "Documents", "Library", "AppData"]:
             search_path = home / subdir
             if search_path.exists():
-                matches = list(
-                    search_path.glob(f"**/kicad/*/{plugin_suffix}")
-                )
+                matches = list(search_path.glob(f"**/kicad/*/{plugin_suffix}"))
                 if matches:
                     plugin_paths_existing.extend(matches)
-        
+
         # If still not found, fall back to searching entire home directory
         if not plugin_paths_existing:
             plugin_paths_existing = list(
