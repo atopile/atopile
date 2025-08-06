@@ -9,150 +9,50 @@ const Result = struct {
 };
 
 const TestRun = struct {
-    seq: Result,
     par: Result,
     token_count: usize,
 };
 
-const TEMPLATE_HEADER =
-    \\(export (version "E")
-    \\  (design
-    \\    (source "/home/needspeed/workspace/atopile/src/faebryk/core/zig/zigpilled/src/sexp/test_files/v9/sch/test.kicad_sch")
-    \\    (date "2025-08-04T14:24:57-0700")
-    \\    (tool "Eeschema 9.0.3")
-    \\    (sheet (number "1") (name "/") (tstamps "/")
-    \\      (title_block
-    \\        (title)
-    \\        (company)
-    \\        (rev)
-    \\        (date)
-    \\        (source "test.kicad_sch")
-    \\        (comment (number "1") (value ""))
-    \\        (comment (number "2") (value ""))
-    \\        (comment (number "3") (value ""))
-    \\        (comment (number "4") (value ""))
-    \\        (comment (number "5") (value ""))
-    \\        (comment (number "6") (value ""))
-    \\        (comment (number "7") (value ""))
-    \\        (comment (number "8") (value ""))
-    \\        (comment (number "9") (value ""))))
-    \\    (sheet (number "2") (name "/Untitled Sheet/") (tstamps "/31d516f5-159a-4a07-a519-7bf941d8afe2/")
-    \\      (title_block
-    \\        (title)
-    \\        (company)
-    \\        (rev)
-    \\        (date)
-    \\        (source "untitled.kicad_sch")
-    \\        (comment (number "1") (value ""))
-    \\        (comment (number "2") (value ""))
-    \\        (comment (number "3") (value ""))
-    \\        (comment (number "4") (value ""))
-    \\        (comment (number "5") (value ""))
-    \\        (comment (number "6") (value ""))
-    \\        (comment (number "7") (value ""))
-    \\        (comment (number "8") (value ""))
-    \\        (comment (number "9") (value "")))))
-    \\  (components
-    \\
-;
-
-const TEMPLATE_ENTRY =
-    \\    (comp (ref "D4")
-    \\      (value "LED2")
-    \\      (footprint "Resistor_SMD:R_0603_1608Metric")
-    \\      (datasheet "~")
-    \\      (fields
-    \\        (field (name "Footprint") "Resistor_SMD:R_0603_1608Metric")
-    \\        (field (name "Datasheet") "~")
-    \\        (field (name "Description")))
-    \\      (libsource (lib "Device") (part "LED") (description "Light emitting diode"))
-    \\      (property (name "Sheetname") (value "Root"))
-    \\      (property (name "Sheetfile") (value "test.kicad_sch"))
-    \\      (property (name "ki_keywords") (value "LED diode"))
-    \\      (property (name "ki_fp_filters") (value "LED* LED_SMD:* LED_THT:*"))
-    \\      (sheetpath (names "/") (tstamps "/"))
-    \\      (tstamps "64269ac3-771b-4c0d-91e0-eafc3dc4a07f")
-    \\    )
-    \\
-;
-
-const TEMPLATE_FOOTER =
-    \\  )
-    \\  (libparts)
-    \\  (libraries)
-    \\  (nets)
-    \\)
-;
+const TEMPLATE_DIR = "test/resources/v9/pcb/modular";
+const TEMPLATE_HEADER_PATH = TEMPLATE_DIR ++ "/header";
+const TEMPLATE_FOOTER_PATH = TEMPLATE_DIR ++ "/footer";
+const TEMPLATE_BLOCK_PATH = TEMPLATE_DIR ++ "/block";
 
 pub fn bench(allocator: std.mem.Allocator, content: std.ArrayList(u8), cnt: usize) !TestRun {
-    // Warm up
-    {
-        const tokens = try sexp.tokenizer.tokenize(allocator, content.items);
-        allocator.free(tokens);
-    }
-
-    // Benchmark sequential tokenization
-    var timer = try std.time.Timer.start();
-    const tokens_seq = try sexp.tokenizer._tokenize(allocator, content.items);
-    defer allocator.free(tokens_seq);
-    const seq_token_time = timer.read();
-
-    timer.reset();
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
-    const sexp_ast = try sexp.ast.parse(arena_allocator, tokens_seq);
-    const seq_parse_time = timer.read();
+    var timer = try std.time.Timer.start();
 
     timer.reset();
-    var netlistfile = try sexp.kicad.netlist.NetlistFile.loads(allocator, .{ .sexp = sexp_ast });
-    defer netlistfile.free(allocator);
-    const seq_structure_time = timer.read();
+    const tokens = try sexp.tokenizer.tokenize(allocator, content.items);
+    defer allocator.free(tokens);
+    const token_time = timer.read();
 
-    if (netlistfile.netlist) |netlist| {
-        if (netlist.components.comps.len != cnt) {
-            std.debug.print("WARNING: Component count doesn't match! Expected: {}, Got: {}\n", .{ cnt, netlist.components.comps.len });
-        }
+    timer.reset();
+    var sexp_ast = try sexp.ast.parse(arena_allocator, tokens);
+    defer sexp_ast.deinit(arena_allocator);
+    const parse_time = timer.read();
 
-        // TODO remove all this once it works
-        std.debug.print("{}\n", .{netlist});
+    timer.reset();
+    var pcbfile = try sexp.kicad.pcb.PcbFile.loads(arena_allocator, .{ .sexp = sexp_ast });
+    defer pcbfile.free(arena_allocator);
+    const structure_time = timer.read();
 
-        std.debug.print("-" ** 80 ++ "\n", .{});
-
-        const str = try netlistfile.dumps(allocator, null);
-        std.debug.print("{s}\n", .{str});
-
-        std.debug.print("-" ** 80 ++ "\n", .{});
-        std.debug.print("{s}\n", .{content.items});
+    const pcb = pcbfile.kicad_pcb;
+    if (pcb.footprints.len != cnt) {
+        std.debug.print("WARNING: Component count doesn't match! Expected: {}, Got: {}\n", .{ cnt, pcb.footprints.len });
     }
-
-    const seq_result = Result{
-        .tokenize_time = seq_token_time,
-        .parse_time = seq_parse_time,
-        .structure_time = seq_structure_time,
-    };
-
-    // Benchmark parallel tokenization
-    timer.reset();
-    const tokens_par = try sexp.tokenizer.tokenize(allocator, content.items);
-    defer allocator.free(tokens_par);
-    const par_time = timer.read();
 
     const par_result = Result{
-        .tokenize_time = par_time,
-        .parse_time = 0,
-        .structure_time = 0,
+        .tokenize_time = token_time,
+        .parse_time = parse_time,
+        .structure_time = structure_time,
     };
 
-    // Verify results match
-    if (tokens_seq.len != tokens_par.len) {
-        std.debug.print("\nWARNING: Token counts don't match! Sequential: {}, Parallel: {}\n", .{ tokens_seq.len, tokens_par.len });
-    }
-
     return TestRun{
-        .seq = seq_result,
         .par = par_result,
-        .token_count = tokens_seq.len,
+        .token_count = tokens.len,
     };
 }
 
@@ -163,6 +63,18 @@ pub fn main() !void {
 
     std.debug.print("🚀 S-Expression Tokenizer Performance Test\n", .{});
     std.debug.print("🖥️  CPU count: {}\n\n", .{try std.Thread.getCpuCount()});
+
+    // Load template files
+    const header_content = try std.fs.cwd().readFileAlloc(allocator, TEMPLATE_HEADER_PATH, 1024 * 1024);
+    defer allocator.free(header_content);
+
+    const footer_content = try std.fs.cwd().readFileAlloc(allocator, TEMPLATE_FOOTER_PATH, 1024 * 1024);
+    defer allocator.free(footer_content);
+
+    const block_content = try std.fs.cwd().readFileAlloc(allocator, TEMPLATE_BLOCK_PATH, 1024 * 1024);
+    defer allocator.free(block_content);
+
+    // No need to load files now, we're using inline templates
 
     // Create performance results table
     var table = prettytable.Table.init(allocator);
@@ -179,7 +91,7 @@ pub fn main() !void {
     // bug?
     //table.setAlign(prettytable.Alignment.right);
 
-    const C = 1;
+    const C = 10;
 
     var cell_buffers: [C][6][32]u8 = undefined;
 
@@ -192,18 +104,18 @@ pub fn main() !void {
         defer content.deinit();
 
         // Generate about 5MB of S-expression data
-        const total = 1 * factor;
-        try content.appendSlice(TEMPLATE_HEADER);
+        const total = 10 * factor;
+        try content.appendSlice(header_content);
         for (0..total) |_| {
-            try content.appendSlice(TEMPLATE_ENTRY);
+            try content.appendSlice(block_content);
         }
-        try content.appendSlice(TEMPLATE_FOOTER);
+        try content.appendSlice(footer_content);
 
         const result = try bench(allocator, content, total);
 
         const tokenize_time_par_ms = @as(f64, @floatFromInt(result.par.tokenize_time)) / 1_000_000.0;
-        const ast_time_ms = @as(f64, @floatFromInt(result.seq.parse_time)) / 1_000_000.0;
-        const structure_time_ms = @as(f64, @floatFromInt(result.seq.structure_time)) / 1_000_000.0;
+        const ast_time_ms = @as(f64, @floatFromInt(result.par.parse_time)) / 1_000_000.0;
+        const structure_time_ms = @as(f64, @floatFromInt(result.par.structure_time)) / 1_000_000.0;
         const mb = @as(f64, @floatFromInt(content.items.len)) / (1024.0 * 1024.0);
 
         const test_num = try std.fmt.bufPrint(&cell_buffers[i][0], "{}", .{i + 1});
