@@ -43,7 +43,9 @@ class Capacitor(Module):
         likely_constrained=True,
         soft_set=L.Range(10 * P.V, 100 * P.V),
     )
-    temperature_coefficient = L.p_field(domain=L.Domains.ENUM(TemperatureCoefficient))
+    temperature_coefficient = L.p_field(
+        domain=L.Domains.ENUM(TemperatureCoefficient),
+    )
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix)(
