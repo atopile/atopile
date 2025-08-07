@@ -3,43 +3,60 @@ const py = @import("pybindings.zig");
 const root = @import("root.zig");
 const bind = @import("pyzig.zig");
 
-// Python object wrapper for Top struct
 const TopObject = struct {
     ob_base: py.PyObject_HEAD,
-    top: root.Top,
+    top: *root.Top,
 };
 
-// __init__ method for Top
+const NestedObject = struct {
+    ob_base: py.PyObject_HEAD,
+    top: *root.Nested,
+};
+
 fn Top_init(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) c_int {
     var a: c_int = undefined;
     var b: c_int = undefined;
+    var c: ?*py.PyObject = null;
 
-    var keywords = [_]?[*:0]const u8{ "a", "b", null };
+    var keywords = [_]?[*:0]const u8{ "a", "b", "c", null };
 
-    if (py.PyArg_ParseTupleAndKeywords(args, kwargs, "ii", &keywords, &a, &b) == 0) {
+    if (py.PyArg_ParseTupleAndKeywords(args, kwargs, "iiO", &keywords, &a, &b, &c) == 0) {
         return -1;
     }
 
+    const nested_obj: *NestedObject = @ptrCast(@alignCast(c));
+    const nested = nested_obj.top.*;
+
     const top_obj: *TopObject = @ptrCast(@alignCast(self));
-    top_obj.top = root.Top{ .a = a, .b = b, .c = root.Nested{ .x = 1, .y = "hello" } };
+
+    // Allocate memory for the Top data
+    const top_data = std.heap.c_allocator.create(root.Top) catch return -1;
+    top_data.* = root.Top{ .a = a, .b = b, .c = nested };
+    top_obj.top = top_data;
 
     return 0;
 }
 
-// __repr__ method for Top
-fn Top_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
-    const top_obj: *TopObject = @ptrCast(@alignCast(self));
+fn Nested_init(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) c_int {
+    var x: c_int = undefined;
+    var y: [*:0]const u8 = undefined;
 
-    // Create a string representation
-    var buf: [256]u8 = undefined;
-    const str = std.fmt.bufPrintZ(&buf, "Top(a={d}, b={d})", .{ top_obj.top.a, top_obj.top.b }) catch {
-        return null;
-    };
+    var keywords = [_]?[*:0]const u8{ "x", "y", null };
 
-    return py.PyUnicode_FromString(str.ptr);
+    if (py.PyArg_ParseTupleAndKeywords(args, kwargs, "is", &keywords, &x, &y) == 0) {
+        return -1;
+    }
+
+    const nested_obj: *NestedObject = @ptrCast(@alignCast(self));
+
+    // Allocate memory for the Nested data
+    const nested_data = std.heap.c_allocator.create(root.Nested) catch return -1;
+    nested_data.* = root.Nested{ .x = x, .y = std.mem.span(y) };
+    nested_obj.top = nested_data;
+
+    return 0;
 }
 
-// sum method for Top
 fn Top_sum(self: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
     const top_obj: *TopObject = @ptrCast(@alignCast(self));
     const result = top_obj.top.sum();
@@ -57,10 +74,21 @@ var Top_methods = [_]py.PyMethodDef{
     py.ML_SENTINEL,
 };
 
+var Nested_methods = [_]py.PyMethodDef{
+    py.ML_SENTINEL,
+};
+
 // Properties (getters/setters) for Top class
 var Top_getset = [_]py.PyGetSetDef{
     bind.int_prop(TopObject, "a"),
     bind.int_prop(TopObject, "b"),
+    bind.obj_prop(TopObject, "c", NestedObject, &NestedType),
+    py.GS_SENTINEL,
+};
+
+var Nested_getset = [_]py.PyGetSetDef{
+    bind.int_prop(NestedObject, "x"),
+    bind.str_prop(NestedObject, "y"),
     py.GS_SENTINEL,
 };
 
@@ -74,6 +102,17 @@ var TopType = py.PyTypeObject{
     .tp_methods = &Top_methods,
     .tp_getset = &Top_getset,
     .tp_init = Top_init,
+};
+
+var NestedType = py.PyTypeObject{
+    .ob_base = .{ .ob_base = .{ .ob_refcnt = 1, .ob_type = null }, .ob_size = 0 },
+    .tp_name = "pyzig.Nested",
+    .tp_basicsize = @sizeOf(NestedObject),
+    .tp_repr = bind.gen_repr(NestedObject),
+    .tp_flags = py.Py_TPFLAGS_DEFAULT | py.Py_TPFLAGS_BASETYPE,
+    .tp_methods = &Nested_methods,
+    .tp_getset = &Nested_getset,
+    .tp_init = Nested_init,
 };
 
 fn add(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
@@ -154,11 +193,21 @@ export fn PyInit_pyzig() ?*py.PyObject {
         return null;
     }
 
+    if (py.PyType_Ready(&NestedType) < 0) {
+        return null;
+    }
+
     // Add the Top class to the module
     // Increment reference count since PyModule_AddObject steals a reference
     TopType.ob_base.ob_base.ob_refcnt += 1;
     if (py.PyModule_AddObject(module, "Top", @ptrCast(&TopType)) < 0) {
         TopType.ob_base.ob_base.ob_refcnt -= 1;
+        return null;
+    }
+
+    NestedType.ob_base.ob_base.ob_refcnt += 1;
+    if (py.PyModule_AddObject(module, "Nested", @ptrCast(&NestedType)) < 0) {
+        NestedType.ob_base.ob_base.ob_refcnt -= 1;
         return null;
     }
 

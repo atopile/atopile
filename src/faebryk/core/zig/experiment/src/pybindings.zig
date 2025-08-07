@@ -213,3 +213,4 @@ pub extern fn PyLong_FromLong(value: c_long) ?*PyObject;
 pub extern fn PyLong_AsLong(obj: ?*PyObject) c_long;
 pub extern fn PyLong_AsLongLong(obj: ?*PyObject) c_longlong;
 pub extern fn PyUnicode_FromString(str: [*:0]const u8) ?*PyObject;
+pub extern fn PyUnicode_AsUTF8(obj: ?*PyObject) ?[*:0]const u8;

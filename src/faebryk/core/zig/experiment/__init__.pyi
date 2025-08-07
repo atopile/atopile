@@ -2,6 +2,9 @@ class Nested:
     x: int
     y: str
 
+    def __init__(self, x: int, y: str) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Top:
     a: int
     b: int

@@ -19,8 +19,12 @@ print(f"pyzig.add(100, 200) = {result}")
 assert result == 300, f"Expected 300, got {result}"
 
 # Test the Top class
+
+nest = pyzig.Nested(x=5, y="lets gooo")
+print(f"Created: {nest}")
+
 print("\nTesting Top class...")
-top = pyzig.Top(10, 20)
+top = pyzig.Top(10, 20, nest)
 print(f"Created: {top}")
 print(f"top.a = {top.a}")
 print(f"top.b = {top.b}")
@@ -32,5 +36,12 @@ top.b = 75
 print(f"After modification: {top}")
 print(f"top.sum() = {top.sum()}")
 assert top.sum() == 125, f"Expected 125, got {top.sum()}"
+
+top.c = pyzig.Nested(x=10, y="new nest")
+print("top c change to new nest", top)
+
+top.c.x = 100
+print("top c change to 100", top)
+
 
 print("\nAll tests passed!")
