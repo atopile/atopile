@@ -21,7 +21,14 @@ fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     return &install_pyi.step;
 }
 
-fn addPythonExtension(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, python_include: []const u8, python_lib: []const u8) void {
+fn addPythonExtension(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    python_include: []const u8,
+    python_lib: []const u8,
+    python_lib_dir_opt: ?[]const u8,
+) void {
     const python_ext = b.addSharedLibrary(.{
         .name = py_lib_name,
         .root_source_file = b.path("src/python_ext.zig"),
@@ -31,12 +38,20 @@ fn addPythonExtension(b: *std.Build, target: std.Build.ResolvedTarget, optimize:
     });
 
     python_ext.addIncludePath(.{ .cwd_relative = python_include });
+    if (python_lib_dir_opt) |lib_dir| {
+        python_ext.addLibraryPath(.{ .cwd_relative = lib_dir });
+    }
     python_ext.linkSystemLibrary(python_lib);
     python_ext.linkLibC();
 
+    // Choose extension filename based on target OS
+    const ext = switch (target.result.os.tag) {
+        .windows => ".pyd",
+        else => ".so",
+    };
     const install_python_ext = b.addInstallArtifact(python_ext, .{
         .dest_dir = .{ .override = .{ .custom = "lib" } },
-        .dest_sub_path = py_lib_name ++ ".so",
+        .dest_sub_path = py_lib_name ++ ext,
     });
 
     // Generate pyi file at build time (no Python needed!)
@@ -151,11 +166,12 @@ pub fn build(b: *std.Build) void {
 
     // Add Python extension if options are provided
     const python_include = b.option([]const u8, "python-include", "Python include directory path");
-    const python_lib = b.option([]const u8, "python-lib", "Python library name (e.g., python3.12)");
+    const python_lib = b.option([]const u8, "python-lib", "Python library name (e.g., python3.12 or python312 on Windows)");
+    const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
 
     if (python_include) |include_path| {
         if (python_lib) |lib_name| {
-            addPythonExtension(b, target, optimize, include_path, lib_name);
+            addPythonExtension(b, target, optimize, include_path, lib_name, python_lib_dir);
         }
     }
 }

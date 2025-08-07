@@ -117,6 +117,12 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 artifacts = ["**/viewer/dist"]
 packages = ["src/faebryk", "src/atopile"]
+exclude = [
+    "**/.zig-cache",
+    "**/.zig-cache/**",
+    "**/zig-out",
+    "**/zig-out/**",
+]
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
 experimental = true
