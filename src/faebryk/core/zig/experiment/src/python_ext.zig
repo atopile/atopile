@@ -170,32 +170,6 @@ var module_def = py.PyModuleDef{
 
 // Module initialization function
 export fn PyInit_pyzig() ?*py.PyObject {
-    const T = root.Top;
-    // print hello
-    std.debug.print("Hello, world!\n", .{});
-    inline for (@typeInfo(T).@"struct".decls) |decl| {
-        std.debug.print("{s}\n", .{decl.name});
-        //const f = @field(root, decl.name);
-        //std.debug.print("{}\n", .{@TypeOf(f)});
-    }
-    inline for (@typeInfo(T).@"struct".fields) |field| {
-        std.debug.print("{s}\n", .{field.name});
-        //const f = @field(T, field.name);
-        //std.debug.print("{}\n", .{@TypeOf(f)});
-    }
-    //std.debug.print("{}\n", .{@typeInfo(@TypeOf(add)).@"fn"});
-    //switch (@typeInfo(root)) {
-    //    .Struct => {
-    //        std.debug.print("Struct\n", .{});
-    //    },
-    //    else => {
-    //        std.debug.print("Not a struct\n", .{});
-    //    },
-    //}
-    //for (@typeInfo(root).decls) |decl| {
-    //    std.debug.print("{}\n", .{decl.name});
-    //}
-
     // Create the module
     const module = py.PyModule_Create2(&module_def, 1013);
     if (module == null) {

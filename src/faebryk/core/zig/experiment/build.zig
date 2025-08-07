@@ -2,35 +2,21 @@ const std = @import("std");
 
 const py_lib_name = "pyzig";
 
-fn build_pyi(b: *std.Build) *std.Build.Step {
-    const pyi_content =
-        \\class Nested:
-        \\    x: int
-        \\    y: str
-        \\
-        \\    def __init__(self, x: int, y: str) -> None: ...
-        \\    def __repr__(self) -> str: ...
-        \\
-        \\class Top:
-        \\    a: int
-        \\    b: int
-        \\    c: Nested
-        \\
-        \\    def __init__(self, a: int, b: int, c: Nested) -> None: ...
-        \\    def __repr__(self) -> str: ...
-        \\    def sum(self) -> int: ...
-        \\
-        \\def add(*, a: int, b: int) -> int: ...
-        \\def get_default_top() -> Top: ...
-        \\
-    ;
-
-    // Create a WriteFile step to generate the pyi file
-    const write_files = b.addWriteFiles();
-    _ = write_files.add("pyzig.pyi", pyi_content);
+fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
+    // Build a small executable that outputs the pyi content
+    const gen_pyi_exe = b.addExecutable(.{
+        .name = "gen_pyi",
+        .root_source_file = b.path("src/gen_pyi.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     
-    // Install the pyi file to lib directory
-    const install_pyi = b.addInstallFile(write_files.getDirectory().path(b, "pyzig.pyi"), "lib/pyzig.pyi");
+    // Run the executable and capture its output
+    const run_gen = b.addRunArtifact(gen_pyi_exe);
+    const pyi_output = run_gen.captureStdOut();
+    
+    // Install the captured output as pyzig.pyi
+    const install_pyi = b.addInstallFile(pyi_output, "lib/pyzig.pyi");
     
     return &install_pyi.step;
 }
@@ -53,8 +39,8 @@ fn addPythonExtension(b: *std.Build, target: std.Build.ResolvedTarget, optimize:
         .dest_sub_path = py_lib_name ++ ".so",
     });
 
-    // Generate pyi file
-    const pyi_step = build_pyi(b);
+    // Generate pyi file at build time (no Python needed!)
+    const pyi_step = build_pyi(b, target, optimize);
 
     const python_ext_step = b.step("python-ext", "Build Python extension module");
     python_ext_step.dependOn(&install_python_ext.step);
