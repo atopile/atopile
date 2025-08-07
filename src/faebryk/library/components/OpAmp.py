@@ -6,6 +6,7 @@ from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
+#TODO: clean up
 
 class OpAmp(Module):
     bandwidth = L.p_field(units=P.Hz)

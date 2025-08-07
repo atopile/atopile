@@ -9,6 +9,7 @@ from faebryk.libs.units import P
 
 
 class Crystal_Oscillator(Module):
+    # TODO: To be in component library, this should be a pickable oscillator
     # ----------------------------------------
     #     modules, interfaces, parameters
     # ----------------------------------------
@@ -24,6 +25,8 @@ class Crystal_Oscillator(Module):
     # https://blog.adafruit.com/2012/01/24/choosing-the-right-crystal-and-caps-for-your-design/
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
     _STRAY_CAPACITANCE = L.Range(1 * P.pF, 5 * P.pF)
+
+    pickable: F.is_pickable_by_type
 
     @L.rt_field
     def capacitance(self):

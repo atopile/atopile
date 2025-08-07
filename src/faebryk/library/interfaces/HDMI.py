@@ -26,10 +26,6 @@ class HDMI(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
-
-    # @staticmethod
-    # def define_max_frequency_capability(mode: SpeedMode):
-    #     return F.Range(I2C.SpeedMode.low_speed, mode)
-
+        
     def __preinit__(self) -> None:
         pass

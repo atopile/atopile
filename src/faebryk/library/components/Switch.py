@@ -10,6 +10,7 @@ from faebryk.libs.library import L
 from faebryk.libs.util import once
 
 
+#TODO: Clean up
 class _TSwitch(Module):
     T = ModuleInterface
 
@@ -20,7 +21,6 @@ class _TSwitch(Module):
     @staticmethod
     def is_instance(obj: Module, t: type[T]) -> bool:
         return isinstance(obj, _TSwitch) and issubclass(obj.t, t)
-
 
 @once  # This means we can use a normal "isinstance" to test for them
 def Switch[T: ModuleInterface](interface_type: type[T]):

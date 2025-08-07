@@ -20,6 +20,7 @@ class Relay(Module):
     switch_b_common: F.Electrical
     switch_b_nc: F.Electrical
     coil_power: F.ElectricPower
+    #TODO: Add SPDT, DPDT, etc.
 
     coil_max_voltage = L.p_field(units=P.V)
     coil_max_current = L.p_field(units=P.A)

@@ -46,23 +46,15 @@ class Comparator(Module):
     output_type = L.p_field(
         domain=L.Domains.ENUM(OutputType),
         likely_constrained=True,
+        soft_set=L.Domains.ENUM(OutputType.PushPull),
     )
+
+    pickable: F.is_pickable_by_type
 
     power: F.ElectricPower
     inverting_input: F.Electrical
     non_inverting_input: F.Electrical
     output: F.Electrical
-
-    @L.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.common_mode_rejection_ratio, suffix="CMRR"),
-            S(self.input_bias_current, suffix="Ib"),
-            S(self.input_hysteresis_voltage, suffix="Vhys"),
-            S(self.input_offset_voltage, suffix="Vos"),
-            S(self.propagation_delay, suffix="tpd"),
-        )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
