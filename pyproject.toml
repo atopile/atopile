@@ -63,7 +63,7 @@ dependencies = [
     "typer>=0.12",
     "typing-extensions>=4.6.3",
     "urllib3>=2.2.1",
-    "ziglang>=0.14.1",
+    "ziglang==0.14.1",
     "zstd>=1.5.6.7",
 ]
 
@@ -117,12 +117,7 @@ allow-direct-references = true
 [tool.hatch.build.targets.wheel]
 artifacts = ["**/viewer/dist"]
 packages = ["src/faebryk", "src/atopile"]
-exclude = [
-    "**/.zig-cache",
-    "**/.zig-cache/**",
-    "**/zig-out",
-    "**/zig-out/**",
-]
+exclude = ["**/.zig-cache", "**/.zig-cache/**", "**/zig-out", "**/zig-out/**"]
 
 [tool.hatch.build.targets.wheel.hooks.scikit-build]
 experimental = true

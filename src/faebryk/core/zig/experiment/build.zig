@@ -44,11 +44,10 @@ fn addPythonExtension(
     python_ext.linkSystemLibrary(python_lib);
     python_ext.linkLibC();
 
-    // Choose extension filename based on target OS
-    const ext = switch (target.result.os.tag) {
-        .windows => ".pyd",
-        else => ".so",
-    };
+    // Choose extension filename based on host OS at comptime
+    // This value must be comptime-known for dest_sub_path.
+    const builtin = @import("builtin");
+    const ext = if (builtin.os.tag == .windows) ".pyd" else ".so";
     const install_python_ext = b.addInstallArtifact(python_ext, .{
         .dest_dir = .{ .override = .{ .custom = "lib" } },
         .dest_sub_path = py_lib_name ++ ext,
