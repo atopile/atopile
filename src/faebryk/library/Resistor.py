@@ -1,18 +1,37 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import StrEnum, auto
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.parameter import EnumDomain
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
 class Resistor(Module):
+    class Package(StrEnum):
+        R01005 = auto()
+        R0201 = auto()
+        R0402 = auto()
+        R0603 = auto()
+        R0805 = auto()
+        R1206 = auto()
+        R1210 = auto()
+        R1808 = auto()
+        R1812 = auto()
+        R1825 = auto()
+        R2220 = auto()
+        R2225 = auto()
+        R3640 = auto()
+
     unnamed = L.list_field(2, F.Electrical)
 
     resistance = L.p_field(units=P.ohm)
     max_power = L.p_field(units=P.W)
     max_voltage = L.p_field(units=P.V)
+    package = L.p_field(domain=EnumDomain(Package))
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix)(
@@ -23,7 +42,7 @@ class Resistor(Module):
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
-            params=[self.resistance, self.max_power, self.max_voltage],
+            params=[self.resistance, self.max_power, self.max_voltage, self.package],
         )
 
     @L.rt_field

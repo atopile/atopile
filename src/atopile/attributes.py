@@ -13,8 +13,7 @@ from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
 from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
-from faebryk.libs.smd import SMDSize
-from faebryk.libs.util import md_list, not_none
+from faebryk.libs.util import not_none
 
 log = logging.getLogger(__name__)
 
@@ -188,45 +187,6 @@ class GlobalAttributes(L.Module):
     @designator_prefix.setter
     def designator_prefix(self, value: str):
         self.add(F.has_designator_prefix(value))
-
-    @property
-    def package(self) -> str:
-        """
-        The package of the module.
-
-        This drives which components can be selected, and what footprint is used.
-
-        Must exactly match a known package name.
-        """
-        raise AttributeError("write-only")
-
-    @package.setter
-    def package(self, value: str):
-        GlobalAttributes._handle_package_size(self, value)
-
-    @staticmethod
-    def _handle_package_size(module: L.Module, value: str):
-        match module:
-            case F.Resistor():
-                value = re.sub(r"^R", "I", value)
-            case F.Capacitor():
-                value = re.sub(r"^C", "I", value)
-            case F.Inductor():
-                value = re.sub(r"^L", "I", value)
-            case _:
-                pass
-
-        # assume imperial
-        if re.match(r"^[0-9]+$", value):
-            value = f"I{value}"
-
-        if value not in {s.name for s in SMDSize}:
-            raise UserBadParameterError(
-                f"Invalid package: `{value}`. Valid packages are:\n"
-                f"{md_list(s.name for s in SMDSize)}"
-            )
-
-        module.add(F.has_package_requirements(size=SMDSize[value]))
 
     @property
     def footprint(self) -> str:
