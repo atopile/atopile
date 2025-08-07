@@ -17,23 +17,15 @@ class ResistorArray(Module):
     rated_power = L.p_field(units=P.W)
     rated_voltage = L.p_field(units=P.V)
 
-    @L.rt_field
-    def resistors(self):
-        return times(self._resistor_count, F.Resistor)
-
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R
     )
 
+    pickable: F.is_pickable_by_type
+
     def __init__(self, resistor_count: int = 4):
         super().__init__()
         self._resistor_count = resistor_count
-
-    def __preinit__(self):
-        for resistor in self.resistors:
-            resistor.resistance = self.resistance
-            resistor.max_power = self.rated_power
-            resistor.max_voltage = self.rated_voltage
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
@@ -67,3 +59,16 @@ class ResistorArray(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
+
+    class Package(StrEnum):
+        _01005 = auto()
+        _0201 = auto()
+        _0402 = auto()
+        _0603 = auto()
+        _0805 = auto()
+        _1206 = auto()
+        _1210 = auto()
+        _1808 = auto()
+        _1812 = auto()
+
+    package = L.p_field(domain=L.Domains.ENUM(Package))
