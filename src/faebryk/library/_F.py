@@ -54,7 +54,6 @@ from faebryk.library.is_optional import is_optional
 from faebryk.library.has_resistance import has_resistance
 from faebryk.library.has_single_connection import has_single_connection
 from faebryk.library.is_esphome_bus import is_esphome_bus
-from faebryk.library.is_not_pickable import is_not_pickable
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.XtalIF import XtalIF

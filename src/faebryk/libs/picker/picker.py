@@ -287,7 +287,7 @@ def find_independent_groups(
     graphs = EquivalenceClasses()
     graph_to_m = defaultdict[Graph, set[Module]](set)
     for m in modules:
-        params = m.get_trait(F.is_pickable_by_type).get_parameters().values()
+        params = m.get_trait(F.is_pickable_by_type).params
         new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
         m_graphs = get_graphs(new_params)
         graphs.add_eq(*m_graphs)
