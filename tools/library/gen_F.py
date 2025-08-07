@@ -29,7 +29,7 @@ def try_(stmt: str, exc: str | type[Exception] | Iterable[type[Exception]]):
     )
 
 
-def topo_sort(modules_out: dict[str, tuple[Path, str]]):
+def topo_sort(modules_out: dict[str, tuple[Path, str, str]]):
     def find_deps(module_path: Path) -> set[str]:
         f = module_path.read_text(encoding="utf-8")
         p = re.compile(r"[^a-zA-Z_0-9]F\.([a-zA-Z_][a-zA-Z_0-9]*)")
@@ -75,11 +75,7 @@ def topo_sort(modules_out: dict[str, tuple[Path, str]]):
                 raise Exception(f"Collision: {sub} after {m}")
         seen.add(m)
 
-    return [
-        (module_name, modules_out[module_name][1])
-        for module_name in order
-        if module_name in modules_out
-    ]
+    return [module_name for module_name in order if module_name in modules_out]
 
 
 def main():
@@ -87,11 +83,11 @@ def main():
 
     logger.info(f"Scanning {LIBRARY_DIR} for modules")
 
-    module_files = [p for p in LIBRARY_DIR.glob("*.py") if not p.name.startswith("_")]
+    module_files = [p for p in LIBRARY_DIR.rglob("*.py") if not p.name.startswith("_")]
 
     logger.info(f"Found {len(module_files)} modules")
 
-    modules_out: dict[str, tuple[Path, str]] = {}
+    modules_out: dict[str, tuple[Path, str, str]] = {}
 
     # Import each module and add its class to the current namespace
     # for module_name in module_files:
@@ -104,10 +100,12 @@ def main():
     #        modules_out[module_name] = class_name
 
     # assuming class name is equal to file stem
-    modules_out = {
-        module_path.stem: (module_path, module_path.stem)
-        for module_path in module_files
-    }
+    for module_path in module_files:
+        # Compute dotted module path relative to LIBRARY_DIR
+        rel = module_path.relative_to(LIBRARY_DIR).with_suffix("")
+        import_module_rel = ".".join(rel.parts)
+        class_name = module_path.stem
+        modules_out[class_name] = (module_path, class_name, import_module_rel)
 
     modules_ordered = topo_sort(modules_out)
 
@@ -132,11 +130,8 @@ def main():
         "# flake8: noqa: E501\n"
         "\n"
         + "\n".join(
-            # try_(
-            f"from faebryk.library.{module} import {class_}"
-            #    (AttributeError,),
-            # )
-            for module, class_ in modules_ordered
+            f"from faebryk.library.{modules_out[class_name][2]} import {class_name}"
+            for class_name in modules_ordered
         )
         + "\n",
         encoding="utf-8",
