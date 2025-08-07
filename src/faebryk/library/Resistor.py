@@ -22,7 +22,7 @@ class Resistor(Module):
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
-            endpoint="resistors",
+            endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
             params=[self.resistance, self.max_power, self.max_voltage],
         )
 

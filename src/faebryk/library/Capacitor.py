@@ -55,7 +55,7 @@ class Capacitor(Module):
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
-            endpoint="capacitors",
+            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
             params=[self.capacitance, self.max_voltage, self.temperature_coefficient],
         )
 

@@ -38,7 +38,7 @@ class Inductor(Module):
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
-            endpoint="inductors",
+            endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
             params=[
                 self.inductance,
                 self.max_current,

@@ -1,10 +1,11 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import StrEnum
+
 import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from faebryk.core.parameter import Parameter
-from faebryk.libs.picker.api.api import QueryType
 
 
 class is_pickable_by_type(F.is_pickable.decless()):
@@ -16,7 +17,14 @@ class is_pickable_by_type(F.is_pickable.decless()):
     Should be named "pickable" to aid overriding by subclasses.
     """
 
-    def __init__(self, endpoint: QueryType, params: list[Parameter]):
+    class Endpoint(StrEnum):
+        """Query endpoints known to the API."""
+
+        RESISTORS = "resistors"
+        CAPACITORS = "capacitors"
+        INDUCTORS = "inductors"
+
+    def __init__(self, endpoint: Endpoint, params: list[Parameter]):
         super().__init__()
         self.endpoint = endpoint
         self._params = params
