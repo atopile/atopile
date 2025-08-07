@@ -33,6 +33,13 @@ class Battery(Module):
 
     power: F.ElectricPower
 
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.BATTERIES,
+            params=[self.voltage, self.capacity, self.discharge_rate, self.c_rate],
+        )
+
     def __preinit__(self) -> None:
         self.power.voltage.constrain_subset(self.voltage)
 

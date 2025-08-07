@@ -24,7 +24,13 @@ class Resistor(Module):
     max_voltage = L.p_field(units=P.V)  # TODO: rated_voltage
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    pickable: F.is_pickable_by_type
+    
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
+            params=[self.resistance, self.max_power, self.max_voltage],
+        )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R

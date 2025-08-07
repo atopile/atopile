@@ -80,7 +80,12 @@ class Diode(Module):
     anode: F.Electrical
     cathode: F.Electrical
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.DIODES,
+            params=[self.rated_forward_voltage, self.rated_forward_current, self.rated_reverse_current, self.rated_reverse_blocking_voltage, self.reverse_leakage_current, self.rated_power_dissipation],
+        )
 
     def __init__(self, diode_type: DiodeType = DiodeType.PN):
         super().__init__()

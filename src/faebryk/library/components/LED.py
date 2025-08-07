@@ -80,7 +80,12 @@ class LED(Module):
     rated_brightness = L.p_field(units=P.cd)
     color = L.p_field(domain=L.Domains.ENUM(Color))
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.LEDS,
+            params=[self.rated_forward_voltage, self.rated_forward_current, self.rated_power_dissipation, self.rated_brightness, self.color],
+        )
 
     def __init__(self, color: Color):
         super().__init__()

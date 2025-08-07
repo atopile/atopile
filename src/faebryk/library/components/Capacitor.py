@@ -53,7 +53,13 @@ class Capacitor(Module):
         domain=L.Domains.ENUM(TemperatureCoefficient),
     )
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
+            params=[self.capacitance, self.max_voltage, self.temperature_coefficient],
+        )
+    
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
     designator_prefix = L.f_field(F.has_designator_prefix)(

@@ -24,6 +24,13 @@ class BJT(Module):
         F.has_designator_prefix.Prefix.Q
     )
 
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.BJTS,
+            params=[self.doping_type, self.package],
+        )
+
     def __init__(self, doping_type: DopingType):
         super().__init__()
         self.doping_type = doping_type

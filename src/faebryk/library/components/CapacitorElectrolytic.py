@@ -15,7 +15,12 @@ class CapacitorElectrolytic(F.Capacitor):
     anode: F.Electrical
     cathode: F.Electrical
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS_ELECTROLYTIC,
+            params=[self.capacitance, self.max_voltage, self.temperature_coefficient, self.package],
+        )
 
     @L.rt_field
     def can_bridge(self):

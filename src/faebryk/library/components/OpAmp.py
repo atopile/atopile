@@ -23,6 +23,21 @@ class OpAmp(Module):
     output: F.Electrical
 
     @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.OPAMPS,
+            params=[
+                self.bandwidth,
+                self.common_mode_rejection_ratio,
+                self.input_bias_current,
+                self.input_offset_voltage,
+                self.gain_bandwidth_product,
+                self.output_current,
+                self.slew_rate,
+            ],
+        )
+
+    @L.rt_field
     def simple_value_representation(self):
         S = F.has_simple_value_representation_based_on_params_chain.Spec
         return F.has_simple_value_representation_based_on_params_chain(

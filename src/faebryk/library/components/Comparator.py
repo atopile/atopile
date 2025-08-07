@@ -49,7 +49,19 @@ class Comparator(Module):
         soft_set=L.Domains.ENUM(OutputType.PushPull),
     )
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.COMPARATORS,
+            params=[
+                self.common_mode_rejection_ratio,
+                self.input_bias_current,
+                self.input_hysteresis_voltage,
+                self.input_offset_voltage,
+                self.propagation_delay,
+                self.output_type,
+            ],
+        )
 
     power: F.ElectricPower
     inverting_input: F.Electrical

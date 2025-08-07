@@ -37,7 +37,13 @@ class Inductor(Module):
     saturation_current = L.p_field(units=P.A)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    pickable: F.is_pickable_by_type
+    
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
+            params=[self.inductance, self.max_current, self.dc_resistance, self.self_resonant_frequency, self.saturation_current],
+        )
 
     @L.rt_field
     def can_bridge(self):

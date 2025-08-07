@@ -29,7 +29,12 @@ class MOSFET(Module):
         F.has_designator_prefix.Prefix.Q
     )
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.MOSFETS,
+            params=[self.channel_type, self.rated_gate_source_threshold_voltage, self.rated_max_drain_source_voltage, self.rated_max_continuous_drain_current, self.rated_on_resistance],
+        )
 
     def __init__(self, channel_type: ChannelType = ChannelType.N_CHANNEL):
         super().__init__()
