@@ -30,8 +30,7 @@ class MultiCapacitor(F.Capacitor):
         super().__init__()
         self._count = count
 
-    # Not pickable
-    pickable = None
+    pickable = None  # type: ignore
 
     @L.rt_field
     def capacitors(self) -> list[F.Capacitor]:

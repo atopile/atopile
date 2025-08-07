@@ -16,20 +16,14 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
+from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
-    CapacitorParams,
     Component,
-    # DiodeParams,
-    InductorParams,
     LCSCParams,
-    # LDOParams,
-    # LEDParams,
     ManufacturerPartParams,
-    # MOSFETParams,
-    ResistorParams,
-    # TVSParams,
+    make_params_for_type,
 )
 from faebryk.libs.picker.lcsc import (
     LCSC_NoDataException,
@@ -78,17 +72,6 @@ def _extract_numeric_id(lcsc_id: str) -> int:
     return int(match[1])
 
 
-TYPE_SPECIFIC_LOOKUP: dict[F.is_pickable_by_type.Type, type[BaseParams]] = {
-    F.is_pickable_by_type.Type.Resistor: ResistorParams,
-    F.is_pickable_by_type.Type.Capacitor: CapacitorParams,
-    F.is_pickable_by_type.Type.Inductor: InductorParams,
-    # F.is_pickable_by_type.Type.TVS: TVSParams,
-    # F.is_pickable_by_type.Type.LED: LEDParams,
-    # F.is_pickable_by_type.Type.Diode: DiodeParams,
-    # F.is_pickable_by_type.Type.LDO: LDOParams,
-    # F.is_pickable_by_type.Type.MOSFET: MOSFETParams,
-}
-
 BackendPackage = StrEnum(
     "BackendPackage",
     {
@@ -107,15 +90,17 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(
-    cls, size: SMDSize, type: F.is_pickable_by_type.Type
-) -> "BackendPackage":
+def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
+    if issubclass(type, F.Resistor):
+        prefix = "R"
+    elif issubclass(type, F.Capacitor):
+        prefix = "C"
+    elif issubclass(type, F.Inductor):
+        prefix = "L"
+    else:
+        raise NotImplementedError(f"Unsupported pickable trait: {type}")
+
     try:
-        prefix = {
-            F.is_pickable_by_type.Type.Resistor: "R",
-            F.is_pickable_by_type.Type.Capacitor: "C",
-            F.is_pickable_by_type.Type.Inductor: "L",
-        }[type]
         return cls[f"{prefix}{size.imperial.without_prefix}"]
     except SMDSize.UnableToConvert:
         return cls[size.value]
@@ -146,14 +131,13 @@ def _prepare_query(
             )
 
     elif trait := module.try_get_trait(F.is_pickable_by_type):
-        pick_type = trait.get_pick_type()
-        params_t = TYPE_SPECIFIC_LOOKUP[pick_type]
+        params_t = make_params_for_type(trait.pick_type)
 
         if pkg_t := module.try_get_trait(F.has_package_requirements):
             package = pkg_t.get_sizes(solver)
             package = EnumSet[BackendPackage](
                 *[
-                    BackendPackage.from_smd_size(SMDSize[s.name], pick_type)
+                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)
                     for s in package
                 ]
             )
@@ -301,10 +285,12 @@ def _get_compatible_parameters(
     except LCSC_NoDataException as e:
         raise NotCompatibleException(module, c) from e
 
-    design_params = module.get_trait(F.is_pickable_by_type).get_parameters()
+    design_params = {
+        p.get_name() for p in module.get_trait(F.is_pickable_by_type).params
+    }
     component_params = c.attribute_literals
 
-    if no_attr := component_params.keys() - design_params.keys():
+    if no_attr := component_params.keys() - design_params:
         with downgrade(UserException):
             no_attr_str = "\n".join(f"- `{a}`" for a in no_attr)
             raise UserException(
