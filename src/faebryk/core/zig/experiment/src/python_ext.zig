@@ -115,7 +115,7 @@ var NestedType = py.PyTypeObject{
     .tp_init = Nested_init,
 };
 
-fn add(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+fn root_add(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject {
     var a: c_int = undefined;
     var b: c_int = undefined;
 
@@ -135,9 +135,23 @@ fn add(_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C
     return py.PyLong_FromLong(result);
 }
 
+fn root_get_default_top(_: ?*py.PyObject, _: ?*py.PyObject, _: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+    const top = root.get_default_top(std.heap.c_allocator) catch return null;
+
+    const pyobj = py.PyType_GenericAlloc(&TopType, 0);
+    if (pyobj == null) return null;
+
+    const typed_obj: *TopObject = @ptrCast(@alignCast(pyobj));
+    typed_obj.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = &TopType };
+    typed_obj.top = top;
+
+    return pyobj;
+}
+
 // Method definitions
 var methods = [_]py.PyMethodDef{
-    bind.module_method(add, "add"),
+    bind.module_method(root_add, "add"),
+    bind.module_method(root_get_default_top, "get_default_top"),
     py.ML_SENTINEL,
 };
 

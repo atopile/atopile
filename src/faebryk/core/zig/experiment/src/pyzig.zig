@@ -193,6 +193,8 @@ pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
 
 pub fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime PType: type, type_obj: *py.PyTypeObject) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
+
+    // create thin python object wrapper around the zig object
     const getter = struct {
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
@@ -216,6 +218,7 @@ pub fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, 
         }
     }.impl;
 
+    // copy the value from the python object to the zig object
     const setter = struct {
         fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
             const obj: *struct_type = @ptrCast(@alignCast(self));

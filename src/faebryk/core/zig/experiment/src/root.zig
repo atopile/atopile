@@ -21,7 +21,13 @@ pub const Top = struct {
     }
 };
 
-pub export fn add(a: i32, b: i32) i32 {
+pub fn get_default_top(allocator: std.mem.Allocator) !*Top {
+    const top = try allocator.create(Top);
+    top.* = Top{ .a = 1, .b = 2, .c = .{ .x = 3, .y = "default" } };
+    return top;
+}
+
+pub fn add(a: i32, b: i32) i32 {
     return a + b;
 }
 

@@ -44,4 +44,7 @@ top.c.x = 100
 print("top c change to 100", top)
 
 
+zig_top = pyzig.get_default_top()
+print(f"zig_top: {zig_top}")
+
 print("\nAll tests passed!")
