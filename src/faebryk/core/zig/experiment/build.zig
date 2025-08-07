@@ -2,6 +2,39 @@ const std = @import("std");
 
 const py_lib_name = "pyzig";
 
+fn build_pyi(b: *std.Build) *std.Build.Step {
+    const pyi_content =
+        \\class Nested:
+        \\    x: int
+        \\    y: str
+        \\
+        \\    def __init__(self, x: int, y: str) -> None: ...
+        \\    def __repr__(self) -> str: ...
+        \\
+        \\class Top:
+        \\    a: int
+        \\    b: int
+        \\    c: Nested
+        \\
+        \\    def __init__(self, a: int, b: int, c: Nested) -> None: ...
+        \\    def __repr__(self) -> str: ...
+        \\    def sum(self) -> int: ...
+        \\
+        \\def add(*, a: int, b: int) -> int: ...
+        \\def get_default_top() -> Top: ...
+        \\
+    ;
+
+    // Create a WriteFile step to generate the pyi file
+    const write_files = b.addWriteFiles();
+    _ = write_files.add("pyzig.pyi", pyi_content);
+    
+    // Install the pyi file to lib directory
+    const install_pyi = b.addInstallFile(write_files.getDirectory().path(b, "pyzig.pyi"), "lib/pyzig.pyi");
+    
+    return &install_pyi.step;
+}
+
 fn addPythonExtension(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, python_include: []const u8, python_lib: []const u8) void {
     const python_ext = b.addSharedLibrary(.{
         .name = py_lib_name,
@@ -20,8 +53,12 @@ fn addPythonExtension(b: *std.Build, target: std.Build.ResolvedTarget, optimize:
         .dest_sub_path = py_lib_name ++ ".so",
     });
 
+    // Generate pyi file
+    const pyi_step = build_pyi(b);
+
     const python_ext_step = b.step("python-ext", "Build Python extension module");
     python_ext_step.dependOn(&install_python_ext.step);
+    python_ext_step.dependOn(pyi_step);
 }
 
 // Although this function looks imperative, note that its job is to
