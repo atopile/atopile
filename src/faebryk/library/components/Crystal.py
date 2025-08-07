@@ -66,7 +66,20 @@ class Crystal(Module):
         tolerance_guess=10 * P.percent,
     )
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.CRYSTALS,
+            params=[
+                self.frequency,
+                self.frequency_tolerance,
+                self.frequency_temperature_tolerance,
+                self.frequency_ageing,
+                self.equivalent_series_resistance,
+                self.shunt_capacitance,
+                self.load_capacitance,
+            ],
+        )
 
     # ----------------------------------------
     #                traits

@@ -58,7 +58,19 @@ class Fuse(Module):
         tolerance_guess=10 * P.percent,
     )
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.FUSES,
+            params=[
+                self.fuse_type,
+                self.response_type,
+                self.rated_trip_current,
+                self.rated_hold_current,
+                self.rated_voltage,
+                self.rated_power_dissipation,
+            ],
+        )
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
     def __init__(self, fuse_type: FuseType):

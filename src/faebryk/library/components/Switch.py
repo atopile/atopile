@@ -28,6 +28,13 @@ def Switch[T: ModuleInterface](interface_type: type[T]):
         def __init__(self) -> None:
             super().__init__(interface_type)
 
+        @L.rt_field
+        def pickable(self):
+            return F.is_pickable_by_type(
+                endpoint=F.is_pickable_by_type.Endpoint.SWITCHES,
+                params=[],
+            )
+
         designator_prefix = L.f_field(F.has_designator_prefix)(
             F.has_designator_prefix.Prefix.S
         )

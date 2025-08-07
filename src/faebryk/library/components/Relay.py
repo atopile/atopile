@@ -29,6 +29,20 @@ class Relay(Module):
     contact_max_switching_current = L.p_field(units=P.A)
     contact_max_current = L.p_field(units=P.A)
 
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.RELAYS,
+            params=[
+                self.coil_max_voltage,
+                self.coil_max_current,
+                self.coil_resistance,
+                self.contact_max_switching_voltage,
+                self.contact_max_switching_current,
+                self.contact_max_current,
+            ],
+        )
+
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.K
     )

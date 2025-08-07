@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import logging
+from enum import StrEnum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
@@ -21,7 +22,16 @@ class ResistorArray(Module):
         F.has_designator_prefix.Prefix.R
     )
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.RESISTOR_ARRAYS,
+            params=[
+                self.resistance,
+                self.rated_power,
+                self.rated_voltage,
+            ],
+        )
 
     def __init__(self, resistor_count: int = 4):
         super().__init__()

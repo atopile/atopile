@@ -26,7 +26,16 @@ class Crystal_Oscillator(Module):
     # http://www.st.com/internet/com/TECHNICAL_RESOURCES/TECHNICAL_LITERATURE/APPLICATION_NOTE/CD00221665.pdf
     _STRAY_CAPACITANCE = L.Range(1 * P.pF, 5 * P.pF)
 
-    pickable: F.is_pickable_by_type
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.OSCILLATORS,
+            params=[
+                self.crystal.frequency,
+                self.crystal.frequency_tolerance,
+                self.crystal.load_capacitance,
+            ],
+        )
 
     @L.rt_field
     def capacitance(self):
