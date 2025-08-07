@@ -12,7 +12,7 @@ class Crystal(Module):
     #     modules, interfaces, parameters
     # ----------------------------------------
     gnd: F.Electrical
-    terminals = L.list_field(2, F.Electrical)
+    unnamed = L.list_field(2, F.Electrical)
 
     # ----------------------------------------
     #               parameters
