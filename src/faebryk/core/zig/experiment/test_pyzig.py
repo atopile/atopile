@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Test script for the pyzig extension module."""
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
 # Now import and test
 print("\nTesting the extension...")
 import faebryk.core.zig.experiment as pyzig  # noqa: E402

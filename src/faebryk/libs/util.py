@@ -2736,3 +2736,30 @@ def match_iterables[T, U](
         raise ValueError("All iterables must have unique keys")
     dicts = [{k: vs[0] for k, vs in d.items()} for d in multi_dicts]
     return zip_dicts_by_key(*dicts)  # type: ignore
+
+
+def debug_perf(*args):
+    def _debug_perf[T: Callable](func: T) -> T:
+        # get module of function
+        module = func.__module__
+        logger = logging.getLogger(module)
+
+        def _wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            end = time.perf_counter()
+            diff = end - start
+
+            for i, prefix in enumerate(["", "m", "u", "n"]):
+                if diff * (1000**i) >= 1:
+                    diff = round(diff * (1000**i), 2)
+                    break
+
+            logger.info(f"{func.__name__} took {diff} {prefix}s")
+            return result
+
+        return _wrapper  # type: ignore
+
+    if args:
+        return _debug_perf(*args)
+    return _debug_perf

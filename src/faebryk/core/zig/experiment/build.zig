@@ -1,5 +1,29 @@
 const std = @import("std");
 
+const py_lib_name = "pyzig";
+
+fn addPythonExtension(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode, python_include: []const u8, python_lib: []const u8) void {
+    const python_ext = b.addSharedLibrary(.{
+        .name = py_lib_name,
+        .root_source_file = b.path("src/python_ext.zig"),
+        .target = target,
+        .optimize = optimize,
+        .pic = true,
+    });
+
+    python_ext.addIncludePath(.{ .cwd_relative = python_include });
+    python_ext.linkSystemLibrary(python_lib);
+    python_ext.linkLibC();
+
+    const install_python_ext = b.addInstallArtifact(python_ext, .{
+        .dest_dir = .{ .override = .{ .custom = "lib" } },
+        .dest_sub_path = py_lib_name ++ ".so",
+    });
+
+    const python_ext_step = b.step("python-ext", "Build Python extension module");
+    python_ext_step.dependOn(&install_python_ext.step);
+}
+
 // Although this function looks imperative, note that its job is to
 // declaratively construct a build graph that will be executed by an external
 // runner.
@@ -42,44 +66,32 @@ pub fn build(b: *std.Build) void {
     // Modules can depend on one another using the `std.Build.Module.addImport` function.
     // This is what allows Zig source code to use `@import("foo")` where 'foo' is not a
     // file path. In this case, we set up `exe_mod` to import `lib_mod`.
-    exe_mod.addImport("pyzig2_lib", lib_mod);
+    exe_mod.addImport(py_lib_name ++ "_lib", lib_mod);
 
-    // Now, we will create a static library based on the module we created above.
-    // This creates a `std.Build.Step.Compile`, which is the build step responsible
-    // for actually invoking the compiler.
+    // Create library build step (optional, not part of default)
     const lib = b.addLibrary(.{
         .linkage = .static,
-        .name = "pyzig2",
+        .name = py_lib_name,
         .root_module = lib_mod,
     });
+    const lib_step = b.step("lib", "Build static library");
+    lib_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
 
-    // This declares intent for the library to be installed into the standard
-    // location when the user invokes the "install" step (the default step when
-    // running `zig build`).
-    b.installArtifact(lib);
-
-    // This creates another `std.Build.Step.Compile`, but this one builds an executable
-    // rather than a static library.
+    // Create executable build step (optional, not part of default)
     const exe = b.addExecutable(.{
-        .name = "pyzig2",
+        .name = py_lib_name,
         .root_module = exe_mod,
     });
-
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
-    b.installArtifact(exe);
+    const exe_step = b.step("exe", "Build executable");
+    exe_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
 
     // This *creates* a Run step in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
 
-    // By making the run step depend on the install step, it will be run from the
-    // installation directory rather than directly from within the cache directory.
-    // This is not necessary, however, if the application depends on other installed
-    // files, this ensures they will be present and in the expected location.
-    run_cmd.step.dependOn(b.getInstallStep());
+    // By making the run step depend on the exe step, it will build the exe when needed
+    run_cmd.step.dependOn(exe_step);
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
@@ -113,4 +125,14 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
     test_step.dependOn(&run_exe_unit_tests.step);
+
+    // Add Python extension if options are provided
+    const python_include = b.option([]const u8, "python-include", "Python include directory path");
+    const python_lib = b.option([]const u8, "python-lib", "Python library name (e.g., python3.12)");
+
+    if (python_include) |include_path| {
+        if (python_lib) |lib_name| {
+            addPythonExtension(b, target, optimize, include_path, lib_name);
+        }
+    }
 }

@@ -1,48 +1,48 @@
+import logging
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).parent
-BIN_DIR = ROOT / "zig-out" / "lib"
-sys.path.append(str(BIN_DIR))
+from faebryk.libs.util import debug_perf, global_lock, run_live
+
+logger = logging.getLogger(__name__)
+
+_thisdir = Path(__file__).parent
+_build_dir = _thisdir / "zig-out" / "lib"
 
 
-def compile():
+@debug_perf
+def compile_zig():
     # Get Python include directory
-    import subprocess
     import sysconfig
 
     python_include = sysconfig.get_paths()["include"]
     python_lib = f"python{sys.version_info.major}.{sys.version_info.minor}"
 
-    output_file = BIN_DIR / "pyzig.so"
-    output_file.parent.mkdir(parents=True, exist_ok=True)
+    zig_cmd = [sys.executable, "-m", "ziglang"]
 
+    # Use zig build system with Python configuration
     cmd = [
-        "zig",
-        "build-lib",
-        "src/python_ext.zig",
-        "-dynamic",
-        "-fPIC",
-        "-O",
-        "ReleaseFast",
-        "-I",
-        python_include,
-        "-lc",
-        f"-l{python_lib}",
-        f"-femit-bin={output_file}",
+        *zig_cmd,
+        "build",
+        "python-ext",
+        "-Doptimize=ReleaseFast",
+        f"-Dpython-include={python_include}",
+        f"-Dpython-lib={python_lib}",
     ]
 
-    print(f"Building with command: {' '.join(cmd)}")
-    result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=Path(__file__).parent
-    )
+    logger.info(f"Building with command: {' '.join(cmd)}")
+    with global_lock(_build_dir / "lock", timeout_s=60):
+        run_live(cmd, cwd=Path(__file__).parent)
 
-    if result.returncode != 0:
-        print(f"Build failed:\n{result.stderr}")
+    if not (_build_dir / "pyzig.so").exists():
         raise RuntimeError("Failed to build Zig extension")
 
-    print(f"Successfully built {output_file}")
+
+def load():
+    sys.path.append(str(_build_dir))
 
 
-compile()
-from pyzig import *  # noqa: E402, F403
+compile_zig()
+load()
+
+from pyzig import *  # type: ignore # noqa: E402, F403
