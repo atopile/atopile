@@ -966,7 +966,7 @@ def test_for_loop_stale_ref(bob: Bob):
         "import Resistor",
         "pin 1",
         "signal a",
-        "trait is_not_pickable",
+        "trait test_trait",
         "r = new Resistor",
     ],
 )
@@ -1125,14 +1125,19 @@ def test_list_literal_invalid(bob: Bob):
 
 
 def test_plain_trait(bob: Bob):
+    class test_trait(L.Module.TraitT.decless()):
+        pass
+
+    F.test_trait = test_trait  # type: ignore
+
     text = dedent(
         """
         #pragma experiment("TRAITS")
 
-        import is_not_pickable
+        import test_trait
 
         module App:
-            trait is_not_pickable
+            trait test_trait
         """
     )
 
@@ -1140,16 +1145,21 @@ def test_plain_trait(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
-    assert node.has_trait(F.is_not_pickable)
+    assert node.has_trait(test_trait)
 
 
 def test_unimported_trait(bob: Bob):
+    class test_trait(L.Module.TraitT.decless()):
+        pass
+
+    F.test_trait = test_trait  # type: ignore
+
     text = dedent(
         """
         #pragma experiment("TRAITS")
 
         module App:
-            trait is_not_pickable
+            trait test_trait
         """
     )
 

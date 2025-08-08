@@ -5,7 +5,7 @@ import functools
 import logging
 from dataclasses import asdict, dataclass, field, make_dataclass
 from textwrap import indent
-from typing import Any, Iterable
+from typing import Any
 
 from dataclasses_json import config as dataclass_json_config
 from dataclasses_json import dataclass_json
@@ -17,7 +17,7 @@ from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import Serializable, SerializableJSONEncoder
+from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +37,6 @@ def SerializableField():
     )
 
 
-# Consider moving to a more general markdown utility
-def _md_list(items: Iterable[str]) -> str:
-    return "\n".join(f"- {item}" for item in items)
-
-
 # Consider making this a mixin instead
 def _pretty_params_helper(params) -> str:
     def _map(v: Any) -> str:
@@ -54,7 +49,7 @@ def _pretty_params_helper(params) -> str:
         else:
             return str(v)
 
-    return _md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
+    return md_list(f"`{k}`: {_map(v)}" for k, v in asdict(params).items())
 
 
 @dataclass_json
@@ -62,7 +57,7 @@ def _pretty_params_helper(params) -> str:
 class BaseParams(Serializable):
     package: ApiParamT = SerializableField()
     qty: int
-    endpoint: str | None = None
+    endpoint: F.is_pickable_by_type.Endpoint | None = None
 
     def serialize(self) -> dict:
         return self.to_dict()  # type: ignore
@@ -71,16 +66,21 @@ class BaseParams(Serializable):
         return _pretty_params_helper(self)
 
 
-def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
+def make_params_for_type(module_type: type[Module]) -> type:
     m = module_type()
     assert m.has_trait(F.is_pickable_by_type)
-
     pickable_trait = m.get_trait(F.is_pickable_by_type)
-    parameters = pickable_trait.get_parameters()
 
     fields = [
-        ("endpoint", str, field(default=endpoint, init=False)),
-        *[(param_name, ApiParamT, SerializableField()) for param_name in parameters],
+        (
+            "endpoint",
+            F.is_pickable_by_type.Endpoint,
+            field(default=pickable_trait.endpoint.value, init=False),
+        ),
+        *[
+            (param.get_name(), ApiParamT, SerializableField())
+            for param in pickable_trait.params
+        ],
     ]
 
     cls = make_dataclass(
@@ -91,16 +91,6 @@ def _make_params_for_type(module_type: type[Module], endpoint: str) -> type:
         kw_only=True,
     )
     return dataclass_json(cls)
-
-
-ResistorParams = _make_params_for_type(F.Resistor, "resistors")
-CapacitorParams = _make_params_for_type(F.Capacitor, "capacitors")
-InductorParams = _make_params_for_type(F.Inductor, "inductors")
-# DiodeParams = _make_params_for_type(F.Diode, "diodes")
-# TVSParams = _make_params_for_type(F.TVS, "tvs")
-# LEDParams = _make_params_for_type(F.LED, "leds")
-# LDOParams = _make_params_for_type(F.LDO, "ldos")
-# MOSFETParams = _make_params_for_type(F.MOSFET, "mosfets")
 
 
 @dataclass_json
