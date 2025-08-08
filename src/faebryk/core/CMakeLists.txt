@@ -38,12 +38,19 @@ set(ZIG_OUT_LIB "${ZIG_WORKDIR}/zig-out/lib/${PYZIG_NAME}")
 set(ZIG_BUILD_STAMP "${ZIG_WORKDIR}/zig-out/pyzig.build.stamp")
 
 # Build the Zig extension via ziglang module (ensures zig is available in build env)
+# Construct OS-conditional args explicitly to avoid generator-expression quoting issues
+set(ZIG_PY_LIB_NAME_ARG "")
+set(ZIG_PY_LIB_DIR_ARG_USE "")
+if(WIN32)
+  set(ZIG_PY_LIB_NAME_ARG -Dpython-lib=${PY_LIB_NAME})
+  set(ZIG_PY_LIB_DIR_ARG_USE ${ZIG_PY_LIB_DIR_ARG})
+endif()
 add_custom_command(
   OUTPUT "${ZIG_BUILD_STAMP}"
   COMMAND "${Python3_EXECUTABLE}" -m ziglang build python-ext -Doptimize=ReleaseFast
           -Dpython-include=${PY_INCLUDE}
-          -Dpython-lib=${PY_LIB_NAME}
-          ${ZIG_PY_LIB_DIR_ARG}
+          ${ZIG_PY_LIB_NAME_ARG}
+          ${ZIG_PY_LIB_DIR_ARG_USE}
   COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
   WORKING_DIRECTORY "${ZIG_WORKDIR}"
   BYPRODUCTS "${ZIG_OUT_LIB}"

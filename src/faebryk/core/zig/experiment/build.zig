@@ -26,7 +26,7 @@ fn addPythonExtension(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     python_include: []const u8,
-    python_lib: []const u8,
+    python_lib_opt: ?[]const u8,
     python_lib_dir_opt: ?[]const u8,
 ) void {
     const python_ext = b.addSharedLibrary(.{
@@ -38,16 +38,24 @@ fn addPythonExtension(
     });
 
     python_ext.addIncludePath(.{ .cwd_relative = python_include });
-    if (python_lib_dir_opt) |lib_dir| {
-        // Accept absolute paths from the Python bootstrap
-        python_ext.addLibraryPath(.{ .cwd_relative = lib_dir });
+
+    const builtin = @import("builtin");
+    if (builtin.os.tag == .windows) {
+        // On Windows, Python extension modules must link against the import library
+        if (python_lib_opt) |python_lib| {
+            if (python_lib_dir_opt) |lib_dir| {
+                python_ext.addLibraryPath(.{ .cwd_relative = lib_dir });
+            }
+            python_ext.linkSystemLibrary(python_lib);
+        } else {
+            @panic("python-lib must be provided on Windows builds");
+        }
     }
-    python_ext.linkSystemLibrary(python_lib);
+
     python_ext.linkLibC();
 
     // Choose extension filename based on host OS at comptime
     // This value must be comptime-known for dest_sub_path.
-    const builtin = @import("builtin");
     const ext = if (builtin.os.tag == .windows) ".pyd" else ".so";
     const install_python_ext = b.addInstallArtifact(python_ext, .{
         .dest_dir = .{ .override = .{ .custom = "lib" } },
@@ -166,12 +174,10 @@ pub fn build(b: *std.Build) void {
 
     // Add Python extension if options are provided
     const python_include = b.option([]const u8, "python-include", "Python include directory path");
-    const python_lib = b.option([]const u8, "python-lib", "Python library name (e.g., python3.12 or python312 on Windows)");
+    const python_lib = b.option([]const u8, "python-lib", "Python library name (Windows only; e.g., python313)");
     const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
 
     if (python_include) |include_path| {
-        if (python_lib) |lib_name| {
-            addPythonExtension(b, target, optimize, include_path, lib_name, python_lib_dir);
-        }
+        addPythonExtension(b, target, optimize, include_path, python_lib, python_lib_dir);
     }
 }
