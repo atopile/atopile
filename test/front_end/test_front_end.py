@@ -19,6 +19,21 @@ from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
 
+# Helper classes for enum tests
+class _IntEnumForTests(IntEnum):
+    VALUE_1 = 1
+    VALUE_2 = 2
+    VALUE_3 = 3
+
+
+class _StrEnumForTests(StrEnum):
+    OPTION_A = "option_a"
+    OPTION_B = "option_b"
+    OPTION_C = "option_c"
+    PRESET_A = "preset_a"
+    PRESET_B = "preset_b"
+
+
 def _get_mif(
     bob: Bob, node: L.Node, name: str, key: str | None = None
 ) -> L.ModuleInterface:
@@ -118,8 +133,10 @@ def test_multiple_new(bob: Bob):
 
     solver = DefaultSolver()
     assert (
-        resistors[0].get_trait(F.has_package_requirements).get_sizes(solver)
-        == SMDSize.I0402
+        solver.inspect_get_known_supersets(
+            cast_assert(F.Resistor, resistors[0]).package
+        )
+        == F.Resistor.Package.R0402
     )
 
     assert bob.resolve_node_shortcut(
@@ -228,7 +245,10 @@ def test_resistor(bob: Bob, repo_root: Path):
     assert isinstance(node, L.Module)
 
     r1 = bob.resolve_node_shortcut(node, "r1")
-    assert r1.get_trait(F.has_package_requirements)._size == SMDSize.I0805
+    assert isinstance(r1, F.Resistor)
+
+    solver = DefaultSolver()
+    assert solver.inspect_get_known_supersets(r1.package) == F.Resistor.Package.R0805
 
 
 def test_standard_library_import(bob: Bob):
@@ -305,9 +325,10 @@ def test_reserved_attrs(
     node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
+    solver = DefaultSolver()
 
     a = bob.resolve_node_shortcut(node, "a")
-    assert a.get_trait(F.has_package_requirements)._size == pkg
+    assert solver.inspect_get_known_supersets(cast_assert(F.Resistor, a).package) == pkg
     assert a.get_trait(F.has_explicit_part).mfr == "Some Manufacturer"
     assert a.get_trait(F.has_explicit_part).partno == "1234567890"
 
@@ -1740,19 +1761,28 @@ def test_assign_to_enum_param(bob: Bob):
 
 
 def test_trait_template_enum(bob: Bob):
+    class test_trait(L.Module.TraitT.decless()):
+        def __init__(self, value: _StrEnumForTests):
+            super().__init__()
+            self._value = value
+
+        def get_values(self, solver: DefaultSolver) -> _StrEnumForTests:
+            return self._value
+
+    F.test_trait = test_trait  # type: ignore
+
     text = dedent(
         """
         #pragma experiment("TRAITS")
         #pragma experiment("MODULE_TEMPLATING")
 
-        import Resistor
-        import has_package_requirements
+        import test_trait
 
-        module Resistor0805 from Resistor:
-            trait has_package_requirements<size="I0805">
+        module Module:
+            trait test_trait<value="OPTION_B">
 
         module App:
-            r = new Resistor0805
+            m = new Module
         """
     )
 
@@ -1760,54 +1790,60 @@ def test_trait_template_enum(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
-    r = bob.resolve_field_shortcut(node, "r")
-    assert isinstance(r, F.Resistor)
+    r = bob.resolve_field_shortcut(node, "m")
+    assert isinstance(r, L.Module)
 
     solver = DefaultSolver()
-    assert r.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+    assert r.get_trait(test_trait).get_values(solver) == _StrEnumForTests.OPTION_B
 
 
 def test_trait_template_enum_invalid(bob: Bob):
+    class test_trait(L.Module.TraitT.decless()):
+        def __init__(self, value: _StrEnumForTests):
+            super().__init__()
+            self._value = value
+
+        def get_values(self, solver: DefaultSolver) -> _StrEnumForTests:
+            return self._value
+
+    F.test_trait = test_trait  # type: ignore
+
     text = dedent(
         """
         #pragma experiment("TRAITS")
         #pragma experiment("MODULE_TEMPLATING")
 
-        import Resistor
-        import has_package_requirements
+        import test_trait
 
-        module Resistor0805 from Resistor:
-            trait has_package_requirements<size="<invalid size>">
+        module Module:
+            trait test_trait<value="<invalid value>">
 
         module App:
-            r = new Resistor0805
+            m = new Module
         """
     )
 
     tree = parse_text_as_file(text)
-    with pytest.raises(errors.UserInvalidValueError):
+    with pytest.raises(errors.UserInvalidValueError, match="Invalid value"):
         bob.build_ast(tree, TypeRef(["App"]))
 
 
 def test_module_template_enum(bob: Bob):
-    class ResistorWithSize(F.Resistor):
-        def __init__(self, size: SMDSize):
+    class TestModule(L.Module):
+        def __init__(self, value: _StrEnumForTests):
             super().__init__()
-            self._size = size
+            self._value = value
 
-        def __postinit__(self, *args, **kwargs):
-            self.add(F.has_package_requirements(size=self._size))
-
-    F.ResistorWithSize = ResistorWithSize  # type: ignore
+    F.TestModule = TestModule  # type: ignore
 
     text = dedent(
         """
         #pragma experiment("MODULE_TEMPLATING")
 
-        import ResistorWithSize
+        import TestModule
 
         module App:
-            r = new ResistorWithSize<size="I0805">
+            m = new TestModule<value="OPTION_B">
         """
     )
 
@@ -1815,53 +1851,34 @@ def test_module_template_enum(bob: Bob):
     node = bob.build_ast(tree, TypeRef(["App"]))
 
     assert isinstance(node, L.Module)
-    r = bob.resolve_field_shortcut(node, "r")
-    assert isinstance(r, ResistorWithSize)
-
-    solver = DefaultSolver()
-    assert r.get_trait(F.has_package_requirements).get_sizes(solver) == SMDSize.I0805
+    m = bob.resolve_field_shortcut(node, "m")
+    assert isinstance(m, TestModule)
 
 
 def test_module_template_enum_invalid(bob: Bob):
-    class ResistorWithSize(F.Resistor):
-        def __init__(self, size: SMDSize):
+    class TestModule(L.Module):
+        def __init__(self, value: _StrEnumForTests):
             super().__init__()
-            self._size = size
+            self._value = value
 
-        def __postinit__(self, *args, **kwargs):
-            self.add(F.has_package_requirements(size=self._size))
+    F.TestModule = TestModule  # type: ignore
 
-    F.ResistorWithSize = ResistorWithSize  # type: ignore
+    F.TestModule = TestModule  # type: ignore
 
     text = dedent(
         """
         #pragma experiment("MODULE_TEMPLATING")
 
-        import ResistorWithSize
+        import TestModule
 
         module App:
-            r = new ResistorWithSize<size="<invalid size>">
+            m = new TestModule<value="<invalid value>">
         """
     )
 
     tree = parse_text_as_file(text)
-    with pytest.raises(errors.UserInvalidValueError):
+    with pytest.raises(errors.UserInvalidValueError, match="Invalid value"):
         bob.build_ast(tree, TypeRef(["App"]))
-
-
-# Helper classes for enum tests
-class _IntEnumForTests(IntEnum):
-    VALUE_1 = 1
-    VALUE_2 = 2
-    VALUE_3 = 3
-
-
-class _StrEnumForTests(StrEnum):
-    OPTION_A = "option_a"
-    OPTION_B = "option_b"
-    OPTION_C = "option_c"
-    PRESET_A = "preset_a"
-    PRESET_B = "preset_b"
 
 
 # Test classes for enum template tests
