@@ -13,7 +13,7 @@ class Electrical(ModuleInterface):
     # potential= L.p_field(units=P.dimensionless)
 
     def get_net(self):
-        from faebryk.library.Net import Net
+        from faebryk.library.components.Net import Net
 
         nets = {
             net
@@ -28,7 +28,7 @@ class Electrical(ModuleInterface):
         return next(iter(nets))
 
     def net_crosses_pad_boundary(self) -> bool:
-        from faebryk.library.Pad import Pad
+        from faebryk.library.components.Pad import Pad
 
         def _get_pad(n: Node):
             if (parent := n.get_parent()) is None:

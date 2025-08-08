@@ -13,7 +13,7 @@ from faebryk.libs.units import P, Quantity
 
 # FIXME: this has to go this way to avoid gen_F detecting a circular import
 if TYPE_CHECKING:
-    from faebryk.library.ElectricPower import ElectricPower
+    from faebryk.library.interfaces.ElectricPower import ElectricPower
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class Capacitor(Module):
     def power(self) -> "ElectricPower":
         """An `ElectricPower` interface, which is connected to the capacitor."""
         # FIXME: this has to go this way to avoid gen_F detecting a circular import
-        from faebryk.library.ElectricPower import ElectricPower
+        from faebryk.library.interfaces.ElectricPower import ElectricPower
 
         if self.has_trait(self._has_power):
             power = self.get_trait(self._has_power).power

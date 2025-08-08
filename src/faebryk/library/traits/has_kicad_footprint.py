@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import faebryk.library._F as F
 
 if TYPE_CHECKING:
-    from faebryk.library.Pad import Pad
+    from faebryk.library.primitives.Pad import Pad
 
 
 class has_kicad_footprint(F.Footprint.TraitT):

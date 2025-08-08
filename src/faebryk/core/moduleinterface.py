@@ -24,7 +24,7 @@ from faebryk.core.link import (
 from faebryk.core.node import CNode, Node, NodeException
 from faebryk.core.pathfinder import find_paths
 from faebryk.core.trait import Trait
-from faebryk.library.can_specialize import can_specialize
+from faebryk.library.traits.can_specialize import can_specialize
 from faebryk.libs.util import ConfigFlag, cast_assert, groupby, once
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ class ModuleInterface(Node):
         *other: Self,
         link=None,
     ):
-        from faebryk.library.can_bridge import can_bridge
+        from faebryk.library.traits.can_bridge import can_bridge
 
         bridges = [bridge] if isinstance(bridge, Node | ModuleInterface) else bridge
         intf = self
@@ -291,7 +291,7 @@ class ModuleInterface(Node):
     # TODO get rid of this abomination
     @property
     def reference_shim(self):
-        from faebryk.library.has_single_electric_reference import (
+        from faebryk.library.traits.has_single_electric_reference import (
             has_single_electric_reference,
         )
 

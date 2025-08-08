@@ -63,7 +63,7 @@ class implements_design_check(Trait.TraitT.decless()):
         return F.has_solver.find_unique(self.get_graph()).solver
 
     def get_pcb(self):
-        from faebryk.library.PCB import PCB
+        from faebryk.library.primitives.PCB import PCB
 
         matches = GraphFunctions(self.get_graph()).nodes_of_type(PCB)
         assert len(matches) == 1

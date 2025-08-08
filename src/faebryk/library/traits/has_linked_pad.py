@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from faebryk.core.moduleinterface import ModuleInterface
 
 if TYPE_CHECKING:
-    from faebryk.library.Pad import Pad
+    from faebryk.library.components.Pad import Pad
 
 
 class has_linked_pad(ModuleInterface.TraitT):

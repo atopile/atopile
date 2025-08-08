@@ -7,7 +7,7 @@ from faebryk.exporters.netlist.graph import (
     _conflicts,
     _NetName,
 )
-from faebryk.library import Net as F
+from faebryk.library.primitives import Net as F
 
 
 @pytest.mark.parametrize(
