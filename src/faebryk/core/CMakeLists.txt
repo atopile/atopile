@@ -45,9 +45,25 @@ if(WIN32)
   set(ZIG_PY_LIB_NAME_ARG -Dpython-lib=${PY_LIB_NAME})
   set(ZIG_PY_LIB_DIR_ARG_USE ${ZIG_PY_LIB_DIR_ARG})
 endif()
+
+# On macOS, ensure a compatible deployment target so delocate matches wheel tag
+set(ZIG_ENV_PREFIX)
+if(APPLE)
+  set(_MAC_DEPLOY "$ENV{MACOSX_DEPLOYMENT_TARGET}")
+  if(NOT _MAC_DEPLOY)
+    # Default per arch: x86_64 -> 10.13, arm64 -> 11.0
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+      set(_MAC_DEPLOY "11.0")
+    else()
+      set(_MAC_DEPLOY "10.13")
+    endif()
+  endif()
+  # Prefix build with env var export for Zig subprocess
+  set(ZIG_ENV_PREFIX ${CMAKE_COMMAND} -E env MACOSX_DEPLOYMENT_TARGET=${_MAC_DEPLOY})
+endif()
 add_custom_command(
   OUTPUT "${ZIG_BUILD_STAMP}"
-  COMMAND "${Python3_EXECUTABLE}" -m ziglang build python-ext -Doptimize=ReleaseFast
+  COMMAND ${ZIG_ENV_PREFIX} "${Python3_EXECUTABLE}" -m ziglang build python-ext -Doptimize=ReleaseFast
           -Dpython-include=${PY_INCLUDE}
           ${ZIG_PY_LIB_NAME_ARG}
           ${ZIG_PY_LIB_DIR_ARG_USE}
