@@ -12,7 +12,6 @@ from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.picker.picker import pick_part_recursively
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
 
@@ -149,12 +148,12 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
 @pytest.mark.parametrize(
     "package,package_str",
     [
-        (SMDSize.I0402, "L0402"),
-        (SMDSize.SMD1_1x1_8mm, "SMD1_1x1_8mm"),
+        (F.Inductor.Package.L0402, "L0402"),
+        (F.Inductor.Package.SMD1_1x1_8mm, "SMD1_1x1_8mm"),
     ],
 )
 def test_ato_pick_inductor(
-    bob: Bob, repo_root: Path, package: SMDSize, package_str: str
+    bob: Bob, repo_root: Path, package: F.Inductor.Package, package_str: str
 ):
     text = dedent(
         f"""
@@ -171,10 +170,11 @@ def test_ato_pick_inductor(
     node = bob.build_ast(tree, TypeRef(["A"]))
 
     assert isinstance(node, L.Module)
+    solver = DefaultSolver()
 
     inductor = bob.resolve_field_shortcut(node, "inductor")
     assert isinstance(inductor, F.Inductor)
-    assert inductor.get_trait(F.has_package_requirements)._size == package
+    assert solver.inspect_get_known_supersets(inductor.package) == package
 
     pick_part_recursively(inductor, DefaultSolver())
 

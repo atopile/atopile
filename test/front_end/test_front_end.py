@@ -14,7 +14,6 @@ from atopile.parse import parse_text_as_file
 from faebryk.core.solver.defaultsolver import DefaultSolver
 from faebryk.libs.library import L
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 from faebryk.libs.util import cast_assert
 
@@ -281,19 +280,19 @@ def test_standard_library_import(bob: Bob):
             "import Resistor",
             "Resistor",
             "R0402",
-            SMDSize.I0402,
+            F.Resistor.Package.R0402,
         ),
         (
             "from 'generics/resistors.ato' import Resistor",
             "Resistor",
-            "0402",
-            SMDSize.I0402,
+            "R0402",
+            F.Resistor.Package.R0402,
         ),
         (
             "from 'generics/capacitors.ato' import Capacitor",
             "Capacitor",
-            "0402",
-            SMDSize.I0402,
+            "C0402",
+            F.Capacitor.Package.C0402,
         ),
     ],
 )
@@ -302,7 +301,7 @@ def test_reserved_attrs(
     import_stmt: str,
     class_name: str,
     pkg_str: str,
-    pkg: SMDSize,
+    pkg: F.Resistor.Package | F.Capacitor.Package,
     repo_root: Path,
 ):
     bob.search_paths.append(
@@ -328,7 +327,7 @@ def test_reserved_attrs(
     solver = DefaultSolver()
 
     a = bob.resolve_node_shortcut(node, "a")
-    assert solver.inspect_get_known_supersets(cast_assert(F.Resistor, a).package) == pkg
+    assert solver.inspect_get_known_supersets(a.package) == pkg  # type: ignore
     assert a.get_trait(F.has_explicit_part).mfr == "Some Manufacturer"
     assert a.get_trait(F.has_explicit_part).partno == "1234567890"
 

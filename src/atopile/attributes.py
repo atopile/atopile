@@ -13,6 +13,7 @@ from atopile import address
 from atopile.errors import UserBadParameterError, UserNotImplementedError
 from faebryk.core.trait import TraitImpl
 from faebryk.libs.exceptions import downgrade
+from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.util import not_none
 
 log = logging.getLogger(__name__)
@@ -291,21 +292,25 @@ class Resistor(F.Resistor):
     def footprint(self, value: str):
         from atopile.front_end import DeprecatedException
 
-        if value.startswith("R"):
-            try:
-                GlobalAttributes._handle_package_size(self, value[1:])
-            except UserBadParameterError:
-                pass
-            else:
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        "`footprint` is deprecated for assignment of package. "
-                        f"Use: `package = '{value[1:]}'`"
-                    )
-                # Return here, to avoid additionally setting the footprint
-                return
-
-        not_none(GlobalAttributes.footprint.fset)(self, value)
+        try:
+            self.package.constrain_subset(
+                EnumSet(F.Resistor.Package["R" + value.removeprefix("R")])
+            )
+        except ValueError:
+            # doesn't match the usual error, but this will all be deleted soon anyway
+            raise UserBadParameterError(
+                f"Invalid package: {value}. "
+                "Valid packages are: "
+                + ", ".join(F.Resistor.Package.__members__.keys())
+            )
+        else:
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    "`footprint` is deprecated for assignment of package. "
+                    f"Use: `package = '{value}'`"
+                )
+            # Return here, to avoid additionally setting the footprint
+            return
 
     @property
     def _1(self) -> F.Electrical:
@@ -347,21 +352,25 @@ class CommonCapacitor(F.Capacitor):
     def footprint(self, value: str):
         from atopile.front_end import DeprecatedException
 
-        if value.startswith("C"):
-            try:
-                GlobalAttributes._handle_package_size(self, value[1:])
-            except UserBadParameterError:
-                pass
-            else:
-                with downgrade(DeprecatedException):
-                    raise DeprecatedException(
-                        "`footprint` is deprecated for assignment of package. "
-                        f"Use: `package = '{value[1:]}'`"
-                    )
-                # Return here, to avoid additionally setting the footprint
-                return
-
-        not_none(GlobalAttributes.footprint.fset)(self, value)
+        try:
+            self.package.constrain_subset(
+                EnumSet(F.Capacitor.Package["C" + value.removeprefix("C")])
+            )
+        except ValueError:
+            # doesn't match the usual error, but this will all be deleted soon anyway
+            raise UserBadParameterError(
+                f"Invalid package: {value}. "
+                "Valid packages are: "
+                + ", ".join(F.Capacitor.Package.__members__.keys())
+            )
+        else:
+            with downgrade(DeprecatedException):
+                raise DeprecatedException(
+                    "`footprint` is deprecated for assignment of package. "
+                    f"Use: `package = '{value}'`"
+                )
+            # Return here, to avoid additionally setting the footprint
+            return
 
     @property
     def _1(self) -> F.Electrical:
