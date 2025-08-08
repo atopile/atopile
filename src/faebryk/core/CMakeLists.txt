@@ -58,15 +58,51 @@ if(APPLE)
       set(_MAC_DEPLOY "10.13")
     endif()
   endif()
-  # Prefix build with env var export for Zig subprocess
-  set(ZIG_ENV_PREFIX ${CMAKE_COMMAND} -E env MACOSX_DEPLOYMENT_TARGET=${_MAC_DEPLOY})
+  
+  # Determine target arch from the Python we are building for (wheel arch), not host
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -c "import platform;print(platform.machine())"
+    OUTPUT_VARIABLE _PY_MACHINE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(_PY_MACHINE MATCHES "^(x86_64|i386)$")
+    set(_ZIG_ARCH "x86_64")
+    # For x86_64 wheels, minimum supported macOS is 10.13
+    if(NOT _MAC_DEPLOY)
+      set(_MAC_DEPLOY "10.13")
+    endif()
+  elseif(_PY_MACHINE MATCHES "^(arm64|aarch64)$")
+    set(_ZIG_ARCH "aarch64")
+    # For arm64 wheels, minimum supported macOS is 11.0
+    if(NOT _MAC_DEPLOY)
+      set(_MAC_DEPLOY "11.0")
+    endif()
+  else()
+    # Fallback to host processor if unknown
+    if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+      set(_ZIG_ARCH "aarch64")
+    else()
+      set(_ZIG_ARCH "x86_64")
+    endif()
+  endif()
+
+  # Find SDK root for cross-arch builds
+  execute_process(
+    COMMAND xcrun --sdk macosx --show-sdk-path
+    OUTPUT_VARIABLE _MAC_SDK_ROOT
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+
+  # Prefix build with env var export for Zig subprocess (deployment target + SDKROOT)
+  if(_MAC_SDK_ROOT)
+    set(ZIG_ENV_PREFIX ${CMAKE_COMMAND} -E env MACOSX_DEPLOYMENT_TARGET=${_MAC_DEPLOY} SDKROOT=${_MAC_SDK_ROOT})
+  else()
+    set(ZIG_ENV_PREFIX ${CMAKE_COMMAND} -E env MACOSX_DEPLOYMENT_TARGET=${_MAC_DEPLOY})
+  endif()
 
   # Provide an explicit Zig target triple including deployment target so the
   # produced dylib carries the correct LC_VERSION_MIN_MACOSX
-  set(_ZIG_ARCH "x86_64")
-  if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
-    set(_ZIG_ARCH "aarch64")
-  endif()
   set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
 add_custom_command(
