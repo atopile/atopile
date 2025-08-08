@@ -59,30 +59,79 @@ if(APPLE)
     endif()
   endif()
   
-  # Determine target arch from the Python we are building for (wheel arch), not host
-  execute_process(
-    COMMAND "${Python3_EXECUTABLE}" -c "import platform;print(platform.machine())"
-    OUTPUT_VARIABLE _PY_MACHINE
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
-  if(_PY_MACHINE MATCHES "^(x86_64|i386)$")
-    set(_ZIG_ARCH "x86_64")
-    # For x86_64 wheels, minimum supported macOS is 10.13
-    if(NOT _MAC_DEPLOY)
-      set(_MAC_DEPLOY "10.13")
+  # Determine target arch from build context (prefer explicit arch hints), not host
+  unset(_ZIG_ARCH)
+  if(DEFINED CMAKE_OSX_ARCHITECTURES AND NOT CMAKE_OSX_ARCHITECTURES STREQUAL "")
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+      set(_ZIG_ARCH "x86_64")
+    elseif(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+      set(_ZIG_ARCH "aarch64")
     endif()
-  elseif(_PY_MACHINE MATCHES "^(arm64|aarch64)$")
-    set(_ZIG_ARCH "aarch64")
-    # For arm64 wheels, minimum supported macOS is 11.0
-    if(NOT _MAC_DEPLOY)
-      set(_MAC_DEPLOY "11.0")
+  endif()
+
+  if(NOT DEFINED _ZIG_ARCH)
+    if(DEFINED ENV{CIBW_ARCHS_MACOS})
+      string(FIND "$ENV{CIBW_ARCHS_MACOS}" "x86_64" _idx)
+      if(NOT _idx EQUAL -1)
+        set(_ZIG_ARCH "x86_64")
+      endif()
+      if(NOT DEFINED _ZIG_ARCH)
+        string(FIND "$ENV{CIBW_ARCHS_MACOS}" "arm64" _idx2)
+        if(NOT _idx2 EQUAL -1)
+          set(_ZIG_ARCH "aarch64")
+        endif()
+      endif()
+    elseif(DEFINED ENV{CIBW_ARCHS})
+      string(FIND "$ENV{CIBW_ARCHS}" "x86_64" _idx3)
+      if(NOT _idx3 EQUAL -1)
+        set(_ZIG_ARCH "x86_64")
+      endif()
+      if(NOT DEFINED _ZIG_ARCH)
+        string(FIND "$ENV{CIBW_ARCHS}" "arm64" _idx4)
+        if(NOT _idx4 EQUAL -1)
+          set(_ZIG_ARCH "aarch64")
+        endif()
+      endif()
     endif()
-  else()
-    # Fallback to host processor if unknown
+  endif()
+
+  if(NOT DEFINED _ZIG_ARCH AND DEFINED ENV{ARCHFLAGS})
+    if("$ENV{ARCHFLAGS}" MATCHES "-arch[ ]+x86_64")
+      set(_ZIG_ARCH "x86_64")
+    elseif("$ENV{ARCHFLAGS}" MATCHES "-arch[ ]+arm64")
+      set(_ZIG_ARCH "aarch64")
+    endif()
+  endif()
+
+  if(NOT DEFINED _ZIG_ARCH)
+    # Last resort: query Python's machine (can be wrong on cross builds)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -c "import platform;print(platform.machine())"
+      OUTPUT_VARIABLE _PY_MACHINE
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    if(_PY_MACHINE MATCHES "^(x86_64|i386)$")
+      set(_ZIG_ARCH "x86_64")
+    elseif(_PY_MACHINE MATCHES "^(arm64|aarch64)$")
+      set(_ZIG_ARCH "aarch64")
+    endif()
+  endif()
+
+  if(NOT DEFINED _ZIG_ARCH)
+    # Fallback to host
     if(CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
       set(_ZIG_ARCH "aarch64")
     else()
       set(_ZIG_ARCH "x86_64")
+    endif()
+  endif()
+
+  # Ensure deployment target default matches arch
+  if(NOT _MAC_DEPLOY)
+    if(_ZIG_ARCH STREQUAL "x86_64")
+      set(_MAC_DEPLOY "10.13")
+    else()
+      set(_MAC_DEPLOY "11.0")
     endif()
   endif()
 
