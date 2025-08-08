@@ -40,6 +40,11 @@ fn addPythonExtension(
     python_ext.addIncludePath(.{ .cwd_relative = python_include });
 
     const builtin = @import("builtin");
+    if (builtin.os.tag == .macos) {
+        // Do not link libpython on macOS; allow undefined symbols to be
+        // resolved at runtime by the Python interpreter (like distutils does).
+        python_ext.linker_allow_shlib_undefined = true;
+    }
     if (builtin.os.tag == .windows) {
         // On Windows, Python extension modules must link against the import library
         if (python_lib_opt) |python_lib| {
