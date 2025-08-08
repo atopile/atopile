@@ -60,11 +60,20 @@ if(APPLE)
   endif()
   # Prefix build with env var export for Zig subprocess
   set(ZIG_ENV_PREFIX ${CMAKE_COMMAND} -E env MACOSX_DEPLOYMENT_TARGET=${_MAC_DEPLOY})
+
+  # Provide an explicit Zig target triple including deployment target so the
+  # produced dylib carries the correct LC_VERSION_MIN_MACOSX
+  set(_ZIG_ARCH "x86_64")
+  if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+    set(_ZIG_ARCH "aarch64")
+  endif()
+  set(ZIG_TARGET_ARG -Dtarget=${_ZIG_ARCH}-macos.${_MAC_DEPLOY})
 endif()
 add_custom_command(
   OUTPUT "${ZIG_BUILD_STAMP}"
   COMMAND ${ZIG_ENV_PREFIX} "${Python3_EXECUTABLE}" -m ziglang build python-ext -Doptimize=ReleaseFast
           -Dpython-include=${PY_INCLUDE}
+          ${ZIG_TARGET_ARG}
           ${ZIG_PY_LIB_NAME_ARG}
           ${ZIG_PY_LIB_DIR_ARG_USE}
   COMMAND ${CMAKE_COMMAND} -E touch "${ZIG_BUILD_STAMP}"
