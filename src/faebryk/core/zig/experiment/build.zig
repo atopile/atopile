@@ -10,14 +10,14 @@ fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
         .target = target,
         .optimize = optimize,
     });
-    
+
     // Run the executable and capture its output
     const run_gen = b.addRunArtifact(gen_pyi_exe);
     const pyi_output = run_gen.captureStdOut();
-    
+
     // Install the captured output as pyzig.pyi
     const install_pyi = b.addInstallFile(pyi_output, "lib/pyzig.pyi");
-    
+
     return &install_pyi.step;
 }
 
@@ -39,6 +39,7 @@ fn addPythonExtension(
 
     python_ext.addIncludePath(.{ .cwd_relative = python_include });
     if (python_lib_dir_opt) |lib_dir| {
+        // Accept absolute paths from the Python bootstrap
         python_ext.addLibraryPath(.{ .cwd_relative = lib_dir });
     }
     python_ext.linkSystemLibrary(python_lib);

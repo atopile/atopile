@@ -2849,3 +2849,46 @@ def debug_perf(*args):
     if args:
         return _debug_perf(*args)
     return _debug_perf
+
+
+@dataclass
+class PythonLib:
+    include_path: Path
+    name: str
+    dir_path: Path | None
+
+
+def get_python_lib():
+    import sysconfig
+
+    python_include = sysconfig.get_paths()["include"]
+
+    if sys.platform.startswith("win"):
+        python_lib = f"python{sys.version_info.major}{sys.version_info.minor}"
+    else:
+        python_lib = f"python{sys.version_info.major}.{sys.version_info.minor}"
+
+    if sys.platform.startswith("win"):
+        LIB_EXT = ".lib"
+        LIB_PREFIX = ""
+    elif sys.platform.startswith("darwin"):
+        LIB_EXT = ".dylib"
+        LIB_PREFIX = "lib"
+    else:
+        LIB_EXT = ".so"
+        LIB_PREFIX = "lib"
+
+    # if running in uv with managed python
+    if sys.platform.startswith("win"):
+        lib_dir = Path(python_include).parent / "libs"
+    else:
+        lib_dir = Path(python_include).parent.parent / "lib"
+
+    path = lib_dir / f"{LIB_PREFIX}{python_lib}{LIB_EXT}"
+    lib_dir = lib_dir if path.exists() else None
+
+    return PythonLib(
+        include_path=Path(python_include),
+        name=python_lib,
+        dir_path=lib_dir,
+    )
