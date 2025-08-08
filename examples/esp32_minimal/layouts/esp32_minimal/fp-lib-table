@@ -1,20 +1,6 @@
 (fp_lib_table
     (version 7)
     (lib
-        (name "FH_0402B221K500NT")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/FH_0402B221K500NT")
-        (options "")
-        (descr "atopile: part lib: FH_0402B221K500NT")
-    )
-    (lib
-        (name "FH_0402CG101J500NT")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/FH_0402CG101J500NT")
-        (options "")
-        (descr "atopile: part lib: FH_0402CG101J500NT")
-    )
-    (lib
         (name "Samsung_Electro_Mechanics_CL05A105KA5NQNC")
         (type "KiCad")
         (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05A105KA5NQNC")
@@ -27,13 +13,6 @@
         (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL05B104KO5NNNC")
         (options "")
         (descr "atopile: part lib: Samsung_Electro_Mechanics_CL05B104KO5NNNC")
-    )
-    (lib
-        (name "Samsung_Electro_Mechanics_CL10A106MQ8NNNC")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL10A106MQ8NNNC")
-        (options "")
-        (descr "atopile: part lib: Samsung_Electro_Mechanics_CL10A106MQ8NNNC")
     )
     (lib
         (name "Samsung_Electro_Mechanics_CL21A226MQQNNNE")
@@ -50,39 +29,11 @@
         (descr "atopile: part lib: UNI_ROYAL_0402WGF1000TCE")
     )
     (lib
-        (name "UNI_ROYAL_0402WGF1001TCE")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1001TCE")
-        (options "")
-        (descr "atopile: part lib: UNI_ROYAL_0402WGF1001TCE")
-    )
-    (lib
         (name "UNI_ROYAL_0402WGF1002TCE")
         (type "KiCad")
         (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1002TCE")
         (options "")
         (descr "atopile: part lib: UNI_ROYAL_0402WGF1002TCE")
-    )
-    (lib
-        (name "UNI_ROYAL_0402WGF1003TCE")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1003TCE")
-        (options "")
-        (descr "atopile: part lib: UNI_ROYAL_0402WGF1003TCE")
-    )
-    (lib
-        (name "UNI_ROYAL_0402WGF1503TCE")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1503TCE")
-        (options "")
-        (descr "atopile: part lib: UNI_ROYAL_0402WGF1503TCE")
-    )
-    (lib
-        (name "UNI_ROYAL_0402WGF2001TCE")
-        (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF2001TCE")
-        (options "")
-        (descr "atopile: part lib: UNI_ROYAL_0402WGF2001TCE")
     )
     (lib
         (name "UNI_ROYAL_0402WGF4701TCE")
@@ -99,11 +50,11 @@
         (descr "atopile: part lib: UNI_ROYAL_0402WGF4702TCE")
     )
     (lib
-        (name "YAGEO_CC0402JRNPO9BN200")
+        (name "UNI_ROYAL_0402WGF5101TCE")
         (type "KiCad")
-        (uri "${KIPRJMOD}/../../parts/YAGEO_CC0402JRNPO9BN200")
+        (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF5101TCE")
         (options "")
-        (descr "atopile: part lib: YAGEO_CC0402JRNPO9BN200")
+        (descr "atopile: part lib: UNI_ROYAL_0402WGF5101TCE")
     )
     (lib
         (name "kinghelm_KH_TYPE_C_16P")

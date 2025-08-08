@@ -15,5 +15,7 @@ dependencies:
     identifier: atopile/ti-tlv75901
   - type: registry
     identifier: atopile/usb-connectors
+    release: 0.2.2
   - type: registry
     identifier: atopile/esp32
+
