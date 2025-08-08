@@ -18,7 +18,6 @@ This way we can add new modules without changing this file
 from faebryk.library.interfaces.Electrical import Electrical
 from faebryk.library.traits.has_designator_prefix import has_designator_prefix
 from faebryk.library.traits.is_bus_parameter import is_bus_parameter
-from faebryk.library.traits.has_package_requirements import has_package_requirements
 from faebryk.library.traits.can_specialize_defined import can_specialize_defined
 from faebryk.library.interfaces.Power import Power
 from faebryk.library.traits.can_be_surge_protected import can_be_surge_protected
@@ -33,6 +32,7 @@ from faebryk.library.traits.has_linked_pad import has_linked_pad
 from faebryk.library.traits.has_pcb_position import has_pcb_position
 from faebryk.library.traits.has_part_picked import has_part_picked
 from faebryk.library.traits.is_auto_generated import is_auto_generated
+from faebryk.library.traits.has_package_requirements import has_package_requirements
 from faebryk.library.traits.is_app_root import is_app_root
 from faebryk.library.traits.has_layout_transform import has_layout_transform
 from faebryk.library.traits.has_solver import has_solver
@@ -55,6 +55,7 @@ from faebryk.library.traits.has_single_connection import has_single_connection
 from faebryk.library.traits.is_esphome_bus import is_esphome_bus
 from faebryk.library.traits.is_pickable import is_pickable
 from faebryk.library.traits.is_representable_by_single_value import is_representable_by_single_value
+from faebryk.library.interfaces.XtalIF import XtalIF
 from faebryk.library.traits.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.traits.is_surge_protected import is_surge_protected
 from faebryk.library.Filter import Filter

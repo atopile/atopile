@@ -2,17 +2,21 @@
 # SPDX-License-Identifier: MIT
 
 
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 
 from deprecated import deprecated
 
 import faebryk.library._F as F
+from faebryk.core.module import Module
 from faebryk.core.parameter import ParameterOperatable
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
 
-class LED(F.Diode):
+class LED(Module):
+    """
+    We know LEDs are diodes
+    """
     class Color(Enum):
         # Primary Colors
         RED = auto()
@@ -43,63 +47,107 @@ class LED(F.Diode):
         ULTRA_VIOLET = auto()
         INFRA_RED = auto()
 
-    brightness = L.p_field(units=P.candela)
-    max_brightness = L.p_field(units=P.candela)
+    rated_forward_voltage = L.p_field(
+        units=P.V,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.V, 1 * P.V),
+        tolerance_guess=10 * P.percent,
+    )
+    """
+    The maximumrated forward voltage drop at the rated forward current.
+    """
+    rated_forward_current = L.p_field(
+        units=P.A,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
+    )
+    """
+    Rated continuous forward current.
+    """
+    rated_power_dissipation = L.p_field(
+        units=P.W,
+        likely_constrained=True,
+        soft_set=L.Range(0.1 * P.mW, 10 * P.W),
+        tolerance_guess=10 * P.percent,
+    )
+    """
+    Rated power dissipation.
+    """
+
+    anode: F.Electrical
+    cathode: F.Electrical
+
+    rated_brightness = L.p_field(units=P.cd)
     color = L.p_field(domain=L.Domains.ENUM(Color))
 
-    # @L.rt_field
-    # def pickable(self):
-    #     return F.is_pickable_by_type(
-    #         F.is_pickable_by_type.Type.LED,
-    #         {
-    #             # Diode
-    #             "forward_voltage": self.forward_voltage,
-    #             "reverse_working_voltage": self.reverse_working_voltage,
-    #             "reverse_leakage_current": self.reverse_leakage_current,
-    #             # LED
-    #             "max_current": self.max_current,
-    #             "max_brightness": self.max_brightness,
-    #             "color": self.color,
-    #         },
-    #     )
+    @deprecated(reason="Use rated_brightness instead")
+    brightness = L.p_field(units=P.candela)
+    @deprecated(reason="Use rated_brightness instead")
+    max_brightness = L.p_field(units=P.candela)
+    @deprecated(reason="Use color instead")
+    color = L.p_field(domain=L.Domains.ENUM(Color))
 
-    def __preinit__(self):
-        self.current.alias_is(self.brightness / self.max_brightness * self.max_current)
-        self.brightness.constrain_le(self.max_brightness)
-
-    def set_intensity(self, intensity: ParameterOperatable.NumberLike) -> None:
-        self.brightness.alias_is(intensity * self.max_brightness)
-
-    @deprecated(reason="Use PoweredLED instead")
-    def connect_via_current_limiting_resistor(
-        self,
-        input_voltage: ParameterOperatable.NumberLike,
-        resistor: F.Resistor,
-        target: F.Electrical,
-        low_side: bool,
-    ):
-        if low_side:
-            self.cathode.connect_via(resistor, target)
-        else:
-            self.anode.connect_via(resistor, target)
-
-        resistor.resistance.alias_is(
-            self.get_needed_series_resistance_for_current_limit(input_voltage),
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.LEDS,
+            params=[self.rated_forward_voltage, self.rated_forward_current, self.rated_power_dissipation, self.rated_brightness, self.color],
         )
-        resistor.allow_removal_if_zero()
 
-    @deprecated(reason="Use PoweredLED instead")
-    def connect_via_current_limiting_resistor_to_power(
-        self, resistor: F.Resistor, power: F.ElectricPower, low_side: bool
-    ):
-        if low_side:
-            self.anode.connect(power.hv)
-        else:
-            self.cathode.connect(power.lv)
+    def __init__(self, color: Color):
+        super().__init__()
+        self.color = color
 
-        self.connect_via_current_limiting_resistor(
-            power.voltage,
-            resistor,
-            power.lv if low_side else power.hv,
-            low_side,
+    @L.rt_field
+    def can_bridge(self):
+        return F.can_bridge_defined(self.anode, self.cathode)
+
+    designator_prefix = L.f_field(F.has_designator_prefix)(
+        F.has_designator_prefix.Prefix.LED
+    )
+
+    @L.rt_field
+    def pin_association_heuristic(self):
+        return F.has_pin_association_heuristic_lookup_table(
+            mapping={
+                self.anode: ["A", "Anode", "+"],
+                self.cathode: ["K", "C", "Cathode", "-"],
+            },
+            accept_prefix=False,
+            case_sensitive=False,
         )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import LED, Resistor, ElectricPower
+
+        led = new LED
+        led.forward_voltage = 2.1V +/- 10%
+        led.current = 20mA +/- 5%
+        led.max_current = 30mA
+        led.color = LED.Color.RED
+        led.brightness = 100mcd
+        led.package = "0603"
+
+        # Connect with current limiting resistor
+        current_resistor = new Resistor
+        power_supply = new ElectricPower
+        assert power_supply.voltage within 5V +/- 5%
+
+        power_supply.hv ~> current_resistor ~> led ~> power_supply.lv
+
+        # Alternative: use dedicated function
+        led.connect_via_current_limiting_resistor(
+            power_supply.voltage,
+            current_resistor,
+            power_supply.lv,
+            low_side=True
+        )
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
+
+    class Package(StrEnum):
+        _01005 = "PACKAGE"
+
+    package = L.p_field(domain=L.Domains.ENUM(Package))

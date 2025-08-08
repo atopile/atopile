@@ -1,6 +1,8 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import StrEnum, auto
+
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
@@ -8,71 +10,78 @@ from faebryk.libs.units import P
 
 
 class Resistor(Module):
-    unnamed = L.list_field(2, F.Electrical)
+    """
+    A resistor is a passive two-terminal electrical component. Resistors can be configured by specifying a range for the following parameters:
+    - resistance: The resistance of the resistor in ohms.
+    - max_power: The maximum rated power that the resistor can dissipate in watts.
+    - max_voltage: The maximum rated voltage that the resistor can withstand in volts.
+    - package: The imperial SMD package of the resistor.
+    """
+    terminals = L.list_field(2, F.Electrical)
 
     resistance = L.p_field(units=P.ohm)
+    @deprecated(reason="Use PoweredLED instead")
     max_power = L.p_field(units=P.W)
+    @deprecated(reason="Use PoweredLED instead")
     max_voltage = L.p_field(units=P.V)
 
-    attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    designator_prefix = L.f_field(F.has_designator_prefix)(
-        F.has_designator_prefix.Prefix.R
-    )
+    rated_power = L.p_field(units=P.W)
+    rated_max_voltage = L.p_field(units=P.V)
 
+    attach_to_footprint: F.can_attach_to_footprint_symmetrically
+    
     @L.rt_field
-    def pickable(self) -> F.is_pickable_by_type:
+    def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
             params=[self.resistance, self.max_power, self.max_voltage],
         )
 
+    designator_prefix = L.f_field(F.has_designator_prefix)(
+        F.has_designator_prefix.Prefix.R
+    )
+
     @L.rt_field
     def can_bridge(self):
-        return F.can_bridge_defined(*self.unnamed)
+        return F.can_bridge_defined(*self.terminals)
 
-    @L.rt_field
-    def simple_value_representation(self):
-        S = F.has_simple_value_representation_based_on_params_chain.Spec
-        return F.has_simple_value_representation_based_on_params_chain(
-            S(self.resistance, tolerance=True),
-            S(self.max_power),
-        )
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        #pragma experiment("BRIDGE_CONNECT")
 
-    def allow_removal_if_zero(self):
-        # FIXME: enable as soon as solver works
-        return
-        # import faebryk.library._F as F
+        import Electrical, Resistor
 
-        # @once
-        # def do_replace():
-        #     self.resistance.constrain_subset(0.0 * P.ohm)
-        #     self.unnamed[0].connect(self.unnamed[1])
-        #     self.add(F.has_part_removed())
-        #
-        # self.resistance.operation_is_superset(0.0 * P.ohm).if_then_else(
-        #     lambda: do_replace(),
-        #     lambda: None,
-        #     preference=True,
-        # )
-        #
-        # def replace_zero(m: Module, solver: Solver):
-        #     assert m is self
-        #
-        #     solver.assert_any_predicate(
-        #         [(Is(self.resistance, 0.0 * P.ohm), None)], lock=True
-        #     )
-        #
-        # self.add(
-        #    F.has_multi_picker(-100, F.has_multi_picker.FunctionPicker(replace_zero))
-        # )
+        module App:
+            resistor = new Resistor
+            resistor.resistance = 100ohm +/- 5%
+            assert resistor.max_power >= 100mW
+            assert resistor.max_voltage >= 10V
+            resistor.package = "0402"
 
-    # TODO: remove @https://github.com/atopile/atopile/issues/727
-    @property
-    def p1(self) -> F.Electrical:
-        """One side of the resistor."""
-        return self.unnamed[0]
+            electrical1 = new Electrical
+            electrical2 = new Electrical
 
-    @property
-    def p2(self) -> F.Electrical:
-        """The other side of the resistor."""
-        return self.unnamed[1]
+            electrical1 ~ resistor.terminals[0]
+            electrical2 ~ resistor.terminals[1]
+            # OR
+            electrical1 ~> resistor ~> electrical2
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
+
+    class Package(StrEnum):
+        _01005 = auto()
+        _0201 = auto()
+        _0402 = auto()
+        _0603 = auto()
+        _0805 = auto()
+        _1206 = auto()
+        _1210 = auto()
+        _1808 = auto()
+        _1812 = auto()
+        _1825 = auto()
+        _2220 = auto()
+        _2225 = auto()
+        _3640 = auto()
+
+    package = L.p_field(domain=L.Domains.ENUM(Package))

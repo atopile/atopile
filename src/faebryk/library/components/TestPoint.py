@@ -17,9 +17,28 @@ class TestPoint(Module):
 
     contact: F.Electrical
 
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.TEST_POINTS,
+            params=[],
+        )
+
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.TP
     )
 
     def __preinit__(self):
         self.contact.add(F.requires_external_usage())
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import TestPoint
+
+        test_point = new TestPoint
+
+        # Connect to signal you want to probe
+        signal_to_test ~ test_point.contact
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

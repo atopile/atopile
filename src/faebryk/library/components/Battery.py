@@ -19,8 +19,26 @@ class Battery(Module):
         soft_set=L.Range(100 * P.mAh, 100 * P.Ah),
         likely_constrained=True,
     )
+    discharge_rate = L.p_field(
+        units=P.A,
+        soft_set=L.Range(1 * P.C, 10 * P.C), #TODO: Cleanup
+        likely_constrained=True,
+    )
+    c_rate = L.p_field(
+        units=P.dimensionless,
+        soft_set=L.Range(1 * P.C, 10 * P.C),
+        likely_constrained=True,
+    )
+    #TODO: equations to connect c rate discharge and capacity
 
     power: F.ElectricPower
+
+    @L.rt_field
+    def pickable(self):
+        return F.is_pickable_by_type(
+            endpoint=F.is_pickable_by_type.Endpoint.BATTERIES,
+            params=[self.voltage, self.capacity, self.discharge_rate, self.c_rate],
+        )
 
     def __preinit__(self) -> None:
         self.power.voltage.constrain_subset(self.voltage)
@@ -30,3 +48,26 @@ class Battery(Module):
         return F.has_single_electric_reference_defined(self.power)
 
     designator = L.f_field(F.has_designator_prefix)("BAT")
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Battery, ElectricPower
+
+        battery = new Battery
+        battery.voltage = 3.7V +/- 10%  # Li-ion cell
+        battery.capacity = 2000mAh +/- 5%
+
+        # Connect to system power
+        system_power = new ElectricPower
+        battery.power ~ system_power
+
+        # Battery specifications will constrain system voltage
+        assert system_power.voltage within battery.voltage
+
+        # For multiple cells in series
+        battery_pack = new Battery
+        battery_pack.voltage = 11.1V +/- 10%  # 3S Li-ion pack
+        battery_pack.capacity = 2000mAh +/- 5%
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
