@@ -6,7 +6,7 @@ import logging
 import faebryk.library._F as F  # noqa: F401
 from faebryk.core.parameter import Add, ParameterOperatable
 from faebryk.libs.library import L  # noqa: F401
-from faebryk.libs.smd import SMDSize
+from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import Quantity
 from faebryk.libs.util import times  # noqa: F401
 
@@ -67,7 +67,7 @@ class MultiCapacitor(F.Capacitor):
         self,
         nominal_capacitance: Quantity | None = None,
         tolerance: float | None = None,
-        size: SMDSize | None = None,
+        size: EnumSet[F.Capacitor.Package] | F.Capacitor.Package | None = None,
     ):
         for c in self.capacitors:
             c.explicit(nominal_capacitance, tolerance, size=size)
