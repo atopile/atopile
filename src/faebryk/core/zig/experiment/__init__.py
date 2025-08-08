@@ -7,6 +7,7 @@ from faebryk.libs.util import (
     debug_perf,
     get_python_lib,
     global_lock,
+    is_editable_install,
     run_live,
 )
 
@@ -69,7 +70,9 @@ def load():
     sys.path.append(str(_build_dir))
 
 
-compile_zig()
-load()
+# Fallback to editable build-on-import
+if is_editable_install():
+    compile_zig()
+    load()
 
-from pyzig import *  # type: ignore # noqa: E402, F403
+from pyzig import *  # type: ignore # noqa: E402, F403,F401

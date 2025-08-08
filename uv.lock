@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.13.*"
 
 [[package]]
@@ -99,7 +99,6 @@ dependencies = [
     { name = "typer" },
     { name = "typing-extensions" },
     { name = "urllib3" },
-    { name = "ziglang" },
     { name = "zstd" },
 ]
 
@@ -129,6 +128,7 @@ dev = [
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
     { name = "viztracer" },
+    { name = "ziglang" },
 ]
 
 [package.metadata]
@@ -170,7 +170,6 @@ requires-dist = [
     { name = "typer", specifier = ">=0.12" },
     { name = "typing-extensions", specifier = ">=4.6.3" },
     { name = "urllib3", specifier = ">=2.2.1" },
-    { name = "ziglang", specifier = "==0.14.1" },
     { name = "zstd", specifier = ">=1.5.6.7" },
 ]
 
@@ -200,6 +199,7 @@ dev = [
     { name = "pytest-timeout", specifier = ">=2.3.1" },
     { name = "pytest-xdist", specifier = "~=3.6.1" },
     { name = "viztracer", specifier = ">=1.0.0,<2.0.0" },
+    { name = "ziglang", specifier = "==0.14.1" },
 ]
 
 [[package]]
