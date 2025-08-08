@@ -6,7 +6,7 @@ from typing import Iterable, Sequence
 
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
-from faebryk.library.can_specialize import can_specialize
+from faebryk.library.traits.can_specialize import can_specialize
 
 logger = logging.getLogger(__name__)
 

@@ -56,6 +56,7 @@ class Crystal_Oscillator(Module):
 
     @L.rt_field
     def can_bridge(self):
+<<<<<<< HEAD
         return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
 
     usage_example = L.f_field(F.has_usage_example)(
@@ -91,3 +92,6 @@ class Crystal_Oscillator(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
+=======
+        return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
+>>>>>>> e4b2d71b589afc05fb8f3fe3814e467bc6dab411

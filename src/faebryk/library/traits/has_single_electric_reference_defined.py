@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import faebryk.library._F as F
 
 if TYPE_CHECKING:
-    from faebryk.library.ElectricPower import ElectricPower
+    from faebryk.library.interfaces.ElectricPower import ElectricPower
 
 
 class has_single_electric_reference_defined(F.has_single_electric_reference.impl()):

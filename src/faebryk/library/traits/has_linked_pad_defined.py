@@ -9,7 +9,7 @@ from faebryk.core.node import Node
 from faebryk.core.trait import TraitImpl
 
 if TYPE_CHECKING:
-    from faebryk.library.Pad import Pad
+    from faebryk.library.components.Pad import Pad
 
 
 class has_linked_pad_defined(F.has_linked_pad.impl()):

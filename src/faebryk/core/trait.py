@@ -96,7 +96,7 @@ class Trait(Node):
             # Overwriteable ------------------------------------------------------------
 
             def _handle_added_to_parent(self):
-                from faebryk.library.is_lazy import is_lazy
+                from faebryk.library.traits.is_lazy import is_lazy
 
                 # deferred to later
                 if self.has_trait(is_lazy):

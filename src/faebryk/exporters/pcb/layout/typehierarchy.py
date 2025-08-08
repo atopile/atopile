@@ -28,7 +28,7 @@ class LayoutTypeHierarchy(Layout):
         """
         Tip: Make sure at least one parent of node has an absolute position defined
         """
-        from faebryk.library.has_footprint import has_footprint
+        from faebryk.library.traits.has_footprint import has_footprint
 
         # Find the layout for each node (isinstance mod_type) and group by matched level
         levels = groupby(

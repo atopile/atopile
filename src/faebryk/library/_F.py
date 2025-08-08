@@ -57,7 +57,6 @@ from faebryk.library.traits.is_pickable import is_pickable
 from faebryk.library.traits.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.interfaces.XtalIF import XtalIF
 from faebryk.library.traits.has_pin_association_heuristic import has_pin_association_heuristic
-from faebryk.library.traits.is_surge_protected import is_surge_protected
 from faebryk.library.Filter import Filter
 from faebryk.library.interfaces.Logic import Logic
 from faebryk.library.traits.has_single_electric_reference_defined import has_single_electric_reference_defined
@@ -70,6 +69,7 @@ from faebryk.library.traits.has_pcb_position_defined_relative import has_pcb_pos
 from faebryk.library.traits.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
 from faebryk.library.traits.has_part_removed import has_part_removed
 from faebryk.library.traits.implements_design_check import implements_design_check
+from faebryk.library.traits.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.traits.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.traits.can_bridge_defined import can_bridge_defined
 from faebryk.library.traits.has_datasheet_defined import has_datasheet_defined
@@ -86,7 +86,6 @@ from faebryk.library.traits.is_pickable_by_supplier_id import is_pickable_by_sup
 from faebryk.library.traits.is_pickable_by_type import is_pickable_by_type
 from faebryk.library.traits.is_representable_by_single_value_defined import is_representable_by_single_value_defined
 from faebryk.library.traits.has_pin_association_heuristic_lookup_table import has_pin_association_heuristic_lookup_table
-from faebryk.library.traits.is_surge_protected_defined import is_surge_protected_defined
 from faebryk.library.traits.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.traits.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.traits.has_footprint_impl import has_footprint_impl
@@ -98,7 +97,6 @@ from faebryk.library.traits.requires_external_usage import requires_external_usa
 from faebryk.library.components.BJT import BJT
 from faebryk.library.components.Diode import Diode
 from faebryk.library.components.MOSFET import MOSFET
-from faebryk.library.traits.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.traits.has_footprint_defined import has_footprint_defined
 from faebryk.library.traits.has_symbol_layout_defined import has_symbol_layout_defined
 from faebryk.library.primitives.Net import Net

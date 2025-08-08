@@ -234,7 +234,7 @@ class Module(Node):
     # TODO get rid of this abomination
     @property
     def reference_shim(self):
-        from faebryk.library.has_single_electric_reference import (
+        from faebryk.library.traits.has_single_electric_reference import (
             has_single_electric_reference,
         )
 

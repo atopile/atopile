@@ -233,7 +233,7 @@ class AtoPart:
         self.ato_path.write_text(ato, encoding="utf-8")
 
     def verify_checksum(self, ato_file_contents: str):
-        from faebryk.library.is_auto_generated import _FileManuallyModified
+        from faebryk.library.traits.is_auto_generated import _FileManuallyModified
 
         if not self.auto_generated:
             return

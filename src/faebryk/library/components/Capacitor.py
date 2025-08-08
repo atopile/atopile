@@ -13,7 +13,7 @@ from faebryk.libs.units import P, Quantity
 
 # FIXME: this has to go this way to avoid gen_F detecting a circular import
 if TYPE_CHECKING:
-    from faebryk.library.ElectricPower import ElectricPower
+    from faebryk.library.interfaces.ElectricPower import ElectricPower
 
 logger = logging.getLogger(__name__)
 

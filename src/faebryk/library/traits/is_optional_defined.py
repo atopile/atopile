@@ -4,7 +4,7 @@
 import logging
 from typing import Callable
 
-from faebryk.library.is_optional import is_optional
+from faebryk.library.traits.is_optional import is_optional
 
 logger = logging.getLogger(__name__)
 

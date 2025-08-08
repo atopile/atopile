@@ -291,7 +291,7 @@ class PartLifecycle:
             return fp_table
 
         def ingest_part(self, part: AtoPart) -> AtoPart:
-            from faebryk.library.is_auto_generated import _FileManuallyModified
+            from faebryk.library.traits.is_auto_generated import _FileManuallyModified
 
             def _filter_datasheet_downgrades(diff: dict) -> dict:
                 """
