@@ -32,6 +32,8 @@ from faebryk.library import _F as F
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import DAG
 
+logger = logging.getLogger(__name__)
+
 
 @contextlib.contextmanager
 def _githash_layout(layout: Path) -> Generator[Path, None, None]:
@@ -125,16 +127,18 @@ class Muster:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
+        for target in selected_targets:
+            if target in self.targets:
+                self.targets[target].implicit = False
+            else:
+                logger.warning(f"Unrecognized target: '{target}'")
+
         subgraph = self.dependency_dag.get_subgraph(
             selector_func=lambda name: name in selected_targets
             or any(alias in selected_targets for alias in self.targets[name].aliases)
         )
 
         sorted_names = subgraph.topologically_sorted()
-
-        for target in self.targets.values():
-            if target.name in selected_targets:
-                target.implicit = False
 
         return [self.targets[name] for name in sorted_names if name in self.targets]
 

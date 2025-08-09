@@ -285,10 +285,9 @@ def build(app: Module) -> None:
         _update_layout(pcb.pcb_file, original_pcb)
 
     design_targets = muster.discover_and_register(G())
-
     targets = muster.select(
-        set(config.build.targets)
-        | set(design_targets) - set(config.build.exclude_targets)
+        (set(config.build.targets) | {"__default__"} | set(design_targets))
+        - set(config.build.exclude_targets)
     )
 
     if any(t.name == generate_manufacturing_data.name for t in targets):
