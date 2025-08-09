@@ -1,6 +1,7 @@
 """CLI command definition for `ato build`."""
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -42,6 +43,12 @@ def build(
     open_layout: Annotated[
         bool | None, typer.Option("--open", envvar="ATO_OPEN_LAYOUT")
     ] = None,
+    clean: Annotated[
+        bool | None,
+        typer.Option(
+            "--clean", help="Delete the build and module cache before building"
+        ),
+    ] = None,
 ):
     """
     Build the specified --target(s) or the targets specified by the build config.
@@ -56,6 +63,30 @@ def build(
     from faebryk.libs.exceptions import accumulate, log_user_errors
     from faebryk.libs.kicad.ipc import reload_pcb
     from faebryk.libs.project.dependencies import ProjectDependencies
+
+    if clean:
+
+        def _rm(path: Path) -> None:
+            """
+            Remove *path* regardless of its type (file, dir, symlink).
+            Symlinks are never traversed; they are unlinked directly.
+            """
+            if path.is_symlink() or path.is_file():
+                path.unlink(missing_ok=True)
+                return
+            for child in path.iterdir():
+                _rm(child)
+            path.rmdir()
+
+        build_path = config.project.paths.build
+        logger.info("🗑️  Deleting build cache: %s", build_path)
+        for item in build_path.iterdir():
+            _rm(item)
+
+        modules_path = config.project.paths.modules
+        logger.info("🗑️  Deleting modules cache: %s", modules_path)
+        for item in modules_path.iterdir():
+            _rm(item)
 
     config.apply_options(
         entry=entry,
