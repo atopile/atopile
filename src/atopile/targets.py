@@ -8,6 +8,8 @@ from pathlib import Path
 
 from atopile.config import config
 from atopile.errors import UserExportError
+from faebryk.core.cpp import Graph
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
@@ -26,6 +28,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
+from faebryk.library import _F as F
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import DAG
 
@@ -102,6 +105,21 @@ class Muster:
             return target
 
         return decorator
+
+    def discover_and_register(self, graph: Graph) -> list[str]:
+        provides_build_targets = GraphFunctions(graph).nodes_of_type(
+            F.provides_build_target
+        )
+        for provides_build_target in provides_build_targets:
+            target = MusterTarget(
+                name=provides_build_target.name,
+                aliases=provides_build_target.aliases,
+                requires_kicad=provides_build_target.requires_kicad,
+                func=provides_build_target.run,
+            )
+            self.add_target(target)
+
+        return [target.name for target in self.targets.values()]
 
     def select(self, selected_targets: set[str] = {"all"}) -> list[MusterTarget]:
         """
@@ -256,18 +274,6 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
     export_i2c_tree(
         app, solver, config.build.paths.output_base.with_suffix(".i2c_tree.md")
     )
-
-
-@muster.register("esphome-config")
-def generate_esphome_config(app: Module, solver: Solver) -> None:
-    """Generate an ESPHome configuration file."""
-    from faebryk.exporters.esphome import esphome
-
-    esphome_config = esphome.make_esphome_config(app.get_graph(), solver)
-    config_path = config.build.paths.output_base.with_suffix(".esphome.yaml")
-
-    with config_path.open("w", encoding="utf-8") as f:
-        f.write(esphome.dump_esphome_config(esphome_config))
 
 
 @muster.register(
