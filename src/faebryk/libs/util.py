@@ -2822,3 +2822,73 @@ def match_iterables[T, U](
         raise ValueError("All iterables must have unique keys")
     dicts = [{k: vs[0] for k, vs in d.items()} for d in multi_dicts]
     return zip_dicts_by_key(*dicts)  # type: ignore
+
+
+def debug_perf(*args):
+    def _debug_perf[T: Callable](func: T) -> T:
+        # get module of function
+        module = func.__module__
+        logger = logging.getLogger(module)
+
+        def _wrapper(*args, **kwargs):
+            start = time.perf_counter()
+            result = func(*args, **kwargs)
+            end = time.perf_counter()
+            diff = end - start
+
+            for i, prefix in enumerate(["", "m", "u", "n"]):
+                if diff * (1000**i) >= 1:
+                    diff = round(diff * (1000**i), 2)
+                    break
+
+            logger.info(f"{func.__name__} took {diff} {prefix}s")
+            return result
+
+        return _wrapper  # type: ignore
+
+    if args:
+        return _debug_perf(*args)
+    return _debug_perf
+
+
+@dataclass
+class PythonLib:
+    include_path: Path
+    name: str
+    dir_path: Path | None
+
+
+def get_python_lib():
+    import sysconfig
+
+    python_include = sysconfig.get_paths()["include"]
+
+    if sys.platform.startswith("win"):
+        python_lib = f"python{sys.version_info.major}{sys.version_info.minor}"
+    else:
+        python_lib = f"python{sys.version_info.major}.{sys.version_info.minor}"
+
+    if sys.platform.startswith("win"):
+        LIB_EXT = ".lib"
+        LIB_PREFIX = ""
+    elif sys.platform.startswith("darwin"):
+        LIB_EXT = ".dylib"
+        LIB_PREFIX = "lib"
+    else:
+        LIB_EXT = ".so"
+        LIB_PREFIX = "lib"
+
+    # if running in uv with managed python
+    if sys.platform.startswith("win"):
+        lib_dir = Path(python_include).parent / "libs"
+    else:
+        lib_dir = Path(python_include).parent.parent / "lib"
+
+    path = lib_dir / f"{LIB_PREFIX}{python_lib}{LIB_EXT}"
+    lib_dir = lib_dir if path.exists() else None
+
+    return PythonLib(
+        include_path=Path(python_include),
+        name=python_lib,
+        dir_path=lib_dir,
+    )
