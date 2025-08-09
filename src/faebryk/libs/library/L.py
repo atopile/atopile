@@ -22,6 +22,7 @@ from faebryk.core.node import (  # noqa: F401
 from faebryk.core.parameter import R, p_field  # noqa: F401
 from faebryk.core.reference import reference  # noqa: F401
 from faebryk.core.trait import Trait  # noqa: F401
+from faebryk.libs.exceptions import DeprecatedException
 from faebryk.libs.sets.quantity_sets import (
     Quantity_Interval,
     Quantity_Interval_Disjoint,
@@ -90,3 +91,18 @@ class DiscreteSet(Quantity_Set_Discrete):
 
 def EmptySet(units: Unit | None = None):
     return Quantity_Set_Empty(units)
+
+
+class DeprecatedField(Node):
+    def __init__(self, message: str):
+        super().__init__()
+        self.message = message
+
+    def __preinit__(self):
+        raise DeprecatedException(self.message)
+
+
+def deprecated_field(message: str):
+    from faebryk.core.node import _d_field
+
+    return _d_field(lambda: DeprecatedField(message))
