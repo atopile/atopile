@@ -23,7 +23,7 @@ module i2c_pulls_weak:
     """
     for pullup in pullups:
         pullup.resistance = 10kohm +/- 1%
-        pullup.package = "0402"
+        pullup.package = "R0402"
 
     i2c.scl.line ~> pullups[0] ~> i2c.scl.reference.hv
     i2c.sda.line ~> pullups[1] ~> i2c.sda.reference.hv

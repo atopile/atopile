@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComponentTestCase:
     module: Module
-    packages: list[SMDSize]
     lcsc_id: str | None = None
     mfr_mpn: tuple[str, str] | None = None
     override_test_name: str | None = None
@@ -42,7 +41,6 @@ mfr_parts = [
                 r.slew_rate.constrain_le(1 * P.MV / P.us),
             )
         ),
-        packages=[],  # FIXME: re-add package requirement"SOT-23-5"
         mfr_mpn=("Texas Instruments", "LMV321IDBVR"),
         override_test_name="MFR_TI_LMV321IDBVR",
     )
@@ -61,7 +59,6 @@ lcsc_id_parts = [
                 r.slew_rate.constrain_le(1 * P.MV / P.us),
             )
         ),
-        packages=[],  # FIXME: re-add package requirement"SOT-23-5"
         lcsc_id="C7972",
         override_test_name="LCSC_ID_C7972",
     )
@@ -76,9 +73,9 @@ resistors = [
                 ),
                 r.max_power.constrain_ge(0.05 * P.W),
                 r.max_voltage.constrain_ge(25 * P.V),
+                r.package.constrain_subset(F.Resistor.Package.R0402),
             )
         ),
-        packages=[SMDSize.I0402],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -88,9 +85,9 @@ resistors = [
                 ),
                 r.max_power.constrain_ge(0.1 * P.W),
                 r.max_voltage.constrain_ge(50 * P.V),
+                r.package.constrain_subset(F.Resistor.Package.R0603),
             )
         ),
-        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Resistor().builder(
@@ -98,9 +95,9 @@ resistors = [
                 r.resistance.constrain_subset(
                     L.Range.from_center_rel(3 * P.mohm, 0.01)
                 ),
+                r.package.constrain_subset(F.Resistor.Package.R0805),
             )
         ),
-        packages=[SMDSize.I0805],
     ),
 ]
 
@@ -115,9 +112,9 @@ capacitors = [
                 c.temperature_coefficient.constrain_subset(
                     F.Capacitor.TemperatureCoefficient.X7R
                 ),
+                c.package.constrain_subset(F.Capacitor.Package.C0603),
             )
         ),
-        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Capacitor().builder(
@@ -129,9 +126,9 @@ capacitors = [
                 c.temperature_coefficient.constrain_subset(
                     F.Capacitor.TemperatureCoefficient.C0G
                 ),
+                c.package.constrain_subset(F.Capacitor.Package.C0402),
             )
         ),
-        packages=[SMDSize.I0402],
     ),
 ]
 
@@ -143,9 +140,9 @@ inductors = [
                 i.max_current.constrain_ge(0.05 * P.A),
                 i.dc_resistance.constrain_le(1.17 * P.ohm),
                 i.self_resonant_frequency.constrain_ge(30 * P.Mhertz),
+                i.package.constrain_subset(F.Inductor.Package.I0603),
             )
         ),
-        packages=[SMDSize.I0603],
     ),
     ComponentTestCase(
         F.Inductor().builder(
@@ -156,9 +153,9 @@ inductors = [
                 i.max_current.constrain_ge(0.06 * P.A),
                 i.dc_resistance.constrain_le(10.7 * P.ohm),
                 i.self_resonant_frequency.constrain_ge(17 * P.Mhertz),
+                i.package.constrain_subset(F.Inductor.Package.I0805),
             )
         ),
-        packages=[SMDSize.I0805],
     ),
 ]
 
@@ -176,7 +173,6 @@ mosfets = [
                 m.on_resistance.constrain_le(0.1 * P.ohm),
             )
         ),
-        packages=[],  # FIXME: re-add package requirement "SOT-23"
     ),
 ]
 
@@ -191,7 +187,6 @@ diodes = [
                 d.max_current.constrain_ge(1 * P.A),
             )
         ),
-        packages=[],  # FIXME: re-add package requirement "SOD-123FL", "SMB"
     ),
 ]
 
@@ -210,7 +205,6 @@ leds = [
                 led.max_current.constrain_ge(20 * P.mA),
             )
         ),
-        packages=[],
     ),
 ]
 
@@ -226,9 +220,6 @@ tvs = [
                 t.reverse_breakdown_voltage.constrain_le(8 * P.V),
             )
         ),
-        # FIXME: re-add package requirement
-        # "SOD-123", "SOD-123FL", "SOT-23-6", "SMA", "SMB", "SMC"
-        packages=[],
     ),
 ]
 
@@ -246,9 +237,6 @@ ldos = [
                 # u.quiescent_current,
             )
         ),
-        # FIXME: re-add package requirement
-        # "SOT-23", "SOT-23-5", "SOT23", "SOT-23-3", "SOT-23-3L"
-        packages=[],
     ),
 ]
 
