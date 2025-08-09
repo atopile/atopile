@@ -4,6 +4,7 @@
 
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
+from faebryk.libs.library import L
 from faebryk.libs.util import not_none
 
 
@@ -44,3 +45,13 @@ class Pad(ModuleInterface):
 
     def get_fp(self) -> F.Footprint:
         return not_none(self.get_parent_of_type(F.Footprint))
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Pad
+
+        pad = new Pad
+        electrical_signal ~ pad.net
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
