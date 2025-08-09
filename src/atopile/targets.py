@@ -258,6 +258,18 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
     )
 
 
+@muster.register("esphome-config")
+def generate_esphome_config(app: Module, solver: Solver) -> None:
+    """Generate an ESPHome configuration file."""
+    from faebryk.exporters.esphome import esphome
+
+    esphome_config = esphome.make_esphome_config(app.get_graph(), solver)
+    config_path = config.build.paths.output_base.with_suffix(".esphome.yaml")
+
+    with config_path.open("w", encoding="utf-8") as f:
+        f.write(esphome.dump_esphome_config(esphome_config))
+
+
 @muster.register(
     "__default__",
     dependencies=[
