@@ -214,6 +214,7 @@ def test_pick_error_group():
     assert isinstance(ex.value.exceptions[0], PickError)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_pick_dependency_simple():
     class App(Module):
@@ -233,6 +234,7 @@ def test_pick_dependency_simple():
     pick_part_recursively(app, solver)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_1():
@@ -244,6 +246,7 @@ def test_pick_dependency_advanced_1():
     pick_part_recursively(rdiv, solver)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_advanced_2():
@@ -257,6 +260,7 @@ def test_pick_dependency_advanced_2():
     pick_part_recursively(rdiv, solver)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_dependency_div_negative():
@@ -297,6 +301,7 @@ def test_null_solver():
     )
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.slow
 def test_pick_voltage_divider_complex():
@@ -330,6 +335,7 @@ def test_pick_voltage_divider_complex():
     #    print(m.get_full_name(), m.pretty_params(solver))
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_pick_capacitor_temperature_coefficient():
     # the picker backend must have access to the same enum definition for this to work

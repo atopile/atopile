@@ -21,6 +21,7 @@ def _build(app: Module):
     attach_random_designators(app.get_graph())
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_bom_picker_pick():
     r = F.Resistor()
