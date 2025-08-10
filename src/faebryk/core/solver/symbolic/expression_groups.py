@@ -58,9 +58,9 @@ def idempotent_deduplicate(mutator: Mutator):
     exprs = mutator.nodes_of_types(IdempotentOperands, sort_by_depth=True)
     for expr in exprs:
         assert isinstance(expr, IdempotentOperands)
-        unique_operands = unique(expr.operands, key=lambda x: x)
-        if len(unique_operands) != len(expr.operands):
-            mutator.mutate_expression(expr, operands=unique_operands)
+        unique_operands = unique(expr.operands, key=lambda x: x)  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+        if len(unique_operands) != len(expr.operands):  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+            mutator.mutate_expression(expr, operands=unique_operands)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
 
 @algorithm("Idempotent unpack", terminal=False)
@@ -72,11 +72,11 @@ def idempotent_unpack(mutator: Mutator):
     exprs = mutator.nodes_of_types(IdempotentExpression, sort_by_depth=True)
     for expr in exprs:
         assert isinstance(expr, IdempotentExpression)
-        assert len(expr.operands) == 1
-        inner = expr.operands[0]
+        assert len(expr.operands) == 1  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+        inner = expr.operands[0]  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         if type(inner) is not type(expr):
             continue
-        mutator.mutate_unpack_expression(expr)
+        mutator.mutate_unpack_expression(expr)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
 
 @algorithm("Unary identity unpack", terminal=False)
@@ -90,13 +90,13 @@ def unary_identity_unpack(mutator: Mutator):
     exprs = mutator.nodes_of_types(UnaryIdentity, sort_by_depth=True)
     for expr in exprs:
         assert isinstance(expr, UnaryIdentity)
-        if len(expr.operands) != 1:
+        if len(expr.operands) != 1:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             continue
-        inner = expr.operands[0]
+        inner = expr.operands[0]  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         if mutator.utils.is_literal(inner):
             mutator.utils.alias_to(expr, inner, terminate=True)
         else:
-            mutator.mutate_unpack_expression(expr)
+            mutator.mutate_unpack_expression(expr)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
 
 @algorithm("Involutory fold", terminal=False)

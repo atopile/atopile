@@ -118,7 +118,7 @@ class JsonRpc:
 
 def create_json_rpc(readable: BinaryIO, writable: BinaryIO) -> JsonRpc:
     """Creates JSON-RPC wrapper for the readable and writable streams."""
-    return JsonRpc(readable, writable)
+    return JsonRpc(readable, writable)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
 
 class ProcessManager:
@@ -150,7 +150,7 @@ class ProcessManager:
             stdin=subprocess.PIPE,
         )
         self._processes[workspace] = proc
-        self._rpc[workspace] = create_json_rpc(proc.stdout, proc.stdin)
+        self._rpc[workspace] = create_json_rpc(proc.stdout, proc.stdin)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
         def _monitor_process():
             proc.wait()
@@ -214,7 +214,7 @@ def run_over_json_rpc(
     argv: Sequence[str],
     use_stdin: bool,
     cwd: str,
-    source: str = None,
+    source: str = None,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
 ) -> RpcRunResult:
     """Uses JSON-RPC to execute a command."""
     rpc: Union[JsonRpc, None] = get_or_start_json_rpc(workspace, interpreter, cwd)

@@ -41,7 +41,7 @@ class TraitAlreadyExists(NodeException):
             *args,
             f"Trait `{trait_type.__qualname__}` already exists in "
             f"`{node}`: `{node.get_trait(trait_type)}`"
-            f", trying to add `{trait.__qualname__}`",
+            f", trying to add `{trait.__qualname__}`",  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         )
         self.trait = trait
 
@@ -146,7 +146,7 @@ class Trait(Node):
         assert issubclass(cls, Trait)
         if not TraitImpl.is_traitimpl(obj):
             return False
-        return issubclass(obj.__trait__, cls)
+        return issubclass(obj.__trait__, cls)  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     # TODO check subclasses implementing abstractmethods (use subclass_init)
 
@@ -173,15 +173,15 @@ class TraitImpl(Node):
     __trait__: type[Trait]
 
     @property
-    def obj(self) -> Node: ...
-    def get_obj[T: Node](self, type: type[T]) -> T: ...
-    def cmp(self, other: "TraitImpl") -> tuple[bool, "TraitImpl"]: ...
+    def obj(self) -> Node: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
+    def get_obj[T: Node](self, type: type[T]) -> T: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
+    def cmp(self, other: "TraitImpl") -> tuple[bool, "TraitImpl"]: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
     def implements(self, trait: type[Trait]): ...
 
     # Overwriteable --------------------------------------------------------------------
     def _handle_added_to_parent(self): ...
     def on_obj_set(self): ...
-    def handle_duplicate(self, old: "TraitImpl", node: Node) -> bool:
+    def handle_duplicate(self, old: "TraitImpl", node: Node) -> bool:  # type: ignore[invalid-return-type] TODO(type-fix): ty init
         """
         Returns True if the duplicate was handled, False if the trait should be skipped
         """

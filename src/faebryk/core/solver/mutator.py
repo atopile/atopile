@@ -1024,7 +1024,7 @@ class Mutator:
     def _create_expression[T: Expression](
         self,
         expr_factory: type[T],
-        *operands: SolverAllExtended,
+        *operands: SolverAllExtended,  # type: ignore[invalid-type-form] TODO(type-fix): ty init
         non_operands: Any = None,
         constrain: bool = False,
     ) -> T:
@@ -1056,7 +1056,7 @@ class Mutator:
     def mutate_expression(
         self,
         expr: Expression,
-        operands: Iterable[SolverAllExtended] | None = None,
+        operands: Iterable[SolverAllExtended] | None = None,  # type: ignore[invalid-type-form] TODO(type-fix): ty init
         expression_factory: type[Expression] | None = None,
         soft_mutate: type[Is] | type[IsSubset] | None = None,
         ignore_existing: bool = False,
@@ -1132,7 +1132,7 @@ class Mutator:
         self,
         expression_factory: type[CanonicalExpression],
         expr: Expression,
-        operands: Iterable[SolverAllExtended],
+        operands: Iterable[SolverAllExtended],  # type: ignore[invalid-type-form] TODO(type-fix): ty init
         soft: type[Is] | type[IsSubset],
         from_ops: Sequence[ParameterOperatable] | None = None,
     ):

@@ -195,7 +195,7 @@ def fabll(ctx: typer.Context, root: Path):
             str_: str = m.group(0)
             args = m.group(1)
             out = str_
-            prefix = re.match(r"^\s*", str_).group(0)
+            prefix = re.match(r"^\s*", str_).group(0)  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
 
             # find names of args
             arg_names = re.findall(rf",\s*({pyname})\s*(?:[:,]|$)", args)

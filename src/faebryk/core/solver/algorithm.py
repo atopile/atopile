@@ -41,7 +41,7 @@ def algorithm(
     """
 
     if not hasattr(algorithm, "_registered_algorithms"):
-        algorithm._registered_algorithms = []
+        algorithm._registered_algorithms = []  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     def decorator(func: SolverAlgorithmFunc) -> SolverAlgorithm:
         @wraps(func)
@@ -54,7 +54,7 @@ def algorithm(
             single=single,
             terminal=terminal,
         )
-        algorithm._registered_algorithms.append(out)
+        algorithm._registered_algorithms.append(out)  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
         return out
 
@@ -62,4 +62,4 @@ def algorithm(
 
 
 def get_algorithms() -> list[SolverAlgorithm]:
-    return algorithm._registered_algorithms
+    return algorithm._registered_algorithms  # type: ignore[unresolved-attribute] TODO(type-fix): ty init

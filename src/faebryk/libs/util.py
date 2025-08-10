@@ -568,14 +568,14 @@ def try_avoid_endless_recursion(f: Callable[..., str]):
 
             if recursion_error_str in CACHED_RECUSION_ERRORS:
                 logger.error(
-                    f"Recursion error: {f.__name__} {f.__code__.co_filename}:"
-                    + f"{f.__code__.co_firstlineno}: DUPLICATE"
+                    f"Recursion error: {f.__name__} {f.__code__.co_filename}:"  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+                    + f"{f.__code__.co_firstlineno}: DUPLICATE"  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
                 )
             else:
                 CACHED_RECUSION_ERRORS.add(recursion_error_str)
                 logger.error(
-                    f"Recursion error: {f.__name__} {f.__code__.co_filename}:"
-                    + f"{f.__code__.co_firstlineno}"
+                    f"Recursion error: {f.__name__} {f.__code__.co_filename}:"  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+                    + f"{f.__code__.co_firstlineno}"  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
                 )
                 logger.error(recursion_error_str)
 
@@ -642,8 +642,8 @@ def try_or[T](
         return func()
     except catch as e:
         if default_f is not None:
-            default = default_f(e)
-        return default
+            default = default_f(e)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
+        return default  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
 
 class SharedReference[T]:
@@ -815,7 +815,7 @@ def once[T, **P](
     params = inspect.signature(f).parameters
     # optimization: if takes self, cache in instance (saves hash of instance)
     if "self" in params:
-        name = f.__name__
+        name = f.__name__  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         attr_name = f"_{name}_once"
         param_list = list(params)
 
@@ -854,24 +854,24 @@ def once[T, **P](
 
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> Any:
         lookup = (args, tuple(kwargs.items()))
-        if lookup in wrapper.cache:
-            return wrapper.cache[lookup]
+        if lookup in wrapper.cache:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+            return wrapper.cache[lookup]  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
         result = f(*args, **kwargs)
         if _cacheable is None or _cacheable(result):
-            wrapper.cache[lookup] = result
+            wrapper.cache[lookup] = result  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         return result
 
-    wrapper.cache = {}
-    wrapper._is_once_wrapper = True
+    wrapper.cache = {}  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+    wrapper._is_once_wrapper = True  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
     return wrapper
 
 
 def predicated_once[T](
     pred: Callable[[T], bool],
 ):
-    def decorator[F](f: F) -> F:
-        return once(f, pred)
+    def decorator[F](f: F) -> F:  # type: ignore[invalid-return-type] TODO(type-fix): ty init
+        return once(f, pred)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     return decorator
 
@@ -889,20 +889,20 @@ def assert_once[T, O, **P](
             wrapper_set.add(wrapper)
             return f(obj, *args, **kwargs)
         else:
-            raise AssertionError(f"{f.__name__} called on {obj} more than once")
+            raise AssertionError(f"{f.__name__} called on {obj} more than once")  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     return wrapper
 
 
 def assert_once_global[T, **P](f: Callable[P, T]) -> Callable[P, T]:
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-        if not wrapper.called:
-            wrapper.called = True
+        if not wrapper.called:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+            wrapper.called = True  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             return f(*args, **kwargs)
         else:
             raise AssertionError("Function called more than once")
 
-    wrapper.called = False
+    wrapper.called = False  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
     return wrapper
 
 
@@ -1395,7 +1395,7 @@ class FuncSet[T, H: Hashable = int](collections.abc.MutableSet[T]):
     A set by pre-processing the objects with the hasher function.
     """
 
-    def __init__(self, data: Iterable[T] = tuple(), hasher: Callable[[T], H] = id):
+    def __init__(self, data: Iterable[T] = tuple(), hasher: Callable[[T], H] = id):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
         self._hasher = hasher
         self._deref: defaultdict[H, list[T]] = defaultdict(list)
 
@@ -1443,7 +1443,7 @@ class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
     def __init__(
         self,
         data: Iterable[tuple[T, U]] = tuple(),
-        hasher: Callable[[T], H] = id,
+        hasher: Callable[[T], H] = id,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
     ):
         self._hasher = hasher
         self._keys: defaultdict[H, list[T]] = defaultdict(list)
@@ -1527,7 +1527,7 @@ class FuncDict[T, U, H: Hashable = int](collections.abc.MutableMapping[T, U]):
         return default
 
     def backwards(self) -> "FuncDict[U, T, H]":
-        return FuncDict(((v, k) for k, v in self.items()), hasher=self._hasher)
+        return FuncDict(((v, k) for k, v in self.items()), hasher=self._hasher)  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
 
 def dict_map_values(d: dict, function: Callable[[Any], Any]) -> dict:
@@ -1580,8 +1580,8 @@ def abstract[T: type](cls: T) -> T:
             raise TypeError(f"{cls.__name__} is abstract and cannot be instantiated")
         return old_new(cls_, *args, **kwargs)
 
-    cls.__new__ = _new
-    cls.__is_abstract__ = cls
+    cls.__new__ = _new  # type: ignore[invalid-assignment] TODO(type-fix): ty init
+    cls.__is_abstract__ = cls  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
     return cls
 
 
@@ -1666,12 +1666,12 @@ def common_prefix_to_tree(iterable: list[str]) -> Iterable[str]:
         yield "-" * prefix_length + s2[prefix_length:]
 
 
-def ind[T: str | list[str]](lines: T) -> T:
+def ind[T: str | list[str]](lines: T) -> T:  # type: ignore[invalid-return-type] TODO(type-fix): ty init
     prefix = "    "
     if isinstance(lines, str):
-        return indent(lines, prefix=prefix)
+        return indent(lines, prefix=prefix)  # type: ignore[invalid-return-type] TODO(type-fix): ty init
     if isinstance(lines, list):
-        return [f"{prefix}{line}" for line in lines]  # type: ignore
+        return [f"{prefix}{line}" for line in lines]  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
 
 def run_live(
@@ -1687,7 +1687,7 @@ def run_live(
     if sys.platform == "win32":
         return subprocess.run(*args, **kwargs)
 
-    process = subprocess.Popen(
+    process = subprocess.Popen(  # type: ignore[no-matching-overload] TODO(type-fix): ty init
         *args,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -1897,7 +1897,7 @@ def times_out(seconds: float):
 
                 def timeout_handler(signum, frame):
                     raise TimeoutError(
-                        f"Function {func.__name__} exceeded time limit of {seconds}s"
+                        f"Function {func.__name__} exceeded time limit of {seconds}s"  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
                     )
 
                 old_handler = signal.signal(signal.SIGALRM, timeout_handler)
@@ -2011,7 +2011,7 @@ def has_attr_or_property(obj: object, attr: str) -> bool:
 
 def write_only_property(func: Callable):
     def raise_write_only(*args, **kwargs):
-        raise AttributeError(f"{func.__name__} is write-only")
+        raise AttributeError(f"{func.__name__} is write-only")  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     return property(
         fget=raise_write_only,
@@ -2192,7 +2192,7 @@ def md_list[T](
         try:
             kvs = list(enumerate(obj))
         except TypeError:
-            return f"{indent}- {str(mapper(obj))}"
+            return f"{indent}- {str(mapper(obj))}"  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     if not kvs:
         if isinstance(obj, Tree):
@@ -2403,7 +2403,7 @@ def remove_venv_from_env(base_env: dict[str, str] | None = None):
 
 def pretty_type(t: object | type) -> str:
     try:
-        return t.__qualname__
+        return t.__qualname__  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
     except Exception:
         return str(t)
 
@@ -2528,7 +2528,7 @@ def compare_dataclasses[T](
         case (list(), list()):
             return {
                 f"[{i}]{k}": v
-                for i, (b, a) in enumerate(zip(before, after))
+                for i, (b, a) in enumerate(zip(before, after))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
                 for k, v in compare_dataclasses(
                     b,
                     a,

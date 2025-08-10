@@ -151,7 +151,7 @@ class AtoPart:
         # Process sorted pins
         for pin_name, pin_num in sorted_pins:
             if pin_name is None:
-                build.add_stmt(AtoCodeGen.PinDeclaration(pin_num))
+                build.add_stmt(AtoCodeGen.PinDeclaration(pin_num))  # type: ignore[missing-argument] TODO(type-fix): ty init
             else:
                 build.add_stmt(
                     AtoCodeGen.Connect(

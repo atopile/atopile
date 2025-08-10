@@ -601,7 +601,7 @@ class PartLifecycle:
 
             def _get_prop_uuid(name: str) -> str | None:
                 if name in pcb_fp.propertys:
-                    return pcb_fp.propertys[name].uuid
+                    return pcb_fp.propertys[name].uuid  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
                 return None
 
             ## Apply propertys, Reference and atopile_address

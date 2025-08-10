@@ -65,7 +65,7 @@ class FilterElectricalRC(F.Filter):
         # TODO: Remove hardcoded when normal equations solve faster
         out = cls(_hardcoded=True)
         cutoff_frequency = 1 / (
-            Quantity_Interval_Disjoint.from_value(resistance * capacitance)
+            Quantity_Interval_Disjoint.from_value(resistance * capacitance)  # type: ignore[unsupported-operator] TODO(type-fix): ty init
             * 2
             * math.pi
         )

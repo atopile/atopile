@@ -81,7 +81,7 @@ def get_latest_atopile_version() -> Version | None:
         )
         response.raise_for_status()
         version_str = response.json()["info"]["version"]
-    except (KeyError, requests.exceptions.RequestException):
+    except (KeyError, requests.exceptions.RequestException):  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         log.debug("Failed to get latest version")
         return None
 

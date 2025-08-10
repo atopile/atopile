@@ -11,7 +11,7 @@ else:
 if "." in __name__:
     from .AtoParserBase import AtoParserBase
 else:
-    from AtoParserBase import AtoParserBase
+    from AtoParserBase import AtoParserBase  # type: ignore[unresolved-import] TODO(type-fix): ty init
 
 def serializedATN():
     return [
@@ -512,20 +512,20 @@ class AtoParser ( AtoParserBase ):
     class File_inputContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
         def EOF(self):
             return self.getToken(AtoParser.EOF, 0)
 
-        def NEWLINE(self, i:int=None):
+        def NEWLINE(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.NEWLINE)
             else:
                 return self.getToken(AtoParser.NEWLINE, i)
 
-        def stmt(self, i:int=None):
+        def stmt(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.StmtContext)
             else:
@@ -537,7 +537,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitFile_input" ):
-                return visitor.visitFile_input(self)
+                return visitor.visitFile_input(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -587,7 +587,7 @@ class AtoParser ( AtoParserBase ):
     class Pragma_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -599,7 +599,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPragma_stmt" ):
-                return visitor.visitPragma_stmt(self)
+                return visitor.visitPragma_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -626,7 +626,7 @@ class AtoParser ( AtoParserBase ):
     class StmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -647,7 +647,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitStmt" ):
-                return visitor.visitStmt(self)
+                return visitor.visitStmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -692,11 +692,11 @@ class AtoParser ( AtoParserBase ):
     class Simple_stmtsContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def simple_stmt(self, i:int=None):
+        def simple_stmt(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.Simple_stmtContext)
             else:
@@ -706,7 +706,7 @@ class AtoParser ( AtoParserBase ):
         def NEWLINE(self):
             return self.getToken(AtoParser.NEWLINE, 0)
 
-        def SEMI_COLON(self, i:int=None):
+        def SEMI_COLON(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.SEMI_COLON)
             else:
@@ -717,7 +717,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSimple_stmts" ):
-                return visitor.visitSimple_stmts(self)
+                return visitor.visitSimple_stmts(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -768,7 +768,7 @@ class AtoParser ( AtoParserBase ):
     class Simple_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -837,7 +837,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSimple_stmt" ):
-                return visitor.visitSimple_stmt(self)
+                return visitor.visitSimple_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -955,7 +955,7 @@ class AtoParser ( AtoParserBase ):
     class Compound_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -972,7 +972,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCompound_stmt" ):
-                return visitor.visitCompound_stmt(self)
+                return visitor.visitCompound_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1012,7 +1012,7 @@ class AtoParser ( AtoParserBase ):
     class BlockdefContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1040,7 +1040,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlockdef" ):
-                return visitor.visitBlockdef(self)
+                return visitor.visitBlockdef(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1082,7 +1082,7 @@ class AtoParser ( AtoParserBase ):
     class Blockdef_superContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1098,7 +1098,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlockdef_super" ):
-                return visitor.visitBlockdef_super(self)
+                return visitor.visitBlockdef_super(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1127,7 +1127,7 @@ class AtoParser ( AtoParserBase ):
     class BlocktypeContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1145,7 +1145,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlocktype" ):
-                return visitor.visitBlocktype(self)
+                return visitor.visitBlocktype(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1178,7 +1178,7 @@ class AtoParser ( AtoParserBase ):
     class BlockContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1195,7 +1195,7 @@ class AtoParser ( AtoParserBase ):
         def DEDENT(self):
             return self.getToken(AtoParser.DEDENT, 0)
 
-        def stmt(self, i:int=None):
+        def stmt(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.StmtContext)
             else:
@@ -1207,7 +1207,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBlock" ):
-                return visitor.visitBlock(self)
+                return visitor.visitBlock(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1264,7 +1264,7 @@ class AtoParser ( AtoParserBase ):
     class Dep_import_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1287,7 +1287,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitDep_import_stmt" ):
-                return visitor.visitDep_import_stmt(self)
+                return visitor.visitDep_import_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1320,14 +1320,14 @@ class AtoParser ( AtoParserBase ):
     class Import_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
         def IMPORT(self):
             return self.getToken(AtoParser.IMPORT, 0)
 
-        def type_reference(self, i:int=None):
+        def type_reference(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.Type_referenceContext)
             else:
@@ -1341,7 +1341,7 @@ class AtoParser ( AtoParserBase ):
             return self.getTypedRuleContext(AtoParser.StringContext,0)
 
 
-        def COMMA(self, i:int=None):
+        def COMMA(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.COMMA)
             else:
@@ -1352,7 +1352,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitImport_stmt" ):
-                return visitor.visitImport_stmt(self)
+                return visitor.visitImport_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1404,7 +1404,7 @@ class AtoParser ( AtoParserBase ):
     class Declaration_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1421,7 +1421,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitDeclaration_stmt" ):
-                return visitor.visitDeclaration_stmt(self)
+                return visitor.visitDeclaration_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1450,7 +1450,7 @@ class AtoParser ( AtoParserBase ):
     class Field_reference_or_declarationContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1467,7 +1467,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitField_reference_or_declaration" ):
-                return visitor.visitField_reference_or_declaration(self)
+                return visitor.visitField_reference_or_declaration(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1507,7 +1507,7 @@ class AtoParser ( AtoParserBase ):
     class Assign_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1527,7 +1527,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAssign_stmt" ):
-                return visitor.visitAssign_stmt(self)
+                return visitor.visitAssign_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1558,7 +1558,7 @@ class AtoParser ( AtoParserBase ):
     class Cum_assign_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1579,7 +1579,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCum_assign_stmt" ):
-                return visitor.visitCum_assign_stmt(self)
+                return visitor.visitCum_assign_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1610,7 +1610,7 @@ class AtoParser ( AtoParserBase ):
     class Set_assign_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1633,7 +1633,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSet_assign_stmt" ):
-                return visitor.visitSet_assign_stmt(self)
+                return visitor.visitSet_assign_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1670,7 +1670,7 @@ class AtoParser ( AtoParserBase ):
     class Cum_operatorContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1685,7 +1685,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCum_operator" ):
-                return visitor.visitCum_operator(self)
+                return visitor.visitCum_operator(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1718,7 +1718,7 @@ class AtoParser ( AtoParserBase ):
     class Cum_assignableContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1735,7 +1735,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCum_assignable" ):
-                return visitor.visitCum_assignable(self)
+                return visitor.visitCum_assignable(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1775,7 +1775,7 @@ class AtoParser ( AtoParserBase ):
     class AssignableContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1804,7 +1804,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAssignable" ):
-                return visitor.visitAssignable(self)
+                return visitor.visitAssignable(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1862,7 +1862,7 @@ class AtoParser ( AtoParserBase ):
     class Retype_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -1882,7 +1882,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitRetype_stmt" ):
-                return visitor.visitRetype_stmt(self)
+                return visitor.visitRetype_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1913,24 +1913,24 @@ class AtoParser ( AtoParserBase ):
     class Directed_connect_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def bridgeable(self, i:int=None):
+        def bridgeable(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.BridgeableContext)
             else:
                 return self.getTypedRuleContext(AtoParser.BridgeableContext,i)
 
 
-        def SPERM(self, i:int=None):
+        def SPERM(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.SPERM)
             else:
                 return self.getToken(AtoParser.SPERM, i)
 
-        def LSPERM(self, i:int=None):
+        def LSPERM(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.LSPERM)
             else:
@@ -1941,7 +1941,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitDirected_connect_stmt" ):
-                return visitor.visitDirected_connect_stmt(self)
+                return visitor.visitDirected_connect_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -1988,11 +1988,11 @@ class AtoParser ( AtoParserBase ):
     class Connect_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def mif(self, i:int=None):
+        def mif(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.MifContext)
             else:
@@ -2007,7 +2007,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitConnect_stmt" ):
-                return visitor.visitConnect_stmt(self)
+                return visitor.visitConnect_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2038,7 +2038,7 @@ class AtoParser ( AtoParserBase ):
     class BridgeableContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2051,7 +2051,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBridgeable" ):
-                return visitor.visitBridgeable(self)
+                return visitor.visitBridgeable(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2078,7 +2078,7 @@ class AtoParser ( AtoParserBase ):
     class MifContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2091,7 +2091,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitMif" ):
-                return visitor.visitMif(self)
+                return visitor.visitMif(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2118,7 +2118,7 @@ class AtoParser ( AtoParserBase ):
     class ConnectableContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2139,7 +2139,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitConnectable" ):
-                return visitor.visitConnectable(self)
+                return visitor.visitConnectable(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2184,7 +2184,7 @@ class AtoParser ( AtoParserBase ):
     class Signaldef_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2200,7 +2200,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSignaldef_stmt" ):
-                return visitor.visitSignaldef_stmt(self)
+                return visitor.visitSignaldef_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2229,7 +2229,7 @@ class AtoParser ( AtoParserBase ):
     class Pindef_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2242,7 +2242,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPindef_stmt" ):
-                return visitor.visitPindef_stmt(self)
+                return visitor.visitPindef_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2269,7 +2269,7 @@ class AtoParser ( AtoParserBase ):
     class Pin_declarationContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2282,7 +2282,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPin_declaration" ):
-                return visitor.visitPin_declaration(self)
+                return visitor.visitPin_declaration(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2309,7 +2309,7 @@ class AtoParser ( AtoParserBase ):
     class Pin_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2333,7 +2333,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPin_stmt" ):
-                return visitor.visitPin_stmt(self)
+                return visitor.visitPin_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2378,7 +2378,7 @@ class AtoParser ( AtoParserBase ):
     class New_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2408,7 +2408,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNew_stmt" ):
-                return visitor.visitNew_stmt(self)
+                return visitor.visitNew_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2458,7 +2458,7 @@ class AtoParser ( AtoParserBase ):
     class New_countContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2471,7 +2471,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNew_count" ):
-                return visitor.visitNew_count(self)
+                return visitor.visitNew_count(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2498,7 +2498,7 @@ class AtoParser ( AtoParserBase ):
     class String_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2511,7 +2511,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitString_stmt" ):
-                return visitor.visitString_stmt(self)
+                return visitor.visitString_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2538,7 +2538,7 @@ class AtoParser ( AtoParserBase ):
     class Pass_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2550,7 +2550,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPass_stmt" ):
-                return visitor.visitPass_stmt(self)
+                return visitor.visitPass_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2577,7 +2577,7 @@ class AtoParser ( AtoParserBase ):
     class List_literal_of_field_referencesContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2587,14 +2587,14 @@ class AtoParser ( AtoParserBase ):
         def CLOSE_BRACK(self):
             return self.getToken(AtoParser.CLOSE_BRACK, 0)
 
-        def field_reference(self, i:int=None):
+        def field_reference(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.Field_referenceContext)
             else:
                 return self.getTypedRuleContext(AtoParser.Field_referenceContext,i)
 
 
-        def COMMA(self, i:int=None):
+        def COMMA(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.COMMA)
             else:
@@ -2605,7 +2605,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitList_literal_of_field_references" ):
-                return visitor.visitList_literal_of_field_references(self)
+                return visitor.visitList_literal_of_field_references(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2664,7 +2664,7 @@ class AtoParser ( AtoParserBase ):
     class Iterable_referencesContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2685,7 +2685,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitIterable_references" ):
-                return visitor.visitIterable_references(self)
+                return visitor.visitIterable_references(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2734,7 +2734,7 @@ class AtoParser ( AtoParserBase ):
     class For_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2764,7 +2764,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitFor_stmt" ):
-                return visitor.visitFor_stmt(self)
+                return visitor.visitFor_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2801,7 +2801,7 @@ class AtoParser ( AtoParserBase ):
     class Assert_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2817,7 +2817,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAssert_stmt" ):
-                return visitor.visitAssert_stmt(self)
+                return visitor.visitAssert_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2846,7 +2846,7 @@ class AtoParser ( AtoParserBase ):
     class Trait_stmtContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2873,7 +2873,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitTrait_stmt" ):
-                return visitor.visitTrait_stmt(self)
+                return visitor.visitTrait_stmt(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2921,7 +2921,7 @@ class AtoParser ( AtoParserBase ):
     class ConstructorContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2934,7 +2934,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitConstructor" ):
-                return visitor.visitConstructor(self)
+                return visitor.visitConstructor(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -2961,7 +2961,7 @@ class AtoParser ( AtoParserBase ):
     class TemplateContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -2971,14 +2971,14 @@ class AtoParser ( AtoParserBase ):
         def GREATER_THAN(self):
             return self.getToken(AtoParser.GREATER_THAN, 0)
 
-        def template_arg(self, i:int=None):
+        def template_arg(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.Template_argContext)
             else:
                 return self.getTypedRuleContext(AtoParser.Template_argContext,i)
 
 
-        def COMMA(self, i:int=None):
+        def COMMA(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.COMMA)
             else:
@@ -2989,7 +2989,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitTemplate" ):
-                return visitor.visitTemplate(self)
+                return visitor.visitTemplate(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3048,7 +3048,7 @@ class AtoParser ( AtoParserBase ):
     class Template_argContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3068,7 +3068,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitTemplate_arg" ):
-                return visitor.visitTemplate_arg(self)
+                return visitor.visitTemplate_arg(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3099,7 +3099,7 @@ class AtoParser ( AtoParserBase ):
     class ComparisonContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3107,7 +3107,7 @@ class AtoParser ( AtoParserBase ):
             return self.getTypedRuleContext(AtoParser.Arithmetic_expressionContext,0)
 
 
-        def compare_op_pair(self, i:int=None):
+        def compare_op_pair(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.Compare_op_pairContext)
             else:
@@ -3119,7 +3119,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitComparison" ):
-                return visitor.visitComparison(self)
+                return visitor.visitComparison(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3159,7 +3159,7 @@ class AtoParser ( AtoParserBase ):
     class Compare_op_pairContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3192,7 +3192,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitCompare_op_pair" ):
-                return visitor.visitCompare_op_pair(self)
+                return visitor.visitCompare_op_pair(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3252,7 +3252,7 @@ class AtoParser ( AtoParserBase ):
     class Lt_arithmetic_orContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3268,7 +3268,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLt_arithmetic_or" ):
-                return visitor.visitLt_arithmetic_or(self)
+                return visitor.visitLt_arithmetic_or(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3297,7 +3297,7 @@ class AtoParser ( AtoParserBase ):
     class Gt_arithmetic_orContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3313,7 +3313,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitGt_arithmetic_or" ):
-                return visitor.visitGt_arithmetic_or(self)
+                return visitor.visitGt_arithmetic_or(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3342,7 +3342,7 @@ class AtoParser ( AtoParserBase ):
     class Lt_eq_arithmetic_orContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3358,7 +3358,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLt_eq_arithmetic_or" ):
-                return visitor.visitLt_eq_arithmetic_or(self)
+                return visitor.visitLt_eq_arithmetic_or(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3387,7 +3387,7 @@ class AtoParser ( AtoParserBase ):
     class Gt_eq_arithmetic_orContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3403,7 +3403,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitGt_eq_arithmetic_or" ):
-                return visitor.visitGt_eq_arithmetic_or(self)
+                return visitor.visitGt_eq_arithmetic_or(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3432,7 +3432,7 @@ class AtoParser ( AtoParserBase ):
     class In_arithmetic_orContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3448,7 +3448,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitIn_arithmetic_or" ):
-                return visitor.visitIn_arithmetic_or(self)
+                return visitor.visitIn_arithmetic_or(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3477,7 +3477,7 @@ class AtoParser ( AtoParserBase ):
     class Is_arithmetic_orContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3493,7 +3493,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitIs_arithmetic_or" ):
-                return visitor.visitIs_arithmetic_or(self)
+                return visitor.visitIs_arithmetic_or(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3522,7 +3522,7 @@ class AtoParser ( AtoParserBase ):
     class Arithmetic_expressionContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3545,7 +3545,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitArithmetic_expression" ):
-                return visitor.visitArithmetic_expression(self)
+                return visitor.visitArithmetic_expression(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3603,7 +3603,7 @@ class AtoParser ( AtoParserBase ):
     class SumContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3626,7 +3626,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSum" ):
-                return visitor.visitSum(self)
+                return visitor.visitSum(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3684,7 +3684,7 @@ class AtoParser ( AtoParserBase ):
     class TermContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3707,7 +3707,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitTerm" ):
-                return visitor.visitTerm(self)
+                return visitor.visitTerm(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3765,11 +3765,11 @@ class AtoParser ( AtoParserBase ):
     class PowerContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def functional(self, i:int=None):
+        def functional(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.FunctionalContext)
             else:
@@ -3784,7 +3784,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPower" ):
-                return visitor.visitPower(self)
+                return visitor.visitPower(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3821,11 +3821,11 @@ class AtoParser ( AtoParserBase ):
     class FunctionalContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def bound(self, i:int=None):
+        def bound(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.BoundContext)
             else:
@@ -3847,7 +3847,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitFunctional" ):
-                return visitor.visitFunctional(self)
+                return visitor.visitFunctional(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3904,7 +3904,7 @@ class AtoParser ( AtoParserBase ):
     class BoundContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3917,7 +3917,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBound" ):
-                return visitor.visitBound(self)
+                return visitor.visitBound(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -3944,7 +3944,7 @@ class AtoParser ( AtoParserBase ):
     class SliceContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -3954,7 +3954,7 @@ class AtoParser ( AtoParserBase ):
         def CLOSE_BRACK(self):
             return self.getToken(AtoParser.CLOSE_BRACK, 0)
 
-        def COLON(self, i:int=None):
+        def COLON(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.COLON)
             else:
@@ -3980,7 +3980,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSlice" ):
-                return visitor.visitSlice(self)
+                return visitor.visitSlice(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4076,7 +4076,7 @@ class AtoParser ( AtoParserBase ):
     class Slice_startContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4089,7 +4089,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSlice_start" ):
-                return visitor.visitSlice_start(self)
+                return visitor.visitSlice_start(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4116,7 +4116,7 @@ class AtoParser ( AtoParserBase ):
     class Slice_stopContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4129,7 +4129,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSlice_stop" ):
-                return visitor.visitSlice_stop(self)
+                return visitor.visitSlice_stop(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4156,7 +4156,7 @@ class AtoParser ( AtoParserBase ):
     class Slice_stepContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4169,7 +4169,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitSlice_step" ):
-                return visitor.visitSlice_step(self)
+                return visitor.visitSlice_step(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4196,7 +4196,7 @@ class AtoParser ( AtoParserBase ):
     class AtomContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4217,7 +4217,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitAtom" ):
-                return visitor.visitAtom(self)
+                return visitor.visitAtom(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4262,7 +4262,7 @@ class AtoParser ( AtoParserBase ):
     class Arithmetic_groupContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4281,7 +4281,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitArithmetic_group" ):
-                return visitor.visitArithmetic_group(self)
+                return visitor.visitArithmetic_group(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4312,7 +4312,7 @@ class AtoParser ( AtoParserBase ):
     class Literal_physicalContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4333,7 +4333,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLiteral_physical" ):
-                return visitor.visitLiteral_physical(self)
+                return visitor.visitLiteral_physical(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4379,11 +4379,11 @@ class AtoParser ( AtoParserBase ):
     class Bound_quantityContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def quantity(self, i:int=None):
+        def quantity(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.QuantityContext)
             else:
@@ -4398,7 +4398,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBound_quantity" ):
-                return visitor.visitBound_quantity(self)
+                return visitor.visitBound_quantity(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4429,7 +4429,7 @@ class AtoParser ( AtoParserBase ):
     class Bilateral_quantityContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4449,7 +4449,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBilateral_quantity" ):
-                return visitor.visitBilateral_quantity(self)
+                return visitor.visitBilateral_quantity(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4480,7 +4480,7 @@ class AtoParser ( AtoParserBase ):
     class QuantityContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4497,7 +4497,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitQuantity" ):
-                return visitor.visitQuantity(self)
+                return visitor.visitQuantity(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4532,7 +4532,7 @@ class AtoParser ( AtoParserBase ):
     class Bilateral_toleranceContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4552,7 +4552,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBilateral_tolerance" ):
-                return visitor.visitBilateral_tolerance(self)
+                return visitor.visitBilateral_tolerance(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4591,7 +4591,7 @@ class AtoParser ( AtoParserBase ):
     class KeyContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4604,7 +4604,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitKey" ):
-                return visitor.visitKey(self)
+                return visitor.visitKey(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4631,7 +4631,7 @@ class AtoParser ( AtoParserBase ):
     class Array_indexContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4650,7 +4650,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitArray_index" ):
-                return visitor.visitArray_index(self)
+                return visitor.visitArray_index(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4681,7 +4681,7 @@ class AtoParser ( AtoParserBase ):
     class Pin_reference_endContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4697,7 +4697,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitPin_reference_end" ):
-                return visitor.visitPin_reference_end(self)
+                return visitor.visitPin_reference_end(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4726,7 +4726,7 @@ class AtoParser ( AtoParserBase ):
     class Field_reference_partContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4743,7 +4743,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitField_reference_part" ):
-                return visitor.visitField_reference_part(self)
+                return visitor.visitField_reference_part(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4778,18 +4778,18 @@ class AtoParser ( AtoParserBase ):
     class Field_referenceContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def field_reference_part(self, i:int=None):
+        def field_reference_part(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.Field_reference_partContext)
             else:
                 return self.getTypedRuleContext(AtoParser.Field_reference_partContext,i)
 
 
-        def DOT(self, i:int=None):
+        def DOT(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.DOT)
             else:
@@ -4804,7 +4804,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitField_reference" ):
-                return visitor.visitField_reference(self)
+                return visitor.visitField_reference(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4852,18 +4852,18 @@ class AtoParser ( AtoParserBase ):
     class Type_referenceContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
-        def name(self, i:int=None):
+        def name(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTypedRuleContexts(AtoParser.NameContext)
             else:
                 return self.getTypedRuleContext(AtoParser.NameContext,i)
 
 
-        def DOT(self, i:int=None):
+        def DOT(self, i:int=None):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             if i is None:
                 return self.getTokens(AtoParser.DOT)
             else:
@@ -4874,7 +4874,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitType_reference" ):
-                return visitor.visitType_reference(self)
+                return visitor.visitType_reference(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4914,7 +4914,7 @@ class AtoParser ( AtoParserBase ):
     class UnitContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4927,7 +4927,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitUnit" ):
-                return visitor.visitUnit(self)
+                return visitor.visitUnit(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4954,7 +4954,7 @@ class AtoParser ( AtoParserBase ):
     class Type_infoContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -4970,7 +4970,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitType_info" ):
-                return visitor.visitType_info(self)
+                return visitor.visitType_info(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -4999,7 +4999,7 @@ class AtoParser ( AtoParserBase ):
     class NameContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5011,7 +5011,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitName" ):
-                return visitor.visitName(self)
+                return visitor.visitName(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5038,7 +5038,7 @@ class AtoParser ( AtoParserBase ):
     class LiteralContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5059,7 +5059,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitLiteral" ):
-                return visitor.visitLiteral(self)
+                return visitor.visitLiteral(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5104,7 +5104,7 @@ class AtoParser ( AtoParserBase ):
     class StringContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5116,7 +5116,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitString" ):
-                return visitor.visitString(self)
+                return visitor.visitString(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5143,7 +5143,7 @@ class AtoParser ( AtoParserBase ):
     class Boolean_Context(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5158,7 +5158,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitBoolean_" ):
-                return visitor.visitBoolean_(self)
+                return visitor.visitBoolean_(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5191,7 +5191,7 @@ class AtoParser ( AtoParserBase ):
     class Number_hint_naturalContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5204,7 +5204,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNumber_hint_natural" ):
-                return visitor.visitNumber_hint_natural(self)
+                return visitor.visitNumber_hint_natural(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5231,7 +5231,7 @@ class AtoParser ( AtoParserBase ):
     class Number_hint_integerContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5244,7 +5244,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNumber_hint_integer" ):
-                return visitor.visitNumber_hint_integer(self)
+                return visitor.visitNumber_hint_integer(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5271,7 +5271,7 @@ class AtoParser ( AtoParserBase ):
     class NumberContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5290,7 +5290,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNumber" ):
-                return visitor.visitNumber(self)
+                return visitor.visitNumber(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 
@@ -5331,7 +5331,7 @@ class AtoParser ( AtoParserBase ):
     class Number_signlessContext(ParserRuleContext):
         __slots__ = 'parser'
 
-        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):
+        def __init__(self, parser, parent:ParserRuleContext=None, invokingState:int=-1):  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
             super().__init__(parent, invokingState)
             self.parser = parser
 
@@ -5343,7 +5343,7 @@ class AtoParser ( AtoParserBase ):
 
         def accept(self, visitor:ParseTreeVisitor):
             if hasattr( visitor, "visitNumber_signless" ):
-                return visitor.visitNumber_signless(self)
+                return visitor.visitNumber_signless(self)  # type: ignore[call-non-callable] TODO(type-fix): ty init
             else:
                 return visitor.visitChildren(self)
 

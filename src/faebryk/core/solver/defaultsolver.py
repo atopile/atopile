@@ -203,10 +203,10 @@ class DefaultSolver(Solver):
                 tolerance_guess=p.tolerance_guess,
                 likely_constrained=p.likely_constrained,
                 units=dimensionless,
-                soft_set=as_lit(p.soft_set).to_dimensionless()
+                soft_set=as_lit(p.soft_set).to_dimensionless()  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
                 if p.soft_set is not None
                 else None,
-                within=as_lit(p.within).to_dimensionless()
+                within=as_lit(p.within).to_dimensionless()  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
                 if p.within is not None
                 else None,
                 guess=quantity(p.guess, dimensionless) if p.guess is not None else None,

@@ -304,9 +304,9 @@ class LayoutSync:
             )
             new_track.uuid = gen_uuid()
             if sub_net and sub_net.name in net_map:
-                new_track.net = self._get_net_number(top_pcb, net_map[sub_net.name])
+                new_track.net = self._get_net_number(top_pcb, net_map[sub_net.name])  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
                 if isinstance(new_track, PCB.C_zone):
-                    new_track.net_name = net_map[sub_net.name]
+                    new_track.net_name = net_map[sub_net.name]  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
             else:
                 new_track.net = 0
 

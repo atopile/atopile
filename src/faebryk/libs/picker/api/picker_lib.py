@@ -90,7 +90,7 @@ BackendPackage = StrEnum(
 )
 
 
-def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
+def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":  # type: ignore[invalid-type-form] TODO(type-fix): ty init
     if issubclass(type, F.Resistor):
         prefix = "R"
     elif issubclass(type, F.Capacitor):
@@ -135,16 +135,16 @@ def _prepare_query(
 
         if pkg_t := module.try_get_trait(F.has_package_requirements):
             package = pkg_t.get_sizes(solver)
-            package = EnumSet[BackendPackage](
+            package = EnumSet[BackendPackage](  # type: ignore[invalid-type-form] TODO(type-fix): ty init
                 *[
-                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)
+                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
                     for s in package
                 ]
             )
         else:
             package = None
 
-        generic_field_names = {f.name for f in fields(params_t)}
+        generic_field_names = {f.name for f in fields(params_t)}  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         _, known_params = more_itertools.partition(
             lambda p: p.get_name() in generic_field_names, module.get_parameters()
         )

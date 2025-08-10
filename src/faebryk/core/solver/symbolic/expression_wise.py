@@ -318,16 +318,16 @@ def fold_pow(expr: Power, mutator: Mutator):
     base, exp = expr.operands
 
     # All literals
-    if mutator.utils.is_numeric_literal(base) and mutator.utils.is_numeric_literal(exp):
+    if mutator.utils.is_numeric_literal(base) and mutator.utils.is_numeric_literal(exp):  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         try:
-            result = base**exp
+            result = base**exp  # type: ignore[unsupported-operator] TODO(type-fix): ty init
         except NotImplementedError:
             # TODO either fix or raise a warning
             return
         mutator.utils.alias_to(expr, result, terminate=True)
         return
 
-    if mutator.utils.is_numeric_literal(exp):
+    if mutator.utils.is_numeric_literal(exp):  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         if exp == 1:
             mutator.mutate_unpack_expression(expr)
             return
@@ -337,7 +337,7 @@ def fold_pow(expr: Power, mutator: Mutator):
             mutator.utils.alias_to(expr, as_lit(1), terminate=True)
             return
 
-    if mutator.utils.is_numeric_literal(base):
+    if mutator.utils.is_numeric_literal(base):  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         if base == 0:
             mutator.utils.alias_to(expr, as_lit(0), terminate=True)
             # FIXME: exp >! 0
@@ -553,7 +553,7 @@ def fold_subset(expr: IsSubset, mutator: Mutator):
 
     # A ss ([X]) -> A is ([X])
     # A ss {} -> A is {}
-    if B.is_single_element() or B.is_empty():
+    if B.is_single_element() or B.is_empty():  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
         mutator.mutate_expression(expr, expression_factory=Is)
         return
 

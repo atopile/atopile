@@ -111,10 +111,10 @@ def convert_to_canonical_literals(mutator: Mutator):
             mutator.mutate_parameter(
                 po,
                 units=dimensionless,
-                soft_set=make_lit(po.soft_set).to_dimensionless()
+                soft_set=make_lit(po.soft_set).to_dimensionless()  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
                 if po.soft_set is not None
                 else None,
-                within=make_lit(po.within).to_dimensionless()
+                within=make_lit(po.within).to_dimensionless()  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
                 if po.within is not None
                 else None,
                 guess=quantity(po.guess, dimensionless)
@@ -126,7 +126,7 @@ def convert_to_canonical_literals(mutator: Mutator):
         # Expression
         elif isinstance(po, Expression):
 
-            def mutate(i: int, operand: SolverAllExtended) -> SolverAllExtended:
+            def mutate(i: int, operand: SolverAllExtended) -> SolverAllExtended:  # type: ignore[invalid-type-form] TODO(type-fix): ty init
                 if not ParameterOperatable.is_literal(operand):
                     return operand
                 lit = make_lit(operand)
@@ -165,7 +165,7 @@ def convert_to_canonical_operations(mutator: Mutator):
     }
 
     def c[T: CanonicalExpression](op: type[T], *operands) -> T:
-        return mutator.create_expression(
+        return mutator.create_expression(  # type: ignore[invalid-return-type] TODO(type-fix): ty init
             op, *operands, from_ops=getattr(c, "from_ops", None)
         )
 

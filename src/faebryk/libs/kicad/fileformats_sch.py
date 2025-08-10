@@ -141,12 +141,12 @@ class C_symbol(HasPropertiesMixin):
             @dataclass
             class C_name:
                 name: str = field(**sexp_field(positional=True))
-                effects: C_effects = field(default_factory=C_effects)
+                effects: C_effects = field(default_factory=C_effects)  # type: ignore[no-matching-overload] TODO(type-fix): ty init
 
             @dataclass
             class C_number:
                 number: str = field(**sexp_field(positional=True))
-                effects: C_effects = field(default_factory=C_effects)
+                effects: C_effects = field(default_factory=C_effects)  # type: ignore[no-matching-overload] TODO(type-fix): ty init
 
             at: C_xyr
             length: float

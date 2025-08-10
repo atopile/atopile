@@ -3,7 +3,7 @@ from antlr4 import *
 if "." in __name__:
     from .AtoParser import AtoParser
 else:
-    from AtoParser import AtoParser
+    from AtoParser import AtoParser  # type: ignore[unresolved-import] TODO(type-fix): ty init
 
 # This class defines a complete generic visitor for a parse tree produced by AtoParser.
 

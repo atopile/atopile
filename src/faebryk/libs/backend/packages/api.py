@@ -300,7 +300,7 @@ class Errors:
     class PackagesApiError(Exception): ...
 
     class PackagesApiHTTPError(Exception):
-        def __init__(self, error: requests.exceptions.HTTPError, detail: str):
+        def __init__(self, error: requests.exceptions.HTTPError, detail: str):  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             super().__init__()
             self.error = error
             self.response = error.response
@@ -322,7 +322,7 @@ class Errors:
     class PackageNotFoundError(PackagesApiHTTPError):
         def __init__(
             self,
-            error: requests.exceptions.HTTPError,
+            error: requests.exceptions.HTTPError,  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             detail: str,
             package_identifier: str,
         ):
@@ -341,7 +341,7 @@ class Errors:
     class InvalidPackageIdentifierError(PackagesApiHTTPError):
         def __init__(
             self,
-            error: requests.exceptions.HTTPError,
+            error: requests.exceptions.HTTPError,  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             detail: str,
             package_identifier: str,
         ):
@@ -360,7 +360,7 @@ class Errors:
     class ReleaseNotFoundError(PackagesApiHTTPError):
         def __init__(
             self,
-            error: requests.exceptions.HTTPError,
+            error: requests.exceptions.HTTPError,  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             detail: str,
             package_identifier: str,
             release: str,
@@ -421,7 +421,7 @@ class PackagesAPIClient:
         )
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as e:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             try:
                 detail = response.json()["detail"]
             except (requests.JSONDecodeError, KeyError):
@@ -450,7 +450,7 @@ class PackagesAPIClient:
         try:
             response.raise_for_status()
             assert response.json()["status"] == "ok"
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as e:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             try:
                 detail = response.json()["detail"]
             except (requests.JSONDecodeError, KeyError):
@@ -478,7 +478,7 @@ class PackagesAPIClient:
         )
         try:
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as e:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             try:
                 detail = response.json()["detail"]
             except (requests.JSONDecodeError, KeyError):

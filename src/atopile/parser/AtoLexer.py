@@ -11,7 +11,7 @@ else:
 if "." in __name__:
     from .AtoLexerBase import AtoLexerBase
 else:
-    from AtoLexerBase import AtoLexerBase
+    from AtoLexerBase import AtoLexerBase  # type: ignore[unresolved-import] TODO(type-fix): ty init
 
 def serializedATN():
     return [

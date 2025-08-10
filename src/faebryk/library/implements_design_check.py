@@ -37,8 +37,8 @@ class implements_design_check(Trait.TraitT.decless()):
     # Simple decorators, that are for now only used for type checking
     @staticmethod
     def register_post_design_check(func: Callable[[Any], None]):
-        if not func.__name__ == "__check_post_design__":
-            raise TypeError(f"Method {func.__name__} is not a post-design check name.")
+        if not func.__name__ == "__check_post_design__":  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+            raise TypeError(f"Method {func.__name__} is not a post-design check name.")  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         return func
 
     @staticmethod
@@ -46,8 +46,8 @@ class implements_design_check(Trait.TraitT.decless()):
         """
         Guarantees solver availability via F.has_solver.find_unique
         """
-        if not func.__name__ == "__check_post_solve__":
-            raise TypeError(f"Method {func.__name__} is not a post-solve check name.")
+        if not func.__name__ == "__check_post_solve__":  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+            raise TypeError(f"Method {func.__name__} is not a post-solve check name.")  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         return func
 
     @staticmethod
@@ -55,8 +55,8 @@ class implements_design_check(Trait.TraitT.decless()):
         """
         Guarantees PCB availability via Node in Graph
         """
-        if not func.__name__ == "__check_post_pcb__":
-            raise TypeError(f"Method {func.__name__} is not a post-pcb check name.")
+        if not func.__name__ == "__check_post_pcb__":  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+            raise TypeError(f"Method {func.__name__} is not a post-pcb check name.")  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         return func
 
     def get_solver(self):

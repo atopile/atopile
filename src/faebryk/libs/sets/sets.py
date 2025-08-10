@@ -151,10 +151,10 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
         return iter(self.elements)
 
     def op_intersection[T: PlainSet](self: T, other: U | T) -> T:
-        return type(self)(*(self.elements & type(self).from_value(other).elements))
+        return type(self)(*(self.elements & type(self).from_value(other).elements))  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def op_union[T: PlainSet](self: T, other: U | T) -> T:
-        return type(self)(*(self.elements | type(self).from_value(other).elements))
+        return type(self)(*(self.elements | type(self).from_value(other).elements))  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def is_subset_of[T: PlainSet](self: T, other: U | T) -> bool:
         try:
@@ -175,10 +175,10 @@ class PlainSet[U](P_IterableUnitSet[U, U]):
     # operators
 
     def __and__[T: PlainSet](self: T, other: U | T) -> T:
-        return self.op_intersection(other)
+        return self.op_intersection(other)  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def __or__[T: PlainSet](self: T, other: U | T) -> T:
-        return self.op_union(other)
+        return self.op_union(other)  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def __eq__(self, value: Any) -> bool:
         try:

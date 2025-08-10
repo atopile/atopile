@@ -95,11 +95,11 @@ class ParameterOperatable(Node):
     """
 
     @property
-    def domain(self) -> "Domain": ...
+    def domain(self) -> "Domain": ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
-    def has_implicit_constraint(self) -> bool: ...
+    def has_implicit_constraint(self) -> bool: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
-    def has_implicit_constraints_recursive(self) -> bool: ...
+    def has_implicit_constraints_recursive(self) -> bool: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def operation_add(self, other: NumberLike):
         return Add(self, other)
@@ -165,7 +165,7 @@ class ParameterOperatable(Node):
         return Intersection(self, other)
 
     def operation_difference(self, *subtrahends: Sets):
-        return Difference(minuend=self, *subtrahends)
+        return Difference(minuend=self, *subtrahends)  # type: ignore[parameter-already-assigned] TODO(type-fix): ty init
 
     def operation_symmetric_difference(self, other: Sets):
         return SymmetricDifference(self, other)
@@ -1477,7 +1477,7 @@ class Domain:
             return shared
         return Domain.get_shared_domain(shared, *domains[2:])
 
-    def unbounded(self, param: "Parameter") -> P_Set: ...
+    def unbounded(self, param: "Parameter") -> P_Set: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def __repr__(self):
         # TODO make more informative

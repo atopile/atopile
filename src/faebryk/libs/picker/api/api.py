@@ -33,7 +33,7 @@ class ApiNotConfiguredError(ApiError): ...
 
 
 class ApiHTTPError(ApiError):
-    def __init__(self, error: requests.exceptions.HTTPError):
+    def __init__(self, error: requests.exceptions.HTTPError):  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
         super().__init__()
         self.response = error.response
 
@@ -83,7 +83,7 @@ class ApiClient:
                 verify=not config.project.dangerously_skip_ssl_verification,
             )
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as e:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             raise ApiHTTPError(e) from e
 
         if API_LOG:
@@ -110,7 +110,7 @@ class ApiClient:
                 verify=not config.project.dangerously_skip_ssl_verification,
             )
             response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError as e:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             raise ApiHTTPError(e) from e
 
         if API_LOG:

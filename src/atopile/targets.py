@@ -89,7 +89,7 @@ class Muster:
         """Register a target under a given name."""
 
         def decorator(func: Callable[[Module, Solver], None]) -> MusterTarget:
-            target_name = name or func.__name__
+            target_name = name or func.__name__  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             target = MusterTarget(
                 name=target_name,
                 aliases=aliases or [],

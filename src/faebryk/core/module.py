@@ -109,7 +109,7 @@ class Module(Node):
                 )
             out = special_out
 
-        return out
+        return out  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     class InvalidSpecializationError(Exception):
         """Cannot specialize module with special"""

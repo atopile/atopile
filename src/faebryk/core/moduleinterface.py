@@ -218,7 +218,7 @@ class ModuleInterface(Node):
         # Establish sibling relationship
         self.specialized.connect(special.specializes)
 
-        return cast(T, special)
+        return cast(T, special)  # type: ignore[redundant-cast] TODO(type-fix): ty init
 
     # def get_general(self):
     #    out = self.specializes.get_parent()

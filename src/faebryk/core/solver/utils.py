@@ -597,7 +597,7 @@ class MutatorUtils:
         self, counter: Counter[ParameterOperatable], collect_type: type[T]
     ):
         # Convert the counter to a dict for easy manipulation
-        factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(
+        factors: dict[ParameterOperatable, ParameterOperatable.NumberLiteral] = dict(  # type: ignore[invalid-assignment] TODO(type-fix): ty init
             counter.items()
         )
         # Store operations of type collect_type grouped by their non-literal operand
@@ -808,7 +808,7 @@ class MutatorUtils:
             if not isinstance(to_flatten, FullyAssociative):
                 if to_flatten.operands[0] is not o:
                     return False
-            return type(o) is type(to_flatten) and check_destructable(o, to_flatten)
+            return type(o) is type(to_flatten) and check_destructable(o, to_flatten)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
         non_compressible_operands, nested_compressible_operations = partition(
             can_be_flattened,
@@ -929,7 +929,9 @@ class MutatorUtils:
                 return {po}
             case Expression():
                 return {
-                    p for op in po.operands for p in MutatorUtils.find_unique_params(op)
+                    p
+                    for op in po.operands
+                    for p in MutatorUtils.find_unique_params(op)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
                 }
             case _:
                 return set()
@@ -944,7 +946,7 @@ class MutatorUtils:
             case Expression():
                 for op in po.operands:
                     for param, count in MutatorUtils.count_param_occurrences(
-                        op
+                        op  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
                     ).items():
                         counts[param] += count
 
