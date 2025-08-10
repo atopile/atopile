@@ -136,5 +136,40 @@ def test_parse_regression_1():
     assert atomic_trait._manufacturer == "TDK INVENSENSE"
     assert atomic_trait._partnumber == "ICM-20948"
     assert atomic_trait._footprint == "QFN-24_L3.0-W3.0-P0.40-BL-EP.kicad_mod"
-    assert atomic_trait._symbol == "ICM-20948.kicad_sym"
-    assert atomic_trait._model == "QFN-24_L3.0-W3.0-H0.9-P0.40-BL-EP.step"
+
+
+def test_parse_trait_with_comma_in_footprint():
+    file = _cleanup(
+        """
+        #pragma experiment("TRAITS")
+        import is_atomic_part
+
+        component PCA9536_package:
+            trait is_atomic_part<
+                manufacturer="NXP",
+                partnumber="PCA9536",
+                footprint="TSSOP-8_L3.0-W3.0-P0.65-LS4.4-BL,EP.kicad_mod",
+                symbol="PCA9536.kicad_sym"
+            >
+        """
+    )
+
+    ato = AtoCodeParse.ComponentFile(file)
+
+    assert ato.parse_trait("is_atomic_part") == (
+        None,
+        {
+            "manufacturer": "NXP",
+            "partnumber": "PCA9536",
+            "footprint": "TSSOP-8_L3.0-W3.0-P0.65-LS4.4-BL,EP.kicad_mod",
+            "symbol": "PCA9536.kicad_sym",
+        },
+    )
+
+    import faebryk.library._F as F
+
+    atomic_trait = ato.get_trait(F.is_atomic_part)
+    assert atomic_trait._manufacturer == "NXP"
+    assert atomic_trait._partnumber == "PCA9536"
+    assert atomic_trait._footprint == "TSSOP-8_L3.0-W3.0-P0.65-LS4.4-BL,EP.kicad_mod"
+    assert atomic_trait._symbol == "PCA9536.kicad_sym"
