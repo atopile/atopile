@@ -1,4 +1,5 @@
 """Test to verify no network calls are made without requires_internet marker."""
+
 from unittest.mock import patch
 
 import pytest
