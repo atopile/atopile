@@ -174,9 +174,16 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
             # If we found one that's ok, just continue since likely enough
             filtered_candidates.extend(it)
             break
-        except LCSC_NoDataException:
+        except LCSC_NoDataException as ex:
             if len(candidates) == 1:
-                raise
+                raise PickError(
+                    (
+                        f"LCSC has no footprint/symbol for any candidate for `{module}`. "
+                        "Loosen your selection criteria or try another"
+                        " part which has an LCSC footprint and symbol."
+                    ),
+                    module,
+                ) from ex
         except LCSC_PinmapException:
             # if all filtered by pinmap something is fishy
             if not filtered_candidates and candidates[-1] is c:
