@@ -12,7 +12,10 @@ from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.documentation.i2c import export_i2c_tree
-from faebryk.exporters.netlist.kicad.netlist_kicad import faebryk_netlist_to_kicad
+from faebryk.exporters.netlist.kicad.netlist_kicad import (
+    attach_kicad_info,
+    faebryk_netlist_to_kicad,
+)
 from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
@@ -142,13 +145,15 @@ def generate_bom(app: Module, solver: Solver) -> None:
 @muster.register("netlist")
 def generate_netlist(app: Module, solver: Solver) -> None:
     """Generate a netlist for the project."""
+    attach_kicad_info(app.get_graph())
+
     fbrk_netlist = make_fbrk_netlist_from_graph(app.get_graph())
     kicad_netlist = faebryk_netlist_to_kicad(fbrk_netlist)
-    
+
     netlist_path = config.build.paths.netlist
     netlist_path.parent.mkdir(parents=True, exist_ok=True)
-    result = kicad_netlist.dumps(netlist_path)
-    
+    kicad_netlist.dumps(netlist_path)
+
     if not netlist_path.exists():
         raise RuntimeError(f"Netlist file was not created at {netlist_path}")
 
