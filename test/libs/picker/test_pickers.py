@@ -55,6 +55,7 @@ def _make_id(m: "ComponentTestCase"):
     return module_name
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.skipif(components_to_test is None, reason="Failed to load components")
 @pytest.mark.parametrize(
@@ -90,6 +91,7 @@ def test_pick_module(case: "ComponentTestCase"):
     # TODO check that part params are equal (alias_is) to module params
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_type_pick():
     module = F.Resistor()

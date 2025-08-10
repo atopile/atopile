@@ -150,6 +150,7 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "not_in_ci: marks tests that should not be run in CI",
     "regression: marks tests that are used for deeper regression testing. May be slow and flaky.",
+    "requires_internet: marks tests that require internet access for API calls, downloads, or external services",
 ]
 
 [tool.ruff]
