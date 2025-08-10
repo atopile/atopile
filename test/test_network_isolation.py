@@ -1,10 +1,11 @@
-"""Test to verify no network calls are made when running tests without requires_internet marker."""
-import pytest
+"""Test to verify no network calls are made without requires_internet marker."""
 from unittest.mock import patch
+
+import pytest
 
 
 def test_no_network_calls_without_internet_marker():
-    """Test that ensures no network calls are made when requires_internet marker is not used."""
+    """Test that ensures no network calls are made without requires_internet."""
 
     with patch("socket.socket") as mock_socket:
         mock_socket.side_effect = Exception("Network call attempted!")
