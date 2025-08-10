@@ -57,46 +57,10 @@ class AtoCodeParse:
             if not trait_match:
                 raise AtoCodeParse.TraitNotFound(f"Could not find {trait} trait")
             args_stmt = trait_match.group("args") or ""
-
-            args = {}
-            if args_stmt:
-                args_content = args_stmt.strip("<>")
-
-                current_pos = 0
-                while current_pos < len(args_content):
-                    key_match = re.match(
-                        r'\s*(\w+)\s*=\s*"', args_content[current_pos:]
-                    )
-                    if not key_match:
-                        break
-
-                    key = key_match.group(1)
-                    current_pos += key_match.end()
-
-                    value_start = current_pos
-                    quote_count = 0
-                    value_end = value_start
-
-                    for i in range(value_start, len(args_content)):
-                        if args_content[i] == '"':
-                            quote_count += 1
-                            if quote_count == 1:
-                                value_end = i
-                                break
-
-                    if quote_count == 0:
-                        break
-
-                    value = args_content[value_start:value_end]
-                    args[key] = value
-
-                    current_pos = value_end + 1
-
-                    comma_match = re.match(r"\s*,\s*", args_content[current_pos:])
-                    if comma_match:
-                        current_pos += comma_match.end()
-                    else:
-                        break
+            m_args = re.finditer(
+                f"{p_assignment(key_name='k', value_name='v')}[,>]", args_stmt
+            )
+            args = {match.group("k"): match.group("v") for match in m_args if match}
 
             parsed_constructor = (
                 trait_match.group("constructor").removeprefix("::")

@@ -25,7 +25,12 @@ from faebryk.libs.kicad.fileformats_latest import (
 )
 from faebryk.libs.kicad.fileformats_sch import C_kicad_sym_file
 from faebryk.libs.picker.picker import PickedPart
-from faebryk.libs.util import ConfigFlag, compare_dataclasses, starts_or_ends_replace
+from faebryk.libs.util import (
+    ConfigFlag,
+    compare_dataclasses,
+    sanitize_filepath_part,
+    starts_or_ends_replace,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +207,8 @@ class AtoPart:
             "is_atomic_part",
             manufacturer=self.mfn[0],
             partnumber=self.mfn[1],
-            footprint=self.fp_path.name,
+            footprint=sanitize_filepath_part(self.fp.footprint.base_name)
+            + ".kicad_mod",
             symbol=self.sym_path.name,
             model=self.model_path.name if self.model else None,
         )
