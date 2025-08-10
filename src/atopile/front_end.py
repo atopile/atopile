@@ -2454,7 +2454,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         callable_ = getattr(constructor, "__original_init__", constructor)
         constructor_signature = inspect.signature(callable_)
-        type_hints = typing.get_type_hints(callable_)
 
         for arg_name, arg_value in kwargs.items():
             if arg_name not in constructor_signature.parameters:
@@ -2467,7 +2466,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if isinstance(arg_value, str):
                 try:
                     kwargs[arg_name] = _try_upgrade_str_to_enum(
-                        type_hints, arg_name, arg_value
+                        callable_, arg_name, arg_value
                     )
                 except _EnumUpgradeError as ex:
                     raise errors.UserInvalidValueError.from_ctx(
