@@ -92,7 +92,7 @@ class AtoCodeParse:
 
                     current_pos = value_end + 1
 
-                    comma_match = re.match(r'\s*,\s*', args_content[current_pos:])
+                    comma_match = re.match(r"\s*,\s*", args_content[current_pos:])
                     if comma_match:
                         current_pos += comma_match.end()
                     else:
