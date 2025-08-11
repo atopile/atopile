@@ -119,6 +119,10 @@ class LayoutSync:
         }
         atopile_fps_uuid = {fp.uuid: fp for fp in atopile_footprints.values()}
 
+        was_atopile_group = [
+            g for g in self.pcb.groups if set(g.members) & atopile_fps_uuid.keys()
+        ]
+
         # remove all atopile footprints from groups (later re-added)
         for pcb_group in self.pcb.groups:
             pcb_group.members[:] = [
@@ -149,6 +153,11 @@ class LayoutSync:
             current_members -= set(atopile_fps_uuid.keys()).difference(expected_members)
 
             group.members[:] = list(current_members)
+
+        # remove groups that no longer have any atopile footprints
+        for g in was_atopile_group:
+            if not (set(g.members) & atopile_fps_uuid.keys()):
+                self.pcb.groups.remove(g)
 
     def _generate_net_map(
         self, source_pcb: PCB, target_pcb: PCB, addr_map: dict[str, str]
