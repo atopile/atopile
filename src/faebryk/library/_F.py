@@ -17,10 +17,10 @@ This way we can add new modules without changing this file
 
 from faebryk.library.interfaces.Electrical import Electrical
 from faebryk.library.traits.has_designator_prefix import has_designator_prefix
+from faebryk.library.traits.has_usage_example import has_usage_example
 from faebryk.library.traits.is_bus_parameter import is_bus_parameter
 from faebryk.library.traits.can_specialize_defined import can_specialize_defined
 from faebryk.library.interfaces.Power import Power
-from faebryk.library.traits.can_be_surge_protected import can_be_surge_protected
 from faebryk.library.traits.has_net_name import has_net_name
 from faebryk.library.interfaces.Signal import Signal
 from faebryk.library.traits.has_single_electric_reference import has_single_electric_reference
@@ -69,7 +69,6 @@ from faebryk.library.traits.has_pcb_position_defined_relative import has_pcb_pos
 from faebryk.library.traits.has_pcb_position_defined_relative_to_parent import has_pcb_position_defined_relative_to_parent
 from faebryk.library.traits.has_part_removed import has_part_removed
 from faebryk.library.traits.implements_design_check import implements_design_check
-from faebryk.library.traits.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.traits.can_bridge_by_name import can_bridge_by_name
 from faebryk.library.traits.can_bridge_defined import can_bridge_defined
 from faebryk.library.traits.has_datasheet_defined import has_datasheet_defined
@@ -94,8 +93,10 @@ from faebryk.library.traits.has_symbol_layout import has_symbol_layout
 from faebryk.library.primitives.Pad import Pad
 from faebryk.library.primitives.PCB import PCB
 from faebryk.library.traits.requires_external_usage import requires_external_usage
+from faebryk.library.components.ResistorArray import ResistorArray
 from faebryk.library.components.BJT import BJT
 from faebryk.library.components.Diode import Diode
+from faebryk.library.components.LED import LED
 from faebryk.library.components.MOSFET import MOSFET
 from faebryk.library.traits.has_footprint_defined import has_footprint_defined
 from faebryk.library.traits.has_symbol_layout_defined import has_symbol_layout_defined
@@ -130,13 +131,11 @@ from faebryk.library.components.CapacitorElectrolytic import CapacitorElectrolyt
 from faebryk.library.components.MultiCapacitor import MultiCapacitor
 from faebryk.library.traits.is_decoupled import is_decoupled
 from faebryk.library.components.Crystal_Oscillator import Crystal_Oscillator
-from faebryk.library.components.ResistorArray import ResistorArray
 from faebryk.library.traits.can_be_decoupled import can_be_decoupled
 from faebryk.library.interfaces.ElectricPower import ElectricPower
 from faebryk.library.components.Battery import Battery
 from faebryk.library.components.Comparator import Comparator
 from faebryk.library.interfaces.ElectricSignal import ElectricSignal
-from faebryk.library.components.LED import LED
 from faebryk.library.components.OpAmp import OpAmp
 from faebryk.library.Regulator import Regulator
 from faebryk.library.components.Relay import Relay
