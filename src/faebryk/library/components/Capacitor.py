@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 class Capacitor(Module):
     """
-    A capacitor is a passive two-terminal electrical component. Capacitors can be configured by specifying a range for the following parameters:
+    A capacitor is a passive two-terminal electrical component. Capacitors can be
+    configured by specifying a range for the following parameters:
     - capacitance: The capacitance of the capacitor in farads.
     - max_voltage: The maximum rated voltage that the capacitor can withstand in volts.
     - package: The imperial SMD package of the capacitor.
@@ -39,7 +40,6 @@ class Capacitor(Module):
         soft_set=L.Range(100 * P.pF, 1 * P.F),
         tolerance_guess=10 * P.percent,
     )
-    # TODO: Deprecated max_voltage -> rated_voltage
     rated_voltage = L.p_field(
         units=P.V,
         likely_constrained=True,
@@ -48,6 +48,8 @@ class Capacitor(Module):
     temperature_coefficient = L.p_field(
         domain=L.Domains.ENUM(TemperatureCoefficient),
     )
+
+    max_voltage = L.deprecated_field(message="Use rated_voltage instead")
 
     @L.rt_field
     def pickable(self):

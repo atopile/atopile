@@ -1,12 +1,12 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+from enum import StrEnum, auto
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
-from enum import StrEnum, auto
 
 
 class Inductor(Module):
@@ -18,37 +18,51 @@ class Inductor(Module):
         soft_set=L.Range(100 * P.nH, 1 * P.H),
         tolerance_guess=10 * P.percent,
     )
-    max_current = L.p_field(
+    rated_max_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mA, 100 * P.A),
     )
-    dc_resistance = L.p_field(
+    rated_dc_resistance = L.p_field(
         units=P.Ω,
         soft_set=L.Range(10 * P.mΩ, 100 * P.Ω),
         tolerance_guess=10 * P.percent,
     )
-    self_resonant_frequency = L.p_field(
+    rated_self_resonant_frequency = L.p_field(
         units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(100 * P.kHz, 1 * P.GHz),
         tolerance_guess=10 * P.percent,
     )
-    saturation_current = L.p_field(units=P.A)
+    rated_saturation_current = L.p_field(units=P.A)
+
+    max_current = L.deprecated_field(message="Use rated_max_current instead")
+    dc_resistance = L.deprecated_field(message="Use rated_dc_resistance instead")
+    self_resonant_frequency = L.deprecated_field(
+        message="Use rated_self_resonant_frequency instead"
+    )
+    saturation_current = L.deprecated_field(
+        message="Use rated_saturation_current instead"
+    )
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    
+
     @L.rt_field
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.INDUCTORS,
-            params=[self.inductance, self.max_current, self.dc_resistance, self.self_resonant_frequency, self.saturation_current],
+            params=[
+                self.inductance,
+                self.rated_max_current,
+                self.rated_dc_resistance,
+                self.rated_self_resonant_frequency,
+                self.rated_saturation_current,
+            ],
         )
 
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(*self.terminals)
-
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.L

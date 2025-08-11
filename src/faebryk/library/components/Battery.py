@@ -33,6 +33,10 @@ class Battery(Module):
         soft_set=L.Range(1 * P.C, 10 * P.C),
         likely_constrained=True,
     )
+
+    capacity = L.deprecated_field(message="Use rated_capacity instead")
+    voltage = L.deprecated_field(message="Use rated_voltage instead")
+
     # TODO: equations to connect c rate discharge and capacity
 
     power: F.ElectricPower

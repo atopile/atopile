@@ -19,22 +19,23 @@ class MOSFET(Module):
         DEPLETION = auto()
 
     channel_type = L.p_field(domain=L.Domains.ENUM(ChannelType))
-    
-    @deprecated(reason="Use channel_type instead")
-    saturation_type = L.p_field(domain=L.Domains.ENUM(SaturationType))
-    @deprecated(reason="Use rated_gate_source_threshold_voltage instead")
-    gate_source_threshold_voltage = L.p_field(units=P.V)
-    @deprecated(reason="Use rated_max_drain_source_voltage instead")
-    max_drain_source_voltage = L.p_field(units=P.V)
-    @deprecated(reason="Use rated_max_continuous_drain_current instead")
-    max_continuous_drain_current = L.p_field(units=P.A)
-    @deprecated(reason="Use rated_on_resistance instead")
-    on_resistance = L.p_field(units=P.ohm)
 
     rated_gate_source_threshold_voltage = L.p_field(units=P.V)
     rated_max_drain_source_voltage = L.p_field(units=P.V)
     rated_max_continuous_drain_current = L.p_field(units=P.A)
     rated_on_resistance = L.p_field(units=P.ohm)
+
+    saturation_type = L.deprecated_field(message="Only supporting enhancement mode")
+    gate_source_threshold_voltage = L.deprecated_field(
+        message="Use rated_gate_source_threshold_voltage instead"
+    )
+    max_drain_source_voltage = L.deprecated_field(
+        message="Use rated_max_drain_source_voltage instead"
+    )
+    max_continuous_drain_current = L.deprecated_field(
+        message="Use rated_max_continuous_drain_current instead"
+    )
+    on_resistance = L.deprecated_field(message="Use rated_on_resistance instead")
 
     source: F.Electrical
     gate: F.Electrical
@@ -48,14 +49,20 @@ class MOSFET(Module):
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.MOSFETS,
-            params=[self.channel_type, self.rated_gate_source_threshold_voltage, self.rated_max_drain_source_voltage, self.rated_max_continuous_drain_current, self.rated_on_resistance],
+            params=[
+                self.channel_type,
+                self.rated_gate_source_threshold_voltage,
+                self.rated_max_drain_source_voltage,
+                self.rated_max_continuous_drain_current,
+                self.rated_on_resistance,
+            ],
         )
 
     def __init__(self, channel_type: ChannelType = ChannelType.N_CHANNEL):
         super().__init__()
         self.channel_type = channel_type
 
-    @L.rt_field #TODO: Change bridge direction based on channel type
+    @L.rt_field  # TODO: Change bridge direction based on channel type
     def can_bridge(self):
         return F.can_bridge_defined(in_if=self.source, out_if=self.drain)
 

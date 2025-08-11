@@ -17,6 +17,7 @@ class ResistorArray(Module):
     resistance = L.p_field(units=P.ohm)
     rated_power = L.p_field(units=P.W)
     rated_voltage = L.p_field(units=P.V)
+    resistor_count = L.p_field(units=P.count)
 
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.R

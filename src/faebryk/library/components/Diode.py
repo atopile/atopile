@@ -57,7 +57,7 @@ class Diode(Module):
     Rated reverse blocking voltage.
     """
 
-    reverse_leakage_current = L.p_field(
+    rated_reverse_leakage_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(0.1 * P.nA, 1 * P.µA),
@@ -77,35 +77,14 @@ class Diode(Module):
     Rated power dissipation.
     """
 
-    @deprecated(reason="Use PoweredLED instead")
-    forward_voltage = L.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=L.Range(0.1 * P.V, 1 * P.V),
-        tolerance_guess=10 * P.percent,
+    forward_voltage = L.deprecated_field(message="Use rated_forward_voltage instead")
+    current = L.deprecated_field(message="Use rated_forward_current instead")
+    max_current = L.deprecated_field(message="Use rated_forward_current instead")
+    reverse_leakage_current = L.deprecated_field(
+        message="Use rated_reverse_leakage_current instead"
     )
-    current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
-        tolerance_guess=10 * P.percent,
-    )
-    reverse_working_voltage = L.p_field(
-        units=P.V,
-        likely_constrained=True,
-        soft_set=L.Range(10 * P.V, 100 * P.V),
-        tolerance_guess=10 * P.percent,
-    )
-    reverse_leakage_current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=L.Range(0.1 * P.nA, 1 * P.µA),
-        tolerance_guess=10 * P.percent,
-    )
-    max_current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        soft_set=L.Range(0.1 * P.mA, 10 * P.A),
+    reverse_working_voltage = L.deprecated_field(
+        message="Use rated_reverse_blocking_voltage instead"
     )
 
     anode: F.Electrical
@@ -115,7 +94,14 @@ class Diode(Module):
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.DIODES,
-            params=[self.rated_forward_voltage, self.rated_forward_current, self.rated_reverse_current, self.rated_reverse_blocking_voltage, self.reverse_leakage_current, self.rated_power_dissipation],
+            params=[
+                self.rated_forward_voltage,
+                self.rated_forward_current,
+                self.rated_reverse_current,
+                self.rated_reverse_blocking_voltage,
+                self.reverse_leakage_current,
+                self.rated_power_dissipation,
+            ],
         )
 
     def __init__(self, diode_type: DiodeType = DiodeType.PN):

@@ -24,20 +24,13 @@ class Fuse(Module):
         FAST = auto()
 
     terminals = L.list_field(2, F.Electrical)
-    
+
     fuse_type = L.p_field(
         domain=L.Domains.ENUM(FuseType),
     )
+
     response_type = L.p_field(
         domain=L.Domains.ENUM(ResponseType),
-    )
-
-    @deprecated(reason="Use rated_trip_current instead")
-    trip_current = L.p_field(
-        units=P.A,
-        likely_constrained=True,
-        domain=L.Domains.Numbers.REAL(),
-        soft_set=L.Range(100 * P.mA, 100 * P.A),
     )
 
     rated_trip_current = L.p_field(
@@ -68,6 +61,8 @@ class Fuse(Module):
         tolerance_guess=10 * P.percent,
     )
 
+    trip_current = L.deprecated_field(message="Use rated_trip_current instead")
+
     @L.rt_field
     def pickable(self):
         return F.is_pickable_by_type(
@@ -81,6 +76,7 @@ class Fuse(Module):
                 self.rated_power_dissipation,
             ],
         )
+
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
     def __init__(self, fuse_type: FuseType):

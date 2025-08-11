@@ -20,14 +20,27 @@ class Relay(Module):
     switch_b_common: F.Electrical
     switch_b_nc: F.Electrical
     coil_power: F.ElectricPower
-    #TODO: Add SPDT, DPDT, etc.
+    # TODO: Add SPDT, DPDT, etc.
 
-    coil_max_voltage = L.p_field(units=P.V)
-    coil_max_current = L.p_field(units=P.A)
-    coil_resistance = L.p_field(units=P.ohm)
-    contact_max_switching_voltage = L.p_field(units=P.V)
-    contact_max_switching_current = L.p_field(units=P.A)
-    contact_max_current = L.p_field(units=P.A)
+    rated_coil_max_voltage = L.p_field(units=P.V)
+    rated_coil_max_current = L.p_field(units=P.A)
+    rated_coil_resistance = L.p_field(units=P.ohm)
+    rated_contact_max_switching_voltage = L.p_field(units=P.V)
+    rated_contact_max_switching_current = L.p_field(units=P.A)
+    rated_contact_max_current = L.p_field(units=P.A)
+
+    coil_max_current = L.deprecated_field(message="Use rated_coil_max_current instead")
+    coil_max_voltage = L.deprecated_field(message="Use rated_coil_max_voltage instead")
+    coil_resistance = L.deprecated_field(message="Use rated_coil_resistance instead")
+    contact_max_current = L.deprecated_field(
+        message="Use rated_contact_max_current instead"
+    )
+    contact_max_switching_voltage = L.deprecated_field(
+        message="Use rated_contact_max_switching_voltage instead"
+    )
+    contact_max_switching_current = L.deprecated_field(
+        message="Use rated_contact_max_switching_current instead"
+    )
 
     @L.rt_field
     def pickable(self):

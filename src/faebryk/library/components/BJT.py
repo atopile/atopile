@@ -21,9 +21,7 @@ class BJT(Module):
         CUT_OFF = auto()
 
     doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
-
-    # TODO: Deprecated operation_region -> nothing
-    operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
+    operation_region = L.deprecated_field(message="operation_region is not supported")
 
     emitter: F.Electrical
     base: F.Electrical

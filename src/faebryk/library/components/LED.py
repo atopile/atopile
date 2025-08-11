@@ -17,6 +17,9 @@ class LED(Module):
     """
     We know LEDs are diodes
     """
+
+    # TODO: Finalize the pciking parameters based on what is available in the database. Also consider what we would pick if we had complete data.
+
     class Color(Enum):
         # Primary Colors
         RED = auto()
@@ -73,25 +76,44 @@ class LED(Module):
     """
     Rated power dissipation.
     """
+    rated_brightness = L.p_field(
+        units=P.cd,
+        likely_constrained=True,
+        soft_set=L.Range(1 * P.mcd, 1 * P.cd),
+        tolerance_guess=100 * P.percent,
+    )
+    """
+    Rated brightness.
+    """
+
+    color = L.p_field(domain=L.Domains.ENUM(Color))
 
     anode: F.Electrical
     cathode: F.Electrical
 
-    rated_brightness = L.p_field(units=P.cd)
-    color = L.p_field(domain=L.Domains.ENUM(Color))
-
-    @deprecated(reason="Use rated_brightness instead")
-    brightness = L.p_field(units=P.candela)
-    @deprecated(reason="Use rated_brightness instead")
-    max_brightness = L.p_field(units=P.candela)
-    @deprecated(reason="Use color instead")
-    color = L.p_field(domain=L.Domains.ENUM(Color))
+    brightness = L.deprecated_field(message="Use rated_brightness instead")
+    current = L.deprecated_field(message="Use rated_forward_current instead")
+    forward_voltage = L.deprecated_field(message="Use rated_forward_voltage instead")
+    max_brightness = L.deprecated_field(message="Use rated_brightness instead")
+    max_current = L.deprecated_field(message="Use rated_forward_current instead")
+    reverse_leakage_current = L.deprecated_field(
+        message="Use rated_reverse_leakage_current instead"
+    )
+    reverse_working_voltage = L.deprecated_field(
+        message="Use rated_reverse_blocking_voltage instead"
+    )
 
     @L.rt_field
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.LEDS,
-            params=[self.rated_forward_voltage, self.rated_forward_current, self.rated_power_dissipation, self.rated_brightness, self.color],
+            params=[
+                self.rated_forward_voltage,
+                self.rated_forward_current,
+                self.rated_power_dissipation,
+                self.rated_brightness,
+                self.color,
+            ],
         )
 
     def __init__(self, color: Color):

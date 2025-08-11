@@ -11,7 +11,8 @@ from faebryk.libs.units import P
 
 class Resistor(Module):
     """
-    A resistor is a passive two-terminal electrical component. Resistors can be configured by specifying a range for the following parameters:
+    A resistor is a passive two-terminal electrical component. Resistors can be
+    configured by specifying a range for the following parameters:
     - resistance: The resistance of the resistor in ohms.
     - max_power: The maximum rated power that the resistor can dissipate in watts.
     - max_voltage: The maximum rated voltage that the resistor can withstand in volts.
@@ -22,10 +23,11 @@ class Resistor(Module):
     terminals = L.list_field(2, F.Electrical)
 
     resistance = L.p_field(units=P.ohm)
-    # TODO: Deprecated max_power -> rated_power
     rated_power = L.p_field(units=P.W)
-    # TODO: Deprecated max_voltage -> rated_max_voltage
     rated_max_voltage = L.p_field(units=P.V)
+
+    max_power = L.deprecated_field(message="Use rated_power instead")
+    max_voltage = L.deprecated_field(message="Use rated_max_voltage instead")
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 

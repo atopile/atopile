@@ -12,7 +12,7 @@ class Crystal(Module):
     #     modules, interfaces, parameters
     # ----------------------------------------
     gnd: F.Electrical
-    unnamed = L.list_field(2, F.Electrical)
+    terminals = L.list_field(2, F.Electrical)
 
     # ----------------------------------------
     #               parameters
@@ -64,6 +64,22 @@ class Crystal(Module):
         likely_constrained=True,
         soft_set=L.Range(8 * P.pF, 30 * P.pF),
         tolerance_guess=10 * P.percent,
+    )
+
+    equivalent_series_resistance = L.deprecated_field(
+        message="Use rated_equivalent_series_resistance instead"
+    )
+    frequency = L.deprecated_field(message="Use rated_frequency instead")
+    frequency_ageing = L.deprecated_field(message="Use rated_frequency_ageing instead")
+    frequency_temperature_tolerance = L.deprecated_field(
+        message="Use rated_frequency_temperature_tolerance instead"
+    )
+    frequency_tolerance = L.deprecated_field(
+        message="Use rated_frequency_tolerance instead"
+    )
+    load_capacitance = L.deprecated_field(message="Use rated_load_capacitance instead")
+    shunt_capacitance = L.deprecated_field(
+        message="Use rated_shunt_capacitance instead"
     )
 
     @L.rt_field

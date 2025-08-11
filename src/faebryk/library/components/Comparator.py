@@ -43,10 +43,26 @@ class Comparator(Module):
         soft_set=L.Range(10 * P.ns, 1 * P.ms),
         tolerance_guess=15 * P.percent,
     )
-    rated_output_type = L.p_field(
+    output_type = L.p_field(
         domain=L.Domains.ENUM(OutputType),
         likely_constrained=True,
         soft_set=L.Domains.ENUM(OutputType.PushPull),
+    )
+
+    common_mode_rejection_ratio = L.deprecated_field(
+        message="Use rated_common_mode_rejection_ratio instead"
+    )
+    input_bias_current = L.deprecated_field(
+        message="Use rated_input_bias_current instead"
+    )
+    input_hysteresis_voltage = L.deprecated_field(
+        message="Use rated_input_hysteresis_voltage instead"
+    )
+    input_offset_voltage = L.deprecated_field(
+        message="Use rated_input_offset_voltage instead"
+    )
+    propagation_delay = L.deprecated_field(
+        message="Use rated_propagation_delay instead"
     )
 
     @L.rt_field
@@ -59,7 +75,7 @@ class Comparator(Module):
                 self.rated_input_hysteresis_voltage,
                 self.rated_input_offset_voltage,
                 self.rated_propagation_delay,
-                self.rated_output_type,
+                self.output_type,
             ],
         )
 

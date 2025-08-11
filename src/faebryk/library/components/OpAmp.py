@@ -6,16 +6,36 @@ from faebryk.core.module import Module
 from faebryk.libs.library import L
 from faebryk.libs.units import P
 
-#TODO: clean up
+# TODO: clean up
+
 
 class OpAmp(Module):
-    bandwidth = L.p_field(units=P.Hz)
-    common_mode_rejection_ratio = L.p_field(units=P.dB)
-    input_bias_current = L.p_field(units=P.A)
-    input_offset_voltage = L.p_field(units=P.V)
-    gain_bandwidth_product = L.p_field(units=P.Hz)
-    output_current = L.p_field(units=P.A)
-    slew_rate = L.p_field(units=P.V / P.s)
+    rated_bandwidth = L.p_field(units=P.Hz)
+    rated_common_mode_rejection_ratio = L.p_field(units=P.dB)
+    rated_input_bias_current = L.p_field(units=P.A)
+    rated_input_offset_voltage = L.p_field(units=P.V)
+    rated_gain_bandwidth_product = L.p_field(units=P.Hz)
+    rated_output_current = L.p_field(units=P.A)
+    rated_slew_rate = L.p_field(units=P.V / P.s)
+
+    bandwidth = L.deprecated_field(message="Use rated_bandwidth instead")
+    common_mode_rejection_ratio = L.deprecated_field(
+        message="Use rated_common_mode_rejection_ratio instead"
+    )
+    input_bias_current = L.deprecated_field(
+        message="Use rated_input_bias_current instead"
+    )
+    gain_bandwidth_product = L.deprecated_field(
+        message="Use rated_gain_bandwidth_product instead"
+    )
+    input_bias_current = L.deprecated_field(
+        message="Use rated_input_bias_current instead"
+    )
+    input_offset_voltage = L.deprecated_field(
+        message="Use rated_input_offset_voltage instead"
+    )
+    output_current = L.deprecated_field(message="Use rated_output_current instead")
+    slew_rate = L.deprecated_field(message="Use rated_slew_rate instead")
 
     power: F.ElectricPower
     inverting_input: F.Electrical
