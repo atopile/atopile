@@ -8,6 +8,8 @@ from pathlib import Path
 
 from atopile.config import config
 from atopile.errors import UserExportError
+from faebryk.core.cpp import Graph
+from faebryk.core.graph import GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
@@ -26,8 +28,11 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
+from faebryk.library import _F as F
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import DAG
+
+logger = logging.getLogger(__name__)
 
 
 @contextlib.contextmanager
@@ -103,20 +108,37 @@ class Muster:
 
         return decorator
 
+    def discover_and_register(self, graph: Graph) -> list[str]:
+        provides_build_targets = GraphFunctions(graph).nodes_of_type(
+            F.provides_build_target
+        )
+        for provides_build_target in provides_build_targets:
+            target = MusterTarget(
+                name=provides_build_target.name,
+                aliases=provides_build_target.aliases,
+                requires_kicad=provides_build_target.requires_kicad,
+                func=provides_build_target.run,
+            )
+            self.add_target(target)
+
+        return [target.name for target in self.targets.values()]
+
     def select(self, selected_targets: set[str] = {"all"}) -> list[MusterTarget]:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
+        for target in selected_targets:
+            if target in self.targets:
+                self.targets[target].implicit = False
+            else:
+                logger.warning(f"Unrecognized target: '{target}'")
+
         subgraph = self.dependency_dag.get_subgraph(
             selector_func=lambda name: name in selected_targets
             or any(alias in selected_targets for alias in self.targets[name].aliases)
         )
 
         sorted_names = subgraph.topologically_sorted()
-
-        for target in self.targets.values():
-            if target.name in selected_targets:
-                target.implicit = False
 
         return [self.targets[name] for name in sorted_names if name in self.targets]
 
