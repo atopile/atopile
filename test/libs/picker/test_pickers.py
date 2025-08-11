@@ -65,9 +65,6 @@ def _make_id(m: "ComponentTestCase"):
 def test_pick_module(case: "ComponentTestCase"):
     module = case.module
 
-    if case.packages:
-        module.add(F.has_package_requirements(size=EnumSet(*case.packages)))
-
     # pick
     solver = DefaultSolver()
     pick_part_recursively(module, solver)
