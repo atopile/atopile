@@ -17,24 +17,28 @@ class Resistor(Module):
     - max_voltage: The maximum rated voltage that the resistor can withstand in volts.
     - package: The imperial SMD package of the resistor.
     """
+
+    # TODO: Deprecated unnamed -> terminals
     terminals = L.list_field(2, F.Electrical)
 
     resistance = L.p_field(units=P.ohm)
-    @deprecated(reason="Use PoweredLED instead")
-    max_power = L.p_field(units=P.W)
-    @deprecated(reason="Use PoweredLED instead")
-    max_voltage = L.p_field(units=P.V)
-
+    # TODO: Deprecated max_power -> rated_power
     rated_power = L.p_field(units=P.W)
+    # TODO: Deprecated max_voltage -> rated_max_voltage
     rated_max_voltage = L.p_field(units=P.V)
 
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
-    
+
     @L.rt_field
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
-            params=[self.resistance, self.max_power, self.max_voltage],
+            params=[
+                self.resistance,
+                self.rated_power,
+                self.rated_max_voltage,
+                self.package,
+            ],
         )
 
     designator_prefix = L.f_field(F.has_designator_prefix)(

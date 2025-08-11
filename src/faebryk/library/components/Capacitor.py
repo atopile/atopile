@@ -3,17 +3,11 @@
 
 import logging
 from enum import Enum, StrEnum, auto
-from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
 from faebryk.libs.library import L
-from faebryk.libs.smd import SMDSize
-from faebryk.libs.units import P, Quantity
-
-# FIXME: this has to go this way to avoid gen_F detecting a circular import
-if TYPE_CHECKING:
-    from faebryk.library.interfaces.ElectricPower import ElectricPower
+from faebryk.libs.units import P
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +19,7 @@ class Capacitor(Module):
     - max_voltage: The maximum rated voltage that the capacitor can withstand in volts.
     - package: The imperial SMD package of the capacitor.
     """
+
     class TemperatureCoefficient(Enum):
         Y5V = auto()
         Z5U = auto()
@@ -35,6 +30,7 @@ class Capacitor(Module):
         X8R = auto()
         C0G = auto()
 
+    # TODO: Deprecated unnamed -> terminals
     terminals = L.list_field(2, F.Electrical)
 
     capacitance = L.p_field(
@@ -43,8 +39,8 @@ class Capacitor(Module):
         soft_set=L.Range(100 * P.pF, 1 * P.F),
         tolerance_guess=10 * P.percent,
     )
-    # Voltage at which the design may be damaged
-    max_voltage = L.p_field(
+    # TODO: Deprecated max_voltage -> rated_voltage
+    rated_voltage = L.p_field(
         units=P.V,
         likely_constrained=True,
         soft_set=L.Range(10 * P.V, 100 * P.V),
@@ -57,9 +53,14 @@ class Capacitor(Module):
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
-            params=[self.capacitance, self.max_voltage, self.temperature_coefficient],
+            params=[
+                self.capacitance,
+                self.rated_voltage,
+                self.temperature_coefficient,
+                self.package,
+            ],
         )
-    
+
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
 
     designator_prefix = L.f_field(F.has_designator_prefix)(

@@ -17,49 +17,49 @@ class Crystal(Module):
     # ----------------------------------------
     #               parameters
     # ----------------------------------------
-    frequency = L.p_field(
+    rated_frequency = L.p_field(
         units=P.Hz,
         likely_constrained=True,
         soft_set=L.Range(32.768 * P.kHz, 100 * P.MHz),
         tolerance_guess=50 * P.ppm,
     )
 
-    frequency_tolerance = L.p_field(
+    rated_frequency_tolerance = L.p_field(
         units=P.ppm,
         likely_constrained=True,
         soft_set=L.Range(10 * P.ppm, 100 * P.ppm),
         tolerance_guess=10 * P.percent,
     )
 
-    frequency_temperature_tolerance = L.p_field(
+    rated_frequency_temperature_tolerance = L.p_field(
         units=P.ppm,
         likely_constrained=True,
         soft_set=L.Range(1 * P.ppm, 50 * P.ppm),
         tolerance_guess=10 * P.percent,
     )
 
-    frequency_ageing = L.p_field(
+    rated_frequency_ageing = L.p_field(
         units=P.ppm,
         likely_constrained=True,
         soft_set=L.Range(1 * P.ppm, 10 * P.ppm),
         tolerance_guess=20 * P.percent,
     )
 
-    equivalent_series_resistance = L.p_field(
+    rated_equivalent_series_resistance = L.p_field(
         units=P.Ω,
         likely_constrained=True,
         soft_set=L.Range(10 * P.Ω, 200 * P.Ω),
         tolerance_guess=10 * P.percent,
     )
 
-    shunt_capacitance = L.p_field(
+    rated_shunt_capacitance = L.p_field(
         units=P.F,
         likely_constrained=True,
         soft_set=L.Range(1 * P.pF, 10 * P.pF),
         tolerance_guess=20 * P.percent,
     )
 
-    load_capacitance = L.p_field(
+    rated_load_capacitance = L.p_field(
         units=P.F,
         likely_constrained=True,
         soft_set=L.Range(8 * P.pF, 30 * P.pF),
@@ -71,13 +71,13 @@ class Crystal(Module):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.CRYSTALS,
             params=[
-                self.frequency,
-                self.frequency_tolerance,
-                self.frequency_temperature_tolerance,
-                self.frequency_ageing,
-                self.equivalent_series_resistance,
-                self.shunt_capacitance,
-                self.load_capacitance,
+                self.rated_frequency,
+                self.rated_frequency_tolerance,
+                self.rated_frequency_temperature_tolerance,
+                self.rated_frequency_ageing,
+                self.rated_equivalent_series_resistance,
+                self.rated_shunt_capacitance,
+                self.rated_load_capacitance,
             ],
         )
 

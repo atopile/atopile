@@ -9,27 +9,31 @@ from faebryk.libs.units import P
 
 
 class Battery(Module):
-    voltage = L.p_field(
+    # TODO: Deprecated voltage -> rated_voltage
+    rated_voltage = L.p_field(
         units=P.V,
         soft_set=L.Range(0 * P.V, 100 * P.V),
         likely_constrained=True,
     )
-    capacity = L.p_field(
+    # TODO: Deprecated capacity -> rated_capacity
+    rated_capacity = L.p_field(
         units=P.Ah,
         soft_set=L.Range(100 * P.mAh, 100 * P.Ah),
         likely_constrained=True,
     )
-    discharge_rate = L.p_field(
+    # TODO: Deprecated discharge_rate -> rated_discharge_rate
+    rated_discharge_rate = L.p_field(
         units=P.A,
-        soft_set=L.Range(1 * P.C, 10 * P.C), #TODO: Cleanup
+        soft_set=L.Range(1 * P.C, 10 * P.C),  # TODO: Cleanup
         likely_constrained=True,
     )
-    c_rate = L.p_field(
+    # TODO: Deprecated c_rate -> rated_c_rate
+    rated_c_rate = L.p_field(
         units=P.dimensionless,
         soft_set=L.Range(1 * P.C, 10 * P.C),
         likely_constrained=True,
     )
-    #TODO: equations to connect c rate discharge and capacity
+    # TODO: equations to connect c rate discharge and capacity
 
     power: F.ElectricPower
 
@@ -37,11 +41,16 @@ class Battery(Module):
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.BATTERIES,
-            params=[self.voltage, self.capacity, self.discharge_rate, self.c_rate],
+            params=[
+                self.rated_voltage,
+                self.rated_capacity,
+                self.rated_discharge_rate,
+                self.rated_c_rate,
+            ],
         )
 
     def __preinit__(self) -> None:
-        self.power.voltage.constrain_subset(self.voltage)
+        self.power.voltage.constrain_subset(self.rated_voltage)
 
     @L.rt_field
     def single_electric_reference(self):

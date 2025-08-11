@@ -22,7 +22,7 @@ class BJT(Module):
 
     doping_type = L.p_field(domain=L.Domains.ENUM(DopingType))
 
-    @deprecated(reason="Use PoweredLED instead")
+    # TODO: Deprecated operation_region -> nothing
     operation_region = L.p_field(domain=L.Domains.ENUM(OperationRegion))
 
     emitter: F.Electrical
@@ -49,9 +49,9 @@ class BJT(Module):
         # if self.doping_type == self.DopingType.NPN:
         return F.can_bridge_defined(self.collector, self.emitter)
         # elif self.doping_type == self.DopingType.PNP:
-            # return F.can_bridge_defined(self.emitter, self.collector)
+        # return F.can_bridge_defined(self.emitter, self.collector)
         # else:
-            # raise ValueError(f"Invalid doping type: {self.doping_type}")
+        # raise ValueError(f"Invalid doping type: {self.doping_type}")
 
     @rt_field
     def pin_association_heuristic(self):

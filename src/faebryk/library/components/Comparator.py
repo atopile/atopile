@@ -15,35 +15,35 @@ class Comparator(Module):
         PushPull = auto()
         OpenDrain = auto()
 
-    common_mode_rejection_ratio = L.p_field(
+    rated_common_mode_rejection_ratio = L.p_field(
         units=P.dB,
         likely_constrained=True,
         soft_set=L.Range(quantity(60, P.dB), quantity(120, P.dB)),
         tolerance_guess=10 * P.percent,
     )
-    input_bias_current = L.p_field(
+    rated_input_bias_current = L.p_field(
         units=P.A,
         likely_constrained=True,
         soft_set=L.Range(1 * P.pA, 1 * P.µA),
         tolerance_guess=20 * P.percent,
     )
-    input_hysteresis_voltage = L.p_field(
+    rated_input_hysteresis_voltage = L.p_field(
         units=P.V,
         likely_constrained=True,
         soft_set=L.Range(1 * P.mV, 100 * P.mV),
         tolerance_guess=15 * P.percent,
     )
-    input_offset_voltage = L.p_field(
+    rated_input_offset_voltage = L.p_field(
         units=P.V,
         soft_set=L.Range(10 * P.µV, 10 * P.mV),
         tolerance_guess=20 * P.percent,
     )
-    propagation_delay = L.p_field(
+    rated_propagation_delay = L.p_field(
         units=P.s,
         soft_set=L.Range(10 * P.ns, 1 * P.ms),
         tolerance_guess=15 * P.percent,
     )
-    output_type = L.p_field(
+    rated_output_type = L.p_field(
         domain=L.Domains.ENUM(OutputType),
         likely_constrained=True,
         soft_set=L.Domains.ENUM(OutputType.PushPull),
@@ -54,12 +54,12 @@ class Comparator(Module):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.COMPARATORS,
             params=[
-                self.common_mode_rejection_ratio,
-                self.input_bias_current,
-                self.input_hysteresis_voltage,
-                self.input_offset_voltage,
-                self.propagation_delay,
-                self.output_type,
+                self.rated_common_mode_rejection_ratio,
+                self.rated_input_bias_current,
+                self.rated_input_hysteresis_voltage,
+                self.rated_input_offset_voltage,
+                self.rated_propagation_delay,
+                self.rated_output_type,
             ],
         )
 

@@ -19,7 +19,12 @@ class CapacitorElectrolytic(F.Capacitor):
     def pickable(self):
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS_ELECTROLYTIC,
-            params=[self.capacitance, self.max_voltage, self.temperature_coefficient, self.package],
+            params=[
+                self.capacitance,
+                self.rated_voltage,
+                self.temperature_coefficient,
+                self.package,
+            ],
         )
 
     @L.rt_field
