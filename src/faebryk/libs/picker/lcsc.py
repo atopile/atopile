@@ -401,6 +401,32 @@ class EasyEDAPart:
 
         return part
 
+    @once
+    @staticmethod
+    def load_datasheet_for_identifier(
+        url: str, identifier: str, lcsc_id: str
+    ) -> str | None:
+        import re
+
+        import requests
+
+        logger.debug(f"Crawling datasheet for {identifier}")
+
+        # make requests act like curl
+        lcsc_site = requests.get(
+            url,
+            headers={"User-Agent": "curl/7.81.0"},
+            verify=not Gcfg.project.dangerously_skip_ssl_verification,
+        )
+        # find _{partno}.pdf in html
+        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
+        if match:
+            pdfurl = match.group(1)
+            logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
+            return pdfurl
+
+        return None
+
     def load_datasheet(self):
         if self.datasheet_url:
             return self.datasheet_url
@@ -411,32 +437,16 @@ class EasyEDAPart:
         if not CRAWL_DATASHEET:
             return None
 
-        import re
-
-        import requests
-
-        url = self._pre_datasheet
-        if not url:
+        if not (url := self._pre_datasheet):
             return None
 
-        logger.debug(f"Crawling datasheet for {self.identifier}")
-
-        # make requests act like curl
-        lcsc_site = requests.get(
-            url,
-            headers={"User-Agent": "curl/7.81.0"},
-            verify=not Gcfg.project.dangerously_skip_ssl_verification,
-        )
-        lcsc_id = self.lcsc_id
-        # find _{partno}.pdf in html
-        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
-        if match:
-            pdfurl = match.group(1)
-            logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
+        if pdfurl := EasyEDAPart.load_datasheet_for_identifier(
+            url, self.identifier, self.lcsc_id
+        ):
             self.datasheet_url = pdfurl
             return pdfurl
-        else:
-            return None
+
+        return None
 
 
 def _fix_3d_model_offsets(ki_footprint: ExporterFootprintKicad):
