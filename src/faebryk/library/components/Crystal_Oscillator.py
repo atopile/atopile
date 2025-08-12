@@ -46,17 +46,16 @@ class Crystal_Oscillator(Module):
             cap.capacitance.constrain_subset(self.capacitance)
 
         self.crystal.gnd.connect(self.xtal_if.gnd)
-        self.crystal.unnamed[0].connect_via(self.capacitors[0], self.xtal_if.gnd)
-        self.crystal.unnamed[1].connect_via(self.capacitors[1], self.xtal_if.gnd)
+        self.crystal.terminals[0].connect_via(self.capacitors[0], self.xtal_if.gnd)
+        self.crystal.terminals[1].connect_via(self.capacitors[1], self.xtal_if.gnd)
 
-        self.crystal.unnamed[0].connect_via(
+        self.crystal.terminals[0].connect_via(
             self.current_limiting_resistor, self.xtal_if.xout
         )
-        self.crystal.unnamed[1].connect(self.xtal_if.xin)
+        self.crystal.terminals[1].connect(self.xtal_if.xin)
 
     @L.rt_field
     def can_bridge(self):
-<<<<<<< HEAD
         return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
 
     usage_example = L.f_field(F.has_usage_example)(
@@ -92,6 +91,3 @@ class Crystal_Oscillator(Module):
         """,
         language=F.has_usage_example.Language.ato,
     )
-=======
-        return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
->>>>>>> e4b2d71b589afc05fb8f3fe3814e467bc6dab411
