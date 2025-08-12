@@ -507,6 +507,7 @@ def get_raw(lcsc_id: str) -> EasyEDAAPIResponse:
     return lifecycle.easyeda_api.ingest(lcsc_id, response)
 
 
+@once
 def download_easyeda_info(lcsc_id: str, get_model: bool = True):
     from faebryk.libs.part_lifecycle import PartLifecycle
 
