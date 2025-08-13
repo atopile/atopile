@@ -129,11 +129,14 @@ class _NetName:
         There must always be some base, and if it's not provided, it's just 'net'
         Prefixes and suffixes are joined with a "-" if they exist.
         """
-        return "-".join(
-            str(n)
-            for n in [self.prefix, self.base_name or "net", self.suffix]
-            if n is not None
-        )
+        # Build parts explicitly so empty-string prefixes don't create a leading dash
+        parts: list[str] = []
+        if self.prefix is not None and self.prefix != "":
+            parts.append(str(self.prefix))
+        parts.append(str(self.base_name or "net"))
+        if self.suffix is not None:
+            parts.append(str(self.suffix))
+        return "-".join(parts)
 
 
 def _conflicts(
@@ -293,7 +296,48 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
                 key=implicit_name_candidates.get,  # type: ignore
             )
 
-    # Resolve as many conflict as possible by prefixing on
+    # Resolve conflicts by prefixing with the owning interface's instance name first
+    def _best_interface_prefix(net: F.Net) -> str | None:
+        """Pick a good interface instance name to disambiguate a net.
+
+        Prefer the nearest ancestor that is a ModuleInterface but not an
+        Electrical (i.e. the interface instance like `power_3v3`), to avoid
+        using leaf names like `vcc`/`gnd`.
+        """
+        candidates: list[tuple[str, int]] = []
+        for mif in net.get_connected_interfaces():
+            try:
+                # Traverse hierarchy from root to leaf and pick the first
+                # non-Electrical ModuleInterface name
+                chosen_name: str | None = None
+                chosen_depth: int | None = None
+                for node, name_in_parent in mif.get_hierarchy():
+                    if not node.get_parent():
+                        continue
+                    if isinstance(node, L.ModuleInterface) and not isinstance(
+                        node, F.Electrical
+                    ):
+                        chosen_name = name_in_parent
+                        chosen_depth = len(node.get_hierarchy())
+                        break
+                if chosen_name is None:
+                    continue
+                candidates.append((chosen_name, int(chosen_depth)))
+            except NodeNoParent:
+                continue
+
+        if not candidates:
+            return None
+        # Prefer smallest depth (closest to root)
+        return min(candidates, key=lambda x: x[1])[0]
+
+    for conflict_nets in _conflicts(names):
+        for net in conflict_nets:
+            if names[net].prefix is None:
+                if (pref := _best_interface_prefix(net)) is not None:
+                    names[net].prefix = pref
+
+    # Resolve remaining conflicts by prefixing on
     # the lowest common node's full name
     for conflict_nets in _conflicts(names):
         for net in conflict_nets:
