@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 class CapacitorElectrolytic(F.Capacitor):
-    pickable = None
+    pickable = None  # type: ignore
     attach_to_footprint = None
 
     anode: F.Electrical

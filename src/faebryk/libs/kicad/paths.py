@@ -126,12 +126,23 @@ def get_plugin_paths(legacy: bool = False):
     if not plugin_paths_existing and try_or(
         find_pcbnew, False, catch=FileNotFoundError
     ):
-        plugin_paths_existing = list(
-            Path("~")
-            .expanduser()
-            .resolve()
-            .glob(f"**/kicad/*/{plugin_suffix}", case_sensitive=False)
-        )
+        # First try common subdirectories for better performance
+        home = Path("~").expanduser().resolve()
+        for subdir in [".local", ".config", "Documents", "Library", "AppData"]:
+            search_path = home / subdir
+            if search_path.exists():
+                matches = list(search_path.glob(f"**/kicad/*/{plugin_suffix}"))
+                if matches:
+                    plugin_paths_existing.extend(matches)
+
+        # If still not found, fall back to searching entire home directory
+        if not plugin_paths_existing:
+            plugin_paths_existing = list(
+                Path("~")
+                .expanduser()
+                .resolve()
+                .glob(f"**/kicad/*/{plugin_suffix}", case_sensitive=False)
+            )
 
     if not plugin_paths_existing:
         raise FileNotFoundError("Could not find plugin paths")

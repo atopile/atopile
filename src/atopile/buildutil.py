@@ -1,4 +1,5 @@
 import contextlib
+import itertools
 import logging
 import time
 from copy import deepcopy
@@ -38,12 +39,15 @@ from faebryk.libs.util import (
     compare_dataclasses,
     md_table,
     once,
+    round_dataclass,
     sort_dataclass,
 )
 
 logger = logging.getLogger(__name__)
 
 SKIP_SOLVING = ConfigFlag("SKIP_SOLVING", default=False)
+
+MAX_PCB_DIFF_LENGTH = 100
 
 
 def _get_solver() -> Solver:
@@ -57,12 +61,16 @@ def _get_solver() -> Solver:
 def _update_layout(
     pcb_file: C_kicad_pcb_file, original_pcb_file: C_kicad_pcb_file
 ) -> None:
-    pcb_sorted = deepcopy(pcb_file)
-    sort_dataclass(original_pcb_file, sort_key=str)
-    sort_dataclass(pcb_sorted, sort_key=str)
+    pcb_original_normalized = round_dataclass(
+        sort_dataclass(original_pcb_file, sort_key=str, inplace=False), precision=2
+    )
+    pcb_normalized = round_dataclass(
+        sort_dataclass(pcb_file, sort_key=str, inplace=False), precision=2
+    )
+
     pcb_diff = compare_dataclasses(
-        before=original_pcb_file,
-        after=pcb_sorted,
+        before=pcb_original_normalized,
+        after=pcb_normalized,
         skip_keys=("uuid", "__atopile_lib_fp_hash__"),
         require_dataclass_type_match=False,
     )
@@ -76,7 +84,7 @@ def _update_layout(
                 ".updated.kicad_pcb"
             )
             original_pcb_file.dumps(original_path)
-            pcb_sorted.dumps(updated_path)
+            pcb_normalized.dumps(updated_path)
 
             # TODO: make this a real util
             def _try_relative(path: Path) -> Path:
@@ -88,6 +96,14 @@ def _update_layout(
             original_relative = _try_relative(original_path)
             updated_relative = _try_relative(updated_path)
 
+            diff_length = len(pcb_diff)
+            truncated = diff_length > MAX_PCB_DIFF_LENGTH
+            pcb_diff_items = (
+                itertools.islice(pcb_diff.items(), MAX_PCB_DIFF_LENGTH)
+                if truncated
+                else pcb_diff.items()
+            )
+
             raise UserException(
                 dedent(
                     """
@@ -98,7 +114,7 @@ def _update_layout(
                     Updated layout: **{updated_relative}**
 
                     Diff:
-                    {diff}
+                    {diff}{truncated_msg}
                     """
                 ).format(
                     original_relative=original_relative,
@@ -106,13 +122,15 @@ def _update_layout(
                     diff=md_table(
                         [
                             [f"**{path}**", diff["before"], diff["after"]]
-                            for path, diff in pcb_diff.items()
+                            for path, diff in pcb_diff_items
                         ],
                         headers=["Path", "Before", "After"],
                     ),
+                    truncated_msg=f"\n... ({diff_length - MAX_PCB_DIFF_LENGTH} more)"
+                    if truncated
+                    else "",
                 ),
                 title="Frozen failed",
-                # No markdown=False here because we have both a command and paths
             )
         else:
             logger.info("No changes to layout. Passed --frozen check.")

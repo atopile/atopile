@@ -23,6 +23,7 @@ from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import dataclass, fields, is_dataclass
 from datetime import datetime
 from enum import Enum, StrEnum, auto
@@ -2276,10 +2277,16 @@ def robustly_rm_dir(path: os.PathLike) -> None:
     shutil.rmtree(path, onexc=remove_readonly)
 
 
-def yield_missing(existing: Container, candidates: Iterable | None = None):
-    if candidates is None:
-        candidates = range(10000)  # Prevent counting to infinity by default
-    for c in candidates:
+def yield_missing(existing: Container, candidates: Iterable | int | None = None):
+    match candidates:
+        case None:
+            counter = itertools.count()
+        case int():
+            counter = itertools.count(candidates)
+        case _:
+            counter = candidates
+
+    for c in counter:
         if c not in existing:
             yield c
 
@@ -2768,7 +2775,12 @@ def path_replace(base: Path, match: Path, replacement: Path) -> Path:
     )
 
 
-def sort_dataclass(obj: Any, sort_key: Callable[[Any], Any], prefix: str = "") -> Any:
+def sort_dataclass(
+    obj: Any, sort_key: Callable[[Any], Any], prefix: str = "", inplace: bool = True
+) -> Any:
+    if not inplace:
+        obj = deepcopy(obj)  # TODO: more efficient copy
+
     for f in fields(obj):
         val = getattr(obj, f.name)
         if isinstance(val, list):
