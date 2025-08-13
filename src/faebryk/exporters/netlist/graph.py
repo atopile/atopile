@@ -131,20 +131,13 @@ class _NetName:
         There must always be some base, and if it's not provided, it's just 'net'
         Prefixes and suffixes are joined with a "-" if they exist.
         """
-        # Build parts explicitly so empty-string prefixes don't create a leading dash
-        parts: list[str] = []
-        if self.prefix is not None and self.prefix != "":
-            parts.append(str(self.prefix))
-        # Combine required affixes directly onto the base segment without hyphens
-        base = str(self.base_name or "net")
-        if self.required_prefix:
-            base = f"{self.required_prefix}{base}"
-        if self.required_suffix:
-            base = f"{base}{self.required_suffix}"
-        parts.append(base)
-        if self.suffix is not None:
-            parts.append(str(self.suffix))
-        return "-".join(parts)
+        base_name = self.base_name or "net"
+        prefix = f"{self.prefix}-" if self.prefix else ""
+        suffix = f"-{self.suffix}" if self.suffix else ""
+        required_prefix = self.required_prefix or ""
+        required_suffix = self.required_suffix or ""
+
+        return f"{prefix}{required_prefix}{base_name}{required_suffix}{suffix}"
 
 
 def _conflicts(
