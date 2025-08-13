@@ -178,9 +178,9 @@ def _process_candidates(module: Module, candidates: list[Component]) -> list[Com
             if len(candidates) == 1:
                 raise PickError(
                     (
-                        f"LCSC has no footprint/symbol for any candidate for `{module}`. "
-                        "Loosen your selection criteria or try another"
-                        " part which has an LCSC footprint and symbol."
+                        "LCSC has no footprint/symbol for any candidate for "
+                        f"`{module}`. Loosen your selection criteria or try another "
+                        "part which has an LCSC footprint and symbol."
                     ),
                     module,
                 ) from ex
