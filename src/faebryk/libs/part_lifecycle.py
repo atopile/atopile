@@ -631,7 +631,9 @@ class PartLifecycle:
                 property_values["atopile_subaddresses"] = (
                     "["
                     + ", ".join(
-                        subaddress.serialize() for subaddress in sub_pcb_t.addresses
+                        sorted(
+                            subaddress.serialize() for subaddress in sub_pcb_t.addresses
+                        )
                     )
                     + "]"
                 )
