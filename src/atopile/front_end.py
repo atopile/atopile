@@ -739,12 +739,18 @@ class _EnumUpgradeError(Exception):
 
 
 def _try_upgrade_str_to_enum(
-    type_hints: dict[str, Any], arg_name: str, arg_value: str
+    callable_: Callable, arg_name: str, arg_value: str
 ) -> Enum | str:
     """
     Attempts to convert a string argument to a compatible enum value, based on type
     hints.
     """
+
+    try:
+        type_hints = typing.get_type_hints(callable_)
+    except NameError:
+        # occurs when the type is unresolvable, e.g. due to an `if TYPE_CHECKING` guard
+        return arg_value
 
     type_hint = type_hints[arg_name]
 
@@ -1543,7 +1549,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
             callable_ = getattr(super_class, "__original_init__")
             super_class_signature = inspect.signature(callable_)
-            type_hints = typing.get_type_hints(callable_)
 
             for arg_name, arg_value in kwargs.items():
                 if arg_name not in super_class_signature.parameters:
@@ -1554,7 +1559,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 if isinstance(arg_value, str):
                     try:
                         kwargs[arg_name] = _try_upgrade_str_to_enum(
-                            type_hints, arg_name, arg_value
+                            callable_, arg_name, arg_value
                         )
                     except _EnumUpgradeError as ex:
                         raise errors.UserInvalidValueError.from_ctx(
@@ -2449,7 +2454,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         callable_ = getattr(constructor, "__original_init__", constructor)
         constructor_signature = inspect.signature(callable_)
-        type_hints = typing.get_type_hints(callable_)
 
         for arg_name, arg_value in kwargs.items():
             if arg_name not in constructor_signature.parameters:
@@ -2462,7 +2466,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             if isinstance(arg_value, str):
                 try:
                     kwargs[arg_name] = _try_upgrade_str_to_enum(
-                        type_hints, arg_name, arg_value
+                        callable_, arg_name, arg_value
                     )
                 except _EnumUpgradeError as ex:
                     raise errors.UserInvalidValueError.from_ctx(
