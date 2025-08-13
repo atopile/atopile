@@ -57,6 +57,7 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.XtalIF import XtalIF
+from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic

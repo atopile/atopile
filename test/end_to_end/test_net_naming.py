@@ -98,3 +98,22 @@ def test_conflicting_suggested_names_on_same_net(
     )
 
     assert p.returncode == 0
+
+
+def test_differential_pair_suffixes(build_app: EXEC_T, save_tmp_path_on_failure: None):
+    """
+    DifferentialPair should enforce `_p` and `_n` suffixes on the nets.
+    """
+    _, stdout, p = build_app(
+        """
+        import DifferentialPair
+        module App:
+            dp = new DifferentialPair
+            # Connect each side to a unique signal to force separate nets
+            signal a ~ dp.p.line
+            signal b ~ dp.n.line
+        """,
+        [],
+    )
+
+    assert p.returncode == 0

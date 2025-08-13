@@ -120,6 +120,8 @@ class _NetName:
     base_name: str | None = None
     prefix: str | None = None
     suffix: int | None = None
+    required_prefix: str | None = None
+    required_suffix: str | None = None
 
     @property
     def name(self) -> str:
@@ -133,9 +135,13 @@ class _NetName:
         parts: list[str] = []
         if self.prefix is not None and self.prefix != "":
             parts.append(str(self.prefix))
+        if self.required_prefix is not None and self.required_prefix != "":
+            parts.append(str(self.required_prefix))
         parts.append(str(self.base_name or "net"))
         if self.suffix is not None:
             parts.append(str(self.suffix))
+        if self.required_suffix is not None and self.required_suffix != "":
+            parts.append(str(self.required_suffix))
         return "-".join(parts)
 
 
@@ -295,6 +301,20 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
                 implicit_name_candidates,
                 key=implicit_name_candidates.get,  # type: ignore
             )
+
+        # Apply required affixes from connected interfaces
+        prefixes: list[str] = []
+        suffixes: list[str] = []
+        for mif in mifs:
+            if affix := mif.try_get_trait(F.has_net_name_affix):
+                if getattr(affix, "required_prefix", None):
+                    prefixes.append(str(affix.required_prefix))
+                if getattr(affix, "required_suffix", None):
+                    suffixes.append(str(affix.required_suffix))
+        if prefixes:
+            names[net].required_prefix = prefixes[0]
+        if suffixes:
+            names[net].required_suffix = suffixes[0]
 
     # Resolve conflicts by prefixing with the owning interface's instance name first
     def _best_interface_prefix(net: F.Net) -> str | None:
