@@ -157,6 +157,7 @@ def _verify_file_structure(config: "Config"):
         project_root / "layouts",
         project_root / "parts",
         project_root / "README.md",
+        project_root / "usage.ato",
     ]
     missing = [str(p.relative_to(project_root)) for p in required if not p.exists()]
     if missing:
@@ -195,6 +196,56 @@ def _verify_build_exists(config: "Config"):
             "Missing build directories: "
             + ", ".join(missing_builds)
             + " Please run `ato build` to create the build directories."
+        )
+
+
+def _verify_usage_import(config: "Config"):
+    """
+    Verify that the `usage` build target's imports reference atopile packages.
+    """
+    from pathlib import Path
+
+    from atopile.front_end import Context, bob
+
+    usage_build = config.project.builds.get("usage", None)
+    if usage_build is None:
+        raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
+
+    entry_path: Path = usage_build.entry_file_path
+    if not entry_path.exists():
+        raise UserFileNotFoundError(f"Usage build entry not found: {entry_path}")
+
+    context = bob.index_file(entry_path)
+
+    offending: list[str] = []
+    for _ref, node in context.refs.items():
+        if isinstance(node, Context.ImportPlaceholder):
+            if "atopile" not in node.from_path:
+                offending.append(node.from_path)
+
+    if offending:
+        raise UserBadParameterError(
+            "Usage build must import packages via 'atopile/...'. Offending imports: "
+            + ", ".join(offending)
+        )
+
+
+def _verify_usage_in_readme(config: "Config"):
+    """
+    Verify that the `usage` build target's imports reference atopile packages.
+    """
+    usage_build = config.project.builds.get("usage", None)
+    if usage_build is None:
+        raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
+
+    usage_content = usage_build.entry_file_path.read_text(encoding="utf-8")
+    readme_content = (config.project.paths.root / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    if usage_content not in readme_content:
+        raise UserBadParameterError(
+            "Entire content of usage.ato must be included in the README.md file."
         )
 
 
@@ -289,6 +340,10 @@ def verify_package(config: "Config"):
                 _verify_file_structure(config)
             with accumulator.collect():
                 _verify_no_warnings(config)
+            with accumulator.collect():
+                _verify_usage_import(config)
+            with accumulator.collect():
+                _verify_usage_in_readme(config)
 
     logger.info("Package verification successful! 🎉")
 
