@@ -391,17 +391,131 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
         return min(candidates, key=lambda x: x[1])[0]
 
     for conflict_nets in _conflicts(names):
-        for net in conflict_nets:
-            if names[net].prefix is None:
-                if (pref := _best_interface_prefix(net)) is not None:
-                    names[net].prefix = pref
+        # Prefer to add interface-based prefixes to ALL nets in the group and
+        # make them unique by minimally qualifying with ancestor names
+        def _interface_name_path_for_net(net: F.Net) -> list[str] | None:
+            """Pick the best interface path for prefixing a net.
+
+            Prefer ElectricPower interface instance names and include the nearest
+            owning module name to minimally qualify when needed, e.g.:
+            - power_5v
+            - sensor-power_5v
+            Avoid generic names like 'pins' or 'unnamed'.
+            """
+            best: tuple[int, list[str]] | None = None
+            for mif in net.get_connected_interfaces():
+                try:
+                    hierarchy = [
+                        (node, name)
+                        for node, name in mif.get_hierarchy()
+                        if node.get_parent()
+                    ]
+                    # Find first non-Electrical ModuleInterface in chain
+                    anchor_idx = None
+                    for idx, (node, name) in enumerate(hierarchy):
+                        if isinstance(node, L.ModuleInterface) and not isinstance(
+                            node, F.Electrical
+                        ):
+                            anchor_idx = idx
+                            break
+                    if anchor_idx is None:
+                        continue
+
+                    anchor_node, anchor_name = hierarchy[anchor_idx]
+                    # Find nearest owning Module before the anchor
+                    owner_name = None
+                    for j in range(anchor_idx - 1, -1, -1):
+                        node_j, name_j = hierarchy[j]
+                        if isinstance(node_j, Module):
+                            owner_name = name_j
+                            break
+
+                    # Compose path
+                    path: list[str] = (
+                        [owner_name, anchor_name] if owner_name else [anchor_name]
+                    )
+
+                    # Score candidates
+                    score = 0
+                    if isinstance(anchor_node, F.ElectricPower):
+                        score += 2
+                    if owner_name:
+                        score += 1
+                    if anchor_name.startswith("pins") or anchor_name.startswith(
+                        "unnamed"
+                    ):
+                        score -= 2
+
+                    cand = (score, path)
+                    if best is None or cand > best:
+                        best = cand
+
+                except NodeNoParent:
+                    continue
+
+            return None if best is None else best[1]
+
+        paths: dict[F.Net, list[str] | None] = {
+            net: _interface_name_path_for_net(net) for net in conflict_nets
+        }
+
+        if any(p for p in paths.values()):
+            # Compute minimal unique suffix per path
+            suffix_len: dict[F.Net, int] = {
+                net: 1 for net in conflict_nets if paths[net]
+            }
+
+            def _keys() -> dict[F.Net, tuple[str, ...]]:
+                keys: dict[F.Net, tuple[str, ...]] = {}
+                for net in conflict_nets:
+                    p = paths[net]
+                    if not p:
+                        continue
+                    keys[net] = tuple(p[-suffix_len[net] :])
+                return keys
+
+            keys = _keys()
+            # Increase suffix length for colliding keys until unique or max depth
+            progressed = True
+            while progressed:
+                progressed = False
+                # group by key
+                groups: dict[tuple[str, ...], list[F.Net]] = {}
+                for net, key in keys.items():
+                    groups.setdefault(key, []).append(net)
+                for key, nets_in_key in groups.items():
+                    if len(nets_in_key) <= 1:
+                        continue
+                    for net in nets_in_key:
+                        p = paths[net]
+                        if not p:
+                            continue
+                        if suffix_len[net] < len(p):
+                            suffix_len[net] += 1
+                            progressed = True
+                if progressed:
+                    keys = _keys()
+
+            # Assign per-net prefixes
+            for net in conflict_nets:
+                p = paths[net]
+                if p:
+                    names[net].prefix = "-".join(p[-suffix_len[net] :])
+                else:
+                    if lcn := L.Node.nearest_common_ancestor(
+                        *net.get_connected_interfaces()
+                    ):
+                        names[net].prefix = lcn[0].get_full_name()
 
     # Resolve remaining conflicts by prefixing on
     # the lowest common node's full name
     for conflict_nets in _conflicts(names):
         for net in conflict_nets:
-            if lcn := L.Node.nearest_common_ancestor(*net.get_connected_interfaces()):
-                names[net].prefix = lcn[0].get_full_name()
+            if names[net].prefix is None:
+                if lcn := L.Node.nearest_common_ancestor(
+                    *net.get_connected_interfaces()
+                ):
+                    names[net].prefix = lcn[0].get_full_name()
 
     # Resolve remaining conflicts by suffixing on a number
     for conflict_nets in _conflicts(names):
