@@ -146,7 +146,7 @@ def generate_bom(app: Module, solver: Solver) -> None:
 def generate_netlist(app: Module, solver: Solver) -> None:
     """Generate a netlist for the project."""
     attach_kicad_info(app.get_graph())
-
+    
     fbrk_netlist = make_fbrk_netlist_from_graph(app.get_graph())
     kicad_netlist = faebryk_netlist_to_kicad(fbrk_netlist)
 
