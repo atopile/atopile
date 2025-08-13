@@ -173,3 +173,41 @@ def test_parse_trait_with_comma_in_footprint():
     assert atomic_trait._partnumber == "PCA9536"
     assert atomic_trait._footprint == "TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod"
     assert atomic_trait._symbol == "PCA9536.kicad_sym"
+
+
+def test_backward_compatibility_unsanitized_footprint():
+    """Test that unsanitized footprint files are automatically upgraded."""
+    import tempfile
+    from pathlib import Path
+
+    from faebryk.libs.ato_part import _load_footprint_with_fallback
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        part_dir = temp_path / "test_part"
+        part_dir.mkdir()
+
+        unsanitized_fp_name = "TSSOP-8_L3,0-W3,0-P0,65-LS4,4-BL_EP.kicad_mod"
+        unsanitized_fp_path = part_dir / unsanitized_fp_name
+
+        fp_content = (
+            '(footprint "TSSOP-8_L3,0-W3,0-P0,65-LS4,4-BL_EP" '
+            '(version 20240108) (generator "pcbnew") (generator_version "8.0")\n'
+            '  (layer "F.Cu")\n'
+            '  (attr smd)\n'
+            ')'
+        )
+        unsanitized_fp_path.write_text(fp_content)
+
+        fp = _load_footprint_with_fallback(part_dir, unsanitized_fp_name)
+
+        sanitized_fp_name = "TSSOP_8_L3_0_W3_0_P0_65_LS4_4_BL_EP.kicad_mod"
+        sanitized_fp_path = part_dir / sanitized_fp_name
+
+        assert sanitized_fp_path.exists(), (
+            "Sanitized footprint file should exist after auto-upgrade"
+        )
+        assert not unsanitized_fp_path.exists(), (
+            "Unsanitized footprint file should be renamed"
+        )
+        assert fp is not None, "Footprint should load successfully"
