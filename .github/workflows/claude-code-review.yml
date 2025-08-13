@@ -44,6 +44,11 @@ jobs:
           # Direct prompt for automated review (no @claude mention needed)
           direct_prompt: |
             Please review this pull request and provide feedback on:
+            
+            PR Format:
+            - Verify the PR title and description follow the requirements in .github/pull_request_template.md
+            
+            Code Review:
             - Code quality and best practices
             - Potential bugs or issues
             - Performance considerations
