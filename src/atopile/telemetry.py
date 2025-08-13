@@ -264,6 +264,10 @@ class PropertyLoaders:
 
         return None
 
+    @staticmethod
+    def via_docker() -> bool:
+        return bool(os.getenv("ATO_VIA_DOCKER"))
+
 
 @dataclass
 class TelemetryProperties:
@@ -274,6 +278,7 @@ class TelemetryProperties:
     )
     project_id: str | None = field(default_factory=PropertyLoaders.project_id)
     ci_provider: str | None = field(default_factory=PropertyLoaders.ci_provider)
+    via_docker: bool = field(default_factory=PropertyLoaders.via_docker)
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
