@@ -64,7 +64,8 @@ class AtoPart:
 
     @property
     def fp_path(self) -> Path:
-        return self.path / f"{self.fp.footprint.base_name}.kicad_mod"
+        sanitized_name = sanitize_filepath_part(self.fp.footprint.base_name)
+        return self.path / f"{sanitized_name}.kicad_mod"
 
     @property
     def sym_path(self) -> Path:
@@ -93,7 +94,8 @@ class AtoPart:
 
     def __post_init__(self):
         self.fp = deepcopy(self.fp)
-        self.fp.footprint.name = f"{self.identifier}:{self.fp.footprint.base_name}"
+        sanitized_name = sanitize_filepath_part(self.fp.footprint.base_name)
+        self.fp.footprint.name = f"{self.identifier}:{sanitized_name}"
 
         self.symbol = deepcopy(self.symbol)
 
@@ -207,8 +209,7 @@ class AtoPart:
             "is_atomic_part",
             manufacturer=self.mfn[0],
             partnumber=self.mfn[1],
-            footprint=sanitize_filepath_part(self.fp.footprint.base_name)
-            + ".kicad_mod",
+            footprint=self.fp_path.name,
             symbol=self.sym_path.name,
             model=self.model_path.name if self.model else None,
         )

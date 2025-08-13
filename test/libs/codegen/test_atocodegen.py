@@ -148,7 +148,7 @@ def test_parse_trait_with_comma_in_footprint():
             trait is_atomic_part<
                 manufacturer="NXP",
                 partnumber="PCA9536",
-                footprint="TSSOP-8_L3.0-W3.0-P0.65-LS4.4-BL_EP.kicad_mod",
+                footprint="TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod",
                 symbol="PCA9536.kicad_sym"
             >
         """
@@ -161,7 +161,7 @@ def test_parse_trait_with_comma_in_footprint():
         {
             "manufacturer": "NXP",
             "partnumber": "PCA9536",
-            "footprint": "TSSOP-8_L3.0-W3.0-P0.65-LS4.4-BL_EP.kicad_mod",
+            "footprint": "TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod",
             "symbol": "PCA9536.kicad_sym",
         },
     )
@@ -171,5 +171,5 @@ def test_parse_trait_with_comma_in_footprint():
     atomic_trait = ato.get_trait(F.is_atomic_part)
     assert atomic_trait._manufacturer == "NXP"
     assert atomic_trait._partnumber == "PCA9536"
-    assert atomic_trait._footprint == "TSSOP-8_L3.0-W3.0-P0.65-LS4.4-BL_EP.kicad_mod"
+    assert atomic_trait._footprint == "TSSOP-8_L3_0-W3_0-P0_65-LS4_4-BL_EP.kicad_mod"
     assert atomic_trait._symbol == "PCA9536.kicad_sym"
