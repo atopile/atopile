@@ -47,7 +47,7 @@ jobs:
           # trigger_phrase: "/claude"
           
           # Optional: Trigger when specific user is assigned to an issue
-          # assignee_trigger: "claude-bot"
+          assignee_trigger: "claude-bot"
           
           # Optional: Allow Claude to run specific commands
           # allowed_tools: "Bash(npm install),Bash(npm run build),Bash(npm run test:*),Bash(npm run lint:*)"
