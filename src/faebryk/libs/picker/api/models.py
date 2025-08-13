@@ -17,7 +17,7 @@ from faebryk.libs.exceptions import UserException, downgrade
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list
+from faebryk.libs.util import Serializable, SerializableJSONEncoder, md_list, once
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +66,7 @@ class BaseParams(Serializable):
         return _pretty_params_helper(self)
 
 
+@once
 def make_params_for_type(module_type: type[Module]) -> type:
     m = module_type()
     assert m.has_trait(F.is_pickable_by_type)
