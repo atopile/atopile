@@ -365,41 +365,6 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
             names[net].required_prefix = None
             names[net].required_suffix = None
 
-    # Resolve conflicts by prefixing with the owning interface's instance name first
-    def _best_interface_prefix(net: F.Net) -> str | None:
-        """Pick a good interface instance name to disambiguate a net.
-
-        Prefer the nearest ancestor that is a ModuleInterface but not an
-        Electrical (i.e. the interface instance like `power_3v3`), to avoid
-        using leaf names like `vcc`/`gnd`.
-        """
-        candidates: list[tuple[str, int]] = []
-        for mif in net.get_connected_interfaces():
-            try:
-                # Traverse hierarchy from root to leaf and pick the first
-                # non-Electrical ModuleInterface name
-                chosen_name: str | None = None
-                chosen_depth: int | None = None
-                for node, name_in_parent in mif.get_hierarchy():
-                    if not node.get_parent():
-                        continue
-                    if isinstance(node, L.ModuleInterface) and not isinstance(
-                        node, F.Electrical
-                    ):
-                        chosen_name = name_in_parent
-                        chosen_depth = len(node.get_hierarchy())
-                        break
-                if chosen_name is None:
-                    continue
-                candidates.append((chosen_name, int(chosen_depth or 0)))
-            except NodeNoParent:
-                continue
-
-        if not candidates:
-            return None
-        # Prefer smallest depth (closest to root)
-        return min(candidates, key=lambda x: x[1])[0]
-
     for conflict_nets in _conflicts(names):
         # Prefer to add interface-based prefixes to ALL nets in the group and
         # make them unique by minimally qualifying with ancestor names
