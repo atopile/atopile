@@ -63,9 +63,12 @@ class AtoPart:
     pick_part: PickedPart | None = None
 
     @property
+    def _sanitized_footprint_name(self) -> str:
+        return sanitize_filepath_part(self.fp.footprint.base_name)
+
+    @property
     def fp_path(self) -> Path:
-        sanitized_name = sanitize_filepath_part(self.fp.footprint.base_name)
-        return self.path / f"{sanitized_name}.kicad_mod"
+        return (self.path / self._sanitized_footprint_name).with_suffix(".kicad_mod")
 
     @property
     def sym_path(self) -> Path:
@@ -94,8 +97,7 @@ class AtoPart:
 
     def __post_init__(self):
         self.fp = deepcopy(self.fp)
-        sanitized_name = sanitize_filepath_part(self.fp.footprint.base_name)
-        self.fp.footprint.name = f"{self.identifier}:{sanitized_name}"
+        self.fp.footprint.name = f"{self.identifier}:{self._sanitized_footprint_name}"
 
         self.symbol = deepcopy(self.symbol)
 
