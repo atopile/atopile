@@ -194,8 +194,8 @@ def test_backward_compatibility_unsanitized_footprint():
             '(footprint "TSSOP-8_L3,0-W3,0-P0,65-LS4,4-BL_EP" '
             '(version 20240108) (generator "pcbnew") (generator_version "8.0")\n'
             '  (layer "F.Cu")\n'
-            '  (attr smd)\n'
-            ')'
+            "  (attr smd)\n"
+            ")"
         )
         unsanitized_fp_path.write_text(fp_content)
 
