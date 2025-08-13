@@ -13,12 +13,14 @@ from faebryk.core.moduleinterface import ModuleInterface  # noqa: F401
 from faebryk.core.node import (  # noqa: F401
     InitVar,
     Node,
+    _d_field,
     d_field,
     f_field,
     list_f_field,
     list_field,
     rt_field,
 )
+from faebryk.core.node import fab_field as _fab_field
 from faebryk.core.parameter import R, p_field  # noqa: F401
 from faebryk.core.reference import reference  # noqa: F401
 from faebryk.core.trait import Trait  # noqa: F401
@@ -103,6 +105,15 @@ class DeprecatedField(Node):
 
 
 def deprecated_field(message: str):
-    from faebryk.core.node import _d_field
-
     return _d_field(lambda: DeprecatedField(message))
+
+
+def soft_deprecated_field[T: _fab_field](field: T, message: str) -> _d_field[T]:
+    from faebryk.libs.exceptions import downgrade
+
+    def wrapped():
+        with downgrade(DeprecatedException):
+            raise DeprecatedException(message)
+        return field
+
+    return _d_field(wrapped)
