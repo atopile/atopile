@@ -154,9 +154,6 @@ def generate_netlist(app: Module, solver: Solver) -> None:
     netlist_path.parent.mkdir(parents=True, exist_ok=True)
     kicad_netlist.dumps(netlist_path)
 
-    if not netlist_path.exists():
-        raise RuntimeError(f"Netlist file was not created at {netlist_path}")
-
 
 @muster.register(name="glb", aliases=["3d-model"], requires_kicad=True)
 def generate_glb(app: Module, solver: Solver) -> None:
