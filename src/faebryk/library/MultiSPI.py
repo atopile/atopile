@@ -24,3 +24,14 @@ class MultiSPI(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.clock.line.add(
+            F.has_net_name("clock", level=F.has_net_name.Level.SUGGESTED)
+        )
+        self.chip_select.line.add(
+            F.has_net_name("chip_select", level=F.has_net_name.Level.SUGGESTED)
+        )
+        for i, line in enumerate(self.data):
+            line.add(F.has_net_name(f"data_{i}", level=F.has_net_name.Level.SUGGESTED))

@@ -259,7 +259,18 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
                 if t.level == F.has_net_name.Level.EXPECTED:
                     net_required_names.add(t.name)
                 elif t.level == F.has_net_name.Level.SUGGESTED:
-                    net_suggested_names.append((t.name, len(mif.get_hierarchy())))
+                    # Weight suggestions by hierarchy: higher up (shallower) wins.
+                    # Apply small bonuses for coming from owner iface/module
+                    # and for well-known labels.
+                    rank = len(mif.get_hierarchy())
+                    owner_iface = mif.get_parent_of_type(L.ModuleInterface)
+                    if owner_iface is not None and not isinstance(
+                        owner_iface, F.Electrical
+                    ):
+                        rank -= 1
+                    if L.Node.nearest_common_ancestor(mif):
+                        rank -= 1
+                    net_suggested_names.append((t.name, rank))
                 continue
 
             # Rate implicit names
@@ -354,6 +365,12 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
         ):
             if (iface_name := _best_iface_name_from_mifs(mifs)) is not None:
                 names[net].base_name = iface_name
+
+        # Do not apply diff-pair affixes to well-known power rails
+        base_lower = (names[net].base_name or "").lower()
+        if base_lower in {"gnd", "vcc", "vdd", "vss"}:
+            names[net].required_prefix = None
+            names[net].required_suffix = None
 
     # Resolve conflicts by prefixing with the owning interface's instance name first
     def _best_interface_prefix(net: F.Net) -> str | None:
@@ -500,12 +517,57 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
             for net in conflict_nets:
                 p = paths[net]
                 if p:
-                    names[net].prefix = "-".join(p[-suffix_len[net] :])
-                else:
-                    if lcn := L.Node.nearest_common_ancestor(
-                        *net.get_connected_interfaces()
+                    # If the chosen path is too generic (e.g., starts with 'pins' or
+                    # 'unnamed') and there are no required affixes influencing
+                    # semantics, prefer owner name
+                    leaf = p[-1] if p else None
+                    if (
+                        leaf
+                        and (leaf.startswith("pins") or leaf.startswith("unnamed"))
+                        and not names[net].required_prefix
+                        and not names[net].required_suffix
                     ):
-                        names[net].prefix = lcn[0].get_full_name()
+                        owner_mod_name: str | None = None
+                        for mif in net.get_connected_interfaces():
+                            try:
+                                for node, name_in_parent in mif.get_hierarchy():
+                                    if not node.get_parent():
+                                        continue
+                                    if isinstance(node, Module):
+                                        owner_mod_name = name_in_parent
+                                        break
+                                if owner_mod_name:
+                                    break
+                            except NodeNoParent:
+                                continue
+                        if owner_mod_name:
+                            names[net].prefix = owner_mod_name
+                        else:
+                            names[net].prefix = "-".join(p[-suffix_len[net] :])
+                    else:
+                        names[net].prefix = "-".join(p[-suffix_len[net] :])
+                else:
+                    # Fallback to owning module instance name if available
+                    owner_name: str | None = None
+                    for mif in net.get_connected_interfaces():
+                        try:
+                            for node, name_in_parent in mif.get_hierarchy():
+                                if not node.get_parent():
+                                    continue
+                                if isinstance(node, Module):
+                                    owner_name = name_in_parent
+                                    break
+                            if owner_name:
+                                break
+                        except NodeNoParent:
+                            continue
+                    if owner_name:
+                        names[net].prefix = owner_name
+                    else:
+                        if lcn := L.Node.nearest_common_ancestor(
+                            *net.get_connected_interfaces()
+                        ):
+                            names[net].prefix = lcn[0].get_full_name()
 
     # Resolve remaining conflicts by prefixing on
     # the lowest common node's full name

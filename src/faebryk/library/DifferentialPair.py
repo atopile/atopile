@@ -47,5 +47,5 @@ class DifferentialPair(ModuleInterface):
         """
         super().__postinit__(*args, **kwargs)
         # Apply suffixes to the electrical lines of the signals
-        self.p.line.add(F.has_net_name_affix.suffix("_p"))
-        self.n.line.add(F.has_net_name_affix.suffix("_n"))
+        self.p.line.add(F.has_net_name_affix.suffix("_P"))
+        self.n.line.add(F.has_net_name_affix.suffix("_N"))

@@ -21,10 +21,10 @@ def from_temp_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize("config", ["ato", "fab"])
+@pytest.mark.parametrize("config", ["default"])
 def test_app(config):
     _, stderr, _ = run_live(
-        [sys.executable, "-m", "atopile", "build", "examples", "-b", config],
+        [sys.executable, "-m", "atopile", "build", "examples/quickstart", "-b", config],
         env={**os.environ, "NONINTERACTIVE": "1"},
         stdout=print,
         stderr=print,

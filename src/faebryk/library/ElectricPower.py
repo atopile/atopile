@@ -131,3 +131,9 @@ class ElectricPower(F.Power):
     def gnd(self) -> F.Electrical:
         """Lower-voltage side of the power interface."""
         return self.lv
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        # Apply suffixes to the electrical lines of the signals
+        self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
+        self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
