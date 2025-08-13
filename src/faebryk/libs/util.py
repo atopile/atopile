@@ -2277,10 +2277,16 @@ def robustly_rm_dir(path: os.PathLike) -> None:
     shutil.rmtree(path, onexc=remove_readonly)
 
 
-def yield_missing(existing: Container, candidates: Iterable | None = None):
-    if candidates is None:
-        candidates = range(10000)  # Prevent counting to infinity by default
-    for c in candidates:
+def yield_missing(existing: Container, candidates: Iterable | int | None = None):
+    match candidates:
+        case None:
+            counter = itertools.count()
+        case int():
+            counter = itertools.count(candidates)
+        case _:
+            counter = candidates
+
+    for c in counter:
         if c not in existing:
             yield c
 
