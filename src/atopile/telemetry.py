@@ -284,6 +284,11 @@ class PropertyLoaders:
     def github_repository() -> str | None:
         return os.getenv("GITHUB_REPOSITORY")
 
+    @once
+    @staticmethod
+    def run_id() -> str:
+        return str(uuid.uuid4())
+
 
 @dataclass
 class TelemetryProperties:
@@ -304,6 +309,7 @@ class TelemetryProperties:
     github_repository: str | None = field(
         default_factory=PropertyLoaders.github_repository
     )
+    run_id: str = field(default_factory=PropertyLoaders.run_id)
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
