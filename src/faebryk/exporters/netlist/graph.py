@@ -135,13 +135,15 @@ class _NetName:
         parts: list[str] = []
         if self.prefix is not None and self.prefix != "":
             parts.append(str(self.prefix))
-        if self.required_prefix is not None and self.required_prefix != "":
-            parts.append(str(self.required_prefix))
-        parts.append(str(self.base_name or "net"))
+        # Combine required affixes directly onto the base segment without hyphens
+        base = str(self.base_name or "net")
+        if self.required_prefix:
+            base = f"{self.required_prefix}{base}"
+        if self.required_suffix:
+            base = f"{base}{self.required_suffix}"
+        parts.append(base)
         if self.suffix is not None:
             parts.append(str(self.suffix))
-        if self.required_suffix is not None and self.required_suffix != "":
-            parts.append(str(self.required_suffix))
         return "-".join(parts)
 
 
@@ -316,6 +318,43 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
         if suffixes:
             names[net].required_suffix = suffixes[0]
 
+        # If we have an affix and the base name is generic (e.g. 'line', 'hv'),
+        # prefer the interface instance name as the base (e.g. 'iso_spi').
+        def _best_iface_name_from_mifs(mifs: Iterable[F.Electrical]) -> str | None:
+            candidates: list[tuple[str, int]] = []
+            for mif in mifs:
+                try:
+                    chosen_name: str | None = None
+                    chosen_depth: int | None = None
+                    for node, name_in_parent in mif.get_hierarchy():
+                        if not node.get_parent():
+                            continue
+                        if isinstance(node, L.ModuleInterface) and not isinstance(
+                            node, F.Electrical
+                        ):
+                            chosen_name = name_in_parent
+                            chosen_depth = len(node.get_hierarchy())
+                            break
+                    if chosen_name is None:
+                        continue
+                    candidates.append((chosen_name, int(chosen_depth or 0)))
+                except NodeNoParent:
+                    continue
+            if not candidates:
+                return None
+            return min(candidates, key=lambda x: x[1])[0]
+
+        base = names[net].base_name
+        if (names[net].required_suffix or names[net].required_prefix) and (
+            base is None
+            or base == "line"
+            or base == "hv"
+            or base.startswith("unnamed")
+            or re.match(r"^(_\d+|p\d+)$", base or "")
+        ):
+            if (iface_name := _best_iface_name_from_mifs(mifs)) is not None:
+                names[net].base_name = iface_name
+
     # Resolve conflicts by prefixing with the owning interface's instance name first
     def _best_interface_prefix(net: F.Net) -> str | None:
         """Pick a good interface instance name to disambiguate a net.
@@ -342,7 +381,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
                         break
                 if chosen_name is None:
                     continue
-                candidates.append((chosen_name, int(chosen_depth)))
+                candidates.append((chosen_name, int(chosen_depth or 0)))
             except NodeNoParent:
                 continue
 
