@@ -57,7 +57,7 @@ class LayoutMatrix(Layout):
                 vec_i = (
                     vector[0] * x,
                     vector[1] * y,
-                    vector[2],
+                    vector[2],  # type: ignore[index-out-of-bounds] TODO(type-fix): ty init
                     F.has_pcb_position.layer_type.NONE,
                 )
                 pos = Geometry.abs_pos(self.base, vec_i)

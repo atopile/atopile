@@ -129,7 +129,7 @@ T2 = TypeVar("T2", C_xy, C_xyz, C_xyr)
 
 def round_coord(coord: T, ndigits=2) -> T:
     fs = fields(coord)
-    return type(coord)(
+    return type(coord)(  # type: ignore[invalid-return-type] TODO(type-fix): ty init
         **{f.name: round(getattr(coord, f.name), ndigits=ndigits) for f in fs}
     )
 
@@ -158,12 +158,12 @@ def point2d_to_coord(point: Point2D) -> C_xy:
 
 
 def abs_pos(origin: T, vector: T2):
-    return Geometry.abs_pos(coord_to_point(origin), coord_to_point(vector))
+    return Geometry.abs_pos(coord_to_point(origin), coord_to_point(vector))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
 
 def abs_pos2d(origin: T, vector: T2) -> Point2D:
     return Geometry.as2d(
-        Geometry.abs_pos(coord_to_point2d(origin), coord_to_point2d(vector))
+        Geometry.abs_pos(coord_to_point2d(origin), coord_to_point2d(vector))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
     )
 
 
@@ -605,7 +605,7 @@ class PCB_Transformer:
                 lines = [(coord_to_point2d(geo.start), coord_to_point2d(geo.end))]
             elif isinstance(geo, Arc):
                 arc = map(coord_to_point2d, (geo.start, geo.mid, geo.end))
-                lines = Geometry.approximate_arc(*arc, resolution=10)
+                lines = Geometry.approximate_arc(*arc, resolution=10)  # type: ignore[parameter-already-assigned] TODO(type-fix): ty init
             elif isinstance(geo, Rect):
                 rect = (coord_to_point2d(geo.start), coord_to_point2d(geo.end))
 
@@ -1175,7 +1175,7 @@ class PCB_Transformer:
             # For some reason text rotates in the opposite direction
             #  or maybe not?
             for obj in fp.fp_texts + list(fp.propertys.values()):
-                obj.at.r = (obj.at.r + rot_angle) % 360
+                obj.at.r = (obj.at.r + rot_angle) % 360  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
 
         fp.at = coord
 
@@ -1651,7 +1651,7 @@ class PCB_Transformer:
         lib_attrs = self._fp_common_fields_dict(lib_footprint)
 
         lib_attrs["pads"] = [
-            C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
+            C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(  # type: ignore[missing-argument] TODO(type-fix): ty init
                 **{
                     # Cannot use asdict because it converts children dataclasses too
                     **(dataclass_as_kwargs(p)),
@@ -1767,7 +1767,7 @@ class PCB_Transformer:
 
         # Flip the properties
         for prop in footprint.propertys.values():
-            prop.layer.layer = _flip(prop.layer.layer)
+            prop.layer.layer = _flip(prop.layer.layer)  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
         # Flip primitives
         for line in footprint.fp_lines:
@@ -1807,7 +1807,7 @@ class PCB_Transformer:
 
         updates = self._fp_common_fields_dict(lib_footprint)
         updates["pads"] = [
-            C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(
+            C_kicad_pcb_file.C_kicad_pcb.C_pcb_footprint.C_pad(  # type: ignore[missing-argument] TODO(type-fix): ty init
                 **{
                     # Cannot use asdict because it converts children dataclasses too
                     **dataclass_as_kwargs(p),

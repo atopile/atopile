@@ -22,7 +22,7 @@ class has_linked_pad_defined(F.has_linked_pad.impl()):
 
     def handle_duplicate(self, old: TraitImpl, node: Node) -> bool:
         if not isinstance(old, has_linked_pad_defined):
-            self.pads.update(old.get_pads())
+            self.pads.update(old.get_pads())  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             return super().handle_duplicate(old, node)
 
         old.pads.update(self.pads)

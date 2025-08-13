@@ -133,7 +133,7 @@ def log(msg: Any):
 # **********************************************************
 
 GRAPHS: dict[str, dict[TypeRef, Node]] = {}
-ACTIVE_BUILD_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+ACTIVE_BUILD_TARGET: contextvars.ContextVar[str | None] = contextvars.ContextVar(  # type: ignore[invalid-assignment] TODO(type-fix): ty init
     "ACTIVE_BUILD_TARGET", default=None
 )
 
@@ -154,7 +154,7 @@ def _convert_exc_to_diagnostic(
         if exc.origin_stop is not None:
             stop_line, stop_col = (
                 exc.origin_stop.line,
-                exc.origin_stop.column + len(exc.origin_stop.text),
+                exc.origin_stop.column + len(exc.origin_stop.text),  # type: ignore[unsupported-operator] TODO(type-fix): ty init
             )
         else:
             # just extend to the next line
@@ -162,7 +162,7 @@ def _convert_exc_to_diagnostic(
 
     # convert from 1-indexed (ANTLR) to 0-indexed (LSP)
     start_line = max(start_line - 1, 0)
-    stop_line = max(stop_line - 1, 0)
+    stop_line = max(stop_line - 1, 0)  # type: ignore[unsupported-operator] TODO(type-fix): ty init
 
     return Path(start_file_path) if start_file_path else None, lsp.Diagnostic(
         range=lsp.Range(
@@ -196,7 +196,8 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
             front_end.bob.try_build_all_from_text(source_text, file_path)
         except* UserException as e:
             exc_diagnostics = [
-                _convert_exc_to_diagnostic(error) for error in iter_leaf_exceptions(e)
+                _convert_exc_to_diagnostic(error)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
+                for error in iter_leaf_exceptions(e)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
             ]
 
         warning_diagnostics = [
@@ -623,11 +624,11 @@ def _run_tool_on_document(
         #         log_error(traceback.format_exc(chain=True))
         #         raise
 
-        if result.stderr:
-            log_to_output(result.stderr)
+        if result.stderr:  # type: ignore[unresolved-reference] TODO(type-fix): ty init
+            log_to_output(result.stderr)  # type: ignore[unresolved-reference] TODO(type-fix): ty init
 
     log_to_output(f"{document.uri} :\r\n{result.stdout}")
-    return result
+    return result  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
 
 def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
@@ -706,7 +707,7 @@ def _run_tool(extra_args: Sequence[str]) -> utils.RunResult:
             log_to_output(result.stderr)
 
     log_to_output(f"\r\n{result.stdout}\r\n")
-    return result
+    return result  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
 
 # *****************************************************

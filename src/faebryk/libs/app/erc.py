@@ -263,7 +263,7 @@ def check_classes_for_erc(classes: Iterable[Callable[[], Module]]):
             m = c()
         except Exception as e:
             logger.warning(
-                f"Could not instantiate {c.__name__}: {type(e).__name__}({e})"
+                f"Could not instantiate {c.__name__}: {type(e).__name__}({e})"  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
             )
             continue
         modules.append(m)

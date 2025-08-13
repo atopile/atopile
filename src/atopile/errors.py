@@ -40,7 +40,7 @@ def _render_tokens(
     if src_col := src_col:
         source_info += f":{src_col}"
 
-    highlight_lines = set(range(start_token.line, stop_token.line + 1))
+    highlight_lines = set(range(start_token.line, stop_token.line + 1))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     return [
         Text("Source: ", style="bold") + Text(source_info, style="magenta"),

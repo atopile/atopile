@@ -92,7 +92,7 @@ def as_list(content: Union[Any, List[Any], Tuple[Any]]) -> Union[List[Any], Tupl
 _site_paths = tuple(
     [
         os.path.normcase(os.path.normpath(p))
-        for p in (as_list(site.getsitepackages()) + as_list(site.getusersitepackages()))
+        for p in (as_list(site.getsitepackages()) + as_list(site.getusersitepackages()))  # type: ignore[unsupported-operator] TODO(type-fix): ty init
     ]
 )
 
@@ -170,7 +170,10 @@ def change_cwd(new_cwd):
 
 
 def _run_module(
-    module: str, argv: Sequence[str], use_stdin: bool, source: str = None
+    module: str,
+    argv: Sequence[str],
+    use_stdin: bool,
+    source: str = None,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
 ) -> RunResult:
     """Runs as a module."""
     str_output = CustomIO("<stdout>", encoding="utf-8")
@@ -195,7 +198,11 @@ def _run_module(
 
 
 def run_module(
-    module: str, argv: Sequence[str], use_stdin: bool, cwd: str, source: str = None
+    module: str,
+    argv: Sequence[str],
+    use_stdin: bool,
+    cwd: str,
+    source: str = None,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
 ) -> RunResult:
     """Runs as a module."""
     with CWD_LOCK:
@@ -206,7 +213,10 @@ def run_module(
 
 
 def run_path(
-    argv: Sequence[str], use_stdin: bool, cwd: str, source: str = None
+    argv: Sequence[str],
+    use_stdin: bool,
+    cwd: str,
+    source: str = None,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
 ) -> RunResult:
     """Runs as an executable."""
     if use_stdin:
@@ -236,7 +246,7 @@ def run_api(
     argv: Sequence[str],
     use_stdin: bool,
     cwd: str,
-    source: str = None,
+    source: str = None,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
 ) -> RunResult:
     """Run a API."""
     with CWD_LOCK:
@@ -250,7 +260,7 @@ def _run_api(
     callback: Callable[[Sequence[str], CustomIO, CustomIO, CustomIO | None], None],
     argv: Sequence[str],
     use_stdin: bool,
-    source: str = None,
+    source: str = None,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
 ) -> RunResult:
     str_output = CustomIO("<stdout>", encoding="utf-8")
     str_error = CustomIO("<stderr>", encoding="utf-8")
@@ -266,7 +276,7 @@ def _run_api(
                             str_input.seek(0)
                             callback(argv, str_output, str_error, str_input)
                     else:
-                        callback(argv, str_output, str_error)
+                        callback(argv, str_output, str_error)  # type: ignore[missing-argument] TODO(type-fix): ty init
     except SystemExit:
         pass
 

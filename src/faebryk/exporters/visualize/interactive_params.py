@@ -255,7 +255,7 @@ def visualize_parameters(G: Graph, height: int | None = None):
 
     cyto.load_extra_layouts()
     app = Dash(__name__)
-    app.layout = _Layout(stylesheet, elements, extra=DAGRE_LAYOUT)
+    app.layout = _Layout(stylesheet, elements, extra=DAGRE_LAYOUT)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     # Extra layouting
     layout = Layout(app, elements, list(nodes))

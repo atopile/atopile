@@ -423,7 +423,7 @@ class Geometry:
 
     @staticmethod
     def as4d(coord: Point | Point2D) -> Point:
-        return coord + (0,) * (4 - len(coord))
+        return coord + (0,) * (4 - len(coord))  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     @staticmethod
     def abs_pos(parent_: Point | Point2D, child_: Point | Point2D) -> Point:
@@ -632,4 +632,5 @@ class Geometry:
 
         out = tuple(np.mean(points2d, axis=0))
         if any(len(p) > 2 for p in points):
-            return out + (0, points[0][3])
+            return out + (0, points[0][3])  # type: ignore[index-out-of-bounds] TODO(type-fix): ty init
+        return out  # type: ignore[invalid-return-type] TODO(type-fix): ty init

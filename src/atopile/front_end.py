@@ -551,7 +551,7 @@ class Wendy(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Ov
                         KeyOptItem.from_kv(ref, (getattr(F, name), ctx, reference))
                     )
 
-            return KeyOptMap(imports)
+            return KeyOptMap(imports)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     def visitDep_import_stmt(self, ctx: ap.Dep_import_stmtContext) -> ImportKeyOptMap:
         lazy_import = Context.ImportPlaceholder(
@@ -1311,7 +1311,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                 except AttributeError as ex:
                     raise errors.UserKeyError.from_ctx(
                         item.original_ctx,
-                        f"Could not find `{ref}` in {node.__file__}",
+                        f"Could not find `{ref}` in {node.__file__}",  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
                         markdown=False,
                     ) from ex
 
@@ -2435,7 +2435,7 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             constructor = attr.__func__
             args = (trait_cls,)
 
-        return trait_cls, constructor, args
+        return trait_cls, constructor, args  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
     def visitTrait_stmt(self, ctx: ap.Trait_stmtContext):
         self._ensure_feature_enabled(ctx, _FeatureFlags.Feature.TRAITS)

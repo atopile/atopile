@@ -47,14 +47,14 @@ def kicad_footprint_file(path: Path | str) -> C_kicad_footprint_file:
     # cache
     # custom because don't care about origin & need to deepcopy
     if not hasattr(_kicad_footprint_file, "cache"):
-        _kicad_footprint_file.cache = dict[str, C_kicad_footprint_file]()
-    if content in _kicad_footprint_file.cache:
-        return deepcopy(_kicad_footprint_file.cache[content])
+        _kicad_footprint_file.cache = dict[str, C_kicad_footprint_file]()  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+    if content in _kicad_footprint_file.cache:  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+        return deepcopy(_kicad_footprint_file.cache[content])  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     fp = _kicad_footprint_file(content, origin=_path)
 
     # cache
-    _kicad_footprint_file.cache[content] = fp
+    _kicad_footprint_file.cache[content] = fp  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     return deepcopy(fp)
 

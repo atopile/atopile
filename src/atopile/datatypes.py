@@ -27,7 +27,7 @@ class TypeRef(tuple[str]):
 
     def add_name(self, name: str | int) -> "TypeRef":
         """Return a new Ref with the given name."""
-        return TypeRef((*self, str(name)))
+        return TypeRef((*self, str(name)))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     def __str__(self) -> str:
         return ".".join(map(str, self))
@@ -134,7 +134,7 @@ class FieldRef:
     def to_type_ref(self) -> TypeRef | None:
         if any(part.has_key() for part in self.parts):
             return None
-        return TypeRef(map(lambda x: x.name, self.parts))
+        return TypeRef(map(lambda x: x.name, self.parts))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
     @classmethod
     def from_type_ref(cls, type_ref: TypeRef) -> "FieldRef":

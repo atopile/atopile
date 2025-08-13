@@ -19,7 +19,7 @@ class Symbol(Module):
             Attach to an ElectricalInterface to point back at the pin
             """
 
-            reference: "Symbol.Pin" = reference()
+            reference: "Symbol.Pin" = reference()  # type: ignore[invalid-assignment] TODO(type-fix): ty init
 
     class TraitT(Trait): ...
 
@@ -28,7 +28,7 @@ class Symbol(Module):
         Attach to an Module to point back at the pin
         """
 
-        reference: "Symbol" = reference()
+        reference: "Symbol" = reference()  # type: ignore[invalid-assignment] TODO(type-fix): ty init
 
     class has_kicad_symbol(TraitT.decless()):
         """

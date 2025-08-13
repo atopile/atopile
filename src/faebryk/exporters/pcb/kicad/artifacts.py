@@ -66,7 +66,7 @@ def export_step(
         cmd_args["define_var"] = f"KIPRJMOD={project_dir.absolute()}"
 
     try:
-        _export(k.pcb.export.step(**cmd_args))
+        _export(k.pcb.export.step(**cmd_args))  # type: ignore[missing-argument] TODO(type-fix): ty init
     except sp.CalledProcessError as e:
         raise KicadCliExportError("Failed to export step file") from e
 
@@ -118,7 +118,7 @@ def export_glb(
         cmd_args["define_var"] = f"KIPRJMOD={project_dir.absolute()}"
 
     try:
-        _export(k.pcb.export.glb(**cmd_args))
+        _export(k.pcb.export.glb(**cmd_args))  # type: ignore[missing-argument] TODO(type-fix): ty init
     except sp.CalledProcessError as e:
         raise KicadCliExportError("Failed to export glb file") from e
 

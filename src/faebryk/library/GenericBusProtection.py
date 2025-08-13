@@ -28,7 +28,7 @@ class GenericBusProtection(Module):
         def get_mifs[U: ModuleInterface](
             bus: "GenericBusProtection.T", mif_type: type[U]
         ) -> set[U]:
-            return bus.get_children(direct_only=True, types=mif_type)
+            return bus.get_children(direct_only=True, types=mif_type)  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
         raw = list(
             zip(

@@ -254,7 +254,7 @@ def find_independent_groups(
                 continue
             if len(lits_eq) > 1:
                 # TODO
-                raise ContradictionByLiteral("", [], [], None)
+                raise ContradictionByLiteral("", [], [], None)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
             for p in alias_group:
                 lits[p] = lits_eq[0]
 

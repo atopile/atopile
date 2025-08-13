@@ -77,7 +77,7 @@ def sanitize_name(raw, expect_arithmetic: bool = False, warn_prefix: str | None 
 
 def gen_repeated_block[T](
     generator: Iterable[T],
-    func: Callable[[T], str] = dedent,
+    func: Callable[[T], str] = dedent,  # type: ignore[invalid-parameter-default] TODO(type-fix): ty init
     requires_pass: bool = False,
 ) -> str:
     lines = list(map(func, generator))
