@@ -15,6 +15,7 @@ This way we can add new modules without changing this file
 # flake8: noqa: I001
 # flake8: noqa: E501
 
+from faebryk.library.has_net_name import has_net_name
 from faebryk.library.Electrical import Electrical
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.is_bus_parameter import is_bus_parameter
@@ -22,7 +23,6 @@ from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.can_be_surge_protected import can_be_surge_protected
-from faebryk.library.has_net_name import has_net_name
 from faebryk.library.Signal import Signal
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.is_optional_defined import is_optional_defined
@@ -57,6 +57,7 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.XtalIF import XtalIF
+from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic

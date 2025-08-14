@@ -64,3 +64,9 @@ class MOSFET(Module):
             accept_prefix=False,
             case_sensitive=False,
         )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.source.add(F.has_net_name("source", level=F.has_net_name.Level.SUGGESTED))
+        self.gate.add(F.has_net_name("gate", level=F.has_net_name.Level.SUGGESTED))
+        self.drain.add(F.has_net_name("drain", level=F.has_net_name.Level.SUGGESTED))

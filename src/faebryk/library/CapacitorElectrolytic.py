@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 class CapacitorElectrolytic(F.Capacitor):
     pickable = None  # type: ignore
-    attach_to_footprint = None
+    can_attach_to_footprint_symmetrically = None  # type: ignore
 
     anode: F.Electrical
     cathode: F.Electrical
@@ -33,4 +33,11 @@ class CapacitorElectrolytic(F.Capacitor):
             },
             accept_prefix=False,
             case_sensitive=False,
+        )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.anode.add(F.has_net_name("anode", level=F.has_net_name.Level.SUGGESTED))
+        self.cathode.add(
+            F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
         )

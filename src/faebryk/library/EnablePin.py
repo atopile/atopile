@@ -35,3 +35,9 @@ class EnablePin(ModuleInterface):
     def get_enable_signal(self):
         self.make_required()
         return self.enable.line
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.enable.line.add(
+            F.has_net_name("ENABLE", level=F.has_net_name.Level.SUGGESTED)
+        )

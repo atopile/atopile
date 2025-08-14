@@ -30,3 +30,9 @@ class Battery(Module):
         return F.has_single_electric_reference_defined(self.power)
 
     designator = L.f_field(F.has_designator_prefix)("BAT")
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.power.hv.add(
+            F.has_net_name("BAT_VCC", level=F.has_net_name.Level.SUGGESTED)
+        )
