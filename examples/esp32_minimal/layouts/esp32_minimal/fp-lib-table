@@ -15,6 +15,13 @@
         (descr "atopile: part lib: Samsung_Electro_Mechanics_CL05B104KO5NNNC")
     )
     (lib
+        (name "Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+        (options "")
+        (descr "atopile: part lib: Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+    )
+    (lib
         (name "Samsung_Electro_Mechanics_CL21A226MQQNNNE")
         (type "KiCad")
         (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MQQNNNE")
@@ -34,6 +41,13 @@
         (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF1002TCE")
         (options "")
         (descr "atopile: part lib: UNI_ROYAL_0402WGF1002TCE")
+    )
+    (lib
+        (name "UNI_ROYAL_0402WGF2001TCE")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/UNI_ROYAL_0402WGF2001TCE")
+        (options "")
+        (descr "atopile: part lib: UNI_ROYAL_0402WGF2001TCE")
     )
     (lib
         (name "UNI_ROYAL_0402WGF4701TCE")
