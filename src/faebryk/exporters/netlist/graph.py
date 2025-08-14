@@ -350,7 +350,7 @@ def _determine_base_name(
         # Use the implicit name with the highest score; break ties by name
         best_score = max(implicit.values())
         candidates = [name for name, score in implicit.items() if score == best_score]
-        return sorted(candidates)[0]
+        return min(candidates)
 
     return None
 
