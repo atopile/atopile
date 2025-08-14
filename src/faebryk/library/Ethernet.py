@@ -26,3 +26,19 @@ class Ethernet(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.led_speed.line.add(
+            F.has_net_name("ETH_LED_SPEED", level=F.has_net_name.Level.SUGGESTED)
+        )
+        self.led_link.line.add(
+            F.has_net_name("ETH_LED_LINK", level=F.has_net_name.Level.SUGGESTED)
+        )
+        for i, pair in enumerate(self.pairs):
+            pair.p.line.add(
+                F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+            )
+            pair.n.line.add(
+                F.has_net_name(f"ETH_P{i}", level=F.has_net_name.Level.SUGGESTED)
+            )

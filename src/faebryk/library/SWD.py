@@ -17,3 +17,18 @@ class SWD(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.clk.line.add(
+            F.has_net_name("SWD_CLK", level=F.has_net_name.Level.SUGGESTED)
+        )
+        self.dio.line.add(
+            F.has_net_name("SWD_DIO", level=F.has_net_name.Level.SUGGESTED)
+        )
+        self.swo.line.add(
+            F.has_net_name("SWD_SWO", level=F.has_net_name.Level.SUGGESTED)
+        )
+        self.reset.line.add(
+            F.has_net_name("SWD_RESET", level=F.has_net_name.Level.SUGGESTED)
+        )

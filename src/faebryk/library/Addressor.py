@@ -44,3 +44,10 @@ class Addressor(ModuleInterface):
                 lambda line=line: line.set(True),
                 lambda line=line: line.set(False),
             )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        for i, line in enumerate(self.address_lines):
+            line.add(
+                F.has_net_name(f"address_bit_{i}", level=F.has_net_name.Level.SUGGESTED)
+            )

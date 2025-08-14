@@ -93,3 +93,10 @@ class Diode(Module):
         self, input_voltage_V: ParameterOperatable
     ):
         return (input_voltage_V - self.forward_voltage) / self.current
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.anode.add(F.has_net_name("anode", level=F.has_net_name.Level.SUGGESTED))
+        self.cathode.add(
+            F.has_net_name("cathode", level=F.has_net_name.Level.SUGGESTED)
+        )

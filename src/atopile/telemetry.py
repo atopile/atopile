@@ -264,6 +264,31 @@ class PropertyLoaders:
 
         return None
 
+    @once
+    @staticmethod
+    def via_docker() -> bool:
+        return bool(os.getenv("ATO_VIA_DOCKER"))
+
+    @once
+    @staticmethod
+    def github_action_repository() -> str | None:
+        return os.getenv("GITHUB_ACTION_REPOSITORY")
+
+    @once
+    @staticmethod
+    def github_repository_owner() -> str | None:
+        return os.getenv("GITHUB_REPOSITORY_OWNER")
+
+    @once
+    @staticmethod
+    def github_repository() -> str | None:
+        return os.getenv("GITHUB_REPOSITORY")
+
+    @once
+    @staticmethod
+    def run_id() -> str:
+        return str(uuid.uuid4())
+
 
 @dataclass
 class TelemetryProperties:
@@ -274,6 +299,17 @@ class TelemetryProperties:
     )
     project_id: str | None = field(default_factory=PropertyLoaders.project_id)
     ci_provider: str | None = field(default_factory=PropertyLoaders.ci_provider)
+    via_docker: bool = field(default_factory=PropertyLoaders.via_docker)
+    github_action_repository: str | None = field(
+        default_factory=PropertyLoaders.github_action_repository
+    )
+    github_repository_owner: str | None = field(
+        default_factory=PropertyLoaders.github_repository_owner
+    )
+    github_repository: str | None = field(
+        default_factory=PropertyLoaders.github_repository
+    )
+    run_id: str = field(default_factory=PropertyLoaders.run_id)
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )
