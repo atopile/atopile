@@ -110,8 +110,8 @@ class LED(F.Diode):
 
         led = new LED
         led.forward_voltage = 2.1V +/- 10%
-        led.current = 20mA +/- 5%
-        led.max_current = 30mA
+        led.current = 1mA +/- 50%
+        led.max_current = 10mA
         led.color = LED.Color.RED
         led.brightness = 100mcd
         led.package = "0603"
@@ -121,15 +121,9 @@ class LED(F.Diode):
         power_supply = new ElectricPower
         assert power_supply.voltage within 5V +/- 5%
 
-        power_supply.hv ~> current_resistor ~> led ~> power_supply.lv
+        assert (power_supply.voltage-led.forward_voltage) / current_resistor.resistance within led.current
 
-        # Alternative: use dedicated function
-        led.connect_via_current_limiting_resistor(
-            power_supply.voltage,
-            current_resistor,
-            power_supply.lv,
-            low_side=True
-        )
+        power_supply.hv ~> current_resistor ~> led ~> power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
     )
