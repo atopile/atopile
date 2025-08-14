@@ -5,6 +5,7 @@ import logging
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Generator, Iterable, Mapping
 
 import faebryk.library._F as F
@@ -200,6 +201,7 @@ def _name_shittiness(name: str | None) -> float:
     return 1
 
 
+@lru_cache(maxsize=None)
 def _get_stable_node_name(mif: ModuleInterface) -> str:
     """Get a stable hierarchical name for a module interface."""
     return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
