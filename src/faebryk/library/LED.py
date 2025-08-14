@@ -117,13 +117,13 @@ class LED(F.Diode):
         led.package = "0603"
 
         # Connect with current limiting resistor
-        current_resistor = new Resistor
-        power_supply = new ElectricPower
-        assert power_supply.voltage within 5V +/- 5%
+        res = new Resistor
+        power = new ElectricPower
+        assert power.voltage within 5V +/- 5%
 
-        assert (power_supply.voltage-led.forward_voltage) / current_resistor.resistance within led.current
+        assert (power.voltage-led.forward_voltage) / res.resistance within led.current
 
-        power_supply.hv ~> current_resistor ~> led ~> power_supply.lv
+        power.hv ~> res ~> led ~> power.lv
         """,
         language=F.has_usage_example.Language.ato,
     )
