@@ -1264,9 +1264,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         search_paths.append(Path(inspect.getfile(F)).parent)
 
         # The root of the project is always a search path
-        if (file_path := context.file_path) is not None and \
-            (pkg_path := find_project_dir(file_path)) is not None:
-                search_paths.append(pkg_path)
+        if (file_path := context.file_path) is not None and (
+            pkg_path := find_project_dir(file_path)
+        ) is not None:
+            search_paths.append(pkg_path)
 
         return search_paths
 
