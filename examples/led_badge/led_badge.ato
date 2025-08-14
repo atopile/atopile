@@ -11,7 +11,7 @@ import I2S
 import can_bridge_by_name
 
 # Package imports from https://packages.atopile.io/
-from "atopile/usb-connectors/usb-connectors.ato" import USBCConn
+from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
 from "atopile/ti-tps63020/ti-tps63020.ato" import TPS63020_driver
 from "atopile/ti-bq25185/ti-bq25185.ato" import BQ25185_driver
 from "atopile/batteries/eemb_battery_lp402535.ato" import EMB_BATTERY_LP402535_Example
@@ -35,7 +35,7 @@ module LED_BADGE:
     microcontroller = new ESP32_C3_MINI_1_driver
     microphone = new TDK_InvenSense_ICS_43434
     imu = new ST_LSM6DS3_driver
-    usb_c = new USBCConn
+    usb_c = new USB2_0TypeCHorizontalConnector
     buck_boost = new TPS63020_driver
     charger = new BQ25185_driver
     battery = new EMB_BATTERY_LP402535_Example
@@ -48,11 +48,11 @@ module LED_BADGE:
     power_3v3 = new ElectricPower
 
     # Power path: USB 5V -> Charger -> Battery / System -> BuckBoost -> 3V3 rail
-    usb_c.usb2.usb_if.buspower ~> charger ~> battery.power_battery
+    usb_c.usb.usb_if.buspower ~> charger ~> battery.power_battery
     charger.power_sys ~> buck_boost ~> power_3v3
 
     # Configure Power
-    usb_c.usb2.usb_if.buspower.voltage = 5V +/- 5%
+    usb_c.usb.usb_if.buspower.voltage = 5V +/- 5%
     charger.input_current_limit = 500mA
     buck_boost.v_out = 3.3V +/- 5%
     battery.battery.model.capacity = 300mAh
@@ -80,7 +80,7 @@ module LED_BADGE:
     microcontroller.i2c.scl.line ~> pullup_resistors[1] ~> power_3v3.vcc
 
     # USB data
-    usb_c.usb2.usb_if.d ~ microcontroller.usb_if.d
+    usb_c.usb.usb_if.d ~ microcontroller.usb_if.d
 
     # I2S for microphone (mapped via GPIOs 3/4/5)
     i2s_bus = new I2S
@@ -101,9 +101,9 @@ module LED_BADGE:
     power_3v3.lv.override_net_name = "gnd"
     charger.power_sys.hv.override_net_name = "power_sys"
     charger.power_batt.hv.override_net_name = "power_batt"
-    usb_c.usb2.usb_if.buspower.hv.override_net_name = "usb_power"
-    usb_c.usb2.usb_if.d.p.line.override_net_name = "usb_P"
-    usb_c.usb2.usb_if.d.n.line.override_net_name = "usb_N"
+    usb_c.usb.usb_if.buspower.hv.override_net_name = "usb_power"
+    usb_c.usb.usb_if.d.p.line.override_net_name = "usb_P"
+    usb_c.usb.usb_if.d.n.line.override_net_name = "usb_N"
 
 
 module SK6805EC20_strip10:
