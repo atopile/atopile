@@ -77,3 +77,9 @@ class ResistorVoltageDivider(Module):
         v_out.alias_is(v_in * ratio)
         max_current.alias_is(abs(v_in) / r_total)
         ratio.alias_is(r_bottom / r_total)
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.output.line.add(
+            F.has_net_name("VDIV_OUTPUT", level=F.has_net_name.Level.SUGGESTED)
+        )

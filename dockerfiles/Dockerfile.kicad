@@ -13,6 +13,7 @@ ENV UV_COMPILE_BYTECODE=1
 ENV NONINTERACTIVE=1
 ENV ATO_TARGET="all"
 ENV ATO_FROZEN=1
+ENV ATO_VIA_DOCKER=1
 
 # We use root for this container, despite the permission-turds
 # since it's all Github actions currently supports.

@@ -21,13 +21,9 @@ class I2C(ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    address = L.p_field(
-        within=L.Range(0, 0x7F),
-        domain=L.Domains.Numbers.NATURAL(),
-    )
+    address = L.p_field(within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL())
     bus_addresses = L.p_field(
-        within=L.Range(0, 0x7F),
-        domain=L.Domains.Numbers.NATURAL(),
+        within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL()
     )
 
     frequency = L.p_field(
@@ -91,6 +87,11 @@ class I2C(ModuleInterface):
     def __preinit__(self) -> None:
         self.frequency.add(F.is_bus_parameter())
         # self.bus_addresses.add(F.is_bus_parameter(reduce=(self.address, Union)))
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.scl.line.add(F.has_net_name("SCL", level=F.has_net_name.Level.SUGGESTED))
+        self.sda.line.add(F.has_net_name("SDA", level=F.has_net_name.Level.SUGGESTED))
 
     def _hack_get_connected(self):
         """

@@ -21,3 +21,8 @@ class UART_Base(ModuleInterface):
 
     def __preinit__(self) -> None:
         self.baud.add(F.is_bus_parameter())
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.rx.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
+        self.tx.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
