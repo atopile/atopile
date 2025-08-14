@@ -338,7 +338,7 @@ def _verify_version_increment(config: "Config"):
 
     if local_ver <= semver_registry_ver:
         raise UserBadParameterError(
-            f"Package version {local_ver} is <= registry version {registry_ver} - packagewill not publish"
+            f"Package version {local_ver} is <= registry version {registry_ver} - package will not publish"
         )
 
 
@@ -357,6 +357,8 @@ def verify_package(config: "Config"):
             _verify_build_exists(config)
         with accumulator.collect():
             _verify_pinned_dependencies(config, latest=strict)
+        with accumulator.collect():
+            _verify_version_increment(config)
         if strict:
             logger.info("Running strict verification")
             with accumulator.collect():
