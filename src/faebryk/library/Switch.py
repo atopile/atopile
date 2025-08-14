@@ -44,3 +44,35 @@ def Switch[T: ModuleInterface](interface_type: type[T]):
             return _TSwitch.is_instance(obj, interface_type)
 
     return _Switch
+
+
+# Usage example for the Switch factory
+usage_example = L.f_field(F.has_usage_example)(
+    example="""
+    import Switch, Electrical, ElectricLogic, ElectricPower
+
+    # Create electrical switch (SPST)
+    ElectricalSwitch = Switch(Electrical)
+    electrical_switch = new ElectricalSwitch
+
+    # Connect switch terminals
+    input_signal ~ electrical_switch.unnamed[0]
+    output_signal ~ electrical_switch.unnamed[1]
+
+    # Create logic-level switch
+    LogicSwitch = Switch(ElectricLogic)
+    logic_switch = new LogicSwitch
+
+    # Connect power reference for logic switch
+    power_3v3 = new ElectricPower
+    logic_switch.unnamed[0].reference ~ power_3v3
+    logic_switch.unnamed[1].reference ~ power_3v3
+
+    # Connect logic signals
+    logic_input ~ logic_switch.unnamed[0].line
+    logic_output ~ logic_switch.unnamed[1].line
+
+    # Common uses: user buttons, reed switches, micro switches
+    """,
+    language=F.has_usage_example.Language.ato,
+)

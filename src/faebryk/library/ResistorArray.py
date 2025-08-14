@@ -34,3 +34,36 @@ class ResistorArray(Module):
             resistor.resistance = self.resistance
             resistor.max_power = self.rated_power
             resistor.max_voltage = self.rated_voltage
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import ResistorArray, ElectricPower, ElectricLogic
+
+        # Create 8-resistor array for pull-ups
+        pullup_array = new ResistorArray(resistor_count=8)
+        pullup_array.resistance = 10kohm +/- 5%
+        pullup_array.rated_power = 125mW
+        pullup_array.rated_voltage = 50V
+        pullup_array.package = "4816"  # 8-pin SIP package
+
+        # Connect power supply
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+
+        # Use for GPIO pull-ups
+        gpio_signals = new ElectricLogic[8]
+        for i in range(8):
+            gpio_signals[i].reference ~ power_3v3
+            gpio_signals[i].line ~> pullup_array.resistors[i] ~> power_3v3.hv
+            microcontroller.gpio[i] ~ gpio_signals[i].line
+
+        # Alternative: 4-resistor array for I2C/SPI bus termination
+        termination_array = new ResistorArray(resistor_count=4)
+        termination_array.resistance = 33ohm +/- 1%
+        termination_array.package = "4806"  # 4-pin array
+
+        # Common applications: pull-up/pull-down networks, bus termination,
+        # voltage dividers, current limiting, LED drivers
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

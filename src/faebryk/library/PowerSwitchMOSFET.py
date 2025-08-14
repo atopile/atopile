@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 
 import faebryk.library._F as F
+from faebryk.libs.library import L
 
 
 class PowerSwitchMOSFET(F.PowerSwitch):
@@ -51,3 +52,21 @@ class PowerSwitchMOSFET(F.PowerSwitch):
 
         # TODO do more with logic
         #   e.g check reference being same as power
+
+    # ----------------------------------------
+    #              usage example
+    # ----------------------------------------
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import PowerSwitchMOSFET, ElectricPower
+
+        # High-side power switch controlled by logic
+        pwr_sw = new PowerSwitchMOSFET
+        supply   = new ElectricPower
+        load_pwr = new ElectricPower
+
+        supply   ~ pwr_sw.power_in
+        pwr_sw.switched_power_out ~ load_pwr
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

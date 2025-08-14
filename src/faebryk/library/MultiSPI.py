@@ -35,3 +35,22 @@ class MultiSPI(ModuleInterface):
         )
         for i, line in enumerate(self.data):
             line.add(F.has_net_name(f"data_{i}", level=F.has_net_name.Level.SUGGESTED))
+
+    # ----------------------------------------
+    #              usage example
+    # ----------------------------------------
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import MultiSPI, SPI
+
+        # Microcontroller SPI peripheral
+        mcu_spi = new SPI
+
+        # Quad-SPI flash interface (4 data lanes)
+        qspi = new MultiSPI<int_=4>
+
+        # Connect the buses
+        mcu_spi ~ qspi
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
