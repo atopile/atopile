@@ -93,8 +93,7 @@ def add_or_get_nets(*interfaces: F.Electrical):
             }
             if not named_nets_on_bus:
                 # Deterministically select a representative net by stable key
-                chosen = sorted(nets_on_bus, key=_get_net_stable_key)[0]
-                nets_on_bus = {chosen}
+                nets_on_bus = {min(nets_on_bus, key=_get_net_stable_key)}
             elif len(named_nets_on_bus) == 1:
                 nets_on_bus = named_nets_on_bus
             else:
