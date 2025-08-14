@@ -13,3 +13,14 @@ class USB_C(ModuleInterface):
     sbu2: F.Electrical
     rx: F.DifferentialPair
     tx: F.DifferentialPair
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.cc1.add(F.has_net_name("CC1", level=F.has_net_name.Level.SUGGESTED))
+        self.cc2.add(F.has_net_name("CC2", level=F.has_net_name.Level.SUGGESTED))
+        self.sbu1.add(F.has_net_name("SBU1", level=F.has_net_name.Level.SUGGESTED))
+        self.sbu2.add(F.has_net_name("SBU2", level=F.has_net_name.Level.SUGGESTED))
+        self.rx.p.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
+        self.rx.n.line.add(F.has_net_name("RX", level=F.has_net_name.Level.SUGGESTED))
+        self.tx.p.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))
+        self.tx.n.line.add(F.has_net_name("TX", level=F.has_net_name.Level.SUGGESTED))

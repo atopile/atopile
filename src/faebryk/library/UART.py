@@ -20,3 +20,12 @@ class UART(ModuleInterface):
     #    return F.has_single_electric_reference_defined(
     #       F.ElectricLogic.connect_all_module_references(self)
     #   )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.rts.line.add(F.has_net_name("RTS", level=F.has_net_name.Level.SUGGESTED))
+        self.cts.line.add(F.has_net_name("CTS", level=F.has_net_name.Level.SUGGESTED))
+        self.dtr.line.add(F.has_net_name("DTR", level=F.has_net_name.Level.SUGGESTED))
+        self.dsr.line.add(F.has_net_name("DSR", level=F.has_net_name.Level.SUGGESTED))
+        self.dcd.line.add(F.has_net_name("DCD", level=F.has_net_name.Level.SUGGESTED))
+        self.ri.line.add(F.has_net_name("RI", level=F.has_net_name.Level.SUGGESTED))

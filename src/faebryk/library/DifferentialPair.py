@@ -37,3 +37,15 @@ class DifferentialPair(ModuleInterface):
         self.connect_shallow(terminated_bus)
 
         return terminated_bus
+
+    def __postinit__(self, *args, **kwargs):
+        """Attach required net name suffixes for KiCad differential pair detection.
+
+        Ensures nets associated with the positive and negative lines end with
+        `_p` and `_n` respectively. The naming algorithm will append these
+        required affixes while still deconflicting names globally.
+        """
+        super().__postinit__(*args, **kwargs)
+        # Apply suffixes to the electrical lines of the signals
+        self.p.line.add(F.has_net_name_affix.suffix("_P"))
+        self.n.line.add(F.has_net_name_affix.suffix("_N"))

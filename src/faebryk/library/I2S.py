@@ -24,3 +24,9 @@ class I2S(ModuleInterface):
         return F.has_single_electric_reference_defined(
             F.ElectricLogic.connect_all_module_references(self)
         )
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.sd.line.add(F.has_net_name("SD", level=F.has_net_name.Level.SUGGESTED))
+        self.ws.line.add(F.has_net_name("WS", level=F.has_net_name.Level.SUGGESTED))
+        self.sck.line.add(F.has_net_name("SCK", level=F.has_net_name.Level.SUGGESTED))
