@@ -581,7 +581,7 @@ def _get_owner_module_name(net: F.Net) -> str | None:
     if not owner_names:
         return None
     # Choose a deterministic owner module name
-    return sorted(owner_names)[0]
+    return min(owner_names)
 
 
 def _compute_minimal_unique_prefixes(
