@@ -15,6 +15,13 @@
         (descr "atopile: part lib: Samsung_Electro_Mechanics_CL05B104KO5NNNC")
     )
     (lib
+        (name "Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+        (type "KiCad")
+        (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+        (options "")
+        (descr "atopile: part lib: Samsung_Electro_Mechanics_CL21A226MAQNNNE")
+    )
+    (lib
         (name "Samsung_Electro_Mechanics_CL21A226MQQNNNE")
         (type "KiCad")
         (uri "${KIPRJMOD}/../../parts/Samsung_Electro_Mechanics_CL21A226MQQNNNE")
@@ -57,10 +64,10 @@
         (descr "atopile: part lib: UNI_ROYAL_0402WGF5101TCE")
     )
     (lib
-        (name "kinghelm_KH_TYPE_C_16P")
+        (name "BHFUSE_BSMD0805_050_15V")
         (type "KiCad")
-        (uri "${KIPRJMOD}/../../.ato/modules/atopile/usb-connectors/parts/kinghelm_KH_TYPE_C_16P")
+        (uri "${KIPRJMOD}/../../.ato/modules/atopile/usb-connectors/parts/BHFUSE_BSMD0805_050_15V")
         (options "")
-        (descr "atopile: part lib: kinghelm_KH_TYPE_C_16P")
+        (descr "atopile: part lib: BHFUSE_BSMD0805_050_15V")
     )
 )
