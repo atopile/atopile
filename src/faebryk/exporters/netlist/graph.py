@@ -75,7 +75,7 @@ def ensure_ref_and_value(c: Module):
 
 
 def add_or_get_nets(*interfaces: F.Electrical):
-    buses = ModuleInterface._group_into_buses(interfaces)
+    buses = ModuleInterface.group_into_buses(interfaces)
     nets_out = set()
 
     # Iterate buses in a deterministic order by their string representation
