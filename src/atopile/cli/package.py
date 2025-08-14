@@ -317,6 +317,31 @@ def _verify_no_warnings(config: "Config"):
         )
 
 
+def _verify_version_increment(config: "Config"):
+    from atopile.config import config
+    from atopile.errors import UserBadParameterError
+    from faebryk.libs.backend.packages.api import PackagesAPIClient
+
+    if config.project.package is None:
+        raise UserBadParameterError("Package version is not set")
+    if config.project.package.version is None:
+        raise UserBadParameterError("Package version is not set")
+
+    api = PackagesAPIClient()
+
+    local_ver = Version.parse(config.project.package.version)
+    registry_ver = api.get_package(config.project.package.identifier).info.version
+    if registry_ver is None:
+        return
+
+    semver_registry_ver = Version.parse(registry_ver)
+
+    if local_ver <= semver_registry_ver:
+        raise UserBadParameterError(
+            f"Package version {local_ver} is <= registry version {registry_ver} - packagewill not publish"
+        )
+
+
 def verify_package(config: "Config"):
     if config.project.package is not None:
         strict = config.project.package.repository == HttpUrl(
