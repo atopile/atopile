@@ -728,9 +728,6 @@ def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
             names[net].suffix = i
 
 
-## Diffpair naming harmonization intentionally removed for simplicity and determinism.
-
-
 def _truncate_long_name(name: str, max_length: int = 255) -> str:
     """Truncate a long name to fit within the maximum length."""
     if len(name) <= max_length:
