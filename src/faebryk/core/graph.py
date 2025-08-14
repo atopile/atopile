@@ -33,6 +33,11 @@ class GraphFunctions:
             if n.has_trait(trait)
         ]
 
+    def power_nodes(self) -> set["Node"]:
+        """Fetch all the power-type nodes in the graph."""
+        import faebryk.library._F as F
+        return self.nodes_of_type(F.Power)
+
     # TODO: Waiting for python to add support for type mapping
     def nodes_with_traits[*Ts](
         self, traits: tuple[*Ts]

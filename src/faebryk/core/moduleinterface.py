@@ -274,7 +274,7 @@ class ModuleInterface(Node):
         self.connect(other, link=LinkDirectDerived(path))
 
     @staticmethod
-    def _group_into_buses[T: ModuleInterface](mifs: Iterable[T]) -> dict[T, set[T]]:
+    def group_into_buses[T: ModuleInterface](mifs: Iterable[T]) -> dict[T, set[T]]:
         """
         returns dict[BusRepresentative, set[MIFs in Bus]]
         """

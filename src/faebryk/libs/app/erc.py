@@ -141,7 +141,7 @@ def simple_erc(G: Graph, voltage_limit=1e5 * P.V):
         electricpower = GraphFunctions(G).nodes_of_type(F.ElectricPower)
         logger.info(f"Checking {len(electricpower)} Power")
 
-        buses_grouped = ModuleInterface._group_into_buses(electricpower)
+        buses_grouped = ModuleInterface.group_into_buses(electricpower)
         buses = list(buses_grouped.values())
 
         # We do collection both inside and outside the loop because we don't

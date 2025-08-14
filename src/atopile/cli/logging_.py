@@ -504,7 +504,7 @@ class LoggingStage(Advancable):
     def __enter__(self) -> "LoggingStage":
         self._setup_logging()
         self._update_columns()
-        self._progress.start()
+        #self._progress.start()
         self._task_id = self._progress.add_task(
             self.description, total=self.steps if self.steps is not None else 1
         )
