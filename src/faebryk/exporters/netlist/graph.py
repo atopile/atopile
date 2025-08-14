@@ -728,94 +728,7 @@ def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
             names[net].suffix = i
 
 
-def _find_diffpair_key_for_net(net: F.Net) -> str | None:
-    """Return a stable identifier for the DifferentialPair owning this net, if any."""
-    for mif in net.get_connected_interfaces():
-        try:
-            for node, _name in mif.get_hierarchy():
-                if not node.get_parent():
-                    continue
-                if isinstance(node, F.DifferentialPair):
-                    return node.get_full_name()
-        except NodeNoParent:
-            continue
-    return None
-
-
-def _harmonize_diffpair_names(names: FuncDict[F.Net, _NetName]) -> None:
-    """Ensure differential pairs share the same base/prefix and only differ by _P/_N.
-
-    If only one side provides a suggested base (e.g. "bloop"), propagate that base
-    to the other side so the final names are "bloop_P" and "bloop_N".
-    """
-    # Normalize explicit _P/_N in base into required_suffix, then group by diffpair key
-    groups: dict[str, list[F.Net]] = {}
-    for net, nn in list(names.items()):
-        base = nn.base_name or "net"
-        # Hoist explicit suffixes into required_suffix for consistent handling
-        if base.endswith("_P") and not nn.required_suffix:
-            nn.base_name = base[:-2]
-            nn.required_suffix = "_P"
-        elif base.endswith("_N") and not nn.required_suffix:
-            nn.base_name = base[:-2]
-            nn.required_suffix = "_N"
-
-        # Only consider nets that look like part of a diffpair
-        if nn.required_suffix not in {"_P", "_N"}:
-            continue
-
-        key = _find_diffpair_key_for_net(net)
-        if key is None:
-            # If we cannot find an owning DifferentialPair, skip harmonization
-            continue
-        groups.setdefault(key, []).append(net)
-
-    for key, nets_in_group in groups.items():
-        # Must have both P and N to harmonize
-        p_net = next(
-            (n for n in nets_in_group if names[n].required_suffix == "_P"), None
-        )
-        n_net = next(
-            (n for n in nets_in_group if names[n].required_suffix == "_N"), None
-        )
-        if not p_net or not n_net:
-            continue
-
-        # Collect naming info across both nets' interfaces to pick the best base
-        mifs_union: list[F.Electrical] = []
-        for net in (p_net, n_net):
-            mifs_union.extend(net.get_connected_interfaces())
-        # Ensure deterministic processing of suggestions across connected interfaces
-        mifs_union = sorted(mifs_union, key=lambda m: m.get_full_name())
-
-        required, suggested, implicit = _collect_naming_info_from_interfaces(mifs_union)
-        base_candidate = _determine_base_name(suggested, implicit)
-
-        # Fall back to whichever existing base is less generic
-        if base_candidate is None or _is_generic_name(base_candidate):
-            existing_bases = [names[p_net].base_name, names[n_net].base_name]
-            non_generic = [b for b in existing_bases if b and not _is_generic_name(b)]
-            base_candidate = non_generic[0] if non_generic else base_candidate
-
-        # Fall back to best interface name if still not good
-        if base_candidate is None or _is_generic_name(base_candidate):
-            best_iface = _find_best_interface_name(mifs_union)
-            if best_iface:
-                base_candidate = best_iface
-
-        if base_candidate is None:
-            # As a last resort keep current base of P side
-            base_candidate = names[p_net].base_name or "net"
-
-        # Apply shared base and shared prefix
-        shared_prefix = names[p_net].prefix or names[n_net].prefix
-        names[p_net].base_name = base_candidate
-        names[n_net].base_name = base_candidate
-        names[p_net].prefix = shared_prefix
-        names[n_net].prefix = shared_prefix
-        # Ensure suffixes are correct
-        names[p_net].required_suffix = "_P"
-        names[n_net].required_suffix = "_N"
+## Diffpair naming harmonization intentionally removed for simplicity and determinism.
 
 
 def _truncate_long_name(name: str, max_length: int = 255) -> str:
@@ -871,8 +784,7 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     # Apply affixes
     _apply_affixes(unnamed_nets, names)
 
-    # Harmonize differential pair names so they only differ by _P/_N
-    _harmonize_diffpair_names(names)
+    # Note: differential pair harmonization removed to avoid cross-net coupling
 
     # Resolve conflicts through prefixing
     _resolve_conflicts_with_prefixes(names)
