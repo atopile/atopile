@@ -40,7 +40,7 @@ class KicadFootprint(F.Footprint):
                     )
                 )
 
-    def __init__(self, pin_names: list[str] = []) -> None:
+    def __init__(self, pin_names: list[str]) -> None:
         super().__init__()
 
         unique_pin_names = sorted(set(pin_names))

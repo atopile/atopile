@@ -147,3 +147,20 @@ class ElectricLogic(F.ElectricSignal):
             self.reference.lv.connect(other.reference.lv)
 
         return super().connect_shallow(other)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import ElectricLogic
+        
+        logic_signal = new ElectricLogic
+
+        logic_signal.reference ~ example_electric_power
+
+        logic_signal.line ~ electrical
+        # OR
+        logic_signal.line ~ electricLogic.line
+        # OR
+        logic_signal.line ~> example_resistor ~> electrical
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

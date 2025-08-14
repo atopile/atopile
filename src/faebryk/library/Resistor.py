@@ -76,3 +76,20 @@ class Resistor(Module):
     def p2(self) -> F.Electrical:
         """The other side of the resistor."""
         return self.unnamed[1]
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Resistor
+        
+        resistor = new Resistor
+        resistor.resistance = 10kohm +/- 5%
+        resistor.package = "0402"
+
+        electrical1 ~ resistor.unnamed[0]
+        electrical2 ~ resistor.unnamed[1]
+        # OR
+        electrical1 ~> resistor ~> electrical2
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
+

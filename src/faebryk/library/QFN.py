@@ -11,15 +11,12 @@ from faebryk.libs.util import times
 class QFN(F.Footprint):
     def __init__(
         self,
-        pin_cnt: int = 16,
-        exposed_thermal_pad_cnt: int = 1,
-        size_xy: tuple[Quantity, Quantity] = (1.0 * P.mm, 1.0 * P.mm),
-        pitch: Quantity = 0.5 * P.mm,
-        exposed_thermal_pad_dimensions: tuple[Quantity, Quantity] = (
-            0.25 * P.mm,
-            0.25 * P.mm,
-        ),
-        has_thermal_vias: bool = False,
+        pin_cnt: int,
+        exposed_thermal_pad_cnt: int,
+        size_xy: tuple[Quantity, Quantity],
+        pitch: Quantity,
+        exposed_thermal_pad_dimensions: tuple[Quantity, Quantity],
+        has_thermal_vias: bool,
     ) -> None:
         super().__init__()
 
