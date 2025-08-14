@@ -133,11 +133,13 @@ class _NetName:
         """
         base_name = self.base_name or "net"
         prefix = f"{self.prefix}-" if self.prefix else ""
-        suffix = f"-{self.suffix}" if self.suffix is not None else ""
+        numeric_suffix = f"-{self.suffix}" if self.suffix is not None else ""
         required_prefix = self.required_prefix or ""
         required_suffix = self.required_suffix or ""
 
-        return f"{prefix}{required_prefix}{base_name}{required_suffix}{suffix}"
+        # Order: prefix + required_prefix + base + numeric_suffix + required_suffix
+        # Ensures diff-pair affix (_P/_N) is last, e.g. "line-1_N"
+        return f"{prefix}{required_prefix}{base_name}{numeric_suffix}{required_suffix}"
 
 
 def _conflicts(
@@ -341,7 +343,7 @@ def _is_generic_name(name: str | None) -> bool:
     if name is None:
         return True
 
-    generic_names = {"line", "hv"}
+    generic_names = {"line", "hv", "p", "n"}
     generic_patterns = [
         lambda n: n.startswith("unnamed"),
         lambda n: re.match(r"^(_\d+|p\d+)$", n) is not None,
@@ -669,6 +671,61 @@ def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
             names[net].suffix = i
 
 
+def _harmonize_diffpair_names(names: FuncDict[F.Net, _NetName]) -> None:
+    """Ensure differential pairs share the same base/prefix and only differ by _P/_N.
+
+    We look for pairs of nets that have identical prefix+base but differ by
+    required suffix _P/_N or literal _P/_N in base. We unify to use required
+    suffixes and a shared base.
+    """
+    # Group nets by (prefix, base without trailing _P/_N, suggested intent)
+    buckets: dict[tuple[str | None, str], list[F.Net]] = {}
+    for net, nn in list(names.items()):
+        base = nn.base_name or "net"
+        prefix = nn.prefix
+        # Extract explicit trailing _P/_N if present in base
+        explicit_suffix = None
+        if base.endswith("_P"):
+            explicit_suffix = "_P"
+            base_core = base[:-2]
+        elif base.endswith("_N"):
+            explicit_suffix = "_N"
+            base_core = base[:-2]
+        else:
+            base_core = base
+
+        key = (prefix, base_core)
+        buckets.setdefault(key, []).append(net)
+
+        # If explicit base suffix found but no required_suffix set, move it to required
+        if explicit_suffix and not nn.required_suffix:
+            nn.base_name = base_core
+            nn.required_suffix = explicit_suffix
+
+    # For each bucket that contains both _P and _N, ensure exact symmetry
+    for (prefix, base_core), nets_in_bucket in buckets.items():
+        if len(nets_in_bucket) < 2:
+            continue
+        # Identify P and N members
+        p_net = None
+        n_net = None
+        for net in nets_in_bucket:
+            rs = names[net].required_suffix
+            if rs == "_P":
+                p_net = net
+            elif rs == "_N":
+                n_net = net
+        if p_net and n_net:
+            # Enforce same base and prefix
+            names[p_net].base_name = base_core
+            names[n_net].base_name = base_core
+            names[p_net].prefix = prefix
+            names[n_net].prefix = prefix
+            # Lock suffixes
+            names[p_net].required_suffix = "_P"
+            names[n_net].required_suffix = "_N"
+
+
 def _truncate_long_name(name: str, max_length: int = 255) -> str:
     """Truncate a long name to fit within the maximum length."""
     if len(name) <= max_length:
@@ -717,6 +774,9 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
 
     # Apply affixes
     _apply_affixes(unnamed_nets, names)
+
+    # Harmonize differential pair names so they only differ by _P/_N
+    _harmonize_diffpair_names(names)
 
     # Resolve conflicts through prefixing
     _resolve_conflicts_with_prefixes(names)
