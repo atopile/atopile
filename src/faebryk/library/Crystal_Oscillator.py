@@ -46,3 +46,37 @@ class Crystal_Oscillator(Module):
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.xtal_if.xin, self.xtal_if.xout)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Crystal_Oscillator, ElectricPower
+
+        crystal_osc = new Crystal_Oscillator
+
+        # Configure crystal parameters
+        crystal_osc.crystal.frequency = 16MHz +/- 20ppm
+        crystal_osc.crystal.load_capacitance = 18pF +/- 10%
+        crystal_osc.crystal.equivalent_series_resistance = 80ohm +/- 20%
+        crystal_osc.crystal.package = "HC49U"
+
+        # Connect power for ground reference
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+        crystal_osc.xtal_if.gnd ~ power_3v3.lv
+
+        # Connect to microcontroller crystal pins
+        microcontroller.xtal_in ~ crystal_osc.xtal_if.xin
+        microcontroller.xtal_out ~ crystal_osc.xtal_if.xout
+
+        # Load capacitors are automatically calculated:
+        # C_load = (Crystal_load_cap - Stray_cap) * 2
+        # Typically results in 22pF capacitors for 18pF crystal
+
+        # Current limiting resistor prevents overdrive (optional)
+        crystal_osc.current_limiting_resistor.resistance = 1kohm +/- 5%
+
+        # Common frequencies: 8MHz, 12MHz, 16MHz, 20MHz, 25MHz
+        # Used for: microcontroller clocks, RTC, timing references
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
