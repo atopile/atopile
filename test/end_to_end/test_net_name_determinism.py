@@ -8,9 +8,6 @@ def test_net_names_deterministic(build_app: EXEC_T, save_tmp_path_on_failure: No
         import Resistor
         module App:
             r = new Resistor[3]
-            r[0].unnamed[0] ~ r[0].unnamed[1]
-            r[1].unnamed[0] ~ r[1].unnamed[1]
-            r[2].unnamed[0] ~ r[2].unnamed[1]
             r[0] ~> r[1] ~> r[2]
         """
 
