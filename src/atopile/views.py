@@ -99,8 +99,8 @@ class Powertree:
         source_node = next(iter(sources))
         root_source = _PowerTreeNode(compute_name(source_node.get_hierarchy()),
                                      source_node.voltage)
-        tree[root_source] = Tree[_PowerTreeNode]()
 
+        tree[root_source] = Tree[_PowerTreeNode]()
         def walk_graph(into_tree: Tree[_PowerTreeNode], source_node) -> None:
             # Let's walk through the power nodes and find out which ones are sources
             # and which ones are sinks.
@@ -137,7 +137,7 @@ class Powertree:
                 # hash-set to keep track of already inserted nodes.
                 # Before we insert the node into the tree, we need to check if it is
                 # already in the tree.
-                if into_tree.contains(pt_node, lambda x: x.name):
+                if tree.contains(pt_node, lambda x: x.name):
                     continue
 
                 into_tree[pt_node] = Tree[_PowerTreeNode]()
@@ -145,7 +145,7 @@ class Powertree:
                 if connected_node.has_trait(F.Power.is_power_source):
                     # The connected node is also a power source so we need to DFS into
                     # it.
-                    walk_graph(tree[root_source][pt_node], connected_node)
+                    walk_graph(into_tree[pt_node], connected_node)
 
         walk_graph(tree[root_source], source_node)
         return tree
