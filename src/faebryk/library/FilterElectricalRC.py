@@ -73,3 +73,29 @@ class FilterElectricalRC(F.Filter):
         out.capacitor.capacitance.constrain_subset(capacitance)
         out.cutoff_frequency.constrain_subset(cutoff_frequency)
         return out
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import FilterElectricalRC, ElectricSignal, ElectricPower
+
+        # Create low-pass RC filter
+        rc_filter = new FilterElectricalRC
+        rc_filter.cutoff_frequency = 1kHz +/- 10%
+
+        # Connect power reference
+        power_supply = new ElectricPower
+        assert power_supply.voltage within 5V +/- 5%
+        rc_filter.in_.reference ~ power_supply
+        rc_filter.out.reference ~ power_supply
+
+        # Connect input and output signals
+        input_signal = new ElectricSignal
+        output_signal = new ElectricSignal
+        input_signal ~ rc_filter.in_
+        rc_filter.out ~ output_signal
+
+        # Alternative: use hardcoded values for faster solving
+        rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
