@@ -101,6 +101,7 @@ REPOS = [
 ]
 
 
+@pytest.mark.requires_internet
 @pytest.mark.slow
 @pytest.mark.regression
 @pytest.mark.parametrize(
