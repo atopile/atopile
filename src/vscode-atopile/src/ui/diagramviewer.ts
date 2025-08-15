@@ -14,7 +14,7 @@ interface DiagramViewerMessage {
 class DiagramViewerWebview extends BaseWebview {
     private currentDiagramPath: string | undefined;
     private currentDepth: number = 1;
-    private currentType: string = 'svg';
+    private currentType: string = 'power tree';
 
     constructor() {
         super({
@@ -51,6 +51,22 @@ class DiagramViewerWebview extends BaseWebview {
                     gap: 15px;
                     flex-shrink: 0;
                     flex-wrap: wrap;
+                }
+                
+                .submenu-controls {
+                    padding: 8px 10px;
+                    border-bottom: 1px solid var(--vscode-panel-border);
+                    background: var(--vscode-editor-background);
+                    display: flex;
+                    align-items: center;
+                    gap: 15px;
+                    flex-shrink: 0;
+                    flex-wrap: wrap;
+                    opacity: 0.9;
+                }
+                
+                .submenu-controls.hidden {
+                    display: none;
                 }
                 
                 .control-group {
@@ -118,17 +134,14 @@ class DiagramViewerWebview extends BaseWebview {
             body: `
                 <div class="controls">
                     <div class="control-group">
-                        <button id="loadDiagramBtn">Load Diagram</button>
-                    </div>
-                    <div class="control-group">
                         <label for="typeSelect">Type:</label>
                         <select id="typeSelect">
-                            <option value="svg" ${this.currentType === 'svg' ? 'selected' : ''}>SVG</option>
-                            <option value="png" ${this.currentType === 'png' ? 'selected' : ''}>PNG</option>
-                            <option value="jpg" ${this.currentType === 'jpg' ? 'selected' : ''}>JPG</option>
-                            <option value="pdf" ${this.currentType === 'pdf' ? 'selected' : ''}>PDF</option>
+                            <option value="power tree" ${this.currentType === 'power tree' ? 'selected' : ''}>Power Tree</option>
                         </select>
                     </div>
+                </div>
+                
+                <div class="submenu-controls ${this.currentType === 'power tree' ? '' : 'hidden'}" id="submenuControls">
                     <div class="control-group">
                         <label for="depthSelect">Depth:</label>
                         <select id="depthSelect">
@@ -149,13 +162,17 @@ class DiagramViewerWebview extends BaseWebview {
                 <script>
                     const vscode = acquireVsCodeApi();
                     
-                    document.getElementById('loadDiagramBtn').addEventListener('click', () => {
-                        vscode.postMessage({ type: 'loadDiagram' });
-                    });
-                    
                     document.getElementById('typeSelect').addEventListener('change', (e) => {
                         const diagramType = e.target.value;
                         vscode.postMessage({ type: 'typeChanged', diagramType: diagramType });
+                        
+                        // Show/hide submenu based on type
+                        const submenu = document.getElementById('submenuControls');
+                        if (diagramType === 'power tree') {
+                            submenu.classList.remove('hidden');
+                        } else {
+                            submenu.classList.add('hidden');
+                        }
                     });
                     
                     document.getElementById('depthSelect').addEventListener('change', (e) => {
@@ -180,8 +197,8 @@ class DiagramViewerWebview extends BaseWebview {
             return `
                 <div class="no-diagram-message">
                     <div class="load-diagram-container">
-                        <p>No diagram file loaded</p>
-                        <p>Click "Load Diagram" to select a diagram file</p>
+                        <p>No power tree diagram loaded</p>
+                        <p>Click "Load Power Tree" to select a power tree diagram file</p>
                     </div>
                 </div>
             `;
@@ -225,9 +242,6 @@ class DiagramViewerWebview extends BaseWebview {
         this.panel.webview.onDidReceiveMessage(
             async (message: DiagramViewerMessage) => {
                 switch (message.type) {
-                    case 'loadDiagram':
-                        await this.loadDiagramFile();
-                        break;
                     case 'typeChanged':
                         if (message.diagramType !== undefined) {
                             this.currentType = message.diagramType;
@@ -243,45 +257,6 @@ class DiagramViewerWebview extends BaseWebview {
                 }
             }
         );
-    }
-
-    private async loadDiagramFile(): Promise<void> {
-        const options: vscode.OpenDialogOptions = {
-            canSelectMany: false,
-            openLabel: 'Load Diagram',
-            filters: {
-                'Diagram files': ['svg', 'png', 'jpg', 'jpeg', 'pdf'],
-                'SVG files': ['svg'],
-                'Image files': ['png', 'jpg', 'jpeg'],
-                'PDF files': ['pdf'],
-                'All files': ['*']
-            }
-        };
-
-        const fileUri = await vscode.window.showOpenDialog(options);
-        
-        if (fileUri && fileUri[0]) {
-            this.currentDiagramPath = fileUri[0].fsPath;
-            
-            // Auto-detect type from file extension
-            const fileExtension = path.extname(this.currentDiagramPath).toLowerCase();
-            if (fileExtension === '.svg') {
-                this.currentType = 'svg';
-            } else if (['.png'].includes(fileExtension)) {
-                this.currentType = 'png';
-            } else if (['.jpg', '.jpeg'].includes(fileExtension)) {
-                this.currentType = 'jpg';
-            } else if (fileExtension === '.pdf') {
-                this.currentType = 'pdf';
-            }
-            
-            this.refreshView();
-            
-            // Notify the webview that a diagram was loaded
-            if (this.panel) {
-                this.panel.webview.postMessage({ type: 'diagramLoaded' });
-            }
-        }
     }
 
     private refreshView(): void {
@@ -316,17 +291,8 @@ class DiagramViewerWebview extends BaseWebview {
         if (fs.existsSync(diagramPath)) {
             this.currentDiagramPath = diagramPath;
             
-            // Auto-detect type from file extension
-            const fileExtension = path.extname(diagramPath).toLowerCase();
-            if (fileExtension === '.svg') {
-                this.currentType = 'svg';
-            } else if (['.png'].includes(fileExtension)) {
-                this.currentType = 'png';
-            } else if (['.jpg', '.jpeg'].includes(fileExtension)) {
-                this.currentType = 'jpg';
-            } else if (fileExtension === '.pdf') {
-                this.currentType = 'pdf';
-            }
+            // Type is always "power tree" now
+            this.currentType = 'power tree';
             
             this.refreshView();
         } else {
