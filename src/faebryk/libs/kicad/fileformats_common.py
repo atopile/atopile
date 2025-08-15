@@ -112,10 +112,13 @@ class C_stroke:
 
 @dataclass
 class C_effects:
-    @dataclass
+    @dataclass(kw_only=True)
     class C_font:
+        face: Optional[str] = None
         size: C_wh
         thickness: Optional[float] = None
+        bold: Optional[bool] = None
+        italic: Optional[bool] = None
         unresolved_font_name: Optional[str] = None
 
     @dataclass
