@@ -12,6 +12,7 @@ class JTAG(ModuleInterface):
     tdi: F.ElectricLogic
     tms: F.ElectricLogic
     tck: F.ElectricLogic
+    rtck: F.ElectricLogic
     n_trst: F.ElectricLogic
     n_reset: F.ElectricLogic
     vtref: F.ElectricPower
@@ -31,6 +32,7 @@ class JTAG(ModuleInterface):
         self.tdi.line.add(F.has_net_name("TDI", level=F.has_net_name.Level.SUGGESTED))
         self.tms.line.add(F.has_net_name("TMS", level=F.has_net_name.Level.SUGGESTED))
         self.tck.line.add(F.has_net_name("TCK", level=F.has_net_name.Level.SUGGESTED))
+        self.rtck.line.add(F.has_net_name("RTCK", level=F.has_net_name.Level.SUGGESTED))
         self.n_trst.line.add(
             F.has_net_name("N_TRST", level=F.has_net_name.Level.SUGGESTED)
         )
