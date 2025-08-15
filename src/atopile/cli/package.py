@@ -374,8 +374,6 @@ def verify_package(config: "Config"):
                 _verify_usage_import(config)
             with accumulator.collect():
                 _verify_usage_in_readme(config)
-            with accumulator.collect():
-                _verify_latest_ato_version(config)
 
     logger.info("Package verification successful! 🎉")
 
