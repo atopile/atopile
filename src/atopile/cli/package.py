@@ -348,28 +348,25 @@ def _verify_version_increment(config: "Config"):
 def _verify_latest_ato_version(config: "Config"):
     """Ensure `requires-atopile` in `ato.yaml` includes the latest compiler.
 
-    This checks the project's version spec (e.g. "^0.9.0") against the latest
-    `atopile` version available on PyPI. If the latest version does not satisfy
-    the spec, raise a user-facing error that suggests the correct spec.
+    Compares the project's version spec (e.g. "^0.9.0") against the latest
+    `atopile` version on PyPI. If the latest version does not satisfy the
+    spec, raise a user-facing error suggesting an updated spec.
     """
-    from atopile.errors import UserBadParameterError
-    from atopile.version import (
-        clean_version,
-        get_latest_atopile_version,
-        match,
-    )
+    from atopile.version import clean_version, get_latest_atopile_version, match
 
-    # Project must have a config loaded; `requires_atopile` is always present
-    # (defaults to caret-pinned installed version), but we still guard.
     requires_spec = getattr(config.project, "requires_atopile", None)
     if not requires_spec:
         return
 
     latest = get_latest_atopile_version()
     if latest is None:
-        pass
+        # Network failure or PyPI unavailable; do not block verification
+        logger.debug(
+            "Could not determine latest atopile version from PyPI; "
+            "skipping 'requires-atopile' freshness check",
+        )
+        return
 
-    # Require that the project's spec includes the latest released version
     if not match(requires_spec, latest):
         latest_clean = clean_version(latest)
         raise UserBadParameterError(
