@@ -10,6 +10,7 @@ import { openPackageExplorer } from './packagexplorer';
 import { captureEvent } from '../common/telemetry';
 import * as kicanvas from './kicanvas';
 import * as modelviewer from './modelviewer';
+import * as diagramviewer from './diagramviewer';
 import { getBuildTarget, setBuildTarget } from '../common/target';
 import { disambiguatePaths } from '../common/utilities';
 
@@ -90,6 +91,7 @@ let cmdChooseBuild = new Command(atoChooseBuild, 'atopile.choose_build');
 let cmdLaunchKicad = new Command(atoLaunchKicad, 'atopile.launch_kicad');
 let cmdKicanvasPreview = new Command(atoKicanvasPreview, 'atopile.kicanvas_preview');
 let cmdModelViewerPreview = new Command(atoModelViewerPreview, 'atopile.modelviewer_preview');
+let cmdDiagramViewerPreview = new Command(atoDiagramViewerPreview, 'atopile.diagram_viewer');
 let cmdExport = new Command(atoExport, 'atopile.export');
 
 let buttonShell = new Button('terminal', cmdShell, 'Shell', 'Open ato shell', true, true);
@@ -108,6 +110,12 @@ let buttonModelViewerPreview = new Button(
     cmdModelViewerPreview,
     '3D Preview',
     'Open 3D Model Preview',
+);
+let buttonDiagramViewerPreview = new Button(
+    'graph',
+    cmdDiagramViewerPreview,
+    'Diagram Viewer',
+    'Open Diagram Viewer',
 );
 let dropdownChooseBuild = new Button('gear', cmdChooseBuild, 'Choose Build Target', 'Select active build target');
 const NO_BUILD = '';
@@ -435,4 +443,11 @@ async function atoKicanvasPreview() {
 
 async function atoModelViewerPreview() {
     await modelviewer.openModelViewerPreview();
+}
+
+async function atoDiagramViewerPreview() {
+    const instance = diagramviewer.getDiagramViewerInstance();
+    if (instance) {
+        await instance.open();
+    }
 }

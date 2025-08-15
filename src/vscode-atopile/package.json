@@ -190,6 +190,11 @@
                 "category": "atopile"
             },
             {
+                "command": "atopile.diagram_viewer",
+                "title": "Open Diagram Viewer",
+                "category": "atopile"
+            },
+            {
                 "command": "atopile.llm.setup",
                 "title": "Setup LLM rules & MCP",
                 "category": "atopile"
