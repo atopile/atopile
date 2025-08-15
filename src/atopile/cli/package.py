@@ -338,7 +338,47 @@ def _verify_version_increment(config: "Config"):
 
     if local_ver <= semver_registry_ver:
         raise UserBadParameterError(
-            f"Package version {local_ver} is <= registry version {registry_ver} - package will not publish"
+            (
+                f"Package version {local_ver} is <= registry version "
+                f"{registry_ver} - package will not publish"
+            )
+        )
+
+
+def _verify_latest_ato_version(config: "Config"):
+    """Ensure `requires-atopile` in `ato.yaml` includes the latest compiler.
+
+    This checks the project's version spec (e.g. "^0.9.0") against the latest
+    `atopile` version available on PyPI. If the latest version does not satisfy
+    the spec, raise a user-facing error that suggests the correct spec.
+    """
+    from atopile.errors import UserBadParameterError
+    from atopile.version import (
+        clean_version,
+        get_latest_atopile_version,
+        match,
+    )
+
+    # Project must have a config loaded; `requires_atopile` is always present
+    # (defaults to caret-pinned installed version), but we still guard.
+    requires_spec = getattr(config.project, "requires_atopile", None)
+    if not requires_spec:
+        return
+
+    latest = get_latest_atopile_version()
+    if latest is None:
+        pass
+
+    # Require that the project's spec includes the latest released version
+    if not match(requires_spec, latest):
+        latest_clean = clean_version(latest)
+        raise UserBadParameterError(
+            (
+                "`requires-atopile` does not include the latest compiler version. "
+                f"Current spec: '{requires_spec}'. Latest: {latest_clean}. "
+                "Consider setting: requires-atopile: '^%s'"
+            )
+            % latest_clean,
         )
 
 
@@ -371,6 +411,8 @@ def verify_package(config: "Config"):
                 _verify_usage_import(config)
             with accumulator.collect():
                 _verify_usage_in_readme(config)
+            with accumulator.collect():
+                _verify_latest_ato_version(config)
 
     logger.info("Package verification successful! 🎉")
 
