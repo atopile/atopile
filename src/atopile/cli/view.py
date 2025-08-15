@@ -4,10 +4,12 @@
 `ato view`
 """
 
+from enum import Enum
 import logging
 from typing import Annotated, Literal
 
-from atopile.views import Powertree, render_cli
+from atopile.errors import UserBadParameterError
+from atopile.views import Powertree, render_cli, render_dot
 from faebryk.core.graph import GraphFunctions
 import typer
 
@@ -41,6 +43,14 @@ def view_schematic(
     raise errors.UserNotImplementedError("View schematic is not yet implemented.")
 
 
+class ViewFormat(str, Enum):
+    """
+    Enum for the output format of the view command.
+    """
+    CLI = "cli"
+    DOT = "dot"
+
+
 @view_app.command(name="power-tree")
 def view_power_tree(
     entry: Annotated[str | None, typer.Argument()] = None,
@@ -51,6 +61,15 @@ def view_power_tree(
     option: Annotated[
         list[str], typer.Option("--option", "-o", envvar="ATO_OPTION")
     ] = [],
+    format: Annotated[
+        ViewFormat, typer.Option("--format", "-f", help="Output format"),
+    ] = ViewFormat.CLI,
+    max_depth: Annotated[
+        int, typer.Option(
+        # TODO(marko): Better description
+            "--max-depth", "-d", help="How deep do you want to go into the modules",
+        ),
+    ] = 1,
 ):
     """
     View the power distribution tree of your project.
@@ -67,7 +86,14 @@ def view_power_tree(
             app = buildlib.init_app()
             graph = app.get_graph()
             ptree_view = Powertree(GraphFunctions(graph))
-            ptree_view.render(render_cli)
+            try:
+                renderer = {
+                    ViewFormat.CLI: render_cli,
+                    ViewFormat.DOT: render_dot,
+                }[format]
+            except KeyError:
+                raise UserBadParameterError("Invalid format specified.")
+            ptree_view.render(renderer)
 
             #graph_fxns = GraphFunctions(graph)
             #electric_power_interfaces = graph_fxns.nodes_of_type(F.ElectricPower)

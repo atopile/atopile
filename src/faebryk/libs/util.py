@@ -1292,6 +1292,23 @@ class Tree[T](dict[T, "Tree[T]"]):
 
         return out
 
+    def dfs(self) -> Generator[T, None, None]:
+        """
+        Depth-first search through the tree.
+        Yields each node in the order they are visited.
+        """
+        for child, child_tree in self.items():
+            yield child
+            yield from child_tree.dfs()
+
+    def contains(
+        self,
+        node: T, key: Callable[[T], Any] = lambda x: x,
+    ) -> bool:
+        """Check if the tree contains a node."""
+        return any(key(node) == key(child) or
+                   child_tree.contains(node, key) for child, child_tree in self.items())
+
     def copy(self) -> "Tree[T]":
         return Tree({k: v.copy() for k, v in self.items()})
 
