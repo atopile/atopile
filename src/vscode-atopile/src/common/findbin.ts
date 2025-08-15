@@ -206,6 +206,44 @@ export async function runAtoCommandInTerminal(
 }
 
 /**
+ * Runs an ato command and captures its output
+ */
+export async function runAtoCommandWithOutput(
+    cwd: string | undefined,
+    subcommand: string[],
+    timeout_ms: number = 30000
+): Promise<{ err: any; stderr: string; stdout: string }> {
+    const atoBin = await getAtoBin();
+    if (!atoBin) {
+        throw new Error('Ato bin not found');
+    }
+
+    const execFileAsync = promisify(execFile);
+    const bin = atoBin.command[0];
+    const args = [...atoBin.command.slice(1), ...subcommand];
+
+    traceInfo(`Executing ato command: ${bin} ${args.join(' ')}`);
+
+    // Execute the command with timeout
+    const result = await execFileAsync(bin, args, { 
+        timeout: timeout_ms,
+        cwd: cwd 
+    })
+        .then(({ stdout, stderr }) => ({ err: null, stderr: stderr, stdout: stdout }))
+        .catch((err: any) => {
+            const command = `${bin} ${args.join(' ')}`;
+            let details = '';
+            if (err.stderr !== '' || err.stdout !== '' || err.exitCode !== undefined) {
+                details = `code: ${err.exitCode}\nstderr: ${err.stderr}\nstdout: ${err.stdout}`;
+            }
+            traceError(`Error executing ato command: ${command}\n${details}`);
+            return { err: err, stderr: err.stderr, stdout: err.stdout };
+        });
+
+    return result;
+}
+
+/**
  * Sets up ato alias in a newly created terminal
  */
 async function setupAtoAliasInTerminal(terminal: any): Promise<void> {

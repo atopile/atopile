@@ -3,9 +3,12 @@ import * as path from 'path';
 import * as fs from 'fs';
 import { BaseWebview } from './webview-base';
 import { buildHtml } from './html-builder';
+import { runAtoCommandWithOutput } from '../common/findbin';
+import { getProjectRoot } from '../common/utilities';
+import { traceError, traceInfo } from '../common/log/logging';
 
 interface DiagramViewerMessage {
-    type: 'depthChanged' | 'typeChanged' | 'loadDiagram';
+    type: 'depthChanged' | 'typeChanged' | 'loadDiagram' | 'generatePowerTree';
     depth?: number;
     diagramType?: string;
     diagramPath?: string;
@@ -139,6 +142,9 @@ class DiagramViewerWebview extends BaseWebview {
                             <option value="power tree" ${this.currentType === 'power tree' ? 'selected' : ''}>Power Tree</option>
                         </select>
                     </div>
+                    <div class="control-group">
+                        <button id="generatePowerTreeBtn">Generate Power Tree</button>
+                    </div>
                 </div>
                 
                 <div class="submenu-controls ${this.currentType === 'power tree' ? '' : 'hidden'}" id="submenuControls">
@@ -161,6 +167,10 @@ class DiagramViewerWebview extends BaseWebview {
                 
                 <script>
                     const vscode = acquireVsCodeApi();
+                    
+                    document.getElementById('generatePowerTreeBtn').addEventListener('click', () => {
+                        vscode.postMessage({ type: 'generatePowerTree' });
+                    });
                     
                     document.getElementById('typeSelect').addEventListener('change', (e) => {
                         const diagramType = e.target.value;
@@ -193,12 +203,29 @@ class DiagramViewerWebview extends BaseWebview {
     }
 
     private getDiagramContent(): string {
-        if (!this.currentDiagramPath || !fs.existsSync(this.currentDiagramPath)) {
+        if (!this.currentDiagramPath) {
             return `
                 <div class="no-diagram-message">
                     <div class="load-diagram-container">
-                        <p>No power tree diagram loaded</p>
-                        <p>Click "Load Power Tree" to select a power tree diagram file</p>
+                        <p>No power tree diagram generated</p>
+                        <p>Click "Generate Power Tree" to create a power tree diagram</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // If we have SVG content directly (from command output), display it
+        if (this.currentDiagramPath.startsWith('<svg')) {
+            return `<div class="diagram-content">${this.currentDiagramPath}</div>`;
+        }
+
+        // Otherwise, treat it as a file path (for backwards compatibility)
+        if (!fs.existsSync(this.currentDiagramPath)) {
+            return `
+                <div class="no-diagram-message">
+                    <div class="load-diagram-container">
+                        <p>Diagram file not found</p>
+                        <p>Click "Generate Power Tree" to create a new power tree diagram</p>
                     </div>
                 </div>
             `;
@@ -236,12 +263,81 @@ class DiagramViewerWebview extends BaseWebview {
         }
     }
 
+    private async generatePowerTree(): Promise<string | null> {
+        try {
+            traceInfo('Generating power tree diagram...');
+            
+            // Get project root
+            const projectRoot = await getProjectRoot();
+
+            // Execute the ato command with the new utility function
+            const result = await runAtoCommandWithOutput(
+                projectRoot.uri.fsPath,
+                ['view', 'power-tree', `--max-depth=${this.currentDepth}`],
+                30000
+            );
+
+            if (result.err) {
+                vscode.window.showErrorMessage(`Failed to generate power tree: ${result.stderr || result.err.message}`);
+                return null;
+            }
+
+            if (!result.stdout || result.stdout.trim() === '') {
+                vscode.window.showWarningMessage('Power tree command executed but returned no output.');
+                return null;
+            }
+
+            traceInfo('Power tree generated successfully');
+            return result.stdout;
+
+        } catch (error) {
+            traceError(`Error generating power tree: ${error}`);
+            vscode.window.showErrorMessage(`Error generating power tree: ${error}`);
+            return null;
+        }
+    }
+
+    private async handleGeneratePowerTree(): Promise<void> {
+        try {
+            // Show progress indicator
+            await vscode.window.withProgress({
+                location: vscode.ProgressLocation.Notification,
+                title: "Generating Power Tree",
+                cancellable: false
+            }, async (progress) => {
+                progress.report({ increment: 0, message: "Executing ato view power-tree..." });
+                
+                const svgContent = await this.generatePowerTree();
+                
+                if (svgContent) {
+                    // Store the SVG content directly as the "path"
+                    this.currentDiagramPath = svgContent;
+                    progress.report({ increment: 100, message: "Power tree generated successfully" });
+                    this.refreshView();
+                    
+                    // Notify the webview that diagram was loaded
+                    if (this.panel) {
+                        this.panel.webview.postMessage({ type: 'diagramLoaded' });
+                    }
+                } else {
+                    progress.report({ increment: 100, message: "Failed to generate power tree" });
+                }
+            });
+        } catch (error) {
+            traceError(`Error in handleGeneratePowerTree: ${error}`);
+            vscode.window.showErrorMessage(`Failed to generate power tree: ${error}`);
+        }
+    }
+
     protected setupPanel(): void {
         if (!this.panel) return;
 
         this.panel.webview.onDidReceiveMessage(
             async (message: DiagramViewerMessage) => {
                 switch (message.type) {
+                    case 'generatePowerTree':
+                        await this.handleGeneratePowerTree();
+                        break;
                     case 'typeChanged':
                         if (message.diagramType !== undefined) {
                             this.currentType = message.diagramType;
@@ -251,7 +347,12 @@ class DiagramViewerWebview extends BaseWebview {
                     case 'depthChanged':
                         if (message.depth !== undefined) {
                             this.currentDepth = message.depth;
-                            this.refreshView();
+                            // Regenerate if we already have a power tree
+                            if (this.currentDiagramPath && !this.currentDiagramPath.includes('/')) {
+                                await this.handleGeneratePowerTree();
+                            } else {
+                                this.refreshView();
+                            }
                         }
                         break;
                 }
@@ -298,6 +399,10 @@ class DiagramViewerWebview extends BaseWebview {
         } else {
             vscode.window.showErrorMessage(`Diagram file not found: ${diagramPath}`);
         }
+    }
+
+    public async generatePowerTreeDiagram(): Promise<void> {
+        await this.handleGeneratePowerTree();
     }
 }
 
