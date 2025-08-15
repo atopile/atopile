@@ -1148,6 +1148,61 @@
 			)
 		)
 	)
+	(gr_text "TEST_B"
+		(at 34 31.5 315)
+		(layer "B.SilkS")
+		(uuid "f4bc9969-ce70-4c8a-aa6e-77d091f36140")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
+				(italic yes)
+			)
+			(justify mirror)
+		)
+	)
+	(gr_text_box "TEST"
+		(pts
+			(xy 27 17) (xy 34.071068 9.928932) (xy 39.374369 15.232233) (xy 32.303301 22.303301)
+		)
+		(margins 1.0025 1.0025 1.0025 1.0025)
+		(angle 45)
+		(layer "F.SilkS")
+		(uuid "af5bae64-00bc-4925-8751-2754e8f579a9")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.2)
+				(bold yes)
+				(italic yes)
+			)
+			(justify left top)
+		)
+		(border yes)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+	)
+	(gr_text_box "TEST"
+		(start 23.187184 12.366117)
+		(end 33.187184 19.866117)
+		(margins 1.0025 1.0025 1.0025 1.0025)
+		(layer "F.SilkS")
+		(uuid "fa9c7eb3-6bf9-45dd-a562-84f396398596")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.125)
+			)
+			(justify right bottom)
+		)
+		(border yes)
+		(stroke
+			(width 0.1)
+			(type solid)
+		)
+	)
 	(zone
 		(net 0)
 		(net_name "")
