@@ -118,7 +118,7 @@ class DiagramViewerWebview extends BaseWebview {
                     max-height: 100%;
                     border: 1px solid var(--vscode-panel-border);
                     border-radius: 4px;
-                    background: white;
+                    background: var(--vscode-editor-background);
                 }
                 
                 .no-diagram-message {
@@ -194,7 +194,8 @@ class DiagramViewerWebview extends BaseWebview {
                     window.addEventListener('message', event => {
                         const message = event.data;
                         if (message.type === 'diagramLoaded') {
-                            location.reload();
+                            // Don't reload the whole page, just update the diagram area
+                            console.log('Diagram loaded message received');
                         }
                     });
                 </script>
@@ -214,13 +215,24 @@ class DiagramViewerWebview extends BaseWebview {
             `;
         }
 
+        traceInfo(`getDiagramContent: currentDiagramPath length: ${this.currentDiagramPath.length}`);
+        traceInfo(`getDiagramContent: starts with <svg: ${this.currentDiagramPath.startsWith('<svg')}`);
+
         // If we have SVG content directly (from command output), display it
         if (this.currentDiagramPath.startsWith('<svg')) {
+            traceInfo('Rendering SVG content directly');
             return `<div class="diagram-content">${this.currentDiagramPath}</div>`;
+        }
+
+        // Check if it looks like raw Graphviz content (fallback case)
+        if (this.currentDiagramPath.includes('digraph') || this.currentDiagramPath.includes('graph')) {
+            traceInfo('Detected raw Graphviz content');
+            return `<pre style="color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); padding: 20px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">${this.currentDiagramPath}</pre>`;
         }
 
         // Otherwise, treat it as a file path (for backwards compatibility)
         if (!fs.existsSync(this.currentDiagramPath)) {
+            traceInfo('File does not exist, showing not found message');
             return `
                 <div class="no-diagram-message">
                     <div class="load-diagram-container">
@@ -255,6 +267,7 @@ class DiagramViewerWebview extends BaseWebview {
                 `;
             }
         } catch (error) {
+            traceError(`Error in getDiagramContent: ${error}`);
             return `
                 <div class="no-diagram-message">
                     <p>Error loading diagram file: ${error}</p>
@@ -269,31 +282,117 @@ class DiagramViewerWebview extends BaseWebview {
             
             // Get project root
             const projectRoot = await getProjectRoot();
+            traceInfo(`Project root: ${projectRoot.uri.fsPath}`);
 
             // Execute the ato command with the new utility function
             const result = await runAtoCommandWithOutput(
                 projectRoot.uri.fsPath,
-                ['view', 'power-tree', `--max-depth=${this.currentDepth}`],
+                ['view', 'power-tree', `--max-depth=${this.currentDepth}`, '--format=dot'],
                 30000
             );
 
+            traceInfo(`Command result - err: ${!!result.err}, stdout length: ${result.stdout?.length || 0}, stderr: ${result.stderr || 'none'}`);
+
             if (result.err) {
+                traceError(`Command failed: ${result.stderr || result.err.message}`);
                 vscode.window.showErrorMessage(`Failed to generate power tree: ${result.stderr || result.err.message}`);
                 return null;
             }
 
             if (!result.stdout || result.stdout.trim() === '') {
+                traceError('Command returned no output');
                 vscode.window.showWarningMessage('Power tree command executed but returned no output.');
                 return null;
             }
 
-            traceInfo('Power tree generated successfully');
-            return result.stdout;
+            traceInfo(`Power tree output (first 200 chars): ${result.stdout.substring(0, 200)}...`);
+            traceInfo('Power tree generated successfully, converting Graphviz to SVG...');
+            
+            try {
+                // Use require to import viz.js and handle types manually
+                const vizModule = require('@viz-js/viz');
+                const viz = await vizModule.instance();
+                
+                // Convert Graphviz DOT to SVG
+                let svgOutput = viz.renderString(result.stdout, { format: 'svg', engine: 'dot' });
+                
+                // Apply VS Code theme colors to the SVG
+                svgOutput = this.applyVSCodeThemeToSVG(svgOutput);
+                
+                traceInfo(`SVG output length: ${svgOutput.length}`);
+                traceInfo(`SVG starts with: ${svgOutput.substring(0, 100)}`);
+                traceInfo('Graphviz converted to SVG successfully');
+                return svgOutput;
+                
+            } catch (vizError) {
+                traceError(`Error converting Graphviz to SVG: ${vizError}`);
+                vscode.window.showErrorMessage(`Failed to render Graphviz output: ${vizError}`);
+                
+                // Fallback: return the raw graphviz content for debugging
+                return `<pre style="color: var(--vscode-editor-foreground); background: var(--vscode-editor-background); padding: 20px; font-family: monospace; white-space: pre-wrap; word-wrap: break-word;">${result.stdout}</pre>`;
+            }
 
         } catch (error) {
             traceError(`Error generating power tree: ${error}`);
             vscode.window.showErrorMessage(`Error generating power tree: ${error}`);
             return null;
+        }
+    }
+
+    private applyVSCodeThemeToSVG(svgContent: string): string {
+        try {
+            // Add CSS styles to make the SVG use VS Code theme colors
+            const styleTag = `<style>
+                /* Apply VS Code theme colors */
+                .node polygon, .node ellipse, .node path {
+                    fill: var(--vscode-editor-background) !important;
+                    stroke: var(--vscode-editor-foreground) !important;
+                    stroke-width: 1 !important;
+                }
+                
+                .node text {
+                    fill: var(--vscode-editor-foreground) !important;
+                    font-family: var(--vscode-font-family) !important;
+                }
+                
+                .edge path {
+                    stroke: var(--vscode-editor-foreground) !important;
+                    stroke-width: 1 !important;
+                }
+                
+                .edge polygon {
+                    fill: var(--vscode-editor-foreground) !important;
+                    stroke: var(--vscode-editor-foreground) !important;
+                }
+                
+                .edge text {
+                    fill: var(--vscode-editor-foreground) !important;
+                    font-family: var(--vscode-font-family) !important;
+                }
+                
+                /* Background */
+                svg {
+                    background: var(--vscode-editor-background) !important;
+                }
+                
+                /* Graph background if present */
+                .graph > polygon {
+                    fill: var(--vscode-editor-background) !important;
+                }
+            </style>`;
+
+            // Find the opening <svg> tag and insert the style after it
+            const svgTagMatch = svgContent.match(/<svg[^>]*>/);
+            if (svgTagMatch) {
+                const insertIndex = svgTagMatch.index! + svgTagMatch[0].length;
+                return svgContent.slice(0, insertIndex) + styleTag + svgContent.slice(insertIndex);
+            }
+
+            // Fallback: just prepend the style if we can't find the svg tag
+            return styleTag + svgContent;
+        } catch (error) {
+            traceError(`Error applying VS Code theme to SVG: ${error}`);
+            return svgContent; // Return original if theming fails
         }
     }
 
@@ -312,14 +411,11 @@ class DiagramViewerWebview extends BaseWebview {
                 if (svgContent) {
                     // Store the SVG content directly as the "path"
                     this.currentDiagramPath = svgContent;
+                    traceInfo(`Stored SVG content, length: ${svgContent.length}`);
                     progress.report({ increment: 100, message: "Power tree generated successfully" });
                     this.refreshView();
-                    
-                    // Notify the webview that diagram was loaded
-                    if (this.panel) {
-                        this.panel.webview.postMessage({ type: 'diagramLoaded' });
-                    }
                 } else {
+                    traceError('No SVG content generated');
                     progress.report({ increment: 100, message: "Failed to generate power tree" });
                 }
             });

@@ -227,6 +227,7 @@
     },
     "dependencies": {
         "@types/decompress": "^4.2.7",
+        "@viz-js/viz": "^3.16.0",
         "@vscode/python-extension": "^1.0.5",
         "axios": "^1.9.0",
         "decompress": "^4.2.1",
