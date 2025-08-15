@@ -7,8 +7,6 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Generator, Iterable, Mapping
 
-from more_itertools import first
-
 import faebryk.library._F as F
 from atopile.errors import UserException
 from faebryk.core.graph import Graph, GraphFunctions
@@ -17,7 +15,7 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import NodeNoParent
 from faebryk.exporters.netlist.netlist import FBRKNetlist
 from faebryk.libs.library import L
-from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby
+from faebryk.libs.util import FuncDict, KeyErrorAmbiguous, groupby, once
 
 logger = logging.getLogger(__name__)
 
@@ -80,7 +78,8 @@ def add_or_get_nets(*interfaces: F.Electrical):
     buses = ModuleInterface._group_into_buses(interfaces)
     nets_out = set()
 
-    for bus_repr in buses.keys():
+    # Iterate buses in a deterministic order by their string representation
+    for bus_repr in sorted(buses.keys(), key=lambda b: str(b)):
         nets_on_bus = F.Net.find_nets_for_mif(bus_repr)
 
         if not nets_on_bus:
@@ -93,7 +92,8 @@ def add_or_get_nets(*interfaces: F.Electrical):
                 n for n in nets_on_bus if n.has_trait(F.has_overriden_name)
             }
             if not named_nets_on_bus:
-                nets_on_bus = {first(nets_on_bus)}
+                # Deterministically select a representative net by stable key
+                nets_on_bus = {min(nets_on_bus, key=_get_net_stable_key)}
             elif len(named_nets_on_bus) == 1:
                 nets_on_bus = named_nets_on_bus
             else:
@@ -109,6 +109,8 @@ def add_or_get_nets(*interfaces: F.Electrical):
 def attach_nets(G: Graph) -> set[F.Net]:
     """Create nets for all the pads in the graph."""
     pad_mifs = [pad.net for pad in GraphFunctions(G).nodes_of_type(F.Pad)]
+    # Sort pad interfaces by stable node name to ensure deterministic bus grouping
+    pad_mifs = sorted(pad_mifs, key=_get_stable_node_name)
     nets = add_or_get_nets(*pad_mifs)
     return nets
 
@@ -133,11 +135,13 @@ class _NetName:
         """
         base_name = self.base_name or "net"
         prefix = f"{self.prefix}-" if self.prefix else ""
-        suffix = f"-{self.suffix}" if self.suffix is not None else ""
+        numeric_suffix = f"-{self.suffix}" if self.suffix is not None else ""
         required_prefix = self.required_prefix or ""
         required_suffix = self.required_suffix or ""
 
-        return f"{prefix}{required_prefix}{base_name}{required_suffix}{suffix}"
+        # Order: prefix + required_prefix + base + numeric_suffix + required_suffix
+        # Ensures diff-pair affix (_P/_N) is last, e.g. "line-1_N"
+        return f"{prefix}{required_prefix}{base_name}{numeric_suffix}{required_suffix}"
 
 
 def _conflicts(
@@ -196,9 +200,28 @@ def _name_shittiness(name: str | None) -> float:
     return 1
 
 
+@once
 def _get_stable_node_name(mif: ModuleInterface) -> str:
     """Get a stable hierarchical name for a module interface."""
     return ".".join([p_name for p, p_name in mif.get_hierarchy() if p.get_parent()])
+
+
+def _get_net_stable_key(net: F.Net) -> tuple[str, ...]:
+    """Return a deterministic key for a net based on connected interface paths.
+
+    Using the sorted list of stable module-interface paths ensures that
+    operations that depend on iteration order (e.g. suffix assignment)
+    are repeatable across runs for the same design.
+    """
+    try:
+        mifs = net.get_connected_interfaces()
+    except Exception:
+        # In case a backend returns a generator that raises mid-iteration,
+        # fall back to an empty key which still sorts deterministically.
+        return tuple()
+
+    stable_names = sorted(_get_stable_node_name(m) for m in mifs)
+    return tuple(stable_names)
 
 
 def _collect_unnamed_nets(nets: Iterable[F.Net]) -> dict[F.Net, list[F.Electrical]]:
@@ -253,16 +276,32 @@ def _extract_net_name_info(
 
     depth = len(mif.get_hierarchy())
 
-    # Handle explicit net naming traits
+    # Handle explicit net naming traits on this interface
     if trait := mif.try_get_trait(F.has_net_name):
         if trait.level == F.has_net_name.Level.EXPECTED:
             required_names.add(trait.name)
-            return required_names, suggested_names, implicit_candidates
-
-        if trait.level == F.has_net_name.Level.SUGGESTED:
+        elif trait.level == F.has_net_name.Level.SUGGESTED:
             rank = _calculate_suggested_name_rank(mif, depth)
             suggested_names.append((trait.name, rank))
-            return required_names, suggested_names, implicit_candidates
+
+    # Also consider traits on ancestor interfaces in the hierarchy
+    try:
+        for node, _name_in_parent in mif.get_hierarchy():
+            if not node.get_parent():
+                continue
+            if not isinstance(node, L.ModuleInterface):
+                continue
+            if not node.has_trait(F.has_net_name):
+                continue
+            trait = node.get_trait(F.has_net_name)
+            node_depth = len(node.get_hierarchy())
+            if trait.level == F.has_net_name.Level.EXPECTED:
+                required_names.add(trait.name)
+            elif trait.level == F.has_net_name.Level.SUGGESTED:
+                rank = _calculate_suggested_name_rank(mif, node_depth)
+                suggested_names.append((trait.name, rank))
+    except NodeNoParent:
+        pass
 
     # Handle implicit names
     try:
@@ -304,12 +343,15 @@ def _determine_base_name(
 ) -> str | None:
     """Determine the best base name from suggested and implicit candidates."""
     if suggested:
-        # Use the suggestion with the lowest rank (highest priority)
-        return min(suggested, key=lambda x: x[1])[0]
+        # Use the suggestion with the lowest rank (highest priority),
+        # break ties by lexicographically smallest name for determinism
+        return min(suggested, key=lambda x: (x[1], x[0]))[0]
 
     if implicit:
-        # Use the implicit name with the highest score
-        return max(implicit, key=implicit.get)  # type: ignore
+        # Use the implicit name with the highest score; break ties by name
+        best_score = max(implicit.values())
+        candidates = [name for name, score in implicit.items() if score == best_score]
+        return min(candidates)
 
     return None
 
@@ -341,7 +383,7 @@ def _is_generic_name(name: str | None) -> bool:
     if name is None:
         return True
 
-    generic_names = {"line", "hv"}
+    generic_names = {"line", "hv", "p", "n"}
     generic_patterns = [
         lambda n: n.startswith("unnamed"),
         lambda n: re.match(r"^(_\d+|p\d+)$", n) is not None,
@@ -386,8 +428,9 @@ def _find_best_interface_name(mifs: Iterable[F.Electrical]) -> str | None:
     if not candidates:
         return None
 
-    # Return the name with the smallest depth (highest in hierarchy)
-    return min(candidates, key=lambda x: x[1])[0]
+    # Return the name with the smallest depth (highest in hierarchy),
+    # and lexicographically smallest name as deterministic tie-breaker
+    return min(candidates, key=lambda x: (x[1], x[0]))[0]
 
 
 def _collect_affixes(mifs: list[F.Electrical]) -> tuple[str | None, str | None]:
@@ -518,22 +561,27 @@ def _get_interface_path_for_net(net: F.Net) -> list[str] | None:
     if not candidates:
         return None
 
-    # Return the path with the highest score
-    _, best_path = max(candidates, key=lambda x: x[0])
+    # Return the path with the highest score; break ties deterministically by
+    # preferring shorter paths and then lexicographical order
+    _, best_path = max(candidates, key=lambda x: (x[0], -len(x[1]), tuple(x[1])))
     return best_path
 
 
 def _get_owner_module_name(net: F.Net) -> str | None:
     """Get the name of the owning module for a net."""
+    owner_names: set[str] = set()
     for mif in net.get_connected_interfaces():
         try:
             hierarchy = mif.get_hierarchy()
             for node, name_in_parent in hierarchy:
                 if node.get_parent() and isinstance(node, Module):
-                    return name_in_parent
+                    owner_names.add(name_in_parent)
         except NodeNoParent:
             continue
-    return None
+    if not owner_names:
+        return None
+    # Choose a deterministic owner module name
+    return min(owner_names)
 
 
 def _compute_minimal_unique_prefixes(
@@ -590,8 +638,12 @@ def _get_fallback_prefix(net: F.Net) -> str | None:
     if owner_name := _get_owner_module_name(net):
         return owner_name
 
-    # Try lowest common ancestor
+    # Try best interface name across connected interfaces
     interfaces = net.get_connected_interfaces()
+    if best := _find_best_interface_name(interfaces):
+        return best
+
+    # Try lowest common ancestor
     if lcn := L.Node.nearest_common_ancestor(*interfaces):
         return lcn[0].get_full_name()
 
@@ -631,18 +683,23 @@ def _assign_prefix_for_net(
 def _resolve_conflicts_with_prefixes(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve naming conflicts by adding interface-based prefixes."""
     for conflict_nets in _conflicts(names):
+        # Sort nets deterministically within the conflict group
+        ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
+
         # Get interface paths for all conflicting nets
-        paths = {net: _get_interface_path_for_net(net) for net in conflict_nets}
+        paths = {net: _get_interface_path_for_net(net) for net in ordered_conflict_nets}
 
         # Skip if no paths available
         if not any(paths.values()):
             continue
 
         # Compute minimal unique prefixes
-        suffix_len = _compute_minimal_unique_prefixes(paths, list(conflict_nets))
+        suffix_len = _compute_minimal_unique_prefixes(
+            paths, list(ordered_conflict_nets)
+        )
 
         # Assign prefixes to each net
-        for net in conflict_nets:
+        for net in ordered_conflict_nets:
             _assign_prefix_for_net(net, paths[net], suffix_len, names)
 
 
@@ -665,7 +722,9 @@ def _resolve_conflicts_with_lca(names: FuncDict[F.Net, _NetName]) -> None:
 def _resolve_conflicts_with_suffixes(names: FuncDict[F.Net, _NetName]) -> None:
     """Resolve remaining conflicts by adding numeric suffixes."""
     for conflict_nets in _conflicts(names):
-        for i, net in enumerate(conflict_nets):
+        # Assign suffixes in a deterministic order within a conflict group
+        ordered_conflict_nets = sorted(conflict_nets, key=_get_net_stable_key)
+        for i, net in enumerate(ordered_conflict_nets):
             names[net].suffix = i
 
 
@@ -706,17 +765,23 @@ def attach_net_names(nets: Iterable[F.Net]) -> None:
     """
     names = FuncDict[F.Net, _NetName]()
 
+    # Work on a deterministically ordered view of nets throughout
+    nets_list = list(nets)
+    nets_ordered = sorted(nets_list, key=_get_net_stable_key)
+
     # Collect unnamed nets
-    unnamed_nets = _collect_unnamed_nets(nets)
+    unnamed_nets = _collect_unnamed_nets(nets_ordered)
 
     # Register already-named nets
-    _register_named_nets(nets, names)
+    _register_named_nets(nets_ordered, names)
 
     # Process unnamed nets
     _process_unnamed_nets(unnamed_nets, names)
 
     # Apply affixes
     _apply_affixes(unnamed_nets, names)
+
+    # Note: differential pair harmonization removed to avoid cross-net coupling
 
     # Resolve conflicts through prefixing
     _resolve_conflicts_with_prefixes(names)
