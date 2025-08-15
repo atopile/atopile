@@ -37,29 +37,32 @@ class SWD(ModuleInterface):
         example="""
         import SWD, ElectricPower, Resistor
 
+        from "x/y/y.ato" import SomeMCU
+        from "a/b/c.ato" import SomeDebugger
+
         swd = new SWD
+        microcontroller = new SomeMCU
+        debugger = new SomeDebugger
 
         # Connect power reference for logic levels
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
-        swd.clk.reference ~ power_3v3
-        swd.dio.reference ~ power_3v3
-        swd.swo.reference ~ power_3v3
-        swd.reset.reference ~ power_3v3
+        swd.reference_shim ~ power_3v3
 
-        # Connect to microcontroller SWD interface
-        microcontroller.swd_clk ~ swd.clk.line
-        microcontroller.swd_dio ~ swd.dio.line
-        microcontroller.swd_swo ~ swd.swo.line
-        microcontroller.reset_n ~ swd.reset.line
+        # Connect to microcontroller specific pins (mcu has no SWD interface)
+        microcontroller.gpio[0] ~ swd.clk
+        microcontroller.gpio[1] ~ swd.dio
+        microcontroller.gpio[2] ~ swd.swo
+        microcontroller.reset ~ swd.reset
 
-        # Connect to debugger/programmer
+        # Connect to debugger (has SWD interface)
         debugger.swd ~ swd
 
         # Optional pullup resistors for robust operation
+        # mostly only on target side, not debugger side
         reset_pullup = new Resistor
         reset_pullup.resistance = 10kohm +/- 5%
-        swd.reset.line ~> reset_pullup ~> power_3v3.hv
+        swd.reset.line ~> reset_pullup ~> swd.reset.reference.hv
 
         # SWD is commonly used for ARM Cortex-M debugging and programming
         """,

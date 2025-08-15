@@ -12,6 +12,7 @@ class JTAG(ModuleInterface):
     tdi: F.ElectricLogic
     tms: F.ElectricLogic
     tck: F.ElectricLogic
+    rtck: F.ElectricLogic
     n_trst: F.ElectricLogic
     n_reset: F.ElectricLogic
     vtref: F.ElectricPower
@@ -31,6 +32,7 @@ class JTAG(ModuleInterface):
         self.tdi.line.add(F.has_net_name("TDI", level=F.has_net_name.Level.SUGGESTED))
         self.tms.line.add(F.has_net_name("TMS", level=F.has_net_name.Level.SUGGESTED))
         self.tck.line.add(F.has_net_name("TCK", level=F.has_net_name.Level.SUGGESTED))
+        self.rtck.line.add(F.has_net_name("RTCK", level=F.has_net_name.Level.SUGGESTED))
         self.n_trst.line.add(
             F.has_net_name("N_TRST", level=F.has_net_name.Level.SUGGESTED)
         )
@@ -43,40 +45,36 @@ class JTAG(ModuleInterface):
         example="""
         import JTAG, ElectricPower, Resistor
 
+        from "x/y/y.ato" import SomeMCU
+        from "a/b/c.ato" import SomeDebugger
+
         jtag = new JTAG
+        microcontroller = new SomeMCU
+        debugger = new SomeDebugger
 
         # Connect voltage reference for all logic signals
         power_3v3 = new ElectricPower
         assert power_3v3.voltage within 3.3V +/- 5%
         jtag.vtref ~ power_3v3
 
-        # All logic signals use same reference
-        jtag.tdo.reference ~ power_3v3
-        jtag.tdi.reference ~ power_3v3
-        jtag.tms.reference ~ power_3v3
-        jtag.tck.reference ~ power_3v3
-        jtag.n_trst.reference ~ power_3v3
-        jtag.n_reset.reference ~ power_3v3
-        jtag.dbgrq.reference ~ power_3v3
+        # Connect to microcontroller specific pins (mcu has no JTAG interface)
+        microcontroller.gpio[0] ~ jtag.tdo
+        microcontroller.gpio[1] ~ jtag.tdi
+        microcontroller.gpio[2] ~ jtag.tms
+        microcontroller.gpio[3] ~ jtag.tck
+        microcontroller.reset ~ jtag.n_reset
 
-        # Connect to microcontroller JTAG interface
-        microcontroller.jtag_tdo ~ jtag.tdo.line
-        microcontroller.jtag_tdi ~ jtag.tdi.line
-        microcontroller.jtag_tms ~ jtag.tms.line
-        microcontroller.jtag_tck ~ jtag.tck.line
-        microcontroller.jtag_trst ~ jtag.n_trst.line
-        microcontroller.reset_n ~ jtag.n_reset.line
-
-        # Connect to JTAG debugger/programmer
+        # Connect to JTAG debugger (has JTAG interface)
         debugger.jtag ~ jtag
 
         # Pullup resistors for reset lines
+        # mostly only on target side, not debugger side
         trst_pullup = new Resistor
         reset_pullup = new Resistor
         trst_pullup.resistance = 10kohm +/- 5%
         reset_pullup.resistance = 10kohm +/- 5%
-        jtag.n_trst.line ~> trst_pullup ~> power_3v3.hv
-        jtag.n_reset.line ~> reset_pullup ~> power_3v3.hv
+        jtag.n_trst.line ~> trst_pullup ~> jtag.n_trst.reference.hv
+        jtag.n_reset.line ~> reset_pullup ~> jtag.n_reset.reference.hv
         """,
         language=F.has_usage_example.Language.ato,
     )
