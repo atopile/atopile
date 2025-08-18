@@ -12,19 +12,9 @@ from faebryk.libs.util import run_live
 EXAMPLES_DIR = _repo_root() / "examples"
 
 
-EXAMPLE_PARAMS = []
-for manifest in EXAMPLES_DIR.glob("*/ato.yaml"):
-    example_dir = manifest.parent
-    # Increase timeout for slow examples
-    if example_dir.name == "led_badge":
-        EXAMPLE_PARAMS.append(pytest.param(example_dir, marks=pytest.mark.timeout(900)))
-    else:
-        EXAMPLE_PARAMS.append(pytest.param(example_dir))
-
-
 @pytest.mark.parametrize(
     "example",
-    EXAMPLE_PARAMS,
+    [pytest.param(manifest.parent) for manifest in EXAMPLES_DIR.glob("*/ato.yaml")],
     ids=lambda p: p.stem,
 )
 def test_examples_build(
@@ -35,12 +25,8 @@ def test_examples_build(
 
     assert example_copy.exists()
 
-    build_cmd = [sys.executable, "-m", "atopile", "build"]
-    if example.name == "led_badge":
-        build_cmd.append("--keep-picked-parts")
-
     _, stderr, _ = run_live(
-        build_cmd,
+        [sys.executable, "-m", "atopile", "build"],
         env={**os.environ, "NONINTERACTIVE": "1"},
         cwd=example_copy,
         stdout=print,
