@@ -35,7 +35,7 @@ import faebryk.library._F as F
 import faebryk.libs.library.L as L
 from atopile import address, errors
 from atopile.attributes import GlobalAttributes, _has_ato_cmp_attrs, shim_map
-from atopile.config import config
+from atopile.config import config, find_project_dir
 from atopile.datatypes import (
     FieldRef,
     KeyOptItem,
@@ -1262,6 +1262,12 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
 
         # Add the library directory to the search path too
         search_paths.append(Path(inspect.getfile(F)).parent)
+
+        # The root of the project is always a search path
+        if (file_path := context.file_path) is not None and (
+            pkg_path := find_project_dir(file_path)
+        ) is not None:
+            search_paths.append(pkg_path)
 
         return search_paths
 
