@@ -17,7 +17,7 @@ eggs/
 .eggs/
 lib/
 lib64/
-parts/
+# parts/
 sdist/
 var/
 wheels/
@@ -198,7 +198,19 @@ standalone/
 # need to ignore because absolute paths
 .cursor/mcp.json
 
+# Example project build and IDE directories
+examples/**/.ato/
+examples/**/.cursor/
+examples/**/.github/
+examples/**/.windsurf/
+examples/**/.west/
+
 # vsce writes this all the time
 # might want to make a CLAUDE.md for the repo at some point
 .mcp.json
 CLAUDE.md
+
+# KiCad temporary files
+**/~*.kicad_pcb.lck
+**/~_autosave-*.kicad_pcb.lck
+**/fp-info-cache
