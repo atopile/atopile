@@ -13,7 +13,7 @@ from atopile.config import (
     BuildTargetConfig,
     ProjectConfig,
     UserConfigurationError,
-    _find_project_config_file,
+    find_project_config_file,
 )
 from atopile.config import config as Gcfg
 from atopile.errors import UserValueError
@@ -456,7 +456,7 @@ class PartLifecycle:
         @staticmethod
         def _get_project_from_part_path(part_path: Path) -> Path | None:
             # TODO: hate this
-            manifest_path = _find_project_config_file(part_path)
+            manifest_path = find_project_config_file(part_path)
             if manifest_path is None:
                 return None
             return manifest_path.parent
@@ -631,7 +631,9 @@ class PartLifecycle:
                 property_values["atopile_subaddresses"] = (
                     "["
                     + ", ".join(
-                        subaddress.serialize() for subaddress in sub_pcb_t.addresses
+                        sorted(
+                            subaddress.serialize() for subaddress in sub_pcb_t.addresses
+                        )
                     )
                     + "]"
                 )
