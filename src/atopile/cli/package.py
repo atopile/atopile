@@ -117,9 +117,10 @@ def _verify_pinned_dependencies(config: "Config", latest: bool = False):
             raise UserBadParameterError(
                 f"Dependency {dep.identifier} is not pinned to a release."
             )
-        if latest and dep.release != api.get_package(dep.identifier).info.version:
+        latest_registry_version = api.get_package(dep.identifier).info.version
+        if latest and dep.release != latest_registry_version:
             raise UserBadParameterError(
-                f"Dependency {dep.identifier} is not at latest version {dep.release}."
+                f"Dependency {dep.identifier} is not at latest version {latest_registry_version}"
             )
 
     if len(unpublishable_deps) > 0:
@@ -220,7 +221,10 @@ def _verify_usage_import(config: "Config"):
     offending: list[str] = []
     for _ref, node in context.refs.items():
         if isinstance(node, Context.ImportPlaceholder):
-            if "atopile" not in node.from_path:
+            if (
+                "atopile" not in node.from_path
+                and "parts" not in node.from_path.split("/")[0]
+            ):
                 offending.append(node.from_path)
 
     if offending:
