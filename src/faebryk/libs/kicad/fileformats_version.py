@@ -113,7 +113,9 @@ def try_load_kicad_pcb_file(path: Path) -> C_kicad_pcb_file:
                 f"Unsupported version: {pcb.kicad_pcb.version} "
                 f"({KICAD_VERSION_NAMES[pcb.kicad_pcb.version]})\n"
                 f"Expected: {KICAD_PCB_VERSION} "
-                f"({KICAD_VERSION_NAMES[KICAD_PCB_VERSION]})",
+                f"({KICAD_VERSION_NAMES[KICAD_PCB_VERSION]})\n"
+                f"Manually open the kicad file in "
+                f"({KICAD_VERSION_NAMES[KICAD_PCB_VERSION]}) and save it.",
                 markdown=False,
             )
 
