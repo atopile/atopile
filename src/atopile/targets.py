@@ -191,7 +191,7 @@ def generate_3d_models(app: Module, solver: Solver) -> None:
     pass
 
 
-@muster.register(name="3d-image", aliases=["3d-image"], requires_kicad=True)
+@muster.register(name="3d-image", requires_kicad=True)
 def generate_3d_render(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D rendered image."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
@@ -205,7 +205,7 @@ def generate_3d_render(app: Module, solver: Solver) -> None:
             raise UserExportError(f"Failed to generate 3D rendered image: {e}") from e
 
 
-@muster.register(name="2d-image", aliases=["2d-image"], requires_kicad=True)
+@muster.register(name="2d-image", requires_kicad=True)
 def generate_2d_render(app: Module, solver: Solver) -> None:
     """Generate PCBA 2D rendered image."""
     with _githash_layout(config.build.paths.layout) as tmp_layout:
