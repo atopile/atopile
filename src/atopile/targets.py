@@ -165,6 +165,11 @@ def generate_glb(app: Module, solver: Solver) -> None:
                 glb_file=config.build.paths.output_base.with_suffix(".pcba.glb"),
                 project_dir=config.build.paths.layout.parent,
             )
+            
+            if config.build.auto_open_kicad:
+                from atopile.kicad_integration import auto_open_kicad
+                auto_open_kicad(tmp_layout)
+                
         except KicadCliExportError as e:
             raise UserExportError(f"Failed to generate 3D model: {e}") from e
 
@@ -183,9 +188,43 @@ def generate_step(app: Module, solver: Solver) -> None:
             raise UserExportError(f"Failed to generate STEP file: {e}") from e
 
 
-@muster.register("3d-models", dependencies=[generate_glb, generate_step], virtual=True)
+@muster.register(name="3d-images", dependencies=[generate_glb], requires_kicad=True)
+def generate_3d_images(app: Module, solver: Solver) -> None:
+    """Generate PNG images from 3D GLB models for PR attachment."""
+    from atopile.render_utils import render_glb_to_image
+    
+    glb_file = config.build.paths.output_base.with_suffix(".pcba.glb")
+    image_file = config.build.paths.output_base.with_suffix(".pcba_3d.png")
+    
+    if glb_file.exists():
+        success = render_glb_to_image(glb_file, image_file)
+        if success:
+            logging.getLogger(__name__).info(f"Generated 3D render image: {image_file}")
+        else:
+            logging.getLogger(__name__).warning(f"Failed to generate 3D render image from {glb_file}")
+    else:
+        logging.getLogger(__name__).warning(f"GLB file not found: {glb_file}")
+
+
+@muster.register(name="attach-pr-images", dependencies=[generate_3d_images])
+def attach_pr_images(app: Module, solver: Solver) -> None:
+    """Attach 3D render images to PR if running in GitHub Actions."""
+    if not config.build.generate_pr_images:
+        logging.getLogger(__name__).debug("PR image attachment is disabled")
+        return
+    
+    from atopile.pr_integration import attach_images_to_pr
+    
+    image_files = [
+        config.build.paths.output_base.with_suffix(".pcba_3d.png")
+    ]
+    
+    attach_images_to_pr(image_files)
+
+
+@muster.register("3d-models", dependencies=[generate_glb, generate_step, generate_3d_images], virtual=True)
 def generate_3d_models(app: Module, solver: Solver) -> None:
-    """Generate PCBA 3D model as GLB and STEP."""
+    """Generate PCBA 3D model as GLB, STEP, and PNG images."""
     pass
 
 
@@ -302,6 +341,7 @@ def default(app: Module, solver: Solver) -> None:
         generate_i2c_tree,
         generate_variable_report,
         generate_manifest,
+        attach_pr_images,
     ],
     virtual=True,
 )

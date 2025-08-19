@@ -84,6 +84,16 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
+                },
+                "atopile.autoOpenKicad": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Automatically open KiCad when 3D models are rebuilt"
+                },
+                "atopile.generatePrImages": {
+                    "type": "boolean", 
+                    "default": false,
+                    "description": "Generate 3D render images for PR attachment"
                 }
             }
         },

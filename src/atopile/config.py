@@ -417,6 +417,8 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     keep_net_names: bool | None = Field(default=None)
     frozen: bool = Field(default=False)
     hide_designators: bool | None = Field(default=False)
+    auto_open_kicad: bool | None = Field(default=False)
+    generate_pr_images: bool | None = Field(default=False)
     paths: BuildTargetPaths
 
     def __init__(self, **data: Any):

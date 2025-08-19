@@ -72,6 +72,18 @@ async function rebuild3DModel() {
         async (progress) => {
             progress.report({});
             await build3DModelGLB(pcb.path, model.path);
+            
+            const config = vscode.workspace.getConfiguration('atopile');
+            const autoOpenKicad = config.get<boolean>('autoOpenKicad', false);
+            
+            if (autoOpenKicad) {
+                const { openPcb } = await import('./kicad');
+                try {
+                    await openPcb(pcb.path);
+                } catch (error) {
+                    traceWarn(`Failed to auto-open KiCad: ${error}`);
+                }
+            }
         },
     );
     modelWatcher.forceNotify();
