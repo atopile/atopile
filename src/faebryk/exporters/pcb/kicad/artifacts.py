@@ -120,7 +120,38 @@ def export_glb(
     try:
         _export(k.pcb.export.glb(**cmd_args))
     except sp.CalledProcessError as e:
-        raise KicadCliExportError("Failed to export glb file") from e
+        try:
+            cmd = ["kicad-cli-nightly", "pcb", "export", "glb"]
+            cmd.extend(["--output", str(glb_file.absolute())])
+            cmd.extend(["--force"])
+            cmd.extend(["--include-tracks"])
+            cmd.extend(["--include-zones"])
+            cmd.extend(["--grid-origin"])
+            cmd.extend(["--subst-models"])
+            cmd.extend(["--no-dnp"])
+            cmd.extend(["--cut-vias-in-body"])
+            cmd.extend(["--include-pads"])
+            cmd.extend(["--include-soldermask"])
+            cmd.extend(["--include-silkscreen"])
+            cmd.append(str(pcb_file))
+            
+            env = None
+            if project_dir:
+                import os
+                env = os.environ.copy()
+                env["KIPRJMOD"] = str(project_dir.absolute())
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+            if result.returncode != 0:
+                logger.error(f"kicad-cli-nightly stderr: {result.stderr}")
+                raise sp.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+            elif result.stderr and "Could not add 3D model" in result.stderr:
+                logger.warning(f"kicad-cli-nightly warnings: {result.stderr}")
+            
+            if not glb_file.exists():
+                raise sp.CalledProcessError(1, cmd, "GLB file was not created", result.stderr)
+        except (FileNotFoundError, sp.CalledProcessError) as fallback_e:
+            raise KicadCliExportError("Failed to export glb file") from fallback_e
 
 
 def export_svg(pcb_file: Path, svg_file: Path, flip_board: bool = False) -> None:

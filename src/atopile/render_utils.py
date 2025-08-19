@@ -1,4 +1,5 @@
 import logging
+import os
 import subprocess
 import tempfile
 from pathlib import Path
@@ -44,6 +45,9 @@ def _render_with_blender(
 import bpy
 import bmesh
 import mathutils
+import os
+
+os.environ['DISPLAY'] = ':99'
 
 bpy.ops.wm.read_factory_settings(use_empty=True)
 
@@ -94,12 +98,26 @@ bpy.ops.render.render(write_still=True)
         script_path = f.name
 
     try:
-        result = subprocess.run(
-            ["blender", "--background", "--python", script_path],
-            capture_output=True,
-            text=True,
-            timeout=60,
+        xvfb_process = subprocess.Popen(
+            ["Xvfb", ":99", "-screen", "0", "1024x768x24"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
+        
+        try:
+            env = os.environ.copy()
+            env['DISPLAY'] = ':99'
+            
+            result = subprocess.run(
+                ["blender", "--background", "--python", script_path],
+                capture_output=True,
+                text=True,
+                timeout=60,
+                env=env,
+            )
+        finally:
+            xvfb_process.terminate()
+            xvfb_process.wait(timeout=5)
 
         if result.returncode == 0 and output_image.exists():
             logger.info(

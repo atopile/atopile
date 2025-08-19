@@ -309,6 +309,15 @@ def build(app: Module) -> None:
             kicad_cli(kicad_cli.version()).exec()
             return True
 
+        with contextlib.suppress(Exception):
+            result = subprocess.run(
+                ["kicad-cli-nightly", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            return result.returncode == 0
+
         return False
 
     # Make the noise
