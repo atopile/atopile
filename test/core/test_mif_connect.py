@@ -1207,6 +1207,7 @@ def test_regression_rp2040_usb_diffpair():
 
 
 @pytest.mark.slow
+@pytest.mark.require_network
 def test_regression_rp2040_usb_diffpair_full():
     app = RP2040_ReferenceDesign()
     rp2040_2 = RP2040()

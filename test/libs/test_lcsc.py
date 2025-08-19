@@ -15,6 +15,7 @@ INTERACTIVE_TESTING = False
 
 
 @pytest.mark.usefixtures("setup_project_config")
+@pytest.mark.require_network
 class TestLCSC(unittest.TestCase):
     def test_model_translations(self):
         test_parts = {
