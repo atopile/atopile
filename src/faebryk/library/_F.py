@@ -19,7 +19,6 @@ from faebryk.library.has_net_name import has_net_name
 from faebryk.library.has_usage_example import has_usage_example
 from faebryk.library.has_designator_prefix import has_designator_prefix
 from faebryk.library.is_bus_parameter import is_bus_parameter
-from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
 from faebryk.library.can_be_surge_protected import can_be_surge_protected

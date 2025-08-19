@@ -4,7 +4,6 @@
 import logging
 import re
 from dataclasses import fields
-from enum import StrEnum
 from socket import gaierror
 
 import more_itertools
@@ -16,7 +15,6 @@ from faebryk.core.module import Module
 from faebryk.core.parameter import And, Is, Parameter, ParameterOperatable
 from faebryk.core.solver.solver import LOG_PICK_SOLVE, Solver
 from faebryk.libs.exceptions import UserException, downgrade
-from faebryk.libs.library import L
 from faebryk.libs.picker.api.api import ApiHTTPError, get_api_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -37,8 +35,7 @@ from faebryk.libs.picker.picker import (
     PickError,
     does_not_require_picker_check,
 )
-from faebryk.libs.sets.sets import EnumSet, P_Set
-from faebryk.libs.smd import SMDSize
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.test.times import Times
 from faebryk.libs.util import (
     Tree,
@@ -72,43 +69,6 @@ def _extract_numeric_id(lcsc_id: str) -> int:
     return int(match[1])
 
 
-BackendPackage = StrEnum(
-    "BackendPackage",
-    {
-        f"{prefix}{size.imperial.without_prefix}": (
-            f"{prefix}{size.imperial.without_prefix}"
-        )
-        for prefix in ["R", "C", "L"]
-        for size in SMDSize
-        if size.name.startswith(("I", "M"))
-    }
-    | {
-        size.value: size.value
-        for size in SMDSize
-        if not size.name.startswith(("I", "M"))
-    },
-)
-
-
-def _from_smd_size(cls, size: SMDSize, type: type[L.Module]) -> "BackendPackage":
-    if issubclass(type, F.Resistor):
-        prefix = "R"
-    elif issubclass(type, F.Capacitor):
-        prefix = "C"
-    elif issubclass(type, F.Inductor):
-        prefix = "L"
-    else:
-        raise NotImplementedError(f"Unsupported pickable trait: {type}")
-
-    try:
-        return cls[f"{prefix}{size.imperial.without_prefix}"]
-    except SMDSize.UnableToConvert:
-        return cls[size.value]
-
-
-BackendPackage.from_smd_size = classmethod(_from_smd_size)  # type: ignore
-
-
 def _prepare_query(
     module: Module, solver: Solver
 ) -> BaseParams | LCSCParams | ManufacturerPartParams:
@@ -133,17 +93,6 @@ def _prepare_query(
     elif trait := module.try_get_trait(F.is_pickable_by_type):
         params_t = make_params_for_type(trait.pick_type)
 
-        if pkg_t := module.try_get_trait(F.has_package_requirements):
-            package = pkg_t.get_sizes(solver)
-            package = EnumSet[BackendPackage](
-                *[
-                    BackendPackage.from_smd_size(SMDSize[s.name], trait.pick_type)
-                    for s in package
-                ]
-            )
-        else:
-            package = None
-
         generic_field_names = {f.name for f in fields(params_t)}
         _, known_params = more_itertools.partition(
             lambda p: p.get_name() in generic_field_names, module.get_parameters()
@@ -156,7 +105,7 @@ def _prepare_query(
         if all(superset is None for superset in cmp_params.values()):
             logger.warning(f"Module `{module}` has no constrained parameters")
 
-        return params_t(package=package, qty=qty, **cmp_params)  # type: ignore
+        return params_t(qty=qty, **cmp_params)  # type: ignore
 
     raise NotImplementedError(
         f"Unsupported pickable trait: {module.get_trait(F.is_pickable)}"

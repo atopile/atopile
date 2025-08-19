@@ -2,13 +2,14 @@
 # SPDX-License-Identifier: MIT
 
 import logging
-from enum import Enum, auto
+from enum import Enum, StrEnum, auto
 from typing import TYPE_CHECKING
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.core.parameter import EnumDomain
 from faebryk.libs.library import L
-from faebryk.libs.smd import SMDSize
+from faebryk.libs.sets.sets import EnumSet
 from faebryk.libs.units import P, Quantity
 
 # FIXME: this has to go this way to avoid gen_F detecting a circular import
@@ -29,6 +30,21 @@ class Capacitor(Module):
         X8R = auto()
         C0G = auto()
 
+    class Package(StrEnum):
+        C01005 = auto()
+        C0201 = auto()
+        C0402 = auto()
+        C0603 = auto()
+        C0805 = auto()
+        C1206 = auto()
+        C1210 = auto()
+        C1808 = auto()
+        C1812 = auto()
+        C1825 = auto()
+        C2220 = auto()
+        C2225 = auto()
+        C3640 = auto()
+
     unnamed = L.list_field(2, F.Electrical)
 
     capacitance = L.p_field(
@@ -46,7 +62,7 @@ class Capacitor(Module):
     temperature_coefficient = L.p_field(
         domain=L.Domains.ENUM(TemperatureCoefficient),
     )
-
+    package = L.p_field(domain=EnumDomain(Package))
     attach_to_footprint: F.can_attach_to_footprint_symmetrically
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.C
@@ -56,7 +72,12 @@ class Capacitor(Module):
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
             endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
-            params=[self.capacitance, self.max_voltage, self.temperature_coefficient],
+            params=[
+                self.capacitance,
+                self.max_voltage,
+                self.temperature_coefficient,
+                self.package,
+            ],
         )
 
     @L.rt_field
@@ -76,7 +97,7 @@ class Capacitor(Module):
         self,
         nominal_capacitance: Quantity | None = None,
         tolerance: float | None = None,
-        size: SMDSize | None = None,
+        size: EnumSet[Package] | Package | None = None,
     ):
         if nominal_capacitance is not None:
             if tolerance is None:
@@ -85,7 +106,7 @@ class Capacitor(Module):
             self.capacitance.constrain_subset(capacitance)
 
         if size is not None:
-            self.add(F.has_package_requirements(size=size))
+            self.package.constrain_subset(size)
 
     # TODO: remove @https://github.com/atopile/atopile/issues/727
     @property

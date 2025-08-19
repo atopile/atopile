@@ -8,6 +8,7 @@ from faebryk.libs.library import L
 from faebryk.libs.smd import SMDSize
 
 
+# TODO: split into variants? this is now the only client for SMDSize
 class SMDTwoPin(F.Footprint):
     class Type(StrEnum):
         Resistor = "R"
