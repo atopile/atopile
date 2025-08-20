@@ -28,30 +28,6 @@ Write hardware like software. atopile is a language, compiler, and toolchain for
 - Capture intent with equations directly in your design
 - Automatic parametric picking of discrete components
 
-### A tiny taste of `ato`
-
-```ato
-import ElectricPower
-from "atopile/ti-tps54560x/ti-tps54560x.ato" import TPS54560x
-
-module App:
-    # Interfaces
-    power_24v = new ElectricPower
-    power_5v = new ElectricPower
-
-    # Components
-    regulator = new TPS54560x
-
-    # Configure
-    assert power_24v.voltage within 24V +/- 3%
-    assert power_5v.voltage within 5V +/- 3%
-
-    # Connections
-    power_24v ~> regulator ~> power_5v
-```
-
-More examples: https://docs.atopile.io/quickstart
-
 ## Install
 
 The easiest way is via the editor extension—it installs and manages `ato` for you:
