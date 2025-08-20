@@ -24,10 +24,9 @@ Write hardware like software. atopile is a language, compiler, and toolchain for
 
 ## Why atopile
 
-- Reusable, readable modules in `.ato` instead of point‑and‑click schematics
-- Units, tolerances, and assertions checked on every build
-- Automatic discrete part picking where possible
-- Editor integration (VS Code/Cursor) and CI‑friendly CLI
+- Reusable modules instead of starting from scratch every time
+- Capture intent with equations directly in your design
+- Automatic parametric picking of discrete components
 
 ### A tiny taste of `ato`
 
@@ -76,19 +75,37 @@ Notes:
 - The ato menu bar is in the bottom-left of your VS Code/Cursor window
 - KiCad is optional to get started. Without it, you won’t open the PCB, but builds still run and update the `.kicad_pcb`. Install later when you’re ready for layout: https://docs.atopile.io/quickstart
 
-## How it works (mental model)
+## How it works
 
 - `ato` is a declarative language for electronics: modules, interfaces, units, tolerances, and assertions
 - The compiler solves constraints, picks parts, runs checks, and updates your KiCad layout
 - The extension adds language services and one‑click controls
-- Learn more: [Language](https://docs.atopile.io/essentials/1-the-ato-language) · [Compiler](https://docs.atopile.io/essentials/2-the-ato-compiler) · [Project Structure](https://docs.atopile.io/essentials/5-project-structure) · [Layout Workflow](https://docs.atopile.io/essentials/6-layout)
+  Learn more: https://docs.atopile.io/atopile/essentials/1-the-ato-language
 
 ### Where atopile fits in
 
+High-level steps:
+
+- Write `.ato` design
+- `ato build`
+- Project artifacts (BOM, footprints, nets)
+- KiCad layout (place & route)
+- Checks & CI (build checks, fab/assembly data)
+
 ```mermaid
 graph LR
-  A["atopile<br/>(requirements capture, schematic design,<br/>BOM resolution, component search, module reuse)"] --> B["KiCad<br/>(layout)"]
-  B --> C["ato CLI + CI<br/>(build checks, fab + assembly data,<br/>CI validation)"]
+  A(("Write .ato")):::atopile
+  B(("ato build")):::atopile
+  C(("Artifacts")):::atopile
+  D(("KiCad layout")):::kicad
+  E(("Checks & CI")):::atopile
+
+  A --> B --> C --> D --> E
+
+  class A,B,C,E atopile;
+  class D kicad;
+  classDef atopile fill:#FF7A1A,stroke:#C85A00,color:#ffffff;
+  classDef kicad fill:#6F42C1,stroke:#4B2B86,color:#ffffff;
 ```
 
 ## Examples
