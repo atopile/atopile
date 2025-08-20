@@ -34,7 +34,7 @@ The easiest way is via the editor extension—it installs and manages `ato` for 
 
 - VS Code/Cursor extension: https://marketplace.visualstudio.com/items?itemName=atopile.atopile
 
-Advanced setups and CLI installs: https://docs.atopile.io/guides/install
+Advanced setups and CLI installs: https://docs.atopile.io/atopile/guides/install
 
 ## Quickstart (2 minutes)
 
@@ -49,14 +49,15 @@ Advanced setups and CLI installs: https://docs.atopile.io/guides/install
 Notes:
 
 - The ato menu bar is in the bottom-left of your VS Code/Cursor window
-- KiCad is optional to get started. Without it, you won’t open the PCB, but builds still run and update the `.kicad_pcb`. Install later when you’re ready for layout: https://docs.atopile.io/quickstart
+- KiCad is optional to get started. Without it, you won’t open the PCB, but builds still run and update the `.kicad_pcb`. Install later when you’re ready for layout: https://docs.atopile.io/atopile/quickstart
 
 ## How it works
 
 - `ato` is a declarative language for electronics: modules, interfaces, units, tolerances, and assertions
 - The compiler solves constraints, picks parts, runs checks, and updates your KiCad layout
 - The extension adds language services and one‑click controls
-  Learn more: https://docs.atopile.io/atopile/essentials/1-the-ato-language
+  
+Learn more: https://docs.atopile.io/atopile/essentials/1-the-ato-language
 
 ### Where atopile fits in
 
@@ -72,11 +73,11 @@ High-level steps:
 
 ## Examples
 
-- Quickstart walkthrough: https://docs.atopile.io/quickstart
+- Quickstart walkthrough: https://docs.atopile.io/atopile/quickstart
 - Open examples via the editor (“atopile: Open Example”)
-- NONOS - opensource smart speaker https://github.com/atopile/atopile
-- AI-Pin - Vibe code Humane Pin https://github.com/atopile/ai-pin
-- Hyperion - 300K nit display for raves https://github.com/atopile/hyperion
+- NONOS — Open-source smart speaker https://github.com/atopile/nonos
+- AI-Pin — Vibe-coded Humane Pin https://github.com/atopile/ai-pin
+- Hyperion — 300K nit display for raves https://github.com/atopile/hyperion
 
 ## Packages and parts
 
@@ -87,7 +88,7 @@ High-level steps:
 ## Compatibility
 
 - OS: macOS, Linux, Windows (WSL recommended)
-- Editors: VS Code / Cursor
+- Recommended editors: VS Code / Cursor
 - EDA: KiCad recommended for layout; not required to start
 
 ## Contributing and development
