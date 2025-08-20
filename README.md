@@ -98,7 +98,7 @@ High-level steps:
 graph LR
   A("Requirements"):::atopile
   B("Component selection"):::atopile
-  C("Design capture (.ato)"):::atopile
+  C("Design capture"):::atopile
   D("KiCad layout"):::kicad
   E("Checks"):::atopile
   F("Build outputs"):::atopile
