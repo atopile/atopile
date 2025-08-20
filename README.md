@@ -86,11 +86,11 @@ Notes:
 
 High-level steps:
 
-- Write `.ato` design
-- `ato build`
-- Project artifacts (BOM, footprints, nets)
-- KiCad layout (place & route)
-- Checks & CI (build checks, fab/assembly data)
+- Write `.ato` design — compose reusable modules and interfaces; express requirements with units, tolerances, and assertions
+- Run `ato build` — solve constraints, pick parts, and sync the project state
+- Generate artifacts — BOM, nets, footprints, and helpful reports
+- Lay out in KiCad — place, route, and run DRC as usual
+- Validate & ship — run checks locally/CI; produce fab and assembly data
 
 ```mermaid
 graph LR
@@ -104,7 +104,7 @@ graph LR
 
   class A,B,C,E atopile;
   class D kicad;
-  classDef atopile fill:#FF7A1A,stroke:#C85A00,color:#ffffff;
+  classDef atopile fill:#F95015,stroke:#C85A00,color:#ffffff;
   classDef kicad fill:#6F42C1,stroke:#4B2B86,color:#ffffff;
 ```
 
