@@ -70,31 +70,11 @@ High-level steps:
 - Build outputs — BOM, fabrication and assembly data, reports
 - PCB fab/assembly — send outputs to your manufacturer
 
-```mermaid
-graph LR
-  A("Requirements"):::atopile
-  B("Component selection"):::atopile
-  C("Design capture"):::atopile
-  D("KiCad layout"):::kicad
-  E("Checks"):::atopile
-  F("Build outputs"):::atopile
-  G("PCB fab/assembly"):::jlc
-
-  A --> B --> C --> D --> E --> F --> G
-
-  class A,B,C,E,F atopile;
-  class D kicad;
-  class G jlc;
-  classDef atopile fill:#F95015,stroke:#C85A00,color:#ffffff;
-  classDef kicad fill:#6F42C1,stroke:#4B2B86,color:#ffffff;
-  classDef jlc fill:#0F6AD6,stroke:#0F6AD6,color:#ffffff;
-```
-
 ## Examples
 
 - Quickstart walkthrough: https://docs.atopile.io/quickstart
 - Open examples via the editor (“atopile: Open Example”)
-- Repository examples: `examples/`
+- Repository examples: `examples/`b
 
 ## Packages and parts
 
@@ -110,8 +90,8 @@ graph LR
 
 ## Contributing and development
 
-- Development setup: https://docs.atopile.io/guides/development
-- Editable install (for working on atopile itself): https://docs.atopile.io/guides/install#editable-installation-best-for-development
+- Development setup: https://docs.atopile.io/atopile/guides/development
+- Editable install (for working on atopile itself): https://docs.atopile.io/atopile/guides/install#editable-installation-best-for-development
 - Run tests:
 
 ```sh
