@@ -86,26 +86,32 @@ Notes:
 
 High-level steps:
 
-- Write `.ato` design — compose reusable modules and interfaces; express requirements with units, tolerances, and assertions
-- Run `ato build` — solve constraints, pick parts, and sync the project state
-- Generate artifacts — BOM, nets, footprints, and helpful reports
-- Lay out in KiCad — place, route, and run DRC as usual
-- Validate & ship — run checks locally/CI; produce fab and assembly data
+- Requirements — capture specs with units, tolerances, and assertions
+- Component selection — parametric picking, reuse proven modules
+- Design capture — `.ato` modules and interfaces compose your system
+- Layout — place and route in KiCad
+- Checks — run design checks locally or in CI
+- Build outputs — BOM, fabrication and assembly data, reports
+- PCB fab/assembly — send outputs to your manufacturer
 
 ```mermaid
 graph LR
-  A(("Write .ato")):::atopile
-  B(("ato build")):::atopile
-  C(("Artifacts")):::atopile
-  D(("KiCad layout")):::kicad
-  E(("Checks & CI")):::atopile
+  A("Requirements"):::atopile
+  B("Component selection"):::atopile
+  C("Design capture (.ato)"):::atopile
+  D("KiCad layout"):::kicad
+  E("Checks"):::atopile
+  F("Build outputs"):::atopile
+  G("PCB fab/assembly"):::jlc
 
-  A --> B --> C --> D --> E
+  A --> B --> C --> D --> E --> F --> G
 
-  class A,B,C,E atopile;
+  class A,B,C,E,F atopile;
   class D kicad;
+  class G jlc;
   classDef atopile fill:#F95015,stroke:#C85A00,color:#ffffff;
   classDef kicad fill:#6F42C1,stroke:#4B2B86,color:#ffffff;
+  classDef jlc fill:#0F6AD6,stroke:#0F6AD6,color:#ffffff;
 ```
 
 ## Examples
