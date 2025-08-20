@@ -324,7 +324,7 @@ def _verify_no_warnings(config: "Config"):
 def _verify_version_increment(config: "Config"):
     from atopile.config import config
     from atopile.errors import UserBadParameterError
-    from faebryk.libs.backend.packages.api import PackagesAPIClient
+    from faebryk.libs.backend.packages.api import Errors, PackagesAPIClient
 
     if config.project.package is None:
         raise UserBadParameterError("Package version is not set")
@@ -334,14 +334,22 @@ def _verify_version_increment(config: "Config"):
     api = PackagesAPIClient()
 
     local_ver = Version.parse(config.project.package.version)
-    registry_ver = api.get_package(config.project.package.identifier).info.version
+    try:
+        registry_ver = api.get_package(config.project.package.identifier).info.version
+    except Errors.PackageNotFoundError:
+        logger.warning(
+            "Package not found in registry, skipping version check. "
+            "This is expected for first-time publishes."
+        )
+        return
+
     if registry_ver is None:
         return
 
     semver_registry_ver = Version.parse(registry_ver)
 
     if local_ver <= semver_registry_ver:
-        raise UserBadParameterError(
+        logger.warning(
             (
                 f"Package version {local_ver} is <= registry version "
                 f"{registry_ver} - package will not publish"
