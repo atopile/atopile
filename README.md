@@ -74,7 +74,9 @@ High-level steps:
 
 - Quickstart walkthrough: https://docs.atopile.io/quickstart
 - Open examples via the editor (“atopile: Open Example”)
-- Repository examples: `examples/`
+- NONOS - opensource smart speaker https://github.com/atopile/atopile
+- AI-Pin - Vibe code Humane Pin https://github.com/atopile/ai-pin
+- Hyperion - 300K nit display for raves https://github.com/atopile/hyperion
 
 ## Packages and parts
 
