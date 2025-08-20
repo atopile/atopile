@@ -74,7 +74,7 @@ High-level steps:
 
 - Quickstart walkthrough: https://docs.atopile.io/quickstart
 - Open examples via the editor (“atopile: Open Example”)
-- Repository examples: `examples/`b
+- Repository examples: `examples/`
 
 ## Packages and parts
 
