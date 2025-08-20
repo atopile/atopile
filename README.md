@@ -99,8 +99,8 @@ graph LR
 ## Packages and parts
 
 - Browse and install modules from the registry: https://packages.atopile.io
-- Guide: https://docs.atopile.io/essentials/4-packages
-- Publish your own: https://docs.atopile.io/guides/publish
+- Guide: https://docs.atopile.io/atopile/essentials/4-packages
+- Publish your own: https://docs.atopile.io/atopile/guides/publish
 
 ## Compatibility
 
