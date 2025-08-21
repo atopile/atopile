@@ -268,6 +268,7 @@ def test_solve_realworld_bigger():
     # TODO actually test something
 
 
+@pytest.mark.requires_internet
 @pytest.mark.slow
 @pytest.mark.usefixtures("setup_project_config")
 def test_solve_realworld_biggest():
@@ -883,6 +884,7 @@ def test_simple_negative_pick():
     )
 
 
+@pytest.mark.requires_internet
 def test_jlcpcb_pick_resistor():
     resistor = F.Resistor()
     resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
@@ -894,6 +896,7 @@ def test_jlcpcb_pick_resistor():
     print(resistor.get_trait(F.has_part_picked).get_part())
 
 
+@pytest.mark.requires_internet
 def test_jlcpcb_pick_capacitor():
     capacitor = F.Capacitor()
     capacitor.capacitance.constrain_subset(L.Range(100 * P.nF, 1 * P.uF))
