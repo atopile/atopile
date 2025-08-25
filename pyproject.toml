@@ -60,6 +60,7 @@ dependencies = [
     "semver>=3.0.2",
     "sexpdata>=1.0.2",
     "shapely>=2.0.1",
+    "truststore",
     "typer>=0.12",
     "typing-extensions>=4.6.3",
     "urllib3>=2.2.1",
