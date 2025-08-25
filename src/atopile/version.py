@@ -74,13 +74,13 @@ def get_latest_atopile_version() -> Version | None:
     """
     Get the latest atopile version
     """
-    from faebryk.libs.http import HTTPError
-    from faebryk.libs.http import client as http_client
+    from faebryk.libs.http import HTTPError, http_client
 
     try:
-        response = http_client.get(
-            f"https://pypi.org/pypi/{DISTRIBUTION_NAME}/json", timeout=0.1
-        )
+        with http_client() as client:
+            response = client.get(
+                f"https://pypi.org/pypi/{DISTRIBUTION_NAME}/json", timeout=0.1
+            )
         response.raise_for_status()
         version_str = response.json()["info"]["version"]
     except (KeyError, HTTPError):
