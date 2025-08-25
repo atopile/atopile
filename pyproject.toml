@@ -275,6 +275,7 @@ extend-exclude = "atopile/parser/"
 
 [tool.uv.sources]
 atopile-mkdocs-plugin = { path = "tools/atopile_mkdocs_plugin", editable = true }
+atopile-easyeda2kicad = { git = "https://github.com/atopile/easyeda2kicad.py", branch = "feature/system_cert_store" }
 
 [tool.uv]
 cache-keys = [{ git = { commit = false, tags = true } }]

@@ -133,7 +133,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
-    { name = "atopile-easyeda2kicad", specifier = ">=0.9.5" },
+    { name = "atopile-easyeda2kicad", git = "https://github.com/atopile/easyeda2kicad.py?branch=feature%2Fsystem_cert_store" },
     { name = "black", specifier = ">=24.4.2" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
@@ -202,15 +202,12 @@ dev = [
 
 [[package]]
 name = "atopile-easyeda2kicad"
-version = "0.9.5"
-source = { registry = "https://pypi.org/simple" }
+version = "0.9.7.dev1+gb01361a24"
+source = { git = "https://github.com/atopile/easyeda2kicad.py?branch=feature%2Fsystem_cert_store#b01361a24c47a563fe3475e7258d0fdfcb979b50" }
 dependencies = [
+    { name = "httpx" },
     { name = "pydantic" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/69/79/f5fb50adb3cc939948fa9dc9a3aa4b9dc4196e181492ccdf0b7054807e89/atopile_easyeda2kicad-0.9.5.tar.gz", hash = "sha256:76e75c55b50d90c2b37f962da78f4c3a1abcadd1486e29816fcf3bcd7fbcd2d9", size = 1474187, upload-time = "2025-04-09T00:22:58.064Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/40/e05bf39e3ed26c947c243119e5c2721b6f7b302b4b9ed5043caddf6328e2/atopile_easyeda2kicad-0.9.5-py3-none-any.whl", hash = "sha256:e4a90d214ef21fe5e5b1f1b68d0575b7bdcdbb718065e7054fb5571744d1556f", size = 54725, upload-time = "2025-04-09T00:22:55.966Z" },
+    { name = "truststore" },
 ]
 
 [[package]]
