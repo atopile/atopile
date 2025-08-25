@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from enum import auto
 from typing import Optional
 
-import zstd
+import zstd  # type: ignore[unresolved-import] TODO(type-fix): ty init
 from dataclasses_json.undefined import CatchAll
 
 from faebryk.libs.checksum import Checksum

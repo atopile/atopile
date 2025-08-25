@@ -371,7 +371,7 @@ def merge_intersect_subsets(mutator: Mutator):
 
         # Merge
         for old_ss in old_ss:
-            mutator._mutate(old_ss, mutator.get_copy(target))
+            mutator._mutate(old_ss, mutator.get_copy(target))  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
 
 @algorithm("Empty set", terminal=False)
@@ -525,7 +525,7 @@ def isolate_lone_params(mutator: Mutator):
         op_with_param: ParameterOperatable,
         op_without_param: ParameterOperatable,
         from_expr: Expression,
-    ) -> tuple[ParameterOperatable.All, ParameterOperatable.All]:
+    ) -> tuple[ParameterOperatable.All, ParameterOperatable.All]:  # type: ignore[invalid-return-type] TODO(type-fix): ty init
         if not isinstance(op_with_param, Expression):
             return op_with_param, op_without_param
 
@@ -540,13 +540,13 @@ def isolate_lone_params(mutator: Mutator):
         retained_ops = [
             op
             for op in op_with_param.operands
-            if param in mutator.utils.find_unique_params(op)
+            if param in mutator.utils.find_unique_params(op)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         ]
 
         moved_ops = [
             op
             for op in op_with_param.operands
-            if param not in mutator.utils.find_unique_params(op)
+            if param not in mutator.utils.find_unique_params(op)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         ]
 
         if not moved_ops:
@@ -592,8 +592,8 @@ def isolate_lone_params(mutator: Mutator):
         assert len(expr.operands) == 2
         lhs, rhs = expr.operands
 
-        param_in_lhs = param in mutator.utils.find_unique_params(lhs)
-        param_in_rhs = param in mutator.utils.find_unique_params(rhs)
+        param_in_lhs = param in mutator.utils.find_unique_params(lhs)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
+        param_in_rhs = param in mutator.utils.find_unique_params(rhs)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
         if param_in_lhs and param_in_rhs:
             # TODO
@@ -610,7 +610,10 @@ def isolate_lone_params(mutator: Mutator):
 
         while True:
             new_op_with_param, new_op_without_param = _isolate_param(
-                param, op_with_param, op_without_param, from_expr=expr
+                param,
+                op_with_param,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
+                op_without_param,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
+                from_expr=expr,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
             )
 
             if (

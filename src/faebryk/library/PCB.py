@@ -134,7 +134,7 @@ class PCB(Node):
     # TODO use reference
     class has_pcb(Module.TraitT.decless()):
         class has_pcb_ref(F.has_reference.decless()):
-            reference: "PCB" = reference()
+            reference: "PCB" = reference()  # type: ignore[invalid-assignment] TODO(type-fix): ty init
 
         def __init__(self, pcb: "PCB"):
             super().__init__()

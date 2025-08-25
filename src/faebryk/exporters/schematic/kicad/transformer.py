@@ -298,7 +298,7 @@ class SchTransformer:
 
     @get_lib_pin.register
     def _(self, pin: F.Symbol.Pin) -> C_symbol.C_symbol.C_pin:
-        graph_symbol, _ = not_none(pin.get_parent())
+        graph_symbol, _ = not_none(pin.get_parent())  # type: ignore[not-iterable] TODO(type-fix): ty init
         assert isinstance(graph_symbol, Node)
         lib_sym = self.get_lib_symbol(graph_symbol)
         units = self.get_related_lib_sym_units(lib_sym)

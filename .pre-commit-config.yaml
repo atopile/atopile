@@ -10,9 +10,18 @@ repos:
     # Ruff version.
     rev: v0.12.0
     hooks:
-      - id: ruff
+      - id: ruff-check
+        args: [ --fix ]
       - id: ruff-format
   - repo: https://github.com/astral-sh/uv-pre-commit
     rev: 0.7.13
     hooks:
       - id: uv-lock
+  - repo: local
+    hooks:
+      - id: ty
+        name: ty type checker
+        entry: uv run ty check src
+        language: system
+        types: [python]
+        pass_filenames: false

@@ -17,18 +17,18 @@ from atopile.parser.AtoLexer import AtoLexer
 def get_src_info_from_token(token: Token) -> tuple[str, int, int]:
     """Get the source path, line, and column from a context"""
     input_stream: InputStream = token.getInputStream()
-    return input_stream.name, token.line, token.column
+    return input_stream.name, token.line, token.column  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
 
 def get_src_info_from_ctx(
     ctx: ParserRuleContext,
 ) -> tuple[str | Path, int, int, int, int]:
     """Get the source path, line, and column from a context"""
-    token: Token = ctx.start
-    return (
+    token: Token = ctx.start  # type: ignore[invalid-assignment] TODO(type-fix): ty init
+    return (  # type: ignore[invalid-return-type] TODO(type-fix): ty init
         *get_src_info_from_token(token),
-        ctx.stop.line,
-        ctx.stop.column + len(ctx.stop.text),
+        ctx.stop.line,  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
+        ctx.stop.column + len(ctx.stop.text),  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
     )
 
 
@@ -272,13 +272,16 @@ class PygmentsLexerReconstructor(pygments.lexer.Lexer):
         rewriter = AtoRewriter(token_stream)
 
         start_index = expand(
-            token_stream.tokens, start_token.tokenIndex, -1, expand_before
+            token_stream.tokens,
+            start_token.tokenIndex,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
+            -1,
+            expand_before,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         )
 
         if stop_token is None:
             stop_token = start_token
 
-        stop_index = expand(token_stream.tokens, stop_token.tokenIndex, 1, expand_after)
+        stop_index = expand(token_stream.tokens, stop_token.tokenIndex, 1, expand_after)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
 
         return PygmentsLexerReconstructor(rewriter, start_index, stop_index)
 

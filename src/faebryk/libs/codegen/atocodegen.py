@@ -57,7 +57,7 @@ class AtoCodeGen:
             out.append(self.dump_stmt())
             return out.dump()
 
-        def dump_stmt(self) -> str: ...
+        def dump_stmt(self) -> str: ...  # type: ignore[invalid-return-type] TODO(type-fix): ty init
 
         def comment_out(self):
             self._commented = True
@@ -172,8 +172,8 @@ class AtoCodeGen:
             if auto_import:
                 self.imports.add(AtoCodeGen.Import(name))
 
-            trait = AtoCodeGen.Trait(
-                name,
+            trait = AtoCodeGen.Trait(  # type: ignore[missing-argument] TODO(type-fix): ty init
+                name,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
                 args={k: v for k, v in args.items() if v is not None},
                 constructor=constructor,
             )

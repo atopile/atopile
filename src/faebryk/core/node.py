@@ -242,7 +242,7 @@ class Node(CNode):
         if isinstance(container, dict):
             container[name] = obj
         else:
-            container.append(obj)
+            container.append(obj)  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
 
         return obj
 
@@ -550,9 +550,10 @@ class Node(CNode):
         from faebryk.core.trait import TraitImpl
 
         if TraitImpl.is_traitimpl(node):
-            if self.has_trait(node.__trait__):
-                if not node.handle_duplicate(
-                    cast(TraitImpl, self.get_trait(node.__trait__)), self
+            if self.has_trait(node.__trait__):  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+                if not node.handle_duplicate(  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+                    cast(TraitImpl, self.get_trait(node.__trait__)),  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
+                    self,  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
                 ):
                     raise Node._Skipped()
 
@@ -820,7 +821,7 @@ class Node(CNode):
         else:
             yield self.get_full_name()
 
-    __rich_repr__.angular = True
+    __rich_repr__.angular = True  # type: ignore[unresolved-attribute] TODO(type-fix): ty init
 
     def nearest_common_ancestor(self, *others: "Node") -> tuple["Node", str] | None:
         """

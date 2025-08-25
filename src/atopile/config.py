@@ -924,7 +924,7 @@ class ProjectSettings(ProjectConfig, BaseSettings):  # FIXME
         )
 
 
-_current_build_cfg: ContextVar[BuildTargetConfig | None] = ContextVar(
+_current_build_cfg: ContextVar[BuildTargetConfig | None] = ContextVar(  # type: ignore[invalid-assignment] TODO(type-fix): ty init
     "current_build_cfg", default=None
 )
 

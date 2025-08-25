@@ -104,7 +104,7 @@ class Pinmux(Module):
                 pin = pin_candidates[0]
             else:
                 try:
-                    pin = find(pin_candidates, lambda pin: pin in pins)
+                    pin = find(pin_candidates, lambda pin: pin in pins)  # type: ignore[unsupported-operator] TODO(type-fix): ty init
                 except KeyErrorAmbiguous as e:
                     pin = e.duplicates[0]
 

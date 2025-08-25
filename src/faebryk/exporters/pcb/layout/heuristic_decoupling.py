@@ -131,7 +131,7 @@ def _next_to_pad(
     hd = dpad.size.h
     # TODO rotation
     if hs < hd:
-        no = fp.pads.index(spad)
+        no = fp.pads.index(spad)  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         tol = 1.1
         extra_distance = dfp_w * tol
         steps = int(math.ceil(hd / hs))

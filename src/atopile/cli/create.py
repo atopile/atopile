@@ -632,7 +632,7 @@ def build_target(
         type_=str,
         upgrader=caseconverter.kebabcase,
         upgrader_msg="We recommend using kebab-case for build-target names.",
-        validator=_check_build_target_name,
+        validator=_check_build_target_name,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         validation_failure_msg="",
         pre_entered=build_target,
         default=caseconverter.kebabcase(backup_name) if backup_name else None,
@@ -677,11 +677,11 @@ def build_target(
         ":rocket: What [cyan]file[/] should we add the module to?",
         type_=Path,
         clarifier=_file_clarifier,
-        upgrader=_file_updator,
+        upgrader=_file_updator,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         upgrader_msg=(
             "We recommend using snake_case for file names, and it must end in .ato"
         ),
-        validator=_file_validator,
+        validator=_file_validator,  # type: ignore[invalid-argument-type] TODO(type-fix): ty init
         validation_failure_msg="",
         pre_entered=file,
         default=Path(caseconverter.snakecase(backup_name or build_target) + ".ato"),
@@ -716,14 +716,14 @@ def build_target(
     # Create or add to file
     module_text = f"module {module}:\n    pass\n"
 
-    if file.is_file():  # exists and is a file
-        with file.open("a", encoding="utf-8") as f:
+    if file.is_file():  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
+        with file.open("a", encoding="utf-8") as f:  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
             f.write("\n")
             f.write(module_text)
 
     else:
-        file.parent.mkdir(parents=True, exist_ok=True)
-        file.write_text(module_text, encoding="utf-8")
+        file.parent.mkdir(parents=True, exist_ok=True)  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
+        file.write_text(module_text, encoding="utf-8")  # type: ignore[possibly-unbound-attribute] TODO(type-fix): ty init
 
     rich_print_robust(
         ":sparkles: Successfully created a new build configuration "
