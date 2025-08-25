@@ -5,7 +5,6 @@ Tools to compare semantic versions using npm style version specifiers.
 import importlib.metadata
 import logging
 
-import requests
 from semver import Version
 
 from atopile import errors
@@ -75,13 +74,16 @@ def get_latest_atopile_version() -> Version | None:
     """
     Get the latest atopile version
     """
+    from faebryk.libs.http import HTTPError
+    from faebryk.libs.http import client as http_client
+
     try:
-        response = requests.get(
+        response = http_client.get(
             f"https://pypi.org/pypi/{DISTRIBUTION_NAME}/json", timeout=0.1
         )
         response.raise_for_status()
         version_str = response.json()["info"]["version"]
-    except (KeyError, requests.exceptions.RequestException):
+    except (KeyError, HTTPError):
         log.debug("Failed to get latest version")
         return None
 
