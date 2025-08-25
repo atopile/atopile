@@ -8,6 +8,7 @@ import pytest
 
 from faebryk.libs.library.L import DiscreteSet, EmptySet, Range, RangeWithGaps, Single
 from faebryk.libs.sets.numeric_sets import (
+    Number,
     Numeric_Interval,
     Numeric_Interval_Disjoint,
     float_round,
@@ -428,3 +429,18 @@ def test_round_digits(digits: int, expected: Quantity_Interval_Disjoint):
 )
 def test_rel_round(value: float | int, digits: int, expected: float | int):
     assert rel_round(value, digits) == expected
+
+
+def test_round_except_too_big_number():
+    x = Number(
+        "-1.32906894805911924079677428209E+31"
+    )  # chosen by random hypothesis run that crashed
+    with pytest.raises(ValueError):
+        float_round(x, 1)
+
+
+def test_round_ok_too_big_number():
+    x = Number(
+        "-1.32906894805911924079677428209E+31"
+    )  # chosen by random hypothesis run that crashed
+    float_round(x)  # omitting the rounding precision should pass
