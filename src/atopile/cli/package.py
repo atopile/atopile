@@ -3,7 +3,6 @@ import os
 from typing import TYPE_CHECKING, Annotated, Iterator
 
 import typer
-from pydantic import HttpUrl
 from semver import Version
 
 from atopile.errors import UserBadParameterError, UserException, UserFileNotFoundError
@@ -548,13 +547,6 @@ def verify(
     from atopile.config import config
 
     config.apply_options(entry=package_address)
-
-    if config.project.package is not None:
-        strict = config.project.package.repository == HttpUrl(
-            "https://github.com/atopile/packages"
-        )
-    else:
-        strict = False
 
     with accumulate() as accumulator:
         for validator in _DEFAULT_VALIDATORS:
