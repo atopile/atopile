@@ -55,12 +55,8 @@ class Capacitor(Module):
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Capacitor,
-            {
-                "capacitance": self.capacitance,
-                "max_voltage": self.max_voltage,
-                "temperature_coefficient": self.temperature_coefficient,
-            },
+            endpoint=F.is_pickable_by_type.Endpoint.CAPACITORS,
+            params=[self.capacitance, self.max_voltage, self.temperature_coefficient],
         )
 
     @L.rt_field
@@ -130,3 +126,20 @@ class Capacitor(Module):
             self.add(self._has_power(power))
 
         return power
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Capacitor
+
+        capacitor = new Capacitor
+        capacitor.capacitance = 100nF +/- 10%
+        assert capacitor.max_voltage within 25V to 50V
+        capacitor.package = "0603"
+
+        electrical1 ~ capacitor.unnamed[0]
+        electrical2 ~ capacitor.unnamed[1]
+        # OR
+        electrical1 ~> capacitor ~> electrical2
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

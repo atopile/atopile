@@ -30,8 +30,7 @@ class MultiCapacitor(F.Capacitor):
         super().__init__()
         self._count = count
 
-    # Not pickable
-    pickable = None
+    pickable = None  # type: ignore
 
     @L.rt_field
     def capacitors(self) -> list[F.Capacitor]:
@@ -80,3 +79,18 @@ class MultiCapacitor(F.Capacitor):
         for c_old, c_new in zip(capacitors, obj.capacitors):
             c_new.specialize(c_old)
         return obj
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import MultiCapacitor
+
+        multicapacitor = new MultiCapacitor<count=4>
+        for c in multicapacitor.capacitors:
+            c.capacitance = 100nF +/- 10%
+            c.package = "0402"
+
+        electrical1 ~ multicapacitor.unnamed[0]
+        electrical2 ~ multicapacitor.unnamed[1]
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

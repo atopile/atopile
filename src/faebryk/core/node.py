@@ -504,6 +504,10 @@ class Node(CNode):
         assert not hasattr(self, "_called_init")
         self._called_init = True
 
+        # Preserved for later inspection of signature, which is otherwise clobbered
+        # by nanobind, so we only get (self, *args, **kwargs)
+        self.__original_init__ = self.__init__
+
     def __preinit__(self, *args, **kwargs) -> None: ...
 
     def __postinit__(self, *args, **kwargs) -> None: ...

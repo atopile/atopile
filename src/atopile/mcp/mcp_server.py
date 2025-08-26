@@ -1,12 +1,7 @@
 import logging
 from pathlib import Path
 
-from mcp.server.fastmcp import FastMCP
-
 from faebryk.libs.util import ConfigFlag
-
-mcp = FastMCP("atopile", stateless_http=True)
-
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +26,10 @@ def _setup_debug(enable: bool = False):
 
 def run_mcp(http: bool = False, debug: bool = False):
     _setup_debug(enable=bool(DEBUG) or debug)
+
+    from mcp.server.fastmcp import FastMCP
+
+    mcp = FastMCP("atopile", stateless_http=True)
 
     from atopile.mcp.tools import (
         cli_tools,

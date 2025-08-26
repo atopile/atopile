@@ -1,18 +1,17 @@
 import logging
 import re
-from base64 import b64decode, b64encode
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import IntEnum, StrEnum, auto
 from pathlib import Path
 from typing import Any, Optional, Self, override
 
-import zstd
 from dataclasses_json import CatchAll, Undefined, config, dataclass_json
 from more_itertools import first
 
 from faebryk.libs.kicad.fileformats_common import (
     UUID,
+    C_data,
     C_effects,
     C_property_base,
     C_pts,
@@ -31,7 +30,7 @@ from faebryk.libs.sexp.dataclass_sexp import (
     SymEnum,
     sexp_field,
 )
-from faebryk.libs.util import ConfigFlag, lazy_split, once
+from faebryk.libs.util import ConfigFlag, lazy_split
 
 logger = logging.getLogger(__name__)
 
@@ -1288,12 +1287,23 @@ class C_polygon(C_shape):
 
 
 @dataclass(kw_only=True)
+class C_render_cache:
+    text: str = field(**sexp_field(positional=True), default="")
+    rotation: float = field(**sexp_field(positional=True), default=0)
+    polygons: list[C_polygon] = field(
+        **sexp_field(multidict=True), default_factory=list
+    )
+    # TODO: KiCad:parseRenderCache
+
+
+@dataclass(kw_only=True)
 class C_text:
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
     layer: C_text_layer
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_effects
+    render_cache: C_render_cache | None = None
 
 
 @dataclass(kw_only=True)
@@ -1332,41 +1342,36 @@ class C_teardrop:
 
 
 @dataclass(kw_only=True)
-class C_render_cache:
-    polygon: C_polygon
-    # TODO: KiCad:parseRenderCache
-
-
-@dataclass(kw_only=True)
 class C_image:
     at: C_xy
     layer: str
     scale: float = 1.0
-    data: bytes  # base64 encoded image data
+    data: C_data | None = None
+    uuid: UUID = field(default_factory=gen_uuid)
 
 
 @dataclass(kw_only=True)
-class C_textbox:
+class C_text_box:
     @dataclass
     class C_margins:
-        left: int
-        top: int
-        right: int
-        bottom: int
+        left: int = field(**sexp_field(positional=True))
+        top: int = field(**sexp_field(positional=True))
+        right: int = field(**sexp_field(positional=True))
+        bottom: int = field(**sexp_field(positional=True))
 
     @dataclass
     class C_span:
-        cols: int
-        rows: int
+        cols: int = field(**sexp_field(positional=True))
+        rows: int = field(**sexp_field(positional=True))
 
-    text: str
+    text: str = field(**sexp_field(positional=True))
     locked: bool = False
-    start: C_xy
+    start: C_xy | None = None
     end: C_xy | None = None
-    pts: list[C_xy] | None = None
-    angle: float
-    stroke: C_stroke
-    border: bool
+    pts: C_pts | None = None
+    angle: float | None = None
+    stroke: C_stroke | None = None
+    border: bool | None = None
     margins: C_margins | None = None
     layer: str
     span: Optional[C_span] = None
@@ -1375,15 +1380,21 @@ class C_textbox:
     uuid: UUID = field(default_factory=gen_uuid)
 
     def __post_init__(self):
-        if self.end is None and self.pts is None:
-            raise ValueError("Either end or pts must be specified")
+        if (self.end is None or self.start is None) and self.pts is None:
+            raise ValueError("Either start + end or pts must be specified")
 
 
 @dataclass(kw_only=True)
 class C_table:
     @dataclass
-    class C_table_cell:
-        table_cell: C_textbox
+    class C_cells:
+        @dataclass
+        class C_table_cell(C_text_box):
+            pass
+
+        table_cells: list[C_table_cell] = field(
+            **sexp_field(multidict=True), default_factory=list
+        )
 
     @dataclass
     class C_border:
@@ -1402,10 +1413,9 @@ class C_table:
     layer: str
     column_widths: list[float]
     row_heights: list[float]
-    cells: list[C_table_cell]
+    cells: C_cells
     border: C_border
     separators: C_separator
-    uuid: UUID = field(default_factory=gen_uuid)
 
 
 @dataclass(kw_only=True)
@@ -1474,32 +1484,6 @@ class C_embedded_file:
         font = auto()
         datasheet = auto()
         worksheet = auto()
-
-    @dataclass
-    class C_data:
-        compressed: list[Symbol] = field(**sexp_field(positional=True))
-
-        @property
-        @once
-        def merged(self):
-            return "".join(str(v) for v in self.compressed)
-
-        @property
-        @once
-        def uncompressed(self) -> bytes:
-            assert self.merged.startswith("|") and self.merged.endswith("|")
-            return zstd.decompress(b64decode(self.merged[1:-1]))
-
-        @classmethod
-        def compress(cls, data: bytes):
-            # from kicad:common/embedded_files.cpp
-            b64 = b64encode(zstd.compress(data)).decode()
-            CHUNK_LEN = 76
-            # chunk string to 76 characters
-            chunks = [b64[i : i + CHUNK_LEN] for i in range(0, len(b64), CHUNK_LEN)]
-            chunks[0] = "|" + chunks[0]
-            chunks[-1] = chunks[-1] + "|"
-            return cls(compressed=[Symbol(c) for c in chunks])
 
     name: str
     type: C_type
@@ -2423,13 +2407,13 @@ class C_kicad_pcb_file(SEXP_File):
         gr_rects: list[C_rect] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        gr_images: list[C_image] = field(
+        images: list[C_image] = field(
             **sexp_field(multidict=True), default_factory=list
         )
         gr_texts: list[C_text] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        gr_textboxes: list[C_textbox] = field(
+        gr_text_boxs: list[C_text_box] = field(
             **sexp_field(multidict=True), default_factory=list
         )
         tables: list[C_table] = field(
@@ -2447,13 +2431,7 @@ class C_kicad_pcb_file(SEXP_File):
         targets: list[C_target] = field(
             **sexp_field(multidict=True), default_factory=list
         )
-        # TODO
-        # enbedded_fonts: list[C_embedded_font] = field(
-        #    **sexp_field(multidict=True), default_factory=list
-        # )
-        # enbedded_files: list[C_embedded_file] = field(
-        #    **sexp_field(multidict=True), default_factory=list
-        # )
+
         unknown: CatchAll = None
 
         def __rich_repr__(self):

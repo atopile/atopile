@@ -1,0 +1,5 @@
+# allow the sub layout
+!layout
+layout/top
+layout/sub/*
+!layout/sub/sub.kicad_pcb

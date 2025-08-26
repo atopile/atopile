@@ -210,9 +210,11 @@ def export_parameters_to_file(module: Module, solver: Solver, path: Path):
 
     parameters = dict[str, dict[str, P_Set[Any]]]()
 
-    for m in module.get_children_modules(types=Module):
+    for m in module.get_children_modules(types=Module, include_root=True):
         module_name = m.get_full_name(types=True)
-        module_params = m.get_children(direct_only=True, types=Parameter)
+        module_params = m.get_children(
+            direct_only=True, include_root=True, types=Parameter
+        )
         param_names = [param.get_full_name().split(".")[-1] for param in module_params]
         param_values = [
             solver.inspect_get_known_supersets(param) for param in module_params

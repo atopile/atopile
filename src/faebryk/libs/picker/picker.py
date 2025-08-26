@@ -287,7 +287,7 @@ def find_independent_groups(
     graphs = EquivalenceClasses()
     graph_to_m = defaultdict[Graph, set[Module]](set)
     for m in modules:
-        params = m.get_trait(F.is_pickable_by_type).get_parameters().values()
+        params = m.get_trait(F.is_pickable_by_type).params
         new_params = {state.data.mutation_map.map_forward(p).maps_to for p in params}
         m_graphs = get_graphs(new_params)
         graphs.add_eq(*m_graphs)
@@ -310,30 +310,16 @@ def pick_topologically(
 
     import faebryk.libs.picker.api.picker_lib as picker_lib
 
-    timings = Times(name="pick")
-
-    tree_backup = set(tree.keys())
-    _pick_count = len(tree)
-
-    logger.info(f"Picking {_pick_count} modules")
-
-    explicit_modules = [
-        m
-        for m in tree.keys()
-        if m.has_trait(F.is_pickable_by_part_number)
-        or m.has_trait(F.is_pickable_by_supplier_id)
-    ]
-    logger.info(f"Picking {len(explicit_modules)} explicit parts")
-    explicit_parts = picker_lib._find_modules(
-        _list_to_hack_tree(explicit_modules), solver
-    )
-    for m, parts in explicit_parts.items():
-        part = parts[0]
-        picker_lib.attach_single_no_check(m, part, solver)
-        if progress:
-            progress.advance()
-    if explicit_parts:
-        tree, _ = update_pick_tree(tree)
+    def _pick_explicit_modules(explicit_modules: list[Module]):
+        logger.info(f"Picking {len(explicit_modules)} explicit parts")
+        explicit_parts = picker_lib._find_modules(
+            _list_to_hack_tree(explicit_modules), solver
+        )
+        for m, parts in explicit_parts.items():
+            part = parts[0]
+            picker_lib.attach_single_no_check(m, part, solver)
+            if progress:
+                progress.advance()
 
     def _get_candidates(_tree: Tree[Module]):
         # with timings.as_global("pre-solve"):
@@ -352,6 +338,22 @@ def pick_topologically(
                 f"{'\n\t'.join(f'{m}: {len(p)}' for m, p in candidates.items())}"
             )
         return candidates
+
+    timings = Times(name="pick")
+
+    tree_backup = set(tree.keys())
+    _pick_count = len(tree)
+
+    logger.info(f"Picking {_pick_count} modules")
+
+    if explicit_modules := [
+        m
+        for m in tree.keys()
+        if m.has_trait(F.is_pickable_by_part_number)
+        or m.has_trait(F.is_pickable_by_supplier_id)
+    ]:
+        _pick_explicit_modules(explicit_modules)
+        tree, _ = update_pick_tree(tree)
 
     timings.add("setup")
 

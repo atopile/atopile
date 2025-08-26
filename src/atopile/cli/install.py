@@ -10,20 +10,12 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-import questionary
-import ruamel.yaml
 import typer
 
 from atopile import errors
-from atopile.config import DependencySpec, config
 from atopile.telemetry import capture
-from faebryk.libs.backend.packages import api
-from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
-from faebryk.libs.util import md_list
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
-yaml = ruamel.yaml.YAML()
 
 dependencies_app = typer.Typer(rich_markup_mode="rich")
 
@@ -105,6 +97,9 @@ def sync(
     """
     Update the project's environment
     """
+    from atopile.config import config
+    from faebryk.libs.backend.packages import api
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(None, working_dir=path)
 
@@ -144,6 +139,9 @@ def add(
     """
     Add dependencies to the project
     """
+    from atopile.config import DependencySpec, config
+    from faebryk.libs.backend.packages import api
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     if not package:
         raise errors.UserException("No package identifier provided")
@@ -162,9 +160,7 @@ def add(
     ) as e:
         raise errors.UserException(f"Error adding dependencies: {e}") from e
 
-    logger.info(
-        "[green]Done adding dependencies![/] :call_me_hand:", extra={"markup": True}
-    )
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 @capture("cli:remove_start", "cli:remove_end")
@@ -177,15 +173,15 @@ def remove(
     """
     Remove dependencies from the project
     """
+    from atopile.config import config
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(None, working_dir=path)
 
     deps = ProjectDependencies()
     deps.remove_dependencies(*package)
 
-    logger.info(
-        "[green]Done removing dependencies![/] :call_me_hand:", extra={"markup": True}
-    )
+    logger.info("[green]Done![/] :call_me_hand:", extra={"markup": True})
 
 
 @capture("cli:list_start", "cli:list_end")
@@ -193,6 +189,9 @@ def list():
     """
     List all dependencies in the project
     """
+    from faebryk.libs.project.dependencies import ProjectDependencies, ProjectDependency
+    from faebryk.libs.util import md_list
+
     deps = ProjectDependencies()
     # TODO bug, if A -> B, B deps
     # will not see that B is under root, because of the way DAG checks roots
@@ -215,24 +214,3 @@ dependencies_app.command()(add)
 dependencies_app.command()(remove)
 dependencies_app.command()(sync)
 dependencies_app.command()(list)
-
-# --------------------------------------------------------------------------------------
-
-
-def check_missing_deps_or_offer_to_install():
-    deps = ProjectDependencies()
-    if deps.not_installed_dependencies:
-        interactive = config.interactive
-        logger.warning("It appears some dependencies are missing.")
-
-        if (
-            interactive
-            and questionary.confirm("Install missing dependencies now?").unsafe_ask()
-        ):
-            # Install project dependencies, without upgrading
-            deps.install_missing_dependencies()
-        else:
-            logger.warning(
-                "Run `ato sync` to install them.",
-                extra={"markdown": True},
-            )

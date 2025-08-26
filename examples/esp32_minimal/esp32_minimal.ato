@@ -1,0 +1,31 @@
+#pragma experiment("FOR_LOOP")
+#pragma experiment("BRIDGE_CONNECT")
+
+# Standard library imports
+import ElectricPower
+import Resistor
+
+# Package imports from https://packages.atopile.io/
+from "atopile/usb-connectors/usb-connectors.ato" import USB2_0TypeCHorizontalConnector
+from "atopile/ti-tlv75901/ti-tlv75901.ato" import TLV75901_driver
+from "atopile/esp32/esp32_s3.ato" import ESP32_S3_WROOM
+
+
+module ESP32_MINIMAL:
+    """
+    ESP32 S3 WROOM with USB-C connector and LDO
+    """
+    micro = new ESP32_S3_WROOM
+    usb_c = new USB2_0TypeCHorizontalConnector
+    ldo_3V3 = new TLV75901_driver
+
+    # Power
+    power_3v3 = new ElectricPower
+    usb_c.usb.usb_if.buspower ~> ldo_3V3 ~> power_3v3
+    power_3v3 ~ micro.power
+
+    # Configure LDO
+    ldo_3V3.v_in = 5V +/- 5%
+    ldo_3V3.v_out = 3.3V +/- 3%
+    # Connect USB
+    usb_c.usb ~ micro.usb2

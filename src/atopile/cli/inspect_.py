@@ -9,31 +9,7 @@ from typing import Annotated
 
 import typer
 
-from atopile import errors
-from atopile.address import AddrStr
-
 log = logging.getLogger(__name__)
-log.setLevel(logging.INFO)
-
-
-class DisplayEntry:
-    """
-    This class represents the nets that are below the inspected module,
-    the equivalent net that is below the context module and
-    the individual connections that are made to the inspect net and the context net.
-    """
-
-    def __init__(self, net: list[list[AddrStr]]):
-        self.inspect_net: list[AddrStr] = net
-        self.inspect_consumer: list[AddrStr] = []
-        self.context_net: list[AddrStr] = []
-        self.context_consumer: list[AddrStr] = []
-
-
-odd_row = "on grey11 cornflower_blue"
-even_row = "on grey15 cornflower_blue"
-odd_greyed_row = "on grey11 grey0"
-even_greyed_row = "on grey15 grey0"
 
 
 def inspect(
@@ -62,4 +38,6 @@ def inspect(
     The context sets the boundary where something is considered connected.
     For example: `--inspect rp2040_micro --context rp2040_micro_ki`
     """
+    from atopile import errors
+
     raise errors.UserNotImplementedError("Inspect is not yet implemented.")

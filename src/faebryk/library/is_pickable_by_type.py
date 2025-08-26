@@ -1,30 +1,38 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-from enum import Enum, auto
+from enum import StrEnum
 
 import faebryk.library._F as F
+import faebryk.libs.library.L as L
 from faebryk.core.parameter import Parameter
 
 
 class is_pickable_by_type(F.is_pickable.decless()):
-    class Type(Enum):
-        Resistor = auto()
-        Capacitor = auto()
-        Inductor = auto()
-        TVS = auto()
-        LED = auto()
-        Diode = auto()
-        LDO = auto()
-        MOSFET = auto()
+    """
+    Marks a module as being parametrically selectable using the given parameters.
 
-    def __init__(self, pick_type: Type, parameters: dict[str, Parameter]):
+    Must map to an existing API endpoint.
+
+    Should be named "pickable" to aid overriding by subclasses.
+    """
+
+    class Endpoint(StrEnum):
+        """Query endpoints known to the API."""
+
+        RESISTORS = "resistors"
+        CAPACITORS = "capacitors"
+        INDUCTORS = "inductors"
+
+    def __init__(self, endpoint: Endpoint, params: list[Parameter]):
         super().__init__()
-        self._pick_type = pick_type
-        self._parameters = parameters
+        self.endpoint = endpoint
+        self._params = params
 
-    def get_pick_type(self) -> Type:
-        return self._pick_type
+    @property
+    def params(self) -> list[Parameter]:
+        return self._params
 
-    def get_parameters(self) -> dict[str, Parameter]:
-        return self._parameters
+    @property
+    def pick_type(self) -> type[L.Module]:
+        return type(self.get_obj(L.Module))

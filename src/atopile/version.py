@@ -13,7 +13,7 @@ from atopile import errors
 log = logging.getLogger(__name__)
 
 DISTRIBUTION_NAME = "atopile"
-UPGRADE_DOCS_URL = "https://atopile.io/#installation"
+UPGRADE_DOCS_URL = "https://docs.atopile.io/atopile/guides/install"
 
 
 class VersionMismatchError(errors.UserException):

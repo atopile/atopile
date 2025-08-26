@@ -67,3 +67,43 @@ class Comparator(Module):
     designator_prefix = L.f_field(F.has_designator_prefix)(
         F.has_designator_prefix.Prefix.U
     )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Comparator, Resistor, ElectricPower, Electrical
+
+        comparator = new Comparator
+        comparator.common_mode_rejection_ratio = 80dB +/- 10%
+        comparator.input_bias_current = 1nA +/- 50%
+        comparator.input_hysteresis_voltage = 5mV +/- 20%
+        comparator.input_offset_voltage = 1mV +/- 30%
+        comparator.propagation_delay = 100ns +/- 20%
+        comparator.output_type = Comparator.OutputType.PushPull
+        comparator.package = "SOIC-8"
+
+        # Power supply connections (dual supply)
+        power_pos = new ElectricPower
+        power_neg = new ElectricPower
+        assert power_pos.voltage within 5V +/- 5%
+        assert power_neg.voltage within -5V +/- 5%
+        comparator.power.hv ~ power_pos.hv
+        comparator.power.lv ~ power_neg.lv
+
+        # Create voltage reference with resistor divider
+        ref_resistor_high = new Resistor
+        ref_resistor_low = new Resistor
+        ref_resistor_high.resistance = 10kohm +/- 1%
+        ref_resistor_low.resistance = 10kohm +/- 1%
+
+        # Reference voltage = Vcc/2
+        power_pos.hv ~> ref_resistor_high ~> comparator.non_inverting_input
+        comparator.non_inverting_input ~> ref_resistor_low ~> power_neg.lv
+
+        # Connect input signal to inverting input
+        input_signal ~ comparator.inverting_input
+        output_signal ~ comparator.output
+
+        # Output will be HIGH when input_signal > reference_voltage
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

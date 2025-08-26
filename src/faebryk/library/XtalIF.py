@@ -36,3 +36,9 @@ class XtalIF(ModuleInterface):
         #          parametrization
         # ------------------------------------
         pass
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.xin.add(F.has_net_name("XIN", level=F.has_net_name.Level.SUGGESTED))
+        self.xout.add(F.has_net_name("XOUT", level=F.has_net_name.Level.SUGGESTED))
+        self.gnd.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))

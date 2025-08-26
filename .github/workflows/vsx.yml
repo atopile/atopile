@@ -22,13 +22,6 @@ jobs:
       # https://github.com/actions/checkout/issues/1471
       - run: git fetch --prune --unshallow --tags
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v4
-        with:
-          version: '0.6.4'
-          enable-cache: true
-          cache-dependency-glob: "uv.lock"
-
       - uses: actions/setup-node@v4
         with:
           node-version: 20

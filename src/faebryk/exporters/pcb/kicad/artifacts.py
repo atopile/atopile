@@ -123,7 +123,12 @@ def export_glb(
         raise KicadCliExportError("Failed to export glb file") from e
 
 
-def export_svg(pcb_file: Path, svg_file: Path, flip_board: bool = False) -> None:
+def export_svg(
+    pcb_file: Path,
+    svg_file: Path,
+    flip_board: bool = False,
+    project_dir: Optional[Path] = None,
+) -> None:
     """
     2D PCBA SVG file export using the kicad-cli
     """
@@ -131,6 +136,8 @@ def export_svg(pcb_file: Path, svg_file: Path, flip_board: bool = False) -> None
     layers = "F.Cu,F.Paste,F.SilkS,F.Mask,Edge.Cuts"
     if flip_board:
         layers = layers.replace("F.", "B.")
+
+    cmd_vars = f"KIPRJMOD={project_dir.absolute()}" if project_dir else None
 
     try:
         _export(
@@ -140,10 +147,41 @@ def export_svg(pcb_file: Path, svg_file: Path, flip_board: bool = False) -> None
                 page_size_mode="2",
                 exclude_drawing_sheet=True,
                 output=str(svg_file),
+                define_var=cmd_vars,
             )
         )
     except sp.CalledProcessError as e:
         raise KicadCliExportError("Failed to export svg file") from e
+
+
+def export_3d_board_render(
+    pcb_file: Path, image_file: Path, project_dir: Optional[Path] = None
+) -> None:
+    """
+    Render a 3D PCBA image (png) using the kicad-cli
+    """
+
+    cmd_vars = f"KIPRJMOD={project_dir.absolute()}" if project_dir else None
+
+    try:
+        k(
+            k.pcb(
+                k.pcb.render(
+                    INPUT_FILE=pcb_file.as_posix(),
+                    output=image_file.as_posix(),
+                    width="1000",
+                    height="1000",
+                    side="top",
+                    background="opaque",
+                    quality="high",
+                    zoom="0.8",
+                    rotate="335,0,-45",
+                    define_var=cmd_vars,
+                )
+            )
+        ).exec()
+    except sp.CalledProcessError as e:
+        raise KicadCliExportError("Failed to export 3d board render") from e
 
 
 def export_gerber(pcb_file: Path, gerber_zip_file: Path) -> None:

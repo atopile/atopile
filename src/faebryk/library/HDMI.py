@@ -33,3 +33,14 @@ class HDMI(ModuleInterface):
 
     def __preinit__(self) -> None:
         pass
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        for i in range(3):
+            net_name = f"HDMI_D{i}"
+            self.data[i].p.line.add(
+                F.has_net_name(net_name, level=F.has_net_name.Level.SUGGESTED)
+            )
+            self.data[i].n.line.add(
+                F.has_net_name(net_name, level=F.has_net_name.Level.SUGGESTED)
+            )

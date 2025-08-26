@@ -1,0 +1,22 @@
+requires-atopile: "^{{cookiecutter.__ato_version}}"
+
+paths:
+  src: ./
+  layout: ./layouts
+
+builds:
+  default:
+    entry: "{{cookiecutter.project_slug}}.ato:{{cookiecutter.entry_name}}"
+  example:
+    entry: "example.ato:Example"
+
+package:
+  identifier: "{{cookiecutter.package_owner}}/{{cookiecutter.project_name}}"
+  repository: "https://github.com/{{cookiecutter.package_owner}}/{{cookiecutter.project_name}}"
+  version: "0.1.0"  # recommended first version
+  authors:
+    - name: "{{cookiecutter.author_name}}"
+      email: "{{cookiecutter.author_email}}"
+  summary: "{{cookiecutter.description}}"
+  license: "{{cookiecutter.license}}"
+  homepage: # fill me!

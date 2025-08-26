@@ -30,11 +30,9 @@ def _log_add_package(identifier: str, version: str):
     )
 
 
-def _log_remove_package(identifier: str, version: str):
-    logger.info(
-        f"[red]-[/] {identifier}@{version}",
-        extra={"markup": True},
-    )
+def _log_remove_package(identifier: str, version: str | None):
+    dep_str = f"{identifier}@{version}" if version else identifier
+    logger.info(f"[red]-[/] {dep_str}", extra={"markup": True})
 
 
 class BrokenDependencyError(Exception):
@@ -173,21 +171,29 @@ class ProjectDependency:
         self.cfg = config.ProjectConfig.from_path(self.target_path)
 
     def __str__(self) -> str:
-        return f"{type(self).__name__}(spec={self.spec},path={self.target_path})"
+        return f"{type(self).__name__}(spec={self.spec}, path={self.target_path})"
 
     def __repr__(self) -> str:
         return str(self)
 
 
 class ProjectDependencies:
+    gcfg: config.Config | None = None
+
     def __init__(
         self,
         pcfg: config.ProjectConfig | None = None,
+        sync_versions: bool = True,
         install_missing: bool = False,
         clean_unmanaged_dirs: bool = False,
     ):
         if pcfg is None:
-            pcfg = config.config.project
+            if self.gcfg is None:
+                pcfg = config.config.project
+                self.gcfg = config.config
+            else:
+                pcfg = self.gcfg.project
+
         self.pcfg = pcfg
 
         self.direct_deps = {
@@ -195,8 +201,8 @@ class ProjectDependencies:
         }
         self.dag = self.resolve_dependencies()
 
-        self.sync_versions()
-
+        if sync_versions:
+            self.sync_versions()
         if install_missing:
             self.install_missing_dependencies()
         if clean_unmanaged_dirs:
@@ -207,7 +213,11 @@ class ProjectDependencies:
         return self.dag.values
 
     def reload(self):
-        self.__init__(pcfg=self.pcfg)
+        if self.gcfg is not None:
+            self.gcfg.reload()
+            self.pcfg = self.gcfg.project
+
+        self.__init__(pcfg=self.pcfg, sync_versions=False)
 
     @property
     def not_installed_dependencies(self) -> set[ProjectDependency]:
@@ -320,6 +330,7 @@ class ProjectDependencies:
         )
 
         if existing_dep is not None:
+            existing_dep.spec = config.DependencySpec.from_str(str(dep.spec))
             if type(existing_dep.spec) is not type(dep.spec):
                 raise errors.UserException(
                     f"Cannot install {identifier} as it is already installed "
@@ -359,9 +370,9 @@ class ProjectDependencies:
         dep.load_dist()
         assert dep.dist is not None
 
-        logger.info(f"Installing {identifier} to {target_path}")
         dep.dist.install(target_path)
         dep.add_to_manifest()
+        _log_add_package(dep.identifier, dep.dist.version)
 
     def add_dependencies(self, *specs: config.DependencySpec, upgrade: bool = False):
         # Load specs and fetch dists if needed
@@ -434,14 +445,9 @@ class ProjectDependencies:
                 extra={"markdown": True},
             )
 
-        if uninstall:
-            logger.info(
-                f"Uninstalling and removing:"
-                f"\n{md_list([dep.identifier for dep in uninstall])}",
-                extra={"markdown": True},
-            )
         for dep in to_remove_deps:
             dep.remove_from_manifest()
+            _log_remove_package(dep.identifier, dep.dist.version if dep.dist else None)
 
         for dep in uninstall:
             if dep.target_path.exists():
@@ -456,9 +462,12 @@ class ProjectDependencies:
         Ensure that installed dependency versions match the manifest
         """
 
-        def _sync_dep(dep: ProjectDependency, installed_version: str):
+        def _sync_dep(dep: ProjectDependency, installed_version: str) -> bool:
             dep.load_dist()
             assert dep.dist is not None
+
+            if dep.dist.version == installed_version:
+                return False
 
             target_path = dep.target_path
             if target_path.exists():
@@ -467,6 +476,7 @@ class ProjectDependencies:
 
             _log_add_package(dep.identifier, dep.dist.version)
             dep.dist.install(target_path)
+            return True
 
         dirty = False
         for dep in self.direct_deps:
@@ -481,8 +491,7 @@ class ProjectDependencies:
                     desired_version = spec.release
 
                     if installed_version != desired_version:
-                        _sync_dep(dep, installed_version)
-                        dirty = True
+                        dirty |= _sync_dep(dep, installed_version)
 
                 case "file" | "git":
                     logger.warning(

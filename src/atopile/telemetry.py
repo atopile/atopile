@@ -11,6 +11,8 @@ What we collect:
 - Git hash of current commit
 """
 
+import atexit
+import configparser
 import contextlib
 import hashlib
 import importlib.metadata
@@ -50,6 +52,9 @@ class _MockClient:
     ) -> None:
         pass
 
+    def flush(self) -> None:
+        pass
+
 
 @once
 def _get_posthog_client() -> Posthog | _MockClient:
@@ -58,7 +63,10 @@ def _get_posthog_client() -> Posthog | _MockClient:
             # write-only API key, intended to be made public
             project_api_key="phc_IIl9Bip0fvyIzQFaOAubMYYM2aNZcn26Y784HcTeMVt",
             host="https://telemetry.atopileapi.com",
-            sync_mode=True,
+            sync_mode=False,
+            thread=2,
+            flush_at=1,
+            flush_interval=0.1,
         )
     except Exception as e:
         log.debug("Failed to initialize telemetry client: %s", e, exc_info=e)
@@ -68,28 +76,58 @@ def _get_posthog_client() -> Posthog | _MockClient:
 client = _get_posthog_client()
 
 
+def _flush_telemetry_on_exit() -> None:
+    """Flush telemetry data when the program exits."""
+    try:
+        if not client.disabled:
+            client.flush()
+    except Exception as e:
+        log.debug("Failed to flush telemetry data on exit: %s", e, exc_info=e)
+
+
+# Register exit handler to flush telemetry data
+atexit.register(_flush_telemetry_on_exit)
+
+
 @dataclass
 class TelemetryConfig:
-    telemetry: bool | None = True
-    id: uuid.UUID | None = field(default_factory=uuid.uuid4)
+    telemetry: bool
+    id: uuid.UUID
+
+    def __init__(
+        self, telemetry: bool | None = None, id: uuid.UUID | str | None = None
+    ) -> None:
+        match id:
+            case str():
+                self.id = uuid.UUID(id)
+            case uuid.UUID():
+                self.id = id
+            case _:
+                self.id = uuid.uuid4()
+
+        match telemetry:
+            case bool():
+                self.telemetry = telemetry
+            case _:
+                self.telemetry = True
+
+    def to_dict(self) -> dict:
+        return {"id": str(self.id), "telemetry": self.telemetry}
 
     @classmethod
     @once
     def load(cls) -> "TelemetryConfig":
         atopile_config_dir = get_config_dir()
-        atopile_yaml = atopile_config_dir / "telemetry.yaml"
+        telemetry_yaml = atopile_config_dir / "telemetry.yaml"
+        yaml = YAML()
 
-        if not atopile_yaml.exists():
+        try:
+            config = TelemetryConfig(**(yaml.load(telemetry_yaml) or {}))
+        except Exception:
             config = TelemetryConfig()
-            atopile_config_dir.mkdir(parents=True, exist_ok=True)
-            with atopile_yaml.open("w", encoding="utf-8") as f:
-                yaml = YAML()
-                yaml.dump(config, f)
-            return config
 
-        with atopile_yaml.open(encoding="utf-8") as f:
-            yaml = YAML()
-            config = TelemetryConfig(**yaml.load(f))
+        atopile_config_dir.mkdir(parents=True, exist_ok=True)
+        yaml.dump(config.to_dict(), telemetry_yaml)
 
         if config.telemetry is False:
             log.log(0, "Telemetry is disabled. Skipping telemetry logging.")
@@ -130,8 +168,10 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             repo = git.Repo(search_parent_directories=True)
             config_reader = repo.config_reader()
@@ -149,8 +189,10 @@ class PropertyLoaders:
         with contextlib.suppress(
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             repo = git.Repo(search_parent_directories=True)
             return repo.head.commit.hexsha
@@ -170,8 +212,10 @@ class PropertyLoaders:
         except (
             git.InvalidGitRepositoryError,
             git.NoSuchPathError,
+            configparser.Error,
             ValueError,
             AttributeError,
+            configparser.Error,
         ):
             return None
 
@@ -220,6 +264,31 @@ class PropertyLoaders:
 
         return None
 
+    @once
+    @staticmethod
+    def via_docker() -> bool:
+        return bool(os.getenv("ATO_VIA_DOCKER"))
+
+    @once
+    @staticmethod
+    def github_action_repository() -> str | None:
+        return os.getenv("GITHUB_ACTION_REPOSITORY")
+
+    @once
+    @staticmethod
+    def github_repository_owner() -> str | None:
+        return os.getenv("GITHUB_REPOSITORY_OWNER")
+
+    @once
+    @staticmethod
+    def github_repository() -> str | None:
+        return os.getenv("GITHUB_REPOSITORY")
+
+    @once
+    @staticmethod
+    def run_id() -> str:
+        return str(uuid.uuid4())
+
 
 @dataclass
 class TelemetryProperties:
@@ -230,6 +299,17 @@ class TelemetryProperties:
     )
     project_id: str | None = field(default_factory=PropertyLoaders.project_id)
     ci_provider: str | None = field(default_factory=PropertyLoaders.ci_provider)
+    via_docker: bool = field(default_factory=PropertyLoaders.via_docker)
+    github_action_repository: str | None = field(
+        default_factory=PropertyLoaders.github_action_repository
+    )
+    github_repository_owner: str | None = field(
+        default_factory=PropertyLoaders.github_repository_owner
+    )
+    github_repository: str | None = field(
+        default_factory=PropertyLoaders.github_repository
+    )
+    run_id: str = field(default_factory=PropertyLoaders.run_id)
     atopile_version: str = field(
         default_factory=lambda: importlib.metadata.version("atopile")
     )

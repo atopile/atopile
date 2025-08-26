@@ -23,3 +23,11 @@ class USB2_0_IF(ModuleInterface):
 
     d: Data
     buspower: F.ElectricPower
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.d.p.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
+        self.d.n.line.add(F.has_net_name("USB_D", level=F.has_net_name.Level.SUGGESTED))
+        self.buspower.hv.add(
+            F.has_net_name("USB_VBUS", level=F.has_net_name.Level.SUGGESTED)
+        )

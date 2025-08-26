@@ -135,6 +135,12 @@
                 "when": "editorLangId == ato"
             },
             {
+                "command": "atopile.export",
+                "title": "Generate Manufacturing Data",
+                "category": "atopile",
+                "when": "editorLangId == ato"
+            },
+            {
                 "command": "atopile.add_package",
                 "title": "Add package dependency",
                 "category": "atopile",

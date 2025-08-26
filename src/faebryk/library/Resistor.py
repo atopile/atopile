@@ -22,12 +22,8 @@ class Resistor(Module):
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(
-            F.is_pickable_by_type.Type.Resistor,
-            {
-                "resistance": self.resistance,
-                "max_power": self.max_power,
-                "max_voltage": self.max_voltage,
-            },
+            endpoint=F.is_pickable_by_type.Endpoint.RESISTORS,
+            params=[self.resistance, self.max_power, self.max_voltage],
         )
 
     @L.rt_field
@@ -80,3 +76,19 @@ class Resistor(Module):
     def p2(self) -> F.Electrical:
         """The other side of the resistor."""
         return self.unnamed[1]
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Resistor
+
+        resistor = new Resistor
+        resistor.resistance = 10kohm +/- 5%
+        resistor.package = "0402"
+
+        electrical1 ~ resistor.unnamed[0]
+        electrical2 ~ resistor.unnamed[1]
+        # OR
+        electrical1 ~> resistor ~> electrical2
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

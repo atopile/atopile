@@ -103,3 +103,27 @@ class LED(F.Diode):
             power.lv if low_side else power.hv,
             low_side,
         )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import LED, Resistor, ElectricPower
+
+        led = new LED
+        led.forward_voltage = 2.1V +/- 10%
+        led.current = 1mA +/- 50%
+        led.max_current = 10mA
+        led.color = LED.Color.RED
+        led.brightness = 100mcd
+        led.package = "0603"
+
+        # Connect with current limiting resistor
+        res = new Resistor
+        power = new ElectricPower
+        assert power.voltage within 5V +/- 5%
+
+        assert (power.voltage-led.forward_voltage) / res.resistance within led.current
+
+        power.hv ~> res ~> led ~> power.lv
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

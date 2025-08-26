@@ -9,6 +9,7 @@ from importlib.metadata import version as get_package_version
 
 import requests
 
+import faebryk.library._F as F
 from atopile.config import config
 from faebryk.libs.picker.api.models import (
     BaseParams,
@@ -76,7 +77,10 @@ class ApiClient:
     def _get(self, url: str, timeout: float = 10) -> requests.Response:
         try:
             response = self._client.get(
-                f"{self._cfg.api_url}{url}", timeout=timeout, headers=self._headers
+                f"{self._cfg.api_url}{url}",
+                timeout=timeout,
+                headers=self._headers,
+                verify=not config.project.dangerously_skip_ssl_verification,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -103,6 +107,7 @@ class ApiClient:
                 json=data,
                 timeout=timeout,
                 headers=self._headers,
+                verify=not config.project.dangerously_skip_ssl_verification,
             )
             response.raise_for_status()
         except requests.exceptions.HTTPError as e:
@@ -133,7 +138,9 @@ class ApiClient:
         response = self._get(f"/v0/component/mfr/{mfr}/{mfr_pn}")
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 
-    def query_parts(self, method: str, params: BaseParams) -> list["Component"]:
+    def query_parts(
+        self, method: F.is_pickable_by_type.Endpoint, params: BaseParams
+    ) -> list["Component"]:
         response = self._post(f"/v0/query/{method}", params.serialize())
         return [Component.from_dict(part) for part in response.json()["components"]]  # type: ignore
 

@@ -4,10 +4,7 @@ import logging
 from typing import Annotated
 
 import typer
-from more_itertools import first
 
-from atopile.cli.logging_ import NOW
-from atopile.config import config
 from atopile.telemetry import capture
 
 logger = logging.getLogger(__name__)
@@ -27,6 +24,9 @@ def build(
     ] = [],
     target: Annotated[
         list[str], typer.Option("--target", "-t", envvar="ATO_TARGET")
+    ] = [],
+    exclude_target: Annotated[
+        list[str], typer.Option("--exclude-target", "-x", envvar="ATO_EXCLUDE_TARGET")
     ] = [],
     frozen: Annotated[
         bool | None,
@@ -50,13 +50,18 @@ def build(
     """
     from atopile import build as buildlib
     from atopile import buildutil
-    from atopile.cli.install import check_missing_deps_or_offer_to_install
+    from atopile.cli.logging_ import NOW
+    from atopile.config import config
+    from faebryk.libs.app.pcb import open_pcb
     from faebryk.libs.exceptions import accumulate, log_user_errors
+    from faebryk.libs.kicad.ipc import reload_pcb
+    from faebryk.libs.project.dependencies import ProjectDependencies
 
     config.apply_options(
         entry=entry,
         selected_builds=selected_builds,
-        target=target,
+        include_targets=target,
+        exclude_targets=exclude_target,
         standalone=standalone,
         frozen=frozen,
         keep_picked_parts=keep_picked_parts,
@@ -64,7 +69,10 @@ def build(
         keep_designators=keep_designators,
     )
 
-    check_missing_deps_or_offer_to_install()
+    deps = ProjectDependencies(sync_versions=False)
+    if deps.not_installed_dependencies:
+        logger.info("Installing missing dependencies")
+        deps.install_missing_dependencies()
 
     if open_layout is not None:
         config.project.open_layout_on_build = open_layout
@@ -81,23 +89,23 @@ def build(
 
     logger.info("Build successful! 🚀")
 
-    if config.should_open_layout_on_build():
-        selected_build_names = list(config.selected_builds)
-        if len(selected_build_names) == 1:
-            build = config.project.builds[first(selected_build_names)]
+    selected_build_names = list(config.selected_builds)
+    for build_name in selected_build_names:
+        build = config.project.builds[build_name]
+
+        opened = False
+        if config.should_open_layout_on_build():
             try:
-                from faebryk.libs.app.pcb import open_pcb
-
                 open_pcb(build.paths.layout)
+            # No PCBnew
             except FileNotFoundError:
+                continue
+            # Already open, reload
+            except RuntimeError:
                 pass
-            except RuntimeError as e:
-                logger.info(
-                    f"{e.args[0]}\nReload pcb manually by pressing Ctrl+O; Enter"
-                )
 
-        elif len(selected_build_names) > 1:
-            logger.warning(
-                "`--open` option is only supported when building "
-                "a single build. It will be ignored."
-            )
+        if not opened:
+            try:
+                reload_pcb(build.paths.layout, backup_path=build.paths.output_base)
+            except Exception as e:
+                logger.warning(f"{e}\nReload pcb manually in KiCAD")

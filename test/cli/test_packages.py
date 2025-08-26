@@ -12,13 +12,12 @@ from faebryk.libs.util import run_live
 EXAMPLES_DIR = _repo_root() / "examples"
 
 
-@pytest.mark.xfail(reason="Need to update atopile/packages to use atomic parts")
 @pytest.mark.parametrize("package", ["atopile/addressable-leds"])
 def test_install_package(package: str, tmp_path: Path):
     example_copy = tmp_path / "example"
 
     shutil.copytree(
-        EXAMPLES_DIR,
+        EXAMPLES_DIR / "quickstart",
         example_copy,
         ignore=lambda src, names: [".ato", "build", "standalone"],
     )
@@ -31,5 +30,5 @@ def test_install_package(package: str, tmp_path: Path):
         stderr=print,
     )
 
-    assert f"Installing {package} to" in stderr
-    assert "Done adding" in stderr.splitlines()[-1]
+    assert f"[green]+[/] {package}@" in stderr
+    assert "Done!" in stderr.splitlines()[-1]

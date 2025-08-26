@@ -123,6 +123,7 @@ class Trait(Node):
         # __init_subclass__ from overwriting it
         _Impl.__trait__ = cls
         _Impl.__name__ = f"{cls.__name__}Impl"
+        _Impl.__original_init__ = cls.__init__  # type: ignore
 
         return _Impl
 
@@ -130,7 +131,7 @@ class Trait(Node):
         if not TraitImpl.is_traitimpl_type(cls):
             raise TypeError(f"Don't instantiate Trait [{cls}] use Trait.impl instead")
 
-        return super().__new__(cls)  # type: ignore
+        return super().__new__(cls, *args, **kwargs)  # type: ignore
 
     @classmethod
     def decless(cls):
