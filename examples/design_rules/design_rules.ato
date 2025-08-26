@@ -1,0 +1,25 @@
+#pragma experiment("BRIDGE_CONNECT")
+
+import Resistor
+import ElectricPower
+import Electrical
+from "Stackup.ato" import JLC4Layer
+
+module Board:
+    pass
+
+module JLC4LayerBoard from Board:
+    stackup = new JLC4Layer
+    manufacutring_rules = new JLC4LayerRules
+
+module App:
+    board = new JLC4LayerBoard
+    power = new ElectricPower
+    r1 = new Resistor
+
+    r1.resistance = 100ohm +/- 10%
+
+    power.hv ~> r1 ~> power.lv
+
+    power.hv.current = 1A
+    power.lv.current = 0.5A
