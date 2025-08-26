@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
+import httpx
 from dataclasses_json import (
     CatchAll,
     Undefined,
@@ -321,6 +322,7 @@ class EasyEDAPart:
         self._pre_model: Ee3dModel | None = None
         self.datasheet_url = datasheet_url
         self._pre_datasheet: str | None = None
+        self.datasheet: bytes | None = None
 
     @property
     def identifier(self):
@@ -398,6 +400,7 @@ class EasyEDAPart:
 
         if part._pre_datasheet is not None:
             part.load_datasheet()
+            part.download_datasheet()
 
         return part
 
@@ -429,13 +432,89 @@ class EasyEDAPart:
         )
         lcsc_id = self.lcsc_id
         # find _{partno}.pdf in html
-        match = re.search(f'href="(https://[^"]+_{lcsc_id}.pdf)"', lcsc_site.text)
+        match = re.search(f'href="([^"]+{lcsc_id}.pdf)"', lcsc_site.text)
         if match:
             pdfurl = match.group(1)
+            if not pdfurl.startswith("http"):
+                pdfurl = f"https://lcsc.com{pdfurl}"
             logger.debug(f"Found datasheet for {lcsc_id} at {pdfurl}")
             self.datasheet_url = pdfurl
             return pdfurl
         else:
+            return None
+
+    def download_datasheet(self):
+        if self.datasheet:
+            return self.datasheet
+
+        if not self.datasheet_url:
+            return None
+
+        datasheet_url = self.datasheet_url
+        USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+
+        try:
+            logger.info(f"Attempting to download datasheet from {datasheet_url}")
+
+            # Download the PDF
+            client = httpx.Client()
+            response = client.get(
+                datasheet_url,
+                follow_redirects=True,
+                timeout=30.0,
+                headers={"User-Agent": USER_AGENT},
+            )
+            response.raise_for_status()
+
+            # Verify it's a PDF by checking content type or magic bytes
+            content_type = response.headers.get("content-type", "").lower()
+            if "pdf" not in content_type and not response.content.startswith(b"%PDF"):
+                # Check if it's an HTML page with an iframe pointing to the PDF
+                if b"<iframe" in response.content and b".pdf" in response.content:
+                    import re
+
+                    # Try to extract the actual PDF URL from the iframe
+                    html_content = response.content.decode("utf-8", errors="ignore")
+                    pdf_match = re.search(r'src="(https?://[^"]+\.pdf)"', html_content)
+                    if pdf_match:
+                        actual_pdf_url = pdf_match.group(1)
+                        logger.debug(
+                            f"Found actual PDF URL in iframe: {actual_pdf_url}"
+                        )
+                        # Download the actual PDF
+                        response = client.get(
+                            actual_pdf_url,
+                            follow_redirects=True,
+                            timeout=30.0,
+                            headers={"User-Agent": USER_AGENT},
+                        )
+                        response.raise_for_status()
+                    else:
+                        logger.warning(
+                            f"Downloaded content does not appear to be a PDF "
+                            f"(content-type: {content_type})"
+                        )
+                else:
+                    logger.warning(
+                        f"Downloaded content does not appear to be a PDF "
+                        f"(content-type: {content_type})"
+                    )
+
+            # Write the PDF to file
+            self.datasheet = response.content
+            logger.debug(f"Successfully downloaded datasheet for {self.identifier}")
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP error downloading datasheet:"
+                f" {e.response.status_code} - {e.response.text[:200]}"
+            )
+            return None
+        except httpx.TimeoutException:
+            logger.error(f"Timeout downloading datasheet from {datasheet_url}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to download datasheet: {e}")
             return None
 
 
