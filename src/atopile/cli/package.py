@@ -533,7 +533,12 @@ def verify(
     ] = None,
     strict: Annotated[
         bool,
-        typer.Option("--strict", "-s", help="Fail on any warning."),
+        typer.Option(
+            "--strict",
+            "-s",
+            help="Fail on any warning.",
+            envvar="ATO_PACKAGE_VERIFY_STRICT_MODE",
+        ),
     ] = False,
 ):
     """
