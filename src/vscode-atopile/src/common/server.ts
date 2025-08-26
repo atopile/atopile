@@ -40,8 +40,10 @@ async function trySpawn(
         exited = true;
     });
 
+    let stderr = '';
+
     child.stderr.on('data', (data) => {
-        traceError(`LSP stderr: ${data}`);
+        stderr += data;
     });
 
     // Wait for either the process to exit or a 2 second timeout, whichever comes first.
@@ -57,6 +59,7 @@ async function trySpawn(
         new Promise((resolve) => setTimeout(resolve, 2000)),
     ]);
     if (exited) {
+        traceError(`LSP stderr: ${stderr}`);
         return undefined;
     }
     return child;
