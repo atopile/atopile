@@ -1,0 +1,20 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component UNI_ROYAL_0805W8F300KT5E_package:
+    """3Ω (3R00) ±1%"""
+
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C17660", date="2025-08-26T19:11:08.185642+00:00", checksum="b366e32618c9bacf5537faa06c13dc66e87815562b6f1877e683aee7416d89a7">
+
+    trait is_atomic_part<manufacturer="UNI-ROYAL", partnumber="0805W8F300KT5E", footprint="R0805.kicad_mod", symbol="0805W8F300KT5E.kicad_sym", model="R0805_L2.0-W1.3-H0.6.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C17660", manufacturer="UNI-ROYAL", partno="0805W8F300KT5E">
+    trait has_designator_prefix<prefix="R">
+
+    # pins
+    pin 2
+    pin 1

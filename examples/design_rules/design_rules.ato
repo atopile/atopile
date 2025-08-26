@@ -1,4 +1,5 @@
 #pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
 
 import Resistor
 import ElectricPower
@@ -16,10 +17,30 @@ module App:
     board = new JLC4LayerBoard
     power = new ElectricPower
     r1 = new Resistor
+    r2 = new Resistor
+    r3 = new Resistor
+    r4 = new Resistor
+    r5 = new Resistor
+    r6 = new Resistor
 
-    r1.resistance = 100ohm +/- 10%
+    power.voltage = 15V
 
-    power.hv ~> r1 ~> power.lv
+    r1.resistance = 30ohm +/- 10%
+    r2.resistance = 3ohm +/- 10%
+    r3.resistance = 5ohm +/- 10%
+    r4.resistance = 7ohm +/- 10%
+    r5.resistance = 9ohm +/- 10%
+    r6.resistance = 11ohm +/- 10%
 
-    power.hv.current = 1A
-    power.lv.current = 0.5A
+
+    resistors = new Resistor[10]
+
+    for resistor in resistors:
+        resistor.resistance = 100ohm +/- 10%
+        power.hv ~> resistor ~> power.lv
+
+    for resistor in [r1, r2, r3, r4, r5, r6]:
+        resistor.package = "1206"
+
+    power.hv ~> r1 ~> r2 ~> power.lv
+    power.hv ~> r3 ~> r4 ~> r5 ~> r6 ~> power.lv
