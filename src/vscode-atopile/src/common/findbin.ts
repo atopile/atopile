@@ -208,7 +208,7 @@ export async function runAtoCommandInTerminal(
 /**
  * Sets up ato alias in a newly created terminal
  */
-async function setupAtoAliasInTerminal(terminal: any): Promise<void> {
+async function setupAtoAliasInTerminal(terminal: vscode.Terminal): Promise<void> {
     let alias = await getAtoAlias();
     if (alias === null) {
         return;
