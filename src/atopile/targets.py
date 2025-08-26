@@ -20,11 +20,13 @@ from faebryk.exporters.netlist.netlist import make_fbrk_netlist_from_graph
 from faebryk.exporters.parameters.parameters_to_file import export_parameters_to_file
 from faebryk.exporters.pcb.kicad.artifacts import (
     KicadCliExportError,
+    export_3d_board_render,
     export_dxf,
     export_gerber,
     export_glb,
     export_pick_and_place,
     export_step,
+    export_svg,
     githash_layout,
 )
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
@@ -194,6 +196,35 @@ def generate_step(app: Module, solver: Solver) -> None:
 def generate_3d_models(app: Module, solver: Solver) -> None:
     """Generate PCBA 3D model as GLB and STEP."""
     pass
+
+
+@muster.register(name="3d-image", requires_kicad=True)
+def generate_3d_render(app: Module, solver: Solver) -> None:
+    """Generate PCBA 3D rendered image."""
+    with _githash_layout(config.build.paths.layout) as tmp_layout:
+        try:
+            export_3d_board_render(
+                tmp_layout,
+                image_file=config.build.paths.output_base.with_suffix(".pcba.png"),
+                project_dir=config.build.paths.layout.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate 3D rendered image: {e}") from e
+
+
+@muster.register(name="2d-image", requires_kicad=True)
+def generate_2d_render(app: Module, solver: Solver) -> None:
+    """Generate PCBA 2D rendered image."""
+    with _githash_layout(config.build.paths.layout) as tmp_layout:
+        try:
+            export_svg(
+                tmp_layout,
+                svg_file=config.build.paths.output_base.with_suffix(".pcba.svg"),
+                flip_board=False,
+                project_dir=config.build.paths.layout.parent,
+            )
+        except KicadCliExportError as e:
+            raise UserExportError(f"Failed to generate 2D rendered image: {e}") from e
 
 
 @muster.register("mfg-data", requires_kicad=True, dependencies=[generate_3d_models])
