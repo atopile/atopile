@@ -84,6 +84,12 @@
                     "scope": "resource",
                     "type": "boolean",
                     "default": true
+                },
+                "atopile.autoInstall": {
+                    "description": "Automatically install atopile when not found (recommended)",
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true
                 }
             }
         },
