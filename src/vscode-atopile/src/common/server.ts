@@ -1,8 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import { ConfigurationChangeEvent, Disposable, env, EventEmitter, ExtensionContext, LogOutputChannel } from 'vscode';
+import { Disposable, env, EventEmitter, ExtensionContext, LogOutputChannel } from 'vscode';
 import {
+    CloseAction,
+    ErrorAction,
     LanguageClient,
     LanguageClientOptions,
     RevealOutputChannelOn,
@@ -14,7 +16,51 @@ import { getLSClientTraceLevel, getProjectRoot } from './utilities';
 import { isVirtualWorkspace, onDidChangeConfiguration, registerCommand } from './vscodeapi';
 import { SERVER_ID } from './constants';
 import { AtoBinInfo, getAtoBin, initAtoBin, onDidChangeAtoBinInfo } from './findbin';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
+import * as cp from 'child_process';
+import { constants as fsc } from 'fs';
+
+async function trySpawn(
+    command: string,
+    args: string[],
+    options: cp.SpawnOptions,
+): Promise<cp.ChildProcess | undefined> {
+    try {
+        await fs.access(command, fsc.X_OK);
+    } catch {
+        return undefined;
+    }
+
+    const child = cp.spawn(command, args, { ...options, stdio: 'pipe' });
+    let exited = false;
+    child.once('error', () => {
+        exited = true;
+    });
+    child.once('exit', () => {
+        exited = true;
+    });
+
+    child.stderr.on('data', (data) => {
+        traceError(`LSP stderr: ${data}`);
+    });
+
+    // Wait for either the process to exit or a 2 second timeout, whichever comes first.
+    await Promise.race([
+        new Promise<void>((resolve) => {
+            if (exited) {
+                resolve();
+            } else {
+                child.once('exit', resolve);
+                child.once('error', resolve);
+            }
+        }),
+        new Promise((resolve) => setTimeout(resolve, 2000)),
+    ]);
+    if (exited) {
+        return undefined;
+    }
+    return child;
+}
 
 async function _runServer(
     ato_path: string[],
@@ -22,23 +68,22 @@ async function _runServer(
     serverId: string,
     serverName: string,
     outputChannel: LogOutputChannel,
-): Promise<LanguageClient> {
+): Promise<LanguageClient | undefined> {
     const command = ato_path[0];
-    const cwd = settings.cwd;
     const args = [...ato_path.slice(1), 'lsp', 'start'];
+    const envp = { ...process.env, ATO_NON_INTERACTIVE: 'y' };
 
-    traceInfo(`Server run command: ${[command, ...args].join(' ')}`);
+    // 🔑 preflight + self-spawn
+    traceInfo(`LSP: Running ${command} ${args.join(' ')} in ${settings.cwd}.`);
+    const child = await trySpawn(command, args, { cwd: settings.cwd, env: envp });
+    if (!child) {
+        traceError(`LSP: preflight/spawn failed; not starting client.`);
+        return undefined; // no client => no “couldn't create connection” toast
+    }
 
-    // need to run in non-interactive mode
-    const env = { ...process.env, ATO_NON_INTERACTIVE: 'y' };
+    // Hand the already-running process to the client (never rejects)
+    const serverOptions: ServerOptions = () => Promise.resolve(child);
 
-    const serverOptions: ServerOptions = {
-        command,
-        args,
-        options: { cwd, env: env },
-    };
-
-    // Options to control the language client
     const clientOptions: LanguageClientOptions = {
         // Register the server for ato files
         // TODO: why the difference if virtual
@@ -52,7 +97,16 @@ async function _runServer(
               ],
         outputChannel: outputChannel,
         traceOutputChannel: outputChannel,
+        // Don't be annoying on LSP crash
         revealOutputChannelOn: RevealOutputChannelOn.Never,
+        connectionOptions: {
+            maxRestartCount: 0,
+        },
+        errorHandler: {
+            error: () => ({ action: ErrorAction.Shutdown, handled: true }),
+            closed: () => ({ action: CloseAction.DoNotRestart, handled: true }),
+        },
+        initializationFailedHandler: () => false, // don’t try to re-init on init failure
     };
 
     return new LanguageClient(serverId, serverName, serverOptions, clientOptions);
@@ -79,9 +133,13 @@ export async function startOrRestartServer(
         traceError(`Server: ato not found. Make sure the extension is properly installed.`);
         return undefined;
     }
-
+    traceInfo(`Server: Requesting start with ato from ${ato_path.source}.`);
     const newLSClient = await _runServer(ato_path.command, workspaceSetting, serverId, serverName, outputChannel);
-    traceInfo(`Server: Start requested with ato from ${ato_path.source}.`);
+    if (!newLSClient) {
+        traceError(`Server: Could not start server.`);
+        return undefined;
+    }
+
     _disposables.push(
         newLSClient.onDidChangeState((e) => {
             traceVerbose(`Server State: ${e.newState}`);
