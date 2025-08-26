@@ -5,8 +5,46 @@ import logging
 import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.libs.library import L
+from faebryk.libs.units import P
+from faebryk.libs.util import times
 
 logger = logging.getLogger(__name__)
+
+
+class DifferentialSignal(ModuleInterface):
+    pair: F.DifferentialPair
+    timing_delay = L.p_field(units=P.ps)
+    single_ended_impedance = L.p_field(units=P.Ω)
+    differential_impedance = L.p_field(units=P.Ω)
+
+    def __preinit__(self):
+        self.pair.n.line.impedance.alias_is(self.single_ended_impedance)
+        self.pair.p.line.impedance.alias_is(self.single_ended_impedance)
+
+
+class DifferentialSignals(ModuleInterface):
+    """
+    DifferentialSignals is a module that contains a list of DifferentialSignals
+    - all pairs have the same impedance and delay
+    """
+
+    inter_pair_delay = L.p_field(units=P.ps)
+    intra_pair_delay = L.p_field(units=P.ps)
+    single_ended_impedance = L.p_field(units=P.Ω)
+    differential_impedance = L.p_field(units=P.Ω)
+
+    @L.rt_field
+    def pairs(self):
+        return times(self._pair_count, DifferentialSignal)
+
+    def __init__(self, pair_count: int):
+        self._pair_count = pair_count
+
+    def __preinit__(self):
+        for pair in self.pairs:
+            pair.timing_delay.alias_is(self.intra_pair_delay)
+            pair.single_ended_impedance.alias_is(self.single_ended_impedance)
+            pair.differential_impedance.alias_is(self.differential_impedance)
 
 
 class Ethernet(ModuleInterface):
@@ -15,11 +53,17 @@ class Ethernet(ModuleInterface):
     """
 
     # Ethernet pairs
-    pairs = L.list_field(4, F.DifferentialPair)
+    pairs = L.f_field(DifferentialSignals)(pair_count=4)
 
     # Status LEDs
     led_speed: F.ElectricLogic  # Speed LED
     led_link: F.ElectricLogic  # Link LED
+
+    def __preinit__(self):
+        self.pairs.single_ended_impedance.constrain_subset(L.Range(45 * P.Ω, 55 * P.Ω))
+        self.pairs.differential_impedance.constrain_subset(L.Range(90 * P.Ω, 100 * P.Ω))
+        self.pairs.inter_pair_delay.constrain_subset(L.Range(0.5 * P.ps, 1.5 * P.ps))
+        self.pairs.intra_pair_delay.constrain_subset(L.Range(0.5 * P.ps, 1.5 * P.ps))
 
     @L.rt_field
     def single_electric_reference(self):

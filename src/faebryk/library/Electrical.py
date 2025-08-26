@@ -5,6 +5,7 @@ import faebryk.library._F as F
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
 from faebryk.libs.library import L
+from faebryk.libs.units import P
 
 
 class Electrical(ModuleInterface):
@@ -12,7 +13,9 @@ class Electrical(ModuleInterface):
     Electrical interface.
     """
 
-    # potential= L.p_field(units=P.dimensionless)
+    potential = L.p_field(units=P.V)
+    impedance = L.p_field(units=P.Ω)
+    current = L.p_field(units=P.A)
 
     def get_net(self):
         from faebryk.library.Net import Net

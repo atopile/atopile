@@ -1,0 +1,9 @@
+requires-atopile: ^0.9.0
+
+paths:
+  src: .
+  layout: ./layout
+
+builds:
+  default:
+    entry: design_rules.ato:App
