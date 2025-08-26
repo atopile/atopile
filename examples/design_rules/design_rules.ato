@@ -10,7 +10,7 @@ module Board:
 
 module JLC4LayerBoard from Board:
     stackup = new JLC4Layer
-    manufacutring_rules = new JLC4LayerRules
+    # manufacutring_rules = new JLC4LayerRules
 
 module App:
     board = new JLC4LayerBoard
