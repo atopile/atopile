@@ -4,10 +4,11 @@
 import logging
 from pathlib import Path
 
-import requests
+from httpx import RequestError
 
 import faebryk.library._F as F
 from faebryk.core.module import Module
+from faebryk.libs.http import http_client
 
 logger = logging.getLogger(__name__)
 
@@ -67,9 +68,10 @@ def _download_datasheet(url: str, path: Path):
         user_agent_headers = {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/50.0.2661.102 Safari/537.36"  # noqa: E501
         }
-        response = requests.get(url, headers=user_agent_headers)
-        response.raise_for_status()
-    except requests.RequestException as e:
+        with http_client(headers=user_agent_headers) as client:
+            response = client.get(url)
+            response.raise_for_status()
+    except RequestError as e:
         raise DatasheetDownloadException(
             f"Failed to download datasheet from {url}: {e}"
         ) from e
