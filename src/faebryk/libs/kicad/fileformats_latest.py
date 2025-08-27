@@ -215,9 +215,8 @@ class C_kicad_drc_report_file(JSON_File):
     unknown: CatchAll = None
 
 
-@dataclass_json(undefined=Undefined.INCLUDE)
 @dataclass
-class C_kicad_dru_file(JSON_File):
+class C_kicad_dru_file(SEXP_File):
     # https://docs.kicad.org/8.0/en/pcbnew/pcbnew.html#custom-design-rules
 
     @dataclass
