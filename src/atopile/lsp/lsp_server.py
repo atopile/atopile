@@ -113,6 +113,12 @@ class URIProtocol(Protocol):
 
 
 def get_file(uri: str) -> Path:
+    try:
+        path = Path(uri)
+        if path.exists():
+            return path
+    except Exception:
+        pass
     document = LSP_SERVER.workspace.get_text_document(uri)
     return Path(document.path)
 
@@ -219,7 +225,11 @@ def _build_document(uri: str, text: str) -> None:
     file_path = get_file(uri)
     log_warning(f"rebuilding document {uri}")
 
-    init_atopile_config(file_path.parent)
+    try:
+        init_atopile_config(file_path.parent)
+    except Exception as e:
+        log_warning(f"Error initializing atopile config: {e}")
+        pass
 
     context = front_end.bob.index_text(text, file_path)
 
@@ -468,7 +478,7 @@ def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
     return completion_items
 
 
-def _build_incomplete_document(uri: str) -> None:
+def _build_incomplete_document(uri: str, text: str) -> None:
     """
     Create a temporary version of the document with the incomplete line removed
     This allows us to build the document even when the user is typing
@@ -476,9 +486,7 @@ def _build_incomplete_document(uri: str) -> None:
     """
 
     # Get the current document content
-    document = LSP_SERVER.workspace.get_text_document(uri)
-
-    lines = document.source.split("\n")
+    lines = text.split("\n")
     temp_lines = []
 
     for i, line in enumerate(lines):
@@ -509,18 +517,19 @@ def _get_node_from_row(uri: str, row: int) -> Node | None:
     Get the node from the row of the document.
     """
     file_path = get_file(uri)
+    pos = front_end.Position(str(file_path), row + 1, 0)
 
     graphs = GRAPHS.get(uri, {})
     for root_node in graphs.values():
         if t := root_node.get_trait(front_end.from_dsl):
-            if front_end.Span.from_ctx(t.src_ctx).contains(
-                front_end.Position(str(file_path), row + 1, 0)
-            ):
+            if front_end.Span.from_ctx(t.src_ctx).contains(pos):
                 return root_node
     return None
 
 
-def _find_field_reference_node(uri: str, field_ref_str: str, row: int) -> Node | None:
+def _find_field_reference_node(
+    uri: str, text: str, field_ref_str: str, row: int
+) -> Node | None:
     """
     Find the node corresponding to a field reference string in the given document.
     Uses from_dsl trait to find the specific context node at the cursor position.
@@ -528,7 +537,7 @@ def _find_field_reference_node(uri: str, field_ref_str: str, row: int) -> Node |
     try:
         # Build the document if needed
         try:
-            _build_incomplete_document(uri)
+            _build_incomplete_document(uri, text)
         except Exception as e:
             log_error(f"Failed to build document for completion: {e}")
             # Even if build fails, continue -
@@ -602,7 +611,10 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
 
         # Find the node corresponding to this field reference
         target_node = _find_field_reference_node(
-            params.text_document.uri, field_ref_str, params.position.line
+            params.text_document.uri,
+            document.source,
+            field_ref_str,
+            params.position.line,
         )
 
         if not target_node:
