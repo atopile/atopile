@@ -155,10 +155,13 @@ def save_part_info_to_pcb(G: Graph):
             node.add(F.has_descriptive_properties_defined({key: value}))
 
 
-def save_picks_to_design(G: Graph, picks_file_path: Path):
-    """
-    Save picks to design.
-    """
+def load_picks_from_file(app: Module, picks_file_path: Path):
+    from atopile.front_end import bob
+
+    bob.append_statements(picks_file_path.read_text(), picks_file_path, app)
+
+
+def save_picks_to_file(G: Graph, picks_file_path: Path):
     nodes = GraphFunctions(G).nodes_with_trait(F.has_part_picked)
 
     picks: dict[str, PickedPart] = {}
