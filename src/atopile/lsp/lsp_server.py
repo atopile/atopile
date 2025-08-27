@@ -19,7 +19,7 @@ from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
 from atopile.config import find_project_dir
-from atopile.datatypes import TypeRef
+from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
@@ -217,6 +217,8 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
 
 def _build_document(uri: str, text: str) -> None:
     file_path = get_file(uri)
+    log_warning(f"rebuilding document {uri}")
+
     init_atopile_config(file_path.parent)
 
     context = front_end.bob.index_text(text, file_path)
@@ -361,6 +363,282 @@ def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | N
                     target_selection_range=_span_to_lsp_range(target_selection_span),
                     origin_selection_range=_span_to_lsp_range(origin_span),
                 )
+
+
+def _extract_field_reference_before_dot(line: str, position: int) -> str | None:
+    """
+    Extract a field reference before a dot at the given position.
+    For example, if line is "mymodule.instance." and position is at the end,
+    returns "mymodule.instance".
+
+    This function handles two cases:
+    1. Cursor right after dot: "resistor.|" (position after dot)
+    2. Cursor after typing: "resistor.res|" (position after partial text)
+    """
+    # Check if we're right after a dot
+    if position > 0 and position <= len(line) and line[position - 1] == ".":
+        # We're right after a dot, extract the field reference before it
+        dot_position = position - 1
+    else:
+        # Look backwards to find the most recent dot
+        dot_position = -1
+        for i in range(min(position - 1, len(line) - 1), -1, -1):
+            if line[i] == ".":
+                dot_position = i
+                break
+
+        if dot_position == -1:
+            return None
+
+    # Find the start of the field reference by walking backwards from the dot
+    start = dot_position
+    while start > 0:
+        char = line[start - 1]
+        # Allow alphanumeric, dots, underscores, and brackets in field references
+        if char.isalnum() or char in "._[]":
+            start -= 1
+        else:
+            break
+
+    field_ref = line[start:dot_position].strip()
+    return field_ref if field_ref else None
+
+
+def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
+    """
+    Extract completion items from a faebryk node.
+    Returns parameters, sub-modules, and interfaces as completion items.
+    """
+    from faebryk.core.module import Module
+    from faebryk.core.moduleinterface import ModuleInterface
+    from faebryk.core.parameter import Parameter
+
+    completion_items = []
+
+    try:
+        # Get all child nodes using the node's get_children method
+        children = node.get_children(direct_only=True, types=Node)
+
+        for child in children:
+            try:
+                # Get the child's name from its parent relationship
+                child_name = child.get_name()
+                class_name = child.__class__.__name__
+
+                # don't show anonymous children
+                if child in node.runtime_anon:
+                    continue
+
+                # don't show internal children
+                if child_name.startswith("_"):
+                    continue
+
+                # Determine the completion item kind based on the node type
+                if isinstance(child, Module):
+                    kind = lsp.CompletionItemKind.Field
+                    detail = f"Module: {class_name}"
+                elif isinstance(child, ModuleInterface):
+                    kind = lsp.CompletionItemKind.Interface
+                    detail = f"Interface: {class_name}"
+                elif isinstance(child, Parameter):
+                    kind = lsp.CompletionItemKind.Variable
+                    detail = f"Parameter: {child.units}"
+                else:
+                    continue
+
+                completion_items.append(
+                    lsp.CompletionItem(
+                        label=child_name,
+                        kind=kind,
+                        detail=detail,
+                        documentation=lsp.MarkupContent(
+                            kind=lsp.MarkupKind.Markdown,
+                            value=f"**{child_name}**: {detail}",
+                        ),
+                    )
+                )
+
+            except Exception:
+                # Skip children that can't be accessed or named
+                continue
+
+    except Exception as e:
+        log_error(f"Error extracting completions from node: {e}")
+
+    return completion_items
+
+
+def _build_incomplete_document(uri: str) -> None:
+    """
+    Create a temporary version of the document with the incomplete line removed
+    This allows us to build the document even when the user is typing
+    an incomplete expression
+    """
+
+    # Get the current document content
+    document = LSP_SERVER.workspace.get_text_document(uri)
+
+    lines = document.source.split("\n")
+    temp_lines = []
+
+    for i, line in enumerate(lines):
+        # If this line ends with a dot and has no content after it,
+        # or if it's the line causing completion, skip it for building
+        if line.strip().endswith(".") and not line.strip().endswith(".."):
+            # Check if there's anything meaningful after the dot
+            after_dot = line.split(".")[-1].strip()
+            if (
+                not after_dot
+                or not after_dot.replace("_", "")
+                .replace("[", "")
+                .replace("]", "")
+                .replace("0123456789", "")
+                .isalnum()
+            ):
+                # log_warning(f"Skipping incomplete line for build: '{line.strip()}'")
+                continue
+        temp_lines.append(line)
+
+    temp_source = "\n".join(temp_lines)
+
+    _build_document(uri, temp_source)
+
+
+def _get_node_from_row(uri: str, row: int) -> Node | None:
+    """
+    Get the node from the row of the document.
+    """
+    file_path = get_file(uri)
+
+    graphs = GRAPHS.get(uri, {})
+    for root_node in graphs.values():
+        if t := root_node.get_trait(front_end.from_dsl):
+            if front_end.Span.from_ctx(t.src_ctx).contains(
+                front_end.Position(str(file_path), row + 1, 0)
+            ):
+                return root_node
+    return None
+
+
+def _find_field_reference_node(uri: str, field_ref_str: str, row: int) -> Node | None:
+    """
+    Find the node corresponding to a field reference string in the given document.
+    Uses from_dsl trait to find the specific context node at the cursor position.
+    """
+    try:
+        # Build the document if needed
+        try:
+            _build_incomplete_document(uri)
+        except Exception as e:
+            log_error(f"Failed to build document for completion: {e}")
+            # Even if build fails, continue -
+            #  we might have cached graphs from previous builds
+            pass
+
+        # Use from_dsl trait to find the node that contains the cursor position
+        context_node = _get_node_from_row(uri, row)
+
+        if not context_node:
+            log_warning("No node found containing field ref")
+            return None
+
+        # Parse the field reference string into a FieldRef object
+        parts = []
+        for part_str in field_ref_str.split("."):
+            if "[" in part_str and "]" in part_str:
+                # Handle array indexing like "resistors[0]"
+                name, key_part = part_str.split("[", 1)
+                key = key_part.rstrip("]")
+                # Try to convert key to int if possible
+                try:
+                    key = int(key)
+                except ValueError:
+                    pass
+                parts.append(ReferencePartType(name, key))
+            else:
+                parts.append(ReferencePartType(part_str))
+
+        field_ref = FieldRef(parts)
+
+        try:
+            # Use the Bob instance to resolve the field reference
+            bob_instance = front_end.bob
+            resolved_field = bob_instance.resolve_node_field(context_node, field_ref)
+
+            # If it's a node, return it
+            if isinstance(resolved_field, Node):
+                return resolved_field
+
+        except (AttributeError, TypeError, ValueError) as e:
+            log_warning(f"Failed to resolve field reference: {e}")
+
+    except Exception as e:
+        log_error(f"Error resolving field reference '{field_ref_str}': {e}")
+
+    return None
+
+
+@LSP_SERVER.feature(
+    lsp.TEXT_DOCUMENT_COMPLETION,
+    lsp.CompletionOptions(
+        trigger_characters=["."],
+        resolve_provider=False,
+    ),
+)
+def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList | None:
+    """Handle document completion request for field references ending with '.'"""
+    try:
+        document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+        line = utils.cursor_line(document, params.position)
+
+        # Extract field reference before the dot
+        field_ref_str = _extract_field_reference_before_dot(
+            line, params.position.character
+        )
+
+        if not field_ref_str:
+            log_warning("No field reference found")
+            return None
+
+        # Find the node corresponding to this field reference
+        target_node = _find_field_reference_node(
+            params.text_document.uri, field_ref_str, params.position.line
+        )
+
+        if not target_node:
+            log_warning("No target node found")
+            return None
+
+        # Get completion items from the node
+        completion_items = _get_node_completions(target_node)
+
+        # Filter completion items if user has already started typing after the dot
+        typed_text = ""
+        if params.position.character < len(line):
+            # Look for any text after the most recent dot
+            dot_pos = -1
+            for i in range(params.position.character - 1, -1, -1):
+                if line[i] == ".":
+                    dot_pos = i
+                    break
+
+            if dot_pos != -1 and dot_pos + 1 < params.position.character:
+                typed_text = line[dot_pos + 1 : params.position.character].strip()
+
+        # Filter items if user has started typing
+        if typed_text:
+            filtered_items = [
+                item
+                for item in completion_items
+                if item.label.lower().startswith(typed_text.lower())
+            ]
+            completion_items = filtered_items
+
+        return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+    except Exception as e:
+        log_error(f"Error in completion handler: {e}")
+        return None
 
 
 # TODO: if you want to handle setting specific severity for your linter
