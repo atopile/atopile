@@ -59,7 +59,11 @@ from faebryk.libs.app.pcb import (
     check_net_names,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
+from faebryk.libs.app.picking import (
+    load_part_info_from_pcb,
+    save_part_info_to_pcb,
+    save_picks_to_design,
+)
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
@@ -277,6 +281,7 @@ def pick_parts(
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
     save_part_info_to_pcb(app.get_graph())
+    save_picks_to_design(app.get_graph(), config.project.paths.picks_file)
 
 
 @muster.register(
