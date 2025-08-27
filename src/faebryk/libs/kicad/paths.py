@@ -6,10 +6,45 @@ import sys
 from pathlib import Path
 from shutil import which
 from tempfile import gettempdir
+import subprocess
 
 import platformdirs
+from platformdirs.windows import Windows
 
 from faebryk.libs.util import find, not_none, once, try_or
+
+
+def is_wsl() -> bool:
+    """
+    Returns true if system is WSL
+    """
+    return Path('/proc/sys/fs/binfmt_misc/WSLInterop').exists()
+
+def get_windows_env_path(var) -> str:
+    """
+    Gets an environment variable path from windows as a wsl path (ie /mnt/c/...)
+
+    On error, returns "/nullpath" so Path.exists checks will fail
+    """
+    try:
+        path = subprocess.check_output(
+            f'wslpath "$(cmd.exe /C \'echo %{var}%\' 2>/dev/null | tr -d \'\\r\')"',
+            shell=True,
+            stderr=subprocess.DEVNULL,
+            text=True
+        ).strip()
+        return path
+    except subprocess.CalledProcessError:
+        return "/nullpath"
+
+@once
+def load_windows_env_in_wsl():
+    """
+    Loads windows path variables needed for platformdirs to evaluate windows paths correctly.
+    """
+    if is_wsl():
+        for var in {"APPDATA", "LOCALAPPDATA", "USERPROFILE"}:
+            os.environ.update({var: get_windows_env_path(var)})
 
 # @kicad10
 KICAD_VERSION = "9.0"
@@ -49,6 +84,11 @@ match sys.platform:
 def find_pcbnew() -> Path:
     """Figure out what to call for the pcbnew CLI."""
     if sys.platform.startswith("linux"):
+        if is_wsl():
+            path = Path(get_windows_env_path("ProgramFiles")) / "KiCad" / KICAD_VERSION / "bin/pcbnew.exe" 
+            if path.exists():
+                return path
+
         path = which("pcbnew")
         if path is None:
             raise FileNotFoundError("Could not find pcbnew executable")
@@ -60,30 +100,28 @@ def find_pcbnew() -> Path:
         base = Path(not_none(os.getenv("ProgramFiles"))) / "KiCad"
     else:
         raise NotImplementedError(f"Unsupported platform: {sys.platform}")
-
     if path := list(base.glob("**/pcbnew")):
         # TODO: find the best version
         return path[0]
-
     raise FileNotFoundError("Could not find pcbnew executable")
 
 
 @once
 def get_config_path():
+    load_windows_env_in_wsl()
     kicad_config_search_path = [
         # linux
         platformdirs.user_config_dir("kicad", roaming=True),
         # windows
         Path(platformdirs.user_config_dir("kicad", roaming=True)).parent,
+        Path(Windows("kicad", roaming=True).user_config_dir).parent,
         # macos
         "~/Library/Preferences/kicad/",
     ]
-
     mapped_paths = [
         (Path(p).expanduser().resolve() / KICAD_VERSION)
         for p in kicad_config_search_path
     ]
-
     return find(
         mapped_paths,
         lambda p: p.exists(),
@@ -104,10 +142,13 @@ def get_config_common():
 
 
 def get_plugin_paths(legacy: bool = False):
+    load_windows_env_in_wsl()
     kicad_config_search_path = [
         # windows / macos
         Path(platformdirs.user_documents_dir()) / "KiCad",
+        Path(Windows().user_documents_dir) / "KiCad",
         "~/OneDrive/Documents/KiCad/",
+        Path(Windows().user_documents_dir).parent / "OneDrive/Documents/KiCad",
         # linux
         platformdirs.user_data_dir("kicad"),
     ]
@@ -154,5 +195,7 @@ def get_ipc_socket_path():
     # windows / linux
     if sys.platform.startswith("win"):
         return Path(gettempdir()) / "kicad"
+    elif is_wsl():
+        return Path(Windows("kicad").user_runtime_dir)
     # macos / linux
     return Path("/tmp") / "kicad"
