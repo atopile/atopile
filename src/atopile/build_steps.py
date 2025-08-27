@@ -670,13 +670,9 @@ def default(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) 
     "all",
     aliases=["*"],
     dependencies=[
-        generate_bom,
-        generate_netlist,
+        default,
         generate_manufacturing_data,
         generate_3d_models,
-        generate_i2c_tree,
-        generate_variable_report,
-        generate_manifest,
     ],
     virtual=True,
 )
