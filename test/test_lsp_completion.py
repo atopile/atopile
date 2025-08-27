@@ -102,11 +102,11 @@ class TestNodeCompletions:
             (
                 F.Resistor,
                 {
-                    "resistance": lsp.CompletionItemKind.Variable,
+                    "resistance": lsp.CompletionItemKind.Unit,
                     "unnamed[0]": lsp.CompletionItemKind.Interface,
                     "unnamed[1]": lsp.CompletionItemKind.Interface,
-                    "max_power": lsp.CompletionItemKind.Variable,
-                    "max_voltage": lsp.CompletionItemKind.Variable,
+                    "max_power": lsp.CompletionItemKind.Unit,
+                    "max_voltage": lsp.CompletionItemKind.Unit,
                 },
             ),
             (

@@ -464,7 +464,7 @@ def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
                     kind = lsp.CompletionItemKind.Interface
                     detail = f"Interface: {class_name}"
                 elif isinstance(child, Parameter):
-                    kind = lsp.CompletionItemKind.Variable
+                    kind = lsp.CompletionItemKind.Unit
                     detail = f"Parameter: {child.units}"
                 else:
                     continue
@@ -600,69 +600,83 @@ def _find_field_reference_node(
     return None
 
 
+def _handle_dot_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    # Extract field reference before the dot
+    field_ref_str = _extract_field_reference_before_dot(line, params.position.character)
+
+    if not field_ref_str:
+        log_warning("No field reference found")
+        return None
+
+    # Find the node corresponding to this field reference
+    target_node = _find_field_reference_node(
+        params.text_document.uri,
+        document.source,
+        field_ref_str,
+        params.position.line,
+    )
+
+    if not target_node:
+        log_warning("No target node found")
+        return None
+
+    # Get completion items from the node
+    completion_items = _get_node_completions(target_node)
+
+    # Filter completion items if user has already started typing after the dot
+    typed_text = ""
+    if params.position.character < len(line):
+        # Look for any text after the most recent dot
+        dot_pos = -1
+        for i in range(params.position.character - 1, -1, -1):
+            if line[i] == ".":
+                dot_pos = i
+                break
+
+        if dot_pos != -1 and dot_pos + 1 < params.position.character:
+            typed_text = line[dot_pos + 1 : params.position.character].strip()
+
+    # Filter items if user has started typing
+    if typed_text:
+        filtered_items = [
+            item
+            for item in completion_items
+            if item.label.lower().startswith(typed_text.lower())
+        ]
+        completion_items = filtered_items
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_new_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    log_warning("new keyword completion")
+    return None
+
+
 @LSP_SERVER.feature(
     lsp.TEXT_DOCUMENT_COMPLETION,
     lsp.CompletionOptions(
-        trigger_characters=["."],
+        trigger_characters=[".", "new"],
         resolve_provider=False,
     ),
 )
 def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList | None:
-    """Handle document completion request for field references ending with '.'"""
+    """Handle document completion request for field references ending with '.'
+    and type completion after 'new'"""
     try:
         document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
         line = utils.cursor_line(document, params.position)
-        char = line[params.position.character - 1]
-        if char != ".":
-            return None
 
-        # Extract field reference before the dot
-        field_ref_str = _extract_field_reference_before_dot(
-            line, params.position.character
-        )
-
-        if not field_ref_str:
-            log_warning("No field reference found")
-            return None
-
-        # Find the node corresponding to this field reference
-        target_node = _find_field_reference_node(
-            params.text_document.uri,
-            document.source,
-            field_ref_str,
-            params.position.line,
-        )
-
-        if not target_node:
-            log_warning("No target node found")
-            return None
-
-        # Get completion items from the node
-        completion_items = _get_node_completions(target_node)
-
-        # Filter completion items if user has already started typing after the dot
-        typed_text = ""
-        if params.position.character < len(line):
-            # Look for any text after the most recent dot
-            dot_pos = -1
-            for i in range(params.position.character - 1, -1, -1):
-                if line[i] == ".":
-                    dot_pos = i
-                    break
-
-            if dot_pos != -1 and dot_pos + 1 < params.position.character:
-                typed_text = line[dot_pos + 1 : params.position.character].strip()
-
-        # Filter items if user has started typing
-        if typed_text:
-            filtered_items = [
-                item
-                for item in completion_items
-                if item.label.lower().startswith(typed_text.lower())
-            ]
-            completion_items = filtered_items
-
-        return lsp.CompletionList(is_incomplete=False, items=completion_items)
+        char = line[: params.position.character]
+        log_warning(f"on_document_completion: '{char}'")
+        if char.endswith("."):
+            return _handle_dot_completion(params, line, document)
+        elif char.endswith("new"):
+            return _handle_new_keyword_completion(params, line, document)
 
     except Exception as e:
         log_error(f"Error in completion handler: {e}")
