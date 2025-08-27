@@ -1,6 +1,7 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
+import threading
 import time
 import unittest
 from itertools import combinations
@@ -13,6 +14,7 @@ from faebryk.libs.util import (
     SharedReference,
     assert_once,
     complete_type_string,
+    debounce,
     invert_dict,
     list_match,
     once,
@@ -377,3 +379,27 @@ def test_list_match(base, match, expected):
 )
 def test_path_replace(base, match, replacement, expected):
     assert path_replace(base, match, replacement) == expected
+
+
+def test_debounce():
+    calls = []
+
+    DEBOUNCE = 0.5
+
+    @debounce(DEBOUNCE)
+    def do():
+        calls.append(time.time())
+
+    do()
+    t = do()
+    do()
+    do()
+
+    assert isinstance(t, threading.Thread)
+    t.join()
+
+    assert len(calls) == 2
+
+    diffs = [calls[i] - calls[i - 1] for i in range(1, len(calls))]
+    print(diffs)
+    assert all(diff >= DEBOUNCE for diff in diffs)

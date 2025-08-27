@@ -16,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from abc import abstractmethod
@@ -2828,3 +2829,50 @@ def match_iterables[T, U](
         raise ValueError("All iterables must have unique keys")
     dicts = [{k: vs[0] for k, vs in d.items()} for d in multi_dicts]
     return zip_dicts_by_key(*dicts)  # type: ignore
+
+
+def debounce(delay: float) -> Callable:
+    """
+    Debounce a function to prevent it from being called more than once within a given
+    delay.
+    If the function is called again within the delay, the last call will be canceled and
+    the function will be called only once after the delay.
+    """
+
+    def _decorator(func: Callable) -> Callable:
+        last_call = 0
+        waiting = False
+
+        def _debounced(*args, **kwargs):
+            nonlocal last_call
+            nonlocal waiting
+
+            if waiting:
+                return
+
+            time_passed = time.time() - last_call
+            if time_passed > delay:
+                last_call = time.time()
+                return func(*args, **kwargs)
+
+            waiting = True
+
+            def _run(*args, **kwargs):
+                nonlocal waiting
+                nonlocal last_call
+                time.sleep(delay - time_passed)
+                waiting = False
+                last_call = time.time()
+                func(*args, **kwargs)
+
+            thread = threading.Thread(
+                target=_run,
+                args=args,
+                kwargs=kwargs,
+            )
+            thread.start()
+            return thread
+
+        return _debounced
+
+    return _decorator

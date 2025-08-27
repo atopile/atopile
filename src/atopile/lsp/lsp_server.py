@@ -25,6 +25,7 @@ from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
 from faebryk.core.node import Node
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
+from faebryk.libs.util import debounce
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
@@ -227,8 +228,8 @@ def _build_document(uri: str, text: str) -> None:
 
     try:
         init_atopile_config(file_path.parent)
-    except Exception as e:
-        log_warning(f"Error initializing atopile config: {e}")
+    except Exception:
+        # log_warning(f"Error initializing atopile config: {e}")
         pass
 
     context = front_end.bob.index_text(text, file_path)
@@ -310,22 +311,34 @@ def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     )
 
 
+# TODO debounce per file
+@debounce(2)
+def _handle_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
+    try:
+        _build_document(
+            params.text_document.uri,
+            LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
+        )
+        LSP_SERVER.publish_diagnostics(
+            params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        )
+    except Exception:
+        pass
+
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """Handle document change request."""
-    _build_document(
-        params.text_document.uri,
-        LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
-    )
-    # TODO: debounce
-    LSP_SERVER.publish_diagnostics(
-        params.text_document.uri, _get_diagnostics(params.text_document.uri)
-    )
+    _handle_document_did_change(params)
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     """Handle document save request."""
+    _build_document(
+        params.text_document.uri,
+        LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
+    )
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
@@ -599,6 +612,9 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
     try:
         document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
         line = utils.cursor_line(document, params.position)
+        char = line[params.position.character - 1]
+        if char != ".":
+            return None
 
         # Extract field reference before the dot
         field_ref_str = _extract_field_reference_before_dot(
