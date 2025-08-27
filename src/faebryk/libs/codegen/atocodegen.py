@@ -32,6 +32,11 @@ class _StrBuilder:
         return self.out
 
 
+def _quote(s: str) -> str:
+    # TODO: escape quotes in string
+    return f'"{s}"'
+
+
 class AtoCodeGen:
     """
     This is the ghetto version of my other ato code generator that is not upstream.
@@ -119,6 +124,19 @@ class AtoCodeGen:
             return [cls(line) for line in lines]
 
     @dataclass
+    class Assignment(Statement):
+        address: str
+        value: str
+        attribute: str | None = None
+
+        def dump_stmt(self) -> str:
+            left = (
+                f"{self.address}.{self.attribute}" if self.attribute else self.address
+            )
+
+            return f"{left} = {self.value}"
+
+    @dataclass
     class ComponentFile:
         identifier: str | None = None
         imports: set["AtoCodeGen.Import"] = field(default_factory=set)
@@ -173,7 +191,7 @@ class AtoCodeGen:
                 self.imports.add(AtoCodeGen.Import(name))
 
             trait = AtoCodeGen.Trait(
-                name,
+                name=name,
                 args={k: v for k, v in args.items() if v is not None},
                 constructor=constructor,
             )
@@ -190,3 +208,40 @@ class AtoCodeGen:
                 self.add_stmt(AtoCodeGen.Spacer())
             for stmt in stmts:
                 self.add_stmt(stmt)
+
+    @dataclass
+    class PicksFile:
+        picks: list[list["AtoCodeGen.Assignment"]] = field(default_factory=list)
+
+        def dump(self) -> str:
+            out = _StrBuilder()
+            for pick in self.picks[:-1]:
+                for stmt in pick:
+                    out.append_line(stmt.dump())
+                out.spacer()
+
+            for stmt in self.picks[-1]:
+                out.append_line(stmt.dump())
+
+            return out.dump()
+
+        def add_pick(
+            self, name: str, manufacturer: str, mpn: str, lcsc_id: str | None
+        ) -> None:
+            pick_stmts = [
+                AtoCodeGen.Assignment(
+                    address=name,
+                    attribute="manufacturer",
+                    value=_quote(manufacturer),
+                ),
+                AtoCodeGen.Assignment(address=name, attribute="mpn", value=_quote(mpn)),
+            ]
+
+            if lcsc_id is not None:
+                pick_stmts.append(
+                    AtoCodeGen.Assignment(
+                        address=name, attribute="lcsc_id", value=_quote(lcsc_id)
+                    )
+                )
+
+            self.picks.append(pick_stmts)

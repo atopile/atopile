@@ -4,14 +4,19 @@
 import json
 import logging
 from enum import StrEnum
+from pathlib import Path
+
+from natsort import natsorted
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.parameter import Parameter
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+from faebryk.libs.codegen.atocodegen import AtoCodeGen
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
+from faebryk.libs.picker.picker import PickedPart
 from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import KeyErrorNotFound
 
@@ -148,3 +153,28 @@ def save_part_info_to_pcb(G: Graph):
             key = f"{Properties.param_prefix}{p.get_name()}"
             value = json.dumps(lit.serialize())
             node.add(F.has_descriptive_properties_defined({key: value}))
+
+
+def save_picks_to_design(G: Graph, picks_file_path: Path):
+    """
+    Save picks to design.
+    """
+    nodes = GraphFunctions(G).nodes_with_trait(F.has_part_picked)
+
+    picks: dict[str, PickedPart] = {}
+    for node, _ in nodes:
+        if t := node.try_get_trait(F.has_part_picked):
+            picks[node.get_full_name()] = t.get_part()
+
+    picks_file = AtoCodeGen.PicksFile()
+    for name in natsorted(picks.keys()):
+        part = picks[name]
+        picks_file.add_pick(
+            name=name,
+            manufacturer=part.manufacturer,
+            mpn=part.partno,
+            lcsc_id=part.lcsc_id if isinstance(part, PickedPartLCSC) else None,
+        )
+
+    with open(picks_file_path, "w") as f:
+        f.write(picks_file.dump())

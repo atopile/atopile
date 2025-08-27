@@ -246,6 +246,10 @@ class ProjectPaths(BaseConfigModel):
 
         super().__init__(**data)
 
+    @property
+    def picks_file(self) -> Path:
+        return self.src / "picks.ato"
+
     @model_validator(mode="after")
     def make_paths_absolute(model: "ProjectPaths") -> "ProjectPaths":
         """Make all paths absolute relative to the project root."""
