@@ -169,10 +169,6 @@ class Muster:
 
         return [self.targets[name] for name in sorted_names if name in self.targets]
 
-    def get_dependency_tree(self) -> str:
-        tree = self.dependency_dag.to_tree()
-        return tree.pretty()
-
 
 muster = Muster()
 
@@ -690,6 +686,5 @@ def all(app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage) -> N
 
 
 if __name__ == "__main__":
-    import rich
-
-    rich.print(muster.get_dependency_tree())
+    # uv run python src/atopile/build_steps.py | dot -T png | imgcat
+    print(muster.dependency_dag._to_graphviz().source)
