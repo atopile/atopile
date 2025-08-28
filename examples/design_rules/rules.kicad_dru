@@ -1,0 +1,11 @@
+(
+    (rule "current_width_default_F_Cu"
+        (layer "F.Cu")
+        (constraints
+            (
+                (min 0.1)
+                (opt 0.1)
+            )
+        )
+    )
+)
