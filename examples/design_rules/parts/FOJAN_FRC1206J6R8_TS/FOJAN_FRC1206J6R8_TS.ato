@@ -1,0 +1,18 @@
+#pragma experiment("TRAITS")
+import has_designator_prefix
+import has_part_picked
+import is_atomic_part
+import is_auto_generated
+
+component FOJAN_FRC1206J6R8_TS_package:
+    # This trait marks this file as auto-generated
+    # If you want to manually change it, remove the trait
+    trait is_auto_generated<system="ato_part", source="easyeda:C2907523", date="2025-08-26T19:15:53.226078+00:00", checksum="9dc93b3c2e441190150936bb719676282d32a157980fd28edf786de512e45af2">
+
+    trait is_atomic_part<manufacturer="FOJAN", partnumber="FRC1206J6R8 TS", footprint="R1206.kicad_mod", symbol="FRC1206J6R8TS.kicad_sym", model="R1206_L3.2-W1.6-H0.6.step">
+    trait has_part_picked::by_supplier<supplier_id="lcsc", supplier_partno="C2907523", manufacturer="FOJAN", partno="FRC1206J6R8 TS">
+    trait has_designator_prefix<prefix="R">
+
+    # pins
+    pin 2
+    pin 1

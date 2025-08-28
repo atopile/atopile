@@ -167,6 +167,186 @@ def _update_layout(
         pcb_file.dumps(config.build.paths.layout)
 
 
+def _sync_kicad_stackup_from_ato(app: Module, pcb: F.PCB) -> None:
+    """Update KiCad board stackup from the first F.Stackup found in the design."""
+    try:
+        stackups = app.get_children_modules(direct_only=False, types=F.Stackup)
+    except Exception:
+        stackups = []
+    if not stackups:
+        return
+
+    stackup = next(iter(stackups))
+
+    # Collect copper layer indices in order
+    copper_indices: list[int] = []
+    fr4_indices: set[int] = set()
+    mask_top_idx: int | None = None
+
+    def _get_literal(x, default=None):
+        try:
+            lit = x.get_literal()
+            return lit
+        except Exception as e:
+            # Try alternative methods to get the value
+            try:
+                # For Parameter objects with get_most_narrow
+                if hasattr(x, "get_most_narrow"):
+                    mn = x.get_most_narrow()
+                    if mn is not None:
+                        return mn
+            except Exception:
+                pass
+            try:
+                # Try value attribute
+                if hasattr(x, "value"):
+                    return x.value
+            except Exception:
+                pass
+            try:
+                # Try to get the actual set value from the parameter
+                if hasattr(x, "_value"):
+                    return x._value
+            except Exception:
+                pass
+            return default
+
+    for i, layer in enumerate(stackup.layers):
+        mat = _get_literal(layer.material, "")
+        if isinstance(mat, str):
+            m = mat.lower()
+        else:
+            m = ""
+        if m == "copper":
+            copper_indices.append(i)
+        elif m == "fr4":
+            fr4_indices.add(i)
+        elif m == "solder mask" or m == "soldermask":
+            # assume first mask encountered is top, last is bottom
+            if mask_top_idx is None:
+                mask_top_idx = i
+
+    # Build KiCad stackup layers top->bottom
+    PCB = C_kicad_pcb_file.C_kicad_pcb
+    KS = PCB.C_setup.C_stackup
+    layers = []
+
+    # Helper: thickness to mm
+    def _to_mm(val) -> float | None:
+        try:
+            from faebryk.libs.units import Quantity as _Q
+
+            if isinstance(val, _Q):
+                return float(val.to("millimeter").m)
+            if val is None:
+                return None
+            # Try to parse as string with units
+            if isinstance(val, str):
+                try:
+                    q = _Q(val)
+                    return float(q.to("millimeter").m)
+                except Exception:
+                    pass
+            # assume micrometers for plain numbers
+            f = float(val)
+            # treat > 10 as um, else maybe mm already; prefer um->mm here
+            return f / 1000.0
+        except Exception:
+            return None
+
+    # Function to add a layer entry
+    def _add(
+        name: str,
+        typ: str,
+        thickness_mm: float | None,
+        material: str | None,
+        er: float | None,
+        loss_tan: float | None = None,
+    ):
+        lyr = KS.C_layer(
+            name=name,
+            type=typ,
+            thickness=thickness_mm,
+            material=material,
+            epsilon_r=er,
+        )
+        if loss_tan is not None:
+            lyr.loss_tangent = loss_tan
+        layers.append(lyr)
+
+    # Create name mapping for copper layers
+    cu_names: list[str] = []
+    if copper_indices:
+        cu_names.append("F.Cu")
+        for k in range(1, len(copper_indices) - 1):
+            cu_names.append(f"In{k}.Cu")
+        if len(copper_indices) > 1:
+            cu_names.append("B.Cu")
+
+    # Helper: choose dielectric subtype (KiCad expects "prepreg"/"core")
+    def _dielectric_type(thickness_mm: float | None) -> str:
+        # Heuristic: >= 0.3 mm -> core, else prepreg
+        try:
+            if thickness_mm is not None and float(thickness_mm) >= 0.3:
+                return "core"
+        except Exception:
+            pass
+        return "prepreg"
+
+    # Iterate all Ato stackup layers in order and map to KiCad
+    for i, layer in enumerate(stackup.layers):
+        mat = _get_literal(layer.material, "")
+        t_lit = _get_literal(layer.thickness, None)
+        t_mm = _to_mm(t_lit)
+        m = (mat or "").lower() if isinstance(mat, str) else ""
+        if m == "solder mask" or m == "soldermask":
+            name = "F.Mask" if i == mask_top_idx else "B.Mask"
+            # KiCad expects explicit mask types for top/bottom
+            mask_type = "Top Solder Mask" if i == mask_top_idx else "Bottom Solder Mask"
+            _add(name, mask_type, t_mm or 0.01, "Solder mask", 3.3)
+        elif m == "copper":
+            # Determine copper layer name by rank
+            rank = copper_indices.index(i)
+            name = cu_names[rank] if rank < len(cu_names) else f"In{rank}.Cu"
+            _add(name, "copper", t_mm or 0.035, "Copper", None)
+        elif m == "fr4":
+            # KiCad expects dielectric entries between coppers
+            # Pull dielectric properties if specified
+            er = _get_literal(layer.epsilon_r)
+            lt = _get_literal(layer.loss_tangent)
+            _add(
+                f"dielectric {i}",
+                _dielectric_type(t_mm or 0.1),
+                t_mm or 0.1,
+                "FR4",
+                er or 4.2,
+                lt,
+            )
+        else:
+            # Unknown materials: add as dielectric with nominal values
+            er = _get_literal(getattr(layer, "epsilon_r", None))
+            lt = _get_literal(getattr(layer, "loss_tangent", None))
+            _add(
+                f"dielectric {i}",
+                _dielectric_type(t_mm or 0.1),
+                t_mm or 0.1,
+                str(mat) if mat else None,
+                er,
+                lt,
+            )
+
+    # Apply to PCB
+    if pcb.pcb_file.kicad_pcb.setup is None:
+        pcb.pcb_file.kicad_pcb.setup = PCB.C_setup()
+    pcb.pcb_file.kicad_pcb.setup.stackup = KS(layers=layers)
+    # Update overall thickness if we can sum dielectrics and coppers
+    try:
+        total = sum(layer_entry.thickness or 0 for layer_entry in layers)
+        pcb.pcb_file.kicad_pcb.general.thickness = round(float(total), 4)
+    except Exception:
+        pass
+
+
 def build(app: Module) -> None:
     """Build the project."""
 
@@ -264,6 +444,9 @@ def build(app: Module) -> None:
         original_pcb = deepcopy(pcb.pcb_file)
         pcb.transformer.apply_design()
         pcb.transformer.check_unattached_fps()
+
+        # Sync KiCad stackup from Ato Stackup before further transforms
+        _sync_kicad_stackup_from_ato(app, pcb)
 
         if transform_trait := app.try_get_trait(F.has_layout_transform):
             logger.info("Transforming PCB")

@@ -13,6 +13,13 @@ class DifferentialPair(ModuleInterface):
     p: F.ElectricSignal
     n: F.ElectricSignal
 
+    skew = L.p_field(
+        units=P.ns,
+        likely_constrained=True,
+        soft_set=L.Range(0 * P.ns, 10 * P.ns),
+        tolerance_guess=1 * P.ns,
+    )
+
     impedance = L.p_field(
         units=P.Ω,
         likely_constrained=True,

@@ -19,6 +19,8 @@ class Resistor(Module):
         F.has_designator_prefix.Prefix.R
     )
 
+    # Resistor has the same current on both sides
+
     @L.rt_field
     def pickable(self) -> F.is_pickable_by_type:
         return F.is_pickable_by_type(

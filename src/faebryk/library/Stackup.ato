@@ -1,0 +1,43 @@
+#pragma experiment("MODULE_TEMPLATING")
+
+from "stackup.py" import Stackup
+
+module App:
+    board = new JLC4Layer
+
+module JLC4Layer:
+    stackup = new Stackup<layer_count=9>
+    # Thicknesses
+    stackup.layers[0].thickness = 30.48um
+    stackup.layers[1].thickness = 35um
+    stackup.layers[2].thickness = 210um
+    stackup.layers[3].thickness = 15.2um
+    stackup.layers[4].thickness = 1.065mm
+    stackup.layers[5].thickness = 15.2um
+    stackup.layers[6].thickness = 210um
+    stackup.layers[7].thickness = 35um
+    stackup.layers[8].thickness = 30.48um
+
+    # Materials
+    stackup.layers[0].material = "Solder Mask"
+    stackup.layers[1].material = "Copper"
+    stackup.layers[2].material = "FR4"
+    stackup.layers[3].material = "Copper"
+    stackup.layers[4].material = "FR4"
+    stackup.layers[5].material = "Copper"
+    stackup.layers[6].material = "FR4"
+    stackup.layers[7].material = "Copper"
+    stackup.layers[8].material = "Solder Mask"
+
+    # Dielectric constants
+    stackup.layers[0].epsilon_r = 4.2 # Solder Mask
+    stackup.layers[2].epsilon_r = 4.2 # FR4
+    stackup.layers[4].epsilon_r = 4.2 # FR4
+    stackup.layers[6].epsilon_r = 4.2 # FR4
+    stackup.layers[8].epsilon_r = 4.2 # Solder Mask
+
+    stackup.layers[0].loss_tangent = 0.02 # Solder Mask
+    stackup.layers[2].loss_tangent = 0.02 # FR4
+    stackup.layers[4].loss_tangent = 0.02 # FR4
+    stackup.layers[6].loss_tangent = 0.02 # FR4
+    stackup.layers[8].loss_tangent = 0.02 # Solder Mask

@@ -32,6 +32,7 @@ from faebryk.exporters.pcb.kicad.artifacts import (
 from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
     convert_kicad_pick_and_place_to_jlcpcb,
 )
+from faebryk.exporters.pcb.rules.rules import export_rules
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.exceptions import accumulate
 from faebryk.libs.util import DAG
@@ -142,6 +143,12 @@ def generate_bom(app: Module, solver: Solver) -> None:
         app.get_children_modules(types=Module),
         config.build.paths.output_base.with_suffix(".bom.csv"),
     )
+
+
+@muster.register("rules")
+def generate_rules(app: Module, solver: Solver) -> None:
+    """Generate KiCad board rules (.kicad_dru) for the project."""
+    export_rules(app, solver)
 
 
 @muster.register("netlist")
@@ -312,6 +319,7 @@ def generate_i2c_tree(app: Module, solver: Solver) -> None:
     dependencies=[
         generate_bom,
         generate_netlist,
+        generate_rules,
         generate_manifest,
         generate_variable_report,
         generate_i2c_tree,
@@ -328,6 +336,7 @@ def default(app: Module, solver: Solver) -> None:
     dependencies=[
         generate_bom,
         generate_netlist,
+        generate_rules,
         generate_manufacturing_data,
         generate_3d_models,
         generate_i2c_tree,

@@ -1,0 +1,60 @@
+#pragma experiment("BRIDGE_CONNECT")
+#pragma experiment("FOR_LOOP")
+
+import Resistor
+import ElectricPower
+import Electrical
+import DifferentialPair
+from "Stackup.ato" import JLC4Layer
+
+module Board:
+    pass
+
+module JLC4LayerBoard from Board:
+    stackup = new JLC4Layer
+    # manufacutring_rules = new JLC4LayerRules
+
+module App:
+    board = new JLC4LayerBoard
+    power = new ElectricPower
+    r1 = new Resistor
+    r2 = new Resistor
+    r3 = new Resistor
+    r4 = new Resistor
+    r5 = new Resistor
+    r6 = new Resistor
+
+    power.voltage = 15V
+
+    r1.resistance = 30ohm +/- 10%
+    r2.resistance = 3ohm +/- 10%
+    r3.resistance = 5ohm +/- 10%
+    r4.resistance = 7ohm +/- 10%
+    r5.resistance = 9ohm +/- 10%
+    r6.resistance = 11ohm +/- 10%
+
+    for resistor in [r1, r2, r3, r4, r5, r6]:
+        resistor.package = "1206"
+
+    power.hv ~> r1 ~> r2 ~> power.lv
+    power.hv ~> r3 ~> r4 ~> r5 ~> r6 ~> power.lv
+
+    # # Differeintial Pair rules
+    # diff_resistor_1 = new Resistor
+    # diff_resistor_2 = new Resistor
+
+    # diff_pair = new DifferentialPair
+    # diff_pair.impedance = 100ohm +/- 10%
+    # diff_pair.p.impedance = 50ohm +/- 10%
+    # diff_pair.n.impedance = 50ohm +/- 10%
+
+    # diff_resistor_1.unnamed[0] ~ diff_pair.p.line
+    # diff_resistor_1.unnamed[1] ~ diff_pair.n.line
+
+    # diff_resistor_2.unnamed[0] ~ diff_pair.p.line
+    # diff_resistor_2.unnamed[1] ~ diff_pair.n.line
+
+    # diff_resistor_1.resistance = 100ohm +/- 10%
+    # diff_resistor_2.resistance = 100ohm +/- 10%
+
+    # diff_pair.skew = 1ps
