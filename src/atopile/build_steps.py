@@ -664,6 +664,7 @@ def generate_i2c_tree(
 
 @muster.register(
     "default",
+    aliases=["__default__"],  # for backwards compatibility
     dependencies=[
         generate_bom,
         generate_netlist,
