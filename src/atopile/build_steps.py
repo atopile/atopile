@@ -15,7 +15,12 @@ import faebryk.library._F as F
 from atopile import layout
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
-from atopile.errors import UserException, UserExportError, UserPickError
+from atopile.errors import (
+    UserBadParameterError,
+    UserException,
+    UserExportError,
+    UserPickError,
+)
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
@@ -156,6 +161,14 @@ class Muster:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
+        with accumulate() as accumulator:
+            for target in selected_targets:
+                with accumulator.collect():
+                    if target not in self.targets:
+                        raise UserBadParameterError(
+                            f"Target `{target}` not recognized."
+                        )
+
         subgraph = self.dependency_dag.get_subgraph(
             selector_func=lambda name: name in selected_targets
             or any(alias in selected_targets for alias in self.targets[name].aliases)
