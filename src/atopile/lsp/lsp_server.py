@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sys
 import traceback
 from dataclasses import dataclass, field
@@ -19,12 +20,17 @@ from typing import Any, Optional, Protocol, Sequence
 
 from atopile import front_end
 from atopile.config import find_project_dir
-from atopile.datatypes import TypeRef
+from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.core.parameter import Parameter
+from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
+from faebryk.libs.util import debounce, not_none, once
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
@@ -113,11 +119,23 @@ class URIProtocol(Protocol):
 
 
 def get_file(uri: str) -> Path:
+    try:
+        path = Path(uri)
+        if path.exists():
+            return path
+    except Exception:
+        pass
     document = LSP_SERVER.workspace.get_text_document(uri)
     return Path(document.path)
 
 
 def get_file_contents(uri: str) -> tuple[Path, str]:
+    try:
+        path = Path(uri)
+        if path.exists():
+            return path, path.read_text(encoding="utf-8")
+    except Exception:
+        pass
     document = LSP_SERVER.workspace.get_text_document(uri)
     file_path = Path(document.path)
     source_text = document.source
@@ -217,7 +235,13 @@ def _get_diagnostics(uri: str, identifier: str | None = None) -> list[lsp.Diagno
 
 def _build_document(uri: str, text: str) -> None:
     file_path = get_file(uri)
-    init_atopile_config(file_path.parent)
+    log_warning(f"rebuilding document {uri}")
+
+    try:
+        init_atopile_config(file_path.parent)
+    except Exception:
+        # log_warning(f"Error initializing atopile config: {e}")
+        pass
 
     context = front_end.bob.index_text(text, file_path)
 
@@ -298,22 +322,34 @@ def on_document_did_open(params: lsp.DidOpenTextDocumentParams) -> None:
     )
 
 
+# TODO debounce per file
+@debounce(2)
+def _handle_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
+    try:
+        _build_document(
+            params.text_document.uri,
+            LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
+        )
+        LSP_SERVER.publish_diagnostics(
+            params.text_document.uri, _get_diagnostics(params.text_document.uri)
+        )
+    except Exception:
+        pass
+
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_CHANGE)
 def on_document_did_change(params: lsp.DidChangeTextDocumentParams) -> None:
     """Handle document change request."""
-    _build_document(
-        params.text_document.uri,
-        LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
-    )
-    # TODO: debounce
-    LSP_SERVER.publish_diagnostics(
-        params.text_document.uri, _get_diagnostics(params.text_document.uri)
-    )
+    _handle_document_did_change(params)
 
 
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DID_SAVE)
 def on_document_did_save(params: lsp.DidSaveTextDocumentParams) -> None:
     """Handle document save request."""
+    _build_document(
+        params.text_document.uri,
+        LSP_SERVER.workspace.get_text_document(params.text_document.uri).source,
+    )
     LSP_SERVER.publish_diagnostics(
         params.text_document.uri, _get_diagnostics(params.text_document.uri)
     )
@@ -361,6 +397,507 @@ def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | N
                     target_selection_range=_span_to_lsp_range(target_selection_span),
                     origin_selection_range=_span_to_lsp_range(origin_span),
                 )
+
+
+def _get_available_types(
+    uri: str, text: str, current_line: int | None, local_only: bool
+) -> dict[str, Node]:
+    """
+    Get available symbols in file
+    """
+    # TODO: handle python files
+    if not uri.endswith(".ato"):
+        return {}
+
+    try:
+        # Build the document to ensure graphs are populated
+        _build_incomplete_document(uri, text, hint_current_line=current_line)
+
+        # Get all graphs for this document
+        graphs = GRAPHS.get(uri, {})
+        if not graphs:
+            return {}
+
+        node_types = {
+            typename: root
+            for root in graphs.values()
+            if not (typename := type(root).__name__).startswith("_")
+            and isinstance(root, Node)
+        }
+
+        if local_only:
+            node_types = {
+                typename: node_type
+                for typename, node_type in node_types.items()
+                if (from_dsl := node_type.get_trait(front_end.from_dsl))
+                and from_dsl.definition_ctx is None
+            }
+
+        return node_types
+
+    except Exception as e:
+        log_warning(f"Error getting available types: {e}")
+        # Fallback to empty list - user won't get completions but LSP won't crash
+
+    return {}
+
+
+def _get_importable_paths(uri: str) -> list[Path]:
+    """
+    All possible paths of ato files to import from
+    If file part of project, glob from project root else from parent dir of current file
+    """
+    file_path = get_file(uri)
+    root = file_path.parent
+
+    prj_root = find_project_dir(root)
+    if prj_root:
+        root = prj_root
+
+    ato_files = list(root.rglob("**/*.ato")) + list(root.rglob("**/*.py"))
+    ato_files = [
+        path.relative_to(root)
+        for path in ato_files
+        if path.is_file() and path != file_path
+    ]
+
+    if prj_root:
+        # remove prefix .ato/modules
+        ato_files = [
+            path if not path.parts[:2] == (".ato", "modules") else Path(*path.parts[2:])
+            for path in ato_files
+        ]
+
+    return ato_files
+
+
+def _extract_field_reference_before_dot(line: str, position: int) -> str | None:
+    """
+    Extract a field reference before a dot at the given position.
+    For example, if line is "mymodule.instance." and position is at the end,
+    returns "mymodule.instance".
+
+    This function handles two cases:
+    1. Cursor right after dot: "resistor.|" (position after dot)
+    2. Cursor after typing: "resistor.res|" (position after partial text)
+    """
+    # Check if we're right after a dot
+    if position > 0 and position <= len(line) and line[position - 1] == ".":
+        # We're right after a dot, extract the field reference before it
+        dot_position = position - 1
+    else:
+        # Look backwards to find the most recent dot
+        dot_position = -1
+        for i in range(min(position - 1, len(line) - 1), -1, -1):
+            if line[i] == ".":
+                dot_position = i
+                break
+
+        if dot_position == -1:
+            return None
+
+    # Find the start of the field reference by walking backwards from the dot
+    start = dot_position
+    while start > 0:
+        char = line[start - 1]
+        # Allow alphanumeric, dots, underscores, and brackets in field references
+        if char.isalnum() or char in "._[]":
+            start -= 1
+        else:
+            break
+
+    field_ref = line[start:dot_position].strip()
+    return field_ref if field_ref else None
+
+
+def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
+    """
+    Extract completion items from a faebryk node.
+    Returns parameters, sub-modules, and interfaces as completion items.
+    """
+    from faebryk.core.module import Module
+    from faebryk.core.moduleinterface import ModuleInterface
+    from faebryk.core.parameter import Parameter
+
+    completion_items = []
+
+    try:
+        # Get all child nodes using the node's get_children method
+        children = node.get_children(direct_only=True, types=Node)
+
+        for child in children:
+            try:
+                # Get the child's name from its parent relationship
+                child_name = child.get_name()
+                class_name = child.__class__.__name__
+
+                # don't show anonymous children
+                if child in node.runtime_anon:
+                    continue
+
+                # don't show internal children
+                if child_name.startswith("_"):
+                    continue
+
+                # Determine the completion item kind based on the node type
+                if isinstance(child, Module):
+                    kind = lsp.CompletionItemKind.Field
+                    detail = f"Module: {class_name}"
+                elif isinstance(child, ModuleInterface):
+                    kind = lsp.CompletionItemKind.Interface
+                    detail = f"Interface: {class_name}"
+                elif isinstance(child, Parameter):
+                    kind = lsp.CompletionItemKind.Unit
+                    detail = f"Parameter: {child.units}"
+                else:
+                    continue
+
+                completion_items.append(
+                    lsp.CompletionItem(
+                        label=child_name,
+                        kind=kind,
+                        detail=detail,
+                        documentation=lsp.MarkupContent(
+                            kind=lsp.MarkupKind.Markdown,
+                            value=f"**{child_name}**: {detail}",
+                        ),
+                    )
+                )
+
+            except Exception:
+                # Skip children that can't be accessed or named
+                continue
+
+    except Exception as e:
+        log_error(f"Error extracting completions from node: {e}")
+
+    return completion_items
+
+
+def _build_incomplete_document(
+    uri: str, text: str, hint_current_line: int | None
+) -> None:
+    """
+    Create a temporary version of the document with the incomplete line removed
+    This allows us to build the document even when the user is typing
+    an incomplete expression
+    """
+
+    if hint_current_line is not None:
+        lines = text.split("\n")
+        if hint_current_line is not None:
+            lines[hint_current_line] = ""
+
+        text = "\n".join(lines)
+
+    _build_document(uri, text)
+
+
+def _get_node_from_row(uri: str, row: int) -> Node | None:
+    """
+    Get the node from the row of the document.
+    """
+    file_path = get_file(uri)
+    pos = front_end.Position(str(file_path), row + 1, 0)
+
+    graphs = GRAPHS.get(uri, {})
+    for root_node in graphs.values():
+        if t := root_node.get_trait(front_end.from_dsl):
+            if front_end.Span.from_ctx(t.src_ctx).contains(pos):
+                return root_node
+    return None
+
+
+def _find_field_reference_node(
+    uri: str, text: str, field_ref_str: str, row: int
+) -> Node | None:
+    """
+    Find the node corresponding to a field reference string in the given document.
+    Uses from_dsl trait to find the specific context node at the cursor position.
+    """
+    try:
+        # Build the document if needed
+        try:
+            _build_incomplete_document(uri, text, hint_current_line=row)
+        except Exception as e:
+            log_error(f"Failed to build document for completion: {e}")
+            # Even if build fails, continue -
+            #  we might have cached graphs from previous builds
+            pass
+
+        # Use from_dsl trait to find the node that contains the cursor position
+        context_node = _get_node_from_row(uri, row)
+
+        if not context_node:
+            log_warning("No node found containing field ref")
+            return None
+
+        # Parse the field reference string into a FieldRef object
+        parts = []
+        for part_str in field_ref_str.split("."):
+            if "[" in part_str and "]" in part_str:
+                # Handle array indexing like "resistors[0]"
+                name, key_part = part_str.split("[", 1)
+                key = key_part.rstrip("]")
+                # Try to convert key to int if possible
+                try:
+                    key = int(key)
+                except ValueError:
+                    pass
+                parts.append(ReferencePartType(name, key))
+            else:
+                parts.append(ReferencePartType(part_str))
+
+        field_ref = FieldRef(parts)
+
+        try:
+            # Use the Bob instance to resolve the field reference
+            bob_instance = front_end.bob
+            resolved_field = bob_instance.resolve_node_field(context_node, field_ref)
+
+            # If it's a node, return it
+            if isinstance(resolved_field, Node):
+                return resolved_field
+
+        except (AttributeError, TypeError, ValueError) as e:
+            log_warning(f"Failed to resolve field reference: {e}")
+
+    except Exception as e:
+        log_error(f"Error resolving field reference '{field_ref_str}': {e}")
+
+    return None
+
+
+@once
+def _get_stdlib_types():
+    import faebryk.library._F as F
+
+    symbols = vars(F).values()
+    return [s for s in symbols if isinstance(s, type) and issubclass(s, Node)]
+
+
+def _node_type_to_completion_item(node_type: type[Node]) -> lsp.CompletionItem:
+    if issubclass(node_type, Module):
+        kind = lsp.CompletionItemKind.Field
+    elif issubclass(node_type, ModuleInterface):
+        kind = lsp.CompletionItemKind.Interface
+    elif issubclass(node_type, Parameter):
+        kind = lsp.CompletionItemKind.Unit
+    elif issubclass(node_type, Trait):
+        kind = lsp.CompletionItemKind.Operator
+    elif issubclass(node_type, TraitImpl):
+        kind = lsp.CompletionItemKind.Operator
+    elif issubclass(node_type, Node):
+        kind = lsp.CompletionItemKind.Class
+    else:
+        assert False, f"Unexpected node type: {node_type}"
+
+    base_class = node_type.mro()[1]
+    type_name = node_type.__name__
+
+    return lsp.CompletionItem(
+        label=type_name,
+        kind=kind,
+        detail=f"Base: {base_class.__name__}",
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.Markdown,
+            value=not_none(node_type.__doc__),
+        )
+        if node_type.__doc__
+        else None,
+    )
+
+
+def _resolve_import_path(document: workspace.Document, path: str) -> Path:
+    """
+    Resolve the import path for a given document and path.
+    """
+    try:
+        init_atopile_config(Path(document.path).parent)
+        from atopile.config import config
+
+        in_project = config.has_project
+    except Exception:
+        in_project = False
+
+    doc_path = Path(document.path)
+    import_path_stmt = Path(path)
+
+    if in_project:
+        bob_stup = front_end.Bob()
+
+        context = front_end.Context(
+            file_path=doc_path,
+            scope_ctx=None,
+            refs={},
+            ref_ctxs={},
+        )
+
+        item = front_end.Context.ImportPlaceholder(
+            original_ctx=None,
+            from_path=path,
+            ref=None,
+        )
+
+        return bob_stup._find_import_path(context, item)
+
+    return (
+        doc_path.parent / import_path_stmt
+        if not import_path_stmt.is_absolute()
+        else import_path_stmt
+    )
+
+
+def _handle_dot_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    # Extract field reference before the dot
+    field_ref_str = _extract_field_reference_before_dot(line, params.position.character)
+
+    if not field_ref_str:
+        log_warning("No field reference found")
+        return None
+
+    # Find the node corresponding to this field reference
+    target_node = _find_field_reference_node(
+        params.text_document.uri,
+        document.source,
+        field_ref_str,
+        params.position.line,
+    )
+
+    if not target_node:
+        log_warning("No target node found")
+        return None
+
+    # Get completion items from the node
+    completion_items = _get_node_completions(target_node)
+
+    # Filter completion items if user has already started typing after the dot
+    typed_text = ""
+    if params.position.character < len(line):
+        # Look for any text after the most recent dot
+        dot_pos = -1
+        for i in range(params.position.character - 1, -1, -1):
+            if line[i] == ".":
+                dot_pos = i
+                break
+
+        if dot_pos != -1 and dot_pos + 1 < params.position.character:
+            typed_text = line[dot_pos + 1 : params.position.character].strip()
+
+    # Filter items if user has started typing
+    if typed_text:
+        filtered_items = [
+            item
+            for item in completion_items
+            if item.label.lower().startswith(typed_text.lower())
+        ]
+        completion_items = filtered_items
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_new_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    node_types = _get_available_types(
+        params.text_document.uri,
+        document.source,
+        params.position.line,
+        local_only=False,
+    )
+
+    completion_items = [
+        _node_type_to_completion_item(type(node))
+        for node in node_types.values()
+        if isinstance(node, (Module, ModuleInterface))
+    ]
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_stdlib_import_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    node_types = _get_stdlib_types()
+
+    completion_items = [
+        _node_type_to_completion_item(type)
+        for type in node_types
+        # don't need traits atm in ato
+        if not issubclass(type, Trait) or TraitImpl.is_traitimpl_type(type)
+    ]
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_from_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    paths = _get_importable_paths(params.text_document.uri)
+    completion_items = [
+        lsp.CompletionItem(
+            label=f'"{path.as_posix()}"',
+            kind=lsp.CompletionItemKind.File,
+        )
+        for path in paths
+    ]
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_from_import_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    match = re.match(r"from\s+['\"](.*)['\"]", line)
+    if not match:
+        return None
+
+    path = match.group(1)
+    import_uri = str(_resolve_import_path(document, path))
+    import_text = get_file_contents(import_uri)[1]
+    node_types = _get_available_types(import_uri, import_text, None, local_only=True)
+    completion_items = [
+        _node_type_to_completion_item(type(node))
+        for node in node_types.values()
+        # don't need traits atm in ato
+        if not issubclass(type, Trait) or TraitImpl.is_traitimpl_type(type)
+    ]
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+@LSP_SERVER.feature(
+    lsp.TEXT_DOCUMENT_COMPLETION,
+    lsp.CompletionOptions(
+        trigger_characters=[".", " "],
+        resolve_provider=False,
+    ),
+)
+def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList | None:
+    """Handle document completion request for field references ending with '.'
+    and type completion after 'new'"""
+    try:
+        document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+        line = utils.cursor_line(document, params.position)
+
+        char = line[: params.position.character]
+        log_warning(f"on_document_completion: '{char}'")
+        if char.endswith("."):
+            return _handle_dot_completion(params, line, document)
+        elif char.rstrip().endswith("new"):
+            return _handle_new_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("import") and "from" in char:
+            return _handle_from_import_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("import") and "from" not in char:
+            return _handle_stdlib_import_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("from"):
+            return _handle_from_keyword_completion(params, line, document)
+
+    except Exception as e:
+        log_error(f"Error in completion handler: {e}")
+        return None
 
 
 # TODO: if you want to handle setting specific severity for your linter

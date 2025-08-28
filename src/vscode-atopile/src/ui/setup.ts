@@ -91,33 +91,39 @@ async function installLocalAto(context: vscode.ExtensionContext) {
                 await downloadAndInstallUv(status);
                 traceInfo('uv installation successful, attempting to install atopile...');
                 progress.report({ message: 'Installing atopile via uv...' });
+            } catch (error: any) {
+                traceError(`Failed to install uv: ${error.message}`);
+                vscode.window.showErrorMessage(
+                    `Failed to install uv. Please configure 'atopile.ato' manually or check logs.`,
+                );
+                captureEvent('vsce:uv_install_failed');
+                status.dispose();
+                return;
+            }
+            try {
                 const atoBin = await getAtoBin(undefined, 300_000);
                 if (!atoBin) {
                     traceError('Failed to install atopile via uv');
                     vscode.window.showErrorMessage('Failed to install atopile via uv. Please check logs.');
-                    captureEvent('vsce:ato_install_failed')
+                    captureEvent('vsce:ato_install_failed');
                     return;
                 }
                 // show a message to the user
                 vscode.window.showInformationMessage(`Installed atopile via uv: ${atoBin.command.join(' ')}`);
-                captureEvent('vsce:ato_installed')
+                captureEvent('vsce:ato_installed');
                 onDidChangeAtoBinInfoEvent.fire({ init: false });
             } catch (error: any) {
-                traceError(`Failed to install uv: ${error.message}`);
-                vscode.window.showErrorMessage(
-                    `Failed to install uv: ${error.message}. Please configure 'atopile.ato' manually or check logs.`,
-                );
-                captureEvent('vsce:uv_install_failed')
-            } finally {
-                status.dispose();
+                traceError(`Failed to install atopile: ${error.message}`);
+                vscode.window.showErrorMessage(`Failed to install atopile: ${error.message}. Please check logs.`);
+                captureEvent('vsce:ato_install_failed');
             }
+
+            status.dispose();
         },
     );
 }
 
-export async function activate(context: vscode.ExtensionContext) {
-    traceInfo('Activating setup');
-
+async function ensureAtoBin(context: vscode.ExtensionContext) {
     // Pass context to getAtoBin so it can be stored and used by getExtensionManagedUvPath
     let atoBin = await getAtoBin();
     if (atoBin) {
@@ -129,25 +135,45 @@ export async function activate(context: vscode.ExtensionContext) {
         return;
     }
 
-    //const CHOICE_MANUAL = 'Configure Manually (settings.json)';
-    //const CHOICE_AUTO = 'Install Automatically (recommended)';
-    //const choice = await vscode.window.showWarningMessage(
-    //    'atopile executable not found. How would you like to proceed?',
-    //    { modal: false },
-    //    CHOICE_AUTO,
-    //    CHOICE_MANUAL,
-    //);
-    //const auto_install = choice === CHOICE_AUTO;
+    // Get auto_install setting from configuration (default: true)
+    const config = vscode.workspace.getConfiguration('atopile');
+    let auto_install = config.get<boolean>('autoInstall', true);
 
-    // For now force local ato without interaction
-    // Only atopile developers need to configure manually
-    const auto_install = true;
+    traceInfo(`Setup: auto_install setting is ${auto_install}`);
 
-    if (auto_install) {
-        await installLocalAto(context);
-    } else if (auto_install === false) {
-        await vscode.commands.executeCommand('workbench.action.openSettings', 'atopile.ato');
+    // If auto_install is disabled, show choice dialog
+    if (!auto_install) {
+        // const CHOICE_MANUAL = 'Configure Manually (settings.json)';
+        // const CHOICE_AUTO = 'Install Automatically (recommended)';
+        // const choice = await vscode.window.showWarningMessage(
+        //     'atopile executable not found. How would you like to proceed?',
+        //     { modal: false },
+        //     CHOICE_AUTO,
+        //     CHOICE_MANUAL,
+        // );
+        // const user_wants_auto_install = choice === CHOICE_AUTO;
+
+        // if (user_wants_auto_install) {
+        //     auto_install = true;
+        // } else if (choice === CHOICE_MANUAL) {
+        //     await vscode.commands.executeCommand('workbench.action.openSettings', 'atopile.ato');
+        // } else {
+        //     return;
+        // }
+        return;
+    }
+
+    // If we reach here, auto_install is true, so proceed with installation
+    await installLocalAto(context);
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+    traceInfo('Activating setup');
+    try {
+        await ensureAtoBin(context);
+    } catch (error: any) {
+        traceError(`Failed to ensure ato bin: ${error.message}`);
     }
 }
 
-export function deactivate() { }
+export function deactivate() {}
