@@ -246,10 +246,6 @@ class ProjectPaths(BaseConfigModel):
 
         super().__init__(**data)
 
-    @property
-    def picks_file(self) -> Path:
-        return self.src / "picks.ato"
-
     @model_validator(mode="after")
     def make_paths_absolute(model: "ProjectPaths") -> "ProjectPaths":
         """Make all paths absolute relative to the project root."""
@@ -325,6 +321,10 @@ class BuildTargetPaths(BaseConfigModel):
         data.setdefault("kicad_project", data["layout"].with_suffix(".kicad_pro"))
         # We deliberately don't set a root for an individual build
         super().__init__(**data)
+
+    @property
+    def picks_file(self) -> Path:
+        return self.layout.parent / "picks.ato"
 
     @classmethod
     def find_layout(cls, layout_base: Path) -> Path:
