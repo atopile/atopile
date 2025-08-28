@@ -10,6 +10,7 @@ import json
 import logging
 import os
 import pathlib
+import re
 import sys
 import traceback
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from atopile.parser import AtoParser as ap
 from faebryk.core.module import Module
 from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.core.parameter import Parameter
 from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
 from faebryk.libs.util import debounce, not_none, once
@@ -128,6 +130,12 @@ def get_file(uri: str) -> Path:
 
 
 def get_file_contents(uri: str) -> tuple[Path, str]:
+    try:
+        path = Path(uri)
+        if path.exists():
+            return path, path.read_text(encoding="utf-8")
+    except Exception:
+        pass
     document = LSP_SERVER.workspace.get_text_document(uri)
     file_path = Path(document.path)
     source_text = document.source
@@ -392,21 +400,14 @@ def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | N
 
 
 def _get_available_types(
-    uri: str, text: str, current_line: int
-) -> list[lsp.CompletionItem]:
+    uri: str, text: str, current_line: int | None, local_only: bool
+) -> dict[str, Node]:
     """
-    Get available types for 'new' keyword completion from the current file context.
-    Uses from_dsl trait to find imported and defined types, just like go to definition.
+    Get available symbols in file
     """
-    completion_items = []
-
-    def _get_kind(root: Node) -> lsp.CompletionItemKind:
-        if isinstance(root, Module):
-            return lsp.CompletionItemKind.Field
-        elif isinstance(root, ModuleInterface):
-            return lsp.CompletionItemKind.Interface
-        else:
-            return lsp.CompletionItemKind.Class
+    # TODO: handle python files
+    if not uri.endswith(".ato"):
+        return {}
 
     try:
         # Build the document to ensure graphs are populated
@@ -415,47 +416,59 @@ def _get_available_types(
         # Get all graphs for this document
         graphs = GRAPHS.get(uri, {})
         if not graphs:
-            return []
+            return {}
 
-        node_types = {type(root).__name__: root for root in graphs.values()}
+        node_types = {
+            typename: root
+            for root in graphs.values()
+            if not (typename := type(root).__name__).startswith("_")
+            and isinstance(root, Node)
+        }
 
-        for type_name, root in node_types.items():
-            log_warning(f"root: {root} ({type_name})")
+        if local_only:
+            node_types = {
+                typename: node_type
+                for typename, node_type in node_types.items()
+                if (from_dsl := node_type.get_trait(front_end.from_dsl))
+                and from_dsl.definition_ctx is None
+            }
 
-            # Skip internal/private types
-            if type_name.startswith("_"):
-                continue
-
-            if not isinstance(root, (Module, ModuleInterface)):
-                continue
-
-            base_class = type(root).mro()[1]
-
-            # Create completion item based on category
-            completion_items.append(
-                lsp.CompletionItem(
-                    label=type_name,
-                    kind=_get_kind(root),
-                    detail=f"Base: {base_class.__name__}",
-                    documentation=lsp.MarkupContent(
-                        kind=lsp.MarkupKind.Markdown,
-                        value=not_none(type(root).__doc__),
-                    )
-                    if type(root).__doc__
-                    else None,
-                )
-            )
-
-        log_warning(f"Found {len(completion_items)} available types from context")
+        return node_types
 
     except Exception as e:
         log_warning(f"Error getting available types: {e}")
-        import traceback
-
-        log_warning(f"Traceback: {traceback.format_exc()}")
         # Fallback to empty list - user won't get completions but LSP won't crash
 
-    return completion_items
+    return {}
+
+
+def _get_importable_paths(uri: str) -> list[Path]:
+    """
+    All possible paths of ato files to import from
+    If file part of project, glob from project root else from parent dir of current file
+    """
+    file_path = get_file(uri)
+    root = file_path.parent
+
+    prj_root = find_project_dir(root)
+    if prj_root:
+        root = prj_root
+
+    ato_files = list(root.rglob("**/*.ato")) + list(root.rglob("**/*.py"))
+    ato_files = [
+        path.relative_to(root)
+        for path in ato_files
+        if path.is_file() and path != file_path
+    ]
+
+    if prj_root:
+        # remove prefix .ato/modules
+        ato_files = [
+            path if not path.parts[:2] == (".ato", "modules") else Path(*path.parts[2:])
+            for path in ato_files
+        ]
+
+    return ato_files
 
 
 def _extract_field_reference_before_dot(line: str, position: int) -> str | None:
@@ -561,19 +574,23 @@ def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
     return completion_items
 
 
-def _build_incomplete_document(uri: str, text: str, hint_current_line: int) -> None:
+def _build_incomplete_document(
+    uri: str, text: str, hint_current_line: int | None
+) -> None:
     """
     Create a temporary version of the document with the incomplete line removed
     This allows us to build the document even when the user is typing
     an incomplete expression
     """
 
-    lines = text.split("\n")
     if hint_current_line is not None:
-        lines[hint_current_line] = ""
+        lines = text.split("\n")
+        if hint_current_line is not None:
+            lines[hint_current_line] = ""
 
-    temp_source = "\n".join(lines)
-    _build_document(uri, temp_source)
+        text = "\n".join(lines)
+
+    _build_document(uri, text)
 
 
 def _get_node_from_row(uri: str, row: int) -> Node | None:
@@ -651,6 +668,86 @@ def _find_field_reference_node(
     return None
 
 
+@once
+def _get_stdlib_types():
+    import faebryk.library._F as F
+
+    symbols = vars(F).values()
+    return [s for s in symbols if isinstance(s, type) and issubclass(s, Node)]
+
+
+def _node_type_to_completion_item(node_type: type[Node]) -> lsp.CompletionItem:
+    if issubclass(node_type, Module):
+        kind = lsp.CompletionItemKind.Field
+    elif issubclass(node_type, ModuleInterface):
+        kind = lsp.CompletionItemKind.Interface
+    elif issubclass(node_type, Parameter):
+        kind = lsp.CompletionItemKind.Unit
+    elif issubclass(node_type, Trait):
+        kind = lsp.CompletionItemKind.Operator
+    elif issubclass(node_type, TraitImpl):
+        kind = lsp.CompletionItemKind.Operator
+    elif issubclass(node_type, Node):
+        kind = lsp.CompletionItemKind.Class
+    else:
+        assert False, f"Unexpected node type: {node_type}"
+
+    base_class = node_type.mro()[1]
+    type_name = node_type.__name__
+
+    return lsp.CompletionItem(
+        label=type_name,
+        kind=kind,
+        detail=f"Base: {base_class.__name__}",
+        documentation=lsp.MarkupContent(
+            kind=lsp.MarkupKind.Markdown,
+            value=not_none(node_type.__doc__),
+        )
+        if node_type.__doc__
+        else None,
+    )
+
+
+def _resolve_import_path(document: workspace.Document, path: str) -> Path:
+    """
+    Resolve the import path for a given document and path.
+    """
+    try:
+        init_atopile_config(Path(document.path).parent)
+        from atopile.config import config
+
+        in_project = config.has_project
+    except Exception:
+        in_project = False
+
+    doc_path = Path(document.path)
+    import_path_stmt = Path(path)
+
+    if in_project:
+        bob_stup = front_end.Bob()
+
+        context = front_end.Context(
+            file_path=doc_path,
+            scope_ctx=None,
+            refs={},
+            ref_ctxs={},
+        )
+
+        item = front_end.Context.ImportPlaceholder(
+            original_ctx=None,
+            from_path=path,
+            ref=None,
+        )
+
+        return bob_stup._find_import_path(context, item)
+
+    return (
+        doc_path.parent / import_path_stmt
+        if not import_path_stmt.is_absolute()
+        else import_path_stmt
+    )
+
+
 def _handle_dot_completion(
     params: lsp.CompletionParams, line: str, document: workspace.Document
 ) -> lsp.CompletionList | None:
@@ -701,46 +798,69 @@ def _handle_dot_completion(
     return lsp.CompletionList(is_incomplete=False, items=completion_items)
 
 
-@once
-def _get_stdlib_types():
-    import faebryk.library._F as F
-
-    symbols = vars(F).values()
-    return [s for s in symbols if isinstance(s, type) and issubclass(s, Node)]
-
-
 def _handle_new_keyword_completion(
     params: lsp.CompletionParams, line: str, document: workspace.Document
 ) -> lsp.CompletionList | None:
-    completion_items = _get_available_types(
-        params.text_document.uri, document.source, params.position.line
+    node_types = _get_available_types(
+        params.text_document.uri,
+        document.source,
+        params.position.line,
+        local_only=False,
     )
+
+    completion_items = [
+        _node_type_to_completion_item(type(node))
+        for node in node_types.values()
+        if isinstance(node, (Module, ModuleInterface))
+    ]
 
     return lsp.CompletionList(is_incomplete=False, items=completion_items)
 
 
-def _handle_import_keyword_completion(
+def _handle_stdlib_import_keyword_completion(
     params: lsp.CompletionParams, line: str, document: workspace.Document
 ) -> lsp.CompletionList | None:
-    log_warning("import keyword completion")
     node_types = _get_stdlib_types()
 
-    def _get_kind(type: type) -> lsp.CompletionItemKind:
-        if issubclass(type, Module):
-            return lsp.CompletionItemKind.Field
-        elif issubclass(type, ModuleInterface):
-            return lsp.CompletionItemKind.Interface
-        elif TraitImpl.is_traitimpl_type(type):
-            return lsp.CompletionItemKind.Operator
-        return lsp.CompletionItemKind.Class
+    completion_items = [
+        _node_type_to_completion_item(type)
+        for type in node_types
+        # don't need traits atm in ato
+        if not issubclass(type, Trait) or TraitImpl.is_traitimpl_type(type)
+    ]
 
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_from_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    paths = _get_importable_paths(params.text_document.uri)
     completion_items = [
         lsp.CompletionItem(
-            label=type.__name__,
-            kind=_get_kind(type),
-            detail=f"Base: {type.mro()[1].__name__}",
+            label=f'"{path.as_posix()}"',
+            kind=lsp.CompletionItemKind.File,
         )
-        for type in node_types
+        for path in paths
+    ]
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_from_import_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    match = re.match(r"from\s+['\"](.*)['\"]", line)
+    if not match:
+        return None
+
+    path = match.group(1)
+    import_uri = str(_resolve_import_path(document, path))
+    import_text = get_file_contents(import_uri)[1]
+    node_types = _get_available_types(import_uri, import_text, None, local_only=True)
+    completion_items = [
+        _node_type_to_completion_item(type(node))
+        for node in node_types.values()
         # don't need traits atm in ato
         if not issubclass(type, Trait) or TraitImpl.is_traitimpl_type(type)
     ]
@@ -768,8 +888,12 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
             return _handle_dot_completion(params, line, document)
         elif char.rstrip().endswith("new"):
             return _handle_new_keyword_completion(params, line, document)
-        elif char.rstrip().endswith("import"):
-            return _handle_import_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("import") and "from" in char:
+            return _handle_from_import_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("import") and "from" not in char:
+            return _handle_stdlib_import_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("from"):
+            return _handle_from_keyword_completion(params, line, document)
 
     except Exception as e:
         log_error(f"Error in completion handler: {e}")

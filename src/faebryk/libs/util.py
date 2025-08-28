@@ -2831,7 +2831,7 @@ def match_iterables[T, U](
     return zip_dicts_by_key(*dicts)  # type: ignore
 
 
-def debounce(delay: float) -> Callable:
+def debounce(delay_s: float):
     """
     Debounce a function to prevent it from being called more than once within a given
     delay.
@@ -2839,32 +2839,35 @@ def debounce(delay: float) -> Callable:
     the function will be called only once after the delay.
     """
 
-    def _decorator(func: Callable) -> Callable:
+    def _decorator[T: Callable](func: T) -> T:
         last_call = 0
         waiting = threading.Semaphore()
+        last_value = None
 
         def _run(*args, **kwargs):
             nonlocal waiting
             nonlocal last_call
+            nonlocal last_value
             waiting.release()
             last_call = time.time()
-            return func(*args, **kwargs)
+            last_value = func(*args, **kwargs)
+            return last_value
 
         def _debounced(*args, **kwargs):
             nonlocal last_call
             nonlocal waiting
 
             if not waiting.acquire(blocking=False):
-                return
+                return last_value
 
             time_passed = time.time() - last_call
-            if time_passed > delay:
+            if time_passed > delay_s:
                 return _run(*args, **kwargs)
 
-            timer = threading.Timer(delay - time_passed, _run, args, kwargs)
+            timer = threading.Timer(delay_s - time_passed, _run, args, kwargs)
             timer.start()
-            return timer
+            return last_value
 
-        return _debounced
+        return _debounced  # type: ignore[return-value]
 
     return _decorator

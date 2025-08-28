@@ -1,7 +1,6 @@
 # This file is part of the faebryk project
 # SPDX-License-Identifier: MIT
 
-import threading
 import time
 import unittest
 from itertools import combinations
@@ -383,23 +382,37 @@ def test_path_replace(base, match, replacement, expected):
 
 def test_debounce():
     calls = []
+    outer = []
 
     DEBOUNCE = 0.5
 
     @debounce(DEBOUNCE)
     def do():
-        calls.append(time.time())
+        now = time.time()
+        calls.append(now)
+        return now
 
-    do()
-    t = do()
-    do()
-    do()
+    outer.append(do())
+    outer.append(do())
+    outer.append(do())
+    outer.append(do())
 
-    assert isinstance(t, threading.Thread)
-    t.join()
-
+    time.sleep(DEBOUNCE * 3)
     assert len(calls) == 2
 
     diffs = [calls[i] - calls[i - 1] for i in range(1, len(calls))]
-    print(diffs)
+
     assert all(diff >= DEBOUNCE for diff in diffs)
+    assert len(set(outer)) == 1
+
+    # Rerun
+    outer.append(do())
+    outer.append(do())
+    outer.append(do())
+
+    time.sleep(DEBOUNCE * 2)
+    assert len(calls) == 4
+
+    diffs2 = [calls[i] - calls[i - 1] for i in range(1, len(calls))]
+    assert all(diff >= DEBOUNCE for diff in diffs2)
+    assert len(set(outer)) == 2
