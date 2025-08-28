@@ -102,6 +102,7 @@ class MusterTarget:
     virtual: bool = False
     dependencies: list["MusterTarget"] = field(default_factory=list)
     tags: set[Tags] = field(default_factory=set)
+    produces_artifact: bool = False  # TODO: as list of file paths
 
     def __call__(
         self, app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -141,6 +142,7 @@ class Muster:
         virtual: bool = False,
         dependencies: list["MusterTarget"] | None = None,
         tags: set[Tags] | None = None,
+        produces_artifact: bool = False,
     ) -> Callable[[MusterFuncType], MusterTarget]:
         """Register a target under a given name."""
 
@@ -154,6 +156,7 @@ class Muster:
                 dependencies=dependencies or [],
                 virtual=virtual,
                 tags=tags or set(),
+                produces_artifact=produces_artifact,
             )
             self.add_target(target)
             return target
@@ -472,7 +475,11 @@ def build_design(
     pass
 
 
-@muster.register("bom", dependencies=[build_design])
+@muster.register(
+    "bom",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
 def generate_bom(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -483,7 +490,11 @@ def generate_bom(
     )
 
 
-@muster.register("netlist", dependencies=[build_design])
+@muster.register(
+    "netlist",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
 def generate_netlist(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -503,6 +514,7 @@ def generate_netlist(
     aliases=["3d-model"],
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
+    produces_artifact=True,
 )
 def generate_glb(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -523,6 +535,7 @@ def generate_glb(
     name="step",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
+    produces_artifact=True,
 )
 def generate_step(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -543,6 +556,7 @@ def generate_step(
     "3d-models",
     dependencies=[generate_glb, generate_step],
     virtual=True,
+    produces_artifact=True,
 )
 def generate_3d_models(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -555,6 +569,7 @@ def generate_3d_models(
     name="3d-image",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
+    produces_artifact=True,
 )
 def generate_3d_render(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -575,6 +590,7 @@ def generate_3d_render(
     name="2d-image",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[build_design],
+    produces_artifact=True,
 )
 def generate_2d_render(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -596,6 +612,7 @@ def generate_2d_render(
     "mfg-data",
     tags={Tags.REQUIRES_KICAD},
     dependencies=[generate_3d_models, post_pcb_checks],
+    produces_artifact=True,
 )
 def generate_manufacturing_data(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
@@ -645,7 +662,11 @@ def generate_manufacturing_data(
         )
 
 
-@muster.register("manifest", dependencies=[build_design])
+@muster.register(
+    "manifest",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
 def generate_manifest(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -670,7 +691,11 @@ def generate_manifest(
                 json.dump(manifest, f, indent=4)
 
 
-@muster.register("variable-report", dependencies=[build_design])
+@muster.register(
+    "variable-report",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
 def generate_variable_report(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
@@ -681,7 +706,11 @@ def generate_variable_report(
     )
 
 
-@muster.register("i2c-tree", dependencies=[build_design])
+@muster.register(
+    "i2c-tree",
+    dependencies=[build_design],
+    produces_artifact=True,
+)
 def generate_i2c_tree(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
