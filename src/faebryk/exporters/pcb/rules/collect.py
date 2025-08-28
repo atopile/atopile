@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import shutil
 import subprocess
 import tempfile
@@ -31,12 +32,6 @@ def _find_net_name(mif: F.Electrical) -> str | None:
             return mif.get_trait(F.has_net_name).name
     except Exception:
         pass
-    try:
-        net = F.Net.find_named_net_for_mif(mif)
-        if net and net.has_trait(F.has_overriden_name):
-            return net.get_trait(F.has_overriden_name).get_name()
-    except Exception:
-        pass
     return None
 
 
@@ -48,15 +43,15 @@ def _get_value_in_units(solver: Solver, param, unit: str) -> float | None:
             return out
     except Exception:
         pass
-    # Fallback to literal
-    try:
-        lit = param.get_literal()
-        out = _to_unit_scalar(lit, unit)
-        if out is not None and math.isfinite(out):
-            return out
-    except Exception:
-        pass
-    return None
+    # # Fallback to literal
+    # try:
+    #     lit = param.get_literal()
+    #     out = _to_unit_scalar(lit, unit)
+    #     if out is not None and math.isfinite(out):
+    #         return out
+    # except Exception:
+    #     pass
+    # return None
 
 
 def run_ngspice_op(
@@ -86,6 +81,11 @@ def run_ngspice_op(
         return None
 
 
+def _sanitize_node(name: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9_]", "_", name)
+    return safe or "N"
+
+
 def _solve_dc_with_spice(app: Module, solver: Solver) -> dict[str, float] | None:
     """Use ngspice to compute DC operating point currents.
 
@@ -101,9 +101,52 @@ def _solve_dc_with_spice(app: Module, solver: Solver) -> dict[str, float] | None
 
     lines: list[str] = ["* atopile dc solver"]
 
+    # Build per-net node mapping so connected pins share the same label
+    net_to_node: dict[object, str] = {}
+    next_id = 1
+
+    # Collect known supply nets (for friendly names and ground mapping)
+    hv_nets: set[object] = set()
+    lv_nets: set[object] = set()
+    for p in app.get_children(direct_only=False, types=F.ElectricPower):
+        try:
+            for n in F.Net.find_nets_for_mif(p.hv) or []:
+                hv_nets.add(n)
+            for n in F.Net.find_nets_for_mif(p.lv) or []:
+                lv_nets.add(n)
+        except Exception:
+            pass
+
     def net_id(mif: F.Electrical) -> str:
-        name = _find_net_name(mif)
-        return name if name is not None else mif.get_full_name()
+        # Prefer the shared net's assigned node name
+        try:
+            nets = F.Net.find_nets_for_mif(mif) or []
+        except Exception:
+            nets = []
+        net = next(iter(nets), None)
+
+        if net is not None:
+            if net in net_to_node:
+                return net_to_node[net]
+
+            # Assign a name for this net
+            # Ground nets -> "0"
+            if net in lv_nets:
+                node = "0"
+            # Named nets keep their names
+            elif hasattr(net, "has_trait") and net.has_trait(F.has_net_name):
+                node = _sanitize_node(net.get_trait(F.has_net_name).name)
+            # Supply nets -> VCC (first), then VCC2, ...
+            elif net in hv_nets:
+                base = "VCC"
+                node = base if base not in net_to_node.values() else f"{base}2"
+            else:
+                nonlocal next_id
+                node = f"N{next_id}"
+                next_id += 1
+
+            net_to_node[net] = node
+            return node
 
     # Voltage sources
     vcount = 0
@@ -163,6 +206,11 @@ def _solve_dc_with_spice(app: Module, solver: Solver) -> dict[str, float] | None
     if txt is None:
         logger.warning("rules: DC sim failed to run; skipping")
         return None
+    # Log raw simulator output for diagnostics
+    try:
+        logger.info("rules: DC sim raw output:\n%s", txt)
+    except Exception:
+        pass
 
     # Parse @-print tables to extract currents in a deterministic way
     vals: list[float] = []

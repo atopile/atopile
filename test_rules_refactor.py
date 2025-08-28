@@ -7,9 +7,9 @@ from pathlib import Path
 # Add the src directory to the path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from faebryk.exporters.pcb.rules.export import export_rules as export_rules_old
-from faebryk.exporters.pcb.rules.export_refactored import (
-    export_rules as export_rules_new,
+from faebryk.exporters.pcb.rules.rules import export_rules as export_rules_old
+# from faebryk.exporters.pcb.rules.export_refactored import (
+    export_rules as export_rules_new,  # removed in consolidation
 )
 
 
