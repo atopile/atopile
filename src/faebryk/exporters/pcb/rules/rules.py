@@ -77,7 +77,11 @@ def _write_rules_file_kicad(dru: C_kicad_dru_file, path: Path) -> None:
         if r.layer:
             clauses.append(f'(layer "{r.layer}")')
         if r.condition:
-            cond = r.condition.expression if hasattr(r.condition, "expression") else r.condition
+            cond = (
+                r.condition.expression
+                if hasattr(r.condition, "expression")
+                else r.condition
+            )
             clauses.append(f'(condition "{cond}")')
         for c in getattr(r, "constraints", []) or []:
             cname = c.__class__.__name__
@@ -321,9 +325,7 @@ def export_rules(app: Module, solver: Solver) -> None:
                     ],
                 ),
             )
-            rules_dataclass.append(
-                C_kicad_dru_file.C_commented_rule(rule=rule)
-            )
+            rules_dataclass.append(C_kicad_dru_file.C_commented_rule(rule=rule))
         dru.rules = rules_dataclass
         _write_rules_file_dataclass(dru, rules_file)
         return
@@ -351,10 +353,8 @@ def export_rules(app: Module, solver: Solver) -> None:
             ]
             condition = None
             if is_named:
-                condition = (
-                    C_kicad_dru_file.C_commented_rule.C_rule.C_expression(
-                        expression=f"A.NetName == '{net_name}'"
-                    )
+                condition = C_kicad_dru_file.C_commented_rule.C_rule.C_expression(
+                    expression=f"A.NetName == '{net_name}'"
                 )
             rule = C_kicad_dru_file.C_commented_rule.C_rule(
                 name=f"current_width_{tag}_{layer_name.replace('.', '_')}",
@@ -362,9 +362,7 @@ def export_rules(app: Module, solver: Solver) -> None:
                 condition=condition,
                 constraints=cast(Any, constraints),
             )
-            rules_dataclass.append(
-                C_kicad_dru_file.C_commented_rule(rule=rule)
-            )
+            rules_dataclass.append(C_kicad_dru_file.C_commented_rule(rule=rule))
 
     # ------ Differential Pair Rules ------
     def _get_ohms(param) -> float | None:
@@ -913,9 +911,7 @@ def export_rules(app: Module, solver: Solver) -> None:
                     ],
                 ),
             )
-            rules_dataclass.append(
-                C_kicad_dru_file.C_commented_rule(rule=rule)
-            )
+            rules_dataclass.append(C_kicad_dru_file.C_commented_rule(rule=rule))
 
     # ------ Differential Pair Skew Rules ------
     # Generate skew rules for each differential pair with a skew constraint
@@ -969,9 +965,7 @@ def export_rules(app: Module, solver: Solver) -> None:
                         ],
                     ),
                 )
-                rules_dataclass.append(
-                    C_kicad_dru_file.C_commented_rule(rule=rule)
-                )
+                rules_dataclass.append(C_kicad_dru_file.C_commented_rule(rule=rule))
 
                 logger.info(
                     "rules: diff_pair_skew %s: %.1fps -> %.3fmm",
