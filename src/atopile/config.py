@@ -389,10 +389,10 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     Everything that exists within this module will be built as part of this build-target
     """
 
-    targets: list[str] = Field(default=["__default__"])  # TODO: validate
+    targets: list[str] = Field(default_factory=list)
     """A list of targets' names to build after updating the layout"""
 
-    exclude_targets: list[str] = Field(default=[])
+    exclude_targets: list[str] = Field(default_factory=list)
     """
     A list of targets' names to exclude.
 
@@ -401,7 +401,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     which typically builds **all** targets.
     """
 
-    exclude_checks: list[str] = Field(default=[])
+    exclude_checks: list[str] = Field(default_factory=list)
     """
     A list of checks to exclude.
 

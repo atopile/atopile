@@ -4,6 +4,7 @@ import logging
 import faebryk.library._F as F
 from atopile import layout
 from atopile.build_steps import Tags, muster
+from atopile.build_steps import default as default_target
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
 from atopile.errors import UserToolNotAvailableError
@@ -61,7 +62,8 @@ def build(app: Module) -> None:
     set_max_paths(int(MAX_PATHS), 0, 0)
 
     targets = muster.select(
-        set(config.build.targets) - set(config.build.exclude_targets)
+        {default_target.name}
+        | set(config.build.targets) - set(config.build.exclude_targets)
     )
 
     with accumulate() as accumulator:

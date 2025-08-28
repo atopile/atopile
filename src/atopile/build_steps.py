@@ -152,7 +152,7 @@ class Muster:
 
         return decorator
 
-    def select(self, selected_targets: set[str] = {"all"}) -> list[MusterTarget]:
+    def select(self, selected_targets: set[str]) -> list[MusterTarget]:
         """
         Returns selected targets in topologically sorted order based on dependencies.
         """
@@ -650,7 +650,7 @@ def generate_i2c_tree(
 
 
 @muster.register(
-    "__default__",
+    "default",
     dependencies=[
         generate_bom,
         generate_netlist,
