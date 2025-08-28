@@ -21,7 +21,9 @@ from atopile.errors import (
     UserExportError,
     UserPickError,
 )
+from faebryk.core.cpp import set_max_paths
 from faebryk.core.module import Module
+from faebryk.core.pathfinder import MAX_PATHS
 from faebryk.core.solver.solver import Solver
 from faebryk.exporters.bom.jlcpcb import write_bom_jlcpcb
 from faebryk.exporters.documentation.i2c import export_i2c_tree
@@ -50,6 +52,7 @@ from faebryk.exporters.pcb.pick_and_place.jlcpcb import (
 from faebryk.exporters.pcb.testpoints.testpoints import export_testpoints
 from faebryk.libs.app.checks import check_design
 from faebryk.libs.app.designators import attach_random_designators, load_designators
+from faebryk.libs.app.erc import needs_erc_check
 from faebryk.libs.app.pcb import (
     apply_layouts,
     apply_routing,
@@ -186,10 +189,27 @@ class Muster:
 muster = Muster()
 
 
-@muster.register("post-design-checks", description="Running post-design checks")
-def post_design_checks(
+@muster.register("prepare-build", description="Preparing build")
+def prepare_build(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
+    # TODO remove hack
+    # Disables children pathfinding
+    # ```
+    # power1.lv ~ power2.lv
+    # power1.hv ~ power2.hv
+    # -> power1 is not connected power2
+    # ```
+    set_max_paths(int(MAX_PATHS), 0, 0)
+
+    app.add(F.has_solver(solver))
+    app.add(F.PCB.has_pcb(pcb))
+
+    layout.attach_sub_pcbs_to_entry_points(app)
+
+    # TODO remove, once erc split up
+    app.add(needs_erc_check())
+
     logger.info("Resolving bus parameters")
     try:
         F.is_bus_parameter.resolve_bus_parameters(app.get_graph())
@@ -201,6 +221,15 @@ def post_design_checks(
             "See https://github.com/atopile/atopile/issues/807"
         ) from ex
 
+
+@muster.register(
+    "post-design-checks",
+    description="Running post-design checks",
+    dependencies=[prepare_build],
+)
+def post_design_checks(
+    app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+) -> None:
     check_design(
         app.get_graph(),
         stage=F.implements_design_check.CheckStage.POST_DESIGN,
