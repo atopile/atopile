@@ -803,6 +803,7 @@ def test_inspect_enum_led():
 
 
 @pytest.mark.usefixtures("setup_project_config")
+@pytest.mark.require_network
 def test_simple_pick():
     led = F.LED()
 
@@ -836,6 +837,7 @@ def test_simple_pick():
 
 
 @pytest.mark.usefixtures("setup_project_config")
+@pytest.mark.require_network
 def test_simple_negative_pick():
     led = F.LED()
     led.color.constrain_subset(L.EnumSet(F.LED.Color.RED, F.LED.Color.BLUE))
@@ -883,6 +885,7 @@ def test_simple_negative_pick():
     )
 
 
+@pytest.mark.require_network
 def test_jlcpcb_pick_resistor():
     resistor = F.Resistor()
     resistor.resistance.constrain_subset(L.Range(10 * P.ohm, 100 * P.ohm))
@@ -894,6 +897,7 @@ def test_jlcpcb_pick_resistor():
     print(resistor.get_trait(F.has_part_picked).get_part())
 
 
+@pytest.mark.require_network
 def test_jlcpcb_pick_capacitor():
     capacitor = F.Capacitor()
     capacitor.capacitance.constrain_subset(L.Range(100 * P.nF, 1 * P.uF))
