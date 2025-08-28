@@ -23,9 +23,12 @@ from atopile.datatypes import FieldRef, ReferencePartType, TypeRef
 from atopile.errors import UserException
 from atopile.parse_utils import get_src_info_from_token
 from atopile.parser import AtoParser as ap
+from faebryk.core.module import Module
+from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.node import Node
+from faebryk.core.trait import Trait, TraitImpl
 from faebryk.libs.exceptions import DowngradedExceptionCollector, iter_leaf_exceptions
-from faebryk.libs.util import debounce
+from faebryk.libs.util import debounce, not_none, once
 
 # **********************************************************
 # Utils for interacting with the atopile front-end
@@ -388,6 +391,73 @@ def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | N
                 )
 
 
+def _get_available_types(
+    uri: str, text: str, current_line: int
+) -> list[lsp.CompletionItem]:
+    """
+    Get available types for 'new' keyword completion from the current file context.
+    Uses from_dsl trait to find imported and defined types, just like go to definition.
+    """
+    completion_items = []
+
+    def _get_kind(root: Node) -> lsp.CompletionItemKind:
+        if isinstance(root, Module):
+            return lsp.CompletionItemKind.Field
+        elif isinstance(root, ModuleInterface):
+            return lsp.CompletionItemKind.Interface
+        else:
+            return lsp.CompletionItemKind.Class
+
+    try:
+        # Build the document to ensure graphs are populated
+        _build_incomplete_document(uri, text, hint_current_line=current_line)
+
+        # Get all graphs for this document
+        graphs = GRAPHS.get(uri, {})
+        if not graphs:
+            return []
+
+        node_types = {type(root).__name__: root for root in graphs.values()}
+
+        for type_name, root in node_types.items():
+            log_warning(f"root: {root} ({type_name})")
+
+            # Skip internal/private types
+            if type_name.startswith("_"):
+                continue
+
+            if not isinstance(root, (Module, ModuleInterface)):
+                continue
+
+            base_class = type(root).mro()[1]
+
+            # Create completion item based on category
+            completion_items.append(
+                lsp.CompletionItem(
+                    label=type_name,
+                    kind=_get_kind(root),
+                    detail=f"Base: {base_class.__name__}",
+                    documentation=lsp.MarkupContent(
+                        kind=lsp.MarkupKind.Markdown,
+                        value=not_none(type(root).__doc__),
+                    )
+                    if type(root).__doc__
+                    else None,
+                )
+            )
+
+        log_warning(f"Found {len(completion_items)} available types from context")
+
+    except Exception as e:
+        log_warning(f"Error getting available types: {e}")
+        import traceback
+
+        log_warning(f"Traceback: {traceback.format_exc()}")
+        # Fallback to empty list - user won't get completions but LSP won't crash
+
+    return completion_items
+
+
 def _extract_field_reference_before_dot(line: str, position: int) -> str | None:
     """
     Extract a field reference before a dot at the given position.
@@ -491,37 +561,18 @@ def _get_node_completions(node: Node) -> list[lsp.CompletionItem]:
     return completion_items
 
 
-def _build_incomplete_document(uri: str, text: str) -> None:
+def _build_incomplete_document(uri: str, text: str, hint_current_line: int) -> None:
     """
     Create a temporary version of the document with the incomplete line removed
     This allows us to build the document even when the user is typing
     an incomplete expression
     """
 
-    # Get the current document content
     lines = text.split("\n")
-    temp_lines = []
+    if hint_current_line is not None:
+        lines[hint_current_line] = ""
 
-    for i, line in enumerate(lines):
-        # If this line ends with a dot and has no content after it,
-        # or if it's the line causing completion, skip it for building
-        if line.strip().endswith(".") and not line.strip().endswith(".."):
-            # Check if there's anything meaningful after the dot
-            after_dot = line.split(".")[-1].strip()
-            if (
-                not after_dot
-                or not after_dot.replace("_", "")
-                .replace("[", "")
-                .replace("]", "")
-                .replace("0123456789", "")
-                .isalnum()
-            ):
-                # log_warning(f"Skipping incomplete line for build: '{line.strip()}'")
-                continue
-        temp_lines.append(line)
-
-    temp_source = "\n".join(temp_lines)
-
+    temp_source = "\n".join(lines)
     _build_document(uri, temp_source)
 
 
@@ -550,7 +601,7 @@ def _find_field_reference_node(
     try:
         # Build the document if needed
         try:
-            _build_incomplete_document(uri, text)
+            _build_incomplete_document(uri, text, hint_current_line=row)
         except Exception as e:
             log_error(f"Failed to build document for completion: {e}")
             # Even if build fails, continue -
@@ -650,17 +701,57 @@ def _handle_dot_completion(
     return lsp.CompletionList(is_incomplete=False, items=completion_items)
 
 
+@once
+def _get_stdlib_types():
+    import faebryk.library._F as F
+
+    symbols = vars(F).values()
+    return [s for s in symbols if isinstance(s, type) and issubclass(s, Node)]
+
+
 def _handle_new_keyword_completion(
     params: lsp.CompletionParams, line: str, document: workspace.Document
 ) -> lsp.CompletionList | None:
-    log_warning("new keyword completion")
-    return None
+    completion_items = _get_available_types(
+        params.text_document.uri, document.source, params.position.line
+    )
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
+
+
+def _handle_import_keyword_completion(
+    params: lsp.CompletionParams, line: str, document: workspace.Document
+) -> lsp.CompletionList | None:
+    log_warning("import keyword completion")
+    node_types = _get_stdlib_types()
+
+    def _get_kind(type: type) -> lsp.CompletionItemKind:
+        if issubclass(type, Module):
+            return lsp.CompletionItemKind.Field
+        elif issubclass(type, ModuleInterface):
+            return lsp.CompletionItemKind.Interface
+        elif TraitImpl.is_traitimpl_type(type):
+            return lsp.CompletionItemKind.Operator
+        return lsp.CompletionItemKind.Class
+
+    completion_items = [
+        lsp.CompletionItem(
+            label=type.__name__,
+            kind=_get_kind(type),
+            detail=f"Base: {type.mro()[1].__name__}",
+        )
+        for type in node_types
+        # don't need traits atm in ato
+        if not issubclass(type, Trait) or TraitImpl.is_traitimpl_type(type)
+    ]
+
+    return lsp.CompletionList(is_incomplete=False, items=completion_items)
 
 
 @LSP_SERVER.feature(
     lsp.TEXT_DOCUMENT_COMPLETION,
     lsp.CompletionOptions(
-        trigger_characters=[".", "new"],
+        trigger_characters=[".", " "],
         resolve_provider=False,
     ),
 )
@@ -675,8 +766,10 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
         log_warning(f"on_document_completion: '{char}'")
         if char.endswith("."):
             return _handle_dot_completion(params, line, document)
-        elif char.endswith("new"):
+        elif char.rstrip().endswith("new"):
             return _handle_new_keyword_completion(params, line, document)
+        elif char.rstrip().endswith("import"):
+            return _handle_import_keyword_completion(params, line, document)
 
     except Exception as e:
         log_error(f"Error in completion handler: {e}")

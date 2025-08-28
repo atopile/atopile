@@ -196,32 +196,16 @@ class TestFieldReferenceResolution:
         result = _find_field_reference_node("fake_uri", "pass", "invalid..field", 0)
         assert result is None
 
-    def test_find_field_reference_node_simple_present(self):
-        """Test finding a node from a simple field reference"""
-        # This is harder to test without a full graph setup
-        # For now, test that the function handles invalid cases gracefully
-        ato = dedent("""
-            import Resistor
-            module TestModule:
-                resistor = new Resistor
-            """)
-        with mock_file(ato) as uri:
-            result = _find_field_reference_node(str(uri), ato, "resistor", 2)
-        assert result is not None
-        assert isinstance(result, Module)
-
     def test_find_field_reference_node_nested_present(self):
         """Test finding a node from a nested field reference"""
-        # This is harder to test without a full graph setup
-        # For now, test that the function handles invalid cases gracefully
         ato = dedent("""
-                                        #1
-            import Resistor             #2
-            module TestModule:          #3
-                resistor = new Resistor #4
+            import Resistor             #1
+            module TestModule:          #2
+                resistor = new Resistor #3
+                                        #4
             """)
         with mock_file(ato) as uri:
-            result = _find_field_reference_node(str(uri), ato, "resistor.resistance", 3)
+            result = _find_field_reference_node(str(uri), ato, "resistor.resistance", 4)
         assert result is not None
         assert isinstance(result, Parameter)
 
@@ -232,13 +216,15 @@ class TestFieldReferenceResolution:
             import Resistor             #2
             module TestModule1:         #3
                 resistor = new Resistor #4
-            module TestModule2:         #5
-                resistor = 100mA        #6
+                                        #5
+            module TestModule2:         #6
+                resistor = 100mA        #7
+                                        #8
             """)
         with mock_file(ato) as uri:
-            result = _find_field_reference_node(str(uri), ato, "resistor", 4)
+            result = _find_field_reference_node(str(uri), ato, "resistor", 5)
             assert isinstance(result, Module)
-            result2 = _find_field_reference_node(str(uri), ato, "resistor", 6)
+            result2 = _find_field_reference_node(str(uri), ato, "resistor", 8)
             assert isinstance(result2, Parameter)
 
 
@@ -434,6 +420,58 @@ class TestEndToEndCompletion:
                 assert expected in labels, (
                     f"Expected '{expected}' in completions: {labels}"
                 )
+
+    def test_new_keyword_completion_end_to_end(self):
+        """Test completion after 'new' keyword with partial type name"""
+        # Mock ato content with imports and local definitions
+        ato_content = """
+            import Resistor
+            import Capacitor
+            import LED
+
+            module TestModule:
+                x = new #|#
+                pass
+
+            interface TestInterface:
+                pass
+        """
+
+        with _to_mock(ato_content) as (mock_params, _):
+            types = on_document_completion(mock_params)
+
+            assert isinstance(types, lsp.CompletionList)
+            assert len(types.items) > 0
+
+            labels = {item.label for item in types.items}
+
+            # Should find local definitions at minimum
+            expected_local_types = {
+                "TestModule",
+                "TestInterface",
+                "Resistor",
+                "Capacitor",
+                "LED",
+            }
+
+            assert expected_local_types.intersection(labels) == expected_local_types
+
+    def test_import_completion_end_to_end(self):
+        """Test completion for 'import' keyword"""
+        ato = """
+            import #|#
+            """
+        with _to_mock(ato) as (mock_params, _):
+            result = on_document_completion(mock_params)
+
+            assert isinstance(result, lsp.CompletionList)
+            assert len(result.items) > 0
+
+            labels = {item.label for item in result.items}
+            must_contain = {"Resistor", "Capacitor", "LED", "ElectricPower"}
+            assert labels.intersection(must_contain) == must_contain
+
+            # TODO check no raw traits (only impl) in list
 
 
 if __name__ == "__main__":
