@@ -13,6 +13,7 @@ from faebryk.libs.util import (
     SharedReference,
     assert_once,
     complete_type_string,
+    debounce,
     invert_dict,
     list_match,
     once,
@@ -377,3 +378,41 @@ def test_list_match(base, match, expected):
 )
 def test_path_replace(base, match, replacement, expected):
     assert path_replace(base, match, replacement) == expected
+
+
+def test_debounce():
+    calls = []
+    outer = []
+
+    DEBOUNCE = 0.5
+
+    @debounce(DEBOUNCE)
+    def do():
+        now = time.time()
+        calls.append(now)
+        return now
+
+    outer.append(do())
+    outer.append(do())
+    outer.append(do())
+    outer.append(do())
+
+    time.sleep(DEBOUNCE * 3)
+    assert len(calls) == 2
+
+    diffs = [calls[i] - calls[i - 1] for i in range(1, len(calls))]
+
+    assert all(diff >= DEBOUNCE for diff in diffs)
+    assert len(set(outer)) == 1
+
+    # Rerun
+    outer.append(do())
+    outer.append(do())
+    outer.append(do())
+
+    time.sleep(DEBOUNCE * 2)
+    assert len(calls) == 4
+
+    diffs2 = [calls[i] - calls[i - 1] for i in range(1, len(calls))]
+    assert all(diff >= DEBOUNCE for diff in diffs2)
+    assert len(set(outer)) == 2
