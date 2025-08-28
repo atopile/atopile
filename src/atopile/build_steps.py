@@ -187,8 +187,6 @@ def post_design_checks(
             "that this sometimes fails. Try again, and it'll probably work. "
             "See https://github.com/atopile/atopile/issues/807"
         ) from ex
-    else:
-        logger.warning("Skipping bus parameter resolution")
 
     check_design(
         app.get_graph(),
