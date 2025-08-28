@@ -16,6 +16,7 @@ from faebryk.libs.smd import SMDSize
 from faebryk.libs.units import P
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor_shim(bob: Bob, repo_root: Path):
     bob.search_paths.append(
@@ -48,6 +49,7 @@ def test_ato_pick_resistor_shim(bob: Bob, repo_root: Path):
     assert r1.has_trait(F.has_part_picked)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     bob.search_paths.append(
@@ -78,6 +80,7 @@ def test_ato_pick_resistor(bob: Bob, repo_root: Path):
     assert r1.has_trait(F.has_part_picked)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_capacitor_shim(bob: Bob, repo_root: Path):
     bob.search_paths.append(
@@ -113,6 +116,7 @@ def test_ato_pick_capacitor_shim(bob: Bob, repo_root: Path):
     assert r1.has_trait(F.has_part_picked)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     text = dedent(
@@ -140,6 +144,7 @@ def test_ato_pick_capacitor(bob: Bob, repo_root: Path):
     assert r1.has_trait(F.has_part_picked)
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 @pytest.mark.parametrize(
     "package,package_str",
@@ -181,6 +186,7 @@ def test_ato_pick_inductor(
     assert inductance_lit.is_subset_of(L.Range.from_center_rel(100 * P.nH, 0.2))
 
 
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
     bob.search_paths.append(
@@ -215,6 +221,7 @@ def test_ato_pick_resistor_dependency(bob: Bob, repo_root: Path):
 
 
 @pytest.mark.slow
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
     bob.search_paths.append(
@@ -248,6 +255,7 @@ def test_ato_pick_resistor_voltage_divider_fab(bob: Bob, repo_root: Path):
 
 
 @pytest.mark.slow
+@pytest.mark.requires_internet
 @pytest.mark.usefixtures("setup_project_config")
 def test_ato_pick_resistor_voltage_divider_ato(bob: Bob, repo_root: Path):
     bob.search_paths.append(

@@ -12,6 +12,7 @@ from faebryk.libs.util import run_live
 EXAMPLES_DIR = _repo_root() / "examples"
 
 
+@pytest.mark.requires_internet
 @pytest.mark.parametrize("package", ["atopile/addressable-leds"])
 def test_install_package(package: str, tmp_path: Path):
     example_copy = tmp_path / "example"
