@@ -4,7 +4,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from atopile.targets import Muster, MusterTarget
+import faebryk.library._F as F
+from atopile.build_steps import Muster, MusterTarget
+from atopile.cli.logging_ import LoggingStage
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
 
@@ -19,13 +21,9 @@ def test_muster_basic_dependencies():
     func_c = Mock()
 
     # Register targets with dependencies
-    muster.add_target(MusterTarget("A", [], False, func_a, dependencies=[]))
-    muster.add_target(
-        MusterTarget("B", [], False, func_b, dependencies=[muster.targets["A"]])
-    )
-    muster.add_target(
-        MusterTarget("C", [], False, func_c, dependencies=[muster.targets["B"]])
-    )
+    muster.add_target(MusterTarget("A", [], func_a, dependencies=[]))
+    muster.add_target(MusterTarget("B", [], func_b, dependencies=[muster.targets["A"]]))
+    muster.add_target(MusterTarget("C", [], func_c, dependencies=[muster.targets["B"]]))
 
     # Get all targets by selecting them explicitly
     sorted_targets = muster.select({"A", "B", "C"})
@@ -46,20 +44,16 @@ def test_muster_diamond_dependencies():
     # B depends on A
     # C depends on A
     # D depends on B and C
-    muster.add_target(MusterTarget("A", [], False, funcs["A"], dependencies=[]))
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
     muster.add_target(
-        MusterTarget("B", [], False, funcs["B"], dependencies=[muster.targets["A"]])
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
     )
     muster.add_target(
-        MusterTarget("C", [], False, funcs["C"], dependencies=[muster.targets["A"]])
+        MusterTarget("C", [], funcs["C"], dependencies=[muster.targets["A"]])
     )
     muster.add_target(
         MusterTarget(
-            "D",
-            [],
-            False,
-            funcs["D"],
-            dependencies=[muster.targets["B"], muster.targets["C"]],
+            "D", [], funcs["D"], dependencies=[muster.targets["B"], muster.targets["C"]]
         )
     )
 
@@ -86,16 +80,16 @@ def test_muster_specific_targets_with_dependencies():
     funcs = {name: Mock() for name in ["A", "B", "C", "D", "E"]}
 
     # Register targets
-    muster.add_target(MusterTarget("A", [], False, funcs["A"], dependencies=[]))
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
     muster.add_target(
-        MusterTarget("B", [], False, funcs["B"], dependencies=[muster.targets["A"]])
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
     )
     muster.add_target(
-        MusterTarget("C", [], False, funcs["C"], dependencies=[muster.targets["B"]])
+        MusterTarget("C", [], funcs["C"], dependencies=[muster.targets["B"]])
     )
-    muster.add_target(MusterTarget("D", [], False, funcs["D"], dependencies=[]))
+    muster.add_target(MusterTarget("D", [], funcs["D"], dependencies=[]))
     muster.add_target(
-        MusterTarget("E", [], False, funcs["E"], dependencies=[muster.targets["D"]])
+        MusterTarget("E", [], funcs["E"], dependencies=[muster.targets["D"]])
     )
 
     # Get only C (should include A and B as dependencies)
@@ -124,9 +118,9 @@ def test_muster_cycle_detection():
     funcs = {name: Mock() for name in ["A", "B", "C"]}
 
     # First register all targets without dependencies
-    muster.add_target(MusterTarget("A", [], False, funcs["A"], dependencies=[]))
-    muster.add_target(MusterTarget("B", [], False, funcs["B"], dependencies=[]))
-    muster.add_target(MusterTarget("C", [], False, funcs["C"], dependencies=[]))
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
+    muster.add_target(MusterTarget("B", [], funcs["B"], dependencies=[]))
+    muster.add_target(MusterTarget("C", [], funcs["C"], dependencies=[]))
 
     # Now add the cyclic dependencies directly to the DAG
     muster.dependency_dag.add_edge("A", "B")
@@ -145,17 +139,23 @@ def test_muster_register_decorator():
     muster = Muster()
 
     @muster.register("target1")
-    def func1(app: Module, solver: Solver) -> None:
+    def func1(
+        app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    ) -> None:
         pass
 
     @muster.register("target2", dependencies=[muster.targets["target1"]])
-    def func2(app: Module, solver: Solver) -> None:
+    def func2(
+        app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    ) -> None:
         pass
 
     @muster.register(
         "target3", dependencies=[muster.targets["target1"], muster.targets["target2"]]
     )
-    def func3(app: Module, solver: Solver) -> None:
+    def func3(
+        app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
+    ) -> None:
         pass
 
     # Check targets are registered
@@ -186,15 +186,15 @@ def test_muster_disconnected_components():
     funcs = {name: Mock() for name in ["A", "B", "C", "D"]}
 
     # Chain 1: A -> B
-    muster.add_target(MusterTarget("A", [], False, funcs["A"], dependencies=[]))
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
     muster.add_target(
-        MusterTarget("B", [], False, funcs["B"], dependencies=[muster.targets["A"]])
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
     )
 
     # Chain 2: C -> D (independent of chain 1)
-    muster.add_target(MusterTarget("C", [], False, funcs["C"], dependencies=[]))
+    muster.add_target(MusterTarget("C", [], funcs["C"], dependencies=[]))
     muster.add_target(
-        MusterTarget("D", [], False, funcs["D"], dependencies=[muster.targets["C"]])
+        MusterTarget("D", [], funcs["D"], dependencies=[muster.targets["C"]])
     )
 
     # Get all sorted targets
@@ -212,7 +212,7 @@ def test_muster_missing_dependency_error():
 
     # Add a target that depends on a non-existent target
     func = Mock()
-    non_existent_target = MusterTarget("NonExistent", [], False, Mock())
+    non_existent_target = MusterTarget("NonExistent", [], Mock())
 
     # Should raise AssertionError for missing dependency
     with pytest.raises(
@@ -220,7 +220,7 @@ def test_muster_missing_dependency_error():
         match="Dependency 'NonExistent' for target 'A' not yet registered",
     ):
         muster.add_target(
-            MusterTarget("A", [], False, func, dependencies=[non_existent_target])
+            MusterTarget("A", [], func, dependencies=[non_existent_target])
         )
 
 
@@ -231,18 +231,18 @@ def test_muster_non_direct_dependencies():
     # Create a longer dependency chain: A -> B -> C -> D -> E
     funcs = {name: Mock() for name in ["A", "B", "C", "D", "E"]}
 
-    muster.add_target(MusterTarget("A", [], False, funcs["A"], dependencies=[]))
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
     muster.add_target(
-        MusterTarget("B", [], False, funcs["B"], dependencies=[muster.targets["A"]])
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
     )
     muster.add_target(
-        MusterTarget("C", [], False, funcs["C"], dependencies=[muster.targets["B"]])
+        MusterTarget("C", [], funcs["C"], dependencies=[muster.targets["B"]])
     )
     muster.add_target(
-        MusterTarget("D", [], False, funcs["D"], dependencies=[muster.targets["C"]])
+        MusterTarget("D", [], funcs["D"], dependencies=[muster.targets["C"]])
     )
     muster.add_target(
-        MusterTarget("E", [], False, funcs["E"], dependencies=[muster.targets["D"]])
+        MusterTarget("E", [], funcs["E"], dependencies=[muster.targets["D"]])
     )
 
     # Request only E, should get all ancestors
@@ -255,7 +255,7 @@ def test_muster_non_direct_dependencies():
     # Add F that also depends on C
     funcs["F"] = Mock()
     muster.add_target(
-        MusterTarget("F", [], False, funcs["F"], dependencies=[muster.targets["C"]])
+        MusterTarget("F", [], funcs["F"], dependencies=[muster.targets["C"]])
     )
 
     # Request both E and F, should get A, B, C once (not duplicated)
