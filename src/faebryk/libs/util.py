@@ -2841,37 +2841,29 @@ def debounce(delay: float) -> Callable:
 
     def _decorator(func: Callable) -> Callable:
         last_call = 0
-        waiting = False
+        waiting = threading.Semaphore()
+
+        def _run(*args, **kwargs):
+            nonlocal waiting
+            nonlocal last_call
+            waiting.release()
+            last_call = time.time()
+            return func(*args, **kwargs)
 
         def _debounced(*args, **kwargs):
             nonlocal last_call
             nonlocal waiting
 
-            if waiting:
+            if not waiting.acquire(blocking=False):
                 return
 
             time_passed = time.time() - last_call
             if time_passed > delay:
-                last_call = time.time()
-                return func(*args, **kwargs)
+                return _run(*args, **kwargs)
 
-            waiting = True
-
-            def _run(*args, **kwargs):
-                nonlocal waiting
-                nonlocal last_call
-                time.sleep(delay - time_passed)
-                waiting = False
-                last_call = time.time()
-                func(*args, **kwargs)
-
-            thread = threading.Thread(
-                target=_run,
-                args=args,
-                kwargs=kwargs,
-            )
-            thread.start()
-            return thread
+            timer = threading.Timer(delay - time_passed, _run, args, kwargs)
+            timer.start()
+            return timer
 
         return _debounced
 
