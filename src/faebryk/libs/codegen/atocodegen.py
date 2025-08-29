@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
+from typing import Literal
 
 import faebryk.library._F as F
 from atopile.front_end import _FeatureFlags
@@ -147,14 +148,15 @@ class AtoCodeGen:
             return f"{self.address} -> {self.type}"
 
     @dataclass
-    class Module(Statement):
+    class Block:
         name: str
         stmts: list["AtoCodeGen.Statement"]
         docstring: str | None = None
+        type: Literal["module", "component"] = "module"
 
         def dump(self) -> str:
             out = _StrBuilder()
-            out.append_line(f"module {self.name}:")
+            out.append_line(f"{self.type} {self.name}:")
             if self.docstring:
                 out.append_indented(f'"""{self.docstring}"""')
                 out.spacer()
@@ -165,41 +167,30 @@ class AtoCodeGen:
             return out.dump()
 
     @dataclass
-    class ComponentFile:
-        identifier: str | None = None
-        imports: set["AtoCodeGen.Import"] = field(default_factory=set)
+    class Module(Block):
+        type: Literal["module", "component"] = "module"
+
+    @dataclass
+    class Component(Block):
+        type: Literal["module", "component"] = "component"
+
+    @dataclass
+    class File:
         experiments: set["AtoCodeGen.Experiment"] = field(default_factory=set)
+        imports: set["AtoCodeGen.Import"] = field(default_factory=set)
+        blocks: list["AtoCodeGen.Block"] = field(default_factory=list)
         stmts: list["AtoCodeGen.Statement"] = field(default_factory=list)
-        docstring: str | None = None
-
-        def dump(self) -> str:
-            if self.identifier is None:
-                raise ValueError("identifier is required")
-
-            out = _StrBuilder()
-
-            for exp in self.experiments:
-                out.append_line(f'#pragma experiment("{exp.value}")')
-
-            for imp in sorted(self.imports, key=lambda x: x.name):
-                if imp.path:
-                    out.append(f"from {imp.path} ")
-                out.append_line(f"import {imp.name}")
-
-            out.spacer()
-
-            out.append_line(f"component {self.identifier}:")
-            if self.docstring:
-                out.append_indented(f'"""{self.docstring}"""')
-                out.spacer()
-
-            for stmt in self.stmts:
-                out.append_indented(stmt.dump())
-
-            return out.dump()
 
         def add_stmt(self, stmt: "AtoCodeGen.Statement") -> None:
             self.stmts.append(stmt)
+
+        def add_stmts(
+            self, *stmts: "AtoCodeGen.Statement", use_spacer: bool = True
+        ) -> None:
+            if use_spacer:
+                self.add_stmt(AtoCodeGen.Spacer())
+            for stmt in stmts:
+                self.add_stmt(stmt)
 
         def add_comments(self, *comments: str, use_spacer: bool = False) -> None:
             self.add_stmts(
@@ -229,23 +220,42 @@ class AtoCodeGen:
         def enable_experiment(self, experiment: "AtoCodeGen.Experiment") -> None:
             self.experiments.add(experiment)
 
-        def add_stmts(
-            self, *stmts: "AtoCodeGen.Statement", use_spacer: bool = True
-        ) -> None:
-            if use_spacer:
-                self.add_stmt(AtoCodeGen.Spacer())
-            for stmt in stmts:
-                self.add_stmt(stmt)
+        def add_module(self, module: "AtoCodeGen.Module") -> None:
+            self.blocks.append(module)
 
     @dataclass
-    class PicksFile:
-        experiments: set["AtoCodeGen.Experiment"] = field(default_factory=set)
-        imports: set["AtoCodeGen.Import"] = field(default_factory=set)
-        modules: list["AtoCodeGen.Module"] = field(default_factory=list)
-        stmts: list["AtoCodeGen.Statement | AtoCodeGen.Trait"] = field(
-            default_factory=list
-        )
+    class ComponentFile(File):
+        identifier: str | None = None
+        docstring: str | None = None
 
+        def dump(self) -> str:
+            if self.identifier is None:
+                raise ValueError("identifier is required")
+
+            out = _StrBuilder()
+
+            for exp in self.experiments:
+                out.append_line(f'#pragma experiment("{exp.value}")')
+
+            for imp in sorted(self.imports, key=lambda x: x.name):
+                if imp.path:
+                    out.append(f"from {imp.path} ")
+                out.append_line(f"import {imp.name}")
+
+            out.spacer()
+
+            out.append_line(f"component {self.identifier}:")
+            if self.docstring:
+                out.append_indented(f'"""{self.docstring}"""')
+                out.spacer()
+
+            for stmt in self.stmts:
+                out.append_indented(stmt.dump())
+
+            return out.dump()
+
+    @dataclass
+    class PicksFile(File):
         def __post_init__(self) -> None:
             self.experiments.add(AtoCodeGen.Experiment.TRAITS)
             self.imports.add(AtoCodeGen.Import(F.has_part_picked.__name__))
@@ -265,16 +275,10 @@ class AtoCodeGen:
 
             out.spacer()
 
-            for module in self.modules:
-                out.append_line(module.dump())
+            for block in self.blocks:
+                out.append_line(block.dump())
 
             for stmt in self.stmts:
                 out.append_line(stmt.dump())
 
             return out.dump()
-
-        def add_module(self, module: "AtoCodeGen.Module") -> None:
-            self.modules.append(module)
-
-        def add_stmt(self, stmt: "AtoCodeGen.Statement") -> None:
-            self.stmts.append(stmt)
