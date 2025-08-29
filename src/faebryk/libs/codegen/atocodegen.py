@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 
+import faebryk.library._F as F
 from atopile.front_end import _FeatureFlags
+from faebryk.libs.codegen.pycodegen import sanitize_name  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +139,32 @@ class AtoCodeGen:
             return f"{left} = {self.value}"
 
     @dataclass
+    class Retype(Statement):
+        address: str
+        type: str
+
+        def dump_stmt(self) -> str:
+            return f"{self.address} -> {self.type}"
+
+    @dataclass
+    class Module(Statement):
+        name: str
+        stmts: list["AtoCodeGen.Statement"]
+        docstring: str | None = None
+
+        def dump(self) -> str:
+            out = _StrBuilder()
+            out.append_line(f"module {self.name}:")
+            if self.docstring:
+                out.append_indented(f'"""{self.docstring}"""')
+                out.spacer()
+
+            for stmt in self.stmts:
+                out.append_indented(stmt.dump())
+
+            return out.dump()
+
+    @dataclass
     class ComponentFile:
         identifier: str | None = None
         imports: set["AtoCodeGen.Import"] = field(default_factory=set)
@@ -211,37 +239,42 @@ class AtoCodeGen:
 
     @dataclass
     class PicksFile:
-        picks: list[list["AtoCodeGen.Assignment"]] = field(default_factory=list)
+        experiments: set["AtoCodeGen.Experiment"] = field(default_factory=set)
+        imports: set["AtoCodeGen.Import"] = field(default_factory=set)
+        modules: list["AtoCodeGen.Module"] = field(default_factory=list)
+        stmts: list["AtoCodeGen.Statement | AtoCodeGen.Trait"] = field(
+            default_factory=list
+        )
+
+        def __post_init__(self) -> None:
+            self.experiments.add(AtoCodeGen.Experiment.TRAITS)
+            self.imports.add(AtoCodeGen.Import(F.has_part_picked.__name__))
 
         def dump(self) -> str:
             out = _StrBuilder()
-            for pick in self.picks[:-1]:
-                for stmt in pick:
-                    out.append_line(stmt.dump())
-                out.spacer()
 
-            for stmt in self.picks[-1]:
+            for exp in self.experiments:
+                out.append_line(f'#pragma experiment("{exp.value}")')
+
+            out.spacer()
+
+            for imp in sorted(self.imports, key=lambda x: x.name):
+                if imp.path:
+                    out.append(f"from {imp.path} ")
+                out.append_line(f"import {imp.name}")
+
+            out.spacer()
+
+            for module in self.modules:
+                out.append_line(module.dump())
+
+            for stmt in self.stmts:
                 out.append_line(stmt.dump())
 
             return out.dump()
 
-        def add_pick(
-            self, name: str, manufacturer: str, mpn: str, lcsc_id: str | None
-        ) -> None:
-            pick_stmts = [
-                AtoCodeGen.Assignment(
-                    address=name,
-                    attribute="manufacturer",
-                    value=_quote(manufacturer),
-                ),
-                AtoCodeGen.Assignment(address=name, attribute="mpn", value=_quote(mpn)),
-            ]
+        def add_module(self, module: "AtoCodeGen.Module") -> None:
+            self.modules.append(module)
 
-            if lcsc_id is not None:
-                pick_stmts.append(
-                    AtoCodeGen.Assignment(
-                        address=name, attribute="lcsc_id", value=_quote(lcsc_id)
-                    )
-                )
-
-            self.picks.append(pick_stmts)
+        def add_stmt(self, stmt: "AtoCodeGen.Statement") -> None:
+            self.stmts.append(stmt)
