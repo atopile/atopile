@@ -229,21 +229,37 @@ class from_dsl(Trait.decless()):
             case _:
                 return None
 
-    def _describe(self) -> str:
-        def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
-            if isinstance(ctx, ParserRuleContext):
-                file, start_line, start_col, end_line, end_col = get_src_info_from_ctx(
-                    ctx
-                )
-                return f"{file}:{start_line}:{start_col} - {end_line}:{end_col}"
-            elif ctx is not None:
-                return f"{inspect.getfile(ctx)}:{inspect.getsourcelines(ctx)[1]}:0"
+    @staticmethod
+    def _ctx_or_type_to_str(ctx: ParserRuleContext | type[L.Node]) -> str:
+        span = from_dsl._ctx_or_type_to_span(ctx)
+        return (
+            f"{span.start.file}:{span.start.line}:{span.start.col}"
+            f" - {span.end.line}:{span.end.col}"
+        )
 
+    @staticmethod
+    def _ctx_or_type_to_span(ctx: ParserRuleContext | type[L.Node]) -> Span:
+        if isinstance(ctx, ParserRuleContext):
+            file, start_line, start_col, end_line, end_col = get_src_info_from_ctx(ctx)
+            file = str(file)
+        else:
+            file = inspect.getfile(ctx)
+            lines, line_no = inspect.getsourcelines(ctx)
+            start_line = line_no
+            start_col = 0
+            end_line = line_no + len(lines)
+            end_col = len(lines[-1])
+        return Span(
+            Position(file, start_line, start_col),
+            Position(str(file), end_line, end_col),
+        )
+
+    def _describe(self) -> str:
         return json.dumps(
             {
                 "hover_text": self.hover_text,
-                "source": _ctx_or_type_to_str(self.src_ctx),
-                "definition": _ctx_or_type_to_str(self.definition_ctx)
+                "source": from_dsl._ctx_or_type_to_str(self.src_ctx),
+                "definition": from_dsl._ctx_or_type_to_str(self.definition_ctx)
                 if self.definition_ctx is not None
                 else None,
                 "references": [
