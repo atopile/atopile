@@ -400,10 +400,28 @@ def _find_type_ref(uri: str, pos: front_end.Position):
     return None
 
 
+def _find_field_ref(uri: str, text: str, pos: lsp.Position):
+    # TODO use ast instead
+    line = text.splitlines()[pos.line]
+
+    def _str_rev(a: str):
+        return "".join(reversed(a))
+
+    token_r = r"a-zA-Z0-9_\[\]"
+    trail_match = re.match(rf"([{token_r}]+)[^{token_r}]", line[pos.character :])
+    if not trail_match:
+        return None
+    trailer = trail_match.group(1)
+    head_match = re.match(
+        rf"([{token_r}.]+)[^{token_r}.]", _str_rev(line[: pos.character])
+    )
+    header = _str_rev(head_match.group(1)) if head_match else ""
+    return header + trailer, (pos.character - len(header), pos.character + len(trailer))
+
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | None:
     """Handle document definition request."""
-    log_warning(f"Requesting definition for {params}")
     pos = front_end.Position(
         str(get_file(params.text_document.uri)),
         params.position.line + 1,
@@ -437,6 +455,35 @@ def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | N
                 front_end.Span.from_ctx(ref.getRuleContext())
             ),
         )
+
+    # check if field ref
+    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+    if node := _get_node_from_row(params.text_document.uri, params.position.line):
+        dsl = node.get_trait(front_end.from_dsl)
+        if _field_ref := _find_field_ref(
+            params.text_document.uri, document.source, params.position
+        ):
+            field_ref, pos = _field_ref
+            target = _find_field_reference_node(
+                params.text_document.uri,
+                document.source,
+                str(field_ref),
+                params.position.line,
+            )
+            if target is not None and (
+                target_dsl := target.get_trait(front_end.from_dsl)
+            ):
+                s_span = front_end.from_dsl._ctx_or_type_to_span(target_dsl.src_ctx)
+                lsp_d_span = _span_to_lsp_range(s_span)
+                return lsp.LocationLink(
+                    target_uri=s_span.start.file,
+                    target_range=lsp_d_span,
+                    target_selection_range=lsp_d_span,
+                    origin_selection_range=lsp.Range(
+                        lsp.Position(line=params.position.line, character=pos[0]),
+                        lsp.Position(line=params.position.line, character=pos[1]),
+                    ),
+                )
 
 
 def _get_available_types(
