@@ -252,7 +252,7 @@ def _build_document(uri: str, text: str) -> None:
             case ap.AtoParser.BlockdefContext():
                 try:
                     # try the single-node version first, in case that's all we can build
-                    GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
+                    GRAPHS[uri][TypeRef.from_one("__node_" + str(ref))] = (
                         front_end.bob.build_node(text, file_path, ref)
                     )
 
@@ -384,22 +384,59 @@ def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
                 )
 
 
+def _find_type_ref(uri: str, pos: front_end.Position):
+    nodes = GRAPHS.get(uri, {}).items()
+    ato_block_nodes = [n for n in nodes if n[0][0].startswith("__node_")]
+
+    for _, root in ato_block_nodes:
+        for _, trait in root.iter_children_with_trait(
+            front_end.from_dsl, include_self=False
+        ):
+            if front_end.Span.from_ctx(trait.src_ctx).contains(pos) and isinstance(
+                trait.src_ctx, front_end.ap.Type_referenceContext
+            ):
+                return root, trait, trait.src_ctx
+
+    return None
+
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | None:
     """Handle document definition request."""
     log_warning(f"Requesting definition for {params}")
-    for ref, root in GRAPHS.get(params.text_document.uri, {}).items():
-        log_warning(f"root: '{ref}' '{root}' (type: {type(root)})")
-        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
-            log_warning(f"dsl: {trait._describe()}")
-            if (spans := trait.query_definition(**_query_params(params))) is not None:
-                origin_span, target_span, target_selection_span = spans
-                return lsp.LocationLink(
-                    target_uri=target_span.start.file,
-                    target_range=_span_to_lsp_range(target_span),
-                    target_selection_range=_span_to_lsp_range(target_selection_span),
-                    origin_selection_range=_span_to_lsp_range(origin_span),
-                )
+    pos = front_end.Position(
+        str(get_file(params.text_document.uri)),
+        params.position.line + 1,
+        params.position.character + 1,
+    )
+    Gs = GRAPHS.get(params.text_document.uri, {})
+
+    # check if new stmt typeref
+    if typeref := _find_type_ref(params.text_document.uri, pos):
+        # go find source
+        _, _, ref = typeref
+        search = ref.name()[0].NAME()
+        if target := Gs.get(front_end.TypeRef.from_one(f"__import__{search}")):
+            dsl = target.get_trait(front_end.from_dsl)
+        elif target := Gs.get(front_end.TypeRef.from_one(f"__node_{search}")):
+            dsl = target.get_trait(front_end.from_dsl)
+        else:
+            log_warning("Didn't find typeref target")
+            return
+
+        if dsl.definition_ctx is None:
+            return
+
+        d_span = front_end.from_dsl._ctx_or_type_to_span(dsl.definition_ctx)
+        lsp_d_span = _span_to_lsp_range(d_span)
+        return lsp.LocationLink(
+            target_uri=d_span.start.file,
+            target_range=lsp_d_span,
+            target_selection_range=lsp_d_span,
+            origin_selection_range=_span_to_lsp_range(
+                front_end.Span.from_ctx(ref.getRuleContext())
+            ),
+        )
 
 
 def _get_available_types(
