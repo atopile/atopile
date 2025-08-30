@@ -59,7 +59,11 @@ from faebryk.libs.app.pcb import (
     check_net_names,
     load_net_names,
 )
-from faebryk.libs.app.picking import load_part_info_from_pcb, save_part_info_to_pcb
+from faebryk.libs.app.picking import (
+    load_picks_from_file,
+    save_part_info_to_pcb,
+    save_picks_to_file,
+)
 from faebryk.libs.exceptions import accumulate, iter_leaf_exceptions
 from faebryk.libs.kicad.fileformats_latest import C_kicad_pcb_file
 from faebryk.libs.picker.picker import PickError, pick_part_recursively
@@ -256,7 +260,7 @@ def pick_parts(
     app: Module, solver: Solver, pcb: F.PCB, log_context: LoggingStage
 ) -> None:
     if config.build.keep_picked_parts:
-        load_part_info_from_pcb(app.get_graph())
+        load_picks_from_file(app, config.build.paths.picks_file)
         solver.simplify(app.get_graph())
     try:
         pick_part_recursively(app, solver, progress=log_context)
@@ -266,6 +270,7 @@ def pick_parts(
             [UserPickError(str(e)) for e in iter_leaf_exceptions(ex)],
         ) from ex
     save_part_info_to_pcb(app.get_graph())
+    save_picks_to_file(app.get_graph(), config.build.paths.picks_file)
 
 
 @muster.register(

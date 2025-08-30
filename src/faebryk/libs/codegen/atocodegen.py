@@ -6,7 +6,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from textwrap import indent
 
+import faebryk.library._F as F
 from atopile.front_end import _FeatureFlags
+from faebryk.libs.codegen.pycodegen import sanitize_name  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,11 @@ class _StrBuilder:
 
     def dump(self) -> str:
         return self.out
+
+
+def _quote(s: str) -> str:
+    # TODO: escape quotes in string
+    return f'"{s}"'
 
 
 class AtoCodeGen:
@@ -119,6 +126,45 @@ class AtoCodeGen:
             return [cls(line) for line in lines]
 
     @dataclass
+    class Assignment(Statement):
+        address: str
+        value: str
+        attribute: str | None = None
+
+        def dump_stmt(self) -> str:
+            left = (
+                f"{self.address}.{self.attribute}" if self.attribute else self.address
+            )
+
+            return f"{left} = {self.value}"
+
+    @dataclass
+    class Retype(Statement):
+        address: str
+        type: str
+
+        def dump_stmt(self) -> str:
+            return f"{self.address} -> {self.type}"
+
+    @dataclass
+    class Module(Statement):
+        name: str
+        stmts: list["AtoCodeGen.Statement"]
+        docstring: str | None = None
+
+        def dump(self) -> str:
+            out = _StrBuilder()
+            out.append_line(f"module {self.name}:")
+            if self.docstring:
+                out.append_indented(f'"""{self.docstring}"""')
+                out.spacer()
+
+            for stmt in self.stmts:
+                out.append_indented(stmt.dump())
+
+            return out.dump()
+
+    @dataclass
     class ComponentFile:
         identifier: str | None = None
         imports: set["AtoCodeGen.Import"] = field(default_factory=set)
@@ -173,7 +219,7 @@ class AtoCodeGen:
                 self.imports.add(AtoCodeGen.Import(name))
 
             trait = AtoCodeGen.Trait(
-                name,
+                name=name,
                 args={k: v for k, v in args.items() if v is not None},
                 constructor=constructor,
             )
@@ -190,3 +236,45 @@ class AtoCodeGen:
                 self.add_stmt(AtoCodeGen.Spacer())
             for stmt in stmts:
                 self.add_stmt(stmt)
+
+    @dataclass
+    class PicksFile:
+        experiments: set["AtoCodeGen.Experiment"] = field(default_factory=set)
+        imports: set["AtoCodeGen.Import"] = field(default_factory=set)
+        modules: list["AtoCodeGen.Module"] = field(default_factory=list)
+        stmts: list["AtoCodeGen.Statement | AtoCodeGen.Trait"] = field(
+            default_factory=list
+        )
+
+        def __post_init__(self) -> None:
+            self.experiments.add(AtoCodeGen.Experiment.TRAITS)
+            self.imports.add(AtoCodeGen.Import(F.has_part_picked.__name__))
+
+        def dump(self) -> str:
+            out = _StrBuilder()
+
+            for exp in self.experiments:
+                out.append_line(f'#pragma experiment("{exp.value}")')
+
+            out.spacer()
+
+            for imp in sorted(self.imports, key=lambda x: x.name):
+                if imp.path:
+                    out.append(f"from {imp.path} ")
+                out.append_line(f"import {imp.name}")
+
+            out.spacer()
+
+            for module in self.modules:
+                out.append_line(module.dump())
+
+            for stmt in self.stmts:
+                out.append_line(stmt.dump())
+
+            return out.dump()
+
+        def add_module(self, module: "AtoCodeGen.Module") -> None:
+            self.modules.append(module)
+
+        def add_stmt(self, stmt: "AtoCodeGen.Statement") -> None:
+            self.stmts.append(stmt)

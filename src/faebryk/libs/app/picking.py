@@ -4,16 +4,22 @@
 import json
 import logging
 from enum import StrEnum
+from pathlib import Path
+
+from natsort import natsorted
 
 import faebryk.library._F as F
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
+from faebryk.core.node import Node
 from faebryk.core.parameter import Parameter
+from faebryk.core.trait import Trait
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
+from faebryk.libs.codegen.atocodegen import AtoCodeGen, sanitize_name
 from faebryk.libs.picker.lcsc import PickedPartLCSC
 from faebryk.libs.picker.lcsc import attach as lcsc_attach
 from faebryk.libs.sets.sets import P_Set
-from faebryk.libs.util import KeyErrorNotFound
+from faebryk.libs.util import KeyErrorNotFound, cast_assert
 
 NO_LCSC_DISPLAY = "No LCSC number"
 
@@ -148,3 +154,54 @@ def save_part_info_to_pcb(G: Graph):
             key = f"{Properties.param_prefix}{p.get_name()}"
             value = json.dumps(lit.serialize())
             node.add(F.has_descriptive_properties_defined({key: value}))
+
+
+def load_picks_from_file(app: Module, picks_file_path: Path):
+    from atopile.front_end import bob
+
+    bob.append_statements(picks_file_path.read_text(), picks_file_path, app)
+
+
+def save_picks_to_file(G: Graph, picks_file_path: Path):
+    nodes: list[tuple[Node, Trait]] = GraphFunctions(G).nodes_with_trait(
+        F.has_part_picked
+    )
+
+    parts: dict[str, PickedPartLCSC] = {}
+    picks: dict[str, str] = {}
+
+    for node, _ in nodes:
+        if t := node.try_get_trait(F.has_part_picked):
+            part = cast_assert(PickedPartLCSC, t.get_part())
+            part_identifier = (
+                sanitize_name(part.manufacturer) + "_" + sanitize_name(part.partno)
+            )
+            parts[part_identifier] = part
+            picks[node.get_full_name()] = part_identifier
+
+    picks_file = AtoCodeGen.PicksFile()
+    for identifier, part in natsorted(parts.items()):
+        picks_file.add_module(
+            AtoCodeGen.Module(
+                name=identifier,
+                docstring=part.info.description if part.info is not None else "",
+                stmts=[
+                    AtoCodeGen.Trait(
+                        name=F.has_part_picked.__name__,
+                        constructor=F.has_part_picked.by_supplier.__name__,
+                        args={
+                            "supplier_id": "lcsc",
+                            "supplier_partno": part.lcsc_id,
+                            "manufacturer": part.manufacturer,
+                            "partno": part.partno,
+                        },
+                    )
+                ],
+            )
+        )
+
+    for name in natsorted(picks):
+        picks_file.add_stmt(AtoCodeGen.Retype(address=name, type=picks[name]))
+
+    with open(picks_file_path, "w") as f:
+        f.write(picks_file.dump())
