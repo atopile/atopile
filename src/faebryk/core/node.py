@@ -5,6 +5,7 @@ from abc import abstractmethod
 from collections.abc import Iterator
 from dataclasses import InitVar as dataclass_InitVar
 from itertools import chain
+from math import exp
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -22,12 +23,21 @@ from deprecated import deprecated
 from more_itertools import partition
 from ordered_set import OrderedSet
 
-from faebryk.core.cpp import Node as CNode
+from atopile.datatypes import FieldRef
+from faebryk.core.cpp import (
+    GraphInterfaceHierarchical,
+    GraphInterfaceReference,
+    LinkPointer,
+)
+from faebryk.core.cpp import (
+    Node as CNode,
+)
 from faebryk.core.graphinterface import (
     GraphInterface,
 )
 from faebryk.core.link import LinkNamedParent, LinkSibling
 from faebryk.libs.exceptions import UserException
+from faebryk.libs.sets.sets import P_Set
 from faebryk.libs.util import (
     KeyErrorAmbiguous,
     KeyErrorNotFound,
@@ -43,8 +53,11 @@ from faebryk.libs.util import (
 )
 
 if TYPE_CHECKING:
+    from faebryk.core.module import Module
+    from faebryk.core.moduleinterface import ModuleInterface
     from faebryk.core.solver.solver import Solver
     from faebryk.core.trait import Trait, TraitImpl
+    from faebryk.core.parameter import Expression
 
 logger = logging.getLogger(__name__)
 
@@ -182,6 +195,267 @@ class InitVar(dataclass_InitVar):
 
 
 # -----------------------------------------------------------------------------
+
+
+class Address:
+    def __init__(self, value: str):
+        self.value = value
+
+
+# TODO: move to cpp
+class Attribute[T = str | int | float | Address]:
+    def __init__(self, value: T | None) -> None:
+        self.name: str | None = None
+        self.value = value
+
+
+# TODO move to CNode
+class _CNode(CNode):
+    def _handle_add_attribute(self, name: str, attr: Attribute) -> None:
+        # TODO do graph stuff
+        attr.name = name
+
+    def _handle_add_gif(self, name: str, gif: GraphInterface):
+        gif.node = self
+        gif.name = name
+        gif.connect(self.self_gif, LinkSibling())
+
+    def __setattr__(self, name: str, value: Any, /) -> None:
+        out = super().__setattr__(name, value)
+        if isinstance(value, GraphInterface):
+            self._handle_add_gif(name, value)
+        elif isinstance(value, Attribute):
+            self._handle_add_attribute(name, value)
+        return out
+
+
+# TODO: make part of GraphInterfaceReference
+class _GraphInterfaceReference[T: CNode](GraphInterfaceReference):
+    def __init__(self, *ref: T):
+        super().__init__()
+        self.connect([r.self_gif for r in ref], LinkPointer())
+
+    @property
+    def reference(self) -> T:
+        return cast(T, self.get_referenced_gif().node)
+
+    @property
+    def references(self) -> list[T]:
+        return [cast(T, r.node) for r in self.get_gif_edges()]
+
+
+class CompilationUnit(_CNode):
+    def __init__(self) -> None:
+        super().__init__()
+        self.nodetypes = _GraphInterfaceReference[NodeType]()
+
+        # pragmas and imports?
+
+    def compile(self) -> list["Node"]:
+        nodes = list[Node]()
+        for nodetype in self.nodetypes.references:
+            nodes.append(nodetype.execute())
+
+        return nodes
+
+
+class NodeType[T: Node](_CNode):
+    def __init__(self, name: str, pytype: type[T]):
+        super().__init__()
+        self.name = Attribute(name)
+        # TODO make to attribute
+        # TODO even better get rid of stupid inheritance of python
+        self.pytype = pytype
+        self.statements = GraphInterfaceHierarchical(is_parent=True)
+
+    def execute(self) -> T:
+        node = self.pytype()
+
+        for statement in self.statements.get_children():
+            assert isinstance(statement, Statement)
+            statement = cast(Statement[T], statement)
+            statement.execute(node)
+
+        return node
+
+
+class ArrayNode(Node):
+    pass
+
+
+class ModuleOrInterface(Node):
+    pass
+
+
+class NodeTypeArray(NodeType):
+    def __init__(self, nodetype: NodeType, count: "ExpressionType"):
+        super().__init__(name=f"{nodetype.name.value}[]", pytype=ArrayNode)
+        self.nodetype = _GraphInterfaceReference(nodetype)
+        self.count = _GraphInterfaceReference(count)
+
+    # TODO
+    def execute(self) -> ArrayNode:
+        return super().execute()
+
+
+class Statement[T: Node](_CNode):
+    def execute(self, node: T) -> None:
+        pass
+
+
+class NodeStatement(Statement["Node"]):
+    pass
+
+
+class ModuleOrInterfaceStatement(Statement["ModuleOrInterface"]):
+    pass
+
+
+class FieldDeclaration(NodeStatement):
+    def __init__(self, name: str | None, nodetype: "TypeReference"):
+        super().__init__()
+        self.name = Attribute(name)
+        self.nodetype = _GraphInterfaceReference(nodetype)
+
+    def execute(self, node: "Node") -> None:
+        super().execute(node)
+        obj = self.nodetype.reference.resolve(NodeType).execute()
+
+        node.add(obj, name=self.name.value)
+
+
+class AttributeDeclaration(NodeStatement):
+    def __init__(self, attribute: Attribute):
+        super().__init__()
+        if attribute.name is None:
+            raise Exception("attributes can't be anonymous")
+        self.attribute_name = Attribute(attribute.name)
+        self.attribute_value = Attribute(attribute.value)
+
+    def execute(self, node: "Node"):
+        super().execute(node)
+        # TODO attributes not part of CNode yet
+        setattr(node, not_none(self.attribute_name.value), self.attribute_value.value)
+
+
+class FieldReference(_CNode):
+    def resolve[T: Node](self, type: type[T], node: "Node") -> T: ...
+
+
+class FieldReferenceRaw(FieldReference):
+    def __init__(self, node: "Node") -> None:
+        super().__init__()
+        self.node = _GraphInterfaceReference(node)
+
+    def resolve[T: Node](self, type: type[T], node: "Node") -> T:
+        return cast_assert(type, self.node.reference)
+
+
+class TypeReference(_CNode):
+    def resolve[T: NodeType](self, type: type[T]) -> T: ...
+
+
+class TypeReferenceRaw(TypeReference):
+    def __init__(self, nodetype: NodeType):
+        self.nodetype = _GraphInterfaceReference(nodetype)
+
+    def resolve[T: NodeType](self, type: type[T]) -> T:
+        return cast_assert(type, self.nodetype.reference)
+
+
+class Connect(NodeStatement):
+    def __init__(self, *interfaces_and_bridges: FieldReference) -> None:
+        super().__init__()
+        self.interfaces = _GraphInterfaceReference(*interfaces_and_bridges)
+
+    def execute(self, node: "Node"):
+        super().execute(node)
+        interfaces_and_bridges = [
+            ref.resolve(ModuleOrInterface, node) for ref in self.interfaces.references
+        ]
+        if not interfaces_and_bridges:
+            return
+        start = interfaces_and_bridges[0]
+        bridges = []
+        end = []
+        for i, b in enumerate(interfaces_and_bridges[1:]):
+            if not isinstance(b, Module):
+                end = interfaces_and_bridges[i + 1 :]
+            # if not b.has_trait(can_bridge):
+            #    raise
+            bridges.append(b)
+
+        start.connect_via(bridges, *end)
+
+
+class Specialization(NodeStatement):
+    def __init__(
+        self, general: FieldReference, special: FieldReference | TypeReference
+    ):
+        super().__init__()
+        self.general = _GraphInterfaceReference(general)
+        self.special = _GraphInterfaceReference(special)
+
+    def execute(self, node: "Node"):
+        super().execute(node)
+        general = self.general.reference.resolve(ModuleOrInterface, node)
+        special_ = self.special.reference
+        if isinstance(special_, FieldReference):
+            special = special_.resolve(Node, node)
+        else:
+            special_type = special_.resolve(NodeType)
+            special = special_type.execute()
+
+        # TODO
+        general.specialize(special)
+
+
+class ExpressionType(NodeType):
+    def execute(self) -> "Expression":
+        # TODO
+        return super().execute()
+
+
+class ExpressionStatement(NodeStatement):
+    def __init__(self, expression: "ExpressionType"):
+        super().__init__()
+        self.expression = _GraphInterfaceReference(expression)
+
+    def execute(self, node: "Node") -> None:
+        super().execute(node)
+        expression_type = self.expression.reference
+        expression = expression_type.execute()
+        node.add(expression)
+
+
+class Conditional(NodeStatement):
+    def __init__(
+        self,
+        expression: "ExpressionType",
+        statements: dict[P_Set, list[NodeStatement]],
+    ):
+        super().__init__()
+        self.expression = _GraphInterfaceReference(expression)
+        for i, (val, stmts) in enumerate(statements.items()):
+            setattr(self, f"statement{i}_ref", _GraphInterfaceReference(*stmts))
+            setattr(self, f"statement{i}_val", Attribute(val))
+
+    def execute(self, node: "Node"):
+        pass
+
+
+class Visit(NodeStatement):
+    def __init__(
+        self, var_name: str, iterable: FieldReference, *statements: NodeStatement
+    ):
+        super().__init__()
+        self.var_name = Attribute(var_name)
+        self.iterable = _GraphInterfaceReference(iterable)
+        self.statements = _GraphInterfaceReference(*statements)
+
+    def execute(self, node: "Node"):
+        # careful if container is parametrized in length
+        pass
 
 
 @post_init_decorator
