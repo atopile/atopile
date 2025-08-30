@@ -1266,6 +1266,16 @@ class DAG[T]:
 
         return subgraph
 
+    def _to_graphviz(self):
+        import graphviz as gv  # type: ignore
+
+        g = gv.Digraph()
+        for node in self.nodes.values():
+            g.node(str(node.value))
+            for child in node._children:
+                g.edge(str(node.value), str(child.value))
+        return g
+
 
 class Tree[T](dict[T, "Tree[T]"]):
     def iter_by_depth(self) -> Iterable[Sequence[T]]:
