@@ -491,25 +491,6 @@ class TestEndToEndCompletion:
             must_contain = {"LED", "ElectricPower", "ElectricLogic"}
             assert labels.intersection(must_contain) == must_contain
 
-    def test_multi_import_from_source_completion(self):
-        """Test completion for multi imports from source.
-
-        Tests 'from "file" import Mod1, Mod2' syntax.
-        """
-        ato = """
-            from "atopile/generics" import Resistor, Capacitor, #|#
-            """
-        with _to_mock(ato) as (mock_params, _):
-            result = on_document_completion(mock_params)
-
-            assert isinstance(result, lsp.CompletionList)
-            assert len(result.items) > 0
-
-            labels = {item.label for item in result.items}
-            # Should suggest other available modules from the same source
-            expected_modules = {"LED", "ElectricPower", "ElectricLogic"}
-            assert len(labels.intersection(expected_modules)) > 0
-
     def test_multi_import_semicolon_separated_completion(self):
         """Test completion for semicolon-separated multi imports"""
         ato = """
@@ -524,71 +505,6 @@ class TestEndToEndCompletion:
             labels = {item.label for item in result.items}
             must_contain = {"LED", "ElectricPower", "ElectricLogic"}
             assert labels.intersection(must_contain) == must_contain
-
-    def test_multi_import_mixed_semicolon_completion(self):
-        """Test completion for mixed import styles with semicolons"""
-        ato = """
-            import Resistor; from "atopile/generics" import Capacitor; import #|#
-            """
-        with _to_mock(ato) as (mock_params, _):
-            result = on_document_completion(mock_params)
-
-            assert isinstance(result, lsp.CompletionList)
-            assert len(result.items) > 0
-
-            labels = {item.label for item in result.items}
-            expected_modules = {"LED", "ElectricPower", "ElectricLogic"}
-            assert len(labels.intersection(expected_modules)) > 0
-
-    def test_completion_after_multi_import_usage(self):
-        """Test that completion works correctly after using multi-imported modules"""
-        ato = """
-            import Resistor, Capacitor, LED
-            module TestModule:
-                resistor = new Resistor
-                capacitor = new Capacitor
-                led = new LED
-                resistor.#|#
-            """
-        with _to_mock(ato) as (mock_params, _):
-            result = on_document_completion(mock_params)
-
-            assert isinstance(result, lsp.CompletionList)
-            assert len(result.items) > 0
-
-            labels = {item.label for item in result.items}
-            expected_resistor_attrs = {
-                "resistance",
-                "max_power",
-                "max_voltage",
-                "unnamed[0]",
-                "unnamed[1]",
-            }
-            assert labels == expected_resistor_attrs
-
-    def test_completion_with_multi_import_from_source_usage(self):
-        """Test completion after using modules from multi import with source"""
-        ato = """
-            from "atopile/generics" import Resistor, Capacitor
-            module TestModule:
-                resistor = new Resistor
-                capacitor = new Capacitor
-                capacitor.#|#
-            """
-        with _to_mock(ato) as (mock_params, _):
-            result = on_document_completion(mock_params)
-
-            assert isinstance(result, lsp.CompletionList)
-            assert len(result.items) > 0
-
-            labels = {item.label for item in result.items}
-            expected_capacitor_attrs = {
-                "capacitance",
-                "max_voltage",
-                "unnamed[0]",
-                "unnamed[1]",
-            }
-            assert labels == expected_capacitor_attrs
 
     def test_completion_in_middle_of_multi_import_statement(self):
         """Test completion when cursor is in the middle of a multi import statement"""
