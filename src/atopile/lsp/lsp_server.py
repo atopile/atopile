@@ -387,8 +387,11 @@ def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | None:
     """Handle document definition request."""
-    for root in GRAPHS.get(params.text_document.uri, {}).values():
+    log_warning(f"Requesting definition for {params}")
+    for ref, root in GRAPHS.get(params.text_document.uri, {}).items():
+        log_warning(f"root: '{ref}' '{root}' (type: {type(root)})")
         for _, trait in root.iter_children_with_trait(front_end.from_dsl):
+            log_warning(f"dsl: {trait._describe()}")
             if (spans := trait.query_definition(**_query_params(params))) is not None:
                 origin_span, target_span, target_selection_span = spans
                 return lsp.LocationLink(
@@ -884,19 +887,23 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
 
         char = line[: params.position.character]
         stripped = char.rstrip()
-        log_warning(f"on_document_completion: '{char}'")
         if char.endswith("."):
+            log_warning(f"dot_completion: '{char}'")
             return _handle_dot_completion(params, line, document)
         elif stripped.endswith("new"):
+            log_warning(f"new_keyword_completion: '{char}'")
             return _handle_new_keyword_completion(params, line, document)
         elif stripped.endswith("import") or (
             "import " in char and stripped.endswith(",")
         ):
             if "from" in char:
+                log_warning(f"from_import_keyword_completion: '{char}'")
                 return _handle_from_import_keyword_completion(params, line, document)
             else:
+                log_warning(f"stdlib_import_keyword_completion: '{char}'")
                 return _handle_stdlib_import_keyword_completion(params, line, document)
         elif stripped.endswith("from"):
+            log_warning(f"from_keyword_completion: '{char}'")
             return _handle_from_keyword_completion(params, line, document)
 
     except Exception as e:
