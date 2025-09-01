@@ -230,14 +230,18 @@ class _PackageValidators:
                     continue
                 if len(parts) >= 2:
                     base = config.project.paths.modules / parts[0] / parts[1]
-                    if not base.exists() and config.project.package.identifier not in str(base):
+                    if (
+                        not base.exists()
+                        and config.project.package.identifier not in str(base)
+                    ):
                         offending.append(node.from_path)
                 else:
                     offending.append(node.from_path)
 
         if offending:
             raise UserBadParameterError(
-                f"Import not found in installed packages, imports must use absolute path, e.g. 'atopile/...'. \n"
+                "Import not found in installed packages, "
+                "imports must use absolute path, e.g. 'atopile/...'. \n"
                 "Offending imports: " + ", ".join(offending)
             )
 
