@@ -1,7 +1,7 @@
 const std = @import("std");
 const sexp = @import("sexp");
 
-const RESOURCES_ROOT = "test/resources/v9";
+const RESOURCES_ROOT = "test/sexp/resources/v9";
 
 test "load real netlist file - basic checks" {
     const FILE_PATH = RESOURCES_ROOT ++ "/netlist/test_e.net";

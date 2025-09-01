@@ -5,11 +5,11 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
 
     // Create the sexp module that includes all source files
     const sexp_mod = b.createModule(.{
-        .root_source_file = b.path("src/sexp.zig"),
+        .root_source_file = b.path("src/sexp/sexp.zig"),
     });
 
     // Automatically discover test files
-    const test_dir_path = b.pathFromRoot("test");
+    const test_dir_path = b.pathFromRoot("test/sexp");
     var test_dir = std.fs.openDirAbsolute(test_dir_path, .{ .iterate = true }) catch |err| {
         std.debug.print("Failed to open test directory: {}\n", .{err});
         return;
@@ -23,7 +23,7 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
             std.mem.startsWith(u8, entry.name, "test_") and
             std.mem.endsWith(u8, entry.name, ".zig"))
         {
-            const test_path = b.fmt("test/{s}", .{entry.name});
+            const test_path = b.fmt("test/sexp/{s}", .{entry.name});
             const _test = b.addTest(.{
                 .root_source_file = b.path(test_path),
                 .target = target,
@@ -43,7 +43,7 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
     if (test_file) |file| {
         const single_test_step = b.step("test-single", "Run a single test file");
 
-        const test_path = b.fmt("test/{s}", .{file});
+        const test_path = b.fmt("test/sexp/{s}", .{file});
         const single_test = b.addTest(.{
             .root_source_file = b.path(test_path),
             .target = target,
@@ -57,7 +57,7 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
 }
 
 pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
-    const PERF_ROOT = "test/performance";
+    const PERF_ROOT = "test/sexp/performance";
 
     const prettytable_dep = b.dependency("prettytable", .{
         .target = target,
@@ -65,7 +65,7 @@ pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimi
     });
 
     const sexp_mod = b.createModule(.{
-        .root_source_file = b.path("src/sexp.zig"),
+        .root_source_file = b.path("src/sexp/sexp.zig"),
     });
 
     // Build performance_sexp executable
@@ -110,13 +110,13 @@ pub fn build(b: *std.Build) void {
 
     // Export the sexp module for other packages to use
     _ = b.addModule("sexp", .{
-        .root_source_file = b.path("src/sexp.zig"),
+        .root_source_file = b.path("src/sexp/sexp.zig"),
     });
 
     // Build a library from the source files
     const lib = b.addStaticLibrary(.{
         .name = "sexp",
-        .root_source_file = b.path("src/sexp.zig"),
+        .root_source_file = b.path("src/sexp/sexp.zig"),
         .target = target,
         .optimize = optimize,
     });

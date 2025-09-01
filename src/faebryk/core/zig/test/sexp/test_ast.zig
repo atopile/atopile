@@ -3,7 +3,7 @@ const sexp = @import("sexp");
 
 const SExp = sexp.ast.SExp;
 
-const RESOURCES_ROOT = "test/resources/v9";
+const RESOURCES_ROOT = "test/sexp/resources/v9";
 
 test "parse empty input" {
     const allocator = std.testing.allocator;
