@@ -40,13 +40,12 @@ def build(app: Module) -> None:
 
     pcb = F.PCB(config.build.paths.layout)
 
-    targets = muster.select(
-        {default_target.name}
-        | set(config.build.targets) - set(config.build.exclude_targets)
+    targets = {default_target.name} | set(config.build.targets) - set(
+        config.build.exclude_targets
     )
 
     with accumulate() as accumulator:
-        for target in targets:
+        for target in muster.select(targets):
             if target.virtual:
                 continue
 
