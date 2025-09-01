@@ -3,7 +3,7 @@ import logging
 
 import faebryk.library._F as F
 from atopile.build_steps import Tags, muster
-from atopile.build_steps import default as default_target
+from atopile.build_steps import generate_default as default_target
 from atopile.cli.logging_ import LoggingStage
 from atopile.config import config
 from atopile.errors import UserToolNotAvailableError
