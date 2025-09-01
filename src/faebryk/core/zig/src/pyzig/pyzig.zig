@@ -1,5 +1,4 @@
 const std = @import("std");
-const root = @import("root.zig");
 const py = @import("pybindings.zig");
 
 const Method = fn (_: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) ?*py.PyObject;

@@ -248,12 +248,16 @@ pub const Property = struct {
     };
 };
 
+pub const ModelXyz = struct {
+    xyz: Xyz,
+};
+
 // 3D model structure
 pub const Model = struct {
     path: []const u8,
-    offset: struct { xyz: Xyz },
-    scale: struct { xyz: Xyz },
-    rotate: struct { xyz: Xyz },
+    offset: ModelXyz,
+    scale: ModelXyz,
+    rotate: ModelXyz,
 
     pub const fields_meta = .{
         .path = structure.SexpField{ .positional = true },
@@ -620,11 +624,15 @@ pub const Image = struct {
     uuid: []const u8,
 };
 
+pub const DimensionPts = struct {
+    xys: []Xy = &.{},
+};
+
 pub const Dimension = struct {
     type: []const u8,
     layer: []const u8,
     uuid: []const u8,
-    pts: struct { xys: []Xy },
+    pts: DimensionPts,
     height: f64,
     orientation: ?f64 = null,
     leader_length: ?f64 = null,

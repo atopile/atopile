@@ -1,7 +1,9 @@
 const std = @import("std");
-const py = @import("pybindings.zig");
+const pyzig = @import("pyzig");
 const root = @import("root.zig");
-const bind = @import("pyzig.zig");
+
+const py = pyzig.pybindings;
+const bind = pyzig.pyzig;
 
 const TopObject = struct {
     ob_base: py.PyObject_HEAD,

@@ -1,7 +1,7 @@
 const std = @import("std");
 const ast = @import("ast.zig");
 const tokenizer = @import("tokenizer.zig");
-const SExp = ast.SExp;
+pub const SExp = ast.SExp;
 
 // Type trait helpers
 fn isOptional(comptime T: type) bool {

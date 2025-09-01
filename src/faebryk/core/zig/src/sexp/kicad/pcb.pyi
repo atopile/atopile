@@ -1,45 +1,66 @@
-# Type stub file for KiCad PCB structures
-# Generated from pcb.zig
+from typing import Any  # noqa: F401
 
-KICAD_PCB_VERSION: int = 20241229
+# Dirty hack to not error in ruff check
+type Allocator = Any
 
-# Basic geometry types
 class Xy:
     x: float
     y: float
+
+    def __init__(self, x: float, y: float) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Xyz:
     x: float
     y: float
     z: float
 
+    def __init__(self, x: float, y: float, z: float) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Xyr:
     x: float
     y: float
     r: float
 
+    def __init__(self, x: float, y: float, r: float) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Wh:
     w: float
     h: float | None
 
-# Text and effects structures
+    def __init__(self, w: float, h: float | None) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Stroke:
     width: float
     type: str
+
+    def __init__(self, width: float, type: str) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Font:
     size: Wh
     thickness: float | None
 
+    def __init__(self, size: Wh, thickness: float | None) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Effects:
     font: Font
     hide: bool | None
+
+    def __init__(self, font: Font, hide: bool | None) -> None: ...
+    def __repr__(self) -> str: ...
 
 class TextLayer:
     layer: str
     knockout: str | None
 
-# Shape structures
+    def __init__(self, layer: str, knockout: str | None) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Line:
     start: Xy
     end: Xy
@@ -47,6 +68,17 @@ class Line:
     width: float | None
     stroke: Stroke | None
     uuid: str
+
+    def __init__(
+        self,
+        start: Xy,
+        end: Xy,
+        layer: str | None,
+        width: float | None,
+        stroke: Stroke | None,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Arc:
     start: Xy
@@ -57,6 +89,18 @@ class Arc:
     stroke: Stroke | None
     uuid: str
 
+    def __init__(
+        self,
+        start: Xy,
+        mid: Xy,
+        end: Xy,
+        layer: str | None,
+        width: float | None,
+        stroke: Stroke | None,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Circle:
     center: Xy
     end: Xy
@@ -65,6 +109,18 @@ class Circle:
     stroke: Stroke | None
     fill: str | None
     uuid: str
+
+    def __init__(
+        self,
+        center: Xy,
+        end: Xy,
+        layer: str | None,
+        width: float | None,
+        stroke: Stroke | None,
+        fill: str | None,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Rect:
     start: Xy
@@ -75,8 +131,23 @@ class Rect:
     fill: str | None
     uuid: str
 
+    def __init__(
+        self,
+        start: Xy,
+        end: Xy,
+        layer: str | None,
+        width: float | None,
+        stroke: Stroke | None,
+        fill: str | None,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Pts:
     xys: list[Xy]
+
+    def __init__(self, xys: list[Xy]) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Polygon:
     pts: Pts
@@ -86,13 +157,28 @@ class Polygon:
     fill: str | None
     uuid: str | None
 
-# Text structures
+    def __init__(
+        self,
+        pts: Pts,
+        layer: str | None,
+        width: float | None,
+        stroke: Stroke | None,
+        fill: str | None,
+        uuid: str | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Text:
     text: str
     at: Xyr
     layer: str
     uuid: str
     effects: Effects
+
+    def __init__(
+        self, text: str, at: Xyr, layer: str, uuid: str, effects: Effects
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class FpText:
     type: str
@@ -103,12 +189,17 @@ class FpText:
     uuid: str
     effects: Effects
 
-# Pad and Net structures
-Drill = float
-
-class Net:
-    number: int
-    name: str | None
+    def __init__(
+        self,
+        type: str,
+        text: str,
+        at: Xyr,
+        layer: str,
+        hide: bool | None,
+        uuid: str,
+        effects: Effects,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Pad:
     name: str
@@ -117,7 +208,7 @@ class Pad:
     at: Xyr
     size: Wh
     layers: list[str]
-    drill: Drill | None
+    drill: float | None
     net: Net | None
     solder_mask_margin: float | None
     solder_paste_margin: float | None
@@ -130,7 +221,36 @@ class Pad:
     chamfer_ratio: float | None
     uuid: str
 
-# Property structure
+    def __init__(
+        self,
+        name: str,
+        type: str,
+        shape: str,
+        at: Xyr,
+        size: Wh,
+        layers: list[str],
+        drill: float | None,
+        net: Net | None,
+        solder_mask_margin: float | None,
+        solder_paste_margin: float | None,
+        solder_paste_margin_ratio: float | None,
+        clearance: float | None,
+        zone_connect: int | None,
+        thermal_bridge_width: float | None,
+        thermal_gap: float | None,
+        roundrect_rratio: float | None,
+        chamfer_ratio: float | None,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Net:
+    number: int
+    name: str | None
+
+    def __init__(self, number: int, name: str | None) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Property:
     name: str
     value: str
@@ -140,30 +260,42 @@ class Property:
     uuid: str
     effects: Effects
 
-# 3D model structure
-class ModelOffset:
+    def __init__(
+        self,
+        name: str,
+        value: str,
+        at: Xyr,
+        layer: str,
+        hide: bool | None,
+        uuid: str,
+        effects: Effects,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class ModelXyz:
     xyz: Xyz
 
-class ModelScale:
-    xyz: Xyz
-
-class ModelRotate:
-    xyz: Xyz
+    def __init__(self, xyz: Xyz) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Model:
     path: str
-    offset: ModelOffset
-    scale: ModelScale
-    rotate: ModelRotate
+    offset: ModelXyz
+    scale: ModelXyz
+    rotate: ModelXyz
 
-# Footprint structure
+    def __init__(
+        self, path: str, offset: ModelXyz, scale: ModelXyz, rotate: ModelXyz
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Footprint:
     name: str
     layer: str
     uuid: str
     at: Xyr
     path: str | None
-    propertys: list[Property]  # Note: 'propertys' to match Zig naming
+    propertys: list[Property]
     fp_texts: list[FpText]
     attr: list[str]
     fp_lines: list[Line]
@@ -174,7 +306,26 @@ class Footprint:
     pads: list[Pad]
     models: list[Model]
 
-# Via structure
+    def __init__(
+        self,
+        name: str,
+        layer: str,
+        uuid: str,
+        at: Xyr,
+        path: str | None,
+        propertys: list[Property],
+        fp_texts: list[FpText],
+        attr: list[str],
+        fp_lines: list[Line],
+        fp_arcs: list[Arc],
+        fp_circles: list[Circle],
+        fp_rects: list[Rect],
+        fp_poly: list[Polygon],
+        pads: list[Pad],
+        models: list[Model],
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Via:
     at: Xy
     size: float
@@ -183,14 +334,24 @@ class Via:
     net: int
     uuid: str
 
-# Zone structures
+    def __init__(
+        self, at: Xy, size: float, drill: float, layers: list[str], net: int, uuid: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Hatch:
     mode: str
     pitch: float
 
+    def __init__(self, mode: str, pitch: float) -> None: ...
+    def __repr__(self) -> str: ...
+
 class ConnectPads:
     mode: str | None
     clearance: float
+
+    def __init__(self, mode: str | None, clearance: float) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Fill:
     enable: str | None
@@ -198,9 +359,21 @@ class Fill:
     thermal_gap: float
     thermal_bridge_width: float
 
+    def __init__(
+        self,
+        enable: str | None,
+        mode: str | None,
+        thermal_gap: float,
+        thermal_bridge_width: float,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class FilledPolygon:
     layer: str
     pts: Pts
+
+    def __init__(self, layer: str, pts: Pts) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Zone:
     net: int
@@ -217,7 +390,24 @@ class Zone:
     polygon: Polygon
     filled_polygon: list[FilledPolygon]
 
-# Track (segment) structures
+    def __init__(
+        self,
+        net: int,
+        net_name: str,
+        layers: list[str] | None,
+        uuid: str,
+        name: str | None,
+        hatch: Hatch,
+        priority: int | None,
+        connect_pads: ConnectPads,
+        min_thickness: float,
+        filled_areas_thickness: bool,
+        fill: Fill,
+        polygon: Polygon,
+        filled_polygon: list[FilledPolygon],
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Segment:
     start: Xy
     end: Xy
@@ -225,6 +415,11 @@ class Segment:
     layer: str | None
     net: int
     uuid: str
+
+    def __init__(
+        self, start: Xy, end: Xy, width: float, layer: str | None, net: int, uuid: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class ArcSegment:
     start: Xy
@@ -235,32 +430,86 @@ class ArcSegment:
     net: int
     uuid: str
 
-# Board setup structures
+    def __init__(
+        self,
+        start: Xy,
+        mid: Xy,
+        end: Xy,
+        width: float,
+        layer: str | None,
+        net: int,
+        uuid: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class General:
     thickness: float
     legacy_teardrops: bool
+
+    def __init__(self, thickness: float, legacy_teardrops: bool) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Paper:
     type: str
     size: Xy | None
     orientation: str | None
 
+    def __init__(self, type: str, size: Xy | None, orientation: str | None) -> None: ...
+    def __repr__(self) -> str: ...
+
 class TitleBlock:
     title: str | None
     date: str | None
     revision: str | None
     company: str | None
-    comment: list["Comment"]
+    comment: list[Comment]
+
+    def __init__(
+        self,
+        title: str | None,
+        date: str | None,
+        revision: str | None,
+        company: str | None,
+        comment: list[Comment],
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Comment:
     number: int
     text: str
+
+    def __init__(self, number: int, text: str) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Layer:
     number: int
     name: str
     type: str
     alias: str | None
+
+    def __init__(
+        self, number: int, name: str, type: str, alias: str | None
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Stackup:
+    layers: list[StackupLayer]
+    copper_finish: str | None
+    dielectric_constraints: bool | None
+    edge_connector: str | None
+    castellated_pads: bool | None
+    edge_plating: bool | None
+
+    def __init__(
+        self,
+        layers: list[StackupLayer],
+        copper_finish: str | None,
+        dielectric_constraints: bool | None,
+        edge_connector: str | None,
+        castellated_pads: bool | None,
+        edge_plating: bool | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class StackupLayer:
     name: str
@@ -271,13 +520,17 @@ class StackupLayer:
     epsilon_r: float | None
     loss_tangent: float | None
 
-class Stackup:
-    layers: list[StackupLayer]
-    copper_finish: str | None
-    dielectric_constraints: bool | None
-    edge_connector: str | None
-    castellated_pads: bool | None
-    edge_plating: bool | None
+    def __init__(
+        self,
+        name: str,
+        type: str,
+        color: str | None,
+        thickness: float | None,
+        material: str | None,
+        epsilon_r: float | None,
+        loss_tangent: float | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Rules:
     max_error: float
@@ -298,6 +551,29 @@ class Rules:
     min_via_diameter: float
     solder_mask_to_copper_clearance: float
     use_height_for_length_calcs: bool
+
+    def __init__(
+        self,
+        max_error: float,
+        min_clearance: float,
+        min_connection: float,
+        min_copper_edge_clearance: float,
+        min_hole_clearance: float,
+        min_hole_to_hole: float,
+        min_microvia_diameter: float,
+        min_microvia_drill: float,
+        min_resolved_spokes: int,
+        min_silk_clearance: float,
+        min_text_height: float,
+        min_text_thickness: float,
+        min_through_hole_diameter: float,
+        min_track_width: float,
+        min_via_annular_width: float,
+        min_via_diameter: float,
+        solder_mask_to_copper_clearance: float,
+        use_height_for_length_calcs: bool,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
 class PcbPlotParams:
     layerselection: str
@@ -343,8 +619,58 @@ class PcbPlotParams:
     scaleselection: int
     outputdirectory: str
 
+    def __init__(
+        self,
+        layerselection: str,
+        plot_on_all_layers_selection: str,
+        disableapertmacros: bool,
+        usegerberextensions: bool,
+        usegerberattributes: bool,
+        usegerberadvancedattributes: bool,
+        creategerberjobfile: bool,
+        dashed_line_dash_ratio: float,
+        dashed_line_gap_ratio: float,
+        svgprecision: int,
+        plotframeref: bool,
+        viasonmask: bool | None,
+        mode: int,
+        useauxorigin: bool,
+        hpglpennumber: int,
+        hpglpenspeed: int,
+        hpglpendiameter: float,
+        pdf_front_fp_property_popups: bool,
+        pdf_back_fp_property_popups: bool,
+        pdf_metadata: bool,
+        pdf_single_document: bool,
+        dxfpolygonmode: bool,
+        dxfimperialunits: bool,
+        dxfusepcbnewfont: bool,
+        psnegative: bool,
+        psa4output: bool,
+        plot_black_and_white: bool,
+        plotinvisibletext: bool,
+        sketchpadsonfab: bool,
+        plotreference: bool,
+        plotvalue: bool,
+        plotpadnumbers: bool,
+        hidednponfab: bool,
+        sketchdnponfab: bool,
+        crossoutdnponfab: bool,
+        plotfptext: bool,
+        subtractmaskfromsilk: bool,
+        outputformat: int,
+        mirror: bool,
+        drillshape: int,
+        scaleselection: int,
+        outputdirectory: str,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
 class Tenting:
     values: list[str]
+
+    def __init__(self, values: list[str]) -> None: ...
+    def __repr__(self) -> str: ...
 
 class Setup:
     stackup: Stackup | None
@@ -354,40 +680,17 @@ class Setup:
     pcbplotparams: PcbPlotParams
     rules: Rules | None
 
-# Additional structures
-class Image:
-    at: Xy
-    layer: str
-    scale: float
-    data: str | None
-    uuid: str
+    def __init__(
+        self,
+        stackup: Stackup | None,
+        pad_to_mask_clearance: int,
+        allow_soldermask_bridges_in_footprints: bool,
+        tenting: list[str] | None,
+        pcbplotparams: PcbPlotParams,
+        rules: Rules | None,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
 
-class DimensionPts:
-    xys: list[Xy]
-
-class Dimension:
-    type: str
-    layer: str
-    uuid: str
-    pts: DimensionPts
-    height: float
-    orientation: float | None
-    leader_length: float | None
-    gr_text: Text
-
-class Group:
-    name: str | None
-    uuid: str
-    locked: bool | None
-    members: list[str]
-
-class Target:
-    at: Xy
-    size: Xy
-    width: float
-    layer: str
-
-# Main PCB structure
 class KicadPcb:
     version: int
     generator: str
@@ -413,3 +716,103 @@ class KicadPcb:
     dimensions: list[Dimension]
     groups: list[Group]
     targets: list[Target]
+
+    def __init__(
+        self,
+        version: int,
+        generator: str,
+        generator_version: str,
+        general: General,
+        paper: str | None,
+        title_block: TitleBlock | None,
+        layers: list[Layer],
+        setup: Setup,
+        nets: list[Net],
+        footprints: list[Footprint],
+        vias: list[Via],
+        zones: list[Zone],
+        segments: list[Segment],
+        arcs: list[ArcSegment],
+        gr_lines: list[Line],
+        gr_arcs: list[Arc],
+        gr_circles: list[Circle],
+        gr_rects: list[Rect],
+        gr_polys: list[Polygon],
+        gr_texts: list[Text],
+        images: list[Image],
+        dimensions: list[Dimension],
+        groups: list[Group],
+        targets: list[Target],
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Image:
+    at: Xy
+    layer: str
+    scale: float
+    data: str | None
+    uuid: str
+
+    def __init__(
+        self, at: Xy, layer: str, scale: float, data: str | None, uuid: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class DimensionPts:
+    xys: list[Xy]
+
+    def __init__(self, xys: list[Xy]) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Dimension:
+    type: str
+    layer: str
+    uuid: str
+    pts: DimensionPts
+    height: float
+    orientation: float | None
+    leader_length: float | None
+    gr_text: Text
+
+    def __init__(
+        self,
+        type: str,
+        layer: str,
+        uuid: str,
+        pts: DimensionPts,
+        height: float,
+        orientation: float | None,
+        leader_length: float | None,
+        gr_text: Text,
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Group:
+    name: str | None
+    uuid: str
+    locked: bool | None
+    members: list[str]
+
+    def __init__(
+        self, name: str | None, uuid: str, locked: bool | None, members: list[str]
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class Target:
+    at: Xy
+    size: Xy
+    width: float
+    layer: str
+    uuid: str
+
+    def __init__(
+        self, at: Xy, size: Xy, width: float, layer: str, uuid: str
+    ) -> None: ...
+    def __repr__(self) -> str: ...
+
+class PcbFile:
+    kicad_pcb: KicadPcb
+
+    def __init__(self, kicad_pcb: KicadPcb) -> None: ...
+    def __repr__(self) -> str: ...
+    def free(self, arg_0: Allocator) -> None: ...
