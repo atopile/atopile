@@ -104,6 +104,164 @@ pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimi
     perf_synthetic_step.dependOn(&run_perf_synthetic.step);
 }
 
+const py_lib_name = "pyzig";
+
+fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
+    // Build a small executable that outputs the pyi content
+    const gen_pyi_exe = b.addExecutable(.{
+        .name = "gen_pyi",
+        .root_source_file = b.path("src/pyzig/gen_pyi.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // Run the executable and capture its output
+    const run_gen = b.addRunArtifact(gen_pyi_exe);
+    const pyi_output = run_gen.captureStdOut();
+
+    // Install the captured output as pyzig.pyi
+    const install_pyi = b.addInstallFile(pyi_output, "lib/pyzig.pyi");
+
+    return &install_pyi.step;
+}
+
+fn addPythonExtension(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    python_include: []const u8,
+    python_lib_opt: ?[]const u8,
+    python_lib_dir_opt: ?[]const u8,
+) void {
+    const python_ext = b.addSharedLibrary(.{
+        .name = py_lib_name,
+        .root_source_file = b.path("src/pyzig/python_ext.zig"),
+        .target = target,
+        .optimize = optimize,
+        .pic = true,
+    });
+
+    python_ext.addIncludePath(.{ .cwd_relative = python_include });
+
+    const builtin = @import("builtin");
+    if (builtin.os.tag == .macos) {
+        // Do not link libpython on macOS; allow undefined symbols to be
+        // resolved at runtime by the Python interpreter (like distutils does).
+        python_ext.linker_allow_shlib_undefined = true;
+    }
+    if (builtin.os.tag == .windows) {
+        // On Windows, Python extension modules must link against the import library
+        if (python_lib_opt) |python_lib| {
+            if (python_lib_dir_opt) |lib_dir| {
+                python_ext.addLibraryPath(.{ .cwd_relative = lib_dir });
+            }
+            python_ext.linkSystemLibrary(python_lib);
+        } else {
+            @panic("python-lib must be provided on Windows builds");
+        }
+    }
+
+    python_ext.linkLibC();
+
+    // Choose extension filename based on host OS at comptime
+    // This value must be comptime-known for dest_sub_path.
+    const ext = if (builtin.os.tag == .windows) ".pyd" else ".so";
+    const install_python_ext = b.addInstallArtifact(python_ext, .{
+        .dest_dir = .{ .override = .{ .custom = "lib" } },
+        .dest_sub_path = py_lib_name ++ ext,
+    });
+
+    // Generate pyi file at build time (no Python needed!)
+    const pyi_step = build_pyi(b, target, optimize);
+
+    const python_ext_step = b.step("python-ext", "Build Python extension module");
+    python_ext_step.dependOn(&install_python_ext.step);
+    python_ext_step.dependOn(pyi_step);
+}
+
+fn build_pyzig(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) void {
+    const lib_mod = b.createModule(.{
+        .root_source_file = b.path("src/pyzig/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const exe_mod = b.createModule(.{
+        .root_source_file = b.path("src/pyzig/main.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    exe_mod.addImport(py_lib_name ++ "_lib", lib_mod);
+
+    // Create library build step (optional, not part of default)
+    const lib = b.addLibrary(.{
+        .linkage = .static,
+        .name = py_lib_name,
+        .root_module = lib_mod,
+    });
+    const lib_step = b.step("lib", "Build static library");
+    lib_step.dependOn(&b.addInstallArtifact(lib, .{}).step);
+
+    // Create executable build step (optional, not part of default)
+    const exe = b.addExecutable(.{
+        .name = py_lib_name,
+        .root_module = exe_mod,
+    });
+    const exe_step = b.step("exe", "Build executable");
+    exe_step.dependOn(&b.addInstallArtifact(exe, .{}).step);
+
+    // This *creates* a Run step in the build graph, to be executed when another
+    // step is evaluated that depends on it. The next line below will establish
+    // such a dependency.
+    const run_cmd = b.addRunArtifact(exe);
+
+    // By making the run step depend on the exe step, it will build the exe when needed
+    run_cmd.step.dependOn(exe_step);
+
+    // This allows the user to pass arguments to the application in the build
+    // command itself, like this: `zig build run -- arg1 arg2 etc`
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+
+    // This creates a build step. It will be visible in the `zig build --help` menu,
+    // and can be selected like this: `zig build run`
+    // This will evaluate the `run` step rather than the default, which is "install".
+    const run_step = b.step("run", "Run the app");
+    run_step.dependOn(&run_cmd.step);
+
+    // Creates a step for unit testing. This only builds the test executable
+    // but does not run it.
+    const lib_unit_tests = b.addTest(.{
+        .root_module = lib_mod,
+    });
+
+    const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
+
+    const exe_unit_tests = b.addTest(.{
+        .root_module = exe_mod,
+    });
+
+    const run_exe_unit_tests = b.addRunArtifact(exe_unit_tests);
+
+    // Similar to creating the run step earlier, this exposes a `test` step to
+    // the `zig build --help` menu, providing a way for the user to request
+    // running the unit tests.
+    const test_step = b.step("test-pyzig", "Run unit tests");
+    test_step.dependOn(&run_lib_unit_tests.step);
+    test_step.dependOn(&run_exe_unit_tests.step);
+
+    // Add Python extension if options are provided
+    const python_include = b.option([]const u8, "python-include", "Python include directory path");
+    const python_lib = b.option([]const u8, "python-lib", "Python library name (Windows only; e.g., python313)");
+    const python_lib_dir = b.option([]const u8, "python-lib-dir", "Directory containing the Python import library (Windows only)");
+
+    if (python_include) |include_path| {
+        addPythonExtension(b, target, optimize, include_path, python_lib, python_lib_dir);
+    }
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -124,4 +282,5 @@ pub fn build(b: *std.Build) void {
 
     build_tests(b, target, optimize);
     build_performance(b, target, optimize);
+    build_pyzig(b, target, optimize);
 }

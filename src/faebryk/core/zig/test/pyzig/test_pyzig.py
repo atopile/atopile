@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO, format="")
 
 # Now import and test
 print("\nTesting the extension...")
-import faebryk.core.zig.experiment as pyzig  # noqa: E402
+import faebryk.core.zig as pyzig  # noqa: E402
 
 # Test the add function
 result = pyzig.add(a=3, b=7)
