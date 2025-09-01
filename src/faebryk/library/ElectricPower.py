@@ -11,6 +11,11 @@ from faebryk.libs.units import P
 
 
 class ElectricPower(F.Power):
+    """
+    ElectricPower is a class that represents a power rail. Power rails have a
+    higher potential (hv), and lower potential (lv) Electrical.
+    """
+
     class can_be_decoupled_power(F.can_be_decoupled.impl()):
         def decouple(
             self,
@@ -131,3 +136,26 @@ class ElectricPower(F.Power):
     def gnd(self) -> F.Electrical:
         """Lower-voltage side of the power interface."""
         return self.lv
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        # Apply suffixes to the electrical lines of the signals
+        self.hv.add(F.has_net_name("VCC", level=F.has_net_name.Level.SUGGESTED))
+        self.lv.add(F.has_net_name("GND", level=F.has_net_name.Level.SUGGESTED))
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import ElectricPower
+
+        power_5v = new ElectricPower
+        assert power_5v.voltage within 5V +/- 5%
+        assert power_5v.max_current <= 1A
+
+        # Connect 2 ElectricPowers together
+        power_5v ~ ic.power_input
+
+        # Connect an example bypass capacitor
+        power_5v.hv ~> example_capacitor ~> power_5v.lv
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

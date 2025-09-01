@@ -21,13 +21,9 @@ class I2C(ModuleInterface):
     scl: F.ElectricLogic
     sda: F.ElectricLogic
 
-    address = L.p_field(
-        within=L.Range(0, 0x7F),
-        domain=L.Domains.Numbers.NATURAL(),
-    )
+    address = L.p_field(within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL())
     bus_addresses = L.p_field(
-        within=L.Range(0, 0x7F),
-        domain=L.Domains.Numbers.NATURAL(),
+        within=L.Range(0, 0x7F), domain=L.Domains.Numbers.NATURAL()
     )
 
     frequency = L.p_field(
@@ -91,6 +87,11 @@ class I2C(ModuleInterface):
     def __preinit__(self) -> None:
         self.frequency.add(F.is_bus_parameter())
         # self.bus_addresses.add(F.is_bus_parameter(reduce=(self.address, Union)))
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.scl.line.add(F.has_net_name("SCL", level=F.has_net_name.Level.SUGGESTED))
+        self.sda.line.add(F.has_net_name("SDA", level=F.has_net_name.Level.SUGGESTED))
 
     def _hack_get_connected(self):
         """
@@ -164,3 +165,26 @@ class I2C(ModuleInterface):
             # For now, we only raise if we find concrete duplicates.
 
     address_check: requires_unique_addresses
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import I2C, ElectricPower
+
+        i2c_bus = new I2C
+        i2c_bus.frequency = 400kHz  # Fast mode
+        i2c_bus.address = 0x48  # Device address
+
+        # Connect power reference for logic levels
+        power_3v3 = new ElectricPower
+        assert power_3v3.voltage within 3.3V +/- 5%
+        i2c_bus.scl.reference ~ power_3v3
+        i2c_bus.sda.reference ~ power_3v3
+
+        # Connect to microcontroller
+        microcontroller.i2c ~ i2c_bus
+
+        # Connect to I2C sensor
+        sensor.i2c ~ i2c_bus
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

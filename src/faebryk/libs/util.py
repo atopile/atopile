@@ -16,6 +16,7 @@ import shutil
 import stat
 import subprocess
 import sys
+import threading
 import time
 import uuid
 from abc import abstractmethod
@@ -1265,6 +1266,16 @@ class DAG[T]:
 
         return subgraph
 
+    def _to_graphviz(self):
+        import graphviz as gv  # type: ignore
+
+        g = gv.Digraph()
+        for node in self.nodes.values():
+            g.node(str(node.value))
+            for child in node._children:
+                g.edge(str(node.value), str(child.value))
+        return g
+
 
 class Tree[T](dict[T, "Tree[T]"]):
     def iter_by_depth(self) -> Iterable[Sequence[T]]:
@@ -2277,10 +2288,16 @@ def robustly_rm_dir(path: os.PathLike) -> None:
     shutil.rmtree(path, onexc=remove_readonly)
 
 
-def yield_missing(existing: Container, candidates: Iterable | None = None):
-    if candidates is None:
-        candidates = range(10000)  # Prevent counting to infinity by default
-    for c in candidates:
+def yield_missing(existing: Container, candidates: Iterable | int | None = None):
+    match candidates:
+        case None:
+            counter = itertools.count()
+        case int():
+            counter = itertools.count(candidates)
+        case _:
+            counter = candidates
+
+    for c in counter:
         if c not in existing:
             yield c
 
@@ -2892,3 +2909,45 @@ def get_python_lib():
         name=python_lib,
         dir_path=lib_dir,
     )
+
+
+def debounce(delay_s: float):
+    """
+    Debounce a function to prevent it from being called more than once within a given
+    delay.
+    If the function is called again within the delay, the last call will be canceled and
+    the function will be called only once after the delay.
+    """
+
+    def _decorator[T: Callable](func: T) -> T:
+        last_call = 0
+        waiting = threading.Semaphore()
+        last_value = None
+
+        def _run(*args, **kwargs):
+            nonlocal waiting
+            nonlocal last_call
+            nonlocal last_value
+            waiting.release()
+            last_call = time.time()
+            last_value = func(*args, **kwargs)
+            return last_value
+
+        def _debounced(*args, **kwargs):
+            nonlocal last_call
+            nonlocal waiting
+
+            if not waiting.acquire(blocking=False):
+                return last_value
+
+            time_passed = time.time() - last_call
+            if time_passed > delay_s:
+                return _run(*args, **kwargs)
+
+            timer = threading.Timer(delay_s - time_passed, _run, args, kwargs)
+            timer.start()
+            return last_value
+
+        return _debounced  # type: ignore[return-value]
+
+    return _decorator

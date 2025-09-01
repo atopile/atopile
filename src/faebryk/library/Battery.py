@@ -30,3 +30,32 @@ class Battery(Module):
         return F.has_single_electric_reference_defined(self.power)
 
     designator = L.f_field(F.has_designator_prefix)("BAT")
+
+    def __postinit__(self, *args, **kwargs):
+        super().__postinit__(*args, **kwargs)
+        self.power.hv.add(
+            F.has_net_name("BAT_VCC", level=F.has_net_name.Level.SUGGESTED)
+        )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Battery, ElectricPower
+
+        battery = new Battery
+        battery.voltage = 3.7V +/- 10%  # Li-ion cell
+        battery.capacity = 2000mAh +/- 5%
+
+        # Connect to system power
+        system_power = new ElectricPower
+        battery.power ~ system_power
+
+        # Battery specifications will constrain system voltage
+        assert system_power.voltage within battery.voltage
+
+        # For multiple cells in series
+        battery_pack = new Battery
+        battery_pack.voltage = 11.1V +/- 10%  # 3S Li-ion pack
+        battery_pack.capacity = 2000mAh +/- 5%
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

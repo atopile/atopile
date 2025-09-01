@@ -1,4 +1,5 @@
 import fnmatch
+import functools
 import logging
 import os
 import re
@@ -158,7 +159,8 @@ class GlobalConfigSettingsSource(ConfigFileSettingsSource):
         return self.yaml_data if self.yaml_data else {}
 
 
-def _find_project_dir(start: Path) -> Path | None:
+@functools.cache
+def find_project_dir(start: Path) -> Path | None:
     """
     Search parent directories, up to the root, for a directory containing a project
     config file.
@@ -172,9 +174,9 @@ def _find_project_dir(start: Path) -> Path | None:
     return path.resolve().absolute()
 
 
-def _find_project_config_file(start: Path) -> Path | None:
+def find_project_config_file(start: Path) -> Path | None:
     """Search parent directories, up to the root, for a project config file."""
-    if (project_dir := _find_project_dir(start)) is not None:
+    if (project_dir := find_project_dir(start)) is not None:
         return project_dir / PROJECT_CONFIG_FILENAME
 
     return None
@@ -189,7 +191,7 @@ class ProjectConfigSettingsSource(ConfigFileSettingsSource):
         if _project_dir:
             return _project_dir / PROJECT_CONFIG_FILENAME
 
-        return _find_project_config_file(Path.cwd())
+        return find_project_config_file(Path.cwd())
 
     def get_data(self) -> dict[str, Any]:
         return self.yaml_data or {}
@@ -387,10 +389,10 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     Everything that exists within this module will be built as part of this build-target
     """
 
-    targets: list[str] = Field(default=["__default__"])  # TODO: validate
+    targets: list[str] = Field(default_factory=list)
     """A list of targets' names to build after updating the layout"""
 
-    exclude_targets: list[str] = Field(default=[])
+    exclude_targets: list[str] = Field(default_factory=list)
     """
     A list of targets' names to exclude.
 
@@ -399,7 +401,7 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     which typically builds **all** targets.
     """
 
-    exclude_checks: list[str] = Field(default=[])
+    exclude_checks: list[str] = Field(default_factory=list)
     """
     A list of checks to exclude.
 
@@ -1184,7 +1186,7 @@ class Config:
         if standalone:
             self._setup_standalone(entry, entry_arg_file_path)
         else:
-            if config_file_path := _find_project_config_file(entry_arg_file_path):
+            if config_file_path := find_project_config_file(entry_arg_file_path):
                 self.project_dir = config_file_path.parent
             elif entry is None:
                 raise UserNoProjectException(search_path=entry_arg_file_path)

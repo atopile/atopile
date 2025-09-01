@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.13.*"
 
 [[package]]
@@ -85,6 +85,7 @@ dependencies = [
     { name = "pint" },
     { name = "platformdirs" },
     { name = "posthog" },
+    { name = "prompt-toolkit" },
     { name = "psutil" },
     { name = "pydantic-settings" },
     { name = "pygls" },
@@ -111,6 +112,7 @@ dev = [
     { name = "dash-cytoscape" },
     { name = "debugpy" },
     { name = "gprof2dot" },
+    { name = "graphviz" },
     { name = "griffe-typingdoc" },
     { name = "hatch" },
     { name = "hypothesis" },
@@ -156,6 +158,7 @@ requires-dist = [
     { name = "pint", specifier = ">=0.24.4" },
     { name = "platformdirs", specifier = ">=4.3.6" },
     { name = "posthog", specifier = "==6.0.3" },
+    { name = "prompt-toolkit", specifier = "==3.0.51" },
     { name = "psutil", specifier = ">=6.0.0" },
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "pygls", specifier = ">=1.3.0" },
@@ -182,6 +185,7 @@ dev = [
     { name = "dash-cytoscape", specifier = "~=1.0.2" },
     { name = "debugpy", specifier = ">=1.8.11" },
     { name = "gprof2dot", specifier = "~=2024.6.6" },
+    { name = "graphviz", specifier = ">=0.21" },
     { name = "griffe-typingdoc", specifier = ">=0.2.7" },
     { name = "hatch", specifier = ">=1.14.0" },
     { name = "hypothesis", specifier = ">=6.124.7" },
@@ -790,6 +794,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/32/11/16fc5b985741378812223f2c6213b0a95cda333b797def622ac702d28e81/gprof2dot-2024.6.6.tar.gz", hash = "sha256:fa1420c60025a9eb7734f65225b4da02a10fc6dd741b37fa129bc6b41951e5ab", size = 36536, upload-time = "2024-06-06T05:48:49.019Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ae/27/15c4d20871a86281e2bacde9e9f634225d1c2ed0db072f98acf201022411/gprof2dot-2024.6.6-py2.py3-none-any.whl", hash = "sha256:45b14ad7ce64e299c8f526881007b9eb2c6b75505d5613e96e66ee4d5ab33696", size = 34763, upload-time = "2024-06-06T05:48:47.774Z" },
+]
+
+[[package]]
+name = "graphviz"
+version = "0.21"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b3/3ac91e9be6b761a4b30d66ff165e54439dcd48b83f4e20d644867215f6ca/graphviz-0.21.tar.gz", hash = "sha256:20743e7183be82aaaa8ad6c93f8893c923bd6658a04c32ee115edb3c8a835f78", size = 200434, upload-time = "2025-06-15T09:35:05.824Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/91/4c/e0ce1ef95d4000ebc1c11801f9b944fa5910ecc15b5e351865763d8657f8/graphviz-0.21-py3-none-any.whl", hash = "sha256:54f33de9f4f911d7e84e4191749cac8cc5653f815b06738c54db9a15ab8b1e42", size = 47300, upload-time = "2025-06-15T09:35:04.433Z" },
 ]
 
 [[package]]

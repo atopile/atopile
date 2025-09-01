@@ -758,12 +758,23 @@ class C_polygon(C_shape):
 
 
 @dataclass(kw_only=True)
+class C_render_cache:
+    text: str = field(**sexp_field(positional=True), default="")
+    rotation: float = field(**sexp_field(positional=True), default=0)
+    polygons: list[C_polygon] = field(
+        **sexp_field(multidict=True), default_factory=list
+    )
+    # TODO: KiCad:parseRenderCache
+
+
+@dataclass(kw_only=True)
 class C_text:
     text: str = field(**sexp_field(positional=True))
     at: C_xyr
     layer: C_text_layer
     uuid: UUID = field(default_factory=gen_uuid)
     effects: C_effects
+    render_cache: C_render_cache | None = None
 
 
 @dataclass(kw_only=True)
@@ -802,12 +813,6 @@ class C_teardrop:
 
 
 @dataclass(kw_only=True)
-class C_render_cache:
-    polygon: C_polygon
-    # TODO: KiCad:parseRenderCache
-
-
-@dataclass(kw_only=True)
 class C_image:
     at: C_xy
     layer: str
@@ -832,9 +837,9 @@ class C_text_box:
 
     text: str = field(**sexp_field(positional=True))
     locked: bool = False
-    start: C_xy
+    start: C_xy | None = None
     end: C_xy | None = None
-    pts: list[C_xy] | None = None
+    pts: C_pts | None = None
     angle: float | None = None
     stroke: C_stroke | None = None
     border: bool | None = None
@@ -846,8 +851,8 @@ class C_text_box:
     uuid: UUID = field(default_factory=gen_uuid)
 
     def __post_init__(self):
-        if self.end is None and self.pts is None:
-            raise ValueError("Either end or pts must be specified")
+        if (self.end is None or self.start is None) and self.pts is None:
+            raise ValueError("Either start + end or pts must be specified")
 
 
 @dataclass(kw_only=True)
