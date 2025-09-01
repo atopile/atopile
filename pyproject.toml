@@ -27,7 +27,7 @@ classifiers = [
 ]
 dependencies = [
     "antlr4-python3-runtime==4.13.2", # Strict version because the generated (but versioned) files must match
-    "atopile-easyeda2kicad>=0.9.6",
+    "atopile-easyeda2kicad>=0.9.7",
     "black>=24.4.2",
     "case-converter>=1.2.0",
     "cookiecutter>=2.6.0",
@@ -277,7 +277,6 @@ extend-exclude = "atopile/parser/"
 
 [tool.uv.sources]
 atopile-mkdocs-plugin = { path = "tools/atopile_mkdocs_plugin", editable = true }
-atopile-easyeda2kicad = { git = "https://github.com/atopile/easyeda2kicad.py", branch = "feature/system_cert_store" }
 
 [tool.uv]
 cache-keys = [{ git = { commit = false, tags = true } }]
