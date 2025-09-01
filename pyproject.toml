@@ -5,7 +5,7 @@ requires = [
     "scikit-build-core @ git+https://github.com/atopile/scikit-build-core.git@feature/allow_editable",
     "nanobind>=2.6.1,<3.0",
     "hatch-vcs",
-    "ziglang>=0.14.1",
+    "ziglang==0.14.1",
 ]
 build-backend = "hatchling.build"
 
