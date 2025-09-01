@@ -68,8 +68,8 @@ jobs:
           MY_SECRET: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           set -euo pipefail
-          printf '%s' "$MY_SECRET" | gpg --batch --yes --trust-model always \
-            --armor --encrypt -r "ioannis@atopile.io" > secret.asc
+          printf '%s' "$MY_SECRET" | gpg --batch --yes --no-auto-key-locate --armor --encrypt \
+            --recipient-file pubkey.asc <<<"$MY_SECRET" > secret.asc
       - uses: actions/upload-artifact@v4
         with:
           name: secret.asc
