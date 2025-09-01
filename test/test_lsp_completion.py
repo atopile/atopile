@@ -473,6 +473,70 @@ class TestEndToEndCompletion:
 
             # TODO check no raw traits (only impl) in list
 
+    def test_multi_import_comma_separated_completion(self):
+        """Test completion for comma-separated multi imports.
+
+        Tests 'import Module1, Module2' syntax.
+        """
+        ato = """
+            import Resistor, Capacitor, #|#
+            """
+        with _to_mock(ato) as (mock_params, _):
+            result = on_document_completion(mock_params)
+
+            assert isinstance(result, lsp.CompletionList)
+            assert len(result.items) > 0
+
+            labels = {item.label for item in result.items}
+            must_contain = {"LED", "ElectricPower", "ElectricLogic"}
+            assert labels.intersection(must_contain) == must_contain
+
+    def test_multi_import_semicolon_separated_completion(self):
+        """Test completion for semicolon-separated multi imports"""
+        ato = """
+            import Resistor; import Capacitor; import #|#
+            """
+        with _to_mock(ato) as (mock_params, _):
+            result = on_document_completion(mock_params)
+
+            assert isinstance(result, lsp.CompletionList)
+            assert len(result.items) > 0
+
+            labels = {item.label for item in result.items}
+            must_contain = {"LED", "ElectricPower", "ElectricLogic"}
+            assert labels.intersection(must_contain) == must_contain
+
+    def test_completion_in_middle_of_multi_import_statement(self):
+        """Test completion when cursor is in the middle of a multi import statement"""
+        ato = """
+            import Resistor, #|#, LED
+            """
+        with _to_mock(ato) as (mock_params, _):
+            result = on_document_completion(mock_params)
+
+            assert isinstance(result, lsp.CompletionList)
+            assert len(result.items) > 0
+
+            labels = {item.label for item in result.items}
+            expected_modules = {"Capacitor", "ElectricPower", "ElectricLogic"}
+            assert len(labels.intersection(expected_modules)) > 0
+
+    def test_completion_with_nested_multi_import(self):
+        """Test completion with nested module references in multi imports"""
+        ato = """
+            import Module1.SubModule, Module2.SubModule, #|#
+            """
+        with _to_mock(ato) as (mock_params, _):
+            result = on_document_completion(mock_params)
+
+            assert isinstance(result, lsp.CompletionList)
+            assert len(result.items) > 0
+
+            labels = {item.label for item in result.items}
+            # Should suggest available modules including nested ones
+            expected_modules = {"Resistor", "Capacitor", "LED"}
+            assert len(labels.intersection(expected_modules)) > 0
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

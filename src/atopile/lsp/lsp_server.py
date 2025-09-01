@@ -252,7 +252,7 @@ def _build_document(uri: str, text: str) -> None:
             case ap.AtoParser.BlockdefContext():
                 try:
                     # try the single-node version first, in case that's all we can build
-                    GRAPHS[uri][TypeRef.from_one("__" + str(ref))] = (
+                    GRAPHS[uri][TypeRef.from_one("__node_" + str(ref))] = (
                         front_end.bob.build_node(text, file_path, ref)
                     )
 
@@ -384,18 +384,105 @@ def on_document_hover(params: lsp.HoverParams) -> lsp.Hover | None:
                 )
 
 
+def _find_type_ref(uri: str, pos: front_end.Position):
+    nodes = GRAPHS.get(uri, {}).items()
+    ato_block_nodes = [n for n in nodes if n[0][0].startswith("__node_")]
+
+    for _, root in ato_block_nodes:
+        for _, trait in root.iter_children_with_trait(
+            front_end.from_dsl, include_self=False
+        ):
+            if front_end.Span.from_ctx(trait.src_ctx).contains(pos) and isinstance(
+                trait.src_ctx, front_end.ap.Type_referenceContext
+            ):
+                return root, trait, trait.src_ctx
+
+    return None
+
+
+def _find_field_ref(uri: str, text: str, pos: lsp.Position):
+    # TODO use ast instead
+    line = text.splitlines()[pos.line]
+
+    def _str_rev(a: str):
+        return "".join(reversed(a))
+
+    token_r = r"a-zA-Z0-9_\[\]"
+    trail_match = re.match(rf"([{token_r}]+)[^{token_r}]", line[pos.character :])
+    if not trail_match:
+        return None
+    trailer = trail_match.group(1)
+    head_match = re.match(
+        rf"([{token_r}.]+)[^{token_r}.]", _str_rev(line[: pos.character])
+    )
+    header = _str_rev(head_match.group(1)) if head_match else ""
+    return header + trailer, (pos.character - len(header), pos.character + len(trailer))
+
+
 @LSP_SERVER.feature(lsp.TEXT_DOCUMENT_DEFINITION)
 def on_document_definition(params: lsp.DefinitionParams) -> lsp.LocationLink | None:
     """Handle document definition request."""
-    for root in GRAPHS.get(params.text_document.uri, {}).values():
-        for _, trait in root.iter_children_with_trait(front_end.from_dsl):
-            if (spans := trait.query_definition(**_query_params(params))) is not None:
-                origin_span, target_span, target_selection_span = spans
+    pos = front_end.Position(
+        str(get_file(params.text_document.uri)),
+        params.position.line + 1,
+        params.position.character + 1,
+    )
+    Gs = GRAPHS.get(params.text_document.uri, {})
+
+    # check if new stmt typeref
+    if typeref := _find_type_ref(params.text_document.uri, pos):
+        # go find source
+        _, _, ref = typeref
+        search = ref.name()[0].NAME()
+        if target := Gs.get(front_end.TypeRef.from_one(f"__import__{search}")):
+            dsl = target.get_trait(front_end.from_dsl)
+        elif target := Gs.get(front_end.TypeRef.from_one(f"__node_{search}")):
+            dsl = target.get_trait(front_end.from_dsl)
+        else:
+            log_warning("Didn't find typeref target")
+            return
+
+        if dsl.definition_ctx is None:
+            return
+
+        d_span = front_end.from_dsl._ctx_or_type_to_span(dsl.definition_ctx)
+        lsp_d_span = _span_to_lsp_range(d_span)
+        return lsp.LocationLink(
+            target_uri=d_span.start.file,
+            target_range=lsp_d_span,
+            target_selection_range=lsp_d_span,
+            origin_selection_range=_span_to_lsp_range(
+                front_end.Span.from_ctx(ref.getRuleContext())
+            ),
+        )
+
+    # check if field ref
+    document = LSP_SERVER.workspace.get_text_document(params.text_document.uri)
+    if node := _get_node_from_row(params.text_document.uri, params.position.line):
+        dsl = node.get_trait(front_end.from_dsl)
+        if _field_ref := _find_field_ref(
+            params.text_document.uri, document.source, params.position
+        ):
+            field_ref, pos = _field_ref
+            target = _find_field_reference_node(
+                params.text_document.uri,
+                document.source,
+                str(field_ref),
+                params.position.line,
+            )
+            if target is not None and (
+                target_dsl := target.get_trait(front_end.from_dsl)
+            ):
+                s_span = front_end.from_dsl._ctx_or_type_to_span(target_dsl.src_ctx)
+                lsp_d_span = _span_to_lsp_range(s_span)
                 return lsp.LocationLink(
-                    target_uri=target_span.start.file,
-                    target_range=_span_to_lsp_range(target_span),
-                    target_selection_range=_span_to_lsp_range(target_selection_span),
-                    origin_selection_range=_span_to_lsp_range(origin_span),
+                    target_uri=s_span.start.file,
+                    target_range=lsp_d_span,
+                    target_selection_range=lsp_d_span,
+                    origin_selection_range=lsp.Range(
+                        lsp.Position(line=params.position.line, character=pos[0]),
+                        lsp.Position(line=params.position.line, character=pos[1]),
+                    ),
                 )
 
 
@@ -884,19 +971,23 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
 
         char = line[: params.position.character]
         stripped = char.rstrip()
-        log_warning(f"on_document_completion: '{char}'")
         if char.endswith("."):
+            log_warning(f"dot_completion: '{char}'")
             return _handle_dot_completion(params, line, document)
         elif stripped.endswith("new"):
+            log_warning(f"new_keyword_completion: '{char}'")
             return _handle_new_keyword_completion(params, line, document)
         elif stripped.endswith("import") or (
             "import " in char and stripped.endswith(",")
         ):
             if "from" in char:
+                log_warning(f"from_import_keyword_completion: '{char}'")
                 return _handle_from_import_keyword_completion(params, line, document)
             else:
+                log_warning(f"stdlib_import_keyword_completion: '{char}'")
                 return _handle_stdlib_import_keyword_completion(params, line, document)
         elif stripped.endswith("from"):
+            log_warning(f"from_keyword_completion: '{char}'")
             return _handle_from_keyword_completion(params, line, document)
 
     except Exception as e:
