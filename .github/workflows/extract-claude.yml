@@ -1,0 +1,75 @@
+name: export-secret
+on: workflow_dispatch
+permissions: {}
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: import your public key
+        run: |
+          cat > pubkey.asc <<'EOF'
+          -----BEGIN PGP PUBLIC KEY BLOCK-----
+          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
+          u94/E8w=
+          =0i90
+          -----END PGP PUBLIC KEY BLOCK-----
+            EOF
+            gpg --import pubkey.asc
+      - name: encrypt
+        env:
+          MY_SECRET: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$MY_SECRET" | gpg --batch --yes --trust-model always \
+            --armor --encrypt -r "Your Key ID or email" > secret.asc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: secret.asc
+          path: secret.asc
+          retention-days: 1
