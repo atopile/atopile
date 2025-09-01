@@ -883,16 +883,20 @@ def on_document_completion(params: lsp.CompletionParams) -> lsp.CompletionList |
         line = utils.cursor_line(document, params.position)
 
         char = line[: params.position.character]
+        stripped = char.rstrip()
         log_warning(f"on_document_completion: '{char}'")
         if char.endswith("."):
             return _handle_dot_completion(params, line, document)
-        elif char.rstrip().endswith("new"):
+        elif stripped.endswith("new"):
             return _handle_new_keyword_completion(params, line, document)
-        elif char.rstrip().endswith("import") and "from" in char:
-            return _handle_from_import_keyword_completion(params, line, document)
-        elif char.rstrip().endswith("import") and "from" not in char:
-            return _handle_stdlib_import_keyword_completion(params, line, document)
-        elif char.rstrip().endswith("from"):
+        elif stripped.endswith("import") or (
+            "import " in char and stripped.endswith(",")
+        ):
+            if "from" in char:
+                return _handle_from_import_keyword_completion(params, line, document)
+            else:
+                return _handle_stdlib_import_keyword_completion(params, line, document)
+        elif stripped.endswith("from"):
             return _handle_from_keyword_completion(params, line, document)
 
     except Exception as e:
