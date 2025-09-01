@@ -315,7 +315,6 @@ class BuildTargetPaths(BaseConfigModel):
             data["output_base"] = Path(output_base_data)
         else:
             data["output_base"] = project_paths.build / "builds" / name / name
-            data["output_base"].parent.mkdir(parents=True, exist_ok=True)
 
         data.setdefault("netlist", data["output_base"] / f"{name}.net")
         data.setdefault("fp_lib_table", data["layout"].parent / "fp-lib-table")
@@ -498,6 +497,10 @@ class BuildTargetConfig(BaseConfigModel, validate_assignment=True):
     def ensure(self):
         """Ensure this build config is ready to be used"""
         self.paths.ensure_layout()
+        # Lazily create the build output directory only when this build is actually used
+        # This avoids creating empty build directories for every target
+        # during config loading or discovery.
+        self.paths.output_base.parent.mkdir(parents=True, exist_ok=True)
 
 
 class DependencySpec(BaseConfigModel):
