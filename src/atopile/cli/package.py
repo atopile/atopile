@@ -224,15 +224,20 @@ class _PackageValidators:
         offending: list[str] = []
         for _ref, node in context.refs.items():
             if isinstance(node, Context.ImportPlaceholder):
-                if (
-                    "atopile" not in node.from_path
-                    and "parts" not in node.from_path.split("/")[0]
-                ):
+                parts = [p for p in node.from_path.split("/") if p]
+                # Allow local parts imports
+                if parts and parts[0] == "parts":
+                    continue
+                if len(parts) >= 2:
+                    base = config.project.paths.modules / parts[0] / parts[1]
+                    if not base.exists() and config.project.package.identifier not in str(base):
+                        offending.append(node.from_path)
+                else:
                     offending.append(node.from_path)
 
         if offending:
             raise UserBadParameterError(
-                "Usage build must import packages via 'atopile/...'. "
+                f"Import not found in installed packages, imports must use absolute path, e.g. 'atopile/...'. \n"
                 "Offending imports: " + ", ".join(offending)
             )
 
