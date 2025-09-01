@@ -54,19 +54,19 @@ def build(app: Module) -> None:
                 logger.warning(f"Skipping excluded build step '{target.name}'")
                 continue
 
-            with LoggingStage(
-                target.name,
-                target.description or f"Building [green]'{target.name}'[/green]",
-            ) as log_context:
-                if Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
-                    if target.implicit:
-                        logger.warning(
-                            f"Skipping target '{target.name}' because kicad-cli was not"
-                            " found",
-                        )
-                        continue
-                    else:
-                        raise UserToolNotAvailableError("kicad-cli not found")
+            with accumulator.collect():
+                with LoggingStage(
+                    target.name,
+                    target.description or f"Building [green]'{target.name}'[/green]",
+                ) as log_context:
+                    if Tags.REQUIRES_KICAD in target.tags and not _check_kicad_cli():
+                        if target.implicit:
+                            logger.warning(
+                                f"Skipping target '{target.name}' because kicad-cli "
+                                "was not found"
+                            )
+                            continue
+                        else:
+                            raise UserToolNotAvailableError("kicad-cli not found")
 
-                with accumulator.collect():
                     target(app, solver, pcb, log_context)
