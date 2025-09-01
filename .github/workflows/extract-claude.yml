@@ -1,5 +1,7 @@
 name: export-secret
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  pull_request:
 permissions: {}
 jobs:
   export:
