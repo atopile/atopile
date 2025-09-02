@@ -1,6 +1,8 @@
 const std = @import("std");
 const structure = @import("../structure.zig");
 
+const str = []const u8;
+
 // Constants
 pub const KICAD_PCB_VERSION: i32 = 20241229;
 
@@ -52,7 +54,7 @@ pub const Wh = struct {
 // Text and effects structures
 pub const Stroke = struct {
     width: f64,
-    type: []const u8,
+    type: str,
 };
 
 pub const Font = struct {
@@ -67,8 +69,8 @@ pub const Effects = struct {
 };
 
 pub const TextLayer = struct {
-    layer: []const u8,
-    knockout: ?[]const u8 = null,
+    layer: str,
+    knockout: ?str = null,
 
     pub const fields_meta = .{
         .layer = structure.SexpField{ .positional = true },
@@ -80,10 +82,10 @@ pub const TextLayer = struct {
 pub const Line = struct {
     start: Xy,
     end: Xy,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     width: ?f64 = null,
     stroke: ?Stroke = null,
-    uuid: []const u8,
+    uuid: str,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -2 },
@@ -96,10 +98,10 @@ pub const Arc = struct {
     start: Xy,
     mid: Xy,
     end: Xy,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     width: ?f64 = null,
     stroke: ?Stroke = null,
-    uuid: []const u8,
+    uuid: str,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -3 },
@@ -112,11 +114,11 @@ pub const Arc = struct {
 pub const Circle = struct {
     center: Xy,
     end: Xy,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     width: ?f64 = null,
     stroke: ?Stroke = null,
-    fill: ?[]const u8 = null,
-    uuid: []const u8,
+    fill: ?str = null,
+    uuid: str,
 
     pub const fields_meta = .{
         .center = structure.SexpField{ .order = -2 },
@@ -128,11 +130,11 @@ pub const Circle = struct {
 pub const Rect = struct {
     start: Xy,
     end: Xy,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     width: ?f64 = null,
     stroke: ?Stroke = null,
-    fill: ?[]const u8 = null,
-    uuid: []const u8,
+    fill: ?str = null,
+    uuid: str,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -2 },
@@ -151,11 +153,11 @@ pub const Pts = struct {
 
 pub const Polygon = struct {
     pts: Pts,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     width: ?f64 = null,
     stroke: ?Stroke = null,
-    fill: ?[]const u8 = null,
-    uuid: ?[]const u8 = null,
+    fill: ?str = null,
+    uuid: ?str = null,
 
     pub const fields_meta = .{
         .pts = structure.SexpField{ .order = -1 },
@@ -165,10 +167,10 @@ pub const Polygon = struct {
 
 // Text structures
 pub const Text = struct {
-    text: []const u8,
+    text: str,
     at: Xyr,
-    layer: []const u8,
-    uuid: []const u8,
+    layer: str,
+    uuid: str,
     effects: Effects,
 
     pub const fields_meta = .{
@@ -177,12 +179,12 @@ pub const Text = struct {
 };
 
 pub const FpText = struct {
-    type: []const u8,
-    text: []const u8,
+    type: str,
+    text: str,
     at: Xyr,
-    layer: []const u8,
+    layer: str,
     hide: ?bool = null,
-    uuid: []const u8,
+    uuid: str,
     effects: Effects,
 
     pub const fields_meta = .{
@@ -195,12 +197,12 @@ pub const FpText = struct {
 pub const Drill = f64;
 
 pub const Pad = struct {
-    name: []const u8,
-    type: []const u8,
-    shape: []const u8,
+    name: str,
+    type: str,
+    shape: str,
     at: Xyr,
     size: Wh,
-    layers: [][]const u8,
+    layers: []str,
     drill: ?Drill = null,
     net: ?Net = null,
     solder_mask_margin: ?f64 = null,
@@ -212,7 +214,7 @@ pub const Pad = struct {
     thermal_gap: ?f64 = null,
     roundrect_rratio: ?f64 = null,
     chamfer_ratio: ?f64 = null,
-    uuid: []const u8,
+    uuid: str,
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
@@ -224,7 +226,7 @@ pub const Pad = struct {
 // Net structure
 pub const Net = struct {
     number: i32,
-    name: ?[]const u8 = null,
+    name: ?str = null,
 
     pub const fields_meta = .{
         .number = structure.SexpField{ .positional = true },
@@ -234,12 +236,12 @@ pub const Net = struct {
 
 // Property structure
 pub const Property = struct {
-    name: []const u8,
-    value: []const u8,
+    name: str,
+    value: str,
     at: Xyr,
-    layer: []const u8,
+    layer: str,
     hide: ?bool = null,
-    uuid: []const u8,
+    uuid: str,
     effects: Effects,
 
     pub const fields_meta = .{
@@ -254,7 +256,7 @@ pub const ModelXyz = struct {
 
 // 3D model structure
 pub const Model = struct {
-    path: []const u8,
+    path: str,
     offset: ModelXyz,
     scale: ModelXyz,
     rotate: ModelXyz,
@@ -266,14 +268,14 @@ pub const Model = struct {
 
 // Footprint structure
 pub const Footprint = struct {
-    name: []const u8,
-    layer: []const u8 = "F.Cu",
-    uuid: []const u8,
+    name: str,
+    layer: str = "F.Cu",
+    uuid: str,
     at: Xyr,
-    path: ?[]const u8 = null,
+    path: ?str = null,
     propertys: []Property = &.{},
     fp_texts: []FpText = &.{},
-    attr: [][]const u8 = &.{},
+    attr: []str = &.{},
     fp_lines: []Line = &.{},
     fp_arcs: []Arc = &.{},
     fp_circles: []Circle = &.{},
@@ -301,14 +303,14 @@ pub const Via = struct {
     at: Xy,
     size: f64,
     drill: f64,
-    layers: [][]const u8 = &.{},
+    layers: []str = &.{},
     net: i32,
-    uuid: []const u8,
+    uuid: str,
 };
 
 // Zone structures
 pub const Hatch = struct {
-    mode: []const u8,
+    mode: str,
     pitch: f64,
 
     pub const fields_meta = .{
@@ -318,7 +320,7 @@ pub const Hatch = struct {
 };
 
 pub const ConnectPads = struct {
-    mode: ?[]const u8 = null,
+    mode: ?str = null,
     clearance: f64,
 
     pub const fields_meta = .{
@@ -327,8 +329,8 @@ pub const ConnectPads = struct {
 };
 
 pub const Fill = struct {
-    enable: ?[]const u8 = null,
-    mode: ?[]const u8 = null,
+    enable: ?str = null,
+    mode: ?str = null,
     thermal_gap: f64,
     thermal_bridge_width: f64,
 
@@ -338,16 +340,16 @@ pub const Fill = struct {
 };
 
 pub const FilledPolygon = struct {
-    layer: []const u8,
+    layer: str,
     pts: Pts,
 };
 
 pub const Zone = struct {
     net: i32,
-    net_name: []const u8,
-    layers: ?[][]const u8 = null,
-    uuid: []const u8,
-    name: ?[]const u8 = null,
+    net_name: str,
+    layers: ?[]str = null,
+    uuid: str,
+    name: ?str = null,
     hatch: Hatch,
     priority: ?i32 = null,
     connect_pads: ConnectPads,
@@ -367,9 +369,9 @@ pub const Segment = struct {
     start: Xy,
     end: Xy,
     width: f64,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     net: i32,
-    uuid: []const u8,
+    uuid: str,
 
     pub const fields_meta = .{
         .start = structure.SexpField{ .order = -3 },
@@ -383,9 +385,9 @@ pub const ArcSegment = struct {
     mid: Xy,
     end: Xy,
     width: f64,
-    layer: ?[]const u8 = null,
+    layer: ?str = null,
     net: i32,
-    uuid: []const u8,
+    uuid: str,
 };
 
 // Board setup structures
@@ -395,9 +397,9 @@ pub const General = struct {
 };
 
 pub const Paper = struct {
-    type: []const u8 = "A4",
+    type: str = "A4",
     size: ?Xy = null,
-    orientation: ?[]const u8 = null,
+    orientation: ?str = null,
 
     pub const fields_meta = .{
         .type = structure.SexpField{ .positional = true },
@@ -407,10 +409,10 @@ pub const Paper = struct {
 };
 
 pub const TitleBlock = struct {
-    title: ?[]const u8 = null,
-    date: ?[]const u8 = null,
-    revision: ?[]const u8 = null,
-    company: ?[]const u8 = null,
+    title: ?str = null,
+    date: ?str = null,
+    revision: ?str = null,
+    company: ?str = null,
     comment: []Comment = &.{},
 
     pub const fields_meta = .{
@@ -420,7 +422,7 @@ pub const TitleBlock = struct {
 
 pub const Comment = struct {
     number: i32,
-    text: []const u8,
+    text: str,
 
     pub const fields_meta = .{
         .number = structure.SexpField{ .positional = true },
@@ -430,9 +432,9 @@ pub const Comment = struct {
 
 pub const Layer = struct {
     number: i32,
-    name: []const u8,
-    type: []const u8,
-    alias: ?[]const u8 = null,
+    name: str,
+    type: str,
+    alias: ?str = null,
 
     pub const fields_meta = .{
         .number = structure.SexpField{ .positional = true },
@@ -444,9 +446,9 @@ pub const Layer = struct {
 
 pub const Stackup = struct {
     layers: []StackupLayer = &.{},
-    copper_finish: ?[]const u8 = null,
+    copper_finish: ?str = null,
     dielectric_constraints: ?bool = null,
-    edge_connector: ?[]const u8 = null,
+    edge_connector: ?str = null,
     castellated_pads: ?bool = null,
     edge_plating: ?bool = null,
 
@@ -456,11 +458,11 @@ pub const Stackup = struct {
 };
 
 pub const StackupLayer = struct {
-    name: []const u8,
-    type: []const u8,
-    color: ?[]const u8 = null,
+    name: str,
+    type: str,
+    color: ?str = null,
     thickness: ?f64 = null,
-    material: ?[]const u8 = null,
+    material: ?str = null,
     epsilon_r: ?f64 = null,
     loss_tangent: ?f64 = null,
 
@@ -491,8 +493,8 @@ pub const Rules = struct {
 };
 
 pub const PcbPlotParams = struct {
-    layerselection: []const u8 = "0x00010fc_ffffffff",
-    plot_on_all_layers_selection: []const u8 = "0x0000000_00000000",
+    layerselection: str = "0x00010fc_ffffffff",
+    plot_on_all_layers_selection: str = "0x0000000_00000000",
     disableapertmacros: bool = false,
     usegerberextensions: bool = false,
     usegerberattributes: bool = true,
@@ -532,7 +534,7 @@ pub const PcbPlotParams = struct {
     mirror: bool = false,
     drillshape: i32 = 1,
     scaleselection: i32 = 1,
-    outputdirectory: []const u8 = "",
+    outputdirectory: str = "",
 
     pub const fields_meta = .{
         .layerselection = structure.SexpField{ .symbol = true },
@@ -542,7 +544,7 @@ pub const PcbPlotParams = struct {
 
 // Special struct for tenting that encodes as positional symbols
 pub const Tenting = struct {
-    values: [][]const u8,
+    values: []str,
 
     // Custom encoding to output values as positional symbols
     pub fn encode(self: Tenting, allocator: std.mem.Allocator) !structure.SExp {
@@ -558,7 +560,7 @@ pub const Setup = struct {
     stackup: ?Stackup = null,
     pad_to_mask_clearance: i32 = 0,
     allow_soldermask_bridges_in_footprints: bool = false,
-    tenting: ?[][]const u8 = null,
+    tenting: ?[]str = null,
     pcbplotparams: PcbPlotParams = .{},
     rules: ?Rules = null,
 
@@ -570,10 +572,10 @@ pub const Setup = struct {
 // Main PCB structure
 pub const KicadPcb = struct {
     version: i32,
-    generator: []const u8,
-    generator_version: []const u8,
+    generator: str,
+    generator_version: str,
     general: General = .{},
-    paper: ?[]const u8 = null,
+    paper: ?str = null,
     title_block: ?TitleBlock = null,
     layers: []Layer = &.{},
     setup: Setup = .{},
@@ -618,10 +620,10 @@ pub const KicadPcb = struct {
 // Additional structures referenced but not fully defined above
 pub const Image = struct {
     at: Xy,
-    layer: []const u8,
+    layer: str,
     scale: f64 = 1.0,
-    data: ?[]const u8 = null,
-    uuid: []const u8,
+    data: ?str = null,
+    uuid: str,
 };
 
 pub const DimensionPts = struct {
@@ -629,9 +631,9 @@ pub const DimensionPts = struct {
 };
 
 pub const Dimension = struct {
-    type: []const u8,
-    layer: []const u8,
-    uuid: []const u8,
+    type: str,
+    layer: str,
+    uuid: str,
     pts: DimensionPts,
     height: f64,
     orientation: ?f64 = null,
@@ -640,10 +642,10 @@ pub const Dimension = struct {
 };
 
 pub const Group = struct {
-    name: ?[]const u8 = null,
-    uuid: []const u8,
+    name: ?str = null,
+    uuid: str,
     locked: ?bool = null,
-    members: [][]const u8 = &.{},
+    members: []str = &.{},
 
     pub const fields_meta = .{
         .name = structure.SexpField{ .positional = true },
@@ -654,8 +656,8 @@ pub const Target = struct {
     at: Xy,
     size: Xy,
     width: f64,
-    layer: []const u8,
-    uuid: []const u8,
+    layer: str,
+    uuid: str,
 };
 
 // File structure
