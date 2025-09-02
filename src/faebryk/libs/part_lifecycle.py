@@ -20,7 +20,7 @@ from atopile.errors import UserValueError
 from atopile.layout import in_sub_pcb
 from faebryk.core.module import Module
 from faebryk.exporters.pcb.kicad.transformer import PCB_Transformer
-from faebryk.libs.ato_part import AtoPart
+from faebryk.libs.ato_part import AtoPart, load_footprint_with_fallback
 from faebryk.libs.exceptions import UserResourceException, accumulate
 from faebryk.libs.kicad.fileformats_common import C_xyr
 from faebryk.libs.kicad.fileformats_latest import (
@@ -42,7 +42,6 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     find,
     indented_container,
-    load_footprint_with_fallback,
     md_list,
     once,
     path_replace,

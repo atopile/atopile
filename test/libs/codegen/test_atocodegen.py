@@ -180,7 +180,7 @@ def test_backward_compatibility_unsanitized_footprint():
     import tempfile
     from pathlib import Path
 
-    from faebryk.libs.util import load_footprint_with_fallback
+    from faebryk.libs.ato_part import load_footprint_with_fallback
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
