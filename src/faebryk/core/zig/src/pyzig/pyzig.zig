@@ -11,110 +11,6 @@ pub fn module_method(comptime method: Method, comptime name: [*:0]const u8) py.P
     };
 }
 
-// Compact version for printing structs inside arrays
-pub fn printStructCompact(value: anytype, buf: []u8) ![:0]u8 {
-    const T = @TypeOf(value);
-    const info = @typeInfo(T);
-    
-    switch (info) {
-        .@"struct" => |s| {
-            var pos: usize = 0;
-            
-            // Write struct name and opening brace
-            const header = try std.fmt.bufPrintZ(buf[pos..], "{s}{{ ", .{@typeName(T)});
-            pos += header.len;
-            
-            // Write each field in compact format
-            inline for (s.fields, 0..) |field, field_idx| {
-                if (field_idx > 0) {
-                    const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
-                    pos += comma.len;
-                }
-                
-                const field_value = @field(value, field.name);
-                const field_type = @TypeOf(field_value);
-                const field_type_info = @typeInfo(field_type);
-                
-                // Format field name
-                const field_name_str = try std.fmt.bufPrintZ(buf[pos..], ".{s} = ", .{field.name});
-                pos += field_name_str.len;
-                
-                // Check if it's a string slice
-                const is_string = switch (field_type_info) {
-                    .pointer => |ptr| ptr.size == .slice and ptr.child == u8 and ptr.is_const,
-                    else => false,
-                };
-                
-                if (is_string) {
-                    const str_slice: []const u8 = field_value;
-                    // Check if string is printable
-                    var is_printable = true;
-                    for (str_slice) |c| {
-                        if (c < 32 or c > 126) {
-                            is_printable = false;
-                            break;
-                        }
-                    }
-                    if (is_printable and str_slice.len > 0) {
-                        const str_out = try std.fmt.bufPrintZ(buf[pos..], "\"{s}\"", .{str_slice});
-                        pos += str_out.len;
-                    } else {
-                        // Show as byte array for non-printable
-                        const bytes_out = try std.fmt.bufPrintZ(buf[pos..], "{any}", .{field_value});
-                        pos += bytes_out.len;
-                    }
-                } else {
-                    // For other types, use compact representation
-                    const field_str = switch (field_type_info) {
-                        .@"struct" => blk: {
-                            // Nested struct - show type name only for compactness
-                            break :blk try std.fmt.bufPrintZ(buf[pos..], "{s}{{ ... }}", .{@typeName(field_type)});
-                        },
-                        .optional => |opt| blk: {
-                            if (@typeInfo(opt.child) == .@"struct") {
-                                if (field_value != null) {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "{s}{{ ... }}", .{@typeName(opt.child)});
-                                } else {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "null", .{});
-                                }
-                            } else if (@typeInfo(opt.child) == .pointer and @typeInfo(opt.child).pointer.size == .slice) {
-                                // Optional slice
-                                if (field_value != null) {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "{{ ... }}", .{});
-                                } else {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "null", .{});
-                                }
-                            } else {
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "{?any}", .{field_value});
-                            }
-                        },
-                        .pointer => |ptr| blk: {
-                            if (ptr.size == .slice) {
-                                // Show slice length for non-strings
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "{{ ... }}", .{});
-                            } else {
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "{any}", .{field_value});
-                            }
-                        },
-                        else => try std.fmt.bufPrintZ(buf[pos..], "{any}", .{field_value}),
-                    };
-                    pos += field_str.len;
-                }
-            }
-            
-            // Write closing brace
-            const footer = try std.fmt.bufPrintZ(buf[pos..], " }}", .{});
-            pos += footer.len;
-            
-            // Null-terminate
-            if (pos >= buf.len) return error.BufferTooSmall;
-            buf[pos] = 0;
-            
-            return buf[0..pos :0];
-        },
-        else => @compileError("Not a struct"),
-    }
-}
 
 pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
     const T = @TypeOf(value);
@@ -242,30 +138,49 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                     // Check if it's a slice of structs
                                     const child_info = @typeInfo(ptr.child);
                                     if (child_info == .@"struct") {
-                                        // Slice of structs - print each one with our custom formatter
-                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: {{ ", .{field.name});
+                                        // Slice of structs - format them nicely with line breaks
+                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [\n", .{field.name});
                                         pos += field_header.len;
                                         
-                                        // Print each struct in the slice
+                                        // Print each struct in the slice with proper indentation
                                         for (field_value, 0..) |item, i| {
-                                            if (i > 0) {
-                                                const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
-                                                pos += comma.len;
+                                            // Add indentation for array items
+                                            const indent = try std.fmt.bufPrintZ(buf[pos..], "    ", .{});
+                                            pos += indent.len;
+                                            
+                                            // Recursively print the struct
+                                            var item_buf: [8192]u8 = undefined;
+                                            const item_str = try printStruct(item, &item_buf);
+                                            
+                                            // Add extra indentation to each line of the nested struct
+                                            var line_iter = std.mem.splitScalar(u8, item_str, '\n');
+                                            var first_line = true;
+                                            while (line_iter.next()) |line| {
+                                                if (line.len == 0) continue;
+                                                
+                                                if (!first_line) {
+                                                    const nested_indent = try std.fmt.bufPrintZ(buf[pos..], "    ", .{});
+                                                    pos += nested_indent.len;
+                                                }
+                                                first_line = false;
+                                                
+                                                const line_out = try std.fmt.bufPrintZ(buf[pos..], "{s}\n", .{line});
+                                                pos += line_out.len;
                                             }
                                             
-                                            // Use a recursive call to format the struct
-                                            var item_buf: [4096]u8 = undefined;
-                                            const item_str = try printStructCompact(item, &item_buf);
-                                            const item_out = try std.fmt.bufPrintZ(buf[pos..], "{s}", .{item_str});
-                                            pos += item_out.len;
+                                            if (i < field_value.len - 1) {
+                                                // Add comma between items
+                                                const comma = try std.fmt.bufPrintZ(buf[pos..], "    ,\n", .{});
+                                                pos += comma.len;
+                                            }
                                         }
                                         
-                                        const closer = try std.fmt.bufPrintZ(buf[pos..], " }}\n", .{});
+                                        const closer = try std.fmt.bufPrintZ(buf[pos..], "  ]\n", .{});
                                         pos += closer.len;
                                         break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
                                     } else if (child_info == .pointer and child_info.pointer.size == .slice and child_info.pointer.child == u8) {
                                         // Slice of strings ([][]const u8)
-                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: {{ ", .{field.name});
+                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [", .{field.name});
                                         pos += field_header.len;
                                         
                                         // Print each string in the slice
@@ -295,7 +210,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                             }
                                         }
                                         
-                                        const closer = try std.fmt.bufPrintZ(buf[pos..], " }}\n", .{});
+                                        const closer = try std.fmt.bufPrintZ(buf[pos..], "]\n", .{});
                                         pos += closer.len;
                                         break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
                                     } else {
