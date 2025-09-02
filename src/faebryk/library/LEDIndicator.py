@@ -52,25 +52,30 @@ class LEDIndicator(Module):
             status_signal.reference ~ power_5v
             status_led.logic_in ~ status_signal
 
-            # Connect to microcontroller
-            microcontroller.gpio_status ~ status_signal.line
+            # Connect to external signal lines
+            external_gpio = new ElectricLogic
+            external_gpio ~ status_signal
 
             # Configure LED properties
-            status_led.led.led.color = LED.Color.GREEN
+            status_led.led.led.color = "GREEN"
             status_led.led.led.current = 20mA +/- 5%
             status_led.led.led.forward_voltage = 2.1V +/- 10%
 
             # High-power LED with MOSFET driver
             power_led = new LEDIndicator
+            power_control_signal = new ElectricLogic
+            power_control_signal.reference ~ power_5v
             power_led.power_in ~ power_5v
             power_led.logic_in ~ power_control_signal
             power_led.led.led.current = 100mA +/- 10%  # Higher current
 
             # Active-low indicator (ON when signal is LOW)
             error_led = new LEDIndicator
+            error_signal = new ElectricLogic
+            error_signal.reference ~ power_5v
             error_led.power_in ~ power_5v
             error_led.logic_in ~ error_signal
-            error_led.led.led.color = LED.Color.RED
+            error_led.led.led.color = "RED"
 
             # Common applications: status indication, debugging, user feedback
         """,

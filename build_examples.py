@@ -79,6 +79,8 @@ def get_all_file_paths() -> list[str]:
 if __name__ == "__main__":
     bob = Bob()
 
+    module_results = {}
+
     module_filepaths = get_all_file_paths()
 
     for module_filepath in module_filepaths:
@@ -90,11 +92,17 @@ if __name__ == "__main__":
             node = bob.build_ast(tree, TypeRef(["UsageExample"]))
             assert isinstance(node, L.Module)
             print(f"Successfully built example for {module_filepath}")
+            module_results[module_filepath] = "PASS"
         except* Exception as eg:
             print(f"Error building example for {module_filepath}:")
             for sub in eg.exceptions:
                 print(f"  - {repr(sub)}")
+            module_results[module_filepath] = "FAIL"
 
+    # Count and print the number of passing examples out of total
+    num_pass = sum(1 for result in module_results.values() if result == "PASS")
+    total = len(module_results)
+    print(f"Passing examples: {num_pass} / {total}")
 
     # r1 = bob.resolve_node_shortcut(node, "r1")
     # trait = r1.get_trait(F.has_usage_example)

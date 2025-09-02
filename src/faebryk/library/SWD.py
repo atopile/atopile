@@ -35,36 +35,32 @@ class SWD(ModuleInterface):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import SWD, ElectricPower, Resistor
+        #pragma experiment("BRIDGE_CONNECT")
+        import SWD, ElectricPower, Resistor, ElectricLogic
 
-        from "x/y/y.ato" import SomeMCU
-        from "a/b/c.ato" import SomeDebugger
+        module UsageExample:
+            swd = new SWD
 
-        swd = new SWD
-        microcontroller = new SomeMCU
-        debugger = new SomeDebugger
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            swd.reference_shim ~ power_3v3
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        swd.reference_shim ~ power_3v3
+            # Connect to microcontroller GPIO pins
+            mcu_gpio0 = new ElectricLogic
+            mcu_gpio1 = new ElectricLogic
+            mcu_gpio2 = new ElectricLogic
+            mcu_reset = new ElectricLogic
+            
+            mcu_gpio0 ~ swd.clk
+            mcu_gpio1 ~ swd.dio
+            mcu_gpio2 ~ swd.swo
+            mcu_reset ~ swd.reset
 
-        # Connect to microcontroller specific pins (mcu has no SWD interface)
-        microcontroller.gpio[0] ~ swd.clk
-        microcontroller.gpio[1] ~ swd.dio
-        microcontroller.gpio[2] ~ swd.swo
-        microcontroller.reset ~ swd.reset
-
-        # Connect to debugger (has SWD interface)
-        debugger.swd ~ swd
-
-        # Optional pullup resistors for robust operation
-        # mostly only on target side, not debugger side
-        reset_pullup = new Resistor
-        reset_pullup.resistance = 10kohm +/- 5%
-        swd.reset.line ~> reset_pullup ~> swd.reset.reference.hv
-
-        # SWD is commonly used for ARM Cortex-M debugging and programming
+            # Optional pullup resistors for robust operation
+            reset_pullup = new Resistor
+            reset_pullup.resistance = 10kohm +/- 5%
+            swd.reset.line ~> reset_pullup ~> swd.reset.reference.hv
         """,
         language=F.has_usage_example.Language.ato,
     )

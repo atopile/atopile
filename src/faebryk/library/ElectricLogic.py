@@ -150,17 +150,22 @@ class ElectricLogic(F.ElectricSignal):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import ElectricLogic
+        #pragma experiment("BRIDGE_CONNECT")
+        import ElectricLogic, ElectricPower, Electrical, Resistor
 
-        logic_signal = new ElectricLogic
+        module UsageExample:
+            logic_signal = new ElectricLogic
 
-        logic_signal.reference ~ example_electric_power
+            example_electric_power = new ElectricPower
+            logic_signal.reference ~ example_electric_power
 
-        logic_signal.line ~ electrical
-        # OR
-        logic_signal.line ~ electricLogic.line
-        # OR
-        logic_signal.line ~> example_resistor ~> electrical
+            electrical = new Electrical
+            logic_signal.line ~ electrical
+            
+            # OR with resistor
+            example_resistor = new Resistor
+            example_resistor.resistance = 10kohm +/- 5%
+            logic_signal.line ~> example_resistor ~> electrical
         """,
         language=F.has_usage_example.Language.ato,
     )

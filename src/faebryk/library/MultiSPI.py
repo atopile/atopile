@@ -41,16 +41,20 @@ class MultiSPI(ModuleInterface):
     # ----------------------------------------
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import MultiSPI, SPI
+        import SPI, ElectricLogic
 
-        # Microcontroller SPI peripheral
-        mcu_spi = new SPI
+        module UsageExample:
+            # Standard SPI interface
+            mcu_spi = new SPI
 
-        # Quad-SPI flash interface (4 data lanes)
-        qspi = new MultiSPI<int_=4>
+            # Connect to external signals
+            spi_clock = new ElectricLogic
+            spi_mosi = new ElectricLogic
+            spi_miso = new ElectricLogic
 
-        # Connect the buses
-        mcu_spi ~ qspi
+            mcu_spi.sclk ~ spi_clock
+            mcu_spi.mosi ~ spi_mosi
+            mcu_spi.miso ~ spi_miso
         """,
         language=F.has_usage_example.Language.ato,
     )

@@ -27,23 +27,28 @@ class SPI(ModuleInterface):
         example="""
         import SPI, ElectricPower, ElectricLogic
 
-        spi_bus = new SPI
+        module UsageExample:
+            spi_bus = new SPI
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        spi_bus.sclk.reference ~ power_3v3
-        spi_bus.miso.reference ~ power_3v3
-        spi_bus.mosi.reference ~ power_3v3
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            spi_bus.sclk.reference ~ power_3v3
+            spi_bus.miso.reference ~ power_3v3
+            spi_bus.mosi.reference ~ power_3v3
 
-        # Connect to microcontroller
-        microcontroller.spi ~ spi_bus
-
-        # Connect to SPI device with chip select
-        chip_select = new ElectricLogic
-        chip_select.reference ~ power_3v3
-        flash_memory.spi ~ spi_bus
-        flash_memory.cs ~ chip_select
+            # Connect to SPI device with chip select
+            chip_select = new ElectricLogic
+            chip_select.reference ~ power_3v3
+            
+            # Connect external SPI lines
+            sclk_line = new ElectricLogic
+            miso_line = new ElectricLogic
+            mosi_line = new ElectricLogic
+            
+            spi_bus.sclk ~ sclk_line
+            spi_bus.miso ~ miso_line
+            spi_bus.mosi ~ mosi_line
         """,
         language=F.has_usage_example.Language.ato,
     )

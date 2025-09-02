@@ -33,16 +33,17 @@ class Potentiometer(Module):
         example="""
         import Potentiometer, ElectricPower, Electrical
 
-        potentiometer = new Potentiometer
-        potentiometer.total_resistance = 10kohm +/- 5%
+        module UsageExample:
+            potentiometer = new Potentiometer
+            potentiometer.total_resistance = 10kohm +/- 5%
 
-        power_supply = new ElectricPower
-        output_voltage = new Electrical
+            power_supply = new ElectricPower
+            output_voltage = new Electrical
 
-        # Use as voltage divider
-        power_supply.hv ~ potentiometer.resistors_ifs[0]
-        power_supply.lv ~ potentiometer.resistors_ifs[1]
-        output_voltage ~ potentiometer.wiper
+            # Use as voltage divider
+            power_supply.hv ~ potentiometer.resistors_ifs[0]
+            power_supply.lv ~ potentiometer.resistors_ifs[1]
+            output_voltage ~ potentiometer.wiper
         """,
         language=F.has_usage_example.Language.ato,
     )

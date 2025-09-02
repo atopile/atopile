@@ -30,30 +30,24 @@ class CAN(ModuleInterface):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import CAN, ElectricPower, Resistor
 
-        can_bus = new CAN
-        can_bus.speed = 250kbps  # Common CAN speeds: 125k, 250k, 500k, 1Mbps
-        can_bus.diff_pair.impedance = 120ohm +/- 5%
+        module UsageExample:
+            can_bus = new CAN
+            can_bus.speed = 250000Hz
+            can_bus.diff_pair.impedance = 120ohm +/- 5%
 
-        # Connect power reference for logic levels
-        power_5v = new ElectricPower
-        assert power_5v.voltage within 5V +/- 5%
-        can_bus.diff_pair.p.reference ~ power_5v
-        can_bus.diff_pair.n.reference ~ power_5v
+            # Connect power reference for logic levels
+            power_5v = new ElectricPower
+            assert power_5v.voltage within 5V +/- 5%
+            can_bus.diff_pair.p.reference ~ power_5v
+            can_bus.diff_pair.n.reference ~ power_5v
 
-        # Connect to CAN transceiver
-        can_transceiver.can_bus ~ can_bus
-
-        # Connect to microcontroller CAN peripheral
-        microcontroller.can ~ can_transceiver.mcu_interface
-
-        # CAN termination resistors (120 ohm at each end of bus)
-        termination_resistor = new Resistor
-        termination_resistor.resistance = 120ohm +/- 1%
-        can_bus.diff_pair.p.line ~> termination_resistor ~> can_bus.diff_pair.n.line
-
-        # Common applications: automotive, industrial automation, IoT
+            # CAN termination resistors (120 ohm at each end of bus)
+            termination_resistor = new Resistor
+            termination_resistor.resistance = 120ohm +/- 1%
+            can_bus.diff_pair.p.line ~> termination_resistor ~> can_bus.diff_pair.n.line
         """,
         language=F.has_usage_example.Language.ato,
     )

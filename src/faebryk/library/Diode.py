@@ -103,21 +103,28 @@ class Diode(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Diode, Resistor, ElectricPower
+        #pragma experiment("BRIDGE_CONNECT")
+        import Diode, Resistor, ElectricPower, Electrical
 
-        diode = new Diode
-        diode.forward_voltage = 0.7V +/- 10%
-        diode.current = 10mA +/- 5%
-        diode.reverse_working_voltage = 50V
-        diode.max_current = 100mA
-        diode.package = "SOD-123"
+        module UsageExample:
+            diode = new Diode
+            diode.forward_voltage = 0.7V +/- 10%
+            diode.current = 10mA +/- 5%
+            diode.reverse_working_voltage = 50V
+            diode.max_current = 100mA
+            diode.package = "I0603"
 
-        # Connect as rectifier
-        ac_input ~ diode.anode
-        diode.cathode ~ dc_output
+            # Connect as rectifier
+            ac_input = new Electrical
+            dc_output = new Electrical
+            ac_input ~ diode.anode
+            diode.cathode ~ dc_output
 
-        # With current limiting resistor
-        power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
+            # With current limiting resistor
+            power_supply = new ElectricPower
+            current_limit_resistor = new Resistor
+            current_limit_resistor.resistance = 100ohm +/- 5%
+            power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

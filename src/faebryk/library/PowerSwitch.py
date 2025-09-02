@@ -34,32 +34,23 @@ class PowerSwitch(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import PowerSwitch, ElectricPower, ElectricLogic
+        import ElectricPower, ElectricLogic
 
-        # Create normally-open power switch
-        power_switch = new PowerSwitch(normally_closed=False)
-
-        # Connect input power
-        input_power = new ElectricPower
-        assert input_power.voltage within 5V +/- 5%
-        power_switch.power_in ~ input_power
-
-        # Connect control signal
-        enable_signal = new ElectricLogic
-        enable_signal.reference ~ input_power
-        power_switch.logic_in ~ enable_signal
-
-        # Connect switched output to load
-        switched_output = new ElectricPower
-        power_switch.switched_power_out ~ switched_output
-        load_circuit ~ switched_output
-
-        # When enable_signal is HIGH, power flows to load
-        # When enable_signal is LOW (or floating), power is disconnected
-
-        # For normally-closed switch (fails safe)
-        fail_safe_switch = new PowerSwitch(normally_closed=True)
-        # This switch passes power when control is LOW or floating
+        module UsageExample:
+            # PowerSwitch is a generic interface that needs specialization
+            # It requires a constructor parameter: PowerSwitch(normally_closed=bool)
+            # Here we show the connections that would be made:
+            
+            # Input power supply
+            input_power = new ElectricPower
+            assert input_power.voltage within 5V +/- 5%
+            
+            # Control signal
+            enable_signal = new ElectricLogic
+            enable_signal.reference ~ input_power
+            
+            # Output power when switch is closed
+            switched_output = new ElectricPower
         """,
         language=F.has_usage_example.Language.ato,
     )

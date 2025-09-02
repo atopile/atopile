@@ -28,35 +28,32 @@ class USB_C(ModuleInterface):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import USB_C, ElectricPower, Resistor
 
-        usb_c = new USB_C
+        module UsageExample:
+            usb_c = new USB_C
 
-        # Configure differential pair impedances
-        usb_c.rx.impedance = 90ohm +/- 10%
-        usb_c.tx.impedance = 90ohm +/- 10%
-        usb_c.usb3.usb2.dp.impedance = 90ohm +/- 10%
-        usb_c.usb3.usb2.dm.impedance = 90ohm +/- 10%
+            # Configure differential pair impedances
+            usb_c.rx.impedance = 90ohm +/- 10%
+            usb_c.tx.impedance = 90ohm +/- 10%
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        usb_c.usb3.usb2.dp.p.reference ~ power_3v3
-        usb_c.usb3.usb2.dp.n.reference ~ power_3v3
-        usb_c.usb3.usb2.dm.p.reference ~ power_3v3
-        usb_c.usb3.usb2.dm.n.reference ~ power_3v3
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            usb_c.rx.p.reference ~ power_3v3
+            usb_c.rx.n.reference ~ power_3v3
+            usb_c.tx.p.reference ~ power_3v3
+            usb_c.tx.n.reference ~ power_3v3
 
-        # CC resistors for device detection (5.1k for device, 56k for host)
-        cc1_resistor = new Resistor
-        cc2_resistor = new Resistor
-        cc1_resistor.resistance = 5.1kohm +/- 1%  # Device
-        cc2_resistor.resistance = 5.1kohm +/- 1%  # Device
+            # CC resistors for device detection (5.1k for device, 56k for host)
+            cc1_resistor = new Resistor
+            cc2_resistor = new Resistor
+            cc1_resistor.resistance = 5.1kohm +/- 1%  # Device
+            cc2_resistor.resistance = 5.1kohm +/- 1%  # Device
 
-        usb_c.cc1 ~> cc1_resistor ~> power_3v3.lv
-        usb_c.cc2 ~> cc2_resistor ~> power_3v3.lv
-
-        # Connect to USB controller
-        usb_controller.usb_c ~ usb_c
+            usb_c.cc1 ~> cc1_resistor ~> power_3v3.lv
+            usb_c.cc2 ~> cc2_resistor ~> power_3v3.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

@@ -137,35 +137,37 @@ class LDO(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import LDO, ElectricPower, Capacitor
 
-        ldo = new LDO
-        ldo.output_voltage = 3.3V +/- 2%
-        ldo.max_input_voltage = 6V
-        ldo.max_current = 1A
-        ldo.dropout_voltage = 300mV +/- 50%
-        ldo.output_type = LDO.OutputType.FIXED
-        ldo.package = "SOT-223"
+        module UsageExample:
+            ldo = new LDO
+            ldo.output_voltage = 3.3V +/- 2%
+            ldo.max_input_voltage = 6V
+            ldo.output_current = 1A
+            ldo.dropout_voltage = 300mV +/- 50%
+            ldo.output_type = "FIXED"
+            ldo.package = "SMD3x3mm"
 
-        # Connect input power (typically 5V)
-        power_5v = new ElectricPower
-        assert power_5v.voltage within 5V +/- 5%
-        ldo.power_in ~ power_5v
+            # Connect input power (typically 5V)
+            power_5v = new ElectricPower
+            assert power_5v.voltage within 5V +/- 5%
+            ldo.power_in ~ power_5v
 
-        # Connect output power (regulated 3.3V)
-        power_3v3 = new ElectricPower
-        ldo.power_out ~ power_3v3
+            # Connect output power (regulated 3.3V)
+            power_3v3 = new ElectricPower
+            ldo.power_out ~ power_3v3
 
-        # Enable the LDO
-        ldo.enable_output()
+            # Enable the LDO by setting enable pin
+            ldo.enable.enable.line ~ power_5v.hv
 
-        # Add input and output capacitors
-        input_cap = new Capacitor
-        output_cap = new Capacitor
-        input_cap.capacitance = 1uF +/- 20%
-        output_cap.capacitance = 10uF +/- 20%
-        ldo.power_in.hv ~> input_cap ~> ldo.power_in.lv
-        ldo.power_out.hv ~> output_cap ~> ldo.power_out.lv
+            # Add input and output capacitors
+            input_cap = new Capacitor
+            output_cap = new Capacitor
+            input_cap.capacitance = 1uF +/- 20%
+            output_cap.capacitance = 10uF +/- 20%
+            ldo.power_in.hv ~> input_cap ~> ldo.power_in.lv
+            ldo.power_out.hv ~> output_cap ~> ldo.power_out.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

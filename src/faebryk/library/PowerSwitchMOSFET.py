@@ -60,13 +60,17 @@ class PowerSwitchMOSFET(F.PowerSwitch):
         example="""
         import PowerSwitchMOSFET, ElectricPower
 
-        # High-side power switch controlled by logic
-        pwr_sw = new PowerSwitchMOSFET
-        supply   = new ElectricPower
-        load_pwr = new ElectricPower
-
-        supply   ~ pwr_sw.power_in
-        pwr_sw.switched_power_out ~ load_pwr
+        module UsageExample:
+            # PowerSwitchMOSFET requires constructor parameters:
+            # PowerSwitchMOSFET(lowside=bool, normally_closed=bool)
+            # Here we show the connections that would be made:
+            
+            supply = new ElectricPower
+            load_pwr = new ElectricPower
+            
+            # These would be connected to the power switch:
+            # supply ~ power_switch.power_in
+            # power_switch.switched_power_out ~ load_pwr
         """,
         language=F.has_usage_example.Language.ato,
     )

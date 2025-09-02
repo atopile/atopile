@@ -129,17 +129,23 @@ class Capacitor(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import Capacitor
+        import Electrical
 
-        capacitor = new Capacitor
-        capacitor.capacitance = 100nF +/- 10%
-        assert capacitor.max_voltage within 25V to 50V
-        capacitor.package = "0603"
+        module UsageExample:
+            capacitor = new Capacitor
+            capacitor.capacitance = 100nF +/- 10%
+            assert capacitor.max_voltage within 25V to 50V
+            capacitor.package = "0603"
 
-        electrical1 ~ capacitor.unnamed[0]
-        electrical2 ~ capacitor.unnamed[1]
-        # OR
-        electrical1 ~> capacitor ~> electrical2
+            electrical1 = new Electrical
+            electrical2 = new Electrical
+
+            electrical1 ~ capacitor.unnamed[0]
+            electrical2 ~ capacitor.unnamed[1]
+            # OR
+            electrical1 ~> capacitor ~> electrical2
         """,
         language=F.has_usage_example.Language.ato,
     )

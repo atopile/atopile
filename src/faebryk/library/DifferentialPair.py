@@ -52,28 +52,33 @@ class DifferentialPair(ModuleInterface):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import DifferentialPair, ElectricPower
+        #pragma experiment("BRIDGE_CONNECT")
+        import DifferentialPair, ElectricPower, Electrical
 
-        diff_pair = new DifferentialPair
-        diff_pair.impedance = 100ohm +/- 10%  # Common for high-speed signals
+        module UsageExample:
+            diff_pair = new DifferentialPair
+            diff_pair.impedance = 100ohm +/- 10%  # Common for high-speed signals
 
-        # Connect power reference for signal levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        diff_pair.p.reference ~ power_3v3
-        diff_pair.n.reference ~ power_3v3
+            # Connect power reference for signal levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            diff_pair.p.reference ~ power_3v3
+            diff_pair.n.reference ~ power_3v3
 
-        # Connect between transmitter and receiver
-        transmitter.diff_out ~ diff_pair
-        diff_pair ~ receiver.diff_in
+            # Connect between transmitter and receiver
+            transmitter_pos = new Electrical
+            transmitter_neg = new Electrical
+            receiver_pos = new Electrical
+            receiver_neg = new Electrical
 
-        # For terminated transmission line
-        terminated_pair = diff_pair.terminated()
-        transmitter.diff_out ~ terminated_pair
+            transmitter_pos ~ diff_pair.p.line
+            transmitter_neg ~ diff_pair.n.line
+            diff_pair.p.line ~ receiver_pos
+            diff_pair.n.line ~ receiver_neg
 
-        # Common applications: USB, Ethernet, PCIe, HDMI
-        usb_dp_dn = new DifferentialPair
-        usb_dp_dn.impedance = 90ohm +/- 10%
+            # Common applications: USB, Ethernet, PCIe, HDMI
+            usb_dp_dn = new DifferentialPair
+            usb_dp_dn.impedance = 90ohm +/- 10%
         """,
         language=F.has_usage_example.Language.ato,
     )

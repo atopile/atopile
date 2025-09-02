@@ -145,17 +145,23 @@ class ElectricPower(F.Power):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import ElectricPower
+        #pragma experiment("BRIDGE_CONNECT")
+        import ElectricPower, Capacitor
 
-        power_5v = new ElectricPower
-        assert power_5v.voltage within 5V +/- 5%
-        assert power_5v.max_current <= 1A
+        module UsageExample:
+            power_5v = new ElectricPower
+            assert power_5v.voltage within 5V +/- 5%
+            assert power_5v.max_current <= 1A
 
-        # Connect 2 ElectricPowers together
-        power_5v ~ ic.power_input
+            # Connect 2 ElectricPowers together
+            ic_power_input = new ElectricPower
+            power_5v ~ ic_power_input
 
-        # Connect an example bypass capacitor
-        power_5v.hv ~> example_capacitor ~> power_5v.lv
+            # Connect an example bypass capacitor
+            example_capacitor = new Capacitor
+            example_capacitor.capacitance = 100nF +/- 10%
+            example_capacitor.package = "0402"
+            power_5v.hv ~> example_capacitor ~> power_5v.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

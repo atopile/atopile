@@ -22,30 +22,21 @@ class Regulator(Module):
         example="""
         import Regulator, ElectricPower
 
-        regulator = new Regulator
+        module UsageExample:
+            regulator = new Regulator
 
-        # Connect input power (unregulated)
-        power_input = new ElectricPower
-        assert power_input.voltage within 7V to 20V  # Wide input range
-        regulator.power_in ~ power_input
+            # Connect input power (unregulated)
+            power_input = new ElectricPower
+            assert power_input.voltage within 7V to 20V  # Wide input range
+            regulator.power_in ~ power_input
 
-        # Connect output power (regulated)
-        power_output = new ElectricPower
-        regulator.power_out ~ power_output
+            # Connect output power (regulated)
+            power_output = new ElectricPower
+            regulator.power_out ~ power_output
 
-        # Output voltage depends on regulator type:
-        # - LDO: Vout = Vin - Dropout_voltage
-        # - Switching: Vout = Function(Vin, feedback network)
-
-        # Connect to load
-        load_circuit ~ power_output
-
-        # Note: This is a generic regulator interface
-        # Use specific regulator types for actual implementations:
-        # - LDO for low noise, low efficiency
-        # - Buck for high efficiency step-down
-        # - Boost for step-up conversion
-        # - Buck-boost for bidirectional conversion
+            # Connect to load
+            load_circuit = new ElectricPower
+            load_circuit ~ power_output
         """,
         language=F.has_usage_example.Language.ato,
     )
