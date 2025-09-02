@@ -81,21 +81,23 @@ def test_usage_examples(name: str, module):
     mod = importlib.import_module(module_name)
     module_file = getattr(mod, "__file__", None)
 
-    if module_file is not None:
-        example, language = _extract_usage_example_ast(module_file)
+    if module_file is None:
+        pytest.fail(f"Module {name} has no file")
 
-        if example is None:
-            if issubclass(module, Module):
-                pytest.fail(f"{name} is a module without a usage example")
-            if issubclass(module, ModuleInterface):
-                pytest.skip(f"{name} is a module interface without a usage example")
-            if issubclass(module, Trait):
-                pytest.skip(f"{name} is a trait without a usage example")
-            pytest.skip(f"{name} has no usage example")
+    example, language = _extract_usage_example_ast(module_file)
 
-        if language != F.has_usage_example.Language.ato.value:
-            pytest.skip(f"{name} has no usage example in ato language")
+    if example is None:
+        if issubclass(module, Module):
+            pytest.fail(f"{name} is a module without a usage example")
+        if issubclass(module, ModuleInterface):
+            pytest.skip(f"{name} is a module interface without a usage example")
+        if issubclass(module, Trait):
+            pytest.skip(f"{name} is a trait without a usage example")
+        pytest.skip(f"{name} has no usage example")
 
-        tree = parse_text_as_file(dedent(example))
-        node = bob.build_ast(tree, TypeRef(["UsageExample"]))
-        assert isinstance(node, L.Module)
+    if language != F.has_usage_example.Language.ato.value:
+        pytest.skip(f"{name} has no usage example in ato language")
+
+    tree = parse_text_as_file(dedent(example))
+    node = bob.build_ast(tree, TypeRef(["UsageExample"]))
+    assert isinstance(node, L.Module)
