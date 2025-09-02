@@ -107,7 +107,7 @@ pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimi
 const py_lib_name = "pyzig";
 
 fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.builtin.OptimizeMode) *std.Build.Step {
-    // Build a small executable that outputs the pyi content
+    // Build a small executable that generates the pyi files
     const pyi_exe = b.addExecutable(.{
         .name = "pyi",
         .root_source_file = b.path("src/sexp/pyi.zig"),
@@ -124,14 +124,16 @@ fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     pyi_exe.root_module.addImport("pyzig", pyzig_mod);
     pyi_exe.root_module.addImport("sexp", sexp_mod);
 
-    // Run the executable and capture its output
+    // Run the executable to generate pyi files
     const run_gen = b.addRunArtifact(pyi_exe);
-    const pyi_output = run_gen.captureStdOut();
+    // Pass the output directory as an argument
+    run_gen.addArg(b.getInstallPath(.lib, "."));
+    
+    // Create a step that ensures the output directory exists
+    const make_dir_step = b.addSystemCommand(&.{ "mkdir", "-p", b.getInstallPath(.lib, ".") });
+    run_gen.step.dependOn(&make_dir_step.step);
 
-    // Install the captured output as pyzig.pyi
-    const install_pyi = b.addInstallFile(pyi_output, "lib/pyzig.pyi");
-
-    return &install_pyi.step;
+    return &run_gen.step;
 }
 
 fn addPythonExtension(

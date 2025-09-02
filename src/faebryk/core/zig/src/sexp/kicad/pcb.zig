@@ -5,6 +5,7 @@ const str = []const u8;
 
 // Constants
 pub const KICAD_PCB_VERSION: i32 = 20241229;
+pub const KICAD_FP_VERSION: i32 = 20241229; // Footprint version - same as PCB version
 
 // Basic geometry types
 pub const Xy = struct {
@@ -79,12 +80,24 @@ pub const TextLayer = struct {
 };
 
 // Shapes
+pub const E_fill = enum {
+    yes,
+    no,
+    none,
+    solid,
+};
+
 pub const Line = struct {
     start: Xy,
     end: Xy,
+
+    // shape common
     layer: ?str = null,
-    width: ?f64 = null,
+    layers: ?[]str = null,
+    solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
+    fill: ?E_fill = null,
+    locked: ?bool = null,
     uuid: str,
 
     pub const fields_meta = .{
@@ -98,9 +111,14 @@ pub const Arc = struct {
     start: Xy,
     mid: Xy,
     end: Xy,
+
+    // shape common
     layer: ?str = null,
-    width: ?f64 = null,
+    layers: ?[]str = null,
+    solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
+    fill: ?E_fill = null,
+    locked: ?bool = null,
     uuid: str,
 
     pub const fields_meta = .{
@@ -114,10 +132,14 @@ pub const Arc = struct {
 pub const Circle = struct {
     center: Xy,
     end: Xy,
+
+    // shape common
     layer: ?str = null,
-    width: ?f64 = null,
+    layers: ?[]str = null,
+    solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
-    fill: ?str = null,
+    fill: ?E_fill = null,
+    locked: ?bool = null,
     uuid: str,
 
     pub const fields_meta = .{
@@ -130,10 +152,14 @@ pub const Circle = struct {
 pub const Rect = struct {
     start: Xy,
     end: Xy,
+
+    // shape common
     layer: ?str = null,
-    width: ?f64 = null,
+    layers: ?[]str = null,
+    solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
-    fill: ?str = null,
+    fill: ?E_fill = null,
+    locked: ?bool = null,
     uuid: str,
 
     pub const fields_meta = .{
@@ -153,11 +179,33 @@ pub const Pts = struct {
 
 pub const Polygon = struct {
     pts: Pts,
+
+    // shape common
     layer: ?str = null,
-    width: ?f64 = null,
+    layers: ?[]str = null,
+    solder_mask_margin: ?f64 = null,
     stroke: ?Stroke = null,
-    fill: ?str = null,
-    uuid: ?str = null,
+    fill: ?E_fill = null,
+    locked: ?bool = null,
+    uuid: str,
+
+    pub const fields_meta = .{
+        .pts = structure.SexpField{ .order = -1 },
+        .uuid = structure.SexpField{ .order = 100 },
+    };
+};
+
+pub const Curve = struct {
+    pts: Pts,
+
+    // shape common
+    layer: ?str = null,
+    layers: ?[]str = null,
+    solder_mask_margin: ?f64 = null,
+    stroke: ?Stroke = null,
+    fill: ?E_fill = null,
+    locked: ?bool = null,
+    uuid: str,
 
     pub const fields_meta = .{
         .pts = structure.SexpField{ .order = -1 },
@@ -571,7 +619,7 @@ pub const Setup = struct {
 
 // Main PCB structure
 pub const KicadPcb = struct {
-    version: i32,
+    version: i32 = KICAD_PCB_VERSION,
     generator: str,
     generator_version: str,
     general: General = .{},

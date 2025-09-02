@@ -19,7 +19,7 @@ pub const FpLibTable = struct {
     };
 };
 
-const FpLibTableFile = struct {
+pub const FpLibTableFile = struct {
     fp_lib_table: FpLibTable,
 
     const root_symbol = "fp_lib_table";

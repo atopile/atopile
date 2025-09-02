@@ -98,6 +98,7 @@ pub extern fn PyModule_Create2(def: *const PyModuleDef, apiver: c_int) ?*PyObjec
 /// Type-related functions
 pub extern fn PyType_Ready(type: *PyTypeObject) c_int;
 pub extern fn PyModule_AddObject(module: ?*PyObject, name: [*:0]const u8, value: ?*PyObject) c_int;
+pub extern fn PyModule_GetDict(module: ?*PyObject) ?*PyObject;
 pub extern fn _Py_Dealloc(op: *PyObject) void;
 pub extern fn PyObject_GenericGetAttr(obj: ?*PyObject, name: ?*PyObject) ?*PyObject;
 pub extern fn PyObject_GenericSetAttr(obj: ?*PyObject, name: ?*PyObject, value: ?*PyObject) c_int;
@@ -247,11 +248,14 @@ pub extern var PyExc_NotImplementedError: *PyObject;
 // Additional Python C API functions for generic init
 pub extern fn PyTuple_Size(tuple: ?*PyObject) isize;
 pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
+pub extern fn PyDict_SetItemString(dict: ?*PyObject, key: [*:0]const u8, item: ?*PyObject) c_int;
 pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
 pub extern fn PyFloat_AsDouble(obj: ?*PyObject) f64;
 pub extern fn PyObject_IsTrue(obj: ?*PyObject) c_int;
 pub extern fn PyList_New(size: isize) ?*PyObject;
 pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c_int;
+pub extern fn PyImport_GetModuleDict() ?*PyObject;
+pub extern fn PyImport_AddModule(name: [*:0]const u8) ?*PyObject;
 // Python booleans are singleton objects
 pub extern var _Py_TrueStruct: PyObject;
 pub extern var _Py_FalseStruct: PyObject;
