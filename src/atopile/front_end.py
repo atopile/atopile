@@ -430,6 +430,12 @@ class DeprecatedException(errors.UserException):
         return errors._BaseBaseUserException.get_frozen(self)
 
 
+class NodeResolutionException(Exception):
+    def __init__(self, exc: errors.UserException, node: L.Node):
+        self.exc = exc
+        self.node = node
+
+
 class SequenceMixin:
     """
     The base translator is responsible for methods common to
@@ -1424,6 +1430,9 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def resolve_node_field_part(self, node: L.Node, ref: ReferencePartType) -> Field:
         field = self.resolve_node_property(node, ref.name)
 
+        if isinstance(field, L.DeprecatedField):
+            raise NodeResolutionException(DeprecatedException(field.message), node)
+
         if isinstance(field, L.Node):
             if ref.key is not None:
                 raise ValueError(f"{ref.name} is not subscriptable")
@@ -1502,6 +1511,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
     def _get_referenced_node(self, ref: FieldRef, ctx: ParserRuleContext) -> L.Node:
         try:
             return self.resolve_node(self._current_node, ref)
+        except NodeResolutionException as ex:
+            ex.exc.attach_origin_from_ctx(ctx)
+            ex.exc.traceback = self.get_traceback()
+            raise ex.exc
         except AttributeError as ex:
             raise errors.UserKeyError.from_ctx(
                 ctx, str(ex), traceback=self.get_traceback()
@@ -1693,6 +1706,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserValueError.from_ctx(
                 src_ctx, str(ex), traceback=self.get_traceback()
             ) from ex
+        except NodeResolutionException as ex:
+            ex.exc.attach_origin_from_ctx(src_ctx)
+            ex.exc.traceback = self.get_traceback()
+            raise ex.exc
 
         if not isinstance(node, Parameter):
             raise errors.UserSyntaxError.from_ctx(
@@ -1740,6 +1757,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserValueError.from_ctx(
                 src_ctx, str(ex), traceback=self.get_traceback()
             ) from ex
+        except NodeResolutionException as ex:
+            ex.exc.attach_origin_from_ctx(src_ctx)
+            ex.exc.traceback = self.get_traceback()
+            raise ex.exc
         else:
             if not isinstance(param, Parameter):
                 raise errors.UserTypeError.from_ctx(
@@ -2015,6 +2036,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
             raise errors.UserValueError.from_ctx(
                 ctx, str(ex), traceback=self.get_traceback()
             ) from ex
+        except NodeResolutionException as ex:
+            ex.exc.attach_origin_from_ctx(ctx)
+            ex.exc.traceback = self.get_traceback()
+            raise ex.exc
 
         if isinstance(mif, L.ModuleInterface):
             # TODO: @v0.4 remove this deprecated import form
@@ -2981,6 +3006,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"list literal: `{ref}`. Expected `Module` or `ModuleInterface`.",
                     traceback=self.get_traceback(),
                 )
+            except NodeResolutionException as ex:
+                ex.exc.attach_origin_from_ctx(ctx)
+                ex.exc.traceback = self.get_traceback()
+                raise ex.exc
         return out
 
     def visitIterable_references(
@@ -3001,6 +3030,10 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     f"{str(ex)}",
                     traceback=self.get_traceback(),
                 ) from ex
+            except NodeResolutionException as ex:
+                ex.exc.attach_origin_from_ctx(ctx)
+                ex.exc.traceback = self.get_traceback()
+                raise ex.exc
 
             # Prepare the iterable list
             iterable_node: list[L.Node] | None = None
