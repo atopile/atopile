@@ -14,6 +14,19 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.trait import Trait
 from faebryk.libs.library import L
 
+skip_list = [
+    "DIP",
+    "Footprint",
+    "KicadFootprint",
+    "NET",
+    "PCB",
+    "Pad",
+    "QFN",
+    "SMDTwoPin",
+    "SOIC",
+    "Symbol",
+]
+
 
 def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
     """
@@ -53,6 +66,7 @@ def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
         for name, module in vars(F).items()
         if (
             isinstance(module, type)
+            and name not in skip_list
         )
     ],
 )
