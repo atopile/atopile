@@ -1260,7 +1260,7 @@ class C_footprint(HasPropertiesMixin):
 
 
 @dataclass
-class C_kicad_pcb_file(SEXP_File):
+class _C_kicad_pcb_file(SEXP_File):
     @dataclass
     class C_kicad_pcb:
         @dataclass
@@ -2186,6 +2186,42 @@ class C_kicad_model_file:
 
 if RICH_PRINT:
     # TODO ugly
-    del C_kicad_pcb_file.C_kicad_pcb.__rich_repr__
+    # del C_kicad_pcb_file.C_kicad_pcb.__rich_repr__
     del C_kicad_project_file.__rich_repr__
     del C_footprint.__rich_repr__
+
+# zig shims
+
+
+import faebryk.core.zig as zig  # noqa: E402
+
+
+class C_kicad_pcb_file:
+    def __init__(self, zig_pcb: zig.PcbFile):
+        self._kicad_pcb = zig_pcb
+
+    C_kicad_pcb = _C_kicad_pcb_file.C_kicad_pcb
+
+    @property
+    def kicad_pcb(self):
+        return self._kicad_pcb.kicad_pcb
+
+    @classmethod
+    def loads(cls, path_or_string_or_data: Path | str | list) -> "Self":
+        if isinstance(path_or_string_or_data, list):
+            import sexpdata
+
+            data = sexpdata.dumps(path_or_string_or_data)
+        elif isinstance(path_or_string_or_data, Path):
+            data = path_or_string_or_data.read_text(encoding="utf-8")
+        else:
+            data = path_or_string_or_data
+
+        pcb = zig.loads(data)
+        return cls(pcb)
+
+    def dumps(self, path: Path | None = None):
+        raw = zig.dumps(self._kicad_pcb)
+        if path is not None:
+            path.write_text(raw, encoding="utf-8")
+        return raw

@@ -50,7 +50,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                     pos += field_header.len;
 
                     // Recursively print the struct, adjusting indentation
-                    var temp_buf: [4096]u8 = undefined;  // Increased for nested structs
+                    var temp_buf: [4096]u8 = undefined; // Increased for nested structs
                     const struct_str = try printStruct(field_value, &temp_buf);
 
                     // Add indentation to each line of the struct output
@@ -80,7 +80,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                     pos += field_header.len;
 
                                     // Recursively print the struct
-                                    var temp_buf: [4096]u8 = undefined;  // Increased for nested structs
+                                    var temp_buf: [4096]u8 = undefined; // Increased for nested structs
                                     const struct_str = try printStruct(val, &temp_buf);
 
                                     // Add indentation to each line of the struct output
@@ -154,7 +154,7 @@ pub fn gen_repr(comptime struct_type: type) ?*const fn (?*py.PyObject) callconv(
     const repr = struct {
         fn impl(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
-            var buf: [8192]u8 = undefined;  // Increased buffer size
+            var buf: [8192]u8 = undefined; // Increased buffer size
             const out = printStruct(obj.top.*, &buf) catch {
                 return null;
             };
@@ -666,104 +666,104 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                     // Convert the Python value to the Zig field type
                     const field_info = @typeInfo(field.type);
                     switch (field_info) {
-                    .int => {
-                        const int_val = py.PyLong_AsLong(value);
-                        if (int_val == -1 and py.PyErr_Occurred() != null) {
-                            std.heap.c_allocator.destroy(wrapper_obj.data);
-                            return -1;
-                        }
-                        @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
-                    },
-                    .float => {
-                        const float_val = py.PyFloat_AsDouble(value);
-                        if (float_val == -1.0 and py.PyErr_Occurred() != null) {
-                            std.heap.c_allocator.destroy(wrapper_obj.data);
-                            return -1;
-                        }
-                        @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
-                    },
-                    .bool => {
-                        const bool_val = py.PyObject_IsTrue(value);
-                        if (bool_val == -1) {
-                            std.heap.c_allocator.destroy(wrapper_obj.data);
-                            return -1;
-                        }
-                        @field(wrapper_obj.data.*, field.name) = bool_val == 1;
-                    },
-                    .pointer => |ptr| {
-                        if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
-                            const str_val = py.PyUnicode_AsUTF8(value);
-                            if (str_val == null) {
+                        .int => {
+                            const int_val = py.PyLong_AsLong(value);
+                            if (int_val == -1 and py.PyErr_Occurred() != null) {
                                 std.heap.c_allocator.destroy(wrapper_obj.data);
                                 return -1;
                             }
-                            @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
-                        } else {
-                            // Other pointer types not yet supported
-                            @field(wrapper_obj.data.*, field.name) = &.{};
-                        }
-                    },
-                    .optional => |opt| {
-                        if (value == py.Py_None()) {
-                            @field(wrapper_obj.data.*, field.name) = null;
-                        } else {
-                            // Convert based on child type
-                            const child_info = @typeInfo(opt.child);
-                            switch (child_info) {
-                                .int => {
-                                    const int_val = py.PyLong_AsLong(value);
-                                    if (int_val == -1 and py.PyErr_Occurred() != null) {
-                                        std.heap.c_allocator.destroy(wrapper_obj.data);
-                                        return -1;
-                                    }
-                                    @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
-                                },
-                                .float => {
-                                    const float_val = py.PyFloat_AsDouble(value);
-                                    if (float_val == -1.0 and py.PyErr_Occurred() != null) {
-                                        std.heap.c_allocator.destroy(wrapper_obj.data);
-                                        return -1;
-                                    }
-                                    @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
-                                },
-                                .bool => {
-                                    const bool_val = py.PyObject_IsTrue(value);
-                                    if (bool_val == -1) {
-                                        std.heap.c_allocator.destroy(wrapper_obj.data);
-                                        return -1;
-                                    }
-                                    @field(wrapper_obj.data.*, field.name) = bool_val == 1;
-                                },
-                                .pointer => |p| {
-                                    if (p.size == .slice and p.child == u8) {
-                                        const str_val = py.PyUnicode_AsUTF8(value);
-                                        if (str_val == null) {
+                            @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
+                        },
+                        .float => {
+                            const float_val = py.PyFloat_AsDouble(value);
+                            if (float_val == -1.0 and py.PyErr_Occurred() != null) {
+                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                return -1;
+                            }
+                            @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
+                        },
+                        .bool => {
+                            const bool_val = py.PyObject_IsTrue(value);
+                            if (bool_val == -1) {
+                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                return -1;
+                            }
+                            @field(wrapper_obj.data.*, field.name) = bool_val == 1;
+                        },
+                        .pointer => |ptr| {
+                            if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
+                                const str_val = py.PyUnicode_AsUTF8(value);
+                                if (str_val == null) {
+                                    std.heap.c_allocator.destroy(wrapper_obj.data);
+                                    return -1;
+                                }
+                                @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
+                            } else {
+                                // Other pointer types not yet supported
+                                @field(wrapper_obj.data.*, field.name) = &.{};
+                            }
+                        },
+                        .optional => |opt| {
+                            if (value == py.Py_None()) {
+                                @field(wrapper_obj.data.*, field.name) = null;
+                            } else {
+                                // Convert based on child type
+                                const child_info = @typeInfo(opt.child);
+                                switch (child_info) {
+                                    .int => {
+                                        const int_val = py.PyLong_AsLong(value);
+                                        if (int_val == -1 and py.PyErr_Occurred() != null) {
                                             std.heap.c_allocator.destroy(wrapper_obj.data);
                                             return -1;
                                         }
-                                        @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
-                                    } else {
-                                        @field(wrapper_obj.data.*, field.name) = null;
-                                    }
-                                },
-                                .@"struct" => {
-                                    // Handle optional struct fields
-                                    const nested_wrapper = @as(*PyObjectWrapper(opt.child), @ptrCast(@alignCast(value)));
-                                    @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
-                                },
-                                else => @field(wrapper_obj.data.*, field.name) = null,
+                                        @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
+                                    },
+                                    .float => {
+                                        const float_val = py.PyFloat_AsDouble(value);
+                                        if (float_val == -1.0 and py.PyErr_Occurred() != null) {
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            return -1;
+                                        }
+                                        @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
+                                    },
+                                    .bool => {
+                                        const bool_val = py.PyObject_IsTrue(value);
+                                        if (bool_val == -1) {
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            return -1;
+                                        }
+                                        @field(wrapper_obj.data.*, field.name) = bool_val == 1;
+                                    },
+                                    .pointer => |p| {
+                                        if (p.size == .slice and p.child == u8) {
+                                            const str_val = py.PyUnicode_AsUTF8(value);
+                                            if (str_val == null) {
+                                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                                return -1;
+                                            }
+                                            @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
+                                        } else {
+                                            @field(wrapper_obj.data.*, field.name) = null;
+                                        }
+                                    },
+                                    .@"struct" => {
+                                        // Handle optional struct fields
+                                        const nested_wrapper = @as(*PyObjectWrapper(opt.child), @ptrCast(@alignCast(value)));
+                                        @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                                    },
+                                    else => @field(wrapper_obj.data.*, field.name) = null,
+                                }
                             }
-                        }
-                    },
-                    .@"struct" => {
-                        // Check if it's the correct type
-                        const nested_wrapper = @as(*PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
-                        @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
-                    },
-                    else => {
-                        // Unsupported type - use default
-                        @field(wrapper_obj.data.*, field.name) = std.mem.zeroInit(field.type, .{});
-                    },
+                        },
+                        .@"struct" => {
+                            // Check if it's the correct type
+                            const nested_wrapper = @as(*PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
+                            @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                        },
+                        else => {
+                            // Unsupported type - use default
+                            @field(wrapper_obj.data.*, field.name) = std.mem.zeroInit(field.type, .{});
+                        },
                     }
                 }
             }
@@ -777,7 +777,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
         // Generate the repr function
         pub fn generated_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
-            var buf: [8192]u8 = undefined;  // Increased buffer size for large structs
+            var buf: [8192]u8 = undefined; // Increased buffer size for large structs
             const out = printStruct(wrapper_obj.data.*, &buf) catch {
                 return null;
             };
@@ -797,7 +797,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
     };
 }
 // Auto-generated Python wrapper for a Zig struct
-fn PyObjectWrapper(comptime T: type) type {
+pub fn PyObjectWrapper(comptime T: type) type {
     return struct {
         ob_base: py.PyObject_HEAD,
         data: *T,
@@ -890,16 +890,7 @@ pub fn wrap_in_python_module(comptime module: type) type {
                         // Check if it's a data struct (starts with uppercase, convention for types)
                         const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
 
-                        // Check it doesn't have too many methods
-                        var func_count: usize = 0;
-                        inline for (inner_info.@"struct".decls) |inner_decl| {
-                            const inner_field = @field(inner_type, inner_decl.name);
-                            if (@typeInfo(@TypeOf(inner_field)) == .@"fn") {
-                                func_count += 1;
-                            }
-                        }
-
-                        if (is_type_name and func_count <= 2) { // Allow a couple methods like sum()
+                        if (is_type_name) {
                             // Generate bindings for this struct
                             const full_name = "pyzig." ++ decl.name;
                             const name_z = full_name ++ "\x00";

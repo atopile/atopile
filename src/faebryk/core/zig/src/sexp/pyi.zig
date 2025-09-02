@@ -16,4 +16,8 @@ pub fn main() !void {
     // Write to stdout so build.zig can capture it
     const stdout = std.io.getStdOut().writer();
     try stdout.writeAll(content);
+
+    try stdout.writeAll("\n");
+    try stdout.writeAll("def loads(arg_0: str) -> PcbFile: ...\n");
+    try stdout.writeAll("def dumps(arg_0: PcbFile) -> str: ...\n");
 }
