@@ -40,15 +40,15 @@ class PowerSwitch(Module):
             # PowerSwitch is a generic interface that needs specialization
             # It requires a constructor parameter: PowerSwitch(normally_closed=bool)
             # Here we show the connections that would be made:
-            
+
             # Input power supply
             input_power = new ElectricPower
             assert input_power.voltage within 5V +/- 5%
-            
+
             # Control signal
             enable_signal = new ElectricLogic
             enable_signal.reference ~ input_power
-            
+
             # Output power when switch is closed
             switched_output = new ElectricPower
         """,

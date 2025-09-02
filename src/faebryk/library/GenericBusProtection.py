@@ -86,14 +86,14 @@ class GenericBusProtection(Module):
         module UsageExample:
             # Unprotected bus coming from external connector
             external_i2c = new I2C
-            
+
             # Protected bus for internal circuit
-            internal_i2c = new I2C  
-            
+            internal_i2c = new I2C
+
             # Note: GenericBusProtection requires a bus_factory function
             # This is a simplified example - actual implementation would
             # require proper factory function passed to constructor
-            
+
             # bus_protection = new GenericBusProtection(lambda: I2C())
             # bus_protection.bus_unprotected ~ external_i2c
             # bus_protection.bus_protected ~ internal_i2c

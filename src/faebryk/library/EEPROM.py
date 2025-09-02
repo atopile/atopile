@@ -72,7 +72,7 @@ class EEPROM(Module):
 
             # Connect address pins to power rails for different addresses
             eeprom.address[0].line ~ power_3v3.lv  # A0 = 0
-            eeprom.address[1].line ~ power_3v3.lv  # A1 = 0  
+            eeprom.address[1].line ~ power_3v3.lv  # A1 = 0
             eeprom.address[2].line ~ power_3v3.lv  # A2 = 0
 
             # Write protect control (optional)

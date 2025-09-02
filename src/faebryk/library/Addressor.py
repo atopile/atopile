@@ -59,7 +59,7 @@ class Addressor(ModuleInterface):
         import Addressor, I2C, ElectricPower
 
         module UsageExample:
-            # For I2C device with 2 address pins (4 possible addresses)  
+            # For I2C device with 2 address pins (4 possible addresses)
             addressor = new Addressor<address_bits=2>
             addressor.base = 72  # 0x48 in decimal
 

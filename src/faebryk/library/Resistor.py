@@ -82,7 +82,7 @@ class Resistor(Module):
         #pragma experiment("BRIDGE_CONNECT")
         import Resistor
         import Electrical
- 
+
         module UsageExample:
             resistor = new Resistor
             resistor.resistance = 10kohm +/- 5%

@@ -29,6 +29,7 @@ skip_list = [
     "Symbol",
 ]
 
+
 def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
     """
     Parse the usage example trait implementation and return (example, language).
@@ -44,7 +45,9 @@ def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
     for node in ast.walk(tree):
         if not isinstance(node, ast.Assign):
             continue
-        if not any(isinstance(t, ast.Name) and t.id == "usage_example" for t in node.targets):
+        if not any(
+            isinstance(t, ast.Name) and t.id == "usage_example" for t in node.targets
+        ):
             continue
         if not isinstance(node.value, ast.Call):
             continue
@@ -59,16 +62,11 @@ def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
 
     return example, language
 
+
 @pytest.mark.skipif(F is None, reason="Library not loaded")
 @pytest.mark.parametrize(
     "name, module",
-    [
-        (name, module)
-        for name, module in vars(F).items()
-        if (
-            isinstance(module, type)
-        )
-    ],
+    [(name, module) for name, module in vars(F).items() if (isinstance(module, type))],
 )
 def test_usage_examples(name: str, module):
     """Test that all usage examples compile to graphs"""

@@ -42,12 +42,12 @@ class Filter(Module):
         module UsageExample:
             input_signal = new Signal
             output_signal = new Signal
-            
+
             lowpass_filter = new Filter
             lowpass_filter.cutoff_frequency = 1000Hz +/- 10%
             lowpass_filter.order = 2
             lowpass_filter.response = "LOWPASS"
-            
+
             lowpass_filter.in_ ~ input_signal
             lowpass_filter.out ~ output_signal
         """,

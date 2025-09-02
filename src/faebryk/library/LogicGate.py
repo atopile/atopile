@@ -84,22 +84,16 @@ class LogicGate(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("MODULE_TEMPLATING")
+
         import LogicGate, Logic
 
         module UsageExample:
             input_a = new Logic
             input_b = new Logic
             output_signal = new Logic
-            
-            # Note: LogicGate requires constructor arguments (input_cnt, output_cnt, functions)
-            # This example shows the interface structure
-            # Actual usage would require proper instantiation like:
-            # or_gate = new LogicGate(2, 1, can_logic_or_gate())
-            
-            # The interfaces would then be connected as:
-            # or_gate.inputs[0] ~ input_a
-            # or_gate.inputs[1] ~ input_b  
-            # or_gate.outputs[0] ~ output_signal
+
+            # logic_gate = LogicGate<input_cnt=2, output_cnt=1, functions=[]>
         """,
         language=F.has_usage_example.Language.ato,
     )

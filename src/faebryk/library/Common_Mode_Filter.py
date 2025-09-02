@@ -58,18 +58,18 @@ class Common_Mode_Filter(Module):
             # Differential signal lines
             signal_p = new Electrical
             signal_n = new Electrical
-            filtered_p = new Electrical  
+            filtered_p = new Electrical
             filtered_n = new Electrical
-            
+
             cmf = new Common_Mode_Filter
             cmf.inductance = 100µH +/- 20%
             cmf.max_current = 500mA
             cmf.self_resonant_frequency = 10MHz +/- 20%
-            
+
             # Connect the differential pair through the common mode filter
             signal_p ~ cmf.coil_a.unnamed[0]
             cmf.coil_a.unnamed[1] ~ filtered_p
-            signal_n ~ cmf.coil_b.unnamed[0]  
+            signal_n ~ cmf.coil_b.unnamed[0]
             cmf.coil_b.unnamed[1] ~ filtered_n
         """,
         language=F.has_usage_example.Language.ato,

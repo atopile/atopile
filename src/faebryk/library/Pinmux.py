@@ -117,11 +117,11 @@ class Pinmux(Module):
         module UsageExample:
             # GPIO pins
             gpio_pins = new Electrical[8]
-            
+
             # Communication interfaces
             i2c_bus = new I2C
             spi_bus = new SPI
-            
+
             # Example pinmux usage (requires concrete implementation)
             # pinmux = new ConcretePinmux  # Actual implementation needed
             # pinmux.enable(i2c_bus, [0, 1])  # Enable I2C on pins 0,1

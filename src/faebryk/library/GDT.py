@@ -44,12 +44,12 @@ class GDT(Module):
             # Power supply to protect
             power_input = new ElectricPower
             protected_power = new ElectricPower
-            
+
             # Gas discharge tube for surge protection
             gdt = new GDT
             gdt.dc_breakdown_voltage = 230V +/- 20%
             gdt.impulse_discharge_current = 10A +/- 20%
-            
+
             # Connect GDT across the power rails for protection
             power_input.hv ~ gdt.tube_1
             power_input.lv ~ gdt.common

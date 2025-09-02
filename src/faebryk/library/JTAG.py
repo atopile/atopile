@@ -60,7 +60,7 @@ class JTAG(ModuleInterface):
             mcu_gpio2 = new ElectricLogic
             mcu_gpio3 = new ElectricLogic
             mcu_reset = new ElectricLogic
-            
+
             mcu_gpio0 ~ jtag.tdo
             mcu_gpio1 ~ jtag.tdi
             mcu_gpio2 ~ jtag.tms

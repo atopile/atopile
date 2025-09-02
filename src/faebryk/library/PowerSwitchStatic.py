@@ -34,16 +34,16 @@ class PowerSwitchStatic(F.PowerSwitch):
             # Power input and output
             power_in = new ElectricPower
             power_in.voltage = 5V +/- 5%
-            
+
             switched_power_out = new ElectricPower
-            
+
             # Control logic
             control_logic = new ElectricLogic
             control_logic.reference ~ power_in
-            
+
             # Static power switch (normally open - False)
             power_switch = new PowerSwitchStatic
-            
+
             # Connect interfaces
             power_switch.power_in ~ power_in
             power_switch.switched_power_out ~ switched_power_out

@@ -51,7 +51,7 @@ class SWD(ModuleInterface):
             mcu_gpio1 = new ElectricLogic
             mcu_gpio2 = new ElectricLogic
             mcu_reset = new ElectricLogic
-            
+
             mcu_gpio0 ~ swd.clk
             mcu_gpio1 ~ swd.dio
             mcu_gpio2 ~ swd.swo

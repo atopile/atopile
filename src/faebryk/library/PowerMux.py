@@ -30,16 +30,16 @@ class PowerMux(Module):
             # Two input power sources
             battery_power = new ElectricPower
             battery_power.voltage = 3.7V +/- 10%
-            
-            usb_power = new ElectricPower  
+
+            usb_power = new ElectricPower
             usb_power.voltage = 5V +/- 5%
-            
+
             # Output power
             system_power = new ElectricPower
-            
+
             # Control signal
             select_signal = new ElectricSignal
-            
+
             # Power multiplexer
             power_mux = new PowerMux
             power_mux.power_in[0] ~ battery_power

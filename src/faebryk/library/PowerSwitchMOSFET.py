@@ -64,10 +64,10 @@ class PowerSwitchMOSFET(F.PowerSwitch):
             # PowerSwitchMOSFET requires constructor parameters:
             # PowerSwitchMOSFET(lowside=bool, normally_closed=bool)
             # Here we show the connections that would be made:
-            
+
             supply = new ElectricPower
             load_pwr = new ElectricPower
-            
+
             # These would be connected to the power switch:
             # supply ~ power_switch.power_in
             # power_switch.switched_power_out ~ load_pwr

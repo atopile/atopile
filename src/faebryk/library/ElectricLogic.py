@@ -161,7 +161,7 @@ class ElectricLogic(F.ElectricSignal):
 
             electrical = new Electrical
             logic_signal.line ~ electrical
-            
+
             # OR with resistor
             example_resistor = new Resistor
             example_resistor.resistance = 10kohm +/- 5%

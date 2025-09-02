@@ -40,12 +40,12 @@ class SPI(ModuleInterface):
             # Connect to SPI device with chip select
             chip_select = new ElectricLogic
             chip_select.reference ~ power_3v3
-            
+
             # Connect external SPI lines
             sclk_line = new ElectricLogic
             miso_line = new ElectricLogic
             mosi_line = new ElectricLogic
-            
+
             spi_bus.sclk ~ sclk_line
             spi_bus.miso ~ miso_line
             spi_bus.mosi ~ mosi_line
