@@ -49,3 +49,28 @@ class Common_Mode_Filter(Module):
             coil.self_resonant_frequency.alias_is(self.self_resonant_frequency)
             coil.max_current.alias_is(self.max_current)
             coil.dc_resistance.alias_is(self.dc_resistance)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import Common_Mode_Filter, Electrical
+
+        module UsageExample:
+            # Differential signal lines
+            signal_p = new Electrical
+            signal_n = new Electrical
+            filtered_p = new Electrical  
+            filtered_n = new Electrical
+            
+            cmf = new Common_Mode_Filter
+            cmf.inductance = 100µH +/- 20%
+            cmf.max_current = 500mA
+            cmf.self_resonant_frequency = 10MHz +/- 20%
+            
+            # Connect the differential pair through the common mode filter
+            signal_p ~ cmf.coil_a.unnamed[0]
+            cmf.coil_a.unnamed[1] ~ filtered_p
+            signal_n ~ cmf.coil_b.unnamed[0]  
+            cmf.coil_b.unnamed[1] ~ filtered_n
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

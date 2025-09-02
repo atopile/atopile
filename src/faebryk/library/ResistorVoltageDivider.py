@@ -83,3 +83,25 @@ class ResistorVoltageDivider(Module):
         self.output.line.add(
             F.has_net_name("VDIV_OUTPUT", level=F.has_net_name.Level.SUGGESTED)
         )
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import ResistorVoltageDivider, ElectricPower, ElectricSignal
+
+        module UsageExample:
+            power_5v = new ElectricPower
+            assert power_5v.voltage within 5V +/- 5%
+
+            output_signal = new ElectricSignal
+            output_signal.reference ~ power_5v
+
+            resistor_voltage_divider = new ResistorVoltageDivider
+            assert resistor_voltage_divider.max_current <= 1mA
+            assert resistor_voltage_divider.v_out within 2.5V +/- 10%
+
+            resistor_voltage_divider.power ~ power_5v
+
+            resistor_voltage_divider.output ~ output_signal
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

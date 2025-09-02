@@ -45,4 +45,27 @@ class SurgeProtection(Module):
 
     def __preinit__(self):
         for _ in range(self._tvs_count):
-            self.add_to_container(self._tvs_count, F.TVS, container=self.tvs)
+            self.add_to_container(1, F.TVS, container=self.tvs)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        #pragma experiment("MODULE_TEMPLATING")
+        #pragma experiment("BRIDGE_CONNECT")
+
+        import SurgeProtection, ElectricSignal
+
+        module UsageExample:
+            ex_signal = new ElectricSignal
+
+            # Create surge protection module
+            surge_protection = new SurgeProtection<tvs_count=2>
+
+            # Note: SurgeProtection creates TVS diodes internally
+            ex_signal.line ~ surge_protection.tvs[0].cathode
+            surge_protection.tvs[0].anode ~ ex_signal.reference.lv
+
+            # Alternative bridge syntax (maintains polarity)
+            ex_signal.reference.lv ~> surge_protection.tvs[1] ~> ex_signal.line
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

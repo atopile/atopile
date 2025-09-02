@@ -77,3 +77,26 @@ class GenericBusProtection(Module):
     @L.rt_field
     def can_bridge(self):
         return F.can_bridge_defined(self.bus_unprotected, self.bus_protected)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        #pragma experiment("BRIDGE_CONNECT")
+        import GenericBusProtection, I2C
+
+        module UsageExample:
+            # Unprotected bus coming from external connector
+            external_i2c = new I2C
+            
+            # Protected bus for internal circuit
+            internal_i2c = new I2C  
+            
+            # Note: GenericBusProtection requires a bus_factory function
+            # This is a simplified example - actual implementation would
+            # require proper factory function passed to constructor
+            
+            # bus_protection = new GenericBusProtection(lambda: I2C())
+            # bus_protection.bus_unprotected ~ external_i2c
+            # bus_protection.bus_protected ~ internal_i2c
+        """,
+        language=F.has_usage_example.Language.ato,
+    )

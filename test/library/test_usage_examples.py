@@ -14,11 +14,13 @@ from faebryk.core.moduleinterface import ModuleInterface
 from faebryk.core.trait import Trait
 from faebryk.libs.library import L
 
+# Without any way to mark which modules are not exposed to user,
+# we need to explicity skip them
 skip_list = [
     "DIP",
     "Footprint",
     "KicadFootprint",
-    "NET",
+    "Net",
     "PCB",
     "Pad",
     "QFN",
@@ -26,7 +28,6 @@ skip_list = [
     "SOIC",
     "Symbol",
 ]
-
 
 def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
     """
@@ -66,13 +67,15 @@ def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
         for name, module in vars(F).items()
         if (
             isinstance(module, type)
-            and name not in skip_list
         )
     ],
 )
 def test_usage_examples(name: str, module):
     """Test that all usage examples compile to graphs"""
     bob = Bob()
+
+    if name in skip_list:
+        pytest.skip(f"{name} is not exposed to user, does not need usage example")
 
     module_name = getattr(module, "__module__", None)
     if module_name is None:

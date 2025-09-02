@@ -42,3 +42,26 @@ class FilterElectricalLC(F.Filter):
         )
 
         self.in_.line.connect_via(self.inductor, self.out.line)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import FilterElectricalLC, ElectricSignal, ElectricPower
+
+        module UsageExample:
+            power_supply = new ElectricPower
+            power_supply.voltage = 5V +/- 5%
+            
+            input_signal = new ElectricSignal
+            input_signal.reference ~ power_supply
+            output_signal = new ElectricSignal
+            output_signal.reference ~ power_supply
+            
+            lc_filter = new FilterElectricalLC
+            lc_filter.cutoff_frequency = 1000Hz +/- 10%
+            lc_filter.z0 = 50ohm +/- 5%
+            
+            lc_filter.in_ ~ input_signal
+            lc_filter.out ~ output_signal
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
