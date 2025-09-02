@@ -753,7 +753,7 @@ class ProjectConfig(BaseConfigModel):
     open_layout_on_build: bool = Field(default=False)
     """Automatically open pcbnew when applying netlist"""
 
-    dangerously_skip_ssl_verification: bool = Field(default=True)  # FIXME: SSL
+    dangerously_skip_ssl_verification: bool = Field(default=False)
     """Skip SSL verification for all API requests."""
 
     @classmethod
