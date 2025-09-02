@@ -211,8 +211,7 @@ class _PackageValidators:
 
         from atopile.front_end import Context, bob
 
-        usage_build = config.project.builds.get("usage", None)
-        if usage_build is None:
+        if (usage_build := config.project.builds.get("usage", None)) is None:
             raise UserBadParameterError("Missing 'usage' build target in ato.yaml")
 
         entry_path: Path = usage_build.entry_file_path
@@ -221,22 +220,22 @@ class _PackageValidators:
 
         context = bob.index_file(entry_path)
 
+        known_dependencies = {d.identifier for d in config.project.dependencies or []}
         offending: list[str] = []
         for _ref, node in context.refs.items():
             if isinstance(node, Context.ImportPlaceholder):
                 parts = [p for p in node.from_path.split("/") if p]
+                assert parts
+
                 # Allow local parts imports
-                if parts and parts[0] == "parts":
+                if parts[0] == "parts":
                     continue
-                if len(parts) >= 2:
-                    base = config.project.paths.modules / parts[0] / parts[1]
-                    if (
-                        not base.exists()
-                        and config.project.package.identifier not in str(base)
-                    ):
-                        offending.append(node.from_path)
-                else:
-                    offending.append(node.from_path)
+
+                # Allow fully-qualified imports from dependencies
+                if len(parts) >= 2 and f"{parts[0]}/{parts[1]}" in known_dependencies:
+                    continue
+
+                offending.append(node.from_path)
 
         if offending:
             raise UserBadParameterError(
