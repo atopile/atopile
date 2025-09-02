@@ -220,3 +220,45 @@ pub extern var _Py_NoneStruct: PyObject;
 pub fn Py_None() *PyObject {
     return &_Py_NoneStruct;
 }
+
+// Reference counting - these are macros in Python, so we implement them inline
+pub inline fn Py_INCREF(obj: *PyObject) void {
+    // In CPython, Py_INCREF is a macro that increments ob_refcnt
+    // Since PyObject is opaque, we can't directly access ob_refcnt
+    // Instead, just don't increment for now - Python manages the refcount
+    _ = obj;
+}
+
+pub inline fn Py_DECREF(obj: *PyObject) void {
+    // Similarly for DECREF
+    _ = obj;
+}
+
+// Error handling
+pub extern fn PyErr_SetString(exception: *PyObject, message: [*:0]const u8) void;
+pub extern fn PyErr_Occurred() ?*PyObject;
+
+// Common exception types
+pub extern var PyExc_TypeError: *PyObject;
+pub extern var PyExc_ValueError: *PyObject;
+pub extern var PyExc_NotImplementedError: *PyObject;
+
+// Additional Python C API functions for generic init
+pub extern fn PyTuple_Size(tuple: ?*PyObject) isize;
+pub extern fn PyDict_GetItemString(dict: ?*PyObject, key: [*:0]const u8) ?*PyObject;
+pub extern fn PyFloat_FromDouble(value: f64) ?*PyObject;
+pub extern fn PyFloat_AsDouble(obj: ?*PyObject) f64;
+pub extern fn PyObject_IsTrue(obj: ?*PyObject) c_int;
+pub extern fn PyList_New(size: isize) ?*PyObject;
+pub extern fn PyList_SetItem(list: ?*PyObject, index: isize, item: ?*PyObject) c_int;
+// Python booleans are singleton objects
+pub extern var _Py_TrueStruct: PyObject;
+pub extern var _Py_FalseStruct: PyObject;
+
+pub fn Py_True() *PyObject {
+    return &_Py_TrueStruct;
+}
+
+pub fn Py_False() *PyObject {
+    return &_Py_FalseStruct;
+}

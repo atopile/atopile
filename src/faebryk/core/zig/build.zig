@@ -5,7 +5,7 @@ pub fn build_tests(b: *std.Build, target: std.Build.ResolvedTarget, optimize: st
 
     // Create the sexp module that includes all source files
     const sexp_mod = b.createModule(.{
-        .root_source_file = b.path("src/sexp/sexp.zig"),
+        .root_source_file = b.path("src/sexp/lib.zig"),
     });
 
     // Automatically discover test files
@@ -65,7 +65,7 @@ pub fn build_performance(b: *std.Build, target: std.Build.ResolvedTarget, optimi
     });
 
     const sexp_mod = b.createModule(.{
-        .root_source_file = b.path("src/sexp/sexp.zig"),
+        .root_source_file = b.path("src/sexp/lib.zig"),
     });
 
     // Build performance_sexp executable
@@ -110,15 +110,19 @@ fn build_pyi(b: *std.Build, target: std.Build.ResolvedTarget, optimize: std.buil
     // Build a small executable that outputs the pyi content
     const pyi_exe = b.addExecutable(.{
         .name = "pyi",
-        .root_source_file = b.path("src/pyzig/demo/root_pyi.zig"),
+        .root_source_file = b.path("src/sexp/pyi.zig"),
         .target = target,
         .optimize = optimize,
     });
+
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
     });
-
+    const sexp_mod = b.addModule("sexp", .{
+        .root_source_file = b.path("src/sexp/lib.zig"),
+    });
     pyi_exe.root_module.addImport("pyzig", pyzig_mod);
+    pyi_exe.root_module.addImport("sexp", sexp_mod);
 
     // Run the executable and capture its output
     const run_gen = b.addRunArtifact(pyi_exe);
@@ -138,9 +142,12 @@ fn addPythonExtension(
     python_lib_opt: ?[]const u8,
     python_lib_dir_opt: ?[]const u8,
 ) void {
+    // Check if we should use auto-generated bindings
+    const root_file = "src/sexp/py.zig";
+
     const python_ext = b.addSharedLibrary(.{
         .name = py_lib_name,
-        .root_source_file = b.path("src/pyzig/demo/root_py.zig"),
+        .root_source_file = b.path(root_file),
         .target = target,
         .optimize = optimize,
         .pic = true,
@@ -149,8 +156,11 @@ fn addPythonExtension(
     const pyzig_mod = b.createModule(.{
         .root_source_file = b.path("src/pyzig/lib.zig"),
     });
-
+    const sexp_mod = b.addModule("sexp", .{
+        .root_source_file = b.path("src/sexp/lib.zig"),
+    });
     python_ext.root_module.addImport("pyzig", pyzig_mod);
+    python_ext.root_module.addImport("sexp", sexp_mod);
 
     python_ext.addIncludePath(.{ .cwd_relative = python_include });
 
@@ -234,39 +244,10 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Export the sexp module for other packages to use
-    const sexp_mod = b.addModule("sexp", .{
-        .root_source_file = b.path("src/sexp/sexp.zig"),
-    });
-
-    // Create the pyzig module
-    const pyzig_mod = b.createModule(.{
-        .root_source_file = b.path("src/pyzig/lib.zig"),
-    });
-
-    // Build sexp_pyi executable
-    const sexp_pyi_exe = b.addExecutable(.{
-        .name = "sexp_pyi",
-        .root_source_file = b.path("src/sexp/pyi.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // Add module imports to the sexp_pyi executable
-    sexp_pyi_exe.root_module.addImport("pyzig", pyzig_mod);
-    sexp_pyi_exe.root_module.addImport("sexp", sexp_mod);
-
-    b.installArtifact(sexp_pyi_exe);
-
-    // Add run step for sexp_pyi
-    const run_sexp_pyi = b.addRunArtifact(sexp_pyi_exe);
-    const sexp_pyi_step = b.step("sexp-pyi", "Run sexp pyi generator");
-    sexp_pyi_step.dependOn(&run_sexp_pyi.step);
-
     // Build a library from the source files
     const lib = b.addStaticLibrary(.{
         .name = "sexp",
-        .root_source_file = b.path("src/sexp/sexp.zig"),
+        .root_source_file = b.path("src/sexp/lib.zig"),
         .target = target,
         .optimize = optimize,
     });

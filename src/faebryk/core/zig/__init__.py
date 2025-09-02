@@ -1,3 +1,4 @@
+import importlib.util
 import logging
 import sys
 from pathlib import Path
@@ -67,12 +68,24 @@ def compile_zig():
 
 
 def load():
-    sys.path.append(str(_build_dir))
+    # Insert at beginning to override any installed version
+    spec = importlib.util.spec_from_file_location("pyzig", _build_dir / "pyzig.so")
+    assert spec and spec.loader
+
+    # Import from the local build directory, not from installed package
+    pyzig = importlib.util.module_from_spec(spec)
+    sys.modules["pyzig_local"] = pyzig  # Use different name to avoid conflicts
+    spec.loader.exec_module(pyzig)
+
+    # Import all symbols from the local build
+    for name in dir(pyzig):
+        if not name.startswith("_"):
+            globals()[name] = getattr(pyzig, name)
 
 
 # Fallback to editable build-on-import
 if is_editable_install():
     compile_zig()
     load()
-
-from pyzig import *  # type: ignore # noqa: E402, F403,F401
+else:
+    from pyzig import *  # type: ignore # noqa: E402, F403,F401

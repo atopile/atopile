@@ -42,7 +42,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
 
                 if (is_string) {
                     // Handle string fields
-                    const field_str = try std.fmt.bufPrintZ(buf[pos..], "  {s}: {s}\n", .{ field.name, field_value });
+                    const field_str = try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{s}\"\n", .{ field.name, field_value });
                     pos += field_str.len;
                 } else if (is_struct) {
                     // Handle struct fields recursively
@@ -50,7 +50,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                     pos += field_header.len;
 
                     // Recursively print the struct, adjusting indentation
-                    var temp_buf: [1024]u8 = undefined;
+                    var temp_buf: [4096]u8 = undefined;  // Increased for nested structs
                     const struct_str = try printStruct(field_value, &temp_buf);
 
                     // Add indentation to each line of the struct output
@@ -66,9 +66,73 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                         pos += indented_line.len;
                     }
                 } else {
-                    // Handle other field types
-                    const field_str = try std.fmt.bufPrintZ(buf[pos..], "  {s}: {}\n", .{ field.name, field_value });
-                    pos += field_str.len;
+                    // Handle other field types including optionals and slices
+                    const field_str = switch (field_type_info) {
+                        .optional => |opt| blk: {
+                            // Check what type is inside the optional
+                            const child_info = @typeInfo(opt.child);
+
+                            // Check if the optional contains a struct
+                            if (child_info == .@"struct") {
+                                if (field_value) |val| {
+                                    // Handle optional struct recursively
+                                    const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: ", .{field.name});
+                                    pos += field_header.len;
+
+                                    // Recursively print the struct
+                                    var temp_buf: [4096]u8 = undefined;  // Increased for nested structs
+                                    const struct_str = try printStruct(val, &temp_buf);
+
+                                    // Add indentation to each line of the struct output
+                                    var line_iter = std.mem.splitScalar(u8, struct_str, '\n');
+                                    var first_line = true;
+                                    while (line_iter.next()) |line| {
+                                        if (line.len == 0) continue; // Skip empty lines
+
+                                        const indented_line = if (first_line) blk2: {
+                                            first_line = false;
+                                            break :blk2 try std.fmt.bufPrintZ(buf[pos..], "{s}\n", .{line});
+                                        } else try std.fmt.bufPrintZ(buf[pos..], "  {s}\n", .{line});
+                                        pos += indented_line.len;
+                                    }
+                                    break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it above
+                                } else {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: null\n", .{field.name});
+                                }
+                            } else if (child_info == .pointer and child_info.pointer.size == .slice) {
+                                // Optional slice - use {?s} for optional strings
+                                if (child_info.pointer.child == u8) {
+                                    if (field_value == null) {
+                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: None\n", .{field.name});
+                                    } else {
+                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{?s}\"\n", .{ field.name, field_value });
+                                    }
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?s}\n", .{ field.name, field_value });
+                                } else {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?any}\n", .{ field.name, field_value });
+                                }
+                            } else {
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?}\n", .{ field.name, field_value });
+                            }
+                        },
+                        .pointer => |ptr| blk: {
+                            if (ptr.size == .slice) {
+                                // Slice - use {s} for strings, {any} for other slices
+                                if (ptr.child == u8) {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {s}\n", .{ field.name, field_value });
+                                } else {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
+                                }
+                            } else {
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {}\n", .{ field.name, field_value });
+                            }
+                        },
+                        else => try std.fmt.bufPrintZ(buf[pos..], "  {s}: {}\n", .{ field.name, field_value }),
+                    };
+                    // Only add to pos if we didn't already handle it (optional struct case returns empty string)
+                    if (field_str.len > 0) {
+                        pos += field_str.len;
+                    }
                 }
             }
 
@@ -86,35 +150,11 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
     }
 }
 
-pub fn gen_type(comptime struct_type: type, comptime field_names: []const [*:0]const u8, comptime name: [*:0]const u8) TX {
-    const tx: TX = .{
-        .getset = .{
-            int_prop(struct_type, field_names[0]),
-            int_prop(struct_type, field_names[1]),
-            py.GS_SENTINEL,
-        },
-        .typeobj = undefined,
-    };
-
-    tx.typeobj = py.PyTypeObject{
-        .ob_base = .{ .ob_base = .{ .ob_refcnt = 1, .ob_type = null }, .ob_size = 0 },
-        .tp_name = name,
-        .tp_basicsize = @sizeOf(struct_type),
-        .tp_repr = gen_repr(struct_type),
-        .tp_flags = py.Py_TPFLAGS_DEFAULT | py.Py_TPFLAGS_BASETYPE,
-        //.tp_methods = &Top_methods,
-        .tp_getset = &tx.getset,
-        //.tp_init = Top_init,
-    };
-
-    return tx;
-}
-
 pub fn gen_repr(comptime struct_type: type) ?*const fn (?*py.PyObject) callconv(.C) ?*py.PyObject {
     const repr = struct {
         fn impl(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
-            var buf: [256]u8 = undefined;
+            var buf: [8192]u8 = undefined;  // Increased buffer size
             const out = printStruct(obj.top.*, &buf) catch {
                 return null;
             };
@@ -130,7 +170,13 @@ pub fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
     const getter = struct {
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
-            return py.PyLong_FromLong(@field(obj.top.*, field_name_str));
+            // Check if the wrapper has 'data' field (new style) or 'top' field (old style)
+            const has_data = @hasField(struct_type, "data");
+            if (has_data) {
+                return py.PyLong_FromLong(@field(obj.data.*, field_name_str));
+            } else {
+                return py.PyLong_FromLong(@field(obj.top.*, field_name_str));
+            }
         }
     }.impl;
 
@@ -142,7 +188,12 @@ pub fn int_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
             }
 
             const new_val = py.PyLong_AsLong(value);
-            @field(obj.top.*, field_name_str) = @intCast(new_val);
+            const has_data = @hasField(struct_type, "data");
+            if (has_data) {
+                @field(obj.data.*, field_name_str) = @intCast(new_val);
+            } else {
+                @field(obj.top.*, field_name_str) = @intCast(new_val);
+            }
             return 0;
         }
     }.impl;
@@ -159,7 +210,11 @@ pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
     const getter = struct {
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
-            const val: []const u8 = @field(obj.top.*, field_name_str);
+            const has_data = @hasField(struct_type, "data");
+            const val: []const u8 = if (has_data)
+                @field(obj.data.*, field_name_str)
+            else
+                @field(obj.top.*, field_name_str);
             // FIXME: this assumes zig literal (0-terminated), be careful!
             const cstr: [*:0]const u8 = @ptrCast(val.ptr);
             return py.PyUnicode_FromString(cstr);
@@ -178,7 +233,12 @@ pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
                 return -1;
             }
 
-            @field(obj.top.*, field_name_str) = std.mem.span(new_val.?);
+            const has_data = @hasField(struct_type, "data");
+            if (has_data) {
+                @field(obj.data.*, field_name_str) = std.mem.span(new_val.?);
+            } else {
+                @field(obj.top.*, field_name_str) = std.mem.span(new_val.?);
+            }
             return 0;
         }
     }.impl;
@@ -199,7 +259,11 @@ pub fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, 
             const obj: *struct_type = @ptrCast(@alignCast(self));
 
             // Get a pointer to the nested field data
-            const zigval_ptr = &@field(obj.top.*, field_name_str);
+            const has_data = @hasField(struct_type, "data");
+            const zigval_ptr = if (has_data)
+                &@field(obj.data.*, field_name_str)
+            else
+                &@field(obj.top.*, field_name_str);
 
             // Create a simple Python object wrapper
             const pyobj = py.PyType_GenericAlloc(type_obj, 0);
@@ -211,7 +275,12 @@ pub fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, 
             typed_obj.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
 
             // Store the pointer to the nested data
-            typed_obj.top = zigval_ptr;
+            const has_data_inner = @hasField(PType, "data");
+            if (has_data_inner) {
+                typed_obj.data = zigval_ptr;
+            } else {
+                typed_obj.top = zigval_ptr;
+            }
 
             return pyobj;
         }
@@ -227,7 +296,22 @@ pub fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, 
 
             // Cast the PyObject to PType and extract the underlying Zig data
             const pyval: *PType = @ptrCast(@alignCast(value));
-            @field(obj.top.*, field_name_str) = pyval.top.*;
+            const has_data = @hasField(struct_type, "data");
+            const has_data_inner = @hasField(PType, "data");
+
+            if (has_data) {
+                if (has_data_inner) {
+                    @field(obj.data.*, field_name_str) = pyval.data.*;
+                } else {
+                    @field(obj.data.*, field_name_str) = pyval.top.*;
+                }
+            } else {
+                if (has_data_inner) {
+                    @field(obj.top.*, field_name_str) = pyval.data.*;
+                } else {
+                    @field(obj.top.*, field_name_str) = pyval.top.*;
+                }
+            }
             return 0;
         }
     }.impl;
@@ -239,7 +323,604 @@ pub fn obj_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, 
     };
 }
 
-const TX = struct {
-    getset: [3]py.PyGetSetDef,
-    typeobj: ?py.PyTypeObject,
-};
+// Property for float fields
+pub fn float_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) py.PyGetSetDef {
+    const field_name_str = std.mem.span(field_name);
+    const getter = struct {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            return py.PyFloat_FromDouble(@field(obj.data.*, field_name_str));
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null) return -1;
+            const new_val = py.PyFloat_AsDouble(value);
+            @field(obj.data.*, field_name_str) = @floatCast(new_val);
+            return 0;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
+// Property for bool fields
+pub fn bool_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) py.PyGetSetDef {
+    const field_name_str = std.mem.span(field_name);
+    const getter = struct {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            const val = @field(obj.data.*, field_name_str);
+            if (val) return py.Py_True() else return py.Py_False();
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null) return -1;
+            const is_true = py.PyObject_IsTrue(value);
+            @field(obj.data.*, field_name_str) = is_true == 1;
+            return 0;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
+// Property for optional fields
+pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
+    @setEvalBranchQuota(100000);
+    const field_name_str = std.mem.span(field_name);
+
+    // For struct types, we need to generate the binding at comptime
+    const child_info = @typeInfo(ChildType);
+    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, field_name) else void;
+
+    const getter = struct {
+        fn getNestedTypeObj() *py.PyTypeObject {
+            if (child_info != .@"struct") unreachable;
+            // Initialize the type object once
+            const initialized = struct {
+                var done: bool = false;
+            };
+            if (!initialized.done) {
+                _ = py.PyType_Ready(&NestedBinding.type_object);
+                initialized.done = true;
+            }
+            return &NestedBinding.type_object;
+        }
+
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            const val = @field(obj.data.*, field_name_str);
+            if (val) |v| {
+                // Handle the non-null case based on child type
+                switch (child_info) {
+                    .int => return py.PyLong_FromLong(@intCast(v)),
+                    .float => return py.PyFloat_FromDouble(@floatCast(v)),
+                    .bool => if (v) return py.Py_True() else return py.Py_False(),
+                    .pointer => |ptr| {
+                        if (ptr.size == .slice and ptr.child == u8) {
+                            const cstr: [*:0]const u8 = @ptrCast(v.ptr);
+                            return py.PyUnicode_FromString(cstr);
+                        }
+                    },
+                    .@"struct" => {
+                        // Create a new Python object for the nested struct
+                        const type_obj = getNestedTypeObj();
+                        const pyobj = py.PyType_GenericAlloc(type_obj, 0);
+                        if (pyobj == null) return null;
+
+                        const NestedWrapper = PyObjectWrapper(ChildType);
+                        const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
+                        wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
+                        // Store a pointer to the value - we need to make a copy
+                        // since v is a local value, we allocate it in the wrapper
+                        wrapper.data = std.heap.c_allocator.create(ChildType) catch return null;
+                        wrapper.data.* = v;
+
+                        return pyobj;
+                    },
+                    else => {},
+                }
+            }
+            const none = py.Py_None();
+            py.Py_INCREF(none);
+            return none;
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null or value == py.Py_None()) {
+                @field(obj.data.*, field_name_str) = null;
+                return 0;
+            }
+            // Handle setting based on child type
+            switch (child_info) {
+                .int => {
+                    const new_val = py.PyLong_AsLong(value);
+                    @field(obj.data.*, field_name_str) = @intCast(new_val);
+                },
+                .float => {
+                    const new_val = py.PyFloat_AsDouble(value);
+                    @field(obj.data.*, field_name_str) = @floatCast(new_val);
+                },
+                .bool => {
+                    const is_true = py.PyObject_IsTrue(value);
+                    @field(obj.data.*, field_name_str) = is_true == 1;
+                },
+                .pointer => |ptr| {
+                    if (ptr.size == .slice and ptr.child == u8) {
+                        const new_val = py.PyUnicode_AsUTF8(value);
+                        if (new_val == null) return -1;
+                        @field(obj.data.*, field_name_str) = std.mem.span(new_val.?);
+                    }
+                },
+                else => return -1,
+            }
+            return 0;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
+// Property for slice fields
+pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
+    const field_name_str = std.mem.span(field_name);
+    const getter = struct {
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            const slice = @field(obj.data.*, field_name_str);
+
+            // Create a Python list
+            const list = py.PyList_New(@intCast(slice.len));
+            if (list == null) return null;
+
+            for (slice, 0..) |item, i| {
+                // Create Python object for each item
+                // This would need to handle different types appropriately
+                _ = py.PyList_SetItem(list, @intCast(i), wrap_value(item));
+            }
+
+            return list;
+        }
+
+        fn wrap_value(value: ChildType) ?*py.PyObject {
+            // This would need proper implementation based on ChildType
+            _ = value;
+            const none = py.Py_None();
+            py.Py_INCREF(none);
+            return none;
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            // For now, just prevent setting - full implementation would convert Python list to slice
+            _ = self;
+            _ = value;
+            return -1;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
+// Property for struct fields
+pub fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime FieldType: type) py.PyGetSetDef {
+    const field_name_str = std.mem.span(field_name);
+
+    // Generate a Python binding for the nested struct type
+    // We need to create this at comptime so it can be properly initialized
+    const NestedBinding = wrap_in_python(FieldType, field_name);
+
+    const getter = struct {
+        fn getNestedTypeObj() *py.PyTypeObject {
+            // Initialize the type object once
+            const initialized = struct {
+                var done: bool = false;
+            };
+            if (!initialized.done) {
+                _ = py.PyType_Ready(&NestedBinding.type_object);
+                initialized.done = true;
+            }
+            return &NestedBinding.type_object;
+        }
+
+        fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+
+            // Get pointer to the nested struct field
+            const nested_data = &@field(obj.data.*, field_name_str);
+
+            // Get the type object for the nested struct
+            const type_obj = getNestedTypeObj();
+
+            // Allocate a new Python object for the nested struct
+            const pyobj = py.PyType_GenericAlloc(type_obj, 0);
+            if (pyobj == null) return null;
+
+            const NestedWrapper = PyObjectWrapper(FieldType);
+            const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
+            wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
+            wrapper.data = nested_data;
+
+            return pyobj;
+        }
+    }.impl;
+
+    const setter = struct {
+        fn impl(self: ?*py.PyObject, value: ?*py.PyObject, _: ?*anyopaque) callconv(.C) c_int {
+            const obj: *struct_type = @ptrCast(@alignCast(self));
+            if (value == null) return -1;
+
+            // Try to extract the nested struct from the Python object
+            const NestedWrapper = PyObjectWrapper(FieldType);
+            const nested_wrapper = @as(*NestedWrapper, @ptrCast(@alignCast(value)));
+            @field(obj.data.*, field_name_str) = nested_wrapper.data.*;
+
+            return 0;
+        }
+    }.impl;
+
+    return .{
+        .name = field_name,
+        .get = getter,
+        .set = setter,
+    };
+}
+
+// Main comptime function to wrap a struct in Python bindings
+pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
+    @setEvalBranchQuota(100000);
+    const info = @typeInfo(T);
+    if (info != .@"struct") {
+        @compileError("wrap_in_python only supports structs");
+    }
+
+    const WrapperType = PyObjectWrapper(T);
+    const struct_info = info.@"struct";
+
+    // Build the getset array at comptime
+    const getset_array = comptime blk: {
+        var getset: [struct_info.fields.len + 1]py.PyGetSetDef = undefined;
+        for (struct_info.fields, 0..) |field, i| {
+            const field_name_z = field.name ++ "\x00";
+            getset[i] = genProp(WrapperType, field.type, field_name_z);
+        }
+        getset[struct_info.fields.len] = py.GS_SENTINEL;
+        break :blk getset;
+    };
+
+    return struct {
+        // Generate the __init__ function using a truly generic approach
+        pub fn generated_init(self: ?*py.PyObject, args: ?*py.PyObject, kwargs: ?*py.PyObject) callconv(.C) c_int {
+            const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
+            wrapper_obj.data = std.heap.c_allocator.create(T) catch return -1;
+
+            // Use a generic approach inspired by ziggy-pydust
+            // Parse arguments directly from the Python tuple and dict
+
+            // Get the number of positional arguments
+            const num_pos = if (args != null) py.PyTuple_Size(args) else 0;
+            const has_kwargs = kwargs != null and kwargs != py.Py_None();
+
+            // For keyword-only arguments (like dataclasses), all args must be keywords
+            if (num_pos > 0) {
+                py.PyErr_SetString(py.PyExc_TypeError, "__init__() takes 0 positional arguments");
+                std.heap.c_allocator.destroy(wrapper_obj.data);
+                return -1;
+            }
+
+            // Extract values from kwargs dict for each field (generic approach)
+            inline for (struct_info.fields) |field| {
+                const field_name_z = field.name ++ "\x00";
+
+                // Get the value from kwargs
+                var value: ?*py.PyObject = null;
+                if (has_kwargs) {
+                    value = py.PyDict_GetItemString(kwargs, field_name_z);
+                }
+
+                if (value == null) {
+                    // Check if field has a default value
+                    if (field.default_value_ptr) |default_ptr| {
+                        // Use the default value from the Zig struct
+                        const default_value = @as(*const field.type, @ptrCast(@alignCast(default_ptr))).*;
+                        @field(wrapper_obj.data.*, field.name) = default_value;
+                    } else {
+                        // Field is required but not provided and has no default
+                        var error_msg: [256]u8 = undefined;
+                        const msg = std.fmt.bufPrintZ(&error_msg, "__init__() missing required keyword-only argument: '{s}'", .{field.name}) catch {
+                            py.PyErr_SetString(py.PyExc_TypeError, "__init__() missing required argument");
+                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                            return -1;
+                        };
+                        py.PyErr_SetString(py.PyExc_TypeError, msg);
+                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                        return -1;
+                    }
+                } else {
+                    // Convert the Python value to the Zig field type
+                    const field_info = @typeInfo(field.type);
+                    switch (field_info) {
+                    .int => {
+                        const int_val = py.PyLong_AsLong(value);
+                        if (int_val == -1 and py.PyErr_Occurred() != null) {
+                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                            return -1;
+                        }
+                        @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
+                    },
+                    .float => {
+                        const float_val = py.PyFloat_AsDouble(value);
+                        if (float_val == -1.0 and py.PyErr_Occurred() != null) {
+                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                            return -1;
+                        }
+                        @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
+                    },
+                    .bool => {
+                        const bool_val = py.PyObject_IsTrue(value);
+                        if (bool_val == -1) {
+                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                            return -1;
+                        }
+                        @field(wrapper_obj.data.*, field.name) = bool_val == 1;
+                    },
+                    .pointer => |ptr| {
+                        if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
+                            const str_val = py.PyUnicode_AsUTF8(value);
+                            if (str_val == null) {
+                                std.heap.c_allocator.destroy(wrapper_obj.data);
+                                return -1;
+                            }
+                            @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
+                        } else {
+                            // Other pointer types not yet supported
+                            @field(wrapper_obj.data.*, field.name) = &.{};
+                        }
+                    },
+                    .optional => |opt| {
+                        if (value == py.Py_None()) {
+                            @field(wrapper_obj.data.*, field.name) = null;
+                        } else {
+                            // Convert based on child type
+                            const child_info = @typeInfo(opt.child);
+                            switch (child_info) {
+                                .int => {
+                                    const int_val = py.PyLong_AsLong(value);
+                                    if (int_val == -1 and py.PyErr_Occurred() != null) {
+                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        return -1;
+                                    }
+                                    @field(wrapper_obj.data.*, field.name) = @intCast(int_val);
+                                },
+                                .float => {
+                                    const float_val = py.PyFloat_AsDouble(value);
+                                    if (float_val == -1.0 and py.PyErr_Occurred() != null) {
+                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        return -1;
+                                    }
+                                    @field(wrapper_obj.data.*, field.name) = @floatCast(float_val);
+                                },
+                                .bool => {
+                                    const bool_val = py.PyObject_IsTrue(value);
+                                    if (bool_val == -1) {
+                                        std.heap.c_allocator.destroy(wrapper_obj.data);
+                                        return -1;
+                                    }
+                                    @field(wrapper_obj.data.*, field.name) = bool_val == 1;
+                                },
+                                .pointer => |p| {
+                                    if (p.size == .slice and p.child == u8) {
+                                        const str_val = py.PyUnicode_AsUTF8(value);
+                                        if (str_val == null) {
+                                            std.heap.c_allocator.destroy(wrapper_obj.data);
+                                            return -1;
+                                        }
+                                        @field(wrapper_obj.data.*, field.name) = std.mem.span(str_val.?);
+                                    } else {
+                                        @field(wrapper_obj.data.*, field.name) = null;
+                                    }
+                                },
+                                .@"struct" => {
+                                    // Handle optional struct fields
+                                    const nested_wrapper = @as(*PyObjectWrapper(opt.child), @ptrCast(@alignCast(value)));
+                                    @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                                },
+                                else => @field(wrapper_obj.data.*, field.name) = null,
+                            }
+                        }
+                    },
+                    .@"struct" => {
+                        // Check if it's the correct type
+                        const nested_wrapper = @as(*PyObjectWrapper(field.type), @ptrCast(@alignCast(value)));
+                        @field(wrapper_obj.data.*, field.name) = nested_wrapper.data.*;
+                    },
+                    else => {
+                        // Unsupported type - use default
+                        @field(wrapper_obj.data.*, field.name) = std.mem.zeroInit(field.type, .{});
+                    },
+                    }
+                }
+            }
+
+            return 0;
+        }
+
+        // Store the comptime-generated getset array
+        pub var generated_getset = getset_array;
+
+        // Generate the repr function
+        pub fn generated_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
+            const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
+            var buf: [8192]u8 = undefined;  // Increased buffer size for large structs
+            const out = printStruct(wrapper_obj.data.*, &buf) catch {
+                return null;
+            };
+            return py.PyUnicode_FromString(out);
+        }
+
+        // The actual PyTypeObject
+        pub var type_object = py.PyTypeObject{
+            .ob_base = .{ .ob_base = .{ .ob_refcnt = 1, .ob_type = null }, .ob_size = 0 },
+            .tp_name = name,
+            .tp_basicsize = @sizeOf(WrapperType),
+            .tp_repr = generated_repr,
+            .tp_flags = py.Py_TPFLAGS_DEFAULT | py.Py_TPFLAGS_BASETYPE,
+            .tp_getset = &generated_getset,
+            .tp_init = generated_init,
+        };
+    };
+}
+// Auto-generated Python wrapper for a Zig struct
+fn PyObjectWrapper(comptime T: type) type {
+    return struct {
+        ob_base: py.PyObject_HEAD,
+        data: *T,
+    };
+}
+
+// Generate format string for PyArg_ParseTupleAndKeywords based on field type
+fn getFormatChar(comptime T: type) u8 {
+    const info = @typeInfo(T);
+    return switch (info) {
+        .int => 'i',
+        .float => 'd',
+        .bool => 'p',
+        .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8) 's' else 'O',
+        .optional => |opt| switch (@typeInfo(opt.child)) {
+            .pointer => 'O',
+            else => getFormatChar(opt.child),
+        },
+        .@"struct" => 'O',
+        else => 'O',
+    };
+}
+
+// Generate property getter/setter based on field type
+fn genProp(comptime WrapperType: type, comptime FieldType: type, comptime field_name: [*:0]const u8) py.PyGetSetDef {
+    const info = @typeInfo(FieldType);
+
+    switch (info) {
+        .int => return int_prop(WrapperType, field_name),
+        .float => return float_prop(WrapperType, field_name),
+        .bool => return bool_prop(WrapperType, field_name),
+        .pointer => |ptr| {
+            if (ptr.size == .slice and ptr.child == u8 and ptr.is_const) {
+                return str_prop(WrapperType, field_name);
+            }
+            // Handle slices of structs
+            return slice_prop(WrapperType, field_name, ptr.child);
+        },
+        .optional => |opt| return optional_prop(WrapperType, field_name, opt.child),
+        .@"struct" => return struct_prop(WrapperType, field_name, FieldType),
+        else => @compileError("Unsupported field type: " ++ @typeName(FieldType)),
+    }
+}
+
+// Wrap an entire module worth of structs
+pub fn wrap_in_python_module(comptime module: type) type {
+    @setEvalBranchQuota(100000);
+    const module_info = @typeInfo(module);
+    if (module_info != .@"struct") {
+        @compileError("wrap_in_python_module expects a module (struct)");
+    }
+
+    return struct {
+        // Count how many structs we'll wrap
+        const struct_count = blk: {
+            var count: usize = 0;
+            for (module_info.@"struct".decls) |decl| {
+                const decl_value = @field(module, decl.name);
+                const decl_type = @TypeOf(decl_value);
+                const decl_info = @typeInfo(decl_type);
+
+                if (decl_info == .type) {
+                    const inner_type = decl_value;
+                    const inner_info = @typeInfo(inner_type);
+                    if (inner_info == .@"struct") {
+                        // Check if it's a data struct (starts with uppercase)
+                        const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
+                        if (is_type_name) {
+                            count += 1;
+                        }
+                    }
+                }
+            }
+            break :blk count;
+        };
+
+        // Register all bindings with Python
+        pub fn register_all(py_module: ?*py.PyObject) c_int {
+            // Process each declaration
+            inline for (module_info.@"struct".decls) |decl| {
+                const decl_value = @field(module, decl.name);
+                const decl_type = @TypeOf(decl_value);
+                const decl_info = @typeInfo(decl_type);
+
+                // Check if it's a type (struct)
+                if (decl_info == .type) {
+                    const inner_type = decl_value;
+                    const inner_info = @typeInfo(inner_type);
+                    if (inner_info == .@"struct") {
+                        // Check if it's a data struct (starts with uppercase, convention for types)
+                        const is_type_name = decl.name[0] >= 'A' and decl.name[0] <= 'Z';
+
+                        // Check it doesn't have too many methods
+                        var func_count: usize = 0;
+                        inline for (inner_info.@"struct".decls) |inner_decl| {
+                            const inner_field = @field(inner_type, inner_decl.name);
+                            if (@typeInfo(@TypeOf(inner_field)) == .@"fn") {
+                                func_count += 1;
+                            }
+                        }
+
+                        if (is_type_name and func_count <= 2) { // Allow a couple methods like sum()
+                            // Generate bindings for this struct
+                            const full_name = "pyzig." ++ decl.name;
+                            const name_z = full_name ++ "\x00";
+                            const binding = wrap_in_python(inner_type, name_z);
+
+                            // Register with Python
+                            if (py.PyType_Ready(&binding.type_object) < 0) {
+                                return -1;
+                            }
+
+                            binding.type_object.ob_base.ob_base.ob_refcnt += 1;
+                            const reg_name = decl.name ++ "\x00";
+                            if (py.PyModule_AddObject(py_module, reg_name, @ptrCast(&binding.type_object)) < 0) {
+                                binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
+                                return -1;
+                            }
+                        }
+                    }
+                }
+            }
+            return 0;
+        }
+    };
+}
