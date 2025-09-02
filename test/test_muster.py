@@ -1,5 +1,6 @@
 # Test file for the target dependency system
 
+from collections.abc import Generator
 from unittest.mock import Mock
 
 import pytest
@@ -9,6 +10,21 @@ from atopile.build_steps import Muster, MusterTarget
 from atopile.cli.logging_ import LoggingStage
 from faebryk.core.module import Module
 from faebryk.core.solver.solver import Solver
+
+
+class _InducedFailure(Exception):
+    pass
+
+
+def _log_targets(targets: Generator[MusterTarget, None, None]) -> list[str]:
+    logged_targets = []
+    for t in targets:
+        try:
+            t(Mock(), Mock(), Mock(), Mock())
+            logged_targets.append(t.name)
+        except _InducedFailure:
+            pass
+    return logged_targets
 
 
 def test_muster_basic_dependencies():
@@ -26,10 +42,9 @@ def test_muster_basic_dependencies():
     muster.add_target(MusterTarget("C", [], func_c, dependencies=[muster.targets["B"]]))
 
     # Get all targets by selecting them explicitly
-    sorted_targets = muster.select({"A", "B", "C"})
-    sorted_names = [t.name for t in sorted_targets]
+    logged_targets = _log_targets(muster.select({"A", "B", "C"}))
 
-    assert sorted_names == ["A", "B", "C"]
+    assert logged_targets == ["A", "B", "C"]
 
 
 def test_muster_diamond_dependencies():
@@ -58,18 +73,17 @@ def test_muster_diamond_dependencies():
     )
 
     # Get all targets by selecting them explicitly
-    sorted_targets = muster.select({"A", "B", "C", "D"})
-    sorted_names = [t.name for t in sorted_targets]
+    logged_targets = _log_targets(muster.select({"A", "B", "C", "D"}))
 
     # A must come first
-    assert sorted_names[0] == "A"
+    assert logged_targets[0] == "A"
     # D must come last
-    assert sorted_names[-1] == "D"
+    assert logged_targets[-1] == "D"
     # B and C must come after A but before D
-    assert sorted_names.index("B") > sorted_names.index("A")
-    assert sorted_names.index("B") < sorted_names.index("D")
-    assert sorted_names.index("C") > sorted_names.index("A")
-    assert sorted_names.index("C") < sorted_names.index("D")
+    assert logged_targets.index("B") > logged_targets.index("A")
+    assert logged_targets.index("B") < logged_targets.index("D")
+    assert logged_targets.index("C") > logged_targets.index("A")
+    assert logged_targets.index("C") < logged_targets.index("D")
 
 
 def test_muster_specific_targets_with_dependencies():
@@ -93,21 +107,14 @@ def test_muster_specific_targets_with_dependencies():
     )
 
     # Get only C (should include A and B as dependencies)
-    sorted_targets = muster.select({"C"})
-    sorted_names = [t.name for t in sorted_targets]
-
-    assert sorted_names == ["A", "B", "C"]
+    assert _log_targets(muster.select({"C"})) == ["A", "B", "C"]
 
     # Get E (should include only D as dependency, not A, B, C)
-    sorted_targets = muster.select({"E"})
-    sorted_names = [t.name for t in sorted_targets]
-
-    assert sorted_names == ["D", "E"]
+    assert _log_targets(muster.select({"E"})) == ["D", "E"]
 
     # Test selecting all targets explicitly
-    all_targets = muster.select({"A", "B", "C", "D", "E"})
-    all_names = [t.name for t in all_targets]
-    assert set(all_names) == {"A", "B", "C", "D", "E"}
+    all_targets = _log_targets(muster.select({"A", "B", "C", "D", "E"}))
+    assert set(all_targets) == {"A", "B", "C", "D", "E"}
 
 
 def test_muster_cycle_detection():
@@ -131,7 +138,7 @@ def test_muster_cycle_detection():
     with pytest.raises(
         ValueError, match="Cannot topologically sort a graph with cycles"
     ):
-        muster.select({"A", "B", "C"})
+        next(muster.select({"A", "B", "C"}))
 
 
 def test_muster_register_decorator():
@@ -172,10 +179,11 @@ def test_muster_register_decorator():
     ]
 
     # Check sorting
-    sorted_targets = muster.select({"target1", "target2", "target3"})
-    sorted_names = [t.name for t in sorted_targets]
-
-    assert sorted_names == ["target1", "target2", "target3"]
+    assert _log_targets(muster.select({"target1", "target2", "target3"})) == [
+        "target1",
+        "target2",
+        "target3",
+    ]
 
 
 def test_muster_disconnected_components():
@@ -197,13 +205,11 @@ def test_muster_disconnected_components():
         MusterTarget("D", [], funcs["D"], dependencies=[muster.targets["C"]])
     )
 
-    # Get all sorted targets
-    sorted_targets = muster.select({"A", "B", "C", "D"})
-    sorted_names = [t.name for t in sorted_targets]
+    logged_targets = _log_targets(muster.select({"A", "B", "C", "D"}))
 
     # Check that dependencies within each chain are respected
-    assert sorted_names.index("A") < sorted_names.index("B")
-    assert sorted_names.index("C") < sorted_names.index("D")
+    assert logged_targets.index("A") < logged_targets.index("B")
+    assert logged_targets.index("C") < logged_targets.index("D")
 
 
 def test_muster_missing_dependency_error():
@@ -246,10 +252,7 @@ def test_muster_non_direct_dependencies():
     )
 
     # Request only E, should get all ancestors
-    sorted_targets = muster.select({"E"})
-    sorted_names = [t.name for t in sorted_targets]
-
-    assert sorted_names == ["A", "B", "C", "D", "E"]
+    assert _log_targets(muster.select({"E"})) == ["A", "B", "C", "D", "E"]
 
     # Test with multiple endpoints that share dependencies
     # Add F that also depends on C
@@ -259,13 +262,175 @@ def test_muster_non_direct_dependencies():
     )
 
     # Request both E and F, should get A, B, C once (not duplicated)
-    sorted_targets = muster.select({"E", "F"})
-    sorted_names = [t.name for t in sorted_targets]
+    logged_targets = _log_targets(muster.select({"E", "F"}))
 
     # Should contain all nodes, with proper ordering
-    assert len(sorted_names) == 6  # A, B, C, D, E, F
-    assert sorted_names.index("A") < sorted_names.index("B")
-    assert sorted_names.index("B") < sorted_names.index("C")
-    assert sorted_names.index("C") < sorted_names.index("D")
-    assert sorted_names.index("D") < sorted_names.index("E")
-    assert sorted_names.index("C") < sorted_names.index("F")
+    assert len(logged_targets) == 6  # A, B, C, D, E, F
+    assert logged_targets.index("A") < logged_targets.index("B")
+    assert logged_targets.index("B") < logged_targets.index("C")
+    assert logged_targets.index("C") < logged_targets.index("D")
+    assert logged_targets.index("D") < logged_targets.index("E")
+    assert logged_targets.index("C") < logged_targets.index("F")
+
+
+def test_muster_success_tracking():
+    """Test that MusterTarget tracks success/failure status."""
+    from unittest.mock import Mock
+
+    app = Mock(spec=Module)
+    solver = Mock(spec=Solver)
+    pcb = Mock(spec=F.PCB)
+    log_context = Mock(spec=LoggingStage)
+
+    # Test successful target execution
+    success_func = Mock()
+    target = MusterTarget("success_target", [], success_func)
+
+    assert target.success is None  # Initially None
+
+    target(app, solver, pcb, log_context)
+
+    assert target.success is True
+    success_func.assert_called_once_with(app, solver, pcb, log_context)
+
+
+def test_muster_failure_tracking():
+    """Test that MusterTarget tracks failure status when exception occurs."""
+    from unittest.mock import Mock
+
+    app = Mock(spec=Module)
+    solver = Mock(spec=Solver)
+    pcb = Mock(spec=F.PCB)
+    log_context = Mock(spec=LoggingStage)
+
+    # Test failing target execution
+    failure_func = Mock(side_effect=_InducedFailure)
+    target = MusterTarget("failure_target", [], failure_func)
+
+    assert target.success is None  # Initially None
+
+    with pytest.raises(_InducedFailure):
+        target(app, solver, pcb, log_context)
+
+    assert target.success is False
+    failure_func.assert_called_once_with(app, solver, pcb, log_context)
+
+
+def test_muster_select_skips_targets_with_failed_dependencies():
+    """Test that select() only yields targets whose dependencies have all succeeded."""
+    muster = Muster()
+
+    # Create mock functions
+    funcs = {name: Mock() for name in ["A", "B", "C"]}
+    funcs["B"].side_effect = _InducedFailure
+
+    # Register targets with dependencies: A -> B -> C
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
+    muster.add_target(
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
+    )
+    muster.add_target(
+        MusterTarget("C", [], funcs["C"], dependencies=[muster.targets["B"]])
+    )
+
+    # When selecting all targets, only A should be yielded (B fails, C depends on B)
+    assert _log_targets(muster.select({"A", "B", "C"})) == ["A"]
+
+
+def test_muster_select_yields_targets_with_all_successful_dependencies():
+    """Test that select() yields targets when all dependencies have succeeded."""
+    muster = Muster()
+
+    # Create mock functions
+    funcs = {name: Mock() for name in ["A", "B", "C", "D"]}
+
+    # Register targets: A -> B, A -> C, {B, C} -> D
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
+    muster.add_target(
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
+    )
+    muster.add_target(
+        MusterTarget("C", [], funcs["C"], dependencies=[muster.targets["A"]])
+    )
+    muster.add_target(
+        MusterTarget(
+            "D", [], funcs["D"], dependencies=[muster.targets["B"], muster.targets["C"]]
+        )
+    )
+
+    # Mark A, B, C as successful
+    muster.targets["A"].success = True
+    muster.targets["B"].success = True
+    muster.targets["C"].success = True
+
+    # D should be yielded since all its dependencies succeeded
+    assert "D" in _log_targets(muster.select({"D"}))
+
+
+def test_muster_select_skips_targets_with_partial_failed_dependencies():
+    """Test that select() skips targets when some dependencies have failed."""
+    muster = Muster()
+
+    # Create mock functions
+    funcs = {name: Mock() for name in ["A", "B", "C", "D"]}
+    funcs["C"].side_effect = _InducedFailure
+
+    # Register targets: A -> B, A -> C, {B, C} -> D
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
+    muster.add_target(
+        MusterTarget("B", [], funcs["B"], dependencies=[muster.targets["A"]])
+    )
+    muster.add_target(
+        MusterTarget("C", [], funcs["C"], dependencies=[muster.targets["A"]])
+    )
+    muster.add_target(
+        MusterTarget(
+            "D", [], funcs["D"], dependencies=[muster.targets["B"], muster.targets["C"]]
+        )
+    )
+
+    # D should NOT be yielded since one of its dependencies (C) failed
+    assert "D" not in _log_targets(muster.select({"D"}))
+
+
+def test_muster_select_handles_no_dependencies():
+    """
+    Test that select() yields targets with no dependencies regardless of success state.
+    """
+    muster = Muster()
+
+    # Create mock functions
+    funcs = {name: Mock() for name in ["A", "B"]}
+
+    # Register targets with no dependencies
+    muster.add_target(MusterTarget("A", [], funcs["A"], dependencies=[]))
+    muster.add_target(MusterTarget("B", [], funcs["B"], dependencies=[]))
+
+    # Don't set any success state (both should be None)
+    assert muster.targets["A"].success is None
+    assert muster.targets["B"].success is None
+
+    # Both should be yielded since they have no dependencies
+    selected_targets = _log_targets(muster.select({"A", "B"}))
+
+    assert set(selected_targets) == {"A", "B"}
+
+
+def test_muster_select_returns_generator():
+    """Test that muster.select() returns a generator, not a list."""
+    muster = Muster()
+
+    # Create mock function
+    func = Mock()
+    muster.add_target(MusterTarget("A", [], func, dependencies=[]))
+
+    # select() should return a generator
+    result = muster.select({"A"})
+
+    # Check it's a generator
+    assert hasattr(result, "__iter__") and hasattr(result, "__next__")
+
+    # Convert to list to verify contents
+    targets_list = _log_targets(result)
+    assert len(targets_list) == 1
+    assert targets_list[0] == "A"

@@ -72,6 +72,7 @@ dependencies = [
     { name = "fastapi-github-oidc" },
     { name = "freetype-py" },
     { name = "gitpython" },
+    { name = "httpx" },
     { name = "kicad-python" },
     { name = "kicadcliwrapper" },
     { name = "matplotlib" },
@@ -90,13 +91,13 @@ dependencies = [
     { name = "pydantic-settings" },
     { name = "pygls" },
     { name = "questionary" },
-    { name = "requests" },
     { name = "rich" },
     { name = "ruamel-yaml" },
     { name = "ruff" },
     { name = "semver" },
     { name = "sexpdata" },
     { name = "shapely" },
+    { name = "truststore" },
     { name = "typer" },
     { name = "typing-extensions" },
     { name = "urllib3" },
@@ -135,7 +136,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "antlr4-python3-runtime", specifier = "==4.13.2" },
-    { name = "atopile-easyeda2kicad", specifier = ">=0.9.5" },
+    { name = "atopile-easyeda2kicad", specifier = ">=0.9.7" },
     { name = "black", specifier = ">=24.4.2" },
     { name = "case-converter", specifier = ">=1.2.0" },
     { name = "cookiecutter", specifier = ">=2.6.0" },
@@ -144,6 +145,7 @@ requires-dist = [
     { name = "fastapi-github-oidc", specifier = ">=0.2.1" },
     { name = "freetype-py", specifier = ">=2.4" },
     { name = "gitpython", specifier = ">=3.1.41" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "kicad-python" },
     { name = "kicadcliwrapper", specifier = ">=1.1.1" },
     { name = "matplotlib", specifier = ">=3.7.1" },
@@ -162,13 +164,13 @@ requires-dist = [
     { name = "pydantic-settings", specifier = ">=2.7.1" },
     { name = "pygls", specifier = ">=1.3.0" },
     { name = "questionary", specifier = ">=2.0.1" },
-    { name = "requests", specifier = ">=2.32.3" },
     { name = "rich", specifier = ">=13.7.1" },
     { name = "ruamel-yaml", specifier = ">=0.18.5" },
     { name = "ruff", specifier = ">=0.11.0" },
     { name = "semver", specifier = ">=3.0.2" },
     { name = "sexpdata", specifier = ">=1.0.2" },
     { name = "shapely", specifier = ">=2.0.1" },
+    { name = "truststore", specifier = ">=0.10.4" },
     { name = "typer", specifier = ">=0.12" },
     { name = "typing-extensions", specifier = ">=4.6.3" },
     { name = "urllib3", specifier = ">=2.2.1" },
@@ -206,15 +208,16 @@ dev = [
 
 [[package]]
 name = "atopile-easyeda2kicad"
-version = "0.9.5"
+version = "0.9.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
+    { name = "httpx" },
     { name = "pydantic" },
-    { name = "requests" },
+    { name = "truststore" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/69/79/f5fb50adb3cc939948fa9dc9a3aa4b9dc4196e181492ccdf0b7054807e89/atopile_easyeda2kicad-0.9.5.tar.gz", hash = "sha256:76e75c55b50d90c2b37f962da78f4c3a1abcadd1486e29816fcf3bcd7fbcd2d9", size = 1474187, upload-time = "2025-04-09T00:22:58.064Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/4d/ba2c53b3cb3a7f83ed580e1c2df0159faa5cecc25155f6b04e18d68b7a55/atopile_easyeda2kicad-0.9.7.tar.gz", hash = "sha256:6345f59d050f7c6c8d64e32a7db3bed5600d824c810eda1db578b1a995168c7f", size = 1473455, upload-time = "2025-09-01T22:54:39.519Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/af/40/e05bf39e3ed26c947c243119e5c2721b6f7b302b4b9ed5043caddf6328e2/atopile_easyeda2kicad-0.9.5-py3-none-any.whl", hash = "sha256:e4a90d214ef21fe5e5b1f1b68d0575b7bdcdbb718065e7054fb5571744d1556f", size = 54725, upload-time = "2025-04-09T00:22:55.966Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/1a/9f6e2425008a895c4f8b398c6e8826b1bf66fe717ed6ab200ff7f12f4f26/atopile_easyeda2kicad-0.9.7-py3-none-any.whl", hash = "sha256:4ce8e720d499a788897b4082d08c3d527439509cb0768b89227377efa1c8aa4d", size = 54939, upload-time = "2025-09-01T22:54:37.876Z" },
 ]
 
 [[package]]
@@ -2425,6 +2428,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/38/04/1cd43f72c241fedcf0d9a18d0783953ee301eac9e5d9db1df0f0f089d9af/trove_classifiers-2025.5.9.12.tar.gz", hash = "sha256:7ca7c8a7a76e2cd314468c677c69d12cc2357711fcab4a60f87994c1589e5cb5", size = 16940, upload-time = "2025-05-09T12:04:48.829Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/92/ef/c6deb083748be3bcad6f471b6ae983950c161890bf5ae1b2af80cc56c530/trove_classifiers-2025.5.9.12-py3-none-any.whl", hash = "sha256:e381c05537adac78881c8fa345fd0e9970159f4e4a04fcc42cfd3129cca640ce", size = 14119, upload-time = "2025-05-09T12:04:46.38Z" },
+]
+
+[[package]]
+name = "truststore"
+version = "0.10.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/a3/1585216310e344e8102c22482f6060c7a6ea0322b63e026372e6dcefcfd6/truststore-0.10.4.tar.gz", hash = "sha256:9d91bd436463ad5e4ee4aba766628dd6cd7010cf3e2461756b3303710eebc301", size = 26169, upload-time = "2025-08-12T18:49:02.73Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/19/97/56608b2249fe206a67cd573bc93cd9896e1efb9e98bce9c163bcdc704b88/truststore-0.10.4-py3-none-any.whl", hash = "sha256:adaeaecf1cbb5f4de3b1959b42d41f6fab57b2b1666adb59e89cb0b53361d981", size = 18660, upload-time = "2025-08-12T18:49:01.46Z" },
 ]
 
 [[package]]

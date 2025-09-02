@@ -7,10 +7,9 @@ import sys
 from dataclasses import dataclass
 from importlib.metadata import version as get_package_version
 
-import requests
-
 import faebryk.library._F as F
 from atopile.config import config
+from faebryk.libs.http import HTTPStatusError, Response, http_client
 from faebryk.libs.picker.api.models import (
     BaseParams,
     Component,
@@ -33,7 +32,7 @@ class ApiNotConfiguredError(ApiError): ...
 
 
 class ApiHTTPError(ApiError):
-    def __init__(self, error: requests.exceptions.HTTPError):
+    def __init__(self, error: HTTPStatusError):
         super().__init__()
         self.response = error.response
 
@@ -52,18 +51,6 @@ class ApiClient:
         api_url: str = config.project.services.components.url
         api_key: str | None = None
 
-    def __init__(self):
-        self._client = requests.Session()
-        self._client.headers.update(
-            {
-                "User-Agent": (
-                    f"atopile/{get_package_version('atopile')} "
-                    f"({sys.platform}; "
-                    f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})"
-                ),
-            }
-        )
-
     @property
     @once
     def _cfg(self) -> ApiConfig:
@@ -72,18 +59,24 @@ class ApiClient:
     @property
     @once
     def _headers(self) -> dict[str, str]:
-        return {"Authorization": f"Bearer {self._cfg.api_key}"}
+        return {
+            "Authorization": f"Bearer {self._cfg.api_key}",
+            "User-Agent": (
+                f"atopile/{get_package_version('atopile')} "
+                f"({sys.platform}; "
+                f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro})"
+            ),
+        }
 
-    def _get(self, url: str, timeout: float = 10) -> requests.Response:
+    def _get(self, url: str, timeout: float = 10) -> Response:
         try:
-            response = self._client.get(
-                f"{self._cfg.api_url}{url}",
-                timeout=timeout,
-                headers=self._headers,
+            with http_client(
+                self._headers,
                 verify=not config.project.dangerously_skip_ssl_verification,
-            )
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+            ) as client:
+                response = client.get(f"{self._cfg.api_url}{url}", timeout=timeout)
+                response.raise_for_status()
+        except HTTPStatusError as e:
             raise ApiHTTPError(e) from e
 
         if API_LOG:
@@ -100,17 +93,17 @@ class ApiClient:
 
     def _post(
         self, url: str, data: dict, timeout: float = DEFAULT_API_TIMEOUT_SECONDS
-    ) -> requests.Response:
+    ) -> Response:
         try:
-            response = self._client.post(
-                f"{self._cfg.api_url}{url}",
-                json=data,
-                timeout=timeout,
-                headers=self._headers,
+            with http_client(
+                self._headers,
                 verify=not config.project.dangerously_skip_ssl_verification,
-            )
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
+            ) as client:
+                response = client.post(
+                    f"{self._cfg.api_url}{url}", json=data, timeout=timeout
+                )
+                response.raise_for_status()
+        except HTTPStatusError as e:
             raise ApiHTTPError(e) from e
 
         if API_LOG:
