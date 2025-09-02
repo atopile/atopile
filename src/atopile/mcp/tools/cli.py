@@ -27,6 +27,10 @@ class BuildResult(Result):
     logs: str
 
 
+class PackageVerifyResult(Result):
+    logs: str
+
+
 @cli_tools.register()
 def build_project(
     absolute_project_dir: Path, target_name_from_yaml: str
@@ -154,4 +158,30 @@ def install_package(
         success=True,
         project_dir=str(absolute_project_dir),
         installed_packages=package_identifiers,
+    )
+
+
+@cli_tools.register()
+def verify_package(absolute_project_dir: Path) -> PackageVerifyResult:
+    """
+    Check if a project satisfies requirements to be published as package.
+    """
+    from atopile.cli.package import verify_package as _verify_package
+    from atopile.config import config
+
+    config.apply_options(entry=str(absolute_project_dir))
+
+    success = True
+    with capture_logs() as logs:
+        logger.info("Verifying package at '%s'", absolute_project_dir)
+        try:
+            with log_exceptions(logs):
+                _verify_package(config)
+        except Exception:
+            success = False
+
+    return PackageVerifyResult(
+        success=success,
+        project_dir=str(absolute_project_dir),
+        logs=logs.getvalue(),
     )
