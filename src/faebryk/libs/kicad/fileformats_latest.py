@@ -1910,20 +1910,6 @@ class _C_kicad_pcb_file(SEXP_File):
 
     kicad_pcb: C_kicad_pcb
 
-    @staticmethod
-    def skeleton(
-        generator: str,
-        generator_version: str,
-        version: int = KICAD_PCB_VERSION,
-    ) -> "C_kicad_pcb_file":
-        return C_kicad_pcb_file(
-            kicad_pcb=C_kicad_pcb_file.C_kicad_pcb(
-                version=version,
-                generator=generator,
-                generator_version=generator_version,
-            )
-        )
-
 
 @dataclass
 class C_kicad_footprint_file(SEXP_File):
@@ -2196,9 +2182,10 @@ if RICH_PRINT:
 import faebryk.core.zig as zig  # noqa: E402
 
 
+@dataclass
 class C_kicad_pcb_file:
-    def __init__(self, zig_pcb: zig.PcbFile):
-        self._kicad_pcb = zig_pcb
+    def __init__(self, kicad_pcb: zig.PcbFile):
+        self._kicad_pcb = kicad_pcb
 
     C_kicad_pcb = _C_kicad_pcb_file.C_kicad_pcb
 
@@ -2218,10 +2205,27 @@ class C_kicad_pcb_file:
             data = path_or_string_or_data
 
         pcb = zig.loads(data)
-        return cls(pcb)
+        return cls(kicad_pcb=pcb)
 
     def dumps(self, path: Path | None = None):
         raw = zig.dumps(self._kicad_pcb)
         if path is not None:
             path.write_text(raw, encoding="utf-8")
         return raw
+
+    @staticmethod
+    def skeleton(
+        generator: str,
+        generator_version: str,
+        version: int = KICAD_PCB_VERSION,
+    ) -> "C_kicad_pcb_file":
+        # Create a minimal PCB file structure
+        return C_kicad_pcb_file(
+            zig.PcbFile(
+                zig.KicadPcb(
+                    version=version,
+                    generator=generator,
+                    generator_version=generator_version,
+                )  # type: ignore
+            )
+        )

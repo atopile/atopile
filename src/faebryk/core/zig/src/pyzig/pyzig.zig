@@ -11,6 +11,111 @@ pub fn module_method(comptime method: Method, comptime name: [*:0]const u8) py.P
     };
 }
 
+// Compact version for printing structs inside arrays
+pub fn printStructCompact(value: anytype, buf: []u8) ![:0]u8 {
+    const T = @TypeOf(value);
+    const info = @typeInfo(T);
+    
+    switch (info) {
+        .@"struct" => |s| {
+            var pos: usize = 0;
+            
+            // Write struct name and opening brace
+            const header = try std.fmt.bufPrintZ(buf[pos..], "{s}{{ ", .{@typeName(T)});
+            pos += header.len;
+            
+            // Write each field in compact format
+            inline for (s.fields, 0..) |field, field_idx| {
+                if (field_idx > 0) {
+                    const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
+                    pos += comma.len;
+                }
+                
+                const field_value = @field(value, field.name);
+                const field_type = @TypeOf(field_value);
+                const field_type_info = @typeInfo(field_type);
+                
+                // Format field name
+                const field_name_str = try std.fmt.bufPrintZ(buf[pos..], ".{s} = ", .{field.name});
+                pos += field_name_str.len;
+                
+                // Check if it's a string slice
+                const is_string = switch (field_type_info) {
+                    .pointer => |ptr| ptr.size == .slice and ptr.child == u8 and ptr.is_const,
+                    else => false,
+                };
+                
+                if (is_string) {
+                    const str_slice: []const u8 = field_value;
+                    // Check if string is printable
+                    var is_printable = true;
+                    for (str_slice) |c| {
+                        if (c < 32 or c > 126) {
+                            is_printable = false;
+                            break;
+                        }
+                    }
+                    if (is_printable and str_slice.len > 0) {
+                        const str_out = try std.fmt.bufPrintZ(buf[pos..], "\"{s}\"", .{str_slice});
+                        pos += str_out.len;
+                    } else {
+                        // Show as byte array for non-printable
+                        const bytes_out = try std.fmt.bufPrintZ(buf[pos..], "{any}", .{field_value});
+                        pos += bytes_out.len;
+                    }
+                } else {
+                    // For other types, use compact representation
+                    const field_str = switch (field_type_info) {
+                        .@"struct" => blk: {
+                            // Nested struct - show type name only for compactness
+                            break :blk try std.fmt.bufPrintZ(buf[pos..], "{s}{{ ... }}", .{@typeName(field_type)});
+                        },
+                        .optional => |opt| blk: {
+                            if (@typeInfo(opt.child) == .@"struct") {
+                                if (field_value != null) {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "{s}{{ ... }}", .{@typeName(opt.child)});
+                                } else {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "null", .{});
+                                }
+                            } else if (@typeInfo(opt.child) == .pointer and @typeInfo(opt.child).pointer.size == .slice) {
+                                // Optional slice
+                                if (field_value != null) {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "{{ ... }}", .{});
+                                } else {
+                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "null", .{});
+                                }
+                            } else {
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "{?any}", .{field_value});
+                            }
+                        },
+                        .pointer => |ptr| blk: {
+                            if (ptr.size == .slice) {
+                                // Show slice length for non-strings
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "{{ ... }}", .{});
+                            } else {
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "{any}", .{field_value});
+                            }
+                        },
+                        else => try std.fmt.bufPrintZ(buf[pos..], "{any}", .{field_value}),
+                    };
+                    pos += field_str.len;
+                }
+            }
+            
+            // Write closing brace
+            const footer = try std.fmt.bufPrintZ(buf[pos..], " }}", .{});
+            pos += footer.len;
+            
+            // Null-terminate
+            if (pos >= buf.len) return error.BufferTooSmall;
+            buf[pos] = 0;
+            
+            return buf[0..pos :0];
+        },
+        else => @compileError("Not a struct"),
+    }
+}
+
 pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
     const T = @TypeOf(value);
     const info = @typeInfo(T);
@@ -107,7 +212,6 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                     } else {
                                         break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{?s}\"\n", .{ field.name, field_value });
                                     }
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?s}\n", .{ field.name, field_value });
                                 } else {
                                     break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {?any}\n", .{ field.name, field_value });
                                 }
@@ -117,17 +221,93 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                         },
                         .pointer => |ptr| blk: {
                             if (ptr.size == .slice) {
-                                // Slice - use {s} for strings, {any} for other slices
                                 if (ptr.child == u8) {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {s}\n", .{ field.name, field_value });
+                                    // String slice - print with quotes
+                                    const str_slice: []const u8 = field_value;
+                                    // Check if string is printable
+                                    var is_printable = true;
+                                    for (str_slice) |c| {
+                                        if (c < 32 or c > 126) {
+                                            is_printable = false;
+                                            break;
+                                        }
+                                    }
+                                    if (is_printable and str_slice.len > 0) {
+                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: \"{s}\"\n", .{ field.name, str_slice });
+                                    } else {
+                                        // Non-printable or empty, show as byte array
+                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
+                                    }
                                 } else {
-                                    break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
+                                    // Check if it's a slice of structs
+                                    const child_info = @typeInfo(ptr.child);
+                                    if (child_info == .@"struct") {
+                                        // Slice of structs - print each one with our custom formatter
+                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: {{ ", .{field.name});
+                                        pos += field_header.len;
+                                        
+                                        // Print each struct in the slice
+                                        for (field_value, 0..) |item, i| {
+                                            if (i > 0) {
+                                                const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
+                                                pos += comma.len;
+                                            }
+                                            
+                                            // Use a recursive call to format the struct
+                                            var item_buf: [4096]u8 = undefined;
+                                            const item_str = try printStructCompact(item, &item_buf);
+                                            const item_out = try std.fmt.bufPrintZ(buf[pos..], "{s}", .{item_str});
+                                            pos += item_out.len;
+                                        }
+                                        
+                                        const closer = try std.fmt.bufPrintZ(buf[pos..], " }}\n", .{});
+                                        pos += closer.len;
+                                        break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
+                                    } else if (child_info == .pointer and child_info.pointer.size == .slice and child_info.pointer.child == u8) {
+                                        // Slice of strings ([][]const u8)
+                                        const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: {{ ", .{field.name});
+                                        pos += field_header.len;
+                                        
+                                        // Print each string in the slice
+                                        for (field_value, 0..) |item, i| {
+                                            if (i > 0) {
+                                                const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
+                                                pos += comma.len;
+                                            }
+                                            
+                                            const str_item: []const u8 = item;
+                                            // Check if string is printable
+                                            var is_printable = true;
+                                            for (str_item) |c| {
+                                                if (c < 32 or c > 126) {
+                                                    is_printable = false;
+                                                    break;
+                                                }
+                                            }
+                                            
+                                            if (is_printable and str_item.len > 0) {
+                                                const str_out = try std.fmt.bufPrintZ(buf[pos..], "\"{s}\"", .{str_item});
+                                                pos += str_out.len;
+                                            } else {
+                                                // Show as byte array
+                                                const bytes_out = try std.fmt.bufPrintZ(buf[pos..], "{any}", .{str_item});
+                                                pos += bytes_out.len;
+                                            }
+                                        }
+                                        
+                                        const closer = try std.fmt.bufPrintZ(buf[pos..], " }}\n", .{});
+                                        pos += closer.len;
+                                        break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
+                                    } else {
+                                        // Other non-struct slice types
+                                        break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
+                                    }
                                 }
                             } else {
-                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {}\n", .{ field.name, field_value });
+                                break :blk try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value });
                             }
                         },
-                        else => try std.fmt.bufPrintZ(buf[pos..], "  {s}: {}\n", .{ field.name, field_value }),
+                        else => try std.fmt.bufPrintZ(buf[pos..], "  {s}: {any}\n", .{ field.name, field_value }),
                     };
                     // Only add to pos if we didn't already handle it (optional struct case returns empty string)
                     if (field_str.len > 0) {
@@ -155,7 +335,13 @@ pub fn gen_repr(comptime struct_type: type) ?*const fn (?*py.PyObject) callconv(
         fn impl(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
             var buf: [8192]u8 = undefined; // Increased buffer size
-            const out = printStruct(obj.top.*, &buf) catch {
+            const out = printStruct(obj.top.*, &buf) catch |err| {
+                // Set a proper Python exception when printStruct fails
+                const err_msg = switch (err) {
+                    error.NoSpaceLeft => "Buffer overflow: Structure too large to print",
+                    else => "Failed to format structure for printing",
+                };
+                _ = py.PyErr_SetString(py.PyExc_ValueError, err_msg);
                 return null;
             };
             return py.PyUnicode_FromString(out);
@@ -215,9 +401,8 @@ pub fn str_prop(comptime struct_type: type, comptime field_name: [*:0]const u8) 
                 @field(obj.data.*, field_name_str)
             else
                 @field(obj.top.*, field_name_str);
-            // FIXME: this assumes zig literal (0-terminated), be careful!
-            const cstr: [*:0]const u8 = @ptrCast(val.ptr);
-            return py.PyUnicode_FromString(cstr);
+            // Use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+            return py.PyUnicode_FromStringAndSize(val.ptr, @intCast(val.len));
         }
     }.impl;
 
@@ -485,7 +670,25 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 // Property for slice fields
 pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
+    
+    // For struct types, we need to generate the binding at comptime
+    const child_info = @typeInfo(ChildType);
+    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, @typeName(ChildType)) else void;
+    
     const getter = struct {
+        fn getNestedTypeObj() *py.PyTypeObject {
+            if (child_info != .@"struct") unreachable;
+            // Initialize the type object once
+            const initialized = struct {
+                var done: bool = false;
+            };
+            if (!initialized.done) {
+                _ = py.PyType_Ready(&NestedBinding.type_object);
+                initialized.done = true;
+            }
+            return &NestedBinding.type_object;
+        }
+        
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
             const slice = @field(obj.data.*, field_name_str);
@@ -496,19 +699,52 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
 
             for (slice, 0..) |item, i| {
                 // Create Python object for each item
-                // This would need to handle different types appropriately
-                _ = py.PyList_SetItem(list, @intCast(i), wrap_value(item));
+                const wrapped = wrap_value(item) orelse {
+                    py.Py_DECREF(list.?);
+                    return null;
+                };
+                _ = py.PyList_SetItem(list, @intCast(i), wrapped);
             }
 
             return list;
         }
 
         fn wrap_value(value: ChildType) ?*py.PyObject {
-            // This would need proper implementation based on ChildType
-            _ = value;
-            const none = py.Py_None();
-            py.Py_INCREF(none);
-            return none;
+            switch (child_info) {
+                .@"struct" => {
+                    // Create a new Python object for the struct
+                    const type_obj = getNestedTypeObj();
+                    const pyobj = py.PyType_GenericAlloc(type_obj, 0);
+                    if (pyobj == null) return null;
+                    
+                    const NestedWrapper = PyObjectWrapper(ChildType);
+                    const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
+                    wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
+                    wrapper.data = std.heap.c_allocator.create(ChildType) catch return null;
+                    wrapper.data.* = value;
+                    
+                    return pyobj;
+                },
+                .int => return py.PyLong_FromLong(@intCast(value)),
+                .float => return py.PyFloat_FromDouble(@floatCast(value)),
+                .bool => if (value) return py.Py_True() else return py.Py_False(),
+                .pointer => |ptr| {
+                    if (ptr.size == .slice and ptr.child == u8) {
+                        const cstr: [*:0]const u8 = @ptrCast(value.ptr);
+                        return py.PyUnicode_FromString(cstr);
+                    }
+                    // Other pointer types not yet supported
+                    const none = py.Py_None();
+                    py.Py_INCREF(none);
+                    return none;
+                },
+                else => {
+                    // Unsupported type - return None
+                    const none = py.Py_None();
+                    py.Py_INCREF(none);
+                    return none;
+                },
+            }
         }
     }.impl;
 
@@ -777,8 +1013,20 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
         // Generate the repr function
         pub fn generated_repr(self: ?*py.PyObject) callconv(.C) ?*py.PyObject {
             const wrapper_obj: *WrapperType = @ptrCast(@alignCast(self));
-            var buf: [8192]u8 = undefined; // Increased buffer size for large structs
-            const out = printStruct(wrapper_obj.data.*, &buf) catch {
+            var buf: [65536]u8 = undefined; // 64KB buffer for very large structs
+            const out = printStruct(wrapper_obj.data.*, &buf) catch |err| {
+                // If even 64KB is not enough, fall back to simple representation
+                if (err == error.NoSpaceLeft) {
+                    const type_name = @typeName(T);
+                    const simple_repr = std.fmt.allocPrintZ(std.heap.c_allocator, "<{s} object at 0x{x}>", .{ type_name, @intFromPtr(wrapper_obj) }) catch {
+                        _ = py.PyErr_SetString(py.PyExc_ValueError, "Failed to allocate memory for repr");
+                        return null;
+                    };
+                    defer std.heap.c_allocator.free(simple_repr);
+                    return py.PyUnicode_FromString(simple_repr);
+                }
+                // Other errors
+                _ = py.PyErr_SetString(py.PyExc_ValueError, "Failed to format structure for printing");
                 return null;
             };
             return py.PyUnicode_FromString(out);
