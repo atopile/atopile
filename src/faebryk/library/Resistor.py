@@ -79,16 +79,22 @@ class Resistor(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import Resistor
+        import Electrical
+ 
+        module UsageExample:
+            resistor = new Resistor
+            resistor.resistance = 10kohm +/- 5%
+            resistor.package = "0402"
 
-        resistor = new Resistor
-        resistor.resistance = 10kohm +/- 5%
-        resistor.package = "0402"
+            electrical1 = new Electrical
+            electrical2 = new Electrical
 
-        electrical1 ~ resistor.unnamed[0]
-        electrical2 ~ resistor.unnamed[1]
-        # OR
-        electrical1 ~> resistor ~> electrical2
+            electrical1 ~ resistor.unnamed[0]
+            electrical2 ~ resistor.unnamed[1]
+            # OR
+            electrical1 ~> resistor ~> electrical2
         """,
         language=F.has_usage_example.Language.ato,
     )

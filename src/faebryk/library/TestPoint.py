@@ -26,12 +26,13 @@ class TestPoint(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import TestPoint
+        import TestPoint, ElectricSignal
 
-        test_point = new TestPoint
-
-        # Connect to signal you want to probe
-        signal_to_test ~ test_point.contact
+        module UsageExample:
+            test_point = new TestPoint
+            electric_signal = new ElectricSignal
+            # Connect to signal you want to probe
+            electric_signal.line ~ test_point.contact
         """,
         language=F.has_usage_example.Language.ato,
     )

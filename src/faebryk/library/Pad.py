@@ -48,10 +48,12 @@ class Pad(ModuleInterface):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Pad
+        import Pad, ElectricSignal
 
-        pad = new Pad
-        electrical_signal ~ pad.net
+        module UsageExample:
+            pad = new Pad
+            electric_signal = new ElectricSignal
+            electric_signal.line ~ pad.net
         """,
         language=F.has_usage_example.Language.ato,
     )
