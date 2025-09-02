@@ -220,7 +220,14 @@ class _PackageValidators:
 
         context = bob.index_file(entry_path)
 
-        known_dependencies = {d.identifier for d in config.project.dependencies or []}
+        permitted_import_prefixes = {
+            d.identifier for d in config.project.dependencies or []
+        }
+
+        # Package-local imports must also be fully-qualified
+        if config.project.package is not None:
+            permitted_import_prefixes.add(config.project.package.identifier)
+
         offending: list[str] = []
         for _ref, node in context.refs.items():
             if isinstance(node, Context.ImportPlaceholder):
@@ -232,7 +239,10 @@ class _PackageValidators:
                     continue
 
                 # Allow fully-qualified imports from dependencies
-                if len(parts) >= 2 and f"{parts[0]}/{parts[1]}" in known_dependencies:
+                if (
+                    len(parts) >= 2
+                    and f"{parts[0]}/{parts[1]}" in permitted_import_prefixes
+                ):
                     continue
 
                 offending.append(node.from_path)
