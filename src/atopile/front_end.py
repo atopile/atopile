@@ -1016,12 +1016,6 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
         except* SkipPriorFailedException as e:
             raise errors.UserException("Build failed") from e
 
-    def append_statements(self, text: str, path: Path, node: L.Node) -> None:
-        context = self.index_text(text, path)
-        assert isinstance(context.scope_ctx, ap.File_inputContext)
-        with self._node_stack.enter(node):
-            self.visitFile_input(context.scope_ctx)
-
     def _try_build_all(self, context: Context) -> dict[TypeRef, L.Node]:
         out = {}
         with accumulate(errors.UserException) as accumulator:

@@ -9,6 +9,7 @@ from pathlib import Path
 from natsort import natsorted
 
 import faebryk.library._F as F
+from atopile.datatypes import TypeRef
 from faebryk.core.graph import Graph, GraphFunctions
 from faebryk.core.module import Module
 from faebryk.core.node import Node
@@ -159,10 +160,29 @@ def save_part_info_to_pcb(G: Graph):
 def load_picks_from_file(app: Module, picks_file_path: Path):
     from atopile.front_end import bob
 
-    bob.append_statements(picks_file_path.read_text(), picks_file_path, app)
+    picks: Node = bob.build_file(
+        picks_file_path, TypeRef.from_one(AtoCodeGen.PicksFile.PICKS_MODULE_NAME)
+    )
+
+    assert isinstance(picks, Module)
+
+    app_with_picks = picks.get_child_by_name("app")
+    assert isinstance(app_with_picks, Module)
+
+    app.specialize(app_with_picks)
+
+    # TODO: skip if descriptive properties have changed
+    # TODO: lcsc_attach
 
 
 def save_picks_to_file(G: Graph, picks_file_path: Path):
+    # TODO: fix docstrings (has_descriptive_properties?)
+    # TODO: save datasheet url (has_datasheet_defined)
+    # TODO: include params
+    # FIXME: skip parts that already have a pick (e.g. auto-generated packages) (has_suggested_pick)
+
+    from atopile.config import config
+
     nodes: list[tuple[Node, Trait]] = GraphFunctions(G).nodes_with_trait(
         F.has_part_picked
     )
@@ -179,7 +199,11 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
             parts[part_identifier] = part
             picks[node.get_full_name()] = part_identifier
 
-    picks_file = AtoCodeGen.PicksFile()
+    picks_file = AtoCodeGen.PicksFile(
+        entry=config.build.entry_section,
+        file=config.build.entry_file_path,
+    )
+
     for identifier, part in natsorted(parts.items()):
         picks_file.add_module(
             AtoCodeGen.Module(
@@ -201,7 +225,23 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
         )
 
     for name in natsorted(picks):
-        picks_file.add_stmt(AtoCodeGen.Retype(address=name, type=picks[name]))
+        # picks_file.add_stmt(AtoCodeGen.Retype(address=name, type=picks[name]))
+        part = parts[picks[name]]
+        picks_file.add_pick(
+            AtoCodeGen.Assignment(
+                address="app." + name.removeprefix("app."),
+                attribute="__pick__",
+                value=AtoCodeGen.New(
+                    type=F.has_part_picked_by_supplier.__name__,
+                    kwargs={
+                        "supplier_id": "lcsc",
+                        "supplier_partno": part.lcsc_id,
+                        "manufacturer": part.manufacturer,
+                        "partno": part.partno,
+                    },
+                ),
+            )
+        )
 
     with open(picks_file_path, "w") as f:
         f.write(picks_file.dump())
