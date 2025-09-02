@@ -1,20 +1,13 @@
-import argparse
 import ast
-import subprocess
-import sys
 import textwrap
 from pathlib import Path
 from textwrap import dedent
 
 import faebryk.library._F as F
 from atopile.datatypes import TypeRef
-from faebryk.libs.library import L
-from atopile.front_end import Bob, _has_ato_cmp_attrs
+from atopile.front_end import Bob
 from atopile.parse import parse_text_as_file
-from atopile.mcp.tools.library import _get_library_nodes
-from faebryk.core.module import Module
-from faebryk.core.moduleinterface import ModuleInterface
-
+from faebryk.libs.library import L
 
 
 def extract_usage_example_runtime(module_name: str) -> tuple[str, str]:
