@@ -34,6 +34,8 @@ from faebryk.libs.util import (
 
 logger = logging.getLogger(__name__)
 
+__all__ = ["AtoPart", "load_footprint_with_fallback"]
+
 
 def load_footprint_with_fallback(
     path: Path, footprint_filename: str
