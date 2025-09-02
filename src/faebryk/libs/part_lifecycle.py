@@ -29,7 +29,6 @@ from faebryk.libs.kicad.fileformats_latest import (
     C_kicad_model_file,
     C_kicad_pcb_file,
 )
-from faebryk.libs.kicad.fileformats_version import kicad_footprint_file
 from faebryk.libs.kicad.ipc import opened_in_pcbnew
 from faebryk.libs.picker.lcsc import (
     EasyEDA3DModel,
@@ -43,6 +42,7 @@ from faebryk.libs.util import (
     KeyErrorNotFound,
     find,
     indented_container,
+    load_footprint_with_fallback,
     md_list,
     once,
     path_replace,
@@ -487,56 +487,15 @@ class PartLifecycle:
                     Path("${KIPRJMOD}") / rel_path,
                 )
 
-        def _load_footprint_with_fallback(
-            self, part_path: Path, fp_name: str
-        ) -> tuple[Path, C_kicad_footprint_file]:
-            """
-            Load footprint file with backward compatibility and auto-upgrade.
-
-            First tries to load the sanitized filename, then falls back to the original
-            unsanitized filename. If the unsanitized file is found, it's automatically
-            renamed to the sanitized version for future compatibility.
-            """
-            sanitized_name = sanitize_filepath_part(fp_name)
-
-            sanitized_path = part_path / f"{sanitized_name}.kicad_mod"
-            if sanitized_path.exists():
-                fp = kicad_footprint_file(sanitized_path)
-                return sanitized_path, fp
-
-            unsanitized_path = part_path / f"{fp_name}.kicad_mod"
-            if unsanitized_path.exists():
-                logger.info(
-                    f"Found legacy unsanitized footprint file: {unsanitized_path}"
-                )
-
-                if sanitized_path.exists():
-                    logger.warning(
-                        f"Both sanitized and unsanitized footprint files exist: "
-                        f"{sanitized_path} and {unsanitized_path}. "
-                        "Using sanitized version."
-                    )
-                    fp = kicad_footprint_file(sanitized_path)
-                    return sanitized_path, fp
-
-                logger.info(
-                    f"Auto-upgrading footprint file: {unsanitized_path} -> "
-                    f"{sanitized_path}"
-                )
-                unsanitized_path.rename(sanitized_path)
-
-                fp = kicad_footprint_file(sanitized_path)
-                return sanitized_path, fp
-
-            raise FileNotFoundError(f"Footprint file not found: {fp_name}.kicad_mod")
-
         def get_footprint_from_identifier(
             self, identifier: str, component: Module
         ) -> tuple[Path, C_kicad_footprint_file]:
             lib_id, fp_name = identifier.split(":")
             part_path = self.get_part_from_footprint_identifier(identifier, component)
             try:
-                fp_path, fp = self._load_footprint_with_fallback(part_path, fp_name)
+                fp_path, fp = load_footprint_with_fallback(
+                    part_path, f"{fp_name}.kicad_mod"
+                )
 
                 # TODO: associate source project with component, so all that's needed
                 # here is to substitute ${KIPRJMOD} + rel_path for ${KIPRJMOD}

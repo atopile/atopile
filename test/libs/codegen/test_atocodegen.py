@@ -180,7 +180,7 @@ def test_backward_compatibility_unsanitized_footprint():
     import tempfile
     from pathlib import Path
 
-    from faebryk.libs.ato_part import _load_footprint_with_fallback
+    from faebryk.libs.util import load_footprint_with_fallback
 
     with tempfile.TemporaryDirectory() as temp_dir:
         temp_path = Path(temp_dir)
@@ -199,7 +199,7 @@ def test_backward_compatibility_unsanitized_footprint():
         )
         unsanitized_fp_path.write_text(fp_content)
 
-        fp = _load_footprint_with_fallback(part_dir, unsanitized_fp_name)
+        _, fp = load_footprint_with_fallback(part_dir, unsanitized_fp_name)
 
         sanitized_fp_name = "TSSOP_8_L3_0_W3_0_P0_65_LS4_4_BL_EP.kicad_mod"
         sanitized_fp_path = part_dir / sanitized_fp_name
