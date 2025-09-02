@@ -577,6 +577,7 @@ pub const KicadPcb = struct {
     general: General = .{},
     paper: ?str = null,
     title_block: ?TitleBlock = null,
+    // TODO default layers? maybe better handle in application logic
     layers: []Layer = &.{},
     setup: Setup = .{},
     nets: []Net = &.{},
@@ -595,6 +596,13 @@ pub const KicadPcb = struct {
     dimensions: []Dimension = &.{},
     groups: []Group = &.{},
     targets: []Target = &.{},
+    // TODO:
+    // embedded_fonts: bool,
+    // embedded_files: EmbeddedFiles,
+    // gr_curves: []Curve = &.{},
+    // gr_text_boxs: []TextBox = &.{},
+    // tables: []Table = &.{},
+    // generateds: []Generated = &.{},
 
     pub const fields_meta = .{
         // Note: layers is NOT multidict - it's a single (layers ...) entry containing multiple Layer items

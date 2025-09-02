@@ -259,7 +259,8 @@ pub fn gen_repr(comptime struct_type: type) ?*const fn (?*py.PyObject) callconv(
                 _ = py.PyErr_SetString(py.PyExc_ValueError, err_msg);
                 return null;
             };
-            return py.PyUnicode_FromString(out);
+            // PyUnicode_FromStringAndSize copies the data, so we don't need to worry about buf going out of scope
+            return py.PyUnicode_FromStringAndSize(out.ptr, @intCast(out.len));
         }
     }.impl;
 
@@ -485,19 +486,32 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
     // For struct types, we need to generate the binding at comptime
     const child_info = @typeInfo(ChildType);
-    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, field_name) else void;
+    const type_name = if (child_info == .@"struct") 
+        std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str })
+    else 
+        field_name;
+    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name) else void;
 
     const getter = struct {
+        var nested_type_obj: ?*py.PyTypeObject = null;
+        var init_mutex = false;
+        
         fn getNestedTypeObj() *py.PyTypeObject {
             if (child_info != .@"struct") unreachable;
-            // Initialize the type object once
-            const initialized = struct {
-                var done: bool = false;
-            };
-            if (!initialized.done) {
-                _ = py.PyType_Ready(&NestedBinding.type_object);
-                initialized.done = true;
+            
+            if (nested_type_obj) |obj| {
+                return obj;
             }
+            
+            if (!init_mutex) {
+                init_mutex = true;
+                const result = py.PyType_Ready(&NestedBinding.type_object);
+                if (result < 0) {
+                    @panic("Failed to initialize optional nested type");
+                }
+                nested_type_obj = &NestedBinding.type_object;
+            }
+            
             return &NestedBinding.type_object;
         }
 
@@ -588,19 +602,32 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
     
     // For struct types, we need to generate the binding at comptime
     const child_info = @typeInfo(ChildType);
-    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, @typeName(ChildType)) else void;
+    const type_name = if (child_info == .@"struct") 
+        std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str })
+    else 
+        field_name;
+    const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name) else void;
     
     const getter = struct {
+        var nested_type_obj: ?*py.PyTypeObject = null;
+        var init_mutex = false;
+        
         fn getNestedTypeObj() *py.PyTypeObject {
             if (child_info != .@"struct") unreachable;
-            // Initialize the type object once
-            const initialized = struct {
-                var done: bool = false;
-            };
-            if (!initialized.done) {
-                _ = py.PyType_Ready(&NestedBinding.type_object);
-                initialized.done = true;
+            
+            if (nested_type_obj) |obj| {
+                return obj;
             }
+            
+            if (!init_mutex) {
+                init_mutex = true;
+                const result = py.PyType_Ready(&NestedBinding.type_object);
+                if (result < 0) {
+                    @panic("Failed to initialize slice nested type");
+                }
+                nested_type_obj = &NestedBinding.type_object;
+            }
+            
             return &NestedBinding.type_object;
         }
         
@@ -645,8 +672,8 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                 .bool => if (value) return py.Py_True() else return py.Py_False(),
                 .pointer => |ptr| {
                     if (ptr.size == .slice and ptr.child == u8) {
-                        const cstr: [*:0]const u8 = @ptrCast(value.ptr);
-                        return py.PyUnicode_FromString(cstr);
+                        // String slice - use PyUnicode_FromStringAndSize to handle non-null-terminated strings
+                        return py.PyUnicode_FromStringAndSize(value.ptr, @intCast(value.len));
                     }
                     // Other pointer types not yet supported
                     const none = py.Py_None();
@@ -683,20 +710,36 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
 pub fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime FieldType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
 
+    // Generate a unique type name for the nested struct
+    const type_name = std.fmt.comptimePrint("{s}.{s}", .{ @typeName(FieldType), field_name_str });
+    
     // Generate a Python binding for the nested struct type
     // We need to create this at comptime so it can be properly initialized
-    const NestedBinding = wrap_in_python(FieldType, field_name);
+    const NestedBinding = wrap_in_python(FieldType, type_name);
 
     const getter = struct {
+        // Store the type object statically and initialize it lazily
+        var nested_type_obj: ?*py.PyTypeObject = null;
+        var init_mutex = false; // Simple mutex for single-threaded init
+        
         fn getNestedTypeObj() *py.PyTypeObject {
-            // Initialize the type object once
-            const initialized = struct {
-                var done: bool = false;
-            };
-            if (!initialized.done) {
-                _ = py.PyType_Ready(&NestedBinding.type_object);
-                initialized.done = true;
+            if (nested_type_obj) |obj| {
+                return obj;
             }
+            
+            // Initialize the type if not done yet
+            if (!init_mutex) {
+                init_mutex = true;
+                
+                // Set up the type properly
+                const result = py.PyType_Ready(&NestedBinding.type_object);
+                if (result < 0) {
+                    @panic("Failed to initialize nested type");
+                }
+                
+                nested_type_obj = &NestedBinding.type_object;
+            }
+            
             return &NestedBinding.type_object;
         }
 
@@ -922,7 +965,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
             return 0;
         }
 
-        // Store the comptime-generated getset array
+        // Store the comptime-generated getset array as a var to ensure it persists
         pub var generated_getset = getset_array;
 
         // Generate the repr function
@@ -938,13 +981,14 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
                         return null;
                     };
                     defer std.heap.c_allocator.free(simple_repr);
-                    return py.PyUnicode_FromString(simple_repr);
+                    return py.PyUnicode_FromStringAndSize(simple_repr.ptr, @intCast(simple_repr.len));
                 }
                 // Other errors
                 _ = py.PyErr_SetString(py.PyExc_ValueError, "Failed to format structure for printing");
                 return null;
             };
-            return py.PyUnicode_FromString(out);
+            // PyUnicode_FromStringAndSize copies the data, so we don't need to worry about buf going out of scope
+            return py.PyUnicode_FromStringAndSize(out.ptr, @intCast(out.len));
         }
 
         // The actual PyTypeObject
@@ -954,7 +998,7 @@ pub fn wrap_in_python(comptime T: type, comptime name: [*:0]const u8) type {
             .tp_basicsize = @sizeOf(WrapperType),
             .tp_repr = generated_repr,
             .tp_flags = py.Py_TPFLAGS_DEFAULT | py.Py_TPFLAGS_BASETYPE,
-            .tp_getset = &generated_getset,
+            .tp_getset = @as([*]py.PyGetSetDef, @ptrCast(@constCast(&generated_getset))),
             .tp_init = generated_init,
         };
     };
