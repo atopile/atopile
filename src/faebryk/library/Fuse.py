@@ -52,14 +52,16 @@ class Fuse(Module):
 
         module UsageExample:
             fuse = new Fuse
-            fuse.trip_current = 2A +/- 10%
-            fuse.fuse_type = "NON_RESETTABLE"
-            fuse.response_type = "FAST"
-            fuse.package = "I1206"
+            fuse.lcsc_id = "C151133"
+            # fuse.trip_current = 500mA +/- 10%
+            # fuse.fuse_type = "NON_RESETTABLE"
+            # fuse.response_type = "FAST"
+            # fuse.package = "1206"
 
             # Connect fuse in series with power supply
             power_input = new ElectricPower
             protected_power = new ElectricPower
+            protected_power_ptc = new ElectricPower
 
             # Fuse protects the circuit from overcurrent
             power_input.hv ~> fuse ~> protected_power.hv
@@ -67,11 +69,14 @@ class Fuse(Module):
 
             # For resettable fuse (PTC)
             ptc_fuse = new Fuse
-            ptc_fuse.trip_current = 500mA +/- 20%
-            ptc_fuse.fuse_type = "RESETTABLE"
-            ptc_fuse.response_type = "SLOW"
+            ptc_fuse.lcsc_id = "C720075"
+            # ptc_fuse.trip_current = 500mA +/- 20%
+            # ptc_fuse.fuse_type = "RESETTABLE"
+            # ptc_fuse.response_type = "SLOW"
 
-            # Common applications: USB power protection, battery protection
+            # Fuse protects the circuit from overcurrent
+            power_input.hv ~> ptc_fuse ~> protected_power_ptc.hv
+            power_input.lv ~ protected_power_ptc.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

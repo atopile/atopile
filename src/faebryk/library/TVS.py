@@ -32,10 +32,10 @@ class TVS(F.Diode):
 
         module UsageExample:
             tvs = new TVS
-            tvs.reverse_breakdown_voltage = 5.1V +/- 5%
+            tvs.reverse_breakdown_voltage = 12V +/- 5%
             tvs.max_current = 1A
             tvs.reverse_working_voltage = 5V
-            tvs.package = "I0603"
+            tvs.package = "0603"
 
             # Connect TVS for power line protection
             power_supply = new ElectricPower
@@ -43,15 +43,7 @@ class TVS(F.Diode):
 
             # TVS protects against voltage spikes
             protected_line ~ tvs.cathode
-            tvs.anode ~ power_supply.lv  # Connect to ground
-
-            # Bidirectional TVS for signal line protection
-            signal_tvs = new TVS
-            signal_tvs.reverse_breakdown_voltage = 3.3V +/- 5%
-            signal_line = new Electrical
-
-            signal_line ~ signal_tvs.cathode
-            signal_tvs.anode ~ power_supply.lv
+            tvs.anode ~ power_supply.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

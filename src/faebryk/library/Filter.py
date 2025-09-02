@@ -37,19 +37,19 @@ class Filter(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Filter, Signal
+        import Filter, ElectricSignal
 
         module UsageExample:
-            input_signal = new Signal
-            output_signal = new Signal
+            input_signal = new ElectricSignal
+            output_signal = new ElectricSignal
 
             lowpass_filter = new Filter
             lowpass_filter.cutoff_frequency = 1000Hz +/- 10%
-            lowpass_filter.order = 2
+            lowpass_filter.order = 1
             lowpass_filter.response = "LOWPASS"
 
-            lowpass_filter.in_ ~ input_signal
-            lowpass_filter.out ~ output_signal
+            lowpass_filter.in_ ~ input_signal.line
+            lowpass_filter.out ~ output_signal.line
         """,
         language=F.has_usage_example.Language.ato,
     )

@@ -81,19 +81,3 @@ class LogicGate(Module):
 
     def op(self, *ins: F.Logic):
         return self.op_(ins, self.inputs, self.outputs)
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        #pragma experiment("MODULE_TEMPLATING")
-
-        import LogicGate, Logic
-
-        module UsageExample:
-            input_a = new Logic
-            input_b = new Logic
-            output_signal = new Logic
-
-            # logic_gate = LogicGate<input_cnt=2, output_cnt=1, functions=[]>
-        """,
-        language=F.has_usage_example.Language.ato,
-    )
