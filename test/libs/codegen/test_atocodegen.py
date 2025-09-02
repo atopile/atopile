@@ -180,6 +180,13 @@ def test_backward_compatibility_unsanitized_footprint():
     import tempfile
     from pathlib import Path
 
+    import faebryk.libs.ato_part as ato_part
+
+    assert hasattr(ato_part, "load_footprint_with_fallback"), (
+        f"Function not found in module. Available: "
+        f"{[name for name in dir(ato_part) if not name.startswith('_')]}"
+    )
+
     from faebryk.libs.ato_part import load_footprint_with_fallback
 
     with tempfile.TemporaryDirectory() as temp_dir:
