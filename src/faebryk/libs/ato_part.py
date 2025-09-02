@@ -78,8 +78,7 @@ def load_footprint_with_fallback(
             return sanitized_path, fp
 
         logger.info(
-            f"Auto-upgrading footprint file: {unsanitized_path} -> "
-            f"{sanitized_path}"
+            f"Auto-upgrading footprint file: {unsanitized_path} -> {sanitized_path}"
         )
         unsanitized_path.rename(sanitized_path)
 
@@ -91,12 +90,11 @@ def load_footprint_with_fallback(
         "(tried both sanitized and unsanitized versions)"
     )
 
+
 FBRK_OVERRIDE_CHECKSUM_MISMATCH = ConfigFlag(
     "PART_OVERRIDE_CHECKSUM_MISMATCH",
     default=False,
 )
-
-
 
 
 @dataclass(kw_only=True)

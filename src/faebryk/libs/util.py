@@ -2723,8 +2723,6 @@ def sanitize_filepath_part(x: str) -> str:
     return x
 
 
-
-
 def get_code_bin_of_terminal() -> str | None:
     if not os.environ.get("TERM_PROGRAM") == "vscode":
         return None
