@@ -428,7 +428,6 @@ class EasyEDAPart:
         return None
 
     def load_datasheet(self):
-        return
         if self.datasheet_url:
             return self.datasheet_url
 
