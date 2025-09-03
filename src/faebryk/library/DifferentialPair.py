@@ -53,6 +53,7 @@ class DifferentialPair(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         #pragma experiment("BRIDGE_CONNECT")
+
         import DifferentialPair, ElectricPower, Electrical
 
         module UsageExample:
@@ -62,23 +63,18 @@ class DifferentialPair(ModuleInterface):
             # Connect power reference for signal levels
             power_3v3 = new ElectricPower
             assert power_3v3.voltage within 3.3V +/- 5%
-            diff_pair.p.reference ~ power_3v3
-            diff_pair.n.reference ~ power_3v3
+            diff_pair.reference_shim ~ power_3v3
 
             # Connect between transmitter and receiver
             transmitter_pos = new Electrical
             transmitter_neg = new Electrical
-            receiver_pos = new Electrical
-            receiver_neg = new Electrical
 
             transmitter_pos ~ diff_pair.p.line
             transmitter_neg ~ diff_pair.n.line
-            diff_pair.p.line ~ receiver_pos
-            diff_pair.n.line ~ receiver_neg
 
             # Common applications: USB, Ethernet, PCIe, HDMI
-            usb_dp_dn = new DifferentialPair
-            usb_dp_dn.impedance = 90ohm +/- 10%
+            usb_dp = new DifferentialPair
+            usb_dp.impedance = 90ohm +/- 10%
         """,
         language=F.has_usage_example.Language.ato,
     )

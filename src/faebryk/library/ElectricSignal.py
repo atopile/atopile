@@ -130,27 +130,23 @@ class ElectricSignal(F.Signal):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         #pragma experiment("BRIDGE_CONNECT")
-        import ElectricSignal, ElectricPower, Electrical
+        import ElectricSignal, ElectricPower
 
         module UsageExample:
-            electric_signal = new ElectricSignal
+            sensor_output = new ElectricSignal
+            adc_input = new ElectricSignal
 
             # Connect power reference for signal levels
             power_3v3 = new ElectricPower
             assert power_3v3.voltage within 3.3V +/- 5%
-            electric_signal.reference ~ power_3v3
+            sensor_output.reference ~ power_3v3
+            adc_input.reference ~ power_3v3
 
-            # Connect between components
-            sensor_output = new Electrical
-            adc_input = new Electrical
-            sensor_output ~ electric_signal.line
-            adc_input ~ electric_signal.line
+            # Connect between components with references connecting
+            sensor_output ~ adc_input
 
-            # For differential signals, use two ElectricSignals
-            diff_pos = new ElectricSignal
-            diff_neg = new ElectricSignal
-            diff_pos.reference ~ power_3v3
-            diff_neg.reference ~ power_3v3
+            # Connect lines together without references connecting
+            sensor_output.line ~ adc_input.line
         """,
         language=F.has_usage_example.Language.ato,
     )

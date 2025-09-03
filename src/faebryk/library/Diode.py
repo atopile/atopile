@@ -108,23 +108,21 @@ class Diode(Module):
 
         module UsageExample:
             diode = new Diode
-            diode.forward_voltage = 0.7V +/- 10%
-            diode.current = 10mA +/- 5%
-            diode.reverse_working_voltage = 50V
-            diode.max_current = 100mA
-            diode.package = "I0603"
+            diode.lcsc_id = "C12889"
+            # diode.forward_voltage = 0.7V +/- 10%
+            # diode.current = 10mA +/- 5%
+            # diode.reverse_working_voltage = 50V
+            # diode.max_current = 100mA
+            # diode.package = "0603"
 
             # Connect as rectifier
             ac_input = new Electrical
             dc_output = new Electrical
+
             ac_input ~ diode.anode
             diode.cathode ~ dc_output
-
-            # With current limiting resistor
-            power_supply = new ElectricPower
-            current_limit_resistor = new Resistor
-            current_limit_resistor.resistance = 100ohm +/- 5%
-            power_supply.hv ~> current_limit_resistor ~> diode ~> power_supply.lv
+            # or
+            ac_input ~> diode ~> dc_output
         """,
         language=F.has_usage_example.Language.ato,
     )

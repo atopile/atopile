@@ -74,26 +74,27 @@ class MOSFET(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         #pragma experiment("BRIDGE_CONNECT")
-        import MOSFET, ElectricLogic, ElectricPower
+        import MOSFET, ElectricLogic, ElectricPower, Electrical
 
         module UsageExample:
             mosfet = new MOSFET
-            mosfet.channel_type = "N_CHANNEL"
-            mosfet.saturation_type = "ENHANCEMENT"
-            mosfet.gate_source_threshold_voltage = 2.5V +/- 10%
-            mosfet.max_drain_source_voltage = 60V
-            mosfet.max_continuous_drain_current = 30A
-            mosfet.on_resistance = 5mohm +/- 20%
-            mosfet.package = "SMD3x3mm"
+            mosfet.lcsc_id = "C97369"
+            # mosfet.channel_type = "N_CHANNEL"
+            # mosfet.saturation_type = "ENHANCEMENT"
+            # mosfet.gate_source_threshold_voltage = 2.5V +/- 10%
+            # mosfet.max_drain_source_voltage = 60V
+            # mosfet.max_continuous_drain_current = 30A
+            # mosfet.on_resistance = 5mohm +/- 20%
+            # mosfet.package = "SMD3x3mm"
 
             # Use as a switch
             gate_control = new ElectricLogic
             power_supply = new ElectricPower
-            load = new ElectricLogic
+            load = new Electrical
 
             mosfet.gate ~ gate_control.line
             mosfet.source ~ power_supply.lv
-            mosfet.drain ~ load.line
+            mosfet.drain ~ load
         """,
         language=F.has_usage_example.Language.ato,
     )

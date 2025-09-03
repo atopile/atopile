@@ -27,6 +27,7 @@ skip_list = [
     "SMDTwoPin",
     "SOIC",
     "Symbol",
+    "Pinmux",
 ]
 
 

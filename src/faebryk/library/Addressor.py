@@ -61,7 +61,7 @@ class Addressor(ModuleInterface):
         module UsageExample:
             # For I2C device with 2 address pins (4 possible addresses)
             addressor = new Addressor<address_bits=2>
-            addressor.base = 72  # 0x48 in decimal
+            addressor.base = 0x48
 
             # Connect power reference for address pins
             power_3v3 = new ElectricPower

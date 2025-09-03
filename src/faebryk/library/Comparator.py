@@ -75,28 +75,19 @@ class Comparator(Module):
 
         module UsageExample:
             comparator = new Comparator
-            comparator.common_mode_rejection_ratio = 80 +/- 10%
-            comparator.input_bias_current = 1nA +/- 50%
-            comparator.input_hysteresis_voltage = 5mV +/- 20%
-            comparator.input_offset_voltage = 1mV +/- 30%
-            comparator.propagation_delay = 100ns +/- 20%
-            comparator.output_type = "PushPull"
-            comparator.package = "SMD3x3mm"
+            comparator.lcsc_id = "C3014306"
+            # comparator.common_mode_rejection_ratio = 80 +/- 10%
+            # comparator.input_bias_current = 1nA +/- 50%
+            # comparator.input_hysteresis_voltage = 5mV +/- 20%
+            # comparator.input_offset_voltage = 1mV +/- 30%
+            # comparator.propagation_delay = 100ns +/- 20%
+            # comparator.output_type = "PushPull"
+            # comparator.package = "SMD3x3mm"
 
             # Power supply connections
             power_pos = new ElectricPower
             assert power_pos.voltage within 5V +/- 5%
             comparator.power ~ power_pos
-
-            # Create voltage reference with resistor divider
-            ref_resistor_high = new Resistor
-            ref_resistor_low = new Resistor
-            ref_resistor_high.resistance = 10kohm +/- 1%
-            ref_resistor_low.resistance = 10kohm +/- 1%
-
-            # Reference voltage = Vcc/2
-            power_pos.hv ~> ref_resistor_high ~> comparator.non_inverting_input
-            comparator.non_inverting_input ~> ref_resistor_low ~> power_pos.lv
 
             # Connect input and output signals
             input_signal = new Electrical

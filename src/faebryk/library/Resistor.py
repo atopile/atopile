@@ -80,8 +80,8 @@ class Resistor(Module):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         #pragma experiment("BRIDGE_CONNECT")
-        import Resistor
-        import Electrical
+
+        import Resistor, Electrical
 
         module UsageExample:
             resistor = new Resistor

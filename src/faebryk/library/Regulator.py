@@ -22,8 +22,15 @@ class Regulator(Module):
         example="""
         import Regulator, ElectricPower
 
+        module BuckRegulator from Regulator:
+            # Implement buck regulator here
+            # package = new BuckRegulatorPart
+            # power_in ~ package.input
+            # power_out ~ package.output
+            pass
+
         module UsageExample:
-            regulator = new Regulator
+            regulator = new BuckRegulator
 
             # Connect input power (unregulated)
             power_input = new ElectricPower
@@ -33,6 +40,7 @@ class Regulator(Module):
             # Connect output power (regulated)
             power_output = new ElectricPower
             regulator.power_out ~ power_output
+            assert power_output.voltage within 5V +/- 5%
 
             # Connect to load
             load_circuit = new ElectricPower

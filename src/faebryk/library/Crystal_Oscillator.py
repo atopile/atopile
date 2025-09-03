@@ -72,7 +72,7 @@ class Crystal_Oscillator(Module):
             microcontroller_xtal_out ~ crystal_osc.xtal_if.xout
 
             # Current limiting resistor prevents overdrive (optional)
-            crystal_osc.current_limiting_resistor.resistance = 1kohm +/- 5%
+            crystal_osc.current_limiting_resistor.resistance = 100 ohm +/- 5%
         """,
         language=F.has_usage_example.Language.ato,
     )

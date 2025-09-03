@@ -32,10 +32,10 @@ class TVS(F.Diode):
 
         module UsageExample:
             tvs = new TVS
-            tvs.reverse_breakdown_voltage = 12V +/- 5%
-            tvs.max_current = 1A
-            tvs.reverse_working_voltage = 5V
-            tvs.package = "0603"
+            tvs.lcsc_id = "C18723426"
+            # tvs.reverse_breakdown_voltage = 7V +/- 5%
+            # tvs.max_current = 1A
+            # tvs.reverse_working_voltage = 5V
 
             # Connect TVS for power line protection
             power_supply = new ElectricPower

@@ -89,21 +89,16 @@ class Inductor(Module):
             inductor.inductance = 10uH +/- 10%
             inductor.max_current = 2A
             inductor.dc_resistance = 50mohm +/- 20%
-            inductor.self_resonant_frequency = 100MHz +/- 10%
-            inductor.package = "I0805"
+            # inductor.self_resonant_frequency = 100MHz +/- 10%
+            inductor.package = "SMD5x5mm"
 
             electrical1 = new Electrical
             electrical2 = new Electrical
-            power_input = new Electrical
-            filtered_output = new Electrical
 
             electrical1 ~ inductor.unnamed[0]
             electrical2 ~ inductor.unnamed[1]
             # OR
             electrical1 ~> inductor ~> electrical2
-
-            # For filtering applications
-            power_input ~> inductor ~> filtered_output
         """,
         language=F.has_usage_example.Language.ato,
     )

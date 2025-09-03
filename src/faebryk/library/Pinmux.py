@@ -109,23 +109,3 @@ class Pinmux(Module):
                     pin = e.duplicates[0]
 
             self.set_function(pin, signal)
-
-    usage_example = L.f_field(F.has_usage_example)(
-        example="""
-        import Pinmux, Electrical, I2C, SPI
-
-        module UsageExample:
-            # GPIO pins
-            gpio_pins = new Electrical[8]
-
-            # Communication interfaces
-            i2c_bus = new I2C
-            spi_bus = new SPI
-
-            # Example pinmux usage (requires concrete implementation)
-            # pinmux = new ConcretePinmux  # Actual implementation needed
-            # pinmux.enable(i2c_bus, [0, 1])  # Enable I2C on pins 0,1
-            # pinmux.enable(spi_bus, [2, 3, 4, 5])  # Enable SPI on pins 2-5
-        """,
-        language=F.has_usage_example.Language.ato,
-    )

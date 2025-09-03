@@ -135,7 +135,7 @@ class Capacitor(Module):
 
         module UsageExample:
             capacitor = new Capacitor
-            capacitor.capacitance = 100nF +/- 10%
+            capacitor.capacitance = 100nF +/- 20%
             assert capacitor.max_voltage within 25V to 50V
             capacitor.package = "0603"
 

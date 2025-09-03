@@ -45,21 +45,31 @@ class Ethernet(ModuleInterface):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Ethernet, ElectricPower, ElectricLogic
+        import Ethernet, ElectricPower, Electrical
 
         module UsageExample:
             ethernet = new Ethernet
 
-            # Connect power reference for logic levels
+            pair_0_p = new Electrical
+            pair_0_n = new Electrical
+            pair_1_p = new Electrical
+            pair_1_n = new Electrical
+            led_anode = new Electrical
             power_3v3 = new ElectricPower
-            ethernet.led_speed.reference ~ power_3v3
-            ethernet.led_link.reference ~ power_3v3
+            assert power_3v3.voltage within 3.3V +/- 5%
 
-            # Connect status LEDs
-            speed_led_output = new ElectricLogic
-            link_led_output = new ElectricLogic
-            ethernet.led_speed ~ speed_led_output
-            ethernet.led_link ~ link_led_output
+            ethernet.pairs[0].p.line ~ pair_0_p
+            ethernet.pairs[0].n.line ~ pair_0_n
+            ethernet.led_speed.line ~ power_3v3.hv
+            ethernet.led_speed.reference.lv ~ power_3v3.lv
+            ethernet.led_link.line ~ led_anode
+            ethernet.led_link.reference.lv ~ power_3v3.lv
+            ethernet.pairs[1].n.line ~ pair_1_n
+            ethernet.pairs[1].p.line ~ pair_1_p
+
+            # or
+            ethernet2 = new Ethernet
+            ethernet2 ~ ethernet
         """,
         language=F.has_usage_example.Language.ato,
     )

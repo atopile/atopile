@@ -84,8 +84,9 @@ class MultiCapacitor(F.Capacitor):
         example="""
         #pragma experiment("FOR_LOOP")
         #pragma experiment("MODULE_TEMPLATING")
-        import MultiCapacitor
-        import Electrical
+        #pragma experiment("BRIDGE_CONNECT")
+
+        import MultiCapacitor, Electrical
 
         module UsageExample:
             multicapacitor = new MultiCapacitor<count=4>
@@ -97,6 +98,8 @@ class MultiCapacitor(F.Capacitor):
             electrical2 = new Electrical
             electrical1 ~ multicapacitor.unnamed[0]
             electrical2 ~ multicapacitor.unnamed[1]
+            # or
+            electrical1 ~> multicapacitor ~> electrical2
         """,
         language=F.has_usage_example.Language.ato,
     )

@@ -39,15 +39,17 @@ class ResistorArray(Module):
         example="""
         #pragma experiment("BRIDGE_CONNECT")
         #pragma experiment("FOR_LOOP")
+        #pragma experiment("MODULE_TEMPLATING")
         import ResistorArray, ElectricPower, ElectricLogic
 
         module UsageExample:
             # Create resistor array for pull-ups
-            pullup_array = new ResistorArray
-            pullup_array.resistance = 10kohm +/- 5%
-            pullup_array.rated_power = 125mW
-            pullup_array.rated_voltage = 50V
-            pullup_array.package = "0603"
+            pullup_array = new ResistorArray<resistor_count=4>
+            pullup_array.lcsc_id = "C29718"
+            # pullup_array.resistance = 10kohm +/- 5%
+            # pullup_array.rated_power = 125mW
+            # pullup_array.rated_voltage = 50V
+            # pullup_array.package = "0603"
 
             # Connect power supply
             power_3v3 = new ElectricPower
@@ -57,15 +59,11 @@ class ResistorArray(Module):
             gpio_signals = new ElectricLogic[4]
             for gpio_signal in gpio_signals:
                 gpio_signal.reference ~ power_3v3
-                gpio_signal.line ~> pullup_array.resistors[0] ~> power_3v3.hv
 
-            # Alternative: termination array for buses
-            termination_array = new ResistorArray
-            termination_array.resistance = 33ohm +/- 1%
-            termination_array.package = "0603"
-
-            # Common applications: pull-up/pull-down networks, bus termination,
-            # voltage dividers, current limiting, LED drivers
+            gpio_signals[0].line ~> pullup_array.resistors[0] ~> power_3v3.hv
+            gpio_signals[1].line ~> pullup_array.resistors[1] ~> power_3v3.hv
+            gpio_signals[2].line ~> pullup_array.resistors[2] ~> power_3v3.lv
+            gpio_signals[3].line ~> pullup_array.resistors[3] ~> power_3v3.lv
         """,
         language=F.has_usage_example.Language.ato,
     )

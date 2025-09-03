@@ -83,11 +83,10 @@ class Crystal(Module):
 
         module UsageExample:
             crystal = new Crystal
-            crystal.frequency = 16MHz +/- 20ppm
-            crystal.frequency_tolerance = 20ppm
-            crystal.load_capacitance = 18pF +/- 10%
-            crystal.equivalent_series_resistance = 80ohm +/- 20%
-            crystal.package = "SMD3x3mm"
+            crystal.lcsc_id = "C9002"
+            # crystal.frequency = 12MHz +/- 20ppm
+            # crystal.frequency_tolerance = 20ppm
+            # crystal.load_capacitance = 20pF +/- 10%
 
             # Connect to microcontroller with load capacitors
             load_cap1 = new Capacitor

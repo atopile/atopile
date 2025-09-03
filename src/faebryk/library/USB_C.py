@@ -29,7 +29,7 @@ class USB_C(ModuleInterface):
     usage_example = L.f_field(F.has_usage_example)(
         example="""
         #pragma experiment("BRIDGE_CONNECT")
-        import USB_C, ElectricPower, Resistor
+        import USB_C, USB2_0, ElectricPower, Resistor
 
         module UsageExample:
             usb_c = new USB_C
@@ -41,10 +41,8 @@ class USB_C(ModuleInterface):
             # Connect power reference for logic levels
             power_3v3 = new ElectricPower
             assert power_3v3.voltage within 3.3V +/- 5%
-            usb_c.rx.p.reference ~ power_3v3
-            usb_c.rx.n.reference ~ power_3v3
-            usb_c.tx.p.reference ~ power_3v3
-            usb_c.tx.n.reference ~ power_3v3
+            usb_c.rx.reference_shim ~ power_3v3
+            usb_c.tx.reference_shim ~ power_3v3
 
             # CC resistors for device detection (5.1k for device, 56k for host)
             cc1_resistor = new Resistor
@@ -54,6 +52,9 @@ class USB_C(ModuleInterface):
 
             usb_c.cc1 ~> cc1_resistor ~> power_3v3.lv
             usb_c.cc2 ~> cc2_resistor ~> power_3v3.lv
+
+            usb2 = new USB2_0
+            usb2.usb_if ~ usb_c.usb3.usb3_if.usb_if
         """,
         language=F.has_usage_example.Language.ato,
     )

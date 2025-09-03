@@ -41,8 +41,7 @@ class CAN(ModuleInterface):
             # Connect power reference for logic levels
             power_5v = new ElectricPower
             assert power_5v.voltage within 5V +/- 5%
-            can_bus.diff_pair.p.reference ~ power_5v
-            can_bus.diff_pair.n.reference ~ power_5v
+            can_bus.diff_pair.reference_shim ~ power_5v
 
             # CAN termination resistors (120 ohm at each end of bus)
             termination_resistor = new Resistor

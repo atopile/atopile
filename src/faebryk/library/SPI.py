@@ -33,9 +33,7 @@ class SPI(ModuleInterface):
             # Connect power reference for logic levels
             power_3v3 = new ElectricPower
             assert power_3v3.voltage within 3.3V +/- 5%
-            spi_bus.sclk.reference ~ power_3v3
-            spi_bus.miso.reference ~ power_3v3
-            spi_bus.mosi.reference ~ power_3v3
+            spi_bus.reference_shim ~ power_3v3
 
             # Connect to SPI device with chip select
             chip_select = new ElectricLogic
@@ -49,6 +47,11 @@ class SPI(ModuleInterface):
             spi_bus.sclk ~ sclk_line
             spi_bus.miso ~ miso_line
             spi_bus.mosi ~ mosi_line
+
+            # or
+
+            esp32_spi = new SPI
+            esp32_spi ~ spi_bus
         """,
         language=F.has_usage_example.Language.ato,
     )

@@ -56,6 +56,11 @@ class UART(ModuleInterface):
             external_rx ~ uart.base_uart.tx
             external_rts ~ uart.cts
             external_cts ~ uart.rts
+
+            # or
+            
+            uart2 = new UART
+            uart2 ~ uart
         """,
         language=F.has_usage_example.Language.ato,
     )

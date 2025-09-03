@@ -111,19 +111,22 @@ class LED(F.Diode):
 
         module UsageExample:
             led = new LED
-            led.forward_voltage = 2.1V +/- 10%
-            led.current = 1mA +/- 50%
-            led.max_current = 10mA
-            led.color = "RED"
-            led.brightness = 0.1cd
-            led.package = "I0603"
+            led.lcsc_id = "C2286"
+            # led.max_current = 10mA
+            # led.color = "RED"
+            # led.brightness = 0.1cd
+            # led.package = "0603"
+
+            forward_voltage = 2.4V +/- 10%
+            current_range = 1mA +/- 50%
 
             # Connect with current limiting resistor
             res = new Resistor
             power = new ElectricPower
             assert power.voltage within 5V +/- 5%
 
-            res.resistance = 3.3kohm +/- 5%
+            # select resistor value by constraining current
+            assert (power.voltage-forward_voltage)/res.resistance within current_range
 
             power.hv ~> res ~> led ~> power.lv
         """,

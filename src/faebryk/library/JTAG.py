@@ -74,6 +74,10 @@ class JTAG(ModuleInterface):
             reset_pullup.resistance = 10kohm +/- 5%
             jtag.n_trst.line ~> trst_pullup ~> jtag.n_trst.reference.hv
             jtag.n_reset.line ~> reset_pullup ~> jtag.n_reset.reference.hv
+
+            # or
+            microcontroller_jtag = new JTAG
+            microcontroller_jtag ~ jtag
         """,
         language=F.has_usage_example.Language.ato,
     )
