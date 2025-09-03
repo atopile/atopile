@@ -8,11 +8,11 @@ pub const KICAD_SCH_VERSION: i32 = 20211123;
 
 // Import common types from PCB module
 const pcb = @import("pcb.zig");
-pub const Xy = pcb.Xy;
-pub const Xyr = pcb.Xyr;
-pub const Wh = pcb.Wh;
-pub const Effects = pcb.Effects;
-pub const UUID = str;
+const Xy = pcb.Xy;
+const Xyr = pcb.Xyr;
+const Wh = pcb.Wh;
+const Effects = pcb.Effects;
+const UUID = str;
 
 // Enums
 pub const E_fill_type = enum {
@@ -93,7 +93,7 @@ pub const Fill = struct {
 pub const Stroke = struct {
     width: f64 = 0,
     type: E_stroke_type = .default,
-    color: [4]i32 = .{ 0, 0, 0, 0 },
+    color: Color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
 };
 
 // Shape structures
@@ -245,7 +245,7 @@ pub const SymbolInstance = struct {
 pub const Junction = struct {
     at: Xy,
     diameter: f64,
-    color: [4]i32,
+    color: Color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
     uuid: UUID,
 };
 
@@ -350,6 +350,20 @@ pub const LibSymbols = struct {
     };
 };
 
+pub const Color = struct {
+    r: i32,
+    g: i32,
+    b: i32,
+    a: i32,
+
+    pub const fields_meta = .{
+        .r = structure.SexpField{ .positional = true },
+        .g = structure.SexpField{ .positional = true },
+        .b = structure.SexpField{ .positional = true },
+        .a = structure.SexpField{ .positional = true },
+    };
+};
+
 pub const KicadSch = struct {
     version: i32 = KICAD_SCH_VERSION,
     generator: str,
@@ -369,7 +383,6 @@ pub const KicadSch = struct {
     bus_entrys: []BusEntry = &.{},
 
     pub const fields_meta = .{
-        .version = structure.SexpField{ .assert_value = KICAD_SCH_VERSION },
         .junctions = structure.SexpField{ .multidict = true, .sexp_name = "junction" },
         .wires = structure.SexpField{ .multidict = true, .sexp_name = "wire" },
         .texts = structure.SexpField{ .multidict = true, .sexp_name = "text" },

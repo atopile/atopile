@@ -11,7 +11,6 @@ pub fn module_method(comptime method: Method, comptime name: [*:0]const u8) py.P
     };
 }
 
-
 pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
     const T = @TypeOf(value);
     const info = @typeInfo(T);
@@ -141,40 +140,40 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                         // Slice of structs - format them nicely with line breaks
                                         const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [\n", .{field.name});
                                         pos += field_header.len;
-                                        
+
                                         // Print each struct in the slice with proper indentation
                                         for (field_value, 0..) |item, i| {
                                             // Add indentation for array items
                                             const indent = try std.fmt.bufPrintZ(buf[pos..], "    ", .{});
                                             pos += indent.len;
-                                            
+
                                             // Recursively print the struct
                                             var item_buf: [8192]u8 = undefined;
                                             const item_str = try printStruct(item, &item_buf);
-                                            
+
                                             // Add extra indentation to each line of the nested struct
                                             var line_iter = std.mem.splitScalar(u8, item_str, '\n');
                                             var first_line = true;
                                             while (line_iter.next()) |line| {
                                                 if (line.len == 0) continue;
-                                                
+
                                                 if (!first_line) {
                                                     const nested_indent = try std.fmt.bufPrintZ(buf[pos..], "    ", .{});
                                                     pos += nested_indent.len;
                                                 }
                                                 first_line = false;
-                                                
+
                                                 const line_out = try std.fmt.bufPrintZ(buf[pos..], "{s}\n", .{line});
                                                 pos += line_out.len;
                                             }
-                                            
+
                                             if (i < field_value.len - 1) {
                                                 // Add comma between items
                                                 const comma = try std.fmt.bufPrintZ(buf[pos..], "    ,\n", .{});
                                                 pos += comma.len;
                                             }
                                         }
-                                        
+
                                         const closer = try std.fmt.bufPrintZ(buf[pos..], "  ]\n", .{});
                                         pos += closer.len;
                                         break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
@@ -182,14 +181,14 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                         // Slice of strings ([][]const u8)
                                         const field_header = try std.fmt.bufPrintZ(buf[pos..], "  {s}: [", .{field.name});
                                         pos += field_header.len;
-                                        
+
                                         // Print each string in the slice
                                         for (field_value, 0..) |item, i| {
                                             if (i > 0) {
                                                 const comma = try std.fmt.bufPrintZ(buf[pos..], ", ", .{});
                                                 pos += comma.len;
                                             }
-                                            
+
                                             const str_item: []const u8 = item;
                                             // Check if string is printable
                                             var is_printable = true;
@@ -199,7 +198,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                                     break;
                                                 }
                                             }
-                                            
+
                                             if (is_printable and str_item.len > 0) {
                                                 const str_out = try std.fmt.bufPrintZ(buf[pos..], "\"{s}\"", .{str_item});
                                                 pos += str_out.len;
@@ -209,7 +208,7 @@ pub fn printStruct(value: anytype, buf: []u8) ![:0]u8 {
                                                 pos += bytes_out.len;
                                             }
                                         }
-                                        
+
                                         const closer = try std.fmt.bufPrintZ(buf[pos..], "]\n", .{});
                                         pos += closer.len;
                                         break :blk @as([:0]u8, buf[0..0 :0]); // Return empty since we handled it
@@ -537,23 +536,23 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 
     // For struct types, we need to generate the binding at comptime
     const child_info = @typeInfo(ChildType);
-    const type_name = if (child_info == .@"struct") 
+    const type_name = if (child_info == .@"struct")
         std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str })
-    else 
+    else
         field_name;
     const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name) else void;
 
     const getter = struct {
         var nested_type_obj: ?*py.PyTypeObject = null;
         var init_mutex = false;
-        
+
         fn getNestedTypeObj() *py.PyTypeObject {
             if (child_info != .@"struct") unreachable;
-            
+
             if (nested_type_obj) |obj| {
                 return obj;
             }
-            
+
             if (!init_mutex) {
                 init_mutex = true;
                 const result = py.PyType_Ready(&NestedBinding.type_object);
@@ -562,7 +561,7 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
                 }
                 nested_type_obj = &NestedBinding.type_object;
             }
-            
+
             return &NestedBinding.type_object;
         }
 
@@ -665,26 +664,26 @@ pub fn optional_prop(comptime struct_type: type, comptime field_name: [*:0]const
 // Property for slice fields
 pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8, comptime ChildType: type) py.PyGetSetDef {
     const field_name_str = std.mem.span(field_name);
-    
+
     // For struct types, we need to generate the binding at comptime
     const child_info = @typeInfo(ChildType);
-    const type_name = if (child_info == .@"struct") 
+    const type_name = if (child_info == .@"struct")
         std.fmt.comptimePrint("{s}.{s}", .{ @typeName(ChildType), field_name_str })
-    else 
+    else
         field_name;
     const NestedBinding = if (child_info == .@"struct") wrap_in_python(ChildType, type_name) else void;
-    
+
     const getter = struct {
         var nested_type_obj: ?*py.PyTypeObject = null;
         var init_mutex = false;
-        
+
         fn getNestedTypeObj() *py.PyTypeObject {
             if (child_info != .@"struct") unreachable;
-            
+
             if (nested_type_obj) |obj| {
                 return obj;
             }
-            
+
             if (!init_mutex) {
                 init_mutex = true;
                 const result = py.PyType_Ready(&NestedBinding.type_object);
@@ -693,10 +692,10 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                 }
                 nested_type_obj = &NestedBinding.type_object;
             }
-            
+
             return &NestedBinding.type_object;
         }
-        
+
         fn impl(self: ?*py.PyObject, _: ?*anyopaque) callconv(.C) ?*py.PyObject {
             const obj: *struct_type = @ptrCast(@alignCast(self));
             const slice = @field(obj.data.*, field_name_str);
@@ -724,13 +723,13 @@ pub fn slice_prop(comptime struct_type: type, comptime field_name: [*:0]const u8
                     const type_obj = getNestedTypeObj();
                     const pyobj = py.PyType_GenericAlloc(type_obj, 0);
                     if (pyobj == null) return null;
-                    
+
                     const NestedWrapper = PyObjectWrapper(ChildType);
                     const wrapper: *NestedWrapper = @ptrCast(@alignCast(pyobj));
                     wrapper.ob_base = py.PyObject_HEAD{ .ob_refcnt = 1, .ob_type = type_obj };
                     wrapper.data = std.heap.c_allocator.create(ChildType) catch return null;
                     wrapper.data.* = value;
-                    
+
                     return pyobj;
                 },
                 .int => return py.PyLong_FromLong(@intCast(value)),
@@ -778,7 +777,7 @@ pub fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u
 
     // Generate a unique type name for the nested struct
     const type_name = std.fmt.comptimePrint("{s}.{s}", .{ @typeName(FieldType), field_name_str });
-    
+
     // Generate a Python binding for the nested struct type
     // We need to create this at comptime so it can be properly initialized
     const NestedBinding = wrap_in_python(FieldType, type_name);
@@ -787,25 +786,25 @@ pub fn struct_prop(comptime struct_type: type, comptime field_name: [*:0]const u
         // Store the type object statically and initialize it lazily
         var nested_type_obj: ?*py.PyTypeObject = null;
         var init_mutex = false; // Simple mutex for single-threaded init
-        
+
         fn getNestedTypeObj() *py.PyTypeObject {
             if (nested_type_obj) |obj| {
                 return obj;
             }
-            
+
             // Initialize the type if not done yet
             if (!init_mutex) {
                 init_mutex = true;
-                
+
                 // Set up the type properly
                 const result = py.PyType_Ready(&NestedBinding.type_object);
                 if (result < 0) {
                     @panic("Failed to initialize nested type");
                 }
-                
+
                 nested_type_obj = &NestedBinding.type_object;
             }
-            
+
             return &NestedBinding.type_object;
         }
 

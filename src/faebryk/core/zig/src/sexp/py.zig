@@ -14,9 +14,9 @@ fn generateModule(
     comptime has_loads_dumps: bool,
 ) type {
     return struct {
-        // Store reference to the registered File type  
+        // Store reference to the registered File type
         var registered_file_type: ?*py.PyTypeObject = null;
-        
+
         // Create a custom module binding that uses the correct module name prefix
         const ModuleBinding = struct {
             pub fn register_all(py_module: ?*py.PyObject) c_int {
@@ -25,7 +25,7 @@ fn generateModule(
                 if (module_info != .@"struct") {
                     return -1;
                 }
-                
+
                 inline for (module_info.@"struct".decls) |decl| {
                     const decl_value = @field(T, decl.name);
                     const decl_type = @TypeOf(decl_value);
@@ -56,7 +56,7 @@ fn generateModule(
                                     binding.type_object.ob_base.ob_base.ob_refcnt -= 1;
                                     return -1;
                                 }
-                                
+
                                 // Store reference to the File type if it matches
                                 if (has_loads_dumps and inner_type == FileType) {
                                     registered_file_type = &binding.type_object;
@@ -77,7 +77,7 @@ fn generateModule(
                 @typeName(FileType)
             else
                 "File";
-            
+
             // Find the last dot to get just the struct name
             const last_dot = blk2: {
                 var idx: ?usize = null;
@@ -86,12 +86,12 @@ fn generateModule(
                 }
                 break :blk2 idx;
             };
-            
+
             const struct_name = if (last_dot) |idx|
                 type_simple_name[idx + 1 ..]
             else
                 type_simple_name;
-            
+
             // Create full type name like "pyzig.pcb.PcbFile"
             const full_type_name = module_name ++ "." ++ struct_name;
             break :blk bind.wrap_in_python(FileType, full_type_name);
@@ -151,12 +151,12 @@ fn generateModule(
             const file = FileType.loads(persistent_allocator, .{ .string = input_str }) catch |err| {
                 // Get the error context for better diagnostics
                 const error_context = sexp.structure.getErrorContext();
-                
+
                 var error_msg: [1024]u8 = undefined;
                 const msg = if (error_context) |ctx| blk: {
                     if (err == error.MissingField) {
                         if (ctx.line) |line| {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}' (near line {})", .{ 
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}' (near line {})", .{
                                 ctx.field_name orelse "unknown",
                                 ctx.path,
                                 line,
@@ -167,14 +167,14 @@ fn generateModule(
                                 }) catch "Failed to parse file";
                             };
                         } else {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}'", .{ 
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Missing required field '{s}' in struct '{s}'", .{
                                 ctx.field_name orelse "unknown",
                                 ctx.path,
                             }) catch "Failed to parse file";
                         }
                     } else if (err == error.UnexpectedValue) {
                         if (ctx.sexp_preview) |preview| {
-                            break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}': got '{s}'", .{ 
+                            break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}': got '{s}'", .{
                                 ctx.path,
                                 preview,
                             }) catch {
@@ -184,7 +184,7 @@ fn generateModule(
                             break :blk std.fmt.bufPrintZ(&error_msg, "Unexpected value in '{s}'", .{ctx.path}) catch "Failed to parse file";
                         }
                     } else {
-                        break :blk std.fmt.bufPrintZ(&error_msg, "Error in '{s}': {}", .{ 
+                        break :blk std.fmt.bufPrintZ(&error_msg, "Error in '{s}': {}", .{
                             ctx.path,
                             err,
                         }) catch {
@@ -194,7 +194,7 @@ fn generateModule(
                 } else blk: {
                     break :blk std.fmt.bufPrintZ(&error_msg, "Failed to parse: {}", .{err}) catch "Failed to parse file";
                 };
-                
+
                 py.PyErr_SetString(py.PyExc_ValueError, msg);
                 return null;
             };
@@ -291,6 +291,8 @@ const PcbModule = generateModule("pcb", "pyzig.pcb", sexp.kicad.pcb, sexp.kicad.
 const FootprintModule = generateModule("footprint", "pyzig.footprint", sexp.kicad.footprint, sexp.kicad.footprint.FootprintFile, true);
 const NetlistModule = generateModule("netlist", "pyzig.netlist", sexp.kicad.netlist, sexp.kicad.netlist.NetlistFile, true);
 const FpLibTableModule = generateModule("fp_lib_table", "pyzig.fp_lib_table", sexp.kicad.fp_lib_table, sexp.kicad.fp_lib_table.FpLibTableFile, true);
+const SymbolModule = generateModule("symbol", "pyzig.symbol", sexp.kicad.symbol, sexp.kicad.symbol.SymbolFile, true);
+const SchematicModule = generateModule("schematic", "pyzig.schematic", sexp.kicad.schematic, sexp.kicad.schematic.SchematicFile, true);
 // Add more modules as needed
 
 // Main module methods
@@ -352,6 +354,24 @@ export fn PyInit_pyzig() ?*py.PyObject {
     }
     if (py.PyModule_AddObject(module, "fp_lib_table", fp_lib_table_module) < 0) {
         py.PyErr_SetString(py.PyExc_ValueError, "Failed to add fp_lib_table submodule");
+        return null;
+    }
+
+    const symbol_module = SymbolModule.createModule();
+    if (symbol_module == null) {
+        return null;
+    }
+    if (py.PyModule_AddObject(module, "symbol", symbol_module) < 0) {
+        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add symbol submodule");
+        return null;
+    }
+
+    const schematic_module = SchematicModule.createModule();
+    if (schematic_module == null) {
+        return null;
+    }
+    if (py.PyModule_AddObject(module, "schematic", schematic_module) < 0) {
+        py.PyErr_SetString(py.PyExc_ValueError, "Failed to add schematic submodule");
         return null;
     }
 

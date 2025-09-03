@@ -17,9 +17,9 @@ pub const SymbolFile = struct {
     const root_symbol = "kicad_sym";
 
     pub fn loads(allocator: std.mem.Allocator, in: structure.input) !SymbolFile {
-        const symbol = try structure.loads(SymbolLib, allocator, in, root_symbol);
+        const kicad_sym = try structure.loads(SymbolLib, allocator, in, root_symbol);
         return SymbolFile{
-            .symbol = symbol,
+            .kicad_sym = kicad_sym,
         };
     }
 

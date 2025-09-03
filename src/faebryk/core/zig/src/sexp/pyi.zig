@@ -20,6 +20,10 @@ fn generateModuleStub(allocator: std.mem.Allocator, comptime name: []const u8, c
     // Hack: Footprint imports some types from pcb
     if (std.mem.eql(u8, name, "footprint")) {
         try file.writeAll("from faebryk.core.zig.pcb import Xyr, Property, FpText, Line, Arc, Circle, Rect, Polygon, Pad, Model\n");
+    } else if (std.mem.eql(u8, name, "symbol")) {
+        try file.writeAll("from faebryk.core.zig.schematic import Symbol\n");
+    } else if (std.mem.eql(u8, name, "schematic")) {
+        try file.writeAll("from faebryk.core.zig.pcb import Xy, Xyr, Wh, Effects\n");
     }
     try file.writeAll(content);
 
@@ -53,5 +57,7 @@ pub fn main() !void {
     try generateModuleStub(allocator, "footprint", sexp.kicad.footprint, "FootprintFile", output_dir);
     try generateModuleStub(allocator, "netlist", sexp.kicad.netlist, "NetlistFile", output_dir);
     try generateModuleStub(allocator, "fp_lib_table", sexp.kicad.fp_lib_table, "FpLibTableFile", output_dir);
+    try generateModuleStub(allocator, "symbol", sexp.kicad.symbol, "SymbolFile", output_dir);
+    try generateModuleStub(allocator, "schematic", sexp.kicad.schematic, "SchematicFile", output_dir);
     // Add more modules as needed
 }
