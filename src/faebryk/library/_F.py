@@ -22,6 +22,7 @@ from faebryk.library.is_bus_parameter import is_bus_parameter
 from faebryk.library.has_package_requirements import has_package_requirements
 from faebryk.library.can_specialize_defined import can_specialize_defined
 from faebryk.library.Power import Power
+from faebryk.library.can_be_surge_protected import can_be_surge_protected
 from faebryk.library.Signal import Signal
 from faebryk.library.has_single_electric_reference import has_single_electric_reference
 from faebryk.library.is_optional_defined import is_optional_defined
@@ -56,7 +57,6 @@ from faebryk.library.is_esphome_bus import is_esphome_bus
 from faebryk.library.is_pickable import is_pickable
 from faebryk.library.is_representable_by_single_value import is_representable_by_single_value
 from faebryk.library.Electrical import Electrical
-from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.Filter import Filter
 from faebryk.library.Logic import Logic
 from faebryk.library.has_single_electric_reference_defined import has_single_electric_reference_defined
@@ -87,10 +87,6 @@ from faebryk.library.Symbol import Symbol
 from faebryk.library.XtalIF import XtalIF
 from faebryk.library.has_net_name_affix import has_net_name_affix
 from faebryk.library.has_pin_association_heuristic import has_pin_association_heuristic
-<<<<<<< HEAD
-from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
-=======
->>>>>>> origin/task/delete_unsupported_std_lib
 from faebryk.library.can_attach_to_footprint import can_attach_to_footprint
 from faebryk.library.can_attach_via_pinmap import can_attach_via_pinmap
 from faebryk.library.has_footprint_impl import has_footprint_impl
@@ -133,28 +129,25 @@ from faebryk.library.SOIC import SOIC
 from faebryk.library.has_kicad_footprint_equal_ifs_defined import has_kicad_footprint_equal_ifs_defined
 from faebryk.library.has_explicit_part import has_explicit_part
 from faebryk.library.is_atomic_part import is_atomic_part
+from faebryk.library.SurgeProtection import SurgeProtection
 from faebryk.library.CapacitorElectrolytic import CapacitorElectrolytic
 from faebryk.library.MultiCapacitor import MultiCapacitor
 from faebryk.library.is_decoupled import is_decoupled
 from faebryk.library.Crystal_Oscillator import Crystal_Oscillator
 from faebryk.library.ResistorArray import ResistorArray
+from faebryk.library.is_surge_protected import is_surge_protected
 from faebryk.library.can_be_decoupled import can_be_decoupled
+from faebryk.library.is_surge_protected_defined import is_surge_protected_defined
 from faebryk.library.ElectricPower import ElectricPower
+from faebryk.library.can_be_surge_protected_defined import can_be_surge_protected_defined
 from faebryk.library.Battery import Battery
 from faebryk.library.Comparator import Comparator
-<<<<<<< HEAD
-from faebryk.library.ElectricSignal import ElectricSignal
-=======
->>>>>>> origin/task/delete_unsupported_std_lib
 from faebryk.library.LED import LED
 from faebryk.library.OpAmp import OpAmp
 from faebryk.library.Regulator import Regulator
 from faebryk.library.Relay import Relay
 from faebryk.library.can_be_decoupled_rails import can_be_decoupled_rails
-<<<<<<< HEAD
-=======
 from faebryk.library.ElectricSignal import ElectricSignal
->>>>>>> origin/task/delete_unsupported_std_lib
 from faebryk.library.DifferentialPair import DifferentialPair
 from faebryk.library.ElectricLogic import ElectricLogic
 from faebryk.library.FilterElectricalLC import FilterElectricalLC
