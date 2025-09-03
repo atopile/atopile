@@ -185,6 +185,7 @@ class AtoCodeGen:
     @dataclass
     class Block:
         name: str
+        from_name: str | None = None
         stmts: list["AtoCodeGen.Statement"] = field(default_factory=list)
         docstring: str | None = None
         type: Literal["module", "component"] = "module"
@@ -207,7 +208,8 @@ class AtoCodeGen:
 
         def dump(self) -> str:
             out = _StrBuilder()
-            out.append_line(f"{self.type} {self.name}:")
+            from_str = f" from {self.from_name}" if self.from_name else ""
+            out.append_line(f"{self.type} {self.name}{from_str}:")
             if self.docstring:
                 out.append_indented(f'"""{self.docstring}"""')
                 out.spacer()
@@ -318,7 +320,7 @@ class AtoCodeGen:
     @dataclass
     class PicksFile(File):
         PICKS_MODULE_NAME: ClassVar[str] = "PICKS"
-        picks: list["AtoCodeGen.Assignment"] = field(default_factory=list)
+        picks: list["AtoCodeGen.Retype"] = field(default_factory=list)
         entry: str | None = None
         file: Path | None = None
 
@@ -328,8 +330,33 @@ class AtoCodeGen:
             self.add_import(F.has_part_picked.__name__)
             self.add_import(F.has_part_picked_by_supplier.__name__)
 
-        def add_pick(self, pick: "AtoCodeGen.Assignment") -> None:
+        def add_pick(self, pick: "AtoCodeGen.Retype") -> None:
             self.picks.append(pick)
+
+        def add_pick_type(
+            self,
+            name: str,
+            from_name: str,
+            description: str | None,
+            pick_args: dict[str, str],
+        ) -> None:
+            self.add_import(from_name)
+
+            module = AtoCodeGen.Module(
+                name=name,
+                from_name=from_name,
+                docstring=description,
+            )
+
+            pick_trait = AtoCodeGen.Trait(
+                name=F.has_part_picked.__name__,
+                constructor=F.has_part_picked.by_supplier.__name__,
+                args=pick_args,
+            )
+
+            module.add_stmt(pick_trait)
+
+            self.add_module(module)
 
         def dump(self) -> str:
             out = _StrBuilder()

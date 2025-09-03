@@ -175,6 +175,13 @@ def load_picks_from_file(app: Module, picks_file_path: Path):
     # TODO: lcsc_attach
 
 
+def _find_stdlib_ancestor(node: Module) -> type[Node]:
+    # FIXME: handle non-trivial inheritance hierarchies
+    while type(node).__name__ not in F.__dict__:
+        node = node.get_less_special()
+    return type(node)
+
+
 def save_picks_to_file(G: Graph, picks_file_path: Path):
     # TODO: fix docstrings (has_descriptive_properties?)
     # TODO: save datasheet url (has_datasheet_defined)
@@ -187,7 +194,7 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
         F.has_part_picked
     )
 
-    parts: dict[str, PickedPartLCSC] = {}
+    parts: dict[str, tuple[PickedPartLCSC, type[Node]]] = {}
     picks: dict[str, str] = {}
 
     for node, _ in nodes:
@@ -196,52 +203,33 @@ def save_picks_to_file(G: Graph, picks_file_path: Path):
             part_identifier = (
                 sanitize_name(part.manufacturer) + "_" + sanitize_name(part.partno)
             )
-            parts[part_identifier] = part
+
+            node_type = _find_stdlib_ancestor(cast_assert(Module, node))
+
+            parts[part_identifier] = (part, node_type)
             picks[node.get_full_name()] = part_identifier
 
     picks_file = AtoCodeGen.PicksFile(
         entry=config.build.entry_section,
-        file=config.build.entry_file_path,
+        file=config.build.entry_file_path.relative_to(config.project.paths.src),
     )
 
-    for identifier, part in natsorted(parts.items()):
-        picks_file.add_module(
-            AtoCodeGen.Module(
-                name=identifier,
-                docstring=part.info.description if part.info is not None else "",
-                stmts=[
-                    AtoCodeGen.Trait(
-                        name=F.has_part_picked.__name__,
-                        constructor=F.has_part_picked.by_supplier.__name__,
-                        args={
-                            "supplier_id": "lcsc",
-                            "supplier_partno": part.lcsc_id,
-                            "manufacturer": part.manufacturer,
-                            "partno": part.partno,
-                        },
-                    )
-                ],
-            )
+    for identifier, (part, node_type) in natsorted(parts.items()):
+        picks_file.add_pick_type(
+            name=identifier,
+            from_name=node_type.__name__,
+            description=part.info.description if part.info is not None else "",
+            pick_args={
+                "supplier_id": "lcsc",
+                "supplier_partno": part.lcsc_id,
+                "manufacturer": part.manufacturer,
+                "partno": part.partno,
+            },
         )
 
     for name in natsorted(picks):
-        # picks_file.add_stmt(AtoCodeGen.Retype(address=name, type=picks[name]))
-        part = parts[picks[name]]
-        picks_file.add_pick(
-            AtoCodeGen.Assignment(
-                address="app." + name.removeprefix("app."),
-                attribute="__pick__",
-                value=AtoCodeGen.New(
-                    type=F.has_part_picked_by_supplier.__name__,
-                    kwargs={
-                        "supplier_id": "lcsc",
-                        "supplier_partno": part.lcsc_id,
-                        "manufacturer": part.manufacturer,
-                        "partno": part.partno,
-                    },
-                ),
-            )
-        )
+        address = "app." + name.removeprefix("app.")
+        picks_file.add_pick(AtoCodeGen.Retype(address=address, type=picks[name]))
 
     with open(picks_file_path, "w") as f:
         f.write(picks_file.dump())

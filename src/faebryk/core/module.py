@@ -47,6 +47,25 @@ class Module(Node):
         )
         return next(iter(specialest_next))
 
+    def get_less_special(self) -> "Module":
+        less_specials = {
+            less_special
+            for less_special_gif in self.specializes.get_gif_edges()
+            if (less_special := less_special_gif.node) is not self
+            and isinstance(less_special, Module)
+        }
+
+        if not less_specials:
+            return self
+
+        assert len(less_specials) == 1, (
+            f"Ambiguous less specials {less_specials} for {self}"
+        )
+
+        (less_special,) = less_specials
+
+        return less_special
+
     def get_children_modules[T: Module](
         self: Node,
         types: type[T] | tuple[type[T], ...],
