@@ -39,23 +39,19 @@ class Battery(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
+        #pragma experiment("BRIDGE_CONNECT")
         import Battery, ElectricPower
 
-        battery = new Battery
-        battery.voltage = 3.7V +/- 10%  # Li-ion cell
-        battery.capacity = 2000mAh +/- 5%
+        module UsageExample:
+            battery = new Battery
+            battery.voltage = 3.7V +/- 10%  # Li-ion cell
+            battery.capacity = 2000mAh +/- 5%
 
-        # Connect to system power
-        system_power = new ElectricPower
-        battery.power ~ system_power
+            max_charge_current = battery.capacity / 2h  # 2h charge time
 
-        # Battery specifications will constrain system voltage
-        assert system_power.voltage within battery.voltage
-
-        # For multiple cells in series
-        battery_pack = new Battery
-        battery_pack.voltage = 11.1V +/- 10%  # 3S Li-ion pack
-        battery_pack.capacity = 2000mAh +/- 5%
+            # Connect to system power
+            system_power = new ElectricPower
+            battery.power ~ system_power
         """,
         language=F.has_usage_example.Language.ato,
     )

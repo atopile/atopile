@@ -82,15 +82,24 @@ class MultiCapacitor(F.Capacitor):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import MultiCapacitor
+        #pragma experiment("FOR_LOOP")
+        #pragma experiment("MODULE_TEMPLATING")
+        #pragma experiment("BRIDGE_CONNECT")
 
-        multicapacitor = new MultiCapacitor<count=4>
-        for c in multicapacitor.capacitors:
-            c.capacitance = 100nF +/- 10%
-            c.package = "0402"
+        import MultiCapacitor, Electrical
 
-        electrical1 ~ multicapacitor.unnamed[0]
-        electrical2 ~ multicapacitor.unnamed[1]
+        module UsageExample:
+            multicapacitor = new MultiCapacitor<count=4>
+            for c in multicapacitor.capacitors:
+                c.capacitance = 100nF +/- 10%
+                c.package = "0402"
+
+            electrical1 = new Electrical
+            electrical2 = new Electrical
+            electrical1 ~ multicapacitor.unnamed[0]
+            electrical2 ~ multicapacitor.unnamed[1]
+            # or
+            electrical1 ~> multicapacitor ~> electrical2
         """,
         language=F.has_usage_example.Language.ato,
     )

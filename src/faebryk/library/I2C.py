@@ -170,21 +170,23 @@ class I2C(ModuleInterface):
         example="""
         import I2C, ElectricPower
 
-        i2c_bus = new I2C
-        i2c_bus.frequency = 400kHz  # Fast mode
-        i2c_bus.address = 0x48  # Device address
+        module UsageExample:
+            i2c_bus = new I2C
+            i2c_bus.frequency = 400000Hz  # Fast mode
+            i2c_bus.address = 0x48
 
-        # Connect power reference for logic levels
-        power_3v3 = new ElectricPower
-        assert power_3v3.voltage within 3.3V +/- 5%
-        i2c_bus.scl.reference ~ power_3v3
-        i2c_bus.sda.reference ~ power_3v3
+            # Connect power reference for logic levels
+            power_3v3 = new ElectricPower
+            assert power_3v3.voltage within 3.3V +/- 5%
+            i2c_bus.reference_shim ~ power_3v3
 
-        # Connect to microcontroller
-        microcontroller.i2c ~ i2c_bus
+        scl_pullup = new Resistor
+        scl_pullup.resistance = 10kOhm +/- 5%
+        i2c_bus.scl ~> scl_pullup ~> i2c_bus.reference_shim.hv
 
-        # Connect to I2C sensor
-        sensor.i2c ~ i2c_bus
+        sda_pullup = new Resistor
+        sda_pullup.resistance = 10kOhm +/- 5%
+        i2c_bus.sda ~> sda_pullup ~> i2c_bus.reference_shim.hv
         """,
         language=F.has_usage_example.Language.ato,
     )

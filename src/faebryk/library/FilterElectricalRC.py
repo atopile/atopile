@@ -78,24 +78,22 @@ class FilterElectricalRC(F.Filter):
         example="""
         import FilterElectricalRC, ElectricSignal, ElectricPower
 
-        # Create low-pass RC filter
-        rc_filter = new FilterElectricalRC
-        rc_filter.cutoff_frequency = 1kHz +/- 10%
+        module UsageExample:
+            # Create low-pass RC filter
+            rc_filter = new FilterElectricalRC
+            rc_filter.cutoff_frequency = 1000Hz +/- 10%
 
-        # Connect power reference
-        power_supply = new ElectricPower
-        assert power_supply.voltage within 5V +/- 5%
-        rc_filter.in_.reference ~ power_supply
-        rc_filter.out.reference ~ power_supply
+            # Connect power reference
+            power_supply = new ElectricPower
+            assert power_supply.voltage within 5V +/- 5%
+            rc_filter.in_.reference ~ power_supply
+            rc_filter.out.reference ~ power_supply
 
-        # Connect input and output signals
-        input_signal = new ElectricSignal
-        output_signal = new ElectricSignal
-        input_signal ~ rc_filter.in_
-        rc_filter.out ~ output_signal
-
-        # Alternative: use hardcoded values for faster solving
-        rc_filter_fixed = FilterElectricalRC.hardcoded_rc(1kohm +/- 5%, 100nF +/- 10%)
+            # Connect input and output signals
+            input_signal = new ElectricSignal
+            output_signal = new ElectricSignal
+            input_signal ~ rc_filter.in_
+            rc_filter.out ~ output_signal
         """,
         language=F.has_usage_example.Language.ato,
     )
