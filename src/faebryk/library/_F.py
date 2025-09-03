@@ -174,6 +174,7 @@ from faebryk.library.USB2_0_IF import USB2_0_IF
 from faebryk.library.can_switch_power import can_switch_power
 from faebryk.library.I2C import I2C
 from faebryk.library.LDO import LDO
+from faebryk.library.SPIFlash import SPIFlash
 from faebryk.library.UART import UART
 from faebryk.library.USB2_0 import USB2_0
 from faebryk.library.USB3_IF import USB3_IF
