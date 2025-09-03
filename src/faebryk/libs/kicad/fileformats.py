@@ -15,7 +15,7 @@ from dataclasses_json import (
 )
 from more_itertools import first
 
-from faebryk.libs.util import ConfigFlag, lazy_split
+from faebryk.libs.util import ConfigFlag, find, lazy_split
 
 logger = logging.getLogger(__name__)
 
@@ -628,7 +628,7 @@ class C_kicad_project_file(JSON_File):
 
 @dataclass_json(undefined=Undefined.INCLUDE)
 @dataclass(kw_only=True)
-class C_kicad_config_common(DataClassJsonMixin):
+class C_kicad_config_common(JSON_File, DataClassJsonMixin):
     @dataclass_json(undefined=Undefined.INCLUDE)
     @dataclass(kw_only=True)
     class C_kicad_config_common_api(DataClassJsonMixin):
@@ -712,6 +712,10 @@ if RICH_PRINT:
 # zig shims
 
 
+class Named(Protocol):
+    name: str
+
+
 # namespace
 class kicad:
     from faebryk.core.zig import (
@@ -723,6 +727,18 @@ class kicad:
         symbol,  # noqa: E402, F401
     )
 
+    class project:
+        ProjectFile = C_kicad_project_file
+
+    class drc:
+        DrcFile = C_kicad_drc_report_file
+
+    class model:
+        ModelFile = C_kicad_model_file
+
+    class config:
+        ConfigFile = C_kicad_config_common
+
     type types = (
         pcb.PcbFile
         | footprint.FootprintFile
@@ -730,6 +746,10 @@ class kicad:
         | netlist.NetlistFile
         | symbol.SymbolFile
         | schematic.SchematicFile
+        | C_kicad_drc_report_file
+        | C_kicad_model_file
+        | C_kicad_project_file
+        | C_kicad_config_common
     )
 
     @staticmethod
@@ -749,6 +769,15 @@ class kicad:
             return kicad.symbol
         elif instance_or_subclass(t, kicad.schematic.SchematicFile):
             return kicad.schematic
+        elif instance_or_subclass(t, kicad.drc.DrcFile):
+            return kicad.drc.DrcFile
+        # TODO need to switch to bytes instead of str in sexp load
+        # elif instance_or_subclass(t, kicad.model.ModelFile):
+        #    return kicad.model.ModelFile
+        elif instance_or_subclass(t, kicad.project.ProjectFile):
+            return kicad.project.ProjectFile
+        elif instance_or_subclass(t, kicad.config.ConfigFile):
+            return kicad.config.ConfigFile
 
         raise ValueError(f"Unsupported type: {t} ({type(t)})")
 
@@ -799,11 +828,28 @@ class kicad:
     def fp_get_base_name(fp: footprint.Footprint | pcb.Footprint) -> str:
         return fp.name.split(":")[-1]
 
+    @staticmethod
+    def get[T: Named](obj: Iterable[T], name: str) -> T:
+        return find(obj, lambda o: o.name == name)
+
+    @staticmethod
+    def set[T: Named](obj: list[T], name: str, value: T):
+        for o in obj:
+            if o.name == name:
+                obj.remove(o)
+                return
+
+        obj.append(value)
+
 
 class Property:
     class _Property(Protocol):
         name: str
         value: str
+
+    # TODO: use instead of list[_Property]
+    class _PropertyHolder(Protocol):
+        propertys: list["Property._Property"]
 
     class PropertyNotSet(Exception):
         pass

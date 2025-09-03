@@ -125,7 +125,7 @@ def netlist_manu():
 
     N = kicad.netlist
     return N.NetlistFile(
-        N.Netlist(
+        netlist=N.Netlist(
             version="E",
             design=None,
             libparts=N.Libparts(libparts=[]),

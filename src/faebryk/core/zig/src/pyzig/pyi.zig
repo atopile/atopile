@@ -71,6 +71,11 @@ pub const PyiGenerator = struct {
                     full_name;
                 try writer.writeAll(clean_name);
             },
+            .@"enum" => {
+                // Enums are handled as strings in Python bindings
+                // For now, enums are strings at runtime
+                try writer.writeAll("str");
+            },
             .optional => |opt_info| {
                 try self.writeZigTypeToPython(writer, opt_info.child);
                 try writer.writeAll(" | None");
@@ -83,6 +88,34 @@ pub const PyiGenerator = struct {
             .void => try writer.writeAll("None"),
             else => try writer.writeAll("Any"),
         }
+    }
+
+    fn generateEnumDefinition(self: *Self, comptime T: type) !void {
+        const type_info = @typeInfo(T);
+        if (type_info != .@"enum") return;
+
+        const enum_info = type_info.@"enum";
+        const class_name = @typeName(T);
+
+        // Remove module path from class name if present
+        const clean_name = if (std.mem.lastIndexOf(u8, class_name, ".")) |idx|
+            class_name[idx + 1 ..]
+        else
+            class_name;
+
+        // Generate as Literal type for better type checking
+        try self.output.writer().print("# Enum: {s}\n", .{clean_name});
+        try self.output.writer().print("type {s} = Literal[", .{clean_name});
+        
+        var first = true;
+        inline for (enum_info.fields) |field| {
+            if (!first) {
+                try self.output.writer().print(", ", .{});
+            }
+            first = false;
+            try self.output.writer().print("\"{s}\"", .{field.name});
+        }
+        try self.output.writer().print("]\n\n", .{});
     }
 
     fn generateStructDefinition(self: *Self, comptime T: type) !void {
@@ -213,13 +246,44 @@ pub const PyiGenerator = struct {
 
     pub fn generate(self: *Self, comptime T: type) ![]const u8 {
         //header
-        try self.output.writer().print("from typing import Any  # noqa: F401\n\n", .{});
+        try self.output.writer().print("from typing import Any, Literal  # noqa: F401\n\n", .{});
 
         try self.output.writer().print("# Dirty hack to not error in ruff check\n", .{});
         try self.output.writer().print("type Allocator = Any\n\n", .{});
 
-        // Generate struct definitions
+        // First generate enum definitions
         const root_type_info = @typeInfo(T);
+        switch (root_type_info) {
+            .@"struct" => |struct_info| {
+                inline for (struct_info.decls) |decl| {
+                    {
+                        const decl_type = @TypeOf(@field(T, decl.name));
+                        const decl_type_info = @typeInfo(decl_type);
+
+                        switch (decl_type_info) {
+                            .type => {
+                                const actual_type = @field(T, decl.name);
+                                const actual_type_info = @typeInfo(actual_type);
+
+                                switch (actual_type_info) {
+                                    .@"enum" => {
+                                        // Only generate enums that start with E_ (our naming convention)
+                                        if (std.mem.startsWith(u8, decl.name, "E_")) {
+                                            try self.generateEnumDefinition(actual_type);
+                                        }
+                                    },
+                                    else => {},
+                                }
+                            },
+                            else => {},
+                        }
+                    }
+                }
+            },
+            else => {},
+        }
+
+        // Generate struct definitions
         switch (root_type_info) {
             .@"struct" => |struct_info| {
                 inline for (struct_info.decls) |decl| {

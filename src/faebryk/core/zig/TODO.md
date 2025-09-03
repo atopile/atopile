@@ -22,3 +22,5 @@
 - [ ] src/faebryk/libs/picker/lcsc.py (compare_without_uuid & v6 symbol)
 
 look for kicad.sch
+
+CAREFUL WITH DEEPCOPY
