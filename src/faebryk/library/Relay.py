@@ -34,7 +34,7 @@ class Relay(Module):
 
     usage_example = L.f_field(F.has_usage_example)(
         example="""
-        import Relay, ElectricPower, Diode, NFET, ElectricLogic
+        import Relay, ElectricPower, Diode, MOSFET, ElectricLogic
 
         relay = new Relay
         relay.coil_max_voltage = 12V
@@ -50,7 +50,8 @@ class Relay(Module):
         relay.coil_power ~ power_12v
 
         # Control relay with MOSFET and flyback diode
-        control_mosfet = new NFET
+        control_mosfet = new MOSFET
+        control_mosfet.channel_type = "N_CHANNEL"
         flyback_diode = new Diode
         control_signal = new ElectricLogic
 
