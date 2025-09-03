@@ -327,10 +327,10 @@ class TestEndToEndCompletion:
     def test_nested_field_completion_end_to_end(self):
         """Test completion for nested field access like 'module.submodule.field.'"""
         ato = """
-            import LEDIndicator
+            import PoweredLED
             module TestModule:
-                led_indicator = new LEDIndicator
-                led_indicator.led.led.#|#
+                poweredLED = new PoweredLED
+                poweredLED.led.#|#
             """
 
         with _to_mock(ato) as (mock_params, _):
