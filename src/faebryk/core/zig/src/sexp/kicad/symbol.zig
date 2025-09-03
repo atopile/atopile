@@ -6,7 +6,7 @@ const str = []const u8;
 const schematic = @import("schematic.zig");
 
 pub const SymbolLib = struct {
-    version: []const u8,
+    version: i32,
     generator: []const u8,
     symbols: []schematic.Symbol = &.{},
 };

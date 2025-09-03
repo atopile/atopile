@@ -248,7 +248,7 @@ class EasyEDAFootprint:
 class EasyEDASymbol:
     cache: dict[Path, "EasyEDASymbol"] = {}
 
-    def __init__(self, symbol: C_kicad_sym_file):
+    def __init__(self, symbol: kicad.symbol.SymbolFile):
         self.symbol = symbol
 
     @classmethod
@@ -261,17 +261,17 @@ class EasyEDASymbol:
         fp_lib_name = symbol.info.lcsc_id
         raw = exporter.export(footprint_lib_name=fp_lib_name)
         sym = sexp_loads(raw, C_symbol_in_file_v6).symbol.convert_to_new()
-        sym_file = C_kicad_sym_file(
-            C_kicad_sym_file.C_kicad_symbol_lib(
+        sym_file = kicad.symbol.SymbolFile(
+            kicad.symbol.SymbolLib(
                 version=1,
                 generator="faebryk",
-                symbols={sym.name: sym},
+                symbols=[sym],
             )
         )
         return cls(sym_file)
 
     def serialize(self) -> bytes:
-        return self.symbol.dumps().encode("utf-8")
+        return kicad.dumps(self.symbol).encode("utf-8")
 
     def dump(self, path: Path):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -283,7 +283,7 @@ class EasyEDASymbol:
         # assume not disk modifications during run
         if path in cls.cache:
             return cls.cache[path]
-        out = cls(C_kicad_sym_file.loads(path))
+        out = cls(kicad.loads(kicad.symbol.SymbolFile, path))
         cls.cache[path] = out
         return out
 
@@ -295,7 +295,7 @@ class EasyEDASymbol:
 
     @property
     def kicad_symbol(self):
-        return first(self.symbol.kicad_symbol_lib.symbols.values())
+        return first(self.symbol.kicad_sym.symbols)
 
 
 class EasyEDAPart:
@@ -569,8 +569,8 @@ def attach(
             # TODO make this a trait
             pins = [
                 (pin.number.number, pin.name.name)
-                for sym in apart.symbol.kicad_symbol_lib.symbols.values()
-                for unit in sym.symbols.values()
+                for sym in apart.symbol.kicad_sym.symbols
+                for unit in sym.symbols
                 for pin in unit.pins
             ]
             try:

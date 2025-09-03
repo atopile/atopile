@@ -17,11 +17,11 @@ def fp_lib_path_path():
 
 @pytest.fixture
 def sch_file():
-    return kicad.loads(kicad.sch.SchFile, SCHFILE)
+    return kicad.loads(kicad.schematic.SchematicFile, SCHFILE)
 
 
 @pytest.fixture
-def transformer(sch_file: kicad.sch.SchFile):
+def transformer(sch_file: kicad.schematic.SchematicFile):
     app = Module()
     return SchTransformer(sch_file.kicad_sch, app.get_graph(), app)
 

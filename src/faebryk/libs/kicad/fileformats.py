@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum, auto
 from os import PathLike
 from pathlib import Path
-from typing import Any, Iterable, Optional, Protocol, Self, cast
+from typing import Any, Iterable, Optional, Protocol, Self, Sequence, cast
 
 from dataclasses_json import (
     CatchAll,
@@ -41,8 +41,7 @@ class JSON_File(DataClassJsonMixin):
         return text
 
 
-class UUID(str):
-    pass
+UUID = str
 
 
 @dataclass_json(undefined=Undefined.INCLUDE)
@@ -720,6 +719,8 @@ class kicad:
         fp_lib_table,  # noqa: E402, F401
         netlist,  # noqa: E402, F401
         pcb,  # noqa: E402
+        schematic,  # noqa: E402, F401
+        symbol,  # noqa: E402, F401
     )
 
     type types = (
@@ -727,6 +728,8 @@ class kicad:
         | footprint.FootprintFile
         | fp_lib_table.FpLibTableFile
         | netlist.NetlistFile
+        | symbol.SymbolFile
+        | schematic.SchematicFile
     )
 
     @staticmethod
@@ -742,6 +745,10 @@ class kicad:
             return kicad.fp_lib_table
         elif instance_or_subclass(t, kicad.netlist.NetlistFile):
             return kicad.netlist
+        elif instance_or_subclass(t, kicad.symbol.SymbolFile):
+            return kicad.symbol
+        elif instance_or_subclass(t, kicad.schematic.SchematicFile):
+            return kicad.schematic
 
         raise ValueError(f"Unsupported type: {t} ({type(t)})")
 
@@ -802,11 +809,27 @@ class Property:
         pass
 
     @staticmethod
+    def get_property_obj[T: _Property](obj: Iterable[T], name: str) -> T:
+        for prop in obj:
+            if prop.name == name:
+                return prop
+        raise Property.PropertyNotSet(f"Property `{name}` not set")
+
+    @staticmethod
     def get_property(obj: Iterable[_Property], name: str) -> str:
         out = Property.try_get_property(obj, name)
         if out is None:
             raise Property.PropertyNotSet(f"Property `{name}` not set")
         return out
+
+    @staticmethod
+    def set_property[T: _Property](obj: Sequence[_Property], prop: T):
+        assert isinstance(obj, list), "obj must be a list"
+        for o in obj:
+            if o.name == prop.name:
+                obj.remove(o)
+                break
+        obj.append(prop)
 
     @staticmethod
     def try_get_property(obj: Iterable[_Property], name: str) -> str | None:

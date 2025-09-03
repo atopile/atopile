@@ -62,10 +62,7 @@ class AtoPart:
 
     @property
     def sym_path(self) -> Path:
-        return (
-            self.path
-            / f"{first(self.symbol.kicad_symbol_lib.symbols.values()).name}.kicad_sym"
-        )
+        return self.path / f"{first(self.symbol.kicad_sym.symbols).name}.kicad_sym"
 
     @property
     def module_name(self) -> str:
@@ -116,7 +113,7 @@ class AtoPart:
         )
 
     def _dump_pins(self, build: AtoCodeGen.ComponentFile):
-        symbol = first(self.symbol.kicad_symbol_lib.symbols.values())
+        symbol = first(self.symbol.kicad_sym.symbols)
 
         build.add_comments("pins", use_spacer=True)
 
@@ -135,7 +132,7 @@ class AtoPart:
 
         # Collect and sort pins first
         unsorted_pins = []
-        for unit in symbol.symbols.values():
+        for unit in symbol.symbols:
             for pin in unit.pins:
                 pin_num = pin.number.number
                 pin_name = pin.name.name
@@ -174,11 +171,11 @@ class AtoPart:
 
         # refresh checksums
         self.fp.footprint.set_checksum()
-        symbol = first(self.symbol.kicad_symbol_lib.symbols.values())
+        symbol = first(self.symbol.kicad_sym.symbols)
         symbol.set_checksum()
 
         kicad.dumps(self.fp, self.fp_path)
-        self.symbol.dumps(self.sym_path)
+        kicad.dumps(self.symbol, self.sym_path)
         if self.model:
             self.model.dumps(self.model_path)
 
@@ -219,7 +216,8 @@ class AtoPart:
             )
 
         ato_builder.add_trait(
-            "has_designator_prefix", prefix=symbol.propertys["Reference"].value
+            "has_designator_prefix",
+            prefix=Property.get_property(symbol.propertys, "Reference"),
         )
 
         if self.datasheet:
@@ -244,7 +242,7 @@ class AtoPart:
         F.is_auto_generated.verify(self.auto_generated.checksum, ato_file_contents)
 
         fp = self.fp.footprint
-        symbol = first(self.symbol.kicad_symbol_lib.symbols.values())
+        symbol = first(self.symbol.kicad_sym.symbols)
 
         # check fp & symbol
         for obj, t_name in ((fp, "Footprint"), (symbol, "Symbol")):

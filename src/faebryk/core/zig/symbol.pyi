@@ -13,11 +13,11 @@ from faebryk.core.zig.schematic import Symbol
 type Allocator = Any
 
 class SymbolLib:
-    version: str
+    version: int
     generator: str
     symbols: list[Symbol]
 
-    def __init__(self, version: str, generator: str, symbols: list[Symbol]) -> None: ...
+    def __init__(self, version: int, generator: str, symbols: list[Symbol]) -> None: ...
     def __repr__(self) -> str: ...
 
 class SymbolFile:
