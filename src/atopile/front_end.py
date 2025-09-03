@@ -2287,89 +2287,56 @@ class Bob(BasicsMixin, SequenceMixin, AtoParserVisitor):  # type: ignore  # Over
                     traceback=self.get_traceback(),
                 ) from ex
 
+    def _retype(self, from_node: L.Module, to_node: L.Module):
+        parent, _ = not_none(from_node.get_parent())
+        assert isinstance(parent, L.Module)
+
+        # replace node in graph (original node is made anonymous)
+        parent.replace_child(from_node, to_node)
+
+        # specialize the node now that graph structure is correct
+        from_node.specialize(to_node)
+
     def visitRetype_stmt(self, ctx: ap.Retype_stmtContext):
         from_ref = self.visitFieldReference(ctx.field_reference())
-        to_ref = self.visitTypeReference(ctx.type_reference())
         from_node = self._get_referenced_node(from_ref, ctx)
 
-        from_dsl_orig = from_node.try_get_trait(from_dsl)
-
-        # Only Modules can be specialized (since they're the only
-        # ones with specialization gifs).
-        # TODO: consider duck-typing this
-        if not isinstance(from_node, L.Module):
-            raise errors.UserTypeError.from_ctx(
-                ctx,
-                f"Can't specialize `{from_node}` because it's not a `Module`",
-                traceback=self.get_traceback(),
-            )
-
-        # TODO: consider extending this w/ the ability to specialize to an instance
+        to_ref = self.visitTypeReference(ctx.type_reference())
         class_ = self._get_referenced_class(ctx, to_ref)
+        # TODO: consider extending this w/ the ability to specialize to an instance
         with self._traceback_stack.enter(ctx):
             # TOOD: update definition
-            with self._init_node(class_) as specialized_node:
+            with self._init_node(class_) as to_node:
                 pass
 
-        if not isinstance(specialized_node, L.Module):
-            raise errors.UserTypeError.from_ctx(
-                ctx,
-                f"Can't specialize with `{specialized_node}`"
-                " because it's not a `Module`",
-                traceback=self.get_traceback(),
-            )
-
-        # FIXME: this is an abuse of disconnect_parent. The graph isn't intended to be
-        # mutable like this, and it existed only for use in traits, however the
-        # alternatives I could come up with were worse:
-        # - an isinstance check to additionally run `get_most_special` on Modules +
-        #   more processing down the line when we want the full name of the node
-        # This is only be applied when specializing to a whole class, not an instance
-        try:
-            parent_deets = from_node.get_parent()
-            # We use from_node.get_name() rather than from_ref[-1] because we can
-            # ensure this reuses the exact name after any normalization
-            from_node_name = from_node.get_name()
-            assert parent_deets is not None, (
-                "uhh not sure how you get here without trying to replace the root node,"
-                " which you shouldn't ever have access to"
-            )
-            parent, _ = parent_deets
-            from_node.parent.disconnect_parent()
-            assert isinstance(parent, L.Module)
-
-            # We have to make sure the from_node was part of the runtime attrs
-            if not any(r is from_node for r in parent.runtime.values()):
-                raise errors.UserNotImplementedError.from_ctx(
+        # TODO: consider adding ModuleInterface support
+        for node in [from_node, to_node]:
+            if not isinstance(node, L.Module):
+                raise errors.UserTypeError.from_ctx(
                     ctx,
-                    "We cannot properly specialize nodes within the base definition of"
-                    " a module. This limitation mostly applies to fabll modules today.",
+                    f"Can't specialize `{node}` because it's not a `Module`",
                     traceback=self.get_traceback(),
                 )
 
-            # Now, slot that badboi back in right where it's less-special brother's spot
-            del parent.runtime[from_node_name]
-            parent.add(specialized_node, name=from_node_name)
+        assert isinstance(to_node, L.Module)
+        assert isinstance(from_node, L.Module)
 
-            try:
-                from_node.specialize(specialized_node)
-            except* L.Module.InvalidSpecializationError as ex:
-                raise errors.UserException.from_ctx(
-                    ctx,
-                    f"Can't specialize `{from_ref}` with `{to_ref}`:\n"
-                    + "\n".join(f" - {e.message}" for e in ex.exceptions),
-                    traceback=self.get_traceback(),
-                ) from ex
-        except Exception:
-            # TODO: skip further errors about this node w/ self._record_failed_node()
-            raise
+        try:
+            self._retype(from_node, to_node)
+        except* L.Module.InvalidSpecializationError as ex:
+            raise errors.UserException.from_ctx(
+                ctx,
+                f"Can't specialize `{from_ref}` with `{to_ref}`:\n"
+                + "\n".join(f" - {e.message}" for e in ex.exceptions),
+                traceback=self.get_traceback(),
+            ) from ex
 
-        from_dsl_ = specialized_node.add(from_dsl(src_ctx=ctx.type_reference()))
-        if from_dsl_orig is not None:
-            from_dsl_.references.extend(from_dsl_orig.references)
-
+        from_dsl_ = to_node.add(from_dsl(src_ctx=ctx.type_reference()))
         from_dsl_.set_definition(class_)
         from_dsl_.add_reference(ctx.field_reference())
+
+        if (from_dsl_orig := from_node.try_get_trait(from_dsl)) is not None:
+            from_dsl_.references.extend(from_dsl_orig.references)
 
         return NOTHING
 
