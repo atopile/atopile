@@ -44,3 +44,21 @@ class PoweredLED(Module):
     @L.rt_field
     def single_electric_reference(self):
         return F.has_single_electric_reference_defined(self.power)
+
+    usage_example = L.f_field(F.has_usage_example)(
+        example="""
+        import PoweredLED, ElectricPower
+
+        module UsageExample:
+            powered_led = new PoweredLED
+            powered_led.lcsc_id = "C2286"
+            powered_led.led.color = "RED"
+            powered_led.led.current = 10mA +/- 10%
+
+            power = new ElectricPower
+            assert power.voltage within 5V +/- 5%
+
+            powered_led.power ~ power
+        """,
+        language=F.has_usage_example.Language.ato,
+    )
