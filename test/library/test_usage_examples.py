@@ -30,6 +30,15 @@ skip_list = [
     "Pinmux",
 ]
 
+try:
+    import faebryk.library._F as F
+except ImportError:
+    F = None
+
+
+def test_load_library():
+    assert F is not None, "Failed to load library"
+
 
 def _extract_usage_example_ast(file_path: str) -> tuple[str | None, str | None]:
     """
